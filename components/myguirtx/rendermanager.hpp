@@ -118,9 +118,6 @@ namespace MyGUIRtx
 
         bool mUpdate = false;
         bool mIsInitialise = false;
-
-        /// The clock `update` reads its frame delta from, and what it last read.
-        ///
     };
 
 }

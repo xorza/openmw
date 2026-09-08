@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -127,6 +129,44 @@ namespace Rtx
         {
             EXPECT_EQ(digestOfBoxes(false, 0.0f, 0.0f), digestOfBoxes(false, 0.0f, 0.0f, true));
             EXPECT_NE(layoutOfBoxes(false, 0.0f, 0.0f), layoutOfBoxes(false, 0.0f, 0.0f, true));
+        }
+
+        /// One box under a material `change` has been applied to, digested both ways.
+        std::pair<std::string, std::string> digestsOfMaterial(void (*change)(Rtx::Material&))
+        {
+            Rtx::SceneDesc scene;
+
+            Rtx::Material material;
+            material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/box.dds"));
+            change(material);
+
+            Rtx::MeshInstance instance;
+            instance.mMaterial = scene.addMaterial(material);
+            instance.mMesh = addBox(scene, false, instance.mMaterial);
+            scene.addInstance(instance);
+
+            return { spellHash(digestScene(scene)), spellHash(digestLayout(digestParts(scene))) };
+        }
+
+        /// **Every field of a material reaches both digests**, which is what one field list buys.
+        ///
+        /// The three flags below are the ones a reader would least expect to matter, and each does:
+        /// two runs that disagreed about whether a chunk was flattening would otherwise have held
+        /// one scene as far as the digest could say.
+        TEST(RtxSceneDigestTest, everyMaterialFieldReachesBothDigests)
+        {
+            const auto [scene, layout] = digestsOfMaterial([](Rtx::Material&) {});
+
+            for (const auto& [what, change] : std::initializer_list<std::pair<const char*, void (*)(Rtx::Material&)>>{
+                     { "flatten", [](Rtx::Material& m) { m.mFlatten = true; } },
+                     { "animated", [](Rtx::Material& m) { m.mAnimated = true; } },
+                     { "never solid", [](Rtx::Material& m) { m.mDiffuseNeverSolid = true; } },
+                 })
+            {
+                const auto [movedScene, movedLayout] = digestsOfMaterial(change);
+                EXPECT_NE(scene, movedScene) << what;
+                EXPECT_NE(layout, movedLayout) << what;
+            }
         }
     }
 }

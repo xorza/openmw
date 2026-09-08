@@ -175,6 +175,7 @@ set(RTX_VULKAN_FILES
     device.hpp
     deviceprofile.cpp
     deviceprofile.hpp
+    dispatch.hpp
     exposurepass.cpp
     exposurepass.hpp
     fogtile.cpp

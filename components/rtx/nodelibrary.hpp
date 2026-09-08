@@ -74,6 +74,18 @@ namespace Rtx
         mutable std::size_t mHeld = 0;
     };
 
+    /// `object` as a `T`, but only where its library says it could be one.
+    ///
+    /// **The gate and the cast in one call**, because a gate is only worth having where nobody can
+    /// forget it: the pair was spelled apart at five places in one walk. `NodeLibrary` says why the
+    /// compare is worth making — a failed `dynamic_cast` walks the class hierarchy to answer what
+    /// one pointer compare does, and every traversal here runs over the whole graph.
+    template <class T, class Object>
+    T* castFrom(Library held, Library wanted, Object& object)
+    {
+        return held == wanted ? dynamic_cast<T*>(&object) : nullptr;
+    }
+
     /// Whether `node` is exactly `type`, for the cast a library name cannot narrow.
     ///
     /// **The class where the library is every node in a cell.** `NodeLibrary` is the gate to reach

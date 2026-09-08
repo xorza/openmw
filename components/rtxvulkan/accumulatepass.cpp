@@ -6,17 +6,13 @@
 #include <cassert>
 #include <cstddef>
 
+#include "dispatch.hpp"
 #include "gbuffer.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent)
-        {
-            return (extent + Shaders::ACCUMULATE_WORKGROUP - 1) / Shaders::ACCUMULATE_WORKGROUP;
-        }
-
         /// The channel being blended, the four the frame describes it with, the three a history
         /// arrives in, the two of those this pass writes back, and the blend the cascade reads. All
         /// storage images, all pushed.
@@ -26,19 +22,8 @@ namespace Rtx
         /// `atrous.comp` says what it is worth.
         constexpr std::size_t sBindingCount = 11;
 
-        /// Eleven of one kind, so a loop rather than eleven lines — `AtrousPass` spells its five out
-        /// because five is not yet a list.
-        constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> describeBindings()
-        {
-            std::array<VkDescriptorSetLayoutBinding, sBindingCount> bindings{};
-            for (std::uint32_t i = 0; i < bindings.size(); ++i)
-                bindings[i] = VkDescriptorSetLayoutBinding{ i, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                    VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
-
-            return bindings;
-        }
-
-        constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings = describeBindings();
+        constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings
+            = computeBindings<sBindingCount>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     }
 
     AccumulatePass::AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -119,15 +104,7 @@ namespace Rtx
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mBlended->getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
 
-        std::array<VkWriteDescriptorSet, sBindingCount> writes{};
-        for (std::uint32_t i = 0; i < images.size(); ++i)
-            writes[i] = VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = i,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                .pImageInfo = &images[i],
-            };
+        const std::array<VkWriteDescriptorSet, sBindingCount> writes = storageImageWrites(images);
 
         const Shaders::AccumulateConstants constants{
             .mCamera = camera,
@@ -135,12 +112,8 @@ namespace Rtx
             .mDistanceScale = Shaders::ACCUMULATE_DISTANCE_RANGE / far,
         };
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 0,
-            static_cast<std::uint32_t>(writes.size()), writes.data());
-        vkCmdPushConstants(
-            commands, mPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
-        vkCmdDispatch(commands, groupsFor(camera.mWidth), groupsFor(camera.mHeight), 1);
+        dispatch(commands, mPipeline, writes, constants, groupsFor(camera.mWidth, Shaders::ACCUMULATE_WORKGROUP),
+            groupsFor(camera.mHeight, Shaders::ACCUMULATE_WORKGROUP));
 
         mFresh = false;
 

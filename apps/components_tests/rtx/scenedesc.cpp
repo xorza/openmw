@@ -454,7 +454,7 @@ namespace Rtx
             EXPECT_EQ(mScene.getRuns().size(), 4u) << "the freed run is the one handed out";
             EXPECT_EQ(sorted(mScene.getArrivedRigs()), (std::vector<Index>{ mRig }));
 
-            // `mMoving` and not `mOther`, though `mOther` went last: `Rtx::takeFreeSlot` answers with
+            // `mMoving` and not `mOther`, though `mOther` went last: `Rtx::SlotRows` answers with
             // the lowest free slot, so which of the two arrives next is not the sweep's to decide.
             const Index back = addSkin();
             EXPECT_EQ(back, mMoving) << "the freed mesh slot is the one handed out";
@@ -466,6 +466,101 @@ namespace Rtx
             mScene.poseRig(back, mAtFive, mReach);
             EXPECT_EQ(sorted(mScene.getDeformed()), (std::vector<Index>{ back }))
                 << "a reused slot's first pose names it";
+        }
+
+        /// **A rig slot goes back onto a heap and not onto a stack**, which the test above cannot
+        /// tell: it frees one slot, and one slot is the same answer either way.
+        ///
+        /// A sweep frees a rig where the last mesh on it goes, so rigs are given back in their
+        /// *meshes'* order and not in their own. Here the mesh on the second rig is the first mesh,
+        /// so the second rig is freed first and the free list is handed `1` and then `0` — which a
+        /// list built by pushing leaves out of order. `Rtx::SlotRows` answers with the lowest,
+        /// so the next rig has to land in slot 0; a stack would answer with slot 1.
+        TEST(RtxSceneDescTest, aFreedRigSlotIsHandedOutLowestFirstHoweverTheSweepMetIt)
+        {
+            SceneDesc scene;
+
+            const Index first = Testing::addOneBoneRig(scene, 4);
+            const Index second = Testing::addOneBoneRig(scene, 4);
+            ASSERT_EQ(first, 0u);
+            ASSERT_EQ(second, 1u);
+
+            const auto addSkin = [&](const Index rig) {
+                return scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::Rig, rig);
+            };
+
+            // The mesh on the second rig is the lower mesh slot, which is what makes the sweep free
+            // the two rigs in the order that catches this.
+            const Index early = addSkin(second);
+            const Index late = addSkin(first);
+            ASSERT_LT(early, late);
+
+            ASSERT_TRUE(scene.release({}, {}));
+            ASSERT_EQ(scene.getRigs()[first].mUses, 0u);
+            ASSERT_EQ(scene.getRigs()[second].mUses, 0u);
+
+            // **Read after two removals in one sweep**, which is the pass `DeformerTable::compact`
+            // owes: a set with a removal outstanding refuses to answer at all.
+            EXPECT_TRUE(scene.getArrivedRigs().empty()) << "both arrivals left with their rigs";
+
+            EXPECT_EQ(Testing::addOneBoneRig(scene, 4), first)
+                << "the lowest free rig slot, and not the last one the sweep gave back";
+            EXPECT_EQ(Testing::addOneBoneRig(scene, 4), second) << "then the one above it";
+        }
+
+        /// **Every table hands out its lowest free slot**, which is what `Rtx::SlotRows` promises
+        /// once for all six of them.
+        ///
+        /// Two slots are freed high first here, because that is the order a list built by pushing
+        /// leaves out of order: `[2]` and then `[2, 0]` is no heap, and a pop of it answers with 2.
+        /// A slot is the custom index a hit reads back and the row a material is looked up in, so
+        /// which of two free slots an arrival takes has to be a function of what is standing.
+        TEST(RtxSceneDescTest, everyTableHandsOutItsLowestFreeSlot)
+        {
+            SceneDesc scene;
+
+            const auto quad = [&](const Index material) {
+                return scene.addMesh(
+                    Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::None, sNoIndex, material);
+            };
+
+            const std::array meshes{ quad(sNoIndex), quad(sNoIndex), quad(sNoIndex) };
+            ASSERT_EQ(meshes[2], 2u);
+
+            const std::array materials{ scene.addMaterial(Material{ .mAlphaRef = 0.25f }),
+                scene.addMaterial(Material{ .mAlphaRef = 0.5f }), scene.addMaterial(Material{ .mAlphaRef = 0.75f }) };
+            ASSERT_EQ(materials[2], 2u);
+
+            const auto path = [](const char* name) { return VFS::Path::NormalizedView(name); };
+            const std::array textures{ scene.addTexture(path("textures/a.dds")),
+                scene.addTexture(path("textures/b.dds")), scene.addTexture(path("textures/c.dds")) };
+            for (const Index texture : textures)
+                scene.holdTexture(texture);
+            ASSERT_EQ(textures[2], 2u);
+
+            const auto place = [&](const Index mesh) { return scene.addInstance(MeshInstance{ .mMesh = mesh }); };
+            const std::array placed{ place(meshes[0]), place(meshes[1]), place(meshes[2]) };
+            ASSERT_EQ(placed[2], 2u);
+
+            // The highest of each three first, and the lowest second.
+            scene.dropTexture(textures[2]);
+            scene.dropTexture(textures[0]);
+
+            scene.dropInstance(placed[2]);
+            scene.dropInstance(placed[0]);
+
+            const std::array keepTwo{ meshes[0], meshes[1] };
+            const std::array keepTwoMaterials{ materials[0], materials[1] };
+            ASSERT_TRUE(scene.release(keepTwo, keepTwoMaterials));
+
+            const std::array keepOne{ meshes[1] };
+            const std::array keepOneMaterial{ materials[1] };
+            ASSERT_TRUE(scene.release(keepOne, keepOneMaterial));
+
+            EXPECT_EQ(scene.addTexture(path("textures/d.dds")), textures[0]) << "textures";
+            EXPECT_EQ(place(meshes[1]), placed[0]) << "placements";
+            EXPECT_EQ(quad(sNoIndex), meshes[0]) << "meshes";
+            EXPECT_EQ(scene.addMaterial(Material{ .mAlphaRef = 0.125f }), materials[0]) << "materials";
         }
 
         /// A morphed mesh holds its base as its bind pose and its weights as its pose, and the
@@ -935,7 +1030,7 @@ namespace Rtx
             EXPECT_EQ(scene.getMeshes()[again].mVertices.mOffset, 4u);
             EXPECT_EQ(scene.getPositions().size(), vertices) << "a mesh that fitted a hole appended anyway";
 
-            // Both freed slots have been taken, the lower one first — `Rtx::takeFreeSlot` says why a
+            // Both freed slots have been taken, the lower one first — `Rtx::SlotRows` says why a
             // table answers with the lowest and never with the last one given back.
             EXPECT_EQ(quad, roomy);
             EXPECT_EQ(again, snug);

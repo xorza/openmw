@@ -5,7 +5,6 @@
 #include <string>
 
 #include "error.hpp"
-#include "slotrows.hpp"
 
 namespace Rtx
 {
@@ -48,27 +47,8 @@ namespace Rtx
 
         ++mRevision;
 
-        const Run vertices = mVertexRuns.allocate(static_cast<Index>(positions.size()));
-        const Run elements = mIndexRuns.allocate(static_cast<Index>(indices.size()));
-
-        // Grown to what the allocators now reach, so the write below lands in room that exists, and
-        // never shrunk: a run given back at the end goes to the allocator and the next mesh lands in
-        // it rather than in a buffer that had to be resized twice. The attribute buffers stay
-        // parallel to the position buffer whether or not the mesh brought the attribute, so a shader
-        // can index all of them with one vertex id.
-        //
-        // **As long as the allocator reaches and no longer.** The blocks decide where a run may go,
-        // not how much room is held: rounding this up to a whole block would leave the tail of the
-        // last one uploaded to the device as well, which is megabytes of nothing per scene.
-        if (mPositions.size() < mVertexRuns.getEnd())
-        {
-            mPositions.resize(mVertexRuns.getEnd());
-            mNormals.resize(mPositions.size());
-            mTexCoords.resize(mPositions.size());
-        }
-
-        if (mIndices.size() < mIndexRuns.getEnd())
-            mIndices.resize(mIndexRuns.getEnd());
+        const Run vertices = mPositions.allocate(positions);
+        const Run elements = mIndices.allocate(indices);
 
         MeshRange range{
             .mVertices = vertices,
@@ -82,9 +62,9 @@ namespace Rtx
 
         mDeformers.stand(range);
 
-        write(range, positions, normals, texCoords, indices);
+        writeAttributes(range, normals, texCoords);
 
-        const Index index = takeSlot(mRows, mFree, range);
+        const Index index = mRows.take(range);
         note(index, SlotNews::Arrived);
         return index;
     }
@@ -99,12 +79,15 @@ namespace Rtx
         mChanges.note(slot, what);
     }
 
-    void MeshTable::write(const MeshRange& range, std::span<const osg::Vec3f> positions,
-        std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords,
-        std::span<const std::uint32_t> indices)
+    void MeshTable::writeAttributes(
+        const MeshRange& range, std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords)
     {
-        std::copy(positions.begin(), positions.end(), mPositions.begin() + range.mVertices.mOffset);
-        std::copy(indices.begin(), indices.end(), mIndices.begin() + range.mIndices.mOffset);
+        // **As long as the positions and no longer.** All three arrays are indexed by one vertex
+        // id, and the blocks decide where a run may go rather than how much room is held — so
+        // rounding up to a whole block would upload the tail of the last one as well.
+        const std::size_t reach = getPositions().size();
+        mNormals.resize(reach);
+        mTexCoords.resize(reach);
 
         // **Zeroed where the mesh brought none**, rather than left holding whatever the slot's last
         // tenant had. A reused slot is the only way that could happen and it would light a surface
@@ -122,7 +105,7 @@ namespace Rtx
 
     void MeshTable::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
     {
-        MeshRange& range = mRows[mesh];
+        MeshRange& range = mRows.at(mesh);
         range.mPosed = true;
 
         // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
@@ -137,45 +120,37 @@ namespace Rtx
 
     std::span<const osg::Vec3f> MeshTable::getMeshPositions(Index mesh) const
     {
-        assert(mesh < mRows.size());
-        const MeshRange& range = mRows[mesh];
+        const MeshRange& range = mRows.at(mesh);
         return range.mVertices.in(getPositions());
     }
 
     std::span<const std::uint32_t> MeshTable::getMeshIndices(Index mesh) const
     {
-        assert(mesh < mRows.size());
-        const MeshRange& range = mRows[mesh];
+        const MeshRange& range = mRows.at(mesh);
         return range.mIndices.in(getIndices());
     }
 
     std::uint32_t MeshTable::getTriangleCount() const
     {
-        return static_cast<std::uint32_t>(mIndices.size() / 3);
+        return static_cast<std::uint32_t>(getIndices().size() / 3);
     }
 
     std::size_t MeshTable::mark(std::span<const Index> keep)
     {
-        return markKept(mKept, mRows.size(), keep, mFree);
+        return mRows.mark(keep);
     }
 
     std::size_t MeshTable::sweep()
     {
-        std::size_t freed = 0;
-        for (Index index = 0; index < mRows.size(); ++index)
-        {
-            if (mKept[index] != 0)
-                continue;
-
+        const std::size_t freed = mRows.sweep([this](const Index index, MeshRange& range) {
             // **The slot stays where it is and only its geometry goes back.** Nothing is moved down
             // over it, so every index above this one still means what it meant — which is the whole
             // point, because each of them names a bottom-level acceleration structure that would
             // otherwise have to be built again. The room the geometry occupied returns to the
             // allocators, which merge it with whatever it touches: a cell arrived as thousands of
             // runs laid end to end and it leaves as the one hole it came as.
-            MeshRange& range = mRows[index];
-            mVertexRuns.release(range.mVertices);
-            mIndexRuns.release(range.mIndices);
+            mPositions.release(range.mVertices);
+            mIndices.release(range.mIndices);
             mDeformers.release(range);
 
             range.mVertices.mCount = 0;
@@ -187,19 +162,21 @@ namespace Rtx
             // structure has gone with it.
             mDeformed.remove(index);
 
-            freeSlot(mFree, index);
             note(index, SlotNews::Freed);
-            ++freed;
-        }
+        });
 
+        // Both sets held a removal per row freed above, and each settles in one pass rather than
+        // one per row.
         mDeformed.compact();
+        mDeformers.compact();
+
         return freed;
     }
 
     std::size_t MeshTable::getGeometryBytes() const
     {
-        return mPositions.size() * sizeof(osg::Vec3f) + mNormals.size() * sizeof(osg::Vec3f)
-            + mTexCoords.size() * sizeof(osg::Vec2f) + mIndices.size() * sizeof(std::uint32_t);
+        return getPositions().size() * sizeof(osg::Vec3f) + mNormals.size() * sizeof(osg::Vec3f)
+            + mTexCoords.size() * sizeof(osg::Vec2f) + getIndices().size() * sizeof(std::uint32_t);
     }
 
     void MeshTable::clearArrivals()

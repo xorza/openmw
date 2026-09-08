@@ -7,6 +7,12 @@
 
 namespace Rtx
 {
+    /// `bytes` in mebibytes, which is the unit every report in this fork prints memory in.
+    inline double megabytes(std::uint64_t bytes)
+    {
+        return static_cast<double>(bytes) / (1024.0 * 1024.0);
+    }
+
     /// One of the device's memory heaps, and what this renderer has taken out of it.
     struct HeapUse
     {

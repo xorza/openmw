@@ -11,11 +11,6 @@ namespace Rtx
 {
     namespace
     {
-        double megabytes(std::uint64_t bytes)
-        {
-            return static_cast<double>(bytes) / (1024.0 * 1024.0);
-        }
-
         /// Null where nothing answered, so a record taken on a machine with no `nvidia-smi` says it
         /// carries no clock rather than claiming one of zero.
         std::string asJson(const GpuClock& clock)

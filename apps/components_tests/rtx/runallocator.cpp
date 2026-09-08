@@ -1,6 +1,10 @@
+#include <array>
+#include <cstdint>
+
 #include <gtest/gtest.h>
 
 #include <components/rtx/runallocator.hpp>
+#include <components/rtx/runbuffer.hpp>
 
 namespace Rtx
 {
@@ -216,6 +220,61 @@ namespace Rtx
             EXPECT_EQ(allocator.getFree(), 0u);
             EXPECT_EQ(allocator.getHoleCount(), 0u);
             EXPECT_EQ(allocator.allocate(3), (Rtx::Run{ .mOffset = 0, .mCount = 3 }));
+        }
+
+        /// **A run given back is a hole the next one lands in, and nothing that was written moves.**
+        /// That is the whole of what a `RunBuffer` promises over the allocator inside it: the
+        /// buffer reaches the allocator's end and never further, so a caller cannot write past its
+        /// end and cannot be handed room that does not exist.
+        ///
+        /// Hand-counted: three, then two, then three again. Releasing the second leaves a hole of
+        /// two at offset three, and a run of two lands exactly in it — so the buffer stays eight
+        /// long and the third run's elements are where they were written.
+        TEST(RtxRunBufferTest, aFreedRunIsTheRoomTheNextOneTakesAndNothingWrittenMoves)
+        {
+            RunBuffer<std::uint32_t> buffer;
+
+            const std::array<std::uint32_t, 3> first{ 10, 11, 12 };
+            const std::array<std::uint32_t, 2> middle{ 20, 21 };
+            const std::array<std::uint32_t, 3> last{ 30, 31, 32 };
+
+            const Rtx::Run held = buffer.allocate(first);
+            const Rtx::Run going = buffer.allocate(middle);
+            const Rtx::Run kept = buffer.allocate(last);
+
+            ASSERT_EQ(buffer.getEnd(), 8u);
+            ASSERT_EQ(buffer.getAll().size(), 8u) << "as long as the allocator reaches and no longer";
+            EXPECT_EQ(buffer.getUsed(), 8u);
+
+            buffer.release(going);
+            EXPECT_EQ(buffer.getUsed(), 6u);
+
+            const std::array<std::uint32_t, 2> arriving{ 40, 41 };
+            const Rtx::Run taken = buffer.allocate(arriving);
+            EXPECT_EQ(taken, going) << "the hole is the room the next run takes";
+            EXPECT_EQ(buffer.getEnd(), 8u) << "so the buffer did not grow";
+            EXPECT_EQ(buffer.getHoleCount(), 0u);
+
+            EXPECT_EQ(held.in(buffer.getAll())[0], 10u) << "what was written below the hole stayed";
+            EXPECT_EQ(kept.in(buffer.getAll())[2], 32u) << "and what was written above it stayed";
+            EXPECT_EQ(taken.in(buffer.getAll())[1], 41u);
+        }
+
+        /// A run asked for zeroed holds zeroes wherever it lands, which is what a pose nothing can
+        /// equal is made of — `DeformerTable::stand` hands a mesh one before it is first posed.
+        TEST(RtxRunBufferTest, aZeroedRunIsZeroedWhereverItLands)
+        {
+            RunBuffer<float> buffer;
+
+            const std::array<float, 4> written{ 1.0f, 2.0f, 3.0f, 4.0f };
+            const Rtx::Run first = buffer.allocate(written);
+            buffer.release(first);
+
+            const Rtx::Run again = buffer.allocateZeroed(4);
+            ASSERT_EQ(again, first) << "the same room, which is what makes this worth asserting";
+
+            for (const float value : again.in(buffer.getAll()))
+                EXPECT_EQ(value, 0.0f);
         }
     }
 }

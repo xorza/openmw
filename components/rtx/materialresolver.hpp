@@ -98,6 +98,16 @@ namespace Rtx
         /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
         Material readMaterial(std::span<const Shading> shading);
 
+        /// The slot `key` already holds, stamped and counted as a reuse, or `sNoIndex`.
+        ///
+        /// **One statement for the three resolvers**, so that what is left in each is only what it
+        /// does differently: `resolve` re-reads an animated material, `resolveTerrain` builds a
+        /// layer stack, and `resolveWater` builds nothing at all.
+        Index reuse(const osg::StateSet* key);
+
+        /// Adds `material` under `key`, counted as an arrival.
+        Index adopt(const osg::StateSet* key, const Material& material);
+
         /// The scene's slot for one image, held for as long as this names it.
         Index takeTexture(const osg::Image* image);
 

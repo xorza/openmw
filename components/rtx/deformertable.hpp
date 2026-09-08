@@ -9,8 +9,11 @@
 #include "index.hpp"
 #include "meshrange.hpp"
 #include "runallocator.hpp"
+#include "runbuffer.hpp"
 #include "shaders/scene.h"
 #include "shaders/skinning.h"
+#include "slotrows.hpp"
+#include "slotset.hpp"
 
 namespace Rtx
 {
@@ -96,16 +99,16 @@ namespace Rtx
         /// where this was the last mesh standing on it.
         void release(MeshRange& range);
 
-        std::span<const Rig> getRigs() const { return mRigs; }
-        std::span<const Morph> getMorphs() const { return mMorphs; }
-        std::span<const std::uint32_t> getRuns() const { return mRuns; }
-        std::span<const Shaders::GpuInfluence> getInfluences() const { return mInfluences; }
-        std::span<const osg::Vec3f> getMorphOffsets() const { return mMorphOffsets; }
-        std::span<const Shaders::GpuBone> getBones() const { return mBones; }
-        std::span<const float> getWeights() const { return mWeights; }
+        std::span<const Rig> getRigs() const { return mRigs.getRows(); }
+        std::span<const Morph> getMorphs() const { return mMorphs.getRows(); }
+        std::span<const std::uint32_t> getRuns() const { return mRuns.getAll(); }
+        std::span<const Shaders::GpuInfluence> getInfluences() const { return mInfluences.getAll(); }
+        std::span<const osg::Vec3f> getMorphOffsets() const { return mMorphOffsets.getAll(); }
+        std::span<const Shaders::GpuBone> getBones() const { return mBones.getAll(); }
+        std::span<const float> getWeights() const { return mWeights.getAll(); }
 
-        std::span<const Index> getArrivedRigs() const { return mArrivedRigs; }
-        std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs; }
+        std::span<const Index> getArrivedRigs() const { return mArrivedRigs.getSlots(); }
+        std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs.getSlots(); }
 
         /// How many vertices the deforming meshes' bind poses take between them.
         Index getBindVertexCount() const { return mBindRuns.getEnd(); }
@@ -113,21 +116,38 @@ namespace Rtx
         std::span<const Shaders::GpuBone> getMeshBones(const MeshRange& range) const;
         std::span<const float> getMeshWeights(const MeshRange& range) const;
 
+        /// Settles what `release` took out of the arrivals, so they can be read again.
+        ///
+        /// **Called where a sweep ends and nowhere else**, because a sweep is the only thing that
+        /// releases a deformer. `SlotSet::remove` leaves its list holding the slot until a pass
+        /// settles it, which is what makes a sweep of thousands one pass rather than thousands.
+        void compact();
+
         void clearArrivals();
 
     private:
-        std::vector<Rig> mRigs;
-        std::vector<std::uint32_t> mRuns;
-        std::vector<Shaders::GpuInfluence> mInfluences;
-        std::vector<Morph> mMorphs;
-        std::vector<osg::Vec3f> mMorphOffsets;
-        std::vector<Shaders::GpuBone> mBones;
-        std::vector<float> mWeights;
+        SlotRows<Rig> mRigs;
+        SlotRows<Morph> mMorphs;
 
-        std::vector<Index> mFreeRigs;
-        std::vector<Index> mFreeMorphs;
-        std::vector<Index> mArrivedRigs;
-        std::vector<Index> mArrivedMorphs;
+        /// **Unblocked**, unlike the bind runs below: a backend reaches each of these by an address
+        /// it is handed per dispatch, so nothing here has to keep an address across a growth.
+        RunBuffer<std::uint32_t> mRuns;
+        RunBuffer<Shaders::GpuInfluence> mInfluences;
+        RunBuffer<osg::Vec3f> mMorphOffsets;
+        RunBuffer<Shaders::GpuBone> mBones;
+        RunBuffer<float> mWeights;
+
+        /// Which rig and morph slots have been written since the last `clearArrivals`.
+        ///
+        /// **Sets and not lists**, because a deformer that arrives and is released inside one sweep
+        /// must leave. Taking it out of a list is a scan and a shift of the whole list per released
+        /// rig, on the frame a cell leaves; a set marks a byte and settles the lot in one pass.
+        ///
+        /// **`SlotSet` and not `SlotChanges`**, because there is no freed list to keep: a rig's
+        /// storage is a run in a shared buffer, so `SkinTables::writeRigs` never has to be told one
+        /// went — the next rig to land in the run is what writes it again.
+        SlotSet mArrivedRigs;
+        SlotSet mArrivedMorphs;
 
         /// Where each deforming mesh's vertices sit among the deforming meshes alone, which is what
         /// both a bind table and a pose table are indexed by.
@@ -138,14 +158,5 @@ namespace Rtx
         /// for the next body is a hole like any other, and a block is a quarter of a million
         /// vertices against a body's couple of thousand.
         RunAllocator mBindRuns{ Shaders::VERTEX_BLOCK };
-
-        /// The bone rows and weights, and the rigs' and the morphs' own runs. Unblocked: a backend
-        /// reaches each run by an address it is handed per dispatch, so nothing here has to keep an
-        /// address across a growth.
-        RunAllocator mBoneRuns;
-        RunAllocator mWeightRuns;
-        RunAllocator mRigRuns;
-        RunAllocator mInfluenceRuns;
-        RunAllocator mMorphRuns;
     };
 }

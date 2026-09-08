@@ -48,6 +48,44 @@ namespace Rtx
             digest.add(std::span<const char>(path.data(), path.size()));
         }
 
+        /// Hands every field of `material` to one of three callables.
+        ///
+        /// **One list and three kinds, because the two digests spell two of the kinds
+        /// differently.** A texture reaches `digestParts` as the slot it landed in, which is what a
+        /// material's index means, and reaches `digestScene` as the file it names, which is what
+        /// the same material is wherever the slots fell. A run reaches the first whole, offset
+        /// included, and the second by its length alone — an offset is where a chunk's layers were
+        /// put and not what they are.
+        ///
+        /// **A field added to `Material` and not named here does not compile**, which is the whole
+        /// of why this exists: the two lists it replaces were kept by hand, held different subsets,
+        /// and a field added to neither would have left the gate quietly.
+        /// `ExtractionStats::countersOf` makes the same argument for the same reason.
+        template <class Texture, class Layers, class Value>
+        void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
+        {
+            const auto& [kind, diffuse, normal, emissive, diffuseColour, emissiveColour, alphaRef, alphaMode, twoSided,
+                textureTransform, run, flatten, animated, neverSolid]
+                = material;
+
+            texture(diffuse);
+            texture(normal);
+            texture(emissive);
+
+            layers(run);
+
+            value(kind);
+            value(diffuseColour);
+            value(emissiveColour);
+            value(alphaRef);
+            value(alphaMode);
+            value(twoSided);
+            value(textureTransform);
+            value(flatten);
+            value(animated);
+            value(neverSolid);
+        }
+
         void addMaterial(Digest& digest, const SceneDesc& scene, const Index index)
         {
             digest.add(index == sNoIndex);
@@ -55,17 +93,9 @@ namespace Rtx
                 return;
 
             const Material& material = scene.getMaterials()[index];
-            digest.add(material.mKind);
-            addTexture(digest, scene, material.mDiffuse);
-            addTexture(digest, scene, material.mNormal);
-            addTexture(digest, scene, material.mEmissive);
-            digest.add(material.mDiffuseColour);
-            digest.add(material.mEmissiveColour);
-            digest.add(material.mAlphaRef);
-            digest.add(material.mAlphaMode);
-            digest.add(material.mTwoSided);
-            digest.add(material.mTextureTransform);
-            digest.add(material.mLayers.mCount);
+            forEachMaterialField(
+                material, [&](const Index slot) { addTexture(digest, scene, slot); },
+                [&](const Run& layers) { digest.add(layers.mCount); }, [&](const auto& field) { digest.add(field); });
 
             for (const Rtx::MaterialLayer& layer : material.mLayers.in(scene.getLayers()))
             {
@@ -74,6 +104,36 @@ namespace Rtx
                 digest.add(layer.mMaskTransform);
                 digest.add(layer.mMask.in(scene.getMasks()));
             }
+        }
+
+        /// Every field of one row, as one list.
+        ///
+        /// **A field added and not named here does not compile.** `digestParts` reads these whole,
+        /// so a field it did not name would be one the gate stopped watching — silently, and on
+        /// the one report every determinism argument in this fork rests on.
+        auto fieldsOf(const MeshRange& mesh)
+        {
+            const auto& [vertices, indices, shape, deform, deformer, material, bindOffset, poseOffset, posed, bounds]
+                = mesh;
+            return std::tie(
+                vertices, indices, shape, deform, deformer, material, bindOffset, poseOffset, posed, bounds);
+        }
+
+        auto fieldsOf(const MeshInstance& instance)
+        {
+            const auto& [transform, mesh, material, opacity, firstPerson] = instance;
+            return std::tie(transform, mesh, material, opacity, firstPerson);
+        }
+
+        auto fieldsOf(const SpriteEmitter& emitter)
+        {
+            const auto& [centre, reach, sprites, texture, lighting, additive, width] = emitter;
+            return std::tie(centre, reach, sprites, texture, lighting, additive, width);
+        }
+
+        void addFields(Digest& digest, const auto& fields)
+        {
+            std::apply([&digest](const auto&... field) { (digest.add(field), ...); }, fields);
         }
 
         /// One corner of a triangle, as the picture sees it.
@@ -190,6 +250,14 @@ namespace Rtx
     static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
     static_assert(sizeof(Rig) == 24, "Rig is read whole and must have no padding");
     static_assert(sizeof(Morph) == 16, "Morph is read whole and must have no padding");
+    static_assert(sizeof(Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
+    static_assert(sizeof(Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
+
+    /// The same, for the field types the lists above hand over as one value each.
+    static_assert(sizeof(Run) == 8, "Run is read whole and must have no padding");
+    static_assert(sizeof(FoldedShape) == 2, "FoldedShape is read whole and must have no padding");
+    static_assert(sizeof(osg::BoundingBoxf) == 24, "a bounding box is read whole and must have no padding");
+    static_assert(sizeof(osg::Matrixf) == 64, "a transform is read whole and must have no padding");
 
     std::string_view nameOf(const ScenePart part)
     {
@@ -262,55 +330,22 @@ namespace Rtx
         // occupant left, so it is part of the state a run has to repeat — and a slot order that
         // moved is exactly what `digestScene` sums away.
         for (const MeshRange& mesh : scene.getMeshes())
-        {
-            one.add(mesh.mVertices.mOffset);
-            one.add(mesh.mVertices.mCount);
-            one.add(mesh.mIndices.mOffset);
-            one.add(mesh.mIndices.mCount);
-            one.add(mesh.mShape.mSheet);
-            one.add(mesh.mShape.mClosed);
-            one.add(mesh.mDeform);
-            one.add(mesh.mDeformer);
-            one.add(mesh.mMaterial);
-            one.add(mesh.mBindOffset);
-            one.add(mesh.mPoseOffset);
-            one.add(mesh.mPosed);
-            one.add(mesh.mBounds._min);
-            one.add(mesh.mBounds._max);
-        }
+            addFields(one, fieldsOf(mesh));
         take(ScenePart::Meshes);
 
         for (const MeshInstance& instance : scene.getInstances())
-        {
-            one.add(std::span<const float>(instance.mTransform.ptr(), 16));
-            one.add(instance.mMesh);
-            one.add(instance.mMaterial);
-            one.add(instance.mOpacity);
-            one.add(instance.mFirstPerson);
-        }
+            addFields(one, fieldsOf(instance));
         take(ScenePart::Instances);
 
         one.add(scene.getPrevious());
         take(ScenePart::Previous);
 
+        // The slot a texture landed in and the offset a layer run was placed at, because that is
+        // what this digest is for: which table a material points into is what a layout is.
         for (const Material& material : scene.getMaterials())
-        {
-            one.add(material.mKind);
-            one.add(material.mDiffuse);
-            one.add(material.mNormal);
-            one.add(material.mEmissive);
-            one.add(material.mDiffuseColour);
-            one.add(material.mEmissiveColour);
-            one.add(material.mAlphaRef);
-            one.add(material.mAlphaMode);
-            one.add(material.mTwoSided);
-            one.add(material.mTextureTransform);
-            one.add(material.mLayers.mOffset);
-            one.add(material.mLayers.mCount);
-            one.add(material.mFlatten);
-            one.add(material.mAnimated);
-            one.add(material.mDiffuseNeverSolid);
-        }
+            forEachMaterialField(
+                material, [&](const Index slot) { one.add(slot); }, [&](const Run& layers) { one.add(layers); },
+                [&](const auto& field) { one.add(field); });
         take(ScenePart::Materials);
 
         one.add(scene.getLayers());
@@ -347,16 +382,7 @@ namespace Rtx
         take(ScenePart::Sprites);
 
         for (const SpriteEmitter& emitter : scene.getEmitters())
-        {
-            one.add(emitter.mCentre);
-            one.add(emitter.mReach);
-            one.add(emitter.mSprites.mOffset);
-            one.add(emitter.mSprites.mCount);
-            one.add(emitter.mTexture);
-            one.add(emitter.mLighting);
-            one.add(emitter.mAdditive);
-            one.add(emitter.mWidth);
-        }
+            addFields(one, fieldsOf(emitter));
         take(ScenePart::Emitters);
 
         // What poses a mesh that deforms, and the pose itself. The trace reads the posed vertices,

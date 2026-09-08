@@ -378,5 +378,40 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.getMoved().size(), 1u);
             EXPECT_EQ(mScene.getMoved()[0], 0u);
         }
+
+        /// **Texture coordinates are read off the array's own type byte**, which is what
+        /// `asVec2Array` asks and what a `dynamic_cast` walks the class hierarchy to answer. The
+        /// two agree on a `Vec2Array` and on nothing else, so a three-component array is no texture
+        /// coordinate and the mesh arrives with none.
+        ///
+        /// Hand-written: the second corner's V is a half, and a mesh that brought no coordinates
+        /// reads as the zero the table is filled with.
+        TEST_F(RtxSceneExtractorTest, textureCoordinatesAreReadOnlyWhereTheArrayIsAPairPerVertex)
+        {
+            osg::ref_ptr<osg::Vec2Array> pairs = new osg::Vec2Array;
+            for (const osg::Vec2f& value :
+                { osg::Vec2f(0.0f, 0.0f), osg::Vec2f(1.0f, 0.5f), osg::Vec2f(1.0f, 1.0f), osg::Vec2f(0.0f, 1.0f) })
+                pairs->push_back(value);
+
+            osg::ref_ptr<osg::Geometry> read = makeQuad();
+            read->setTexCoordArray(0, pairs);
+
+            osg::ref_ptr<osg::Geometry> ignored = makeQuad();
+            ignored->setTexCoordArray(0,
+                makePositions({ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.5f, 0.0f),
+                    osg::Vec3f(1.0f, 1.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f) }));
+
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            root->addChild(read);
+            root->addChild(ignored);
+
+            mExtractor.extract(*root, osg::Matrixf::identity(), 1);
+
+            ASSERT_EQ(mScene.getMeshes().size(), 2u);
+            EXPECT_EQ(mScene.getMeshes()[0].mVertices.in(mScene.getTexCoords())[1], osg::Vec2f(1.0f, 0.5f))
+                << "a pair per vertex is read";
+            EXPECT_EQ(mScene.getMeshes()[1].mVertices.in(mScene.getTexCoords())[1], osg::Vec2f())
+                << "three components are no texture coordinate";
+        }
     }
 }

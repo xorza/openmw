@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace Rtx::Testing
@@ -186,6 +187,58 @@ namespace Rtx::Testing
             EXPECT_THROW(makeCamera(osg::Vec3f(0.0f, 0.0f, 100.0f), osg::Vec3f(), 60.0f, 64, 32, 400.0f), Error);
 
             EXPECT_THROW(makeOrthographicCameraFromView(view, 0.0f, 100.0f, 64, 32, 5.0f, 400.0f), Error);
+        }
+
+        /// **The three builders agree on everything a camera carries that is not its own basis.**
+        /// A viewpoint is built before anything has described the world over it, and what the three
+        /// leave behind for `FrameWorld` to overwrite has to be one answer — a sea level of never,
+        /// a heading the tiles were drawn on, and a fog layer of the height `FOG_HEIGHT` names.
+        /// Spelled once each, two of them carried the same comment word for word and the third was
+        /// free to drift.
+        TEST(RtxCameraTest, everyBuilderLeavesTheSameWorldBehindIt)
+        {
+            const osg::Vec3f eye(0.0f, 0.0f, 100.0f);
+            const osg::Matrixf view = osg::Matrixf::lookAt(eye, osg::Vec3f(), osg::Vec3f(0.0f, 1.0f, 0.0f));
+
+            const std::array cameras{
+                makeCameraAlong(eye, osg::Vec3f(0.0f, 1.0f, 0.0f), 60.0f, 64, 32, 400.0f),
+                makeCameraFromView(view, 60.0f, 64, 32, 1.0f, 400.0f),
+                makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 1.0f, 400.0f),
+            };
+
+            for (const Shaders::VisibilityConstants& camera : cameras)
+            {
+                EXPECT_EQ(camera.mWaterLevel, -std::numeric_limits<float>::infinity());
+                EXPECT_EQ(camera.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
+                EXPECT_EQ(camera.mFogLift, 1.0f);
+                EXPECT_EQ(camera.mFar, 400.0f);
+                EXPECT_EQ(camera.mNear, 1.0f);
+            }
+        }
+
+        /// **The two perspective builders agree on the image plane**, which is what one shared
+        /// spread buys: the same field of view over the same extent has to give the same half-width,
+        /// half-height and pixel angle whichever way the basis arrived.
+        ///
+        /// Hand-computed at 90 degrees over 200 by 100: the half-height is `tan(45°)` — one — the
+        /// half-width is that times the aspect, which is two, and one pixel covers
+        /// `atan(2 / 100)` radians.
+        TEST(RtxCameraTest, theTwoPerspectiveBuildersMeasureOnePlane)
+        {
+            const osg::Vec3f eye(3.0f, 4.0f, 5.0f);
+            const osg::Vec3f along(0.0f, 1.0f, 0.0f);
+            const osg::Matrixf view = osg::Matrixf::lookAt(eye, eye + along, osg::Vec3f(0.0f, 0.0f, 1.0f));
+
+            const Shaders::VisibilityConstants aimed = makeCameraAlong(eye, along, 90.0f, 200, 100, 1000.0f);
+            const Shaders::VisibilityConstants viewed = makeCameraFromView(view, 90.0f, 200, 100, 1.0f, 1000.0f);
+
+            EXPECT_NEAR(aimed.mCamera.mRight.length(), 2.0f, 1e-5f);
+            EXPECT_NEAR(aimed.mCamera.mUp.length(), 1.0f, 1e-5f);
+            EXPECT_NEAR(aimed.mCamera.mSpreadAngle, std::atan(2.0f / 100.0f), 1e-6f);
+
+            EXPECT_NEAR(viewed.mCamera.mRight.length(), aimed.mCamera.mRight.length(), 1e-5f);
+            EXPECT_NEAR(viewed.mCamera.mUp.length(), aimed.mCamera.mUp.length(), 1e-5f);
+            EXPECT_EQ(viewed.mCamera.mSpreadAngle, aimed.mCamera.mSpreadAngle);
         }
 
         /// Parallel rays, and the whole difference between them and a pinhole's.

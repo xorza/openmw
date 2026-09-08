@@ -100,6 +100,35 @@ namespace Rtx
         /// the drawable, because the skin is.
         Index resolveRig(const SceneUtil::RigGeometry& rig);
 
+        /// What poses one drawable, as the mirror already holds it.
+        ///
+        /// **The entry and not only the index**, because the stamp wants the one the lookup found:
+        /// a second `find` per posed part per frame is a pointer hash and a bucket walk for an
+        /// answer already in hand, and Vivec poses 332. Which of the two entries is set follows
+        /// from `Read::mDeform`, and neither is looked at while `mIndex` is `sNoIndex`.
+        struct Held
+        {
+            Index mIndex = sNoIndex;
+
+            Identity<const SceneUtil::RigGeometry::InfluenceData>::Entry mRig;
+            Identity<const osg::Vec3Array>::Entry mMorph;
+        };
+
+        /// The deformer this drawable stands on, where the mirror holds one.
+        ///
+        /// **Stamps nothing.** Whether the slot still fits is decided after this, and a stamp in
+        /// front of that decision would keep a deformer the sweep is about to be told to drop.
+        Held holdDeformer(const Read& read);
+
+        /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept.
+        ///
+        /// The arrival path needs none of this: `resolveRig` and `resolveMorph` stamp through
+        /// `reach` as they go.
+        void stampDeformer(const Read& read, const Held& held);
+
+        /// Poses `mesh` where the drawable deforms, and counts it. Nothing where it stands.
+        void pose(Index mesh, const Read& read, ExtractionStats& stats);
+
         /// The same for a morph's targets, keyed on the base target every copy shares.
         Index resolveMorph(const SceneUtil::MorphGeometry& morph);
 

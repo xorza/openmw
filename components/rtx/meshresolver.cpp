@@ -102,6 +102,16 @@ namespace Rtx
             return arrays;
         }
 
+        /// The array as a `Vec2Array`, or null where it is anything else. `asVec3Array` says why
+        /// the type byte and not a `dynamic_cast`.
+        const osg::Vec2Array* asVec2Array(const osg::Array* array)
+        {
+            if (array == nullptr || array->getType() != osg::Array::Vec2ArrayType)
+                return nullptr;
+
+            return static_cast<const osg::Vec2Array*>(array);
+        }
+
         /// How many vertices a geometry has, or nought where it holds none it can be read for.
         /// Asked on its own where the count is the whole question, so a body met again does not
         /// spread its normals to find out.
@@ -210,59 +220,17 @@ namespace Rtx
             const std::size_t vertices
                 = read.mDeform == Deform::Morph ? baseOf(*read.mMorph).size() : vertexCountOf(geometry);
 
-            // What the drawable's skin or targets resolve to, where the mirror has met them, and
-            // `sNoIndex` where it has not or where the drawable stands — which is what a slot that
-            // stands holds too. A morph whose targets changed count under the same base is another
-            // morph, so the count is asked beside the identity.
-            //
-            // The entry each is found in is kept, because the stamp below wants the same one: a
-            // second `find` per posed part per frame is a hash of a pointer and a bucket walk for a
-            // question already answered, and Vivec poses 332.
-            Index deformer = sNoIndex;
-            auto rig = mRigs.end();
-            auto morph = mMorphs.end();
-            if (read.mDeform == Deform::Rig)
-            {
-                rig = mRigs.find(read.mRig->getInfluenceData());
-                if (rig != mRigs.end())
-                    deformer = rig->second.mIndex;
-            }
-            else if (read.mDeform == Deform::Morph)
-            {
-                morph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
-                if (morph != mMorphs.end()
-                    && mScene.getMorphs()[morph->second.mIndex].mTargetCount
-                        == read.mMorph->getMorphTargetList().size())
-                    deformer = morph->second.mIndex;
-            }
+            const Held held = holdDeformer(read);
 
-            if (vertices == range.mVertices.mCount && read.mDeform == range.mDeform && deformer == range.mDeformer)
+            if (vertices == range.mVertices.mCount && read.mDeform == range.mDeform && held.mIndex == range.mDeformer)
             {
                 ++stats.mMeshesReused;
                 mMeshes.stamp(known);
 
-                // A pose is rows and not vertices, which is why the mirror pays a few dozen
-                // matrices for what is actually moving. The skin is stamped with the mesh, which is
-                // what keeps the sweep's two answers one answer.
-                //
-                // The entry found above is what stamps it, and it is there: the slot agrees with
-                // this drawable's deformer, and neither `resolveRig` nor `resolveMorph` ever hands
-                // back `sNoIndex` — so a deformer the sweep took would have failed the test above
-                // rather than reach here.
-                if (read.mDeform == Deform::Rig)
-                {
-                    assert(rig != mRigs.end() && "a rigged mesh reused on a skin the mirror has lost");
-                    mRigs.stamp(rig);
-                    poseRig(mesh, *read.mRig);
-                    ++stats.mDeformed;
-                }
-                else if (read.mDeform == Deform::Morph)
-                {
-                    assert(morph != mMorphs.end() && "a morphed mesh reused on targets the mirror has lost");
-                    mMorphs.stamp(morph);
-                    poseMorph(mesh, *read.mMorph);
-                    ++stats.mDeformed;
-                }
+                // The deformer is stamped with the mesh, which is what keeps the sweep's two
+                // answers one answer.
+                stampDeformer(read, held);
+                pose(mesh, read, stats);
 
                 return mesh;
             }
@@ -305,7 +273,7 @@ namespace Rtx
         }
 
         std::span<const osg::Vec2f> texCoords;
-        const auto* texCoordArray = dynamic_cast<const osg::Vec2Array*>(geometry.getTexCoordArray(0));
+        const osg::Vec2Array* texCoordArray = asVec2Array(geometry.getTexCoordArray(0));
         if (texCoordArray != nullptr && texCoordArray->size() == arrays.mPositions.size())
             texCoords = std::span(texCoordArray->asVector());
 
@@ -340,18 +308,70 @@ namespace Rtx
 
         // Posed on arrival as on every frame after: the bind pose the mesh holds is what a pose is
         // computed from, and never what is traced.
+        pose(mesh, read, stats);
+
+        return mesh;
+    }
+
+    MeshResolver::Held MeshResolver::holdDeformer(const Read& read)
+    {
+        // `sNoIndex` where the mirror has not met the deformer and where the drawable stands, which
+        // is what a slot that stands holds too.
+        Held held;
+
         if (read.mDeform == Deform::Rig)
         {
-            poseRig(mesh, *read.mRig);
-            ++stats.mDeformed;
+            held.mRig = mRigs.find(read.mRig->getInfluenceData());
+            if (held.mRig != mRigs.end())
+                held.mIndex = held.mRig->second.mIndex;
+
+            return held;
+        }
+
+        if (read.mDeform == Deform::Morph)
+        {
+            // A morph whose targets changed count under the same base is another morph, so the
+            // count is asked beside the identity.
+            held.mMorph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
+            if (held.mMorph != mMorphs.end()
+                && mScene.getMorphs()[held.mMorph->second.mIndex].mTargetCount
+                    == read.mMorph->getMorphTargetList().size())
+                held.mIndex = held.mMorph->second.mIndex;
+        }
+
+        return held;
+    }
+
+    void MeshResolver::stampDeformer(const Read& read, const Held& held)
+    {
+        // The entry `holdDeformer` found is what stamps it, and it is there: the fit test agreed
+        // that the slot's deformer is this drawable's, and neither `resolveRig` nor `resolveMorph`
+        // ever hands back `sNoIndex` — so a deformer the sweep took would have failed that test
+        // rather than reach here.
+        if (read.mDeform == Deform::Rig)
+        {
+            assert(held.mRig != mRigs.end() && "a rigged mesh reused on a skin the mirror has lost");
+            mRigs.stamp(held.mRig);
         }
         else if (read.mDeform == Deform::Morph)
         {
-            poseMorph(mesh, *read.mMorph);
-            ++stats.mDeformed;
+            assert(held.mMorph != mMorphs.end() && "a morphed mesh reused on targets the mirror has lost");
+            mMorphs.stamp(held.mMorph);
         }
+    }
 
-        return mesh;
+    /// A pose is rows and not vertices, which is why the mirror pays a few dozen matrices for what
+    /// is actually moving.
+    void MeshResolver::pose(const Index mesh, const Read& read, ExtractionStats& stats)
+    {
+        if (read.mDeform == Deform::Rig)
+            poseRig(mesh, *read.mRig);
+        else if (read.mDeform == Deform::Morph)
+            poseMorph(mesh, *read.mMorph);
+        else
+            return;
+
+        ++stats.mDeformed;
     }
 
     Index MeshResolver::resolveRig(const SceneUtil::RigGeometry& rig)

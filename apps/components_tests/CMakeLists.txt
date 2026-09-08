@@ -120,6 +120,7 @@ if (OPENMW_RTX)
         rtx/decodecolour.cpp
         rtx/device.cpp
         rtx/deviceprofile.cpp
+        rtx/dispatch.cpp
         rtx/distantlights.cpp
         rtx/dlss.cpp
         rtx/fogbuilder.cpp

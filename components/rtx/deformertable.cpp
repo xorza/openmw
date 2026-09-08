@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cassert>
 
-#include "slotrows.hpp"
-
 namespace Rtx
 {
     Index DeformerTable::addRig(
@@ -23,26 +21,19 @@ namespace Rtx
 
         // **A rig with no influence at all still takes a run of one**, because an allocator hands
         // out no run of nothing and a backend addresses the run whether or not it is read: a mesh
-        // whose every vertex follows no bone is the zero matrix everywhere, as the rasterizer has it.
-        const Run words = mRigRuns.allocate(static_cast<Index>(runs.size()));
-        const Run shares = mInfluenceRuns.allocate(std::max<Index>(1, static_cast<Index>(influences.size())));
+        // whose every vertex follows no bone is the zero matrix everywhere, as the rasterizer has
+        // it. Zeroed rather than left as the last tenant wrote it, so two runs that reach here
+        // agree on bytes nothing reads — which the scene digest hashes whole.
+        const Run words = mRuns.allocate(runs);
+        const Run shares = influences.empty() ? mInfluences.allocateZeroed(1) : mInfluences.allocate(influences);
 
-        if (mRuns.size() < mRigRuns.getEnd())
-            mRuns.resize(mRigRuns.getEnd());
-        if (mInfluences.size() < mInfluenceRuns.getEnd())
-            mInfluences.resize(mInfluenceRuns.getEnd());
+        const Index index = mRigs.take(Rig{
+            .mRuns = words,
+            .mInfluences = shares,
+            .mBoneCount = boneCount,
+        });
 
-        std::copy(runs.begin(), runs.end(), mRuns.begin() + words.mOffset);
-        std::copy(influences.begin(), influences.end(), mInfluences.begin() + shares.mOffset);
-
-        const Index index = takeSlot(mRigs, mFreeRigs,
-            Rig{
-                .mRuns = words,
-                .mInfluences = shares,
-                .mBoneCount = boneCount,
-            });
-
-        mArrivedRigs.push_back(index);
+        mArrivedRigs.addMakingRoom(index);
         return index;
     }
 
@@ -50,19 +41,14 @@ namespace Rtx
     {
         assert(targets > 0 && offsets.size() % targets == 0 && !offsets.empty());
 
-        const Run run = mMorphRuns.allocate(static_cast<Index>(offsets.size()));
-        if (mMorphOffsets.size() < mMorphRuns.getEnd())
-            mMorphOffsets.resize(mMorphRuns.getEnd());
+        const Run run = mMorphOffsets.allocate(offsets);
 
-        std::copy(offsets.begin(), offsets.end(), mMorphOffsets.begin() + run.mOffset);
+        const Index index = mMorphs.take(Morph{
+            .mOffsets = run,
+            .mTargetCount = targets,
+        });
 
-        const Index index = takeSlot(mMorphs, mFreeMorphs,
-            Morph{
-                .mOffsets = run,
-                .mTargetCount = targets,
-            });
-
-        mArrivedMorphs.push_back(index);
+        mArrivedMorphs.addMakingRoom(index);
         return index;
     }
 
@@ -74,12 +60,14 @@ namespace Rtx
         /// know which of them the engine animated. A first pose always counts: what the slot held
         /// before it is nothing a pose can equal.
         template <class T>
-        bool takePose(std::span<const T> pose, T* held, bool posed)
+        bool takePose(std::span<const T> pose, std::span<T> held, bool posed)
         {
-            if (posed && std::equal(pose.begin(), pose.end(), held))
+            assert(pose.size() == held.size() && "a pose written over a run of another length");
+
+            if (posed && std::equal(pose.begin(), pose.end(), held.begin()))
                 return false;
 
-            std::copy(pose.begin(), pose.end(), held);
+            std::copy(pose.begin(), pose.end(), held.begin());
             return true;
         }
     }
@@ -87,30 +75,33 @@ namespace Rtx
     bool DeformerTable::poseRig(const MeshRange& range, std::span<const Shaders::GpuBone> bones)
     {
         assert(range.mDeform == Deform::Rig && "a pose of rows for a mesh no rig skins");
-        assert(bones.size() == mRigs[range.mDeformer].mBoneCount && "one row per bone of the rig, and no other count");
 
-        return takePose(bones, mBones.data() + range.mPoseOffset, range.mPosed);
+        const Index rows = mRigs.at(range.mDeformer).mBoneCount;
+        assert(bones.size() == rows && "one row per bone of the rig, and no other count");
+
+        return takePose(bones, mBones.in(Run{ .mOffset = range.mPoseOffset, .mCount = rows }), range.mPosed);
     }
 
     bool DeformerTable::poseMorph(const MeshRange& range, std::span<const float> weights)
     {
         assert(range.mDeform == Deform::Morph && "a pose of weights for a mesh no morph moves");
-        assert(weights.size() == mMorphs[range.mDeformer].mTargetCount
-            && "one weight per target of the morph, and no other count");
 
-        return takePose(weights, mWeights.data() + range.mPoseOffset, range.mPosed);
+        const Index targets = mMorphs.at(range.mDeformer).mTargetCount;
+        assert(weights.size() == targets && "one weight per target of the morph, and no other count");
+
+        return takePose(weights, mWeights.in(Run{ .mOffset = range.mPoseOffset, .mCount = targets }), range.mPosed);
     }
 
     std::span<const Shaders::GpuBone> DeformerTable::getMeshBones(const MeshRange& range) const
     {
         assert(range.mDeform == Deform::Rig);
-        return getBones().subspan(range.mPoseOffset, mRigs[range.mDeformer].mBoneCount);
+        return getBones().subspan(range.mPoseOffset, mRigs.at(range.mDeformer).mBoneCount);
     }
 
     std::span<const float> DeformerTable::getMeshWeights(const MeshRange& range) const
     {
         assert(range.mDeform == Deform::Morph);
-        return getWeights().subspan(range.mPoseOffset, mMorphs[range.mDeformer].mTargetCount);
+        return getWeights().subspan(range.mPoseOffset, mMorphs.at(range.mDeformer).mTargetCount);
     }
 
     void DeformerTable::release(MeshRange& range)
@@ -125,31 +116,31 @@ namespace Rtx
         // names it, and the next rig to land in the run is what names it again.
         if (range.mDeform == Deform::Rig)
         {
-            Rig& rig = mRigs[range.mDeformer];
-            mBoneRuns.release(Run{ .mOffset = range.mPoseOffset, .mCount = rig.mBoneCount });
+            Rig& rig = mRigs.at(range.mDeformer);
+            mBones.release(Run{ .mOffset = range.mPoseOffset, .mCount = rig.mBoneCount });
 
             assert(rig.mUses > 0 && "a rig given back more often than it was stood on");
             if (--rig.mUses == 0)
             {
-                mRigRuns.release(rig.mRuns);
-                mInfluenceRuns.release(rig.mInfluences);
+                mRuns.release(rig.mRuns);
+                mInfluences.release(rig.mInfluences);
                 rig = Rig{};
-                mFreeRigs.push_back(range.mDeformer);
-                std::erase(mArrivedRigs, range.mDeformer);
+                mRigs.free(range.mDeformer);
+                mArrivedRigs.remove(range.mDeformer);
             }
         }
         else
         {
-            Morph& morph = mMorphs[range.mDeformer];
-            mWeightRuns.release(Run{ .mOffset = range.mPoseOffset, .mCount = morph.mTargetCount });
+            Morph& morph = mMorphs.at(range.mDeformer);
+            mWeights.release(Run{ .mOffset = range.mPoseOffset, .mCount = morph.mTargetCount });
 
             assert(morph.mUses > 0 && "a morph given back more often than it was stood on");
             if (--morph.mUses == 0)
             {
-                mMorphRuns.release(morph.mOffsets);
+                mMorphOffsets.release(morph.mOffsets);
                 morph = Morph{};
-                mFreeMorphs.push_back(range.mDeformer);
-                std::erase(mArrivedMorphs, range.mDeformer);
+                mMorphs.free(range.mDeformer);
+                mArrivedMorphs.remove(range.mDeformer);
             }
         }
 
@@ -160,32 +151,33 @@ namespace Rtx
 
     void DeformerTable::stand(MeshRange& range)
     {
-        // **A run in the bind table and a run of rows or weights, for a mesh that deforms.** The
-        // rows are zeroed, which is a pose nothing can equal, and `MeshRange::mPosed` is what says
-        // the first pose names the mesh regardless. Grown to what the allocator reaches, never
-        // shrunk, exactly as the vertex buffers are.
+        if (range.mDeform == Deform::None)
+            return;
+
+        // **A run in the bind table whichever kind it is**, because the bind pose is the mesh's
+        // vertices and both kinds are computed from them.
+        range.mBindOffset = mBindRuns.allocate(range.mVertices.mCount).mOffset;
+
+        // **And a run of rows or of weights, zeroed.** Zero is a pose nothing can equal, and
+        // `MeshRange::mPosed` is what says the first pose names the mesh regardless.
         if (range.mDeform == Deform::Rig)
         {
-            Rig& rig = mRigs[range.mDeformer];
+            Rig& rig = mRigs.at(range.mDeformer);
             ++rig.mUses;
-            range.mBindOffset = mBindRuns.allocate(range.mVertices.mCount).mOffset;
-            range.mPoseOffset = mBoneRuns.allocate(rig.mBoneCount).mOffset;
-            if (mBones.size() < mBoneRuns.getEnd())
-                mBones.resize(mBoneRuns.getEnd());
-
-            std::fill_n(mBones.begin() + range.mPoseOffset, rig.mBoneCount, Shaders::GpuBone{});
+            range.mPoseOffset = mBones.allocateZeroed(rig.mBoneCount).mOffset;
         }
-        else if (range.mDeform == Deform::Morph)
+        else
         {
-            Morph& morph = mMorphs[range.mDeformer];
+            Morph& morph = mMorphs.at(range.mDeformer);
             ++morph.mUses;
-            range.mBindOffset = mBindRuns.allocate(range.mVertices.mCount).mOffset;
-            range.mPoseOffset = mWeightRuns.allocate(morph.mTargetCount).mOffset;
-            if (mWeights.size() < mWeightRuns.getEnd())
-                mWeights.resize(mWeightRuns.getEnd());
-
-            std::fill_n(mWeights.begin() + range.mPoseOffset, morph.mTargetCount, 0.0f);
+            range.mPoseOffset = mWeights.allocateZeroed(morph.mTargetCount).mOffset;
         }
+    }
+
+    void DeformerTable::compact()
+    {
+        mArrivedRigs.compact();
+        mArrivedMorphs.compact();
     }
 
     void DeformerTable::clearArrivals()

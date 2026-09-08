@@ -13,6 +13,7 @@
 
 #include "index.hpp"
 #include "slotchanges.hpp"
+#include "slotrows.hpp"
 
 namespace Rtx
 {
@@ -50,7 +51,7 @@ namespace Rtx
         /// **Read off what the slot is and not off a count**, because a slot is taken before it is
         /// named: a caller that asked the count would find a texture it was in the middle of
         /// building.
-        bool isFree(Index texture) const { return mSlots[texture].mKind == Kind::Free; }
+        bool isFree(Index texture) const { return mSlots.at(texture).mKind == Kind::Free; }
 
         /// The file each slot names, empty where it names none.
         std::span<const VFS::Path::Normalized> getPaths() const { return mPaths; }
@@ -111,11 +112,8 @@ namespace Rtx
         std::vector<VFS::Path::Normalized> mPaths;
         std::vector<std::string> mBaked;
 
-        /// Parallel to both, one row a slot.
-        std::vector<Slot> mSlots;
-
-        /// A min-heap. `Rtx::takeFreeSlot` says why the lowest.
-        std::vector<Index> mFree;
+        /// Parallel to both, one row a slot, and the slots nothing stands in.
+        SlotRows<Slot> mSlots;
 
         SlotChanges mChanges;
 

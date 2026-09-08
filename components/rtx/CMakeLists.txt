@@ -97,6 +97,7 @@ set(RTX_FILES
     run.hpp
     runallocator.cpp
     runallocator.hpp
+    runbuffer.hpp
     runlist.hpp
     scenedesc.cpp
     scenedesc.hpp

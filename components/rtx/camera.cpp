@@ -39,6 +39,58 @@ namespace Rtx
             osg::Vec3f mUp;
         };
 
+        /// The half-extents of the image plane at one unit ahead, and the angle one pixel covers.
+        struct Spread
+        {
+            float mHalfWidth = 0.0f;
+            float mHalfHeight = 0.0f;
+
+            /// The vertical angle one pixel covers. Pixels are square here, so one number does for
+            /// both.
+            float mAngle = 0.0f;
+        };
+
+        Spread spreadOf(float verticalFovDegrees, std::uint32_t width, std::uint32_t height)
+        {
+            const float halfHeight = std::tan(osg::DegreesToRadians(verticalFovDegrees) * 0.5f);
+
+            return Spread{
+                .mHalfWidth = halfHeight * static_cast<float>(width) / static_cast<float>(height),
+                .mHalfHeight = halfHeight,
+                .mAngle = std::atan(2.0f * halfHeight / static_cast<float>(height)),
+            };
+        }
+
+        /// A viewpoint before anything has described the world over it.
+        ///
+        /// **One statement for the three builders**, because what each of them leaves for
+        /// `FrameWorld` to overwrite has to be one answer. `Shaders::VisibilityConstants` is a
+        /// header `glslc` reads as well, so it can hold no default member initialisers of its own
+        /// and the defaults have to live on this side.
+        Shaders::VisibilityConstants beforeWorld(const osg::Vec3f& origin, float near, float far)
+        {
+            return Shaders::VisibilityConstants{
+                .mOrigin = origin,
+                .mNear = near,
+                .mFar = far,
+
+                // Not zero, which would be sea level: a world with no water has to answer "how deep
+                // is this point" with never, and only an infinity does that without a second
+                // question.
+                .mWaterLevel = -std::numeric_limits<float>::infinity(),
+
+                // A sea that runs as its tiles were drawn, until a world says which way the wind
+                // blows.
+                .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
+
+                // **The layer `FOG_HEIGHT` names, until a weather says otherwise.** A camera is
+                // built before anything has described the air over it, and a lift of nothing is a
+                // layer of no height at all rather than an absence of one. `FrameWorld` overwrites
+                // this with what the cell's own weather stands its fog up to.
+                .mFogLift = 1.0f,
+            };
+        }
+
         ViewBasis basisOf(const osg::Matrixf& view)
         {
             osg::Matrixf world;
@@ -70,34 +122,20 @@ namespace Rtx
         assert(width > 0 && height > 0);
 
         const ViewBasis basis = basisOf(view);
+        const Spread spread = spreadOf(verticalFovDegrees, width, height);
 
-        const float halfHeight = std::tan(osg::DegreesToRadians(verticalFovDegrees) * 0.5f);
-        const float halfWidth = halfHeight * static_cast<float>(width) / static_cast<float>(height);
-
-        return Shaders::VisibilityConstants{
-            .mOrigin = basis.mOrigin,
-            .mCamera = {
-                .mForward = basis.mForward,
-                .mRight = basis.mRight * halfWidth,
-                .mUp = basis.mUp * halfHeight,
-                .mSpreadAngle = std::atan(2.0f * halfHeight / static_cast<float>(height)),
-                .mOrthographic = 0,
-                .mWidth = width,
-                .mHeight = height,
-            },
-            .mNear = near,
-            .mFar = far,
-            .mWaterLevel = -std::numeric_limits<float>::infinity(),
-
-            // A sea that runs as its tiles were drawn, until a world says which way the wind blows.
-            .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
-
-            // **The layer `FOG_HEIGHT` names, until a weather says otherwise.** A camera is built
-            // before anything has described the air over it, and a lift of nothing is a layer of no
-            // height at all rather than an absence of one. `FrameWorld` overwrites this with what
-            // the cell's own weather stands its fog up to.
-            .mFogLift = 1.0f,
+        Shaders::VisibilityConstants camera = beforeWorld(basis.mOrigin, near, far);
+        camera.mCamera = Shaders::Camera{
+            .mForward = basis.mForward,
+            .mRight = basis.mRight * spread.mHalfWidth,
+            .mUp = basis.mUp * spread.mHalfHeight,
+            .mSpreadAngle = spread.mAngle,
+            .mOrthographic = 0,
+            .mWidth = width,
+            .mHeight = height,
         };
+
+        return camera;
     }
 
     Shaders::VisibilityConstants makeOrthographicCameraFromView(const osg::Matrixf& view, float worldWidth,
@@ -110,30 +148,22 @@ namespace Rtx
 
         const ViewBasis basis = basisOf(view);
 
-        return Shaders::VisibilityConstants{
-            .mOrigin = basis.mOrigin,
-            .mCamera = {
-                .mForward = basis.mForward,
-                .mRight = basis.mRight * (worldWidth * 0.5f),
-                .mUp = basis.mUp * (worldHeight * 0.5f),
-                .mSpreadAngle = 0.f,
-                .mOrthographic = 1,
-                .mWidth = width,
-                .mHeight = height,
-            },
-            .mNear = near,
-            .mFar = far,
+        Shaders::VisibilityConstants camera = beforeWorld(basis.mOrigin, near, far);
+        camera.mCamera = Shaders::Camera{
+            .mForward = basis.mForward,
+            .mRight = basis.mRight * (worldWidth * 0.5f),
+            .mUp = basis.mUp * (worldHeight * 0.5f),
+
             // **Zero, and not for want of an answer.** A parallel ray's cone does not widen with
             // distance; what it has instead is a footprint one pixel of the box wide for its whole
             // length, which the shader works out from `mRight` rather than carry twice.
-            .mWaterLevel = -std::numeric_limits<float>::infinity(),
-
-            // A sea that runs as its tiles were drawn, until a world says which way the wind blows.
-            .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
-
-            // The layer `FOG_HEIGHT` names, for the reason `makeCameraFromView` gives.
-            .mFogLift = 1.0f,
+            .mSpreadAngle = 0.f,
+            .mOrthographic = 1,
+            .mWidth = width,
+            .mHeight = height,
         };
+
+        return camera;
     }
 
     osg::Vec2f haltonJitter(std::uint32_t index)
@@ -176,36 +206,21 @@ namespace Rtx
         osg::Vec3f up = right ^ forward;
         up.normalize();
 
-        const float halfHeight = std::tan(osg::DegreesToRadians(verticalFovDegrees) * 0.5f);
-        const float halfWidth = halfHeight * static_cast<float>(width) / static_cast<float>(height);
+        const Spread spread = spreadOf(verticalFovDegrees, width, height);
 
-        // The vertical angle one pixel covers. Pixels are square here, so one number does for both.
-        const float spread = std::atan(2.0f * halfHeight / static_cast<float>(height));
-
-        return Shaders::VisibilityConstants{
-            .mOrigin = origin,
-            .mCamera = {
-                .mForward = forward,
-                .mRight = right * halfWidth,
-                .mUp = up * halfHeight,
-                .mSpreadAngle = spread,
-                .mOrthographic = 0,
-                .mWidth = width,
-                .mHeight = height,
-            },
-            // A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it
-            // only has to be nearer than anything the eye can find itself inside of.
-            .mNear = 1.0f,
-            .mFar = far,
-            // Not zero, which would be sea level: a world with no water has to answer "how deep is
-            // this point" with never, and only an infinity does that without a second question.
-            .mWaterLevel = -std::numeric_limits<float>::infinity(),
-
-            // A sea that runs as its tiles were drawn, until a world says which way the wind blows.
-            .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
-
-            // The layer `FOG_HEIGHT` names, for the reason `makeCameraFromView` gives.
-            .mFogLift = 1.0f,
+        // A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
+        // has to be nearer than anything the eye can find itself inside of.
+        Shaders::VisibilityConstants camera = beforeWorld(origin, 1.0f, far);
+        camera.mCamera = Shaders::Camera{
+            .mForward = forward,
+            .mRight = right * spread.mHalfWidth,
+            .mUp = up * spread.mHalfHeight,
+            .mSpreadAngle = spread.mAngle,
+            .mOrthographic = 0,
+            .mWidth = width,
+            .mHeight = height,
         };
+
+        return camera;
     }
 }

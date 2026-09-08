@@ -1,5 +1,6 @@
 #include "tonepass.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <span>
@@ -9,6 +10,7 @@
 
 #include "commands.hpp"
 #include "device.hpp"
+#include "dispatch.hpp"
 #include "image.hpp"
 #include "result.hpp"
 
@@ -16,20 +18,14 @@ namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent)
-        {
-            return (extent + Shaders::TONE_WORKGROUP - 1) / Shaders::TONE_WORKGROUP;
-        }
-
         /// The frame in, the picture out, what the star field is drawn through, the one float the
         /// curve scales by, and the bloom pyramid the lens is spread from. All pushed.
         constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{
-                4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
         };
     }
 
@@ -91,39 +87,21 @@ namespace Rtx
         const VkDescriptorBufferInfo scale{ exposure, 0, VK_WHOLE_SIZE };
         const VkDescriptorImageInfo pyramid{ mSampler, spread.getView(), VK_IMAGE_LAYOUT_GENERAL };
 
+        // The first three are storage images and the last two are not, so the shared filler covers
+        // the front of the set and the two below name themselves.
         std::array<VkWriteDescriptorSet, 5> writes{};
-        for (std::uint32_t i = 0; i < images.size(); ++i)
-            writes[i] = VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = i,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                .pImageInfo = &images[i],
-            };
+        const std::array<VkWriteDescriptorSet, 3> stored = storageImageWrites(images);
+        std::copy(stored.begin(), stored.end(), writes.begin());
 
-        writes[3] = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = 3,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &scale,
-        };
+        writes[3] = bufferWrite(3, scale);
+        writes[4] = imageWrite(4, pyramid, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-        writes[4] = VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = 4,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &pyramid,
-        };
-
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 0,
-            static_cast<std::uint32_t>(writes.size()), writes.data());
+        // **The scene's textures before the launch and beside set zero**, which the two are
+        // independent of: a pushed set and a bound one only have to be in place by the dispatch.
         vkCmdBindDescriptorSets(
             commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 1, 1, &textures, 0, nullptr);
-        vkCmdPushConstants(
-            commands, mPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
-        vkCmdDispatch(commands, groupsFor(constants.mWidth), groupsFor(constants.mHeight), 1);
+
+        dispatch(commands, mPipeline, writes, constants, groupsFor(constants.mWidth, Shaders::TONE_WORKGROUP),
+            groupsFor(constants.mHeight, Shaders::TONE_WORKGROUP));
     }
 }

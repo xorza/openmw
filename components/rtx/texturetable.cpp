@@ -2,8 +2,6 @@
 
 #include <cassert>
 
-#include "slotrows.hpp"
-
 namespace Rtx
 {
     Index TextureTable::takeSlot()
@@ -11,18 +9,15 @@ namespace Rtx
         ++mRevision;
 
         // One size, so any freed slot will do — the array element it names is written over wherever
-        // it sits, which is what the arrivals list is for.
-        if (mFree.empty())
-        {
-            mPaths.emplace_back();
-            mBaked.emplace_back();
-            mSlots.emplace_back();
-            mChanges.grow(mSlots.size());
-            return static_cast<Index>(mSlots.size() - 1);
-        }
+        // it sits, which is what the arrivals list is for. The two name tables and the change list
+        // follow the rows in the same call, because all four are indexed by the slot.
+        const Index index = mSlots.take(Slot{}, [this](const std::size_t slots) {
+            mPaths.resize(slots);
+            mBaked.resize(slots);
+            mChanges.grow(slots);
+        });
 
-        const Index index = takeFreeSlot(mFree);
-        assert(mSlots[index].mRefs == 0 && "a free slot something still names");
+        assert(mSlots.at(index).mRefs == 0 && "a free slot something still names");
 
         return index;
     }
@@ -35,7 +30,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mPaths[index] = path;
-        mSlots[index].mKind = Kind::File;
+        mSlots.at(index).mKind = Kind::File;
 
         mPathIndex.emplace(path, index);
         mChanges.note(index, SlotNews::Arrived);
@@ -52,7 +47,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mBaked[index] = key;
-        mSlots[index].mKind = Kind::Baked;
+        mSlots.at(index).mKind = Kind::Baked;
 
         mBakedIndex.emplace(key, index);
         mChanges.note(index, SlotNews::Arrived);
@@ -64,8 +59,7 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        assert(texture < mSlots.size());
-        ++mSlots[texture].mRefs;
+        ++mSlots.at(texture).mRefs;
     }
 
     void TextureTable::drop(const Index texture)
@@ -73,9 +67,7 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        assert(texture < mSlots.size());
-
-        Slot& slot = mSlots[texture];
+        Slot& slot = mSlots.at(texture);
         assert(slot.mRefs > 0 && "a texture given back more often than it was taken");
 
         if (--slot.mRefs > 0)
@@ -99,7 +91,7 @@ namespace Rtx
         }
 
         slot.mKind = Kind::Free;
-        freeSlot(mFree, texture);
+        mSlots.free(texture);
         mChanges.note(texture, SlotNews::Freed);
     }
 }

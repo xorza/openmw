@@ -8,6 +8,7 @@
 
 #include "index.hpp"
 #include "meshinstance.hpp"
+#include "slotrows.hpp"
 
 namespace Rtx
 {
@@ -51,7 +52,7 @@ namespace Rtx
         void advance();
 
         /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.
-        std::span<const MeshInstance> getAll() const { return mInstances; }
+        std::span<const MeshInstance> getAll() const { return mInstances.getRows(); }
 
         /// How many slots hold a placement, which is what reaches an acceleration structure.
         std::uint32_t getPlacedCount() const { return mPlacedCount; }
@@ -75,12 +76,18 @@ namespace Rtx
         std::span<const Index> getSettled() const { return mSettled; }
 
     private:
-        std::vector<MeshInstance> mInstances;
+        SlotRows<MeshInstance> mInstances;
         std::vector<osg::Matrixf> mPrevious;
+
+        /// **Plain lists that hold duplicates, where every other change list in this scene is a
+        /// `SlotSet`.** A slot named twice is one row written twice, which is a memcpy of a hundred
+        /// bytes; how often that can happen is bounded by how many facts about one placement can
+        /// change in a frame, which is three. What `SlotSet` was measured on is the other case — a
+        /// list of hundreds asked whether it already holds a slot, once per mover of a crowded
+        /// cell, which is the N²/2 comparisons these never make.
         std::vector<Index> mMoved;
         std::vector<Index> mSettled;
-        /// A min-heap. `Rtx::takeFreeSlot` says why the lowest.
-        std::vector<Index> mFree;
+
         std::uint32_t mPlacedCount = 0;
     };
 }

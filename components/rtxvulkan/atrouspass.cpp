@@ -5,27 +5,18 @@
 #include <array>
 #include <cassert>
 
+#include "dispatch.hpp"
 #include "gbuffer.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent)
-        {
-            return (extent + Shaders::ATROUS_WORKGROUP - 1) / Shaders::ATROUS_WORKGROUP;
-        }
-
         /// The channel coming in, the channel going out, the two that say where the edges in the
         /// surface are — normals from the guide, distances from the depth — and the one that says
         /// where the edges in the light are. All storage images, all pushed.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-        };
+        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings
+            = computeBindings<5>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
         /// How sharply a tap's normal has to agree with the centre's, and how far off its plane it
         /// may sit.
@@ -118,23 +109,12 @@ namespace Rtx
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, moments.getView(), VK_IMAGE_LAYOUT_GENERAL },
             };
 
-            std::array<VkWriteDescriptorSet, 5> writes{};
-            for (std::uint32_t i = 0; i < images.size(); ++i)
-                writes[i] = VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstBinding = i,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                    .pImageInfo = &images[i],
-                };
+            const std::array<VkWriteDescriptorSet, 5> writes = storageImageWrites(images);
 
             level.mStep = 1u << pass;
 
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
-            vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 0,
-                static_cast<std::uint32_t>(writes.size()), writes.data());
-            vkCmdPushConstants(commands, mPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(level), &level);
-            vkCmdDispatch(commands, groupsFor(camera.mWidth), groupsFor(camera.mHeight), 1);
+            dispatch(commands, mPipeline, writes, level, groupsFor(camera.mWidth, Shaders::ATROUS_WORKGROUP),
+                groupsFor(camera.mHeight, Shaders::ATROUS_WORKGROUP));
 
             // The next level reads what this one wrote, and writes whichever of the other two it is
             // not reading — the blend after the first level, and the scratch and the blend by turns

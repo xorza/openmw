@@ -6,11 +6,6 @@ namespace Rtx
 {
     namespace
     {
-        double megabytes(std::uint64_t bytes)
-        {
-            return static_cast<double>(bytes) / (1024.0 * 1024.0);
-        }
-
         /// How far into a heap's line `reserved` begins.
         ///
         /// The line under the heaps is padded to it so the two figures read down the page, which

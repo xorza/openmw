@@ -263,6 +263,13 @@ namespace MWRender
         /// Draws whatever asked before there was a world to draw it against.
         void drawDeferredViews();
 
+        /// The interface over whatever was last traced, and the frame onto the screen.
+        ///
+        /// **Both halves, because every frame this renderer draws ends with both.** A frame with a
+        /// world and a frame that is the interface alone reach the screen the same way, so
+        /// `renderGui` is one caller of this rather than the place it happens.
+        void presentWithGui();
+
         Stage& mStage;
         int mMaxTextureUnits = 0;
 
@@ -340,8 +347,8 @@ namespace MWRender
         Rtx::ExtractionStats mFoundAgain;
         std::uint32_t mUnreadable = 0;
 
-        /// A running average of what the trace costs, over the frames a report came back for and
-        /// printed every `sReportEvery` of them.
+        /// What the CPU stood still for the device, summed over the frames a report came back for
+        /// and printed every `sReportEvery` of them.
         ///
         /// **The only instrument on this path.** The harness times a frame by tracing it thirty
         /// times and taking the best; a game cannot, so what it can say is what the last few hundred

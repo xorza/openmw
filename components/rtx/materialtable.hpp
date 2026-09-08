@@ -7,7 +7,8 @@
 
 #include "index.hpp"
 #include "material.hpp"
-#include "runallocator.hpp"
+#include "runbuffer.hpp"
+#include "slotrows.hpp"
 #include "slotset.hpp"
 #include "texturetable.hpp"
 
@@ -34,7 +35,7 @@ namespace Rtx
         std::size_t size() const { return mRows.size(); }
 
         /// How many slots hold a material, which is what a sweep compares its survivors against.
-        std::size_t getLiveCount() const { return mRows.size() - mFree.size(); }
+        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
 
         Index add(const Material& material);
 
@@ -51,9 +52,9 @@ namespace Rtx
         /// Copies a material's layers into the shared layer table and returns where they landed.
         Run addLayers(std::span<const MaterialLayer> layers);
 
-        std::span<const Material> getRows() const { return mRows; }
-        std::span<const MaterialLayer> getLayers() const { return mLayers; }
-        std::span<const float> getMasks() const { return mMasks; }
+        std::span<const Material> getRows() const { return mRows.getRows(); }
+        std::span<const MaterialLayer> getLayers() const { return mLayers.getAll(); }
+        std::span<const float> getMasks() const { return mMasks.getAll(); }
 
         std::span<const Index> getWritten() const { return mWritten.getSlots(); }
         std::span<const Run> getArrivedLayers() const { return mArrivedLayers; }
@@ -100,19 +101,7 @@ namespace Rtx
 
         TextureTable& mTextures;
 
-        std::vector<Material> mRows;
-        std::vector<MaterialLayer> mLayers;
-        std::vector<float> mMasks;
-
-        /// Slots nothing stands in, as a min-heap. `Rtx::takeFreeSlot` says why the lowest.
-        std::vector<Index> mFree;
-
-        /// Which slots a sweep was told to keep, one flag per row.
-        ///
-        /// **Held rather than made, because a sweep runs on the frame a cell left** — the frame
-        /// that is already giving thousands of runs back to the allocators, and the last one that
-        /// should also be sizing a buffer to the whole table.
-        std::vector<std::uint8_t> mKept;
+        SlotRows<Material> mRows;
 
         /// Rows written since the last `clearArrivals` — a flipbook that is added and then
         /// rewritten on one frame is one row, not two.
@@ -122,13 +111,13 @@ namespace Rtx
         std::vector<Run> mArrivedLayers;
         std::vector<Run> mArrivedMasks;
 
-        /// Where a material's layers and a layer's weights live.
+        /// A material's layers, and the weights a layer places.
         ///
-        /// **Runs and not slots**, which is why these are allocators and `mFree` is not: a material
-        /// is one material's worth of room, but a terrain chunk's layer run is as long as the
-        /// ground types under it and its masks are as big as the blend maps. A list of slots cannot
-        /// give a variable length back.
-        RunAllocator mLayerRuns;
-        RunAllocator mMaskRuns;
+        /// **Runs and not slots**, which is why these are `RunBuffer`s and `mRows` is not: a
+        /// material is one material's worth of room, but a terrain chunk's layer run is as long as
+        /// the ground types under it and its masks are as big as the blend maps. A list of slots
+        /// cannot give a variable length back.
+        RunBuffer<MaterialLayer> mLayers;
+        RunBuffer<float> mMasks;
     };
 }

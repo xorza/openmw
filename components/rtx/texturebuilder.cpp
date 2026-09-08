@@ -251,6 +251,12 @@ namespace Rtx
             levels += kept.mImage != nullptr ? kept.mImage->getNumMipmapLevels() : 1u;
         mLevels.reserve(levels);
 
+        // **What the assertion below is taken against.** The reserve is computed by the loop above
+        // and the table is filled by the one below, through branches that push a different number
+        // of levels each — so the two agree by argument and nothing checked it. A growth is the
+        // failure, and a growth is exactly what moves the capacity.
+        const std::size_t reserved = mLevels.capacity();
+
         mDescriptions.reserve(mKept.size());
         for (const Kept& kept : mKept)
         {
@@ -306,6 +312,8 @@ namespace Rtx
             described->mSlot = kept.mSlot;
             mDescriptions.push_back(*described);
         }
+
+        assert(mLevels.capacity() == reserved && "the level table grew while descriptions spanned it");
 
         // After the descriptions, because the estimate reads the bytes they point at, and into one
         // table for the reason the levels are: the spans have to stay put.

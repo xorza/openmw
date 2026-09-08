@@ -18,6 +18,7 @@
 
 #include "buffer.hpp"
 #include "commands.hpp"
+#include "dispatch.hpp"
 #include "fogtile.hpp"
 #include "fogvolume.hpp"
 #include "gbuffer.hpp"
@@ -31,11 +32,6 @@ namespace Rtx
     namespace
     {
         /// How many workgroups cover `extent` columns at `workgroup` of them apiece.
-        std::uint32_t groupsFor(std::uint32_t extent, std::uint32_t workgroup)
-        {
-            return (extent + workgroup - 1) / workgroup;
-        }
-
         /// Whether every table has an address, and each is aligned as the reference that reads it
         /// declares. Debug-only, through the assert that calls it.
         [[maybe_unused]] bool everyTableAddressed(const Shaders::GpuTables& tables)

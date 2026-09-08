@@ -6,6 +6,7 @@
 #include <components/rtx/shaders/skinning.h>
 
 #include "device.hpp"
+#include "dispatch.hpp"
 #include "gputimer.hpp"
 #include "skintables.hpp"
 
@@ -13,11 +14,6 @@ namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t vertices)
-        {
-            return (vertices + Shaders::SKIN_WORKGROUP - 1) / Shaders::SKIN_WORKGROUP;
-        }
-
         /// Orders the dispatches just recorded against everything that reads what they wrote: the
         /// refit, which reads the positions as build input, and the trace, which reads the normals.
         void handOver(VkCommandBuffer commands)
@@ -124,7 +120,7 @@ namespace Rtx
                 vkCmdPushConstants(commands, mMorph.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
             }
 
-            vkCmdDispatch(commands, groupsFor(mesh.mVertices.mCount), 1, 1);
+            vkCmdDispatch(commands, groupsFor(mesh.mVertices.mCount, Shaders::SKIN_WORKGROUP), 1, 1);
         });
 
         if (!recorded)

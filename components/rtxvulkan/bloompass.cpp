@@ -8,23 +8,18 @@
 #include <components/rtx/shaders/look.h>
 
 #include "device.hpp"
+#include "dispatch.hpp"
 #include "result.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent)
-        {
-            return (extent + Shaders::BLOOM_WORKGROUP - 1) / Shaders::BLOOM_WORKGROUP;
-        }
-
         /// What is being read, and what is being written. The first is sampled rather than loaded,
         /// because both kernels are counted in bilinear fetches.
         constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
-            VkDescriptorSetLayoutBinding{
-                0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+            computeBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
     }
 
@@ -99,15 +94,11 @@ namespace Rtx
             VkDescriptorImageInfo{ VK_NULL_HANDLE, target.getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
 
+        // The kernel samples one and stores into the other, so each write takes the type its own
+        // binding was declared with.
         std::array<VkWriteDescriptorSet, 2> writes{};
         for (std::uint32_t binding = 0; binding < images.size(); ++binding)
-            writes[binding] = VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = binding,
-                .descriptorCount = 1,
-                .descriptorType = sBindings[binding].descriptorType,
-                .pImageInfo = &images[binding],
-            };
+            writes[binding] = imageWrite(binding, images[binding], sBindings[binding].descriptorType);
 
         const Shaders::BloomConstants constants{
             .mWidth = target.getWidth(),
@@ -117,12 +108,8 @@ namespace Rtx
             .mMix = mix,
         };
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0,
-            static_cast<std::uint32_t>(writes.size()), writes.data());
-        vkCmdPushConstants(
-            commands, pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
-        vkCmdDispatch(commands, groupsFor(target.getWidth()), groupsFor(target.getHeight()), 1);
+        dispatch(commands, pipeline, writes, constants, groupsFor(target.getWidth(), Shaders::BLOOM_WORKGROUP),
+            groupsFor(target.getHeight(), Shaders::BLOOM_WORKGROUP));
     }
 
     void BloomPass::record(VkCommandBuffer commands, const Image& frame) const

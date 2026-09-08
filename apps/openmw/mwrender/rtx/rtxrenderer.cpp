@@ -499,7 +499,7 @@ namespace MWRender
     /// surface, and a window that stops answering is one the compositor eventually says so about.
     /// What the GUI goes over is then the last frame traced, or black where nothing has been — a
     /// main menu, or the moment before the first cell finishes loading.
-    void RtxRenderer::renderGui()
+    void RtxRenderer::presentWithGui()
     {
         drawGui();
 
@@ -509,6 +509,11 @@ namespace MWRender
         // next frame. One that went stale mid-gesture waits for the gesture, which is the frozen
         // picture a window being dragged shows anyway.
         mRenderer->presentFrame();
+    }
+
+    void RtxRenderer::renderGui()
+    {
+        presentWithGui();
     }
 
     void RtxRenderer::capture(osg::Image& image, int width, int height)
@@ -617,7 +622,7 @@ namespace MWRender
         // being handed the loading screen in one step.
         if (!drawsWorld())
         {
-            renderGui();
+            presentWithGui();
             return;
         }
 
@@ -640,7 +645,7 @@ namespace MWRender
 
         traceWorld(frame, mFound, walkMs);
 
-        renderGui();
+        presentWithGui();
 
         // **After the frame and not before the walk**, and on the frames the trace refused as well:
         // the walk still ran, so its epoch is still the one the next walk has to be measured

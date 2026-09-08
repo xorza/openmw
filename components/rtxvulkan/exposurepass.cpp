@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 
+#include "dispatch.hpp"
 #include "image.hpp"
 
 namespace Rtx
@@ -11,31 +12,14 @@ namespace Rtx
     {
         /// The frame in, the histogram out.
         constexpr std::array<VkDescriptorSetLayoutBinding, 2> sHistogramBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
 
         /// The histogram in, the one float out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sReduceBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-        };
+        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sReduceBindings
+            = computeBindings<2>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-        std::uint32_t groupsFor(std::uint32_t extent)
-        {
-            return (extent + Shaders::HISTOGRAM_WORKGROUP - 1) / Shaders::HISTOGRAM_WORKGROUP;
-        }
-
-        VkWriteDescriptorSet bufferWrite(std::uint32_t binding, const VkDescriptorBufferInfo& info)
-        {
-            return VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = binding,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pBufferInfo = &info,
-            };
-        }
     }
 
     ExposurePass::ExposurePass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -161,28 +145,15 @@ namespace Rtx
         const VkDescriptorBufferInfo histogram{ mHistogram.getHandle(), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo exposure{ mExposure.getHandle(), 0, VK_WHOLE_SIZE };
 
-        const std::array<VkWriteDescriptorSet, 2> binning{
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                .pImageInfo = &source,
-            },
-            bufferWrite(1, histogram),
-        };
+        const std::array<VkWriteDescriptorSet, 2> binning{ imageWrite(0, source), bufferWrite(1, histogram) };
 
         const Shaders::HistogramConstants extent{
             .mWidth = frame.getWidth(),
             .mHeight = frame.getHeight(),
         };
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mHistogramPipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mHistogramPipeline.getLayout(), 0,
-            static_cast<std::uint32_t>(binning.size()), binning.data());
-        vkCmdPushConstants(
-            commands, mHistogramPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(extent), &extent);
-        vkCmdDispatch(commands, groupsFor(extent.mWidth), groupsFor(extent.mHeight), 1);
+        dispatch(commands, mHistogramPipeline, binning, extent, groupsFor(extent.mWidth, Shaders::HISTOGRAM_WORKGROUP),
+            groupsFor(extent.mHeight, Shaders::HISTOGRAM_WORKGROUP));
 
         // The reduction has to see every pixel's contribution before it divides by the total, which
         // is what this dispatch boundary is for.
@@ -209,12 +180,8 @@ namespace Rtx
             .mBias = bias,
         };
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mReducePipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mReducePipeline.getLayout(), 0,
-            static_cast<std::uint32_t>(reducing.size()), reducing.data());
-        vkCmdPushConstants(
-            commands, mReducePipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(counted), &counted);
-        vkCmdDispatch(commands, 1, 1, 1);
+        // One group, because the reduction is over the bins and the bins are one workgroup's worth.
+        dispatch(commands, mReducePipeline, reducing, counted, 1);
 
         handOver(commands);
     }

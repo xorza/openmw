@@ -2,23 +2,11 @@
 
 #include <cassert>
 
-#include "slotrows.hpp"
-
 namespace Rtx
 {
     Index PlacementTable::add(const MeshInstance& instance)
     {
-        Index slot;
-        if (mFree.empty())
-        {
-            slot = static_cast<Index>(mInstances.size());
-            mInstances.emplace_back();
-            mPrevious.emplace_back();
-        }
-        else
-            slot = takeFreeSlot(mFree);
-
-        mInstances[slot] = instance;
+        const Index slot = mInstances.take(instance, [this](const std::size_t slots) { mPrevious.resize(slots); });
 
         // **Standing where it is, not arriving from wherever the last tenant left.** A reused slot
         // would otherwise inherit a previous transform from something else entirely, and a motion
@@ -32,36 +20,35 @@ namespace Rtx
 
     void PlacementTable::fade(const Index slot, const float opacity)
     {
-        assert(slot < mInstances.size());
-        assert(mInstances[slot].isPlaced() && "a slot nothing stands in");
+        MeshInstance& placed = mInstances.at(slot);
+        assert(placed.isPlaced() && "a slot nothing stands in");
 
-        if (mInstances[slot].mOpacity == opacity)
+        if (placed.mOpacity == opacity)
             return;
 
-        mInstances[slot].mOpacity = opacity;
+        placed.mOpacity = opacity;
         mMoved.push_back(slot);
     }
 
     bool PlacementTable::move(const Index slot, const osg::Matrixf& transform)
     {
-        assert(slot < mInstances.size());
-        assert(mInstances[slot].isPlaced() && "a slot nothing stands in");
+        MeshInstance& placed = mInstances.at(slot);
+        assert(placed.isPlaced() && "a slot nothing stands in");
 
-        if (mInstances[slot].mTransform == transform)
+        if (placed.mTransform == transform)
             return false;
 
-        mInstances[slot].mTransform = transform;
+        placed.mTransform = transform;
         mMoved.push_back(slot);
         return true;
     }
 
     void PlacementTable::drop(const Index slot)
     {
-        assert(slot < mInstances.size());
-        assert(mInstances[slot].isPlaced() && "a slot dropped twice, or one nothing stood in");
+        assert(mInstances.at(slot).isPlaced() && "a slot dropped twice, or one nothing stood in");
 
-        mInstances[slot] = MeshInstance{};
-        freeSlot(mFree, slot);
+        mInstances.at(slot) = MeshInstance{};
+        mInstances.free(slot);
         mMoved.push_back(slot);
         --mPlacedCount;
     }
@@ -69,7 +56,7 @@ namespace Rtx
     void PlacementTable::advance()
     {
         for (const Index slot : mMoved)
-            mPrevious[slot] = mInstances[slot].mTransform;
+            mPrevious[slot] = mInstances.at(slot).mTransform;
 
         // Swapped and not copied: the two lists trade buffers, and neither allocates on the frame.
         mSettled.swap(mMoved);

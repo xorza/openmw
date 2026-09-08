@@ -23,8 +23,11 @@ namespace Rtx
     {
         for (auto it = shading.rbegin(); it != shading.rend(); ++it)
         {
+            // **`static_cast`, because the attribute is keyed by type.** A state set answers
+            // `BLENDFUNC` with a `BlendFunc` or with nothing, and this runs once per state set of
+            // every drawable's chain — which is the frame path.
             const auto* blend
-                = dynamic_cast<const osg::BlendFunc*>(it->mStateSet->getAttribute(osg::StateAttribute::BLENDFUNC));
+                = static_cast<const osg::BlendFunc*>(it->mStateSet->getAttribute(osg::StateAttribute::BLENDFUNC));
             if (blend == nullptr)
                 continue;
 

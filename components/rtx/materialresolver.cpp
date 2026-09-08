@@ -154,6 +154,27 @@ namespace Rtx
         return entry->second.mStateSet;
     }
 
+    Index MaterialResolver::reuse(const osg::StateSet* const key)
+    {
+        const auto known = mMaterials.find(key);
+        if (known == mMaterials.end())
+            return sNoIndex;
+
+        ++mPass.getStats().mMaterialsReused;
+        mMaterials.stamp(known);
+
+        return known->second.mIndex;
+    }
+
+    Index MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
+    {
+        const Index index = mScene.addMaterial(material);
+        mMaterials.add(key, Known{ .mIndex = index });
+        ++mPass.getStats().mMaterialsAdded;
+
+        return index;
+    }
+
     Index MaterialResolver::resolveTerrain(const Terrain::TerrainDrawable& terrain)
     {
         ExtractionStats& stats = mPass.getStats();
@@ -167,13 +188,8 @@ namespace Rtx
         const osg::StateSet* identity = passes.front().get();
         assert(identity != nullptr && "a terrain pass with no state set, which would key as the sea");
 
-        const auto known = mMaterials.find(identity);
-        if (known != mMaterials.end())
-        {
-            ++stats.mMaterialsReused;
-            mMaterials.stamp(known);
-            return known->second.mIndex;
-        }
+        if (const Index held = reuse(identity); held != sNoIndex)
+            return held;
 
         Material material;
         material.mKind = MaterialKind::Terrain;
@@ -238,16 +254,11 @@ namespace Rtx
             ++stats.mComposites;
         }
 
-        const Index index = mScene.addMaterial(material);
-        mMaterials.add(identity, Known{ .mIndex = index });
-        ++stats.mMaterialsAdded;
-        return index;
+        return adopt(identity, material);
     }
 
     Index MaterialResolver::resolveWater()
     {
-        ExtractionStats& stats = mPass.getStats();
-
         // **One material for the sea, and what identifies it is the state set it has not got.**
         // Water has no albedo — what it looks like is what is behind and above it, worked out from
         // the world position — so there is nothing on a state set worth reading, and reading one is
@@ -262,23 +273,14 @@ namespace Rtx
         // **In the map under `sSea` rather than beside it**, so that one sweep and one count answer
         // for every material the walk met. A slot held outside them is a slot the survivor list has
         // to be told about by hand.
-        if (const auto known = mMaterials.find(sSea); known != mMaterials.end())
-        {
-            ++stats.mMaterialsReused;
-            mMaterials.stamp(known);
-            return known->second.mIndex;
-        }
+        if (const Index held = reuse(sSea); held != sNoIndex)
+            return held;
 
-        const Index index = mScene.addMaterial(Material{ .mKind = MaterialKind::Water });
-        mMaterials.add(sSea, Known{ .mIndex = index });
-        ++stats.mMaterialsAdded;
-        return index;
+        return adopt(sSea, Material{ .mKind = MaterialKind::Water });
     }
 
     Index MaterialResolver::resolve(std::span<const Shading> shading)
     {
-        ExtractionStats& stats = mPass.getStats();
-
         if (shading.empty())
             return sNoIndex;
 
@@ -288,25 +290,18 @@ namespace Rtx
         // contribute in this graph is light and render-bin state rather than material.
         const Shading& own = shading.back();
 
-        const auto known = mMaterials.find(own.mStateSet);
-        if (known != mMaterials.end())
+        if (const Index held = reuse(own.mStateSet); held != sNoIndex)
         {
-            ++stats.mMaterialsReused;
-            mMaterials.stamp(known);
-
             // **Read again, because a controller rewrote it since the last frame.** The state set
             // is the same object — that is what lets the material keep its slot and every placement
             // standing on it stay where it is — and everything inside it is this frame's.
             if (own.mAnimated)
-                mScene.setMaterial(known->second.mIndex, readMaterial(shading));
+                mScene.setMaterial(held, readMaterial(shading));
 
-            return known->second.mIndex;
+            return held;
         }
 
-        const Index index = mScene.addMaterial(readMaterial(shading));
-        mMaterials.add(own.mStateSet, Known{ .mIndex = index });
-        ++stats.mMaterialsAdded;
-        return index;
+        return adopt(own.mStateSet, readMaterial(shading));
     }
 
     Index MaterialResolver::takeTexture(const osg::Image* image)

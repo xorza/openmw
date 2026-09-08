@@ -5,17 +5,13 @@
 
 #include "buffer.hpp"
 #include "device.hpp"
+#include "dispatch.hpp"
 #include "gputimer.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t lanes, std::uint32_t workgroup)
-        {
-            return (lanes + workgroup - 1) / workgroup;
-        }
-
         /// Orders one dispatch's writes against the next dispatch's reads and writes.
         void handOver(VkCommandBuffer commands, VkPipelineStageFlags2 from, VkAccessFlags2 wrote,
             VkPipelineStageFlags2 to, VkAccessFlags2 reads)

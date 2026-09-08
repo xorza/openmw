@@ -317,14 +317,12 @@ namespace Rtx
             // the loading screen's frames are updates with no walk between them — which froze every
             // actor in the world and left them sliding about in the pose they arrived in.
             //
-            // **Gated on the library before the cast**, here and below. Both classes are
-            // `SceneUtil`'s, and a node from `osg` or `NifOsg` — which is nearly every node in a
-            // cell — is ruled out by a compare where a failed `dynamic_cast` walks the class
-            // hierarchy to say the same thing.
-            if (auto* skeleton = from == Library::SceneUtil ? dynamic_cast<SceneUtil::Skeleton*>(group) : nullptr)
+            // **Gated on the library before the cast**, here and below: both classes are
+            // `SceneUtil`'s, and a node from `osg` or `NifOsg` is nearly every node in a cell.
+            if (auto* skeleton = castFrom<SceneUtil::Skeleton>(from, Library::SceneUtil, *group))
                 skeleton->markReached(static_cast<unsigned int>(mFrame));
         }
-        else if (auto* source = from == Library::SceneUtil ? dynamic_cast<SceneUtil::LightSource*>(&node) : nullptr)
+        else if (auto* source = castFrom<SceneUtil::LightSource>(from, Library::SceneUtil, node))
         {
             mExtractor.addLight(*source, placed(), mStamp->getSimulationTime());
         }
@@ -733,7 +731,8 @@ namespace Rtx
         // `Terrain`'s, and those are ruled out by a compare where a failed `dynamic_cast` walks the
         // class hierarchy to say the same thing. The two libraries are the ones a system can come from —
         // `osgParticle`'s own, and `NifOsg::ParticleSystem` over it — which is the pair
-        // `stepParticles` already names.
+        // `stepParticles` already names — which is why the gate is spelled here rather than
+        // reached for: `castFrom` names one library and this rules out all but two.
         const Library from = mLibrary.of(drawable);
         const bool couldEmit = from == Library::OsgParticle || from == Library::NifOsg;
         if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
@@ -755,9 +754,8 @@ namespace Rtx
         // and the state-set walk never sees a chunk.
         // The geometry's own library and not the drawable's: a rigged mesh hands its source
         // geometry back here, and that is a different object from the one `couldEmit` asked about.
-        const auto* terrain = mLibrary.of(geometry) == Library::Terrain
-            ? dynamic_cast<const Terrain::TerrainDrawable*>(&geometry)
-            : nullptr;
+        const auto* terrain
+            = castFrom<const Terrain::TerrainDrawable>(mLibrary.of(geometry), Library::Terrain, geometry);
         // **Asked of the drawable and not of the path.** OpenMW marks the water geometry itself, and
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());

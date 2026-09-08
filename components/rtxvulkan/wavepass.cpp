@@ -16,6 +16,7 @@
 
 #include "commands.hpp"
 #include "device.hpp"
+#include "dispatch.hpp"
 #include "graveyard.hpp"
 #include "result.hpp"
 
@@ -42,6 +43,10 @@ namespace Rtx
             VkDescriptorSetLayoutBinding{ 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
         };
 
+        /// The side of the workgroup `wavecompose.comp` declares, which is what its dispatch has
+        /// to be counted in.
+        constexpr std::uint32_t sWaveWorkgroup = 8;
+
         /// How many complex numbers the transform runs over for one tile: three packed fields, each
         /// the grid itself.
         std::size_t fieldOf(std::size_t grid)
@@ -49,32 +54,6 @@ namespace Rtx
             return 3 * grid * grid;
         }
 
-        std::uint32_t groupsFor(std::uint32_t extent)
-        {
-            return (extent + 7) / 8;
-        }
-
-        VkWriteDescriptorSet storedAt(std::uint32_t binding, const VkDescriptorImageInfo& image)
-        {
-            return VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = binding,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                .pImageInfo = &image,
-            };
-        }
-
-        VkWriteDescriptorSet blockAt(std::uint32_t binding, const VkDescriptorBufferInfo& block)
-        {
-            return VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = binding,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pBufferInfo = &block,
-            };
-        }
     }
 
     WavePass::WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
@@ -195,7 +174,7 @@ namespace Rtx
     void WavePass::transform(VkCommandBuffer commands, const Tile& tile, std::uint32_t count) const
     {
         const VkDescriptorBufferInfo field{ tile.mField.getHandle(), 0, VK_WHOLE_SIZE };
-        const VkWriteDescriptorSet write = blockAt(0, field);
+        const VkWriteDescriptorSet write = bufferWrite(0, field);
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mLinePipeline.getHandle());
         vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mLinePipeline.getLayout(), 0, 1, &write);
@@ -243,9 +222,9 @@ namespace Rtx
                 VkDescriptorBufferInfo{ tile.mField.getHandle(), 0, VK_WHOLE_SIZE },
             };
             const std::array<VkWriteDescriptorSet, 3> forms{
-                blockAt(0, blocks[0]),
-                blockAt(1, blocks[1]),
-                blockAt(2, blocks[2]),
+                bufferWrite(0, blocks[0]),
+                bufferWrite(1, blocks[1]),
+                bufferWrite(2, blocks[2]),
             };
             const Shaders::WaveFormConstants shaped{
                 .mCount = grid,
@@ -258,7 +237,7 @@ namespace Rtx
                 static_cast<std::uint32_t>(forms.size()), forms.data());
             vkCmdPushConstants(
                 commands, mFormPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(shaped), &shaped);
-            vkCmdDispatch(commands, groupsFor(grid), groupsFor(grid), 1);
+            vkCmdDispatch(commands, groupsFor(grid, sWaveWorkgroup), groupsFor(grid, sWaveWorkgroup), 1);
             handOver(commands);
 
             transform(commands, tile, grid);
@@ -268,9 +247,9 @@ namespace Rtx
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, tile.mCurvature->getStorageView(), VK_IMAGE_LAYOUT_GENERAL },
             };
             const std::array<VkWriteDescriptorSet, 3> composes{
-                blockAt(0, blocks[2]),
-                storedAt(1, images[0]),
-                storedAt(2, images[1]),
+                bufferWrite(0, blocks[2]),
+                imageWrite(1, images[0]),
+                imageWrite(2, images[1]),
             };
             const Shaders::WaveComposeConstants unpacked{ .mCount = grid };
 
@@ -279,7 +258,7 @@ namespace Rtx
                 static_cast<std::uint32_t>(composes.size()), composes.data());
             vkCmdPushConstants(
                 commands, mComposePipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(unpacked), &unpacked);
-            vkCmdDispatch(commands, groupsFor(grid), groupsFor(grid), 1);
+            vkCmdDispatch(commands, groupsFor(grid, sWaveWorkgroup), groupsFor(grid, sWaveWorkgroup), 1);
 
             for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
                 image->buildMips(commands);

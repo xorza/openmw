@@ -4,15 +4,12 @@
 #include <span>
 
 #include "device.hpp"
+#include "dispatch.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t triangles)
-        {
-            return (triangles + Shaders::MICROMAP_WORKGROUP - 1) / Shaders::MICROMAP_WORKGROUP;
-        }
     }
 
     MicromapPass::MicromapPass(
@@ -33,6 +30,6 @@ namespace Rtx
     {
         vkCmdPushConstants(
             commands, mPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
-        vkCmdDispatch(commands, groupsFor(constants.mCount), 1, 1);
+        vkCmdDispatch(commands, groupsFor(constants.mCount, Shaders::MICROMAP_WORKGROUP), 1, 1);
     }
 }

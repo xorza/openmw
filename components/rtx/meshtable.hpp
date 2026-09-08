@@ -12,10 +12,11 @@
 #include "deformertable.hpp"
 #include "index.hpp"
 #include "meshrange.hpp"
-#include "runallocator.hpp"
+#include "runbuffer.hpp"
 #include "shaders/scene.h"
 #include "shapefold.hpp"
 #include "slotchanges.hpp"
+#include "slotrows.hpp"
 #include "slotset.hpp"
 
 namespace Rtx
@@ -50,7 +51,7 @@ namespace Rtx
         std::size_t size() const { return mRows.size(); }
 
         /// How many slots hold a mesh, which is what a sweep compares its survivors against.
-        std::size_t getLiveCount() const { return mRows.size() - mFree.size(); }
+        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
 
         /// Copies the vertex data into the shared buffers and returns the new mesh's index.
         ///
@@ -71,11 +72,11 @@ namespace Rtx
         /// Frees every slot the last `mark` did not name, and says how many that was.
         std::size_t sweep();
 
-        std::span<const osg::Vec3f> getPositions() const { return mPositions; }
+        std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
-        std::span<const std::uint32_t> getIndices() const { return mIndices; }
-        std::span<const MeshRange> getRows() const { return mRows; }
+        std::span<const std::uint32_t> getIndices() const { return mIndices.getAll(); }
+        std::span<const MeshRange> getRows() const { return mRows.getRows(); }
 
         std::span<const osg::Vec3f> getMeshPositions(Index mesh) const;
         std::span<const std::uint32_t> getMeshIndices(Index mesh) const;
@@ -97,37 +98,39 @@ namespace Rtx
         void clearArrivals();
 
     private:
-        /// Copies one mesh's arrays into the room `range` names. Zero-fills an attribute the mesh
-        /// did not bring, because a reused slot still holds its last tenant's.
-        void write(const MeshRange& range, std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices);
+        /// Makes the attribute buffers as long as the positions are and writes `range`'s run of
+        /// each. Zero-fills one the mesh did not bring, because a reused slot still holds its last
+        /// tenant's.
+        void writeAttributes(
+            const MeshRange& range, std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords);
 
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void note(Index slot, SlotNews what);
 
         DeformerTable& mDeformers;
 
-        std::vector<osg::Vec3f> mPositions;
+        /// Where a mesh's vertices and its indices live.
+        ///
+        /// **Runs and not slots**, which is why these are `RunBuffer`s and `mRows` is not: a mesh
+        /// slot is one row of a table, but the geometry behind it is as long as the model. A list
+        /// of slots cannot give a variable length back.
+        ///
+        /// **One buffer holds the run and two follow it.** The position, normal and
+        /// texture-coordinate arrays are parallel and a vertex id indexes all three, so the two
+        /// below are as long as the positions are and are never asked an allocator's question —
+        /// `writeAttributes` is where that rule lives.
+        RunBuffer<osg::Vec3f> mPositions{ sVertexBlock };
+        RunBuffer<std::uint32_t> mIndices{ sIndexBlock };
+
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
-        std::vector<std::uint32_t> mIndices;
-        std::vector<MeshRange> mRows;
 
-        /// Mesh slots nothing stands in. `takeSlot` says how one is handed out.
+        /// Every mesh row, and the slots nothing stands in.
         ///
-        /// **A list and not a hole map**, because what goes on it is what one departing ring left —
-        /// tens of entries, not the table. Nothing is ever moved, so a slot that is taken over
+        /// **Slots are never moved and never closed up**, because what goes on the free list is
+        /// what one departing ring left — tens of entries, not the table. A slot that is taken over
         /// keeps its index and every placement standing on it stays where it is.
-        ///
-        /// A min-heap. `Rtx::takeFreeSlot` says why the lowest.
-        std::vector<Index> mFree;
-
-        /// Which slots a sweep must not free, one flag per row.
-        ///
-        /// **Held rather than made, because a sweep runs on the frame a cell left** — the frame
-        /// that is already giving thousands of runs back to the allocators, and the last one that
-        /// should also be sizing a buffer to the whole table.
-        std::vector<std::uint8_t> mKept;
+        SlotRows<MeshRange> mRows;
 
         /// Which meshes were posed this frame. Emptied with the placement rather than with the
         /// arrivals: a pose is a fact about the frame and an arrival is a fact about the scene.
@@ -135,17 +138,6 @@ namespace Rtx
 
         /// Which slots arrived and which were freed, since a backend last read them.
         SlotChanges mChanges;
-
-        /// Where a mesh's vertices and its indices live.
-        ///
-        /// **Runs and not slots**, which is why these are allocators and `mFree` is not: a mesh
-        /// slot is one row of a table, but the geometry behind it is as long as the model. A list
-        /// of slots cannot give a variable length back.
-        ///
-        /// One for the vertices because the position, normal and texture-coordinate buffers are
-        /// parallel and a vertex id indexes all three.
-        RunAllocator mVertexRuns{ sVertexBlock };
-        RunAllocator mIndexRuns{ sIndexBlock };
 
         /// How many times a mesh has appeared. `SceneDesc::getStructureRevision` says what it is
         /// read for and why a texture arriving is counted apart from it.
