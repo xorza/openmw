@@ -178,5 +178,40 @@ namespace Rtx
             EXPECT_EQ(spent, 0u) << spent << " allocations to bin the lamps a frame already held";
             EXPECT_EQ(grid.getList().getEntryCount(), 8u + 4u + 80u) << "and it binned them all the same";
         }
+
+        /// A lamp that only flickered is not binned again, and one that moved is.
+        ///
+        /// **This is what the whole gate rests on**: the grid reads a light's position and its reach
+        /// and nothing else, so a colour that changed leaves the same grid — and Morrowind's lamps
+        /// change colour on nearly every frame, which is what made a per-frame rebind the ordinary
+        /// case rather than the exception.
+        ///
+        /// The two are told apart by what the grid comes to: a lamp moved a whole cell lands in
+        /// different cells, and the entry count says so.
+        TEST(RtxLightGridTest, aLampThatOnlyFlickeredIsNotBinnedAgain)
+        {
+            std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f) };
+
+            LightGrid grid;
+            grid.rebuild(lights);
+
+            const std::vector<std::uint32_t> first = lampsIn(grid, 0, 0, 0);
+
+            // What a flicker writes, and nothing the grid ever reads.
+            lights[0].mIntensity = osg::Vec3f(9.0f, 3.0f, 1.0f);
+            lights[1].mSourceRadius = 7.0f;
+            lights[1].mClearance = 2.0f;
+            grid.rebuild(lights);
+
+            EXPECT_EQ(lampsIn(grid, 0, 0, 0), first) << "a lamp that only changed colour moved the grid";
+
+            // And a lamp that reaches further is a lamp the grid has to be made for again: 512 over
+            // a cell of 1024 spans two cells across, and 2048 spans five.
+            const std::size_t reachedTwo = grid.getList().getEntryCount();
+            lights[0].mReach = 2048.0f;
+            grid.rebuild(lights);
+
+            EXPECT_NE(grid.getList().getEntryCount(), reachedTwo) << "a lamp that reaches further was not rebinned";
+        }
     }
 }

@@ -12,25 +12,6 @@ namespace Rtx
 {
     namespace
     {
-        /// Orders one dispatch's writes against the next dispatch's reads and writes.
-        void handOver(VkCommandBuffer commands, VkPipelineStageFlags2 from, VkAccessFlags2 wrote,
-            VkPipelineStageFlags2 to, VkAccessFlags2 reads)
-        {
-            const VkMemoryBarrier2 barrier{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                .srcStageMask = from,
-                .srcAccessMask = wrote,
-                .dstStageMask = to,
-                .dstAccessMask = reads,
-            };
-            const VkDependencyInfo dependency{
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .memoryBarrierCount = 1,
-                .pMemoryBarriers = &barrier,
-            };
-            vkCmdPipelineBarrier2(commands, &dependency);
-        }
-
         void dispatch(VkCommandBuffer commands, const ComputePipeline& pipeline, const Shaders::SpriteBinConstants& bin,
             std::uint32_t groups)
         {

@@ -333,6 +333,18 @@ namespace Rtx
         /// Which suite the stops came from, for the record's own header.
         std::string mSuite;
 
+        /// Whether each hand-over waits for the distant ground it queued, or nothing to let the
+        /// frame clock decide — which is what every ordinary run does.
+        ///
+        /// **The one switch a measurement needs and a picture must not have.** A settled run is
+        /// what makes two processes draw one picture, and it is also what puts
+        /// `Rtx::CompositeQueue`'s whole bake on the frame that queued it: measured on
+        /// `island-crossing`, 9.4 ms a frame of a main thread asleep, against 0.37 ms of hand-over
+        /// the profile can see. So a run that means to time the streaming path says so here, and
+        /// every run that compares a picture leaves it alone. `Rtx::CompositeQueue::setSettled`
+        /// says what waiting is for.
+        std::optional<bool> mSettled;
+
         /// Which validation layers the run wants.
         ///
         /// **Carried here and never in a settings file**, for the reason `sValidationByDefault`

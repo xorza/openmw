@@ -581,7 +581,7 @@ namespace Rtx::Shaders
         uint mEmitter;
 
         /// How many sprites of its own emitter stand between this one and the sun, and the sky, each
-        /// counted for its fade. `Rtx::SpriteShade` counts them once a frame on the host, and
+        /// counted for its fade. `spriteshade.h` counts them once a frame on the device, and
         /// `spritesAlong` thins the light by what one layer of the texture hides.
         float mSunLayers;
         float mSkyLayers;

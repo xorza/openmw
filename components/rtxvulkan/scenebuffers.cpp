@@ -13,6 +13,7 @@
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "spritebinpass.hpp"
+#include "spriteshadepass.hpp"
 
 namespace Rtx
 {
@@ -227,8 +228,8 @@ namespace Rtx
         graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
-    void SceneBuffers::binSprites(const SpriteBinPass& pass, const osg::Vec3f& origin, const Shaders::Camera& camera,
-        const osg::Vec3f& toSun, const Placing& placing)
+    void SceneBuffers::binSprites(const SpriteShadePass& shading, const SpriteBinPass& pass, const osg::Vec3f& origin,
+        const Shaders::Camera& camera, const osg::Vec3f& toSun, const Placing& placing)
     {
         assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
 
@@ -237,13 +238,31 @@ namespace Rtx
         // **The sprites go over from here and not from `place`**, because what each is shaded by is
         // the frame's sun, which a placement does not know — and a doll or a map bins against a
         // camera and a sun of its own.
-        mSpriteShade.shade(mSpriteScratch, mEmitterScratch, toSun);
-
         const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
         reserve(tables.mSprites, sprites.size_bytes(), placing.mGraveyard);
         tables.mSprites.write(sprites);
 
         const auto count = static_cast<std::uint32_t>(sprites.size());
+
+        // **Before the bin and after the write**, because the bin reads a sprite's position and the
+        // trace reads its layers, and both read the table this fills in. The sprites go over
+        // unshaded and come back shaded in place.
+        //
+        // Scratch for the two depth orders, one key a sprite a light. Nothing reads it after the
+        // dispatch and nothing carries it between frames, so it is sized and forgotten.
+        reserve(tables.mSpriteOrder, VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t),
+            placing.mGraveyard);
+
+        shading.record(placing.mCommands,
+            Shaders::SpriteShadeConstants{
+                .mSprites = tables.mSprites.getDeviceAddress(),
+                .mEmitters = tables.mEmitters.getDeviceAddress(),
+                .mOrder = tables.mSpriteOrder.getDeviceAddress(),
+                .mToSun = toSun,
+                .mEmitterCount = static_cast<std::uint32_t>(mEmitterScratch.size()),
+                .mCount = count,
+            },
+            placing.mTimer);
 
         // **Sized from what this copy's last bin said it needed, with room over it**, because the
         // need is only known once the tiles are counted and that happens on the device. The fence

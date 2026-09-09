@@ -131,8 +131,6 @@ set(RTX_FILES
     spritelight.hpp
     spritelistsize.cpp
     spritelistsize.hpp
-    spriteshade.cpp
-    spriteshade.hpp
     sprite.hpp
     srgb.cpp
     srgb.hpp

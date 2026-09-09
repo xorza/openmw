@@ -450,3 +450,93 @@ removes 1.32.
 
 No place would then be CPU-bound. That is the point of the work: not a faster host, but a host that
 is never the answer to "why was this frame slow".
+
+## What the plan came to
+
+Written 2026-09-09, after the steps below were built, tested and measured. The readings are in
+`.notes/bench.txt`.
+
+### Landed
+
+| step | proposal | expected | measured |
+|---|---|---:|---:|
+| 1 | 8, `bench --settled=false` | — | 4.2 ms a frame of the streaming row was the harness's own wait |
+| 2 | 1, the sprite shading on the device | 2.4 ms at Vivec | **3.3 ms** |
+| 7 | 5, the light grid gated | 0.15 ms | 0.08 to 0.17 ms, in `place` |
+| 8 | 6, `fadeThrough` guarded | 0.05 ms | 0.10 to 0.40 ms, in `walk` |
+
+**Vivec's host frame is 3.89 ms against 5.76 ms of device time.** Every one of the eighteen views
+came down, none went up, and no place in the corpus is CPU-bound any more. That was the whole point
+of the work, and it is met.
+
+### The host implementation is gone rather than kept
+
+The proposal said the host `SpriteShade` would stay as the reference the device pass is
+cross-checked against, and shade any emitter longer than one workgroup's shared memory could sort.
+That is two implementations of one computation, which is two things to keep in step and a place for
+them to disagree. It is now one.
+
+**What made the cap unnecessary.** The cap existed because a bitonic network is defined on a power
+of two and has to be padded to one, which needs room past the run. Two changes remove it: the depth
+order is sorted into a device buffer instead of into shared memory, and the network is Batcher's
+odd-even merge instead of a bitonic sort. Odd-even merge is the power-of-two network with every
+comparator touching a wire past the run removed, which is exact because every comparator runs the
+same way — a missing wire is the largest key there is, and the smaller of a key and the largest key
+is the key. So a run of any length is sorted by the one network, with no padding and no cap.
+
+The move made the shader smaller on every count: shared memory 24 KiB to 8, registers 44 to 36,
+binary 7552 bytes to 4608. Vivec's host frame came to 3.71 ms and the device zone to 0.12.
+
+**What stands in the reference's place.** The eleven tests were rewritten to drive the device pass,
+and every hand-computed expectation in them is unchanged — the disc's analytic coverage at its rim,
+the layers adding along the light, the tie broken on the index. Two were added for what the cap's
+removal made possible: a run of every length from two to thirty-three coming out in depth order, and
+several emitters in one table shaded apart. The cross-check test is gone with the thing it was
+checking against.
+
+### Two proposals were wrong, and the measurement is what said so
+
+**Proposal 5 as written does not work.** It gated `orderLights`, the grid and the buffer writes on
+a light array that had not changed. Morrowind's lamps flicker: `lightBrightness` moves
+`Light::mIntensity` on nearly every frame of nearly every lit place, so the array changes almost
+always and the gate would almost never fire.
+
+What does work is narrower and exact. The grid is a function of each lamp's position and reach and
+of nothing else — it never reads a colour — so `LightGrid::rebuild` keeps its own copy of that
+sequence and returns where it matches. A lamp that only flickered keeps the grid it had, and one
+that moved is binned again. The sort and the buffer writes stay, because those do read the colour.
+
+**Proposal 1 was underestimated by a third.** The estimate counted `layDown`; what actually moved
+was the depth sort and the projection with it, because a workgroup does all three.
+
+**And its fallback was a mistake.** See above: a cap on the device side is what invented the second
+implementation, and the cap was an artefact of where the sort's keys were put.
+
+### Not landed, and why
+
+**Proposals 2, 3 and 4 — the liveness split, the walk trace and the chunk replay.** These are the
+largest remaining item on paper, 0.6 to 0.9 ms of an exterior walk. They are left because the
+measurement moved out from under them: with no place CPU-bound and 1.5 to 2.9 ms of host headroom
+at every view, a change to the middle of `SceneExtractor` — where a stale entry mirrors the wrong
+geometry — buys a fraction of a millisecond nothing is waiting for. The design in Proposal 3 stands
+and the staged plan under it stands; what has changed is that it is no longer urgent.
+
+There is also a finding for whoever picks it up. Proposal 2 was written to make a slot index a
+sufficient handle for the sweep, and six of the seven identity maps have a slot space — but
+`MaterialResolver::mAnimated` has none, and the sweep has to walk each map regardless to drop the
+key whose slot died. So the dense epoch saves the scattered write during the walk and not the map
+walk at the sweep, which is a smaller prize than the proposal claimed.
+
+**Proposal 7b — the fold on the warming thread.** Blocked on a seam rather than on the work.
+`TerrainResidency` holds a `Terrain::View*`, and reaching the chunks that `Terrain::World::preload`
+built into it needs a `Terrain::ViewData*` — a cast this fork would be making on the strength of
+its world happening to be a `QuadTreeWorld`, which is exactly the shape `AGENTS.md` rules out.
+`Terrain::World::collect` hands the chunks over through the interface instead, and would do it
+without a cast, but it has no per-chunk abort where `preload` has one — so using it on the warming
+thread gives back the yield that bounds what a frame waits for.
+
+Neither answer is right as it stands. What is needed first is 7a's measurement: how long the frame
+actually spends taking `mBuilding`. If that wait is small, the warming thread can afford the second
+traversal `collect` costs and the seam problem goes away.
+
+**Proposals 7a and 7c** are measurements and are untaken.

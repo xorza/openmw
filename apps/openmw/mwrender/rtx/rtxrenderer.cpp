@@ -267,16 +267,22 @@ namespace MWRender
         if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
             mClock = Rtx::FrameClock(step);
 
-        // **The same step decides whether the ground waits.** A composite comes back whenever the
-        // baker finishes it, so which frame it lands on is a thread's answer rather than the
-        // schedule's, and a run whose pictures are compared with another's cannot have that.
+        // **The same step decides whether the ground waits, unless the run says otherwise.** A
+        // composite comes back whenever the baker finishes it, so which frame it lands on is a
+        // thread's answer rather than the schedule's, and a run whose pictures are compared with
+        // another's cannot have that.
         //
         // **The step and not what a run does with its frames.** `shot` and `verify` are what the
         // reference pictures are made with and neither of them hashes a frame, so a condition
         // asking about hashes would leave out the two runs that most need this: measured on
         // `balmora`, four processes drew four different frames after half a second of warming and
         // one frame after a tenth of one.
-        mMirror.setSettled(mClock.getStatedStep().has_value());
+        //
+        // **And a run that means to time the streaming path overrides it**, because waiting is
+        // most of what that path then measures. `Rtx::SessionRequest::mSettled` says what the
+        // override costs and what it buys.
+        const std::optional<bool> stated = mSession != nullptr ? mSession->getSettled() : std::nullopt;
+        mMirror.setSettled(stated.value_or(mClock.getStatedStep().has_value()));
     }
 
     // Out of line because the members it destroys are only forward declared in the header.

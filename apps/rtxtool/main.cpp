@@ -612,6 +612,11 @@ namespace RtxTool
             request.mHeadless = !variables["window"].as<bool>();
             request.mValidation = validationForMeasuring(variables, !request.mHeadless);
 
+            // **Asked whether it was written and not what it defaults to**, because nothing is the
+            // answer that leaves the frame clock deciding — which is what every other verb gets.
+            if (variables.count("settled") != 0)
+                request.mSettled = variables["settled"].as<bool>();
+
             return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
         }
 

@@ -32,6 +32,7 @@
 #include "setlayout.hpp"
 #include "skinpass.hpp"
 #include "spritebinpass.hpp"
+#include "spriteshadepass.hpp"
 #include "tonepass.hpp"
 #include "tracechain.hpp"
 #include "visibilitypass.hpp"
@@ -386,6 +387,9 @@ namespace Rtx
         /// **One pass for everything binned**, for the same reason: what differs per scene is the
         /// tables, and the camera arrives with the frame.
         SpriteBinPass mSpriteBin;
+
+        /// And one for everything shaded, which runs ahead of the bin over the same tables.
+        SpriteShadePass mSpriteShade;
 
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.

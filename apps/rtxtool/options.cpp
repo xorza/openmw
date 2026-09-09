@@ -283,6 +283,14 @@ namespace RtxTool
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
 
+        option(Verbs::Bench, "settled", bpo::value<bool>()->implicit_value(true),
+            "whether each hand-over waits for the distant ground it queued. On unless "
+            "said otherwise, because a settled run is what makes two processes draw one picture "
+            "— and it is also what puts a composite's whole bake on the frame that queued it: "
+            "measured on `island-crossing`, 9.4 ms a frame of a main thread asleep against 0.37 ms "
+            "of hand-over. **--settled=false is what times the streaming path**, and a run under it "
+            "may not be compared with a picture");
+
         option(Verbs::Bench, "json", bpo::value<std::string>()->default_value(""),
             "also write the run to this file as one record, for comparing against the "
             "same run on another commit");

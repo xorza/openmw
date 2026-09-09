@@ -50,6 +50,10 @@ namespace MWRender
         /// Which layers the run asked for.
         const Rtx::ValidationOptions& getValidation() const { return mRequest.mValidation; }
 
+        /// Whether this run states for itself that the ground waits, or nothing to let the frame
+        /// clock decide. `Rtx::SessionRequest::mSettled` says which runs state one.
+        std::optional<bool> getSettled() const { return mRequest.mSettled; }
+
         /// Which sample the trace should take, or nothing while no stop is running.
         ///
         /// **The stop's own count and not the game's frame number.** What the bounce sampler and

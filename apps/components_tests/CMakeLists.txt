@@ -164,6 +164,7 @@ if (OPENMW_RTX)
         rtx/extractor/stats.cpp
         rtx/extractor/walk.cpp
         rtx/sceneuploader.cpp
+        rtx/shading.cpp
         rtx/shadingmap.cpp
         rtx/shapefold.cpp
         rtx/skinpass.cpp

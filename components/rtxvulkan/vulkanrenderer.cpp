@@ -156,6 +156,7 @@ namespace Rtx
         , mExposure(mDevice, options.mShaderDirectory)
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
+        , mSpriteShade(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
@@ -1096,7 +1097,7 @@ namespace Rtx
         if (mReadBy[mWorldSlot.get()] != sNeverRead)
             mRing.finishThrough(mReadBy[mWorldSlot.get()]);
 
-        mWorld.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
+        mWorld.mBuffers->binSprites(mSpriteShade, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
             Placing{
                 .mCommands = commands,
                 .mSlot = mWorldSlot,
@@ -1324,7 +1325,7 @@ namespace Rtx
             if (hasSea(camera))
                 mWaves.record(commands, camera.mTime);
 
-            traced.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
+            traced.mBuffers->binSprites(mSpriteShade, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
                 Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mWorld.mGraveyard });
 
             const GBuffer& channels = mView.getChannels();

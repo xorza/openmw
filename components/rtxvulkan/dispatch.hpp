@@ -82,6 +82,29 @@ namespace Rtx
         return writes;
     }
 
+    /// Orders one dispatch's writes against what reads or writes them next.
+    ///
+    /// **One statement, because two passes had the same one written out.** A compute pass between
+    /// two others is nothing but a barrier, a dispatch and a barrier, and the barrier is five lines
+    /// of structure setup that says one thing.
+    inline void handOver(VkCommandBuffer commands, VkPipelineStageFlags2 from, VkAccessFlags2 wrote,
+        VkPipelineStageFlags2 to, VkAccessFlags2 reads)
+    {
+        const VkMemoryBarrier2 barrier{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = from,
+            .srcAccessMask = wrote,
+            .dstStageMask = to,
+            .dstAccessMask = reads,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &barrier,
+        };
+        vkCmdPipelineBarrier2(commands, &dependency);
+    }
+
     /// Binds, pushes and launches: the four calls every compute pass in this backend ends with.
     ///
     /// @param constants the whole push range, at offset zero. Taken by reference and copied by

@@ -1,0 +1,309 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// How many layers of its own emitter stand between each sprite and a light.
+//
+// `spriteshade.h` says what this computes, why it is here rather than on the host, and why there is
+// no second implementation of it anywhere.
+
+#include "scene.h"
+#include "spriteshade.h"
+
+/// Cells along each side of the grid.
+///
+/// Thirty-two puts a chimney's column six cells wide, which is enough to give it two sides.
+const uint SPRITE_SHADE_CELLS = 32u;
+
+/// Lanes in one workgroup: one per cell of the grid.
+const uint SPRITE_SHADE_WORKGROUP = SPRITE_SHADE_CELLS * SPRITE_SHADE_CELLS;
+
+/// How many cells the largest sprite of an emitter may span in radius.
+///
+/// **What bounds the cost of a sprite.** A grid fine enough for a column's wisps would put a
+/// candle's one big puff over the whole of it; coarsening the grid to the largest sprite keeps a
+/// footprint to a few hundred cells whatever the emitter is.
+const float SPRITE_SHADE_LARGEST_IN_CELLS = 8.0;
+
+/// Which of `SPRITE_SHADE_LIGHTS` a workgroup has. The sun's own direction is carried, and the
+/// other one is straight up.
+const uint SPRITE_SHADE_SUN = 0u;
+
+layout(local_size_x = SPRITE_SHADE_WORKGROUP) in;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Sprites
+{
+    GpuSprite at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Emitters
+{
+    GpuEmitter at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 8, scalar) buffer Order
+{
+    uint64_t at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    SpriteShadeConstants shade;
+};
+
+/// What has been laid down, one cell a lane.
+shared float grid[SPRITE_SHADE_WORKGROUP];
+
+/// The largest radius in the run, reduced through one entry a lane.
+shared float radii[SPRITE_SHADE_WORKGROUP];
+
+/// Whether this emitter is shaded at all.
+///
+/// A flame emits and shadows nothing of its own kind, a streak is a thin thing seen by what passes
+/// through it, and one sprite has nothing in front of it.
+bool spriteShadeWants(GpuEmitter emitter)
+{
+    return emitter.mAdditive == 0u && emitter.mWidth <= 0.0 && emitter.mCount >= 2u;
+}
+
+/// A unit vector square to `axis`: its cross with whichever world axis it lies least along.
+///
+/// **Whichever it lies least along, because a cross with a near-parallel helper is a near-zero
+/// vector** and normalising one of those is where the grid's two axes stop being square to each
+/// other. Nine tenths is far enough off parallel for the cross to keep its direction.
+vec3 squareTo(vec3 axis)
+{
+    const vec3 helper = abs(axis.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+
+    return normalize(cross(axis, helper));
+}
+
+/// A float's bits, reordered so that unsigned comparison is the float's own descending order.
+///
+/// **Descending, because the run is walked from the light outward.** The usual ascending map flips
+/// the sign bit of a positive and inverts a negative outright; this is that inverted, so the
+/// nearest the light sorts first.
+///
+/// **And a negative zero is written as a positive one first.** The two zeroes are one depth, so
+/// what has to separate two sprites at that depth is the index in the key's low half; a bit pattern
+/// kept as it was would order them apart by a sign nobody set. It is a sprite standing exactly on
+/// the emitter's centre along the light, so it decides nothing but which of two coincident discs is
+/// read first — and that still has to be the same answer every run.
+uint sortableDepth(float depth)
+{
+    const uint bits = floatBitsToUint(depth == 0.0 ? 0.0 : depth);
+
+    return ~((bits & 0x80000000u) != 0u ? ~bits : (bits | 0x80000000u));
+}
+
+uint clampCell(float at)
+{
+    return uint(clamp(at, 0.0, float(SPRITE_SHADE_CELLS - 1u)));
+}
+
+/// Rounds halfway away from zero, spelled so that every driver rounds it the same way.
+///
+/// GLSL's own `round` leaves the halfway case to the implementation and `roundEven` takes the other
+/// branch of it, so a disc sitting exactly half a cell from a boundary would land in one cell on
+/// one driver and the next on another — and a picture would differ by a card.
+float roundHalfAway(float at)
+{
+    return floor(at + 0.5);
+}
+
+float cellAt(uint x, uint y)
+{
+    return grid[y * SPRITE_SHADE_CELLS + x];
+}
+
+/// What has been laid down at a point of the grid, between the four cells around it.
+float readAt(float x, float y)
+{
+    const float fx = clamp(x, 0.0, float(SPRITE_SHADE_CELLS - 1u));
+    const float fy = clamp(y, 0.0, float(SPRITE_SHADE_CELLS - 1u));
+    const uint x0 = uint(fx);
+    const uint y0 = uint(fy);
+    const uint x1 = min(x0 + 1u, SPRITE_SHADE_CELLS - 1u);
+    const uint y1 = min(y0 + 1u, SPRITE_SHADE_CELLS - 1u);
+    const float tx = fx - float(x0);
+    const float ty = fy - float(y0);
+
+    const float top = mix(cellAt(x0, y0), cellAt(x1, y0), tx);
+    const float bottom = mix(cellAt(x0, y1), cellAt(x1, y1), tx);
+
+    return mix(top, bottom, ty);
+}
+
+/// What one cell takes of a disc of `radius` about `x`, `y`, `weight` deep.
+///
+/// **One expression, where a serial loop wants three.** A loop walks a row at a time — a ramp, the
+/// run the disc covers whole, and a ramp again — so that the run costs no arithmetic per cell. Per
+/// cell there is nothing to save: the clamp is already one inside the core and already nought
+/// outside the rim, which is what such a split works out.
+///
+/// The tiny disc is a different rule and stays one: too small to reach a cell's centre, its whole
+/// area lands on the cell it is in.
+float coverage(uint cx, uint cy, float x, float y, float radius, float weight)
+{
+    if (radius < 0.5)
+        return cx == clampCell(roundHalfAway(x)) && cy == clampCell(roundHalfAway(y))
+            ? weight * PI * radius * radius
+            : 0.0;
+
+    const float dx = float(cx) - x;
+    const float dy = float(cy) - y;
+    const float away = dx * dx + dy * dy;
+
+    return weight * clamp(radius - sqrt(away) + 0.5, 0.0, 1.0);
+}
+
+/// Sorts `count` entries of `run` from `first` ascending, which is the run from the light outward.
+///
+/// **Batcher's odd-even merge and not a bitonic sort, because a run is any length.** A bitonic
+/// network is defined on a power of two and its comparators run both ways, so a shorter run has to
+/// be padded with keys that sort to the end — which needs room past the run, which is a cap, which
+/// needs something else to shade what is past the cap. This network is the power-of-two one with
+/// every comparator touching a wire past `count` removed, and that is exact here because every
+/// comparator runs the same way: a missing wire is the largest key there is, and the smaller of a
+/// key and the largest key is the key, so the comparator would have moved nothing.
+///
+/// **A fixed network, so two runs of one frame come out in one order.** Which comparators run is a
+/// function of `count` alone and never of what is in the keys.
+///
+/// The enumeration is the textbook one with `i` and `j` folded into the single index `l` a lane
+/// takes: `j` steps by `2k` from `k mod p` and `i` covers `k` from it, so `l mod 2k` lands in
+/// `[k mod p, k mod p + k)`, and the pairs of one stage are disjoint.
+void sortRun(Order run, uint first, uint count)
+{
+    const uint lane = gl_LocalInvocationID.x;
+
+    for (uint p = 1u; p < count; p *= 2u)
+    {
+        for (uint k = p; k >= 1u; k /= 2u)
+        {
+            const uint span = 2u * k;
+            const uint from = k % p;
+
+            for (uint l = lane; l + k < count; l += SPRITE_SHADE_WORKGROUP)
+            {
+                const uint within = l % span;
+                if (within < from || within >= from + k)
+                    continue;
+
+                if (l / (2u * p) != (l + k) / (2u * p))
+                    continue;
+
+                const uint64_t low = run.at[first + l];
+                const uint64_t high = run.at[first + l + k];
+                if (low > high)
+                {
+                    run.at[first + l] = high;
+                    run.at[first + l + k] = low;
+                }
+            }
+
+            // **`barrier` alone would not publish these**, and the keys are in a buffer. It is an
+            // execution barrier whose memory semantics name workgroup storage and nothing else, so
+            // a stage's swaps would reach the next stage's reads by the hardware's good manners
+            // rather than by the specification. `groupMemoryBarrier` is what names the rest.
+            groupMemoryBarrier();
+            barrier();
+        }
+    }
+}
+
+void main()
+{
+    const uint emitter = gl_WorkGroupID.x / SPRITE_SHADE_LIGHTS;
+    const uint light = gl_WorkGroupID.x % SPRITE_SHADE_LIGHTS;
+    if (emitter >= shade.mEmitterCount)
+        return;
+
+    const GpuEmitter held = Emitters(shade.mEmitters).at[emitter];
+
+    // An emitter nothing shades keeps the nought its sprites were built with.
+    if (!spriteShadeWants(held))
+        return;
+
+    const vec3 toward = light == SPRITE_SHADE_SUN ? shade.mToSun : vec3(0.0, 0.0, 1.0);
+    const vec3 across = squareTo(toward);
+    const vec3 upward = cross(toward, across);
+
+    const uint lane = gl_LocalInvocationID.x;
+    Sprites sprites = Sprites(shade.mSprites);
+
+    // **The two lights of one emitter never write the same word**, which is what lets both run at
+    // once: light `l`'s keys are the whole sprite table over again at `l * mCount`.
+    Order run = Order(shade.mOrder);
+    const uint first = light * shade.mCount + held.mFirst;
+
+    float largest = 0.0;
+    for (uint at = lane; at < held.mCount; at += SPRITE_SHADE_WORKGROUP)
+    {
+        const GpuSprite sprite = sprites.at[held.mFirst + at];
+        const vec3 local = sprite.mPosition - held.mCentre;
+
+        run.at[first + at] = (uint64_t(sortableDepth(dot(local, toward))) << 32) | uint64_t(at);
+        largest = max(largest, sprite.mRadius);
+    }
+
+    radii[lane] = largest;
+    grid[lane] = 0.0;
+
+    // The keys above are a buffer's and the two arrays are shared, so this has to publish both —
+    // `sortRun` says why an execution barrier is not enough on its own.
+    groupMemoryBarrier();
+    barrier();
+
+    for (uint stride = SPRITE_SHADE_WORKGROUP / 2u; stride > 0u; stride /= 2u)
+    {
+        if (lane < stride)
+            radii[lane] = max(radii[lane], radii[lane + stride]);
+
+        barrier();
+    }
+
+    const float cell
+        = max(2.0 * held.mReach / float(SPRITE_SHADE_CELLS), radii[0] / SPRITE_SHADE_LARGEST_IN_CELLS);
+    if (!(cell > 0.0))
+        return;
+
+    sortRun(run, first, held.mCount);
+
+    const float inverseCell = 1.0 / cell;
+    const uint cx = lane % SPRITE_SHADE_CELLS;
+    const uint cy = lane / SPRITE_SHADE_CELLS;
+
+    for (uint step = 0u; step < held.mCount; ++step)
+    {
+        const uint at = uint(run.at[first + step] & 0xFFFFFFFFul);
+        const GpuSprite sprite = sprites.at[held.mFirst + at];
+        const vec3 local = sprite.mPosition - held.mCentre;
+
+        // Cell centres sit at whole numbers, so the reach's edge is half a cell outside the first.
+        const float x = (dot(local, across) + held.mReach) * inverseCell - 0.5;
+        const float y = (dot(local, upward) + held.mReach) * inverseCell - 0.5;
+
+        // **Read before anything is laid down, and written by one lane.** What a sprite reads is
+        // what the sprites nearer the light left, so the read has to finish before this sprite's
+        // own disc reaches a cell — which is what the barrier under it is for.
+        if (lane == 0u)
+        {
+            const float layers = readAt(x, y);
+
+            if (light == SPRITE_SHADE_SUN)
+                sprites.at[held.mFirst + at].mSunLayers = layers;
+            else
+                sprites.at[held.mFirst + at].mSkyLayers = layers;
+        }
+
+        const float taken = coverage(cx, cy, x, y, sprite.mRadius * inverseCell, sprite.mAlpha);
+        barrier();
+
+        grid[lane] += taken;
+        barrier();
+    }
+}

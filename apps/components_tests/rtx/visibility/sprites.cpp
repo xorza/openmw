@@ -554,7 +554,7 @@ namespace Rtx::Testing
         ///
         /// Two puffs of one emitter, the second a hundred units toward a sun from the side and sixty
         /// in radius, so the first's path to the sun runs through it and the eye's ray to the first
-        /// does not. `SpriteShade` counts one whole layer, and the shader thins the sun by the
+        /// does not. `spriteshade.h` counts one whole layer, and the shader thins the sun by the
         /// texture's mean alpha — its one texel, `128/255` — to `0.49804` of the card's worth from
         /// the side. Nothing stands over either, so the sky is untouched, and the ambient is nought.
         TEST_F(RtxVisibilityTest, aPuffInTheShadeOfItsOwnEmitterIsThinnedByOneLayer)
