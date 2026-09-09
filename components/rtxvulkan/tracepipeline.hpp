@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -17,14 +18,28 @@ namespace Rtx
 
     /// Which shader stands at each record of a trace's shader binding table.
     ///
-    /// One record apiece, in the order given: a hit object naming index `i` runs entry `i` of
-    /// `mHit`, and a missed one runs entry `i` of `mMiss`. Which index an instance names is the
-    /// shader-table record offset its acceleration structure carries.
+    /// One miss record apiece, in the order given: a missed hit object naming index `i` runs entry
+    /// `i` of `mMiss`. A closest-hit shader stands behind `mHitRecordsPerShader` records in turn, so
+    /// a hit object naming index `i` runs entry `i / mHitRecordsPerShader` of `mHit`. Which index an
+    /// instance names is the shader-table record offset its acceleration structure carries, plus
+    /// whatever the trace adds.
     struct TraceShaders
     {
         std::filesystem::path mRaygen;
         std::span<const std::filesystem::path> mMiss;
         std::span<const std::filesystem::path> mHit;
+
+        /// How many records each closest-hit shader stands behind.
+        std::uint32_t mHitRecordsPerShader = 1;
+
+        /// What each hit record carries after its handle, one block per record in record order,
+        /// every block the same size — or nothing, where a record is its handle alone. The shader a
+        /// record names reads its block through `shaderRecordEXT`.
+        ///
+        /// **Data in the record and not in the payload**, because a record is read by the shader the
+        /// hit object names, whatever sorted the threads in between. `Shaders::HitRecord` says what
+        /// the trace found out about the payload.
+        std::span<const std::byte> mHitRecordData;
 
         /// The one any-hit shader every hit group names, or nothing where traversal has no
         /// candidate to ask about.
@@ -37,11 +52,10 @@ namespace Rtx
 
     /// A ray tracing pipeline and the shader binding table a launch reads it out of.
     ///
-    /// **A launch and not a dispatch, for two things.** `reorderThreadEXT` is defined for ray
-    /// generation and for no other stage, and a hit object executed there runs a shader picked by
-    /// traversal rather than by a branch — so the divergent half of a trace becomes one small
-    /// program per kind of hit instead of one kernel holding the union of all of them, each carrying
-    /// only its own live state.
+    /// **A launch and not a dispatch, because of what a hit object is.** One executed in a ray
+    /// generation shader runs a shader picked by traversal rather than by a branch — so the
+    /// divergent half of a trace becomes one small program per kind of hit instead of one kernel
+    /// holding the union of all of them, each carrying only its own live state.
     ///
     /// Nothing recurses: the shaders a launch invokes trace again with inline ray queries, which
     /// cost the pipeline's own stack nothing.

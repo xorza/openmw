@@ -44,14 +44,14 @@ namespace Rtx
         VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR mPositionFetch{};
         VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR mRayTracingMaintenance1{};
 
-        /// What lets the trace be a launch rather than a dispatch. It traces no ray through the
-        /// pipeline — every ray here is still an inline query — and a reorder may only be asked for
-        /// from a ray generation shader, which only a pipeline has.
+        /// What lets the trace be a launch rather than a dispatch: the eye's ray goes through the
+        /// pipeline to a closest-hit shader traversal picked, and every ray after it is an inline
+        /// query inside that shader.
         VkPhysicalDeviceRayTracingPipelineFeaturesKHR mRayTracingPipeline{};
 
-        /// The reorder itself: what lets a ray generation shader sort its threads on the hit object
-        /// traversal answered, before the shader that object names is run. `Rtx::Reorder` is what
-        /// asks for one, and it asks for none by default because every form of it measured slower.
+        /// Hit objects: what lets the launch trace a ray, hold what it found, and run the shader it
+        /// names as two calls. Nothing here asks the extension to sort, and
+        /// `.notes/rtx/gpu-performance.md` says what measuring that found.
         VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT mInvocationReorder{};
 
         /// What lets the driver be asked how it compiled a pipeline: registers a thread, spills,
@@ -79,8 +79,7 @@ namespace Rtx
         /// against. `TracePipeline` is what reads them.
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR mRayTracingPipeline{};
 
-        /// Whether the driver reorders when it is asked to, or takes the hint and ignores it. A
-        /// device that ignores it is refused: this tree keeps no path for one.
+        /// The largest record index a hit object may name, which `openmw-rtxtool info` prints.
         VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT mInvocationReorder{};
 
         /// The device's heaps and memory types. **Its own query and not part of the chain above**,

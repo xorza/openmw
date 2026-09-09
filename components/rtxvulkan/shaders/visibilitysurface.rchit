@@ -13,8 +13,7 @@
 //
 // **One of the three the trace's hit table names, picked by traversal and not by a branch.**
 // `SceneAcceleration::placeRow` writes each instance's shader-table offset from its material kind,
-// so the hardware follows an index to get here — and the reorder that ran just before this put the
-// lanes of the warp on the same one.
+// so the hardware follows an index to get here.
 //
 // **`resolve` is told no terrain can arrive**, which compiles the layer stack's loop and the four
 // tables it walks out of this shader. That is the register relief Stage 2 is for.

@@ -121,9 +121,6 @@ namespace Rtx
             EXPECT_EQ(onTuring.mObstacle, "") << "an RTX 2060 was refused";
             EXPECT_EQ(onAda.mObstacle, "") << "an RTX 4090 was refused";
 
-            EXPECT_FALSE(onTuring.mReorders);
-            EXPECT_TRUE(onAda.mReorders);
-
             // 246 MiB against the whole of video memory, which is the difference resizable BAR
             // makes. `DeviceProfile::mHostWrittenBytes` says what the figure then decides.
             EXPECT_EQ(onTuring.mHostWrittenBytes, 257949696ull);

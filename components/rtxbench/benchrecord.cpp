@@ -190,7 +190,6 @@ namespace Rtx
              << '\n'
              << std::format(R"(  "upscale": "{}",)", upscaleName(header.mUpscale)) << '\n'
              << std::format(R"(  "preset": "{}",)", presetName(header.mPreset)) << '\n'
-             << std::format(R"(  "reorder": "{}",)", reorderName(header.mReorder)) << '\n'
              << std::format(R"(  "frames": {}, "warmup": {}, "validation": {},)", header.mMeasured, header.mWarmup,
                     header.mValidating)
              << '\n'

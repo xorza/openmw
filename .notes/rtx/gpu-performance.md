@@ -160,37 +160,144 @@ no divergence to recover — the sort's floor, showing on the smallest trace in 
 holding every kind at 7 to 17 per cent, the same sort in front of a shader per kind at 12 to 25, and
 a reorder at the bounce at 20 to 30. This is the fourth reading and it agrees with all three.
 
-### And it does not draw the same picture
+### The cost is the call, and the sort adds nothing to it
 
-A sort regroups threads; it must not change what they compute. It does.
+Taken at `64d3d638b2`. A build whose `hint` mode asks `reorderThreadEXT(0u, 0)` — a reorder point
+with no key at all — against `off`, then the real two-bit `hint` against `off`, three rounds each,
+interleaved, at `seyda-neen-ship`. The `trace` zone, medians with the spread beside them.
 
-`verify --exposure=1 --upscale=off --filter=false`, which is the raw trace with no denoiser,
-`hint` against `off`: **five of twenty-two views differ**, worst 50 of 255 at
-`balmora-mages-guild`, on 0.00 to 0.27 per cent of the pixels. Three runs of `hint` against each
-other are bit-identical, so the sort is repeatable — it is simply not the same answer.
+| build | off | reorder | reorder − off | % |
+|---|---:|---:|---:|---:|
+| key of no bits | 1.67 (1.63–1.70) | 1.94 (1.90–2.03) | +0.27 | +16 |
+| the real two-bit hint | 1.66 (1.66–1.70) | 1.95 (1.90–1.96) | +0.29 | +17 |
 
-With the upscaler on, `hit` moves **eight of twenty-two views**, worst 16 of 255 on about a quarter
-of the pixels, the same eight every run. `hit` is the one mode that takes the shading payload
-through traversal — `lib/reorder.glsl` says so — so it differs by more than its sort.
+**A reorder with nothing to sort on costs what the sort costs.** The whole penalty is the reorder
+point's fixed price — live state saved and restored, and the launch's own tiling given up in front
+of eleven channel writes — and the sort adds nothing measurable on top of it.
 
-**A null control says none of this is noise**: six runs of `off` against each other are the same
-picture at all twenty-two views.
+### And there is almost nothing for the sort to recover
+
+An instrument in the launch: `subgroupAllEqual` over the key the sort sees — the shader-table
+record and the two flag bits — counted per warp before and after
+`reorderThreadEXT(object, flags, 2)`, and printed through the hit counter as the share of pixels
+whose warp already holds one key.
+
+| place | before the sort | after |
+|---|---:|---:|
+| seyda-neen-ship | 88.8 | 99.8 |
+| seyda-neen-shore | 94.2 | 99.9 |
+| vivec | 98.6 | 99.8 |
+| balmora-mages-guild | 100 | 100 |
+| arkngthand | 100 | 100 |
+
+**The launch is already 89 to 100 per cent coherent on the key before anyone sorts it.** That is
+the whitepaper's own "primary rays" case, stated as a number: the sort can touch a tenth of the
+warps at the ship and none in a room, and it moves them all to spend a fifth of the trace. What
+diverges in this frame — the bounce, the lamp reservoir, the water's two traversals, the cutout loop
+inside traversal — is not in the key and is out of a sort's reach.
+
+**And `Reorder::Hint` carries no shader in its key at all.** The hint-only overload has no hit
+object, so it sorts on the two flag bits alone; `lib/reorder.glsl` says the record's shader comes
+first, which is true of `Hit` and `Both` and not of the mode the comment stands over.
+
+### It does not draw the same picture, and the reason is the payload
+
+A sort regroups threads; it must not change what they compute. It does, and the cause is now
+found. `verify --exposure=1 --upscale=off --filter=false` over the twenty-two views, at
+`64d3d638b2`:
+
+| against `off` | views moved | worst | most pixels |
+|---|---:|---:|---:|
+| `hint` | 5 | 50 of 255 | 0.27 % at `balmora-mages-guild` |
+| `both` | 5 | 54 | 0.27 % |
+| `hit` | 5 | 54 | 0.27 % |
+
+`hit` and `both` are bit-identical to each other, so the earlier reading that `hit` "differs by
+more than its sort" was wrong. `hint` differs from both of them on the same five views. Every mode
+is repeatable against itself and six runs of `off` agree, so none of it is noise.
+
+**What moves is the see-through surfaces.** A build that paints every pixel whose eye ray lands on
+a surface with opacity under one, read against the moved pixels of the five views:
+
+| view | moved | of which see-through | within two pixels of one |
+|---|---:|---:|---:|
+| balmora-mages-guild | 5582 | 5507 | 5545 |
+| ald-ruhn | 1665 | 1652 | 1654 |
+| balmora | 5 | 4 | 4 |
+| seyda-neen-shore | 7 | 7 | 7 |
+| island-crossing-end | 3 | 3 | 3 |
+
+The pane path is the one place a closest-hit shader reads what the launch wrote into the payload:
+`mAsked`, which decides whether a pane is drawn as a pane or as the solid behind it, and which lamp
+sequence the layer draws from. Under `--albedo` the guild's window panes come back as the solid's
+albedo on 2.4 per cent of the frame, which is `ASK_BEHIND` read where the launch wrote nought.
+
+**The payload the launch writes does not reach the closest-hit shader when a sort stands in the
+shader.** Probes, all at `balmora-mages-guild`, `shot` unless said otherwise:
+
+- A per-pixel, per-frame signature written into the payload after the trace and before the execute,
+  checked by the closest-hit shader: wrong at 99.5 per cent of pixels under `hint`, `both` and `hit`,
+  right at every pixel under `off`. The same signature written back by the closest-hit shader and
+  checked by the launch is right under every mode — the return path is intact.
+- The production field itself: a closest-hit shader reading `mAsked` off the eye's own ray, which
+  the launch traces from `tmin` nought with `mAsked` nought, finds it nonzero at 99.5 per cent of
+  pixels under `hint` and `both` in the pipeline `shot` builds, and at none in the one `verify`
+  builds. So which pixels lose it is a property of the compiled variant and not of the sort.
+- Two fields written side by side: `hint` delivers the first and loses the second, `both` the
+  reverse, and a sort placed before the trace — with both fields written after it — loses both. A
+  sort placed after the last channel write delivers both on the eye's ray and still moves the panes,
+  so the peel's second execute loses one there.
+- The launch's own reads off the hit object after the sort — the distance, the instance, the final
+  opacity — are identical to `off` under every placement, so what the sort hands the launch is right
+  and what the execute hands the closest-hit shader is not.
+- Control: a reorder point with no key bits draws `off`'s picture exactly, and it still pays the
+  fixed cost above. Any key of one bit or more — the flags, a pixel's parity, a constant — draws the
+  moved one, and all three draw the same moved picture as each other.
+
+The whitepaper's promise is that "reordering only affects performance, not correctness", and the
+extension defines the fused calls as "equivalent" to the sequence. NVIDIA's own Vulkanised sample
+writes the payload between `reorderThreadEXT` and `hitObjectExecuteShaderEXT`, which is what this
+launch does. On driver 610.57.04 that write is what goes missing.
 
 **The determinism gate cannot see it.** `repeatable.sh` passes under every mode, because it walks
 `one-cell-walk` — which is one of the views that never moves — and forces `--upscale=off
 --filter=false`. A gate that misses a picture change in the one switch whose whole promise is that
 it changes nothing is a gap worth knowing about.
 
-### What follows
+### What followed — the layer moved into the shader binding table, and the picture holds
 
-The sort has lost four measurements on three arrangements, costs a fifth of the trace, and is not
-picture-neutral. It is off by default and folds away at compile time, so it costs nothing at runtime
-— what it costs is `components/rtx/reorder.hpp`, about half of `lib/reorder.glsl`, a specialization
-constant, a command-line option, a setting, a device-profile field, a throw and four static asserts.
+The one word the launch wrote into the payload now rides in the hit record instead. Each closest-hit
+shader stands behind `HIT_RECORD_LAYERS` records, one per layer of the peel; an instance's offset is
+its kind times that, the launch adds the layer it traces for as the record offset, and the shader
+reads `HitRecord::mLayer` through `shaderRecordEXT`. The payload flows outwards only. That is the
+extension's own custom-indexing pattern, and the sort is allowed to read the record.
 
-**As an instrument it is unsound as written**: a future re-measurement would compare two different
-pictures, which is the trap the micromap A/B fell into. Either the picture difference is found and
-fixed before the switch is trusted again, or the three modes go and the hit-object launch stays.
+**`verify` over the twenty-two views: `off` is bit-identical to what it drew before, and `hint`,
+`both` and `hit` are bit-identical to `off`.** The guild's albedo under `hint` matches `off` to the
+pixel, `repeatable.sh` walks its 360 frames identical, and the 599 `Rtx*` tests pass. The switch is
+an instrument again.
+
+**Remeasured with the picture held, the sort still loses.** Three rounds each, interleaved
+`off`, `hint`, `both`, `hit`, on a card at 72 °C under its power cap with the clock walking between
+1.7 and 2.1 GHz — so the spread is wider than the morning's readings and the medians are what to
+read.
+
+| place | off | hint | both | hit |
+|---|---:|---:|---:|---:|
+| seyda-neen-ship | 1.62 (1.59–1.86) | 1.97 (1.90–2.09) | 2.00 (1.96–2.17) | 1.92 (1.88–2.05) |
+| balmora-mages-guild | 1.36 (1.32–1.53) | 1.51 (1.45–1.53) | 1.43 (1.38–1.46) | 1.49 (1.38–1.51) |
+
+A tenth to a quarter of the trace, in the shape every earlier reading had. The sort has nothing to
+recover at the primary hit, and the fixed price of the call is what it costs. What would change the
+answer is the bounce traced and sorted from the launch with the primary channels already written,
+which is the arrangement every published win has and this frame does not.
+
+**So the three modes are gone.** `Rtx::Reorder`, the `REORDER` specialization constant, the
+`--reorder` option, the `reorder` setting, the device profile's flag and the sort's half of the
+launch macro were removed on the readings above; the hit-object launch, the extension it needs and
+the record per layer stay. The launch probe executes its one miss record now, in place of the
+reorder that used to read it. What a future reorder at the bounce needs is all still here: hit
+objects, a payload that flows one way, and a record the shader reads whatever stands in between.
 
 ## Finding 4 — the opacity micromap bake costs more than it buys, and it speckles distant foliage
 

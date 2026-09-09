@@ -154,14 +154,8 @@ namespace Rtx
             << pipeline.shaderGroupHandleAlignment << ", based " << pipeline.shaderGroupBaseAlignment << '\n'
             << "  max ray dispatch:             " << pipeline.maxRayDispatchInvocationCount
             << '\n'
-            // **Reported and not required.** Ada added the hardware; every earlier RTX card
-            // exposes the extension and reorders nothing, so a run that asks for a sort on one of
-            // those is refused by name and a run that does not is the same trace either way.
-            << "  reordering hint:              " << (mProfile.mReorders ? "reorder" : "none")
-            << '\n'
-            // **What a hit object may record and never execute**, which is the whole of what Stage 1
-            // asks of the shader table. The field arrived with the extension's revision 2, so a
-            // driver at revision 1 leaves it as it found it — printed rather than asserted against
+            // **What a hit object may name.** The field arrived with the extension's revision 2, so
+            // a driver at revision 1 leaves it as it found it — printed rather than asserted against
             // for that reason.
             << "  max record index:             " << reorder.maxShaderBindingTableRecordIndex << '\n';
 

@@ -363,6 +363,11 @@ namespace Rtx::Shaders
     /// see-through in it.
     const uint PEEL_LAYERS = 4u;
 
+    /// How many hit records each closest-hit shader stands behind: one for the eye's own hit and one
+    /// for each layer of the peel, so an instance's shader-table offset is its kind times this and a
+    /// trace adds the layer it is tracing for. `HitRecord` in `visibility.h` is what a record carries.
+    const uint HIT_RECORD_LAYERS = PEEL_LAYERS + 1u;
+
     /// A surface that is nowhere opaque, gathered as a depth along the ray rather than met.
     ///
     /// **Carried beside `MASK_SOLID` and not instead of it**, because a medium is still something a

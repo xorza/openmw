@@ -104,7 +104,6 @@ set(RTX_FILES
     reconstruction.hpp
     renderer.hpp
     renderprofile.hpp
-    reorder.hpp
     run.hpp
     runallocator.cpp
     runallocator.hpp

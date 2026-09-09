@@ -10,10 +10,14 @@
 // through `hitObjectIsHitEXT`, `hitObjectGetRayTMaxEXT` and `hitObjectGetInstanceCustomIndexEXT`,
 // so not one word here is spent on them.
 //
-// **Live state is what a reorder costs**, and this is the live state: twenty-six words, a hundred
-// and four bytes. The two fields that weigh most — the mirror a water pixel reflects and the
-// response an upscaler demodulates by — are each read by the tail and neither can be worked out
-// again from what is left.
+// **What crosses the execute is what it costs**, and this is it: twenty-five words, a hundred
+// bytes. The two fields that weigh most — the mirror a water pixel reflects and the response an
+// upscaler demodulates by — are each read by the tail and neither can be worked out again from
+// what is left.
+//
+// **Every word of it flows outwards.** The launch writes nothing here before an execute: what a
+// closest-hit shader is told, it reads off its shader-table record, and `Shaders::HitRecord` says
+// what measuring the other direction found.
 
 #include "shading.glsl"
 #include "traversal.glsl"
@@ -31,40 +35,9 @@
 /// runs never touches.
 #define RTX_TRAVERSAL_PAYLOAD 1
 
-/// The shader that ran was told it stands behind every layer the launch has left to peel.
-///
-/// **The launch peels `PEEL_LAYERS` of them and the one after that is a solid.** Without this a
-/// chit would look at its own opacity, find one more pane, and shade it as a pane however deep the
-/// stack went — so a launch that had run out of layers would draw a hole through the world rather
-/// than the surface standing in it.
-const uint ASK_BEHIND = 1u;
-
-/// Where the layer of the peel this hit belongs to sits in `mAsked`, above the flags.
-///
-/// **Which layer and not only whether**, because the layers of a stack shade beside each other:
-/// each opens a lamp reservoir, and a stack seeded alike would light every layer of a person from
-/// the one lamp. `paneSeed` is where those sequences come from.
-const uint ASK_LAYER_SHIFT = 1u;
-
-/// What the launch tells a shader about the layer it is tracing for.
-uint askForLayer(uint layer)
-{
-    return layer << ASK_LAYER_SHIFT;
-}
-
-/// Which layer of the peel the shader that reads this is standing at, counting the eye's own hit
-/// as nought.
-uint layerAsked(uint asked)
-{
-    return asked >> ASK_LAYER_SHIFT;
-}
-
 /// What the shader an execute ran hands back to the launch.
 struct VisibilityPayload
 {
-    /// Handed in by the launch: `ASK_BEHIND`, and the layer of the peel above it.
-    uint mAsked;
-
     /// What the surface sends back along the ray, before the pane, the water column, the air and
     /// the sprites the launch composites in front of it.
     vec3 mRadiance;

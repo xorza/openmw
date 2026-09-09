@@ -65,6 +65,16 @@ namespace Rtx
         /// order the shader declares them. The tables a hit reads are not here: `GpuTables` in the
         /// frame block says where they are. The channels the trace writes are not here either:
         /// `GBuffer` says why they have a set of their own.
+        /// What each hit record carries: for every closest-hit shader in turn, one record per layer
+        /// of the peel, which is how a shader is told which layer it stands at.
+        constexpr std::size_t sHitRecordCount = Shaders::HIT_SHADER_COUNT * Shaders::HIT_RECORD_LAYERS;
+        constexpr std::array<Shaders::HitRecord, sHitRecordCount> sHitRecords = [] {
+            std::array<Shaders::HitRecord, sHitRecordCount> records{};
+            for (std::size_t record = 0; record < records.size(); ++record)
+                records[record].mLayer = static_cast<std::uint32_t>(record % Shaders::HIT_RECORD_LAYERS);
+            return records;
+        }();
+
         constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> sBindings = [] {
             std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> declared{};
             declared[Shaders::BIND_SCENE] = VkDescriptorSetLayoutBinding{ Shaders::BIND_SCENE,
@@ -90,11 +100,6 @@ namespace Rtx
             return declared;
         }();
     }
-
-    static_assert(static_cast<std::uint32_t>(Reorder::Off) == Shaders::REORDER_OFF);
-    static_assert(static_cast<std::uint32_t>(Reorder::Hit) == Shaders::REORDER_HIT);
-    static_assert(static_cast<std::uint32_t>(Reorder::Hint) == Shaders::REORDER_HINT);
-    static_assert(static_cast<std::uint32_t>(Reorder::Both) == Shaders::REORDER_BOTH);
 
     // **The hit table is the material kinds, in their own order.** Traversal reads an instance's
     // shader-table offset to pick the shader, and `SceneAcceleration::placeRow` writes that offset
@@ -144,7 +149,7 @@ namespace Rtx
 
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
         VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-        bool countHits, bool countCrossings, Reorder reorder)
+        bool countHits, bool countCrossings)
         : mDevice(device)
         , mBlueNoise(
               uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
@@ -152,7 +157,6 @@ namespace Rtx
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mCountHits(countHits ? 1u : 0u)
         , mCountCrossings(countCrossings ? 1u : 0u)
-        , mReorder(reorder)
         , mChannelLayout(channelLayout.getHandle())
         , mVolumeLayout(volumeLayout.getHandle())
         , mDepthModule(shaderDirectory / "fogdepth.comp.spv")
@@ -218,13 +222,10 @@ namespace Rtx
                     const bool volume = wanted[at].mVolume;
 
                     // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
-                    // The volume traces no primary ray and reorders nothing, so it counts none and
-                    // sorts none whatever the build asked for; every other constant it takes is the
-                    // tuple's own.
-                    const std::array<std::uint32_t, 6> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
-                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u,
-                        volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder),
-                        volume ? 0u : mCountCrossings };
+                    // The volume traces no primary ray, so it counts none whatever the build asked
+                    // for; every other constant it takes is the tuple's own.
+                    const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, volume ? 0u : mCountCrossings };
 
                     if (volume)
                         mScatterPipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
@@ -236,6 +237,8 @@ namespace Rtx
                                     .mRaygen = mRaygenModule,
                                     .mMiss = mMissModules,
                                     .mHit = mHitModules,
+                                    .mHitRecordsPerShader = Shaders::HIT_RECORD_LAYERS,
+                                    .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
                                     .mAnyHit = mAnyHitModule,
                                 },
                                 variant.describe("visibility"), specialization);

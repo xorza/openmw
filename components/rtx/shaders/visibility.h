@@ -31,39 +31,34 @@ namespace Rtx::Shaders
 
 #endif
 
-    /// What the trace does with the threads its launch handed it, before it resolves what they
-    /// found. `Rtx::Reorder` is the host's side of these, and `REORDER` in `lib/variants.glsl` is
-    /// what the shader reads them as.
+    /// How many closest-hit shaders the trace has: one for each `Rtx::MaterialKind`, in the order
+    /// that enum names them, each standing behind `HIT_RECORD_LAYERS` records of the shader binding
+    /// table.
     ///
-    /// **The launch order the device chose, and nothing asked of it.** This is what the trace was
-    /// before it became a ray generation shader, minus the strip permutation a dispatch could
-    /// carry and a launch cannot.
-    const uint REORDER_OFF = 0u;
+    /// **The record is the kind and the layer, and traversal follows it.** `SceneAcceleration::placeRow`
+    /// writes each instance's shader-table offset from its material's kind, so the hardware follows
+    /// an index to the shader rather than the shader reading a material row to find out what it is —
+    /// and the launch adds the layer it is tracing for, so the shader reads that off its record
+    /// rather than off the payload.
+    const uint HIT_SHADER_COUNT = 3u;
 
-    /// The hit object the traversal answered, and one reorder on it —
-    /// `reorderThreadEXT(hitObject)`. The sort is the shader that object names and where the hit is,
-    /// and no hint at all, which is where the sources say to start.
-    const uint REORDER_HIT = 1u;
-
-    /// A hint and not the hit object — `reorderThreadEXT(hint, bits)`.
+    /// What a hit record carries after its handle, which is everything a closest-hit shader is told
+    /// by the launch that invoked it.
     ///
-    /// **The one form that keeps the launch's own locality.** Sorting by where a hit is gives up the
-    /// screen-space neighbourhood a thread started in, which is what the eleven channels at the end
-    /// of this trace are written through. A hint carries what the shader is about to branch on
-    /// without carrying the place.
-    const uint REORDER_HINT = 2u;
-
-    /// Both — `reorderThreadEXT(hitObject, hint, bits)`.
-    const uint REORDER_BOTH = 3u;
-
-    /// How many closest-hit records the trace's shader binding table holds: one for each
-    /// `Rtx::MaterialKind`, in the order that enum names them.
-    ///
-    /// **The record is the kind, which is what makes the sort's first key free.**
-    /// `SceneAcceleration::placeRow` writes each instance's shader-table offset from its material's
-    /// kind, so traversal follows an index to the shader rather than the shader reading a material
-    /// row to find out what it is.
-    const uint HIT_RECORD_COUNT = 3u;
+    /// **Nothing crosses the payload inwards, and this is why.** A field the launch writes into the
+    /// payload before `hitObjectExecuteShaderEXT` is not what the closest-hit shader reads once a
+    /// `reorderThreadEXT` with a key stands anywhere in the launch — measured on driver 610.57.04,
+    /// where a per-pixel signature written that way arrived wrong at 99.5 per cent of pixels and the
+    /// answers written back arrived right at every one. No launch here sorts today, and the record
+    /// is what keeps that a choice: it is read by the shader the hit object names, through the index
+    /// traversal computed, whatever stands between the trace and the execute.
+    struct HitRecord
+    {
+        /// Which layer of the peel the shader is standing at, counting the eye's own hit as nought.
+        /// `PEEL_LAYERS` is the one past the last pane the launch peels, and a surface found there is
+        /// drawn as the solid it stands in for whatever its own opacity says.
+        uint mLayer;
+    };
 
     /// The sky, which is the only miss record the trace has.
     const uint MISS_RECORD_SKY = 0u;

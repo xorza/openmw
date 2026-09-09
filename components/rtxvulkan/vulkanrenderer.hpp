@@ -253,11 +253,6 @@ namespace Rtx
         /// where nothing reads it until later.
         FrameRing mRing{ mDevice, mPool, mCountHits, mCountCrossings };
 
-        /// What the trace this builds does with the threads its launch handed it. Fixed at
-        /// construction for the reason `mCountHits` is: it is a specialization constant, and the
-        /// pass compiles every kernel before a frame runs.
-        Reorder mReorder = Reorder::Off;
-
         /// What the frames are traced under. **Changing it rebuilds every target**, which is what
         /// `setUpscale` is for and why it is a setting rather than a frame option.
         Upscale mUpscale = Upscale::Off;

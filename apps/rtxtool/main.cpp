@@ -29,7 +29,6 @@
 #include <components/platform/platform.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
@@ -206,8 +205,6 @@ namespace RtxTool
                 = Rtx::sUpscaleNames.require(variables["upscale"].as<std::string>(), "an upscale mode");
             request.mProfile.mPreset
                 = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
-            request.mProfile.mReorder
-                = Rtx::sReorderNames.require(variables["reorder"].as<std::string>(), "a reorder mode");
             request.mProfile.mDelight = variables["delight"].as<float>();
             request.mProfile.mFilter = variables["filter"].as<bool>();
             request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();

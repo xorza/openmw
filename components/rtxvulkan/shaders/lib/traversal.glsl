@@ -211,9 +211,8 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 
 /// What a traversal answered, before anything at all is read off it.
 ///
-/// **Geometry the query alone can give**: no instance row, no mesh, no vertex and no material. That
-/// is what makes this the record a reorder is sorted on — everything a hit *leads to* is read after
-/// the threads have been regrouped, where the lanes of a warp are asking about the same instance.
+/// **Geometry the query alone can give**: no instance row, no mesh, no vertex and no material.
+/// Everything a hit *leads to* is read by `resolve`, off the tables this names.
 struct Hit
 {
     bool mHit;
@@ -239,10 +238,10 @@ struct Hit
     /// The vertex normal interpolated across the triangle, in world space — or nought where the
     /// mesh carries none, which `resolve` reads as "use the plane".
     ///
-    /// **Three floats where the transform they came through is nine.** Live state is what a reorder
-    /// costs, and the object-to-world matrix is only ever used to bring this one vector across, so
-    /// the vector is what survives the call and the matrix does not. Not unit: `resolve` normalises
-    /// it, and the uniform scale in the transform drops out there.
+    /// **Three floats where the transform they came through is nine.** The object-to-world matrix
+    /// is only ever used to bring this one vector across, so the vector is what a `Hit` carries and
+    /// the matrix is not. Not unit: `resolve` normalises it, and the uniform scale in the transform
+    /// drops out there.
     vec3 mShading;
 };
 
@@ -528,12 +527,11 @@ struct Surface
     float mTransmission;
 };
 
-/// What a hit is made of, once the threads that share one have been put in the same warp.
+/// What a hit is made of.
 ///
 /// **Everything a hit leads to and nothing the traversal already answered.** Every table this reads
-/// is keyed on where the ray landed — the instance, its mesh, its material, its textures — so this
-/// is the half of the old `trace` that a reorder is there to make coherent, and `Hit` is the half
-/// that has to survive the call.
+/// is keyed on where the ray landed — the instance, its mesh, its material, its textures — and
+/// `Hit` is what the traversal answered.
 ///
 /// @param layered whether ground that kept its layer stack can reach this hit. **A literal at every
 ///        call**, so the stack's loop and the four tables it walks are compiled out of a shader no

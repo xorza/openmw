@@ -372,10 +372,10 @@ Ray fogColumnRay(uvec2 column)
 FogSlice fogSliceAt(vec2 across, float depth)
 {
     // **The level named and not derived, which a ray generation shader has no way to derive.** An
-    // implicit fetch takes its gradient from the lanes beside this one, and after a reorder those
-    // are other pixels of the frame — so the volume came back sampled against a neighbour that is
-    // somewhere else, and the reorder that must not change the picture changed it everywhere. The
-    // volume has one level, so this is the level it always meant.
+    // implicit fetch takes its gradient from the lanes beside this one, and a launch does not promise
+    // those are neighbouring pixels — regrouped, the volume came back sampled against a neighbour
+    // that was somewhere else, and the picture changed everywhere. The volume has one level, so
+    // this is the level it always meant.
     const vec4 slice = textureLod(fogSlice, vec3(across, depth), 0.0);
     const float sunward = textureLod(fogSliceSunward, vec3(across, depth), 0.0).x;
 

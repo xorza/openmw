@@ -58,8 +58,8 @@ namespace Rtx
         /// What shading a hit on this instance takes — the material's own kind, carried on the
         /// placement so that traversal can reach it.
         ///
-        /// **Traversal picks the shader from this, which is what makes the reorder's first key
-        /// free.** The backend writes it into the instance's shader-table record offset, so the
+        /// **Traversal picks the shader from this.** The backend writes it into the instance's
+        /// shader-table record offset, so the
         /// hardware follows an index instead of the shader reading a material row to find out what
         /// it is. An instance places one mesh with one material, so the kind is a fact about the
         /// placement and not about the triangle met.

@@ -21,6 +21,13 @@
 #include "traversal.glsl"
 #include "water.glsl"
 
+/// What the launch told this shader, through the record the hit landed on: `HitRecord` in
+/// `visibility.h` says why it is here and not in the payload.
+layout(shaderRecordEXT, scalar) buffer HitRecordBlock
+{
+    HitRecord record;
+};
+
 /// What this stage's own builtins say the ray found, in the form `resolve` takes.
 ///
 /// **The cone is the camera's, because only the camera's rays reach this table.** The launch traces
@@ -60,20 +67,22 @@ uvec2 stagePixel()
 /// from the pixel and nothing else, so a pane and the wall behind it would bounce off the same
 /// numbers — which is the correlation `SEED_LAMPS_PANE` exists to keep out of the direct term, and
 /// there is no such seed to hand a bounce. One sequence per layer, because a stack of them shades
-/// beside itself as well: `ASK_LAYER_SHIFT` is how the launch says which layer this is, and
-/// `paneSeed` is the sequence that layer draws from.
+/// beside itself as well: the record says which layer this is, and `paneSeed` is the sequence that
+/// layer draws from.
+///
+/// **The launch peels `PEEL_LAYERS` of them and the one after that is a solid.** Without that a
+/// shader would look at its own opacity, find one more pane, and shade it as a pane however deep the
+/// stack went — so a launch that had run out of layers would draw a hole through the world rather
+/// than the surface standing in it.
 void answerSolid(inout VisibilityPayload answer, Surface surface)
 {
     const uvec2 pixel = stagePixel();
 
     answer.mOpacity = surface.mOpacity;
 
-    // The surface past the last layer the launch peels is shaded as the solid it stands in for,
-    // whatever its own opacity says. `ASK_BEHIND` is where that is argued.
-    if (isSeenThrough(surface.mOpacity) && (answer.mAsked & ASK_BEHIND) == 0u)
+    if (isSeenThrough(surface.mOpacity) && record.mLayer < PEEL_LAYERS)
     {
-        answer.mRadiance
-            = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + paneSeed(layerAsked(answer.mAsked)), PATH_SEEN);
+        answer.mRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + paneSeed(record.mLayer), PATH_SEEN);
         return;
     }
 

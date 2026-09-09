@@ -16,7 +16,7 @@ namespace Rtx
     /// **A table rather than a switch beside an if-chain.** An enum spelled by that pair states its
     /// strings twice, and the list of them is then restated a third time in an option's help, a
     /// fourth in a runtime error and a fifth in `settings-default.cfg`. Two of those copies drifted:
-    /// `--upscale` offered five of the six modes it accepts, and `[RTX] reorder` three of its four.
+    /// `--upscale` offered five of the six modes it accepts, and a second option three of its four.
     /// What a table adds over the pair is that the printable list is derived as well, so no prose
     /// can name a mode the parser has stopped taking or miss one it has gained.
     template <class Enum, std::size_t N>

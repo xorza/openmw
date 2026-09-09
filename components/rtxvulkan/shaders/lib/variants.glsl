@@ -41,22 +41,12 @@ layout(constant_id = 2) const bool HAS_MOONS = true;
 /// under. False takes the waves, the caustics and the whole underwater column out of a room.
 layout(constant_id = 3) const bool HAS_SEA = true;
 
-/// How the trace sorts its threads between the traversal and the shader that resolves what they
-/// found.
-///
-/// **Not one of the four above, because it is not a fact about the frame.** The tuple is what a
-/// dusk or a doorway moves; this is fixed for the life of the pass, the way `COUNT_HITS` is — the
-/// harness names it on the command line, so each form of the reorder is a build of one pipeline
-/// rather than a pipeline of its own. The `REORDER_*` values in `visibility.h` are what this takes,
-/// and `Rtx::Reorder` is the host's side of them.
-layout(constant_id = 4) const uint REORDER = REORDER_OFF;
-
 /// Whether the trace counts the see-through surfaces each primary ray crosses.
 ///
 /// **A whole traversal, and off wherever nobody asked.** `COUNT_HITS` costs an atomic on the pixels
 /// that hit something; this costs a second walk of the structure on every pixel, so it cannot ride
 /// with it — a benchmark under it would be measuring the census rather than the frame. `shot
 /// --crossings` is the one thing that turns it on.
-layout(constant_id = 5) const bool COUNT_CROSSINGS = false;
+layout(constant_id = 4) const bool COUNT_CROSSINGS = false;
 
 #endif

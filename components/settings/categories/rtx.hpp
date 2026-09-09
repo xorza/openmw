@@ -100,10 +100,6 @@ namespace Settings
         /// **Off, because it is a second traversal a pixel.** A frame time taken under it is a
         /// measurement of the census rather than of the picture.
         SettingValue<bool> mCountCrossings{ mIndex, "RTX", "count crossings" };
-
-        /// How the trace sorts its threads between the traversal and the shader that resolves what
-        /// they found: `off`, `hit`, `hint` or `both`. Off is what the others are measured against.
-        SettingValue<std::string> mReorder{ mIndex, "RTX", "reorder" };
     };
 }
 

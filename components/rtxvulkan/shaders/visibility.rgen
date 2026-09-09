@@ -15,8 +15,8 @@
 // together in — the water under the air, the air under the sprites, and each of the G-buffer
 // channels given what its reader was promised.
 //
-// **The traversal and the shading are two programs now, and the reorder stands between them.** The
-// launch traces a hit object, sorts the threads on the shader that object names, and then runs it;
+// **The traversal and the shading are two programs.** The launch traces a hit object and then runs
+// the shader that object names, which traversal picked off the instance's own shader-table offset;
 // what comes back is a payload rather than a `Surface`. So this shader holds no lamp reservoir, no
 // bounce, no layer stack and no sky — each of those is in the shader that needs it, carrying its own
 // registers. `lib/payload.glsl` is what crosses.
@@ -24,10 +24,6 @@
 // **What is left here is what belongs to the path rather than to the surface**: the layers the eye
 // looks through, the column of water in front of them, the air, the sprites, and the eleven
 // channels.
-
-// **Before anything is included.** `lib/reorder.glsl` declares calls only a ray generation shader
-// may make, and it is reached from a compute shader as well.
-#define RTX_REORDERING
 
 #include "camera.h"
 #include "scene.h"
@@ -39,7 +35,6 @@
 #include "lib/medium.glsl"
 #include "lib/payload.glsl"
 #include "lib/random.glsl"
-#include "lib/reorder.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
 #include "lib/sprites.glsl"
@@ -97,6 +92,32 @@ MediumAhead mediumAhead(uvec2 pixel, vec3 origin, vec3 direction, float air, flo
     return ahead;
 }
 
+/// Traces one ray and runs the shader the hit names.
+///
+/// **A macro because a `hitObjectEXT` may not cross a function boundary**, which is the same
+/// restriction `RTX_TRAVERSE` is written around for `rayQueryEXT`.
+///
+/// **Two payloads, because the two calls invoke different shaders.** Traversal reaches the any-hit
+/// shader, which tests a cutout and reads nothing; the execute reaches a closest-hit or the miss
+/// shader, which fills in the whole of what the frame's tail needs. The whitepaper names this
+/// exactly — an any-hit wants a smaller payload than a closest-hit, and giving it the larger one is
+/// register pressure paid for fields the invoked shader never touches.
+///
+/// **One call reached by every invocation.** A miss is a hit object like any other, so the sky's
+/// shader runs through the same execute as the solids'.
+///
+/// @param object filled in with what the ray found, and left readable: the launch takes the ray,
+///        the distance and the instance row back off it rather than carrying them.
+/// @param layer which layer of the peel this trace is for, counting the eye's own as nought. Added
+///        to the instance's shader-table offset, so the hit lands on the record that says so —
+///        `HitRecord` in `visibility.h` says why it travels that way and not in the payload.
+#define RTX_TRACE_AND_SHADE(object, from, tmin, along, mask, layer)                                         \
+    {                                                                                                       \
+        hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), (layer), 0u, MISS_RECORD_SKY,     \
+            (from), (tmin), (along), frame.mFar, RTX_TRAVERSAL_PAYLOAD);                                    \
+        hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                                     \
+    }
+
 void main()
 {
     // **The launch is the frame, so there is no tail to test for.** A dispatch covered the picture
@@ -106,21 +127,19 @@ void main()
 
     // **Traversal picks the shader and this shader never asks what it hit.** The instance carries
     // its material's kind as its shader-table offset, so the hit object comes back naming one of the
-    // three closest-hit records or the sky's miss record — and that name is the sort's first key.
+    // closest-hit records or the sky's miss record.
     //
-    // **The ray is built into the call and not kept.** Live state is what a reorder costs, and the
-    // sources say to spend it on nothing that can be had another way: the same rays the wavelet
-    // rebuilds come from the same `rayAt`, and the hit object hands them back below.
+    // **The ray is built into the call and not kept.** The same rays the wavelet rebuilds come from
+    // the same `rayAt`, and the hit object hands them back below.
     hitObjectEXT found;
-    answer.mAsked = 0u;
     {
         const Ray ray = rayAt(frame.mCamera, vec2(pixel));
-        RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, EYE_MASK)
+        RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, EYE_MASK, 0u)
     }
 
     // **Read back rather than carried across.** The hit object holds the ray it was traced with, so
-    // asking it costs nothing that was not already migrated with the sort — where six floats of the
-    // launch's own would have been spilled and restored beside it.
+    // asking it costs nothing where six floats of the launch's own would have been kept live across
+    // the execute.
     vec3 origin = hitObjectGetWorldRayOriginEXT(found);
     vec3 direction = hitObjectGetWorldRayDirectionEXT(found);
 
@@ -150,8 +169,8 @@ void main()
     // **A stack and not one layer, because a person is a stack.** A cuirass over a skirt over a leg
     // is three surfaces, and peeling only the nearest showed one of them faded and the two under it
     // at full strength — an actor under Chameleon wearing a solid body. `PEEL_LAYERS` is the budget
-    // and `ASK_BEHIND` is how the shader past it is told to draw a solid, so a deeper stack ends in
-    // the surface standing there rather than in a hole.
+    // and the record a trace past it lands on is how the shader there is told to draw a solid, so a
+    // deeper stack ends in the surface standing there rather than in a hole.
     //
     // **The census is taken rather than assumed** — `crossingsAlong`, under `COUNT_CROSSINGS`. Red
     // Mountain holds 205 translucent materials and its deepest ray crosses eight of them, and those
@@ -193,11 +212,9 @@ void main()
         paneThrough *= 1.0 - answer.mOpacity;
         peeledScattered = ahead.mScattered;
 
-        // The layer this trace is for, and — on the last one the budget allows — that whatever it
-        // finds is to be shaded as a solid.
-        const uint next = layer + 1u;
-        answer.mAsked = askForLayer(next) | (next == PEEL_LAYERS ? ASK_BEHIND : 0u);
-        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, EYE_MASK)
+        // The layer this trace is for, which on the last one the budget allows is the record that
+        // says whatever it finds is to be shaded as a solid.
+        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, EYE_MASK, layer + 1u)
 
         origin = hitObjectGetWorldRayOriginEXT(found);
         direction = hitObjectGetWorldRayDirectionEXT(found);

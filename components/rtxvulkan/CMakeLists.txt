@@ -138,7 +138,6 @@ set(RTX_SHADER_LIB
     shaders/lib/lights.glsl
     shaders/lib/payload.glsl
     shaders/lib/random.glsl
-    shaders/lib/reorder.glsl
     shaders/lib/reproject.glsl
     shaders/lib/sea.glsl
     shaders/lib/shading.glsl

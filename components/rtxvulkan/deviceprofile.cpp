@@ -76,8 +76,6 @@ namespace Rtx
         std::span<const std::string> extensions, std::span<const VkQueueFamilyProperties> queues)
     {
         DeviceProfile profile;
-        profile.mReorders = properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint
-            == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT;
         profile.mHostWrittenBytes = hostWrittenBytes(properties.mMemory);
 
         const std::optional<std::uint32_t> family = findQueueFamily(queues);

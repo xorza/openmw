@@ -16,11 +16,11 @@ namespace Rtx
     /// **Every question about the card is asked here and nowhere else.** A check spelled at the
     /// place that needs the answer is a check nothing can test without the hardware, and this fork
     /// targets cards nobody here owns: `profileOf` is a function of the device's own answers, so a
-    /// test hands it an RTX 2060's heaps and reordering hint and asks what the renderer would do.
+    /// test hands it an RTX 2060's heaps and asks what the renderer would do.
     ///
-    /// **A number the device states is not a decision.** The properties say the reordering hint is
-    /// `NONE` and that the host-visible heap is 246 MiB; what this says is that a sort buys nothing
-    /// and how much room a `Buffer::hostWritten` has. The difference is the whole point of the type.
+    /// **A number the device states is not a decision.** The properties say the host-visible heap
+    /// is 246 MiB; what this says is how much room a `Buffer::hostWritten` has. The difference is
+    /// the whole point of the type.
     struct DeviceProfile
     {
         /// What stops this renderer running here, named, or empty where nothing does.
@@ -30,14 +30,6 @@ namespace Rtx
 
         /// The queue family that can do everything this renderer submits.
         std::uint32_t mQueueFamily = 0;
-
-        /// Whether asking for a reorder does anything.
-        ///
-        /// **A device that answers `NONE` is not refused.** Ada added the hardware; Turing and
-        /// Ampere expose the extension and reorder nothing, so the calls compile and cost what a
-        /// call costs. `Rtx::Reorder` is off by default because every mode measured slower even on
-        /// the hardware that has it, so what this gates is a run that asked for one by name.
-        bool mReorders = false;
 
         /// The largest heap carrying memory the host writes into and the device reads.
         ///

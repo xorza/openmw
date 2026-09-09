@@ -11,7 +11,6 @@
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/reorder.hpp>
 #include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
@@ -133,7 +132,6 @@ namespace Rtx
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
         , mCountCrossings(options.mCountCrossings)
-        , mReorder(options.mReorder)
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
@@ -157,15 +155,6 @@ namespace Rtx
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
-        // **A sort the hardware will not do is refused by name, and the device is not.** Ada added
-        // the reordering hardware; every earlier RTX card exposes the extension, answers `NONE` and
-        // reorders nothing, so the call costs what a call costs and buys what the hint says. Off is
-        // the default and measured the fastest even on hardware that reorders, so this stops a run
-        // that asked for a sort from quietly getting none.
-        if (mReorder != Reorder::Off && !mDevice.getPhysicalDevice().getProfile().mReorders)
-            throw Unsupported("this device answers that it reorders nothing, so a reorder mode of "
-                + std::string(reorderName(mReorder)) + " would sort no threads");
-
         // Before the first targets, because what to trace at is its answer and not ours.
         if (mUpscale != Upscale::Off)
             startUpscaler();
@@ -505,7 +494,7 @@ namespace Rtx
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
-                mChannelLayout, mFogVolumeLayout, mCountHits, mCountCrossings, mReorder);
+                mChannelLayout, mFogVolumeLayout, mCountHits, mCountCrossings);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 

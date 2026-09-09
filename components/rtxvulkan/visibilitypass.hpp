@@ -9,7 +9,6 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/reorder.hpp>
 #include <components/rtx/shaders/visibility.h>
 
 #include "buffer.hpp"
@@ -130,13 +129,9 @@ namespace Rtx
         /// @param countCrossings whether it also counts the see-through surfaces each of those rays
         ///        crosses. A second traversal a pixel, so it is a switch of its own and is off
         ///        wherever a frame time is being taken.
-        /// @param reorder how the trace sorts the threads its launch handed it, between the
-        ///        traversal and the shader that resolves what it found. Fixed for the life of the
-        ///        pass, the way `countHits` is: it is a decision about the build and not about what
-        ///        is being looked at.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-            bool countHits, bool countCrossings, Reorder reorder);
+            bool countHits, bool countCrossings);
 
         VisibilityPass(const VisibilityPass&) = delete;
         VisibilityPass& operator=(const VisibilityPass&) = delete;
@@ -224,9 +219,6 @@ namespace Rtx
         std::uint32_t mCountHits = 0;
         std::uint32_t mCountCrossings = 0;
 
-        /// The same, for what the launch is asked to do with its threads.
-        Reorder mReorder = Reorder::Off;
-
         /// The second of the two sets bound after the pushed one, which the renderer owns for its
         /// whole life. The first is the scene's and arrives with the frame — `mTextureLayout`.
         VkDescriptorSetLayout mChannelLayout = VK_NULL_HANDLE;
@@ -238,14 +230,14 @@ namespace Rtx
         /// Where the compiled modules are, kept because a variant is compiled long after
         /// construction. The trace's are one launch's worth: the ray generation shader, the one
         /// any-hit shader every hit group names, the sky's miss shader, and one closest-hit shader
-        /// per `MaterialKind` in that enum's own order.
+        /// per `MaterialKind` in that enum's own order, each behind a record per layer of the peel.
         std::filesystem::path mDepthModule;
         std::filesystem::path mScatterModule;
         std::filesystem::path mIntegrateModule;
         std::filesystem::path mRaygenModule;
         std::filesystem::path mAnyHitModule;
         std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> mMissModules;
-        std::array<std::filesystem::path, Shaders::HIT_RECORD_COUNT> mHitModules;
+        std::array<std::filesystem::path, Shaders::HIT_SHADER_COUNT> mHitModules;
 
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;

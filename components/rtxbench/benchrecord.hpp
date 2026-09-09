@@ -11,7 +11,6 @@
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 
 #include "frametimes.hpp"
@@ -125,7 +124,6 @@ namespace Rtx
         FrameExtents mExtents;
         Upscale mUpscale = Upscale::Off;
         Preset mPreset = Preset::D;
-        Reorder mReorder = Reorder::Off;
 
         std::uint32_t mMeasured = 0;
         std::uint32_t mWarmup = 0;

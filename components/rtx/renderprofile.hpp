@@ -3,7 +3,6 @@
 #include <optional>
 
 #include "reconstruction.hpp"
-#include "reorder.hpp"
 #include "upscale.hpp"
 
 namespace Rtx
@@ -23,7 +22,6 @@ namespace Rtx
     {
         Upscale mUpscale = Upscale::Off;
         Preset mPreset = Preset::D;
-        Reorder mReorder = Reorder::Off;
 
         /// Whether the trace counts the see-through surfaces each primary ray crosses.
         bool mCountCrossings = false;

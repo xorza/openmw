@@ -13,7 +13,6 @@
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/reconstruction.hpp>
-#include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 
 #include "framerequest.hpp"
@@ -179,24 +178,6 @@ namespace RtxTool
                         "against the unupscaled path needs. A reference cannot be built through a "
                         "denoiser",
                 Rtx::sUpscaleNames.list())
-                .c_str());
-
-        option(sFramed, "reorder",
-            bpo::value<std::string>()->default_value(std::string(Rtx::reorderName(byDefault.mProfile.mReorder))),
-            std::format("how the trace sorts its threads between the traversal and the shader that resolves "
-                        "what it found: {}. Shader Execution Reordering regroups a warp so that "
-                        "its lanes are about to run the same shader on the same data. `hit` sorts on the hit "
-                        "object the traversal answered, `hint` sorts on a coherence hint instead and so keeps "
-                        "the launch's own locality, and `both` is the two together. The shader a hit object "
-                        "names is picked by traversal either way, so the frame is split across a closest-hit "
-                        "shader per material kind whatever this says. Off by default because off is faster here: "
-                        "every form of the call costs 7 to 17 percent at each view of the default suite and buys "
-                        "nothing back, since the trace ends in eleven channel writes laid out along the launch's "
-                        "own neighbourhood and a sort is what gives that neighbourhood up. It also moves the "
-                        "picture on a handful of pixels rather than on none: the call is a barrier the driver "
-                        "rebuilds the code around, and one bounce sample and one lamp draw a pixel turn a "
-                        "last-bit difference into a different lamp",
-                Rtx::sReorderNames.list())
                 .c_str());
 
         option(sFramed, "preset",

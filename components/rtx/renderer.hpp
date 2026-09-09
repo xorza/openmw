@@ -19,7 +19,6 @@
 #include "memoryreport.hpp"
 #include "reconstruction.hpp"
 #include "renderprofile.hpp"
-#include "reorder.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
 #include "texturedata.hpp"
@@ -139,16 +138,6 @@ namespace Rtx
         /// that hit something; this is a second traversal on every pixel of the frame, so a run
         /// that left it on would be timing the census rather than the picture.
         bool mCountCrossings = false;
-
-        /// How the trace sorts its threads between the traversal and the shader that resolves what
-        /// they found.
-        ///
-        /// **Off, because off is faster.** The reorder costs this trace 7 to 17 percent at every
-        /// view of the default suite and buys nothing back, measured against the same launch with
-        /// the sort off. It is kept switchable because the sort is the one half of Stage 2 that can
-        /// be turned off: the split into a shader per material kind is what traversal does, and
-        /// nothing here decides it.
-        Reorder mReorder = Reorder::Off;
     };
 
     /// One vertex of the GUI: a position already in clip space, a colour packed a byte a channel,
