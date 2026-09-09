@@ -10,8 +10,10 @@ on an RTX 4090 Laptop, and where the two disagree the disagreement is the findin
 **The short answer is that the tree has read this literature already.** The build flags, the
 compaction, the skybox, the two payloads, the shadow ray's early exit, the micromap subdivision cap
 and the reordering decision are all here, several of them with a measurement written beside them
-that this reading only re-confirms. Two things are open: **there is one queue**, and **a shipping
-title compacts the structures this tree decided not to**.
+that this reading only re-confirms. Three things are open: **there is one queue**, **a shipping title
+compacts the structures this tree decided not to**, and — found afterwards, by measuring rather than
+by reading — **the micromap bake and the any-hit read the same mask at different levels**, so the
+bake draws a different picture.
 
 ## Acceleration structures — this fork already follows the guidance
 
@@ -82,27 +84,38 @@ terms, and the two readings agree.
 bounce counts and several closest-hit shaders. If this fork's indirect light grows in that direction,
 reordering is the first thing to measure again — not before.
 
-## Opacity micromaps — three per cent here against fifty-five there
+## Opacity micromaps — three per cent here against fifty-five there, and a picture cost
 
 Indiana Jones took its `TraceMain` pass from 7.90 ms to 3.58 on an RTX 5080 with micromaps on, a
-55 per cent cut. This fork measured **3 per cent**: `trace` 1.54 ms against 1.59 at Seyda Neen, which
-carries 1369 cutout instances.
+55 per cent cut. This fork measures **three per cent** — 0.03 to 0.07 ms of the trace, order-balanced
+against two zero-cutout control places. Finding 4 of `.notes/rtx/gpu-performance.md` holds the table.
 
 The mechanism explains the gap. Micromaps let the traversal unit decide a micro-triangle is opaque or
 transparent without calling an any-hit shader. The win is therefore proportional to **how much of
 the frame is any-hit invocations**, and that is largest in dense foliage under a path tracer casting
-many rays. Seyda Neen's deck is not that, and this fork's trace is one dispatch of mostly primary
-rays.
+many rays. This fork's trace is one dispatch of mostly primary and shadow rays, and vanilla
+Morrowind has no dense foliage: a survey of twenty-four exterior cells across five regions found the
+Ascadian Isles farmland the thickest at 3641 cutout instances, against 2628 at the corpus's
+`seyda-neen-shore` — a difference of degree and not of kind.
 
-**And the tree has already read this source and answered it.** Indiana Jones forces the two-state
+**And here the bake is not free of the picture.** `SceneAcceleration::placeRow` leaves a micromapped
+row opaque, so a leaf commits without reaching the any-hit at all. The bake decides a microtriangle
+from the mask at level zero; the any-hit reads the mask through the ray's cone. Where a leaf card is
+far enough that the cone reads a coarser mip, the micromap keeps every small hole the finest level
+holds and the cone closes them. **Eighteen views of twenty-two draw a different frame**, and the
+difference is a scatter of pinholes through distant foliage — the speckle `candidateStops` was
+written to avoid.
+
+**The tree had already read this source and answered part of it.** Indiana Jones forces the two-state
 approximation for its indirect rays with `gl_RayFlagsForceOpacityMicromap2StateEXT`, worth a further
 5 per cent there. `lib/traversal.glsl` records measuring exactly that here: five microseconds off
 `air` on every view, and two hundred *onto* the trace at Vivec, "whose banners and lattices the
 micromap does nothing for". The subdivision cap cites the same source's number, and
 `MICROMAP_TEXEL_BUDGET` is the size gate the source keeps as a 0.5 MB skip.
 
-**So the honest reading is that micromaps are cheap insurance here rather than a win**, and the place
-to re-read them is a cell with far more foliage than a dock — which the corpus does not yet hold.
+**So the honest reading was that micromaps here are a picture decision that happens to save three
+per cent**, and the fork took the decision: the bake is removed and every cutout reaches the any-hit,
+whose cone-filtered read is the answer `candidateStops` was written to give.
 
 ## Ray Reconstruction — the press figure and the measurement answer different questions
 
@@ -156,18 +169,23 @@ early out for the first thing that stops the ray.
 
 ## What to check next in this tree, in order
 
-1. **Price a second queue for the acceleration-structure work.** 1.5 ms a frame on the island route's
-   arrival frames, and every source says it can be hidden almost completely. Turing is the floor, so
-   the measurement has to be taken there too.
-2. **Settle whether a refitted structure can be compacted.** A shipping title says yes and took
+1. ~~Make the micromap bake answer the question the any-hit answers.~~ **Done by removing the
+   bake.** It drew a different picture at eighteen views of twenty-two — pinholes through distant
+   foliage — for three per cent of the trace and 6.3 ms on every arrival frame. The subsystem and the
+   required extension are gone; Finding 4 of `.notes/rtx/gpu-performance.md` says what went and what
+   would bring it back.
+2. **Price a second queue for the acceleration-structure work.** 0.69 ms a frame of bottom-level
+   builds on the island route's arrival frames, and every source says it can be hidden almost
+   completely. The bake was the other 0.81 until item 1 removed it. Turing is the floor, so the
+   measurement has to be taken there too.
+3. **Settle whether a refitted structure can be compacted.** A shipping title says yes and took
    41 per cent of its vegetation memory back. This tree says no in a comment. One of the two is
    wrong, and the specification says which.
-3. **Read the twenty-one broad barriers.** Not because they are known to cost anything, but because
+4. **Read the twenty-one broad barriers.** Not because they are known to cost anything, but because
    nothing in this tree can currently say whether they do.
-4. **Leave reordering, micromaps, the ray flags and the build flags where they are.** Every one of
-   them was already measured here, and every reading agrees with what the sources say about a frame
-   shaped like this one. Re-measure reordering and micromaps when the indirect light grows more
-   bounces, or when the corpus gains a place thick with foliage.
+5. **Leave reordering, the ray flags and the build flags where they are.** Every one of them was
+   measured here, and every reading agrees with what the sources say about a frame shaped like this
+   one. Re-measure reordering when the indirect light grows more bounces.
 
 ## Sources
 

@@ -17,7 +17,7 @@ namespace Rtx
         {
             auto& [meshesAdded, materialsAdded, foldMs, sheets, composites, meshesReused, materialsReused, instances,
                 deformed, unskinned, emitters, sprites, skippedUnknown, undescribedSurfaces, undescribedGround,
-                spritelessEmitters, formats, unnamedFormat, skippedEmpty, lights, unbakeable, wornOtherwise]
+                spritelessEmitters, formats, unnamedFormat, skippedEmpty, lights, wornOtherwise]
                 = stats;
 
             // The three the sum owes something other than an unsigned addition, and so the three
@@ -28,7 +28,7 @@ namespace Rtx
 
             return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
                 &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedSurfaces,
-                &undescribedGround, &spritelessEmitters, &skippedEmpty, &lights, &unbakeable, &wornOtherwise };
+                &undescribedGround, &spritelessEmitters, &skippedEmpty, &lights, &wornOtherwise };
         }
     }
 

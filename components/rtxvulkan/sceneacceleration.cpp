@@ -15,7 +15,6 @@
 #include "gputimer.hpp"
 #include "graveyard.hpp"
 #include "result.hpp"
-#include "scenemicromaps.hpp"
 
 namespace Rtx
 {
@@ -24,8 +23,7 @@ namespace Rtx
         /// What a row counts as, kept beside it so the counts move with the row.
         constexpr std::uint8_t sRowCutout = 1;
         constexpr std::uint8_t sRowWater = 2;
-        constexpr std::uint8_t sRowMicromapped = 4;
-        constexpr std::uint8_t sRowMedium = 8;
+        constexpr std::uint8_t sRowMedium = 4;
 
         constexpr VkBufferUsageFlags sStorageUsage
             = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -66,13 +64,13 @@ namespace Rtx
             mPoses.settle(FrameSlot{ slot });
     }
 
-    void SceneAcceleration::build(Batch& batch, const SceneTables& scene, std::span<const InstanceRecord> records,
-        const SceneMicromaps& micromaps, Graveyard& graveyard)
+    void SceneAcceleration::build(
+        Batch& batch, const SceneTables& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
     {
         assert(mBottomLevel.size() == 0 && mTopLevel == VK_NULL_HANDLE && "a scene built twice");
 
         // The rows after the structures, because a row names the address of the structure it places.
-        mBottomLevel.build(batch, scene, mEveryMesh, micromaps, mPoses.at(FrameSlot{}), mIndices, graveyard);
+        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, graveyard);
         writeRows(records, {});
         prepareTopLevel(scene, FrameSlot{}, graveyard);
         recordTopLevel(batch.getCommands(), nullptr);
@@ -128,22 +126,19 @@ namespace Rtx
         writeGeometry(batch, scene, scene.mMeshes.getArrived());
     }
 
-    void SceneAcceleration::buildArrived(
-        Batch& batch, const SceneTables& scene, const SceneMicromaps& micromaps, GpuTimer* timer, Graveyard& graveyard)
+    void SceneAcceleration::buildArrived(Batch& batch, const SceneTables& scene, GpuTimer* timer, Graveyard& graveyard)
     {
         // **The builds a crossing brings, bracketed as one zone.** Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
 
-        mBottomLevel.build(
-            batch, scene, scene.mMeshes.getArrived(), micromaps, mPoses.at(FrameSlot{}), mIndices, graveyard);
+        mBottomLevel.build(batch, scene, scene.mMeshes.getArrived(), mPoses.at(FrameSlot{}), mIndices, graveyard);
 
         closeZone(timer, batch.getCommands());
     }
 
-    void SceneAcceleration::prepareRefit(
-        const SceneTables& scene, const FrameSlot slot, const SceneMicromaps& micromaps, Graveyard& graveyard)
+    void SceneAcceleration::prepareRefit(const SceneTables& scene, const FrameSlot slot, Graveyard& graveyard)
     {
         const std::span<const Index> deformed = scene.mMeshes.getDeformed();
 
@@ -189,15 +184,10 @@ namespace Rtx
             const Index index = deformed[i];
             const MeshRange& mesh = scene.mMeshes.getRows()[index];
 
-            // The same description the first build was given, micromap included, which is what
-            // makes the structure it produces the same size as the one already sitting at this
-            // mesh's offset — and what an update over a micromap requires.
-            const bool micromapped = mBottomLevel.isMicromapped(index);
-            if (micromapped)
-                mRefit.mMicromaps[i] = micromaps.describe(index);
-
-            mRefit.mGeometries[i] = describeTriangles(mesh, poses.addressOf(mesh.mBindOffset),
-                mIndices.addressOf(mesh.mIndices.mOffset), micromapped ? &mRefit.mMicromaps[i] : nullptr);
+            // The same description the first build was given, which is what makes the structure
+            // it produces the same size as the one already sitting at this mesh's offset.
+            mRefit.mGeometries[i]
+                = describeTriangles(mesh, poses.addressOf(mesh.mBindOffset), mIndices.addressOf(mesh.mIndices.mOffset));
 
             mRefit.mRanges[i] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = mesh.getTriangleCount() };
             mRefit.mRangePointers.push_back(&mRefit.mRanges[i]);
@@ -241,11 +231,11 @@ namespace Rtx
     }
 
     bool SceneAcceleration::place(const SceneTables& scene, std::span<const InstanceRecord> records,
-        std::span<const Index> changed, const SceneMicromaps& micromaps, const Placing& placing)
+        std::span<const Index> changed, const Placing& placing)
     {
         assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the rows for");
 
-        prepareRefit(scene, placing.mSlot, micromaps, placing.mGraveyard);
+        prepareRefit(scene, placing.mSlot, placing.mGraveyard);
 
         // **What this copy owes, and not what the scene moved.** The top level is built from this
         // copy of the rows, so what decides whether it has to be built again is whether those rows
@@ -355,8 +345,6 @@ namespace Rtx
         std::uint8_t& counted = mRowFlags[slot];
         if ((counted & sRowCutout) != 0)
             --mCounts.mCutout;
-        if ((counted & sRowMicromapped) != 0)
-            --mCounts.mMicromapped;
         if ((counted & sRowWater) != 0)
             --mCounts.mWater;
         if ((counted & sRowMedium) != 0)
@@ -398,26 +386,11 @@ namespace Rtx
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
         assert(record.mMesh < mBottomLevel.size() && "a row placing a mesh nothing built");
-        const bool micromapped = record.mCutout && !record.mTranslucent && mBottomLevel.isMicromapped(record.mMesh);
 
         // **The geometry is built opaque, so forcing is the whole of how either candidate reaches
         // the shader at all** — a cutout to be asked whether there is anything at the hit, a
         // translucent surface to be asked how much of it there is.
-        //
-        // **Except over a micromap, whose answer the forced bit would override.** The lookup
-        // replaces the geometry's own opaque bit and the instance's flags are applied after it, so
-        // a row forced non-opaque sends every leaf to the any-hit and culls only the holes —
-        // measured, and `aMicromapAnswersAtTheFinestLevel...` is what says so. Left alone, the
-        // micromap decides: a hole is ignored, a leaf commits, and only an unknown microtriangle
-        // reaches the shader.
-        //
-        // **And that override is exactly what a placement the game is fading wants.** A leaf that
-        // committed without asking would stop a shadow ray that dims by the fade and walks on
-        // today, so its row is forced non-opaque like any translucent one: every leaf reaches the
-        // any-hit, a hole is still a hole, and the micromap stays on the structure for the frame
-        // the fade ends. Not `DISABLE_OPACITY_MICROMAPS`, which asks a structure built to allow
-        // it and lost the device on a crossing over one that was not.
-        if ((record.mCutout && !micromapped) || record.mTranslucent)
+        if (record.mCutout || record.mTranslucent)
             flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
 
         // A translucent instance is never asked the cutout's question, so it is not counted against
@@ -426,12 +399,6 @@ namespace Rtx
         {
             counted |= sRowCutout;
             ++mCounts.mCutout;
-        }
-
-        if (micromapped)
-        {
-            counted |= sRowMicromapped;
-            ++mCounts.mMicromapped;
         }
 
         mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{

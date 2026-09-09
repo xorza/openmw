@@ -87,21 +87,21 @@ namespace Rtx
         /// A zone is quoted by what it cost the run and not by what it cost a frame that ran it.
         ///
         /// **The row has to be summable**, which is what a pass that runs at a cell crossing broke:
-        /// it was a median of the frames that crossed, and the row printed `micromap 7.51` above a
+        /// it was a median of the frames that crossed, and the row printed `blas 7.51` above a
         /// frame median of 6.73 ms.
         TEST(RtxGpuBreakdownTest, aZoneIsQuotedOverTheWholeRun)
         {
             GpuBreakdown breakdown;
             EXPECT_TRUE(breakdown.empty());
 
-            // Ten frames. `trace` runs in all of them at 4 ms, and `micromap` in the first two at
+            // Ten frames. `trace` runs in all of them at 4 ms, and `blas` in the first two at
             // 20 ms and 10 ms — a pass that costs the run 30 ms and three of them per frame.
             const GpuSpan trace{ .mName = "trace", .mMs = 4.0 };
             for (int frame = 0; frame < 10; ++frame)
             {
-                const GpuSpan micromap{ .mName = "micromap", .mMs = frame == 0 ? 20.0 : 10.0 };
+                const GpuSpan blas{ .mName = "blas", .mMs = frame == 0 ? 20.0 : 10.0 };
                 const std::vector<GpuSpan> spans
-                    = frame < 2 ? std::vector<GpuSpan>{ micromap, trace } : std::vector<GpuSpan>{ trace };
+                    = frame < 2 ? std::vector<GpuSpan>{ blas, trace } : std::vector<GpuSpan>{ trace };
 
                 breakdown.add(spans);
             }
@@ -115,7 +115,7 @@ namespace Rtx
             EXPECT_EQ(zones[0].mOfFrames, 10u);
             EXPECT_TRUE(zones[0].isEveryFrame());
 
-            EXPECT_EQ(zones[1].mName, "micromap");
+            EXPECT_EQ(zones[1].mName, "blas");
             EXPECT_DOUBLE_EQ(zones[1].mShareMs, 3.0) << "30 ms over ten frames, not the 10 ms it cost when it ran";
             EXPECT_EQ(zones[1].mFrames, 2u);
             EXPECT_EQ(zones[1].mOfFrames, 10u);
@@ -124,12 +124,12 @@ namespace Rtx
             EXPECT_DOUBLE_EQ(zones[1].mTimes.mWorst, 20.0);
 
             // The device's part of the average frame is the row added up: 4 ms of trace and 3 ms
-            // of micromap against the 70 ms it spent over ten frames.
+            // of blas against the 70 ms it spent over ten frames.
             EXPECT_DOUBLE_EQ(zones[0].mShareMs + zones[1].mShareMs, 7.0);
 
             EXPECT_EQ(describeZone(zones[0]), "trace 4.00") << "a zone every frame ran needs no qualification";
-            EXPECT_EQ(describeZone(zones[1]), "micromap 3.00 (10.00 on 2 of 10)");
-            EXPECT_EQ(describeZones(zones), "  gpu ms    trace 4.00  micromap 3.00 (10.00 on 2 of 10)\n");
+            EXPECT_EQ(describeZone(zones[1]), "blas 3.00 (10.00 on 2 of 10)");
+            EXPECT_EQ(describeZones(zones), "  gpu ms    trace 4.00  blas 3.00 (10.00 on 2 of 10)\n");
         }
 
         /// A pass recorded in batches opens its zone several times over one frame, and the frame is

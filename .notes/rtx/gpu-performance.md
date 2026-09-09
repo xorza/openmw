@@ -28,7 +28,7 @@ that stands still waits on the device, so these zones are the frame's budget.
 | `shade`, `sprites` | the emitters' lighting and their screen-space bin |
 | `tlas` | the top level, rebuilt every frame |
 | `refit`, `skin` | the bottom levels a pose moved, and the pose itself |
-| `micromap`, `blas`, `compact` | what a cell arriving builds |
+| `blas`, `compact` | what a cell arriving builds. A `micromap` zone stood beside them until the bake was removed — Finding 4 |
 
 ## Where it stands
 
@@ -55,7 +55,8 @@ Milliseconds, medians, at 1920×1080 out and 1280×720 traced. `gpu` is the sum 
 | island-crossing | 5.37 | 3.48 | 5.74 | 2.34 | 0.83 | 0.20 | 0.09 | 0.21 | 0.21 | 0.08 | 0.12 | 1.66 |
 
 The crossing's `rest` is its arrivals: a `micromap` bake of 0.81 ms a frame and a `blas` build of
-0.69, spread over the frames a ring lands on.
+0.69, spread over the frames a ring lands on. **The bake has since been removed** — Finding 4 — so
+that row's `rest` is now 0.69 and its p95 is six milliseconds lower.
 
 **The upscaler is the largest zone at every one of the seventeen.** It is 39 per cent of the device
 frame at Vivec, 46 at Seyda Neen and 69 in the Dwemer ruin. It is also the flattest: 2.27 to 2.57 ms
@@ -140,23 +141,85 @@ rewritten since the reading `AGENTS.md` records.
 **Nineteen per cent slower, and the three modes are indistinguishable from one another.** The
 default stays off, and the decision is now measured against the current shaders rather than inherited.
 
-## Finding 4 — opacity micromaps buy three per cent of the trace
+## Finding 4 — the opacity micromap bake costs more than it buys, and it speckles distant foliage
 
-At `seyda-neen-ship`, which carries 1369 cutout instances and micromaps every one of them:
+**The measurement needs its order balanced.** An A/B that always runs `on` before `off` cannot
+separate the setting from the card warming through the run. Taken that way over twelve places, a
+tomb with sixteen cutouts read +4.4 per cent and a shore with 2628 read −1.0 — the noise was larger
+than the effect and uncorrelated with the cutouts. Balanced instead, with `on` first in rounds 1 and
+3 and `off` first in rounds 2 and 4, four pairs of `--seconds=20`, the effect separates. Two places
+in the six carry no cutouts and are the null.
 
-| leg | trace | frame |
-|---|---:|---:|
-| micromaps on | 1.54 | 5.85 |
-| micromaps off | 1.59 | 5.90 |
-| micromaps on | 1.56 | 5.86 |
-| micromaps off | 1.86 | 5.99 |
+| place | cutouts | trace on | trace off | off − on | % | t |
+|---|---:|---:|---:|---:|---:|---:|
+| seyda-neen-shore | 2628 | 1.885 | 1.952 | +0.068 | +3.6 | 5.4 |
+| balmora | 2174 | 1.238 | 1.270 | +0.033 | +2.6 | 5.2 |
+| seyda-neen-ship | 1369 | 1.885 | 1.950 | +0.065 | +3.4 | 13.0 |
+| andrano-tomb | 16 | 0.825 | 0.880 | +0.055 | +6.7 | 11.0 |
+| wolverine-hall | 0 | 1.105 | 1.115 | +0.010 | +0.9 | 1.4 |
+| addamasartus | 3 | 1.235 | 1.238 | +0.003 | +0.2 | 1.0 |
 
-The first pair is the clean one: 0.05 ms of a 1.54 ms trace. The second `off` leg carried a 320 ms
-worst frame and is the leg to repeat rather than to read.
+**The two nulls read nothing and every place with cutouts reads something**, which is what says the
+design is clean rather than that the answer is large. **The saving is 0.03 to 0.07 ms, and it is not
+proportional to the cutout count** — a tomb's sixteen candle flames save as much as a shore's 2628
+plants — so how many cutouts a cell holds is not the predictor. Against a device frame of 4.6 to 5.9
+ms, three per cent of the trace is under one per cent of the frame.
 
-**They cost 23.4 MiB of micromap memory and a bake on the frames a cell arrives on** — 0.81 ms a
-frame over the island route. On a standing camera they are three per cent of the trace. That is a
-trade worth re-reading when the corpus has a place with far more foliage than the ship deck.
+**What it costs is 0.82 ms a frame over the island route**, which is 6.3 ms on each of the 178 frames
+of 1200 that bake. Standing still it costs nothing, because the bake is done. So one arrival frame
+spends about what a hundred standing frames collect.
+
+### And the bake is not picture-neutral
+
+`verify --exposure=1`, micromaps on against off: **eighteen of twenty-two views draw a different
+frame**, worst 129 of 255 on 26.68 per cent of the pixels at `seyda-neen-shore`. The four that do not
+move are the four with almost no cutouts — `addamasartus` with 3, `arkngthand` with 11,
+`vivec-canalworks` with 41 and `wolverine-hall` with 0. **A null control of two `on` runs against
+each other draws the same picture at all twenty-two**, so none of this is run-to-run noise.
+
+**The difference is a regression, and the tree predicted it.** `SceneAcceleration::placeRow` leaves a
+micromapped row opaque, so a leaf commits without ever reaching the any-hit; a row without a micromap
+is forced non-opaque and every leaf reaches it. The bake decides a microtriangle from the mask at
+level zero. The any-hit reads the mask through the ray's cone, at whatever mip the cone resolves.
+Where a leaf card is far enough that the cone reads a coarser mip, the micromap keeps every small
+hole the finest level holds and the cone closes them — so a distant canopy under micromaps carries a
+scatter of pinholes, and a trunk carries them down its length.
+
+`candidateStops` in `lib/traversal.glsl` is the comment that says why that is the worse answer: a
+mask read at its finest mip "is a coin toss per pixel — a canopy comes back as speckle, and it crawls
+as the camera moves", and letting the cone average it first "is by a long way the better of the two
+errors".
+
+**So the bake is right against a comparison the renderer does not make.** `micromap.h` states it is
+"conservative against `sampleDiffuse` at the finest level, and exact there", and that is true. No ray
+that carries a cone reads the finest level.
+
+### What followed — the bake is gone
+
+`AGENTS.md` ranks the picture first and asks an optional accelerator for a measurement saying the
+gain is real. The gain was real and small; the picture cost was real and was not.
+
+**So the whole subsystem was removed** — 2,212 lines in eight files, plus edits in forty-six more.
+`SceneMicromaps`, `MicromapPass`, `micromap.h`, `micromap.comp` and their two test files are gone,
+and with them `VK_EXT_opacity_micromap` as a required extension and the device gate that refused any
+card cutting a four-state triangle below level 6. Every cutout row is now forced non-opaque and every
+candidate reaches the any-hit, which is the path `--micromaps=false` already exercised.
+
+Three things went with it because nothing else read them: `SceneStats::mMicromapBytes` and
+`mMicromapsUntextured`, `InstanceCounts::mMicromapped`, and `ExtractionStats::mUnbakeable` — a count
+of placements wearing an animated cutout, whose only meaning was what no bake could answer for. Four
+accessors existed for the bake alone and went with it: `SceneAcceleration::getEveryMesh` and its
+`getIndices(MeshRange)`, `SceneBuffers::getTexCoords(MeshRange)` and `TextureArray::getExtent`.
+
+**The one repair not taken** was to make the bake answer the question the any-hit answers: mark a
+microtriangle opaque or transparent only where the mask agrees across the mips a cone may read, and
+unknown otherwise. It would have removed the speckle and kept some of the three per cent. It was not
+worth a subsystem for under one per cent of a device frame, and the reasoning is written here so that
+it need not be rediscovered.
+
+**What would bring micromaps back** is a deeper path. The published 55 per cent comes from a path
+tracer whose frame is mostly any-hit invocations. If the indirect light grows several bounces, the
+saving grows with it, and git holds the code and its tests.
 
 ## Finding 5 — the Ray Reconstruction preset does not move the cost
 

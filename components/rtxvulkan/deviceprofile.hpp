@@ -47,10 +47,6 @@ namespace Rtx
         /// not. A test of the property bits alone answers the wrong question.
         VkDeviceSize mHostWrittenBytes = 0;
 
-        /// How finely this device cuts a four-state micromap triangle. `SceneMicromaps` bakes to
-        /// `Shaders::MICROMAP_LEVEL_MAX`, and a device under that is refused above.
-        std::uint32_t mMicromapLevel = 0;
-
         /// Which of `getOptionalDeviceExtensions()` this device offers, in that order.
         ///
         /// **A decision like any other**, and one the caller would otherwise make by walking the

@@ -18,7 +18,6 @@
 #include "gbuffer.hpp"
 #include "image.hpp"
 #include "memory.hpp"
-#include "micromappass.hpp"
 #include "physicaldevice.hpp"
 #include "pipelinecache.hpp"
 #include "presenter.hpp"
@@ -26,7 +25,6 @@
 #include "result.hpp"
 #include "sceneacceleration.hpp"
 #include "scenebuffers.hpp"
-#include "scenemicromaps.hpp"
 #include "skintables.hpp"
 #include "texture.hpp"
 #include "visibilitypass.hpp"
@@ -136,7 +134,6 @@ namespace Rtx
         , mCountHits(options.mCountHits)
         , mCountCrossings(options.mCountCrossings)
         , mReorder(options.mReorder)
-        , mMicromaps(options.mMicromaps)
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
@@ -446,7 +443,6 @@ namespace Rtx
         held.mSkinTables.reset();
         held.mBuffers.reset();
         held.mAcceleration.reset();
-        held.mMicromaps.reset();
 
         if (slot.isWorld())
         {
@@ -491,12 +487,8 @@ namespace Rtx
         held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords, slots, graveyard);
         held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, slots, graveyard);
 
-        // **The textures before the structures, because the bake between them samples the
-        // masks.** The uploads are recorded first, the bake reads what they wrote, and the
-        // structures are built over what it decided — three stretches of one command buffer.
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.mTextures.getPaths().size()), textures, graveyard);
-        held.mMicromaps = std::make_unique<SceneMicromaps>(mDevice, mMicromaps);
 
         // **Built once and kept, because building one compiles every kernel the trace can ever
         // need — 6.3 s on a cold cache, measured.** Nothing about the pass depends on the scene: it
@@ -508,14 +500,13 @@ namespace Rtx
         // where that invariant is kept.
         //
         // A doll can be the first thing this renderer ever builds — a race preview stands in front
-        // of a game that has no world yet — and the pass belongs to neither scene. The bake and the
-        // display curve read the same array and are kept for the same reason.
+        // of a game that has no world yet — and the pass belongs to neither scene. The display curve
+        // reads the same array and is kept for the same reason.
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
                 mChannelLayout, mFogVolumeLayout, mCountHits, mCountCrossings, mReorder);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
-            mMicromapPass = std::make_unique<MicromapPass>(mDevice, held.mTextures->getLayout(), mShaderDirectory);
         }
 
         // **Posed before it is built.** The structures are built over the first copy of the
@@ -524,9 +515,7 @@ namespace Rtx
         // takes it on the first placement that writes it.
         mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
             held.mBuffers->getNormals(), nullptr);
-        held.mMicromaps->bake(setup, *mMicromapPass, scene, *held.mBuffers, *held.mAcceleration, *held.mTextures,
-            held.mAcceleration->getEveryMesh(), nullptr, graveyard);
-        held.mAcceleration->build(setup, scene, held.mRecords, *held.mMicromaps, graveyard);
+        held.mAcceleration->build(setup, scene, held.mRecords, graveyard);
         held.mBuiltMeshes = scene.mMeshes.getRevision();
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
@@ -579,18 +568,15 @@ namespace Rtx
             held.mBuffers->extend(setup, scene, graveyard);
             held.mSkinTables->extend(scene, graveyard);
             held.mAcceleration->extend(setup, scene, graveyard);
-            held.mMicromaps->release(scene.mMeshes.getFreed(), graveyard);
 
             // **Posed before it is built**, as `setScene` does: an actor walking in is built over
             // its pose and not over its bind. Into the first copy, which is what the build reads;
             // the placement below poses the copy the frame traces. Untimed, so the frame's report
-            // carries one `skin` zone and it is the placement's. The bake is timed, as the builds
-            // are: what an arrival adds to the frame it lands in is the question its zone answers.
+            // carries one `skin` zone and it is the placement's. The builds are timed: what an
+            // arrival adds to the frame it lands in is the question their zone answers.
             mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
                 held.mBuffers->getNormals(), nullptr);
-            held.mMicromaps->bake(setup, *mMicromapPass, scene, *held.mBuffers, *held.mAcceleration, *held.mTextures,
-                scene.mMeshes.getArrived(), timer, graveyard);
-            held.mAcceleration->buildArrived(setup, scene, *held.mMicromaps, timer, graveyard);
+            held.mAcceleration->buildArrived(setup, scene, timer, graveyard);
             held.mBuiltMeshes = scene.mMeshes.getRevision();
         }
 
@@ -639,11 +625,6 @@ namespace Rtx
         // so a frame that only places is the one that must not hold their structures. Already done
         // where `extendScene` came through, and asking twice costs two comparisons a slot.
         held.mAcceleration->release(scene.mMeshes.getFreed(), placing.mGraveyard);
-        held.mMicromaps->release(scene.mMeshes.getFreed(), placing.mGraveyard);
-
-        // A material rewritten under the micromap baked against it is the one thing a placement
-        // cannot carry, and `SceneMicromaps::check` says why it is a throw and not a rebuild.
-        held.mMicromaps->check(scene);
 
         // **Once, for the slots that changed, and both halves read it.** The rows carry a matrix
         // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
@@ -657,8 +638,7 @@ namespace Rtx
         const bool posed = skin.record(placing.mCommands, scene, placing.mSlot, *held.mSkinTables,
             held.mAcceleration->getPoses(), held.mBuffers->getNormals(), placing.mTimer);
 
-        const bool built
-            = held.mAcceleration->place(scene, held.mRecords, held.mChangedRecords, *held.mMicromaps, placing);
+        const bool built = held.mAcceleration->place(scene, held.mRecords, held.mChangedRecords, placing);
 
         // **Nothing to report, because nothing here is recorded.** The tables are host-visible and
         // this writes them; what the trace reads of them is made visible by the submit that follows,
@@ -764,8 +744,6 @@ namespace Rtx
 
         mStats.mStructureBytes = held.mAcceleration->getStructureBytes();
         mStats.mStructureLiveBytes = held.mAcceleration->getStructureLiveBytes();
-        mStats.mMicromapBytes = held.mMicromaps->getBytes();
-        mStats.mMicromapsUntextured = held.mMicromaps->getUntexturedCount();
 
         const TexturesHeld textures = held.mTextures->getHeld();
         mStats.mTextureCount = textures.mCount;

@@ -47,12 +47,6 @@ namespace Rtx
             mStructures.push_back(structure);
     }
 
-    void Graveyard::bury(VkMicromapEXT micromap)
-    {
-        if (micromap != VK_NULL_HANDLE)
-            mMicromaps.push_back(micromap);
-    }
-
     void Graveyard::bury(VkDescriptorPool pool)
     {
         if (pool != VK_NULL_HANDLE)
@@ -81,20 +75,17 @@ namespace Rtx
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
 
-        // The structures before the micromaps they reference, and both before the rooms they stand
-        // in: a room given back is the next structure's, and one given back under a structure still
-        // standing is two of them in one place.
+        // The structures before the rooms they stand in: a room given back is the next
+        // structure's, and one given back under a structure still standing is two of them in one
+        // place.
         for (const VkAccelerationStructureKHR structure : mStructures)
             functions.mDestroyAccelerationStructure(mDevice.getHandle(), structure, nullptr);
-        for (const VkMicromapEXT micromap : mMicromaps)
-            functions.mDestroyMicromap(mDevice.getHandle(), micromap, nullptr);
         for (const Room& room : mRooms)
             room.mStorage->give(room.mRoom);
         for (const VkDescriptorPool pool : mPools)
             vkDestroyDescriptorPool(mDevice.getHandle(), pool, nullptr);
 
         mStructures.clear();
-        mMicromaps.clear();
         mRooms.clear();
         mPools.clear();
         mBuffers.clear();

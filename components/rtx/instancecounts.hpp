@@ -24,13 +24,6 @@ namespace Rtx
         /// ray.
         std::uint32_t mCutout = 0;
 
-        /// How many of those place a mesh whose structure carries an opacity micromap, so traversal
-        /// resolves every known microtriangle without stopping and asks only about the unknown
-        /// ones. A cutout that is not among them is a mask nothing could bake — an animated one —
-        /// or a placement the game is fading, which reads its leaves through the any-hit for as
-        /// long as it fades. `Rtx::SceneMicromaps` says which meshes get one.
-        std::uint32_t mMicromapped = 0;
-
         /// How many of them the eye meets as water.
         ///
         /// **What says whether a trace needs the sea at all.** A frame's water level says where a

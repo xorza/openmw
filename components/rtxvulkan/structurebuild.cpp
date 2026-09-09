@@ -6,15 +6,14 @@
 
 namespace Rtx
 {
-    VkAccelerationStructureGeometryKHR describeTriangles(const MeshRange& mesh, const VkDeviceAddress positions,
-        const VkDeviceAddress indices, const VkAccelerationStructureTrianglesOpacityMicromapEXT* const micromap)
+    VkAccelerationStructureGeometryKHR describeTriangles(
+        const MeshRange& mesh, const VkDeviceAddress positions, const VkDeviceAddress indices)
     {
         return VkAccelerationStructureGeometryKHR{
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
             .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
             .geometry = { .triangles = {
                               .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
-                              .pNext = micromap,
                               .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
                               .vertexData = { .deviceAddress = positions },
                               .vertexStride = sizeof(osg::Vec3f),

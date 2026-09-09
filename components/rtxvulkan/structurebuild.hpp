@@ -28,12 +28,8 @@ namespace Rtx
     /// **Opaque as built**, and overridden per instance where a material says otherwise: opacity
     /// is a property of the material and a mesh does not carry one, so the top-level flags are
     /// the only place the question can be answered exactly.
-    ///
-    /// @param micromap what the mesh's cutout mask baked to, chained so that traversal resolves
-    ///        each microtriangle the bake decided without the any-hit — or null for a mesh with
-    ///        none, whose forced non-opaque rows reach the any-hit for every candidate.
-    VkAccelerationStructureGeometryKHR describeTriangles(const MeshRange& mesh, VkDeviceAddress positions,
-        VkDeviceAddress indices, const VkAccelerationStructureTrianglesOpacityMicromapEXT* micromap);
+    VkAccelerationStructureGeometryKHR describeTriangles(
+        const MeshRange& mesh, VkDeviceAddress positions, VkDeviceAddress indices);
 
     /// Orders a build after the trace before it on the queue, which may still be reading what
     /// the build is about to write.
@@ -51,7 +47,7 @@ namespace Rtx
     ///
     /// **Members and not locals, because Vulkan keeps the addresses.** A build info holds
     /// `pGeometries` as a pointer and a range is handed over by address, so both have to outlive the
-    /// loop that filled them — and a cell arriving must not allocate five vectors to say so.
+    /// loop that filled them — and a cell arriving must not allocate four vectors to say so.
     ///
     /// **Two passes, because `sizeTo` is what makes the first one possible.** A vector grown while a
     /// pointer already points into it moves its storage, so every geometry is placed before any
@@ -60,10 +56,6 @@ namespace Rtx
     struct StructureBuildBatch
     {
         std::vector<VkAccelerationStructureGeometryKHR> mGeometries;
-
-        /// What each geometry chains for its micromap, where it has one. Beside the geometries
-        /// because the geometry keeps a pointer to it.
-        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mMicromaps;
 
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRanges;
@@ -79,7 +71,6 @@ namespace Rtx
         void sizeTo(std::size_t count)
         {
             mGeometries.assign(count, VkAccelerationStructureGeometryKHR{});
-            mMicromaps.assign(count, VkAccelerationStructureTrianglesOpacityMicromapEXT{});
             mBuilds.assign(count, VkAccelerationStructureBuildGeometryInfoKHR{});
             mRanges.assign(count, VkAccelerationStructureBuildRangeInfoKHR{});
 

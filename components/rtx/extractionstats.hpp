@@ -135,11 +135,6 @@ namespace Rtx
         /// what Morrowind lights with, and a glowing texture lights nothing.
         std::uint32_t mLights = 0;
 
-        /// Placements of a mesh whose material is a cutout that a controller rewrites every frame,
-        /// which is a mask no backend can bake a micromap against — a scrolling banner, a flipbook
-        /// of leaves. Each is an instance traversal still has to stop and ask about.
-        std::uint32_t mUnbakeable = 0;
-
         /// Placements wearing a material other than the one their mesh arrived with, where that one
         /// is not animated.
         ///

@@ -149,20 +149,6 @@ namespace Rtx
         /// be turned off: the split into a shader per material kind is what traversal does, and
         /// nothing here decides it.
         Reorder mReorder = Reorder::Off;
-
-        /// Whether a cutout's mask is baked into an opacity micromap, or left to the any-hit.
-        ///
-        /// **On, and switchable for the same reason `mReorder` is.** A micromap is an optional
-        /// accelerator: traversal resolves every microtriangle it knows about without stopping, and
-        /// a card without one asks the any-hit instead. Turning it off is the only way to time the
-        /// two against the same content, which is what `AGENTS.md` asks of an accelerator before it
-        /// is kept — and below Ada the micromap is the driver's emulation rather than the hardware,
-        /// so the answer there is not the answer here.
-        ///
-        /// Off, nothing is baked, `SceneMicromaps::has` is false for every mesh and every cutout
-        /// reaches the shader. The picture is the same either way, which
-        /// `RtxMicromapPictureTest` asserts.
-        bool mMicromaps = true;
     };
 
     /// One vertex of the GUI: a position already in clip space, a colour packed a byte a channel,
@@ -282,18 +268,6 @@ namespace Rtx
         /// these two is what compacting them would give back.
         std::uint64_t mCompactableBytes = 0;
         std::uint64_t mCompactableNowBytes = 0;
-
-        /// What the opacity micromaps hold, apart from the structures they are attached to. The
-        /// figure the level cap is measured against.
-        std::uint64_t mMicromapBytes = 0;
-
-        /// Cutout meshes built without a micromap because the slot their mask lives in held no
-        /// texture when they were built.
-        ///
-        /// **A canary, and it should be zero.** An uploader describes every slot a material names
-        /// before the structures are built, and a file it cannot read gets a stand-in — so a slot
-        /// holding nothing is an arrival that reached the structures ahead of its texture.
-        std::uint32_t mMicromapsUntextured = 0;
 
         /// Every texture the renderer holds, and what those come to.
         ///

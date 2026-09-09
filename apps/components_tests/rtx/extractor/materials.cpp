@@ -526,12 +526,11 @@ namespace Rtx::Testing
             EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].isCutout());
             EXPECT_EQ(stats.mInstances, 2u);
             EXPECT_EQ(stats.mWornOtherwise, 0u);
-            EXPECT_EQ(stats.mUnbakeable, 0u);
         }
 
-        /// A cutout under a controller is an animated material, and every placement of it is one
-        /// no bake can answer for.
-        TEST_F(RtxSceneExtractorTest, aCutoutUnderAControllerIsAnimatedAndUnbakeable)
+        /// A cutout under a controller is an animated material, so every placement of it reaches
+        /// the any-hit and none of them is the `mWornOtherwise` canary.
+        TEST_F(RtxSceneExtractorTest, aCutoutUnderAControllerIsAnimated)
         {
             osg::ref_ptr<osg::Group> node = new osg::Group;
             node->addChild(makeQuad());
@@ -553,7 +552,6 @@ namespace Rtx::Testing
             EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].isCutout());
             ASSERT_EQ(mScene.getTables().mMeshes.getRows().size(), 1u);
             EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].mMaterial, 0u);
-            EXPECT_EQ(stats.mUnbakeable, 1u);
             EXPECT_EQ(stats.mWornOtherwise, 0u);
 
             // And it stays animated on the frame after, when the material is read again: the flag

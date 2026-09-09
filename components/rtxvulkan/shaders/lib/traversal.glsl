@@ -349,11 +349,6 @@ Hit committedHit(
 ///
 /// **`TerminateOnFirstHit` stays.** A translucent candidate is never confirmed, so traversal walks
 /// past it and keeps the early out for the first thing that does stop the ray.
-///
-/// **Four states for every ray, the fog volume's probes and the ambient rays included.** Folding
-/// their unknown microtriangles to two with `gl_RayFlagsForceOpacityMicromap2StateEXT`, as Indiana
-/// Jones traces its indirect rays, measured five microseconds off `air` on every view and two
-/// hundred onto the trace at Vivec, whose banners and lattices the micromap does nothing for.
 float lightThrough(vec3 from, vec3 towards, float distance)
 {
     if (distance <= SHADOW_BIAS)

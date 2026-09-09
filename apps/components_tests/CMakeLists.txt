@@ -145,7 +145,6 @@ if (OPENMW_RTX)
         rtx/lightgrid.cpp
         rtx/meantexel.cpp
         rtx/memory.cpp
-        rtx/micromap.cpp
         rtx/mipchain.cpp
         rtx/moonbuilder.cpp
         rtx/nodelibrary.cpp
@@ -190,7 +189,6 @@ if (OPENMW_RTX)
         rtx/visibility/frame.cpp
         rtx/visibility/framecost.cpp
         rtx/visibility/light.cpp
-        rtx/visibility/micromap.cpp
         rtx/visibility/sea.cpp
         rtx/visibility/sky.cpp
         rtx/visibility/sprites.cpp

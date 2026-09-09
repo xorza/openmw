@@ -81,7 +81,6 @@ namespace MWRender
             profile.mUpscale = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
             profile.mPreset = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
             profile.mReorder = Rtx::sReorderNames.require(Settings::rtx().mReorder.get(), "a reorder mode");
-            profile.mMicromaps = Settings::rtx().mMicromaps;
             profile.mCountCrossings = Settings::rtx().mCountCrossings;
             profile.mDelight = Settings::rtx().mDelight;
             profile.mShowAlbedo = Settings::rtx().mShowAlbedo;
@@ -232,7 +231,6 @@ namespace MWRender
         // frame drawn by the other were traced by two differently configured renderers.
         options.mCountCrossings = mProfile.mCountCrossings;
         options.mReorder = mProfile.mReorder;
-        options.mMicromaps = mProfile.mMicromaps;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the

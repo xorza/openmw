@@ -213,7 +213,7 @@ namespace Rtx
         /// **The figure a report quotes, because it is the only one that can be summed or set
         /// against the frame beside it.** A pass that runs at a cell crossing and nowhere else is
         /// a median of the nineteen frames that crossed, and a row of those medians describes no
-        /// frame that ever happened — `micromap 7.51` was printed above a frame median of 6.73.
+        /// frame that ever happened — `blas 7.51` was printed above a frame median of 6.73.
         double mShareMs = 0.0;
 
         /// Whether every measured frame ran it, which is what says the share above is also what

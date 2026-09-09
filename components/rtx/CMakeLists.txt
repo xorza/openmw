@@ -172,7 +172,6 @@ set(RTX_SHADER_HEADERS
     shaders/fogvolume.h
     shaders/gbuffer.h
     shaders/look.h
-    shaders/micromap.h
     shaders/portable.h
     shaders/scene.h
     shaders/skinning.h

@@ -44,10 +44,6 @@ namespace Rtx
         void bury(std::unique_ptr<Image>&& image);
         void bury(VkAccelerationStructureKHR structure);
 
-        /// A micromap, which goes after every structure buried beside it: a structure references
-        /// the micromap it was built with for as long as it is traced.
-        void bury(VkMicromapEXT micromap);
-
         /// A descriptor pool and every set allocated from it, which a dispatch in flight may still
         /// be reading through.
         void bury(VkDescriptorPool pool);
@@ -77,7 +73,6 @@ namespace Rtx
         std::vector<Texture> mTextures;
         std::vector<std::unique_ptr<Image>> mImages;
         std::vector<VkAccelerationStructureKHR> mStructures;
-        std::vector<VkMicromapEXT> mMicromaps;
         std::vector<VkDescriptorPool> mPools;
         std::vector<Room> mRooms;
         std::vector<VkCommandBuffer> mCommands;

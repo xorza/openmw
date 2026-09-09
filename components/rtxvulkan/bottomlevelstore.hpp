@@ -21,7 +21,6 @@ namespace Rtx
     class Device;
     class Graveyard;
     class GpuTimer;
-    class SceneMicromaps;
     struct SceneTables;
 
     /// One bottom-level acceleration structure per mesh, and what it takes to keep them tight.
@@ -53,9 +52,8 @@ namespace Rtx
         /// @param poses the first copy of the deforming vertices, which is what a deforming mesh's
         ///        structure is built over — `SkinPass` has written the pose into it.
         /// @param indices the shared index blocks, which every structure is built through.
-        void build(Batch& batch, const SceneTables& scene, std::span<const Index> meshes,
-            const SceneMicromaps& micromaps, const BlockedBuffer& poses, const BlockedBuffer& indices,
-            Graveyard& graveyard);
+        void build(Batch& batch, const SceneTables& scene, std::span<const Index> meshes, const BlockedBuffer& poses,
+            const BlockedBuffer& indices, Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         ///
@@ -75,10 +73,6 @@ namespace Rtx
         /// `MeshRange::mDeform` named a kind at the time it was built. A mesh's kind is fixed when
         /// it arrives, so this is also whether the mesh can ever be refitted.
         bool isUpdatable(const Index mesh) const { return mUpdatable[mesh] != 0; }
-
-        /// Whether `mesh`'s structure was built over a micromap, which is what a row placing it
-        /// counts by and what a refit of it has to describe again.
-        bool isMicromapped(const Index mesh) const { return mMicromapped[mesh] != 0; }
 
         /// What a refit of `mesh` asks for, so a frame does not have to ask the driver again.
         /// Nought for a mesh that was not built to be refitted.
@@ -151,7 +145,6 @@ namespace Rtx
 
         std::vector<VkDeviceSize> mUpdateScratch;
         std::vector<std::uint8_t> mUpdatable;
-        std::vector<std::uint8_t> mMicromapped;
 
         /// What one run of `build` describes.
         StructureBuildBatch mBuild;

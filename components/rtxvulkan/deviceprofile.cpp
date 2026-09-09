@@ -5,8 +5,6 @@
 #include <string_view>
 #include <vector>
 
-#include <components/rtx/shaders/micromap.h>
-
 #include "memory.hpp"
 
 namespace Rtx
@@ -81,7 +79,6 @@ namespace Rtx
         profile.mReorders = properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint
             == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT;
         profile.mHostWrittenBytes = hostWrittenBytes(properties.mMemory);
-        profile.mMicromapLevel = properties.mOpacityMicromap.maxOpacity4StateSubdivisionLevel;
 
         const std::optional<std::uint32_t> family = findQueueFamily(queues);
         if (family.has_value())
@@ -129,14 +126,6 @@ namespace Rtx
         {
             profile.mObstacle = "no memory type the host writes into and the device reads";
             return profile;
-        }
-
-        // Asked of the device rather than of `SceneMicromaps`, so a card that cannot cut a triangle
-        // finely enough is named before a scene is built on it.
-        if (profile.mMicromapLevel < Shaders::MICROMAP_LEVEL_MAX)
-        {
-            profile.mObstacle = "cuts a four-state micromap triangle to level " + std::to_string(profile.mMicromapLevel)
-                + " at most, and the bake wants " + std::to_string(Shaders::MICROMAP_LEVEL_MAX);
         }
 
         return profile;

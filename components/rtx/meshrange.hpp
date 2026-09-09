@@ -60,8 +60,7 @@ namespace Rtx
         /// **A mesh's, and not a placement's, because a static mesh wears one material by
         /// construction.** `SceneUtil::CopyOp` copies nodes and shares drawables and state sets, so
         /// a hundred crates are a hundred nodes over one drawable and one state set — the material
-        /// the extractor keys on is the same object under every placement. What a backend bakes
-        /// against the mask a mesh is worn with, it bakes against this; a placement wearing
+        /// the extractor keys on is the same object under every placement. A placement wearing
         /// another is `ExtractionStats::mWornOtherwise`, and the loader says there is none. The
         /// caller's finding, like `mShape`.
         Index mMaterial = sNoIndex;

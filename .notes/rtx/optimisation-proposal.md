@@ -22,6 +22,10 @@ only so that nobody has to rediscover why they are last.
 
 ## 1 — The acceleration structures move to a second queue
 
+**Overtaken by what Stage 2 found.** The bake is half of what this item was aimed at, and it is now a
+picture question rather than a cost to hide — so read this item beside Stage 2 below rather than on
+its own.
+
 **What it is worth.** Over the island route the device spends **0.81 ms a frame baking micromaps and
 0.69 building bottom levels**, and both land on the frames a ring arrives on — the frames whose p99 is
 49 ms. Today they are serial with the trace, because there is one queue.
@@ -143,8 +147,11 @@ holds the design.
   fits, and the picture is what the fork is for.
 - **The top level.** 0.24 ms a frame, rebuilt every frame. The guidance is to rebuild it every frame
   with `PREFER_FAST_TRACE` whatever moved, which is what this tree does.
-- **Reordering, opacity micromaps, the ray flags and the build flags.** Every one was measured here
-  and every reading agrees with what the sources say about a frame shaped like this one.
+- **Reordering, the ray flags and the build flags.** Every one was measured here and every reading
+  agrees with what the sources say about a frame shaped like this one. **Opacity micromaps came off
+  this list**: the reading that put them here was inside the run-to-run spread, and an order-balanced
+  one says they buy three per cent of the trace and cost a picture. Finding 4 of
+  `.notes/rtx/gpu-performance.md` has taken their place.
 - **The sea's spectrum.** 0.22 ms a frame wherever a cell holds water, whatever the camera can see.
   Skipping it needs a frame-late answer about whether any water was hit, which makes what a picture
   holds depend on how many frames came before it — the objection the tree already raised against a
@@ -176,14 +183,25 @@ build's digest.
    chunks and those are the tail. `.notes/bench.txt` holds the legs. The cross-check over six hundred
    shapes now compares `mClosed` as well, which is a stronger guard than the change is a win.
 
-### Stage 2 — the structural one
+### Stage 2 — the structural one — **re-aimed twice, and now answered**
 
-2. **A second queue at device creation**, chosen once, with the single-queue path kept for a device
-   that offers no compute-only family. Nothing uses it yet. Verified by `info` reporting both
-   families and by every existing gate still passing.
-3. **The micromap bake and the bottom-level builds submitted there**, ordered by a timeline
-   semaphore. Verified by the island route's `micromap` and `blas` zones, its p99 and its one per
-   cent low, and by the scene digest.
+**The gate this stage was given cannot pass.** `--micromaps=false` removes more of the device's build
+work than any queue could hide, and the island route's p99, worst frame and one per cent low do not
+move at all — only the p95 and the wait do. The frames that set the one per cent low are host-bound.
+
+2. ~~Decide whether the micromap bake earns its place first.~~ **Answered, and the answer is no.**
+   Order-balanced, the bake saves 0.03 to 0.07 ms of the trace — three per cent of it and under one
+   per cent of the device frame. It costs 6.3 ms on each arrival frame. **And it is not
+   picture-neutral: eighteen views of twenty-two draw a different frame under it, and the difference
+   is a scatter of pinholes through distant foliage** that the any-hit's cone-filtered read closes.
+   `.notes/rtx/gpu-performance.md` Finding 4 holds the tables, the null controls and what was done:
+   **the bake is removed**, with the required extension and the hardware gate that came with it.
+3. **The queue's case is weaker than when it was written.** Its largest customer was the bake, and
+   the bake is gone. What is left is `blas` at 0.69 ms a
+   frame, which the route measurement already showed does not set the one per cent low. Build it
+   against the p95 or not at all. The design stands as written: a `Queue` value whose fallback is
+   that there is only one, concurrent sharing measured before ownership transfers are written, a
+   timeline semaphore, and a timer per stream.
 
 ### Stage 3 — the readings
 

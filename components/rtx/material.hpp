@@ -87,9 +87,8 @@ namespace Rtx
         /// **Constant for the material's whole life**, because it is a fact about the state set the
         /// material is keyed on: `SceneExtractor::animate` gives a node with a controller a state
         /// set of its own, and every material read off that state set is read off it again each
-        /// frame. A backend bakes nothing against a mask that scrolls — the bake is against what
-        /// the texture coordinates land on, and a `UVController` moves that every frame — so this
-        /// is what refuses one. `MeshRange::mMaterial` says why a mesh has one material to ask.
+        /// frame. It is what refuses such a material to the replay, which reuses what it read last
+        /// frame. `MeshRange::mMaterial` says why a mesh has one material to ask.
         bool mAnimated = false;
 
         /// Whether the diffuse map's alpha never reaches solid anywhere on it — `reachesSolid`.

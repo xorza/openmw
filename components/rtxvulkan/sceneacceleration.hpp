@@ -26,7 +26,6 @@ namespace Rtx
     class Device;
     class Graveyard;
     struct SceneTables;
-    class SceneMicromaps;
 
     /// The neutral transform in Vulkan's storage.
     ///
@@ -70,11 +69,9 @@ namespace Rtx
         ///
         /// `scene` must place at least one instance: a top-level structure over nothing has no
         /// instance buffer to be built from. `records` are `scene`'s rows, made by the caller for
-        /// the reason `place` gives. `micromaps` has baked whatever the scene's cutouts take, and
-        /// each structure is built over its mesh's — `SceneMicromaps::describe` says what a build
-        /// chains and why a refit chains the same.
-        void build(Batch& batch, const SceneTables& scene, std::span<const InstanceRecord> records,
-            const SceneMicromaps& micromaps, Graveyard& graveyard);
+        /// the reason `place` gives.
+        void build(
+            Batch& batch, const SceneTables& scene, std::span<const InstanceRecord> records, Graveyard& graveyard);
 
         /// Rebuilds what a moved world changed: every deformed mesh's structure, then the top level.
         ///
@@ -109,10 +106,8 @@ namespace Rtx
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list any of
         ///        this is driven by. Whether a copy is then behind is `mRowTable`'s to know.
-        /// @param micromaps what each refitted mesh's structure was built over, which an update has
-        ///        to describe again.
         bool place(const SceneTables& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
-            const SceneMicromaps& micromaps, const Placing& placing);
+            const Placing& placing);
 
         /// Takes in the geometry of the meshes the scene says arrived and lets go of the ones it says
         /// went. `buildArrived` builds their structures, once the pass has posed them.
@@ -135,8 +130,7 @@ namespace Rtx
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void buildArrived(Batch& batch, const SceneTables& scene, const SceneMicromaps& micromaps, GpuTimer* timer,
-            Graveyard& graveyard);
+        void buildArrived(Batch& batch, const SceneTables& scene, GpuTimer* timer, Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         void release(std::span<const Index> meshes, Graveyard& graveyard) { mBottomLevel.release(meshes, graveyard); }
@@ -153,14 +147,6 @@ namespace Rtx
         /// of blocks: what the frame carries is where the blocks are, and a shader resolves
         /// `block[id / INDEX_BLOCK]` itself.
         VkDeviceAddress getIndexBlocks() const { return mIndices.getTableAddress(); }
-
-        /// Where `mesh`'s indices start, for the bake that reads a cutout's triangles through
-        /// them. One address covers the run: a mesh never straddles a block.
-        VkDeviceAddress getIndices(const MeshRange& mesh) const { return mIndices.addressOf(mesh.mIndices.mOffset); }
-
-        /// Every mesh slot the constructor was handed, which is what a whole-scene bake and build
-        /// walk.
-        std::span<const Index> getEveryMesh() const { return mEveryMesh; }
 
         /// The poses, for the pass that writes a deforming mesh's vertices into a slot's copy of
         /// them — and their account, which is what tells that pass which meshes each copy owes.
@@ -194,8 +180,7 @@ namespace Rtx
         /// Leaves `mRefitBuilds` holding exactly this frame's rebuilds and nothing else, which is
         /// what both the caller and `recordRefit` read: a count returned beside a vector that still
         /// held the last frame's entries would be two answers to one question.
-        void prepareRefit(
-            const SceneTables& scene, FrameSlot slot, const SceneMicromaps& micromaps, Graveyard& graveyard);
+        void prepareRefit(const SceneTables& scene, FrameSlot slot, Graveyard& graveyard);
 
         /// Brings the host rows up to what `changed` names, and to whatever the table grew by.
         void writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed);
@@ -279,7 +264,7 @@ namespace Rtx
         /// carries no fence of its own, and a frame places twice at a crossing: the second
         /// placement's refits can want more scratch while the first's are still on the queue, and
         /// a buffer freed under a build in flight was a device lost on every crossing — measured,
-        /// once an arrival's bake left the first placement on the queue long enough to be caught.
+        /// once an arrival was slow enough to leave the first placement on the queue to be caught.
         Buffer mRefitScratch;
 
         /// The top level's build scratch, which was made and freed on every frame that moved.

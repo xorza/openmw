@@ -104,10 +104,6 @@ namespace Settings
         /// How the trace sorts its threads between the traversal and the shader that resolves what
         /// they found: `off`, `hit`, `hint` or `both`. Off is what the others are measured against.
         SettingValue<std::string> mReorder{ mIndex, "RTX", "reorder" };
-
-        /// Whether a cutout's mask is baked into an opacity micromap. Off leaves every cutout to
-        /// the any-hit, which is the leg a micromap is timed against.
-        SettingValue<bool> mMicromaps{ mIndex, "RTX", "micromaps" };
     };
 }
 

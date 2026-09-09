@@ -52,12 +52,6 @@ namespace Rtx
         /// The shading map beside it, likewise.
         VkImageView getShadingView() const { return mShading == nullptr ? VK_NULL_HANDLE : mShading->getView(); }
 
-        /// The largest level's extent, or nothing where the slot holds no texture.
-        VkExtent2D getExtent() const
-        {
-            return mImage == nullptr ? VkExtent2D{} : VkExtent2D{ mImage->getWidth(), mImage->getHeight() };
-        }
-
         /// The size of the data uploaded, the map's included, which for a block-compressed image is
         /// what it occupies.
         VkDeviceSize getBytes() const { return mBytes; }
@@ -90,8 +84,8 @@ namespace Rtx
     /// no pushing four thousand of them per frame.
     ///
     /// **Update after bind, so a cell landing may write it while work bound to it is still on the
-    /// queue.** That is what lets a bake read the textures through this set rather than through one
-    /// made and buried for the arrival.
+    /// queue.** A frame in flight is tracing through this set while an arrival describes the slots
+    /// it brought, and without it the arrival would need a set made and buried for itself.
     ///
     /// **The maps are an array and not a buffer**, because a map is a grid the texture unit filters:
     /// one fetch where a shader reading one out of a buffer paid four loads and the wrap by hand,
@@ -160,13 +154,6 @@ namespace Rtx
         /// What the array actually stands. A slot the scene gave back holds nothing and costs
         /// nothing, and neither is counted here.
         TexturesHeld getHeld() const;
-
-        /// The extent of the texture in `slot`, or nothing where the slot holds none — a slot past
-        /// the array included, which is one a scene named and nothing has described yet.
-        VkExtent2D getExtent(std::uint32_t slot) const
-        {
-            return slot < mTextures.size() ? mTextures[slot].getExtent() : VkExtent2D{};
-        }
 
     private:
         /// Writes the descriptors for the slots `arrived` names, the texture's and its map's.

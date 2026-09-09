@@ -261,11 +261,10 @@ namespace MWRender
                         "  emissive materials:   {}\n"
                         "  lights:               {} casting\n"
                         "  deforming drawables:  {}\n"
-                        "  unbakeable cutouts:   {} placements of a mask a controller moves\n"
                         "  flattened ground:     {} chunks past a cell\n"
                         "  emitters:             {} holding {} live particles\n",
-                cutouts, tested, translucent, media, glowing, scene.mLights.size(), stats.mDeformed, stats.mUnbakeable,
-                flattened, stats.mEmitters, stats.mSprites));
+                cutouts, tested, translucent, media, glowing, scene.mLights.size(), stats.mDeformed, flattened,
+                stats.mEmitters, stats.mSprites));
 
         into.mRecord.note(
             std::format("\nnot placed\n"

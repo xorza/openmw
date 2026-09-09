@@ -24,7 +24,6 @@ namespace Rtx
         Upscale mUpscale = Upscale::Off;
         Preset mPreset = Preset::D;
         Reorder mReorder = Reorder::Off;
-        bool mMicromaps = true;
 
         /// Whether the trace counts the see-through surfaces each primary ray crosses.
         bool mCountCrossings = false;

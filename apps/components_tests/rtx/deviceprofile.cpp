@@ -4,7 +4,6 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/shaders/micromap.h>
 #include <components/rtxvulkan/deviceprofile.hpp>
 #include <components/rtxvulkan/requirements.hpp>
 
@@ -41,7 +40,6 @@ namespace Rtx
             properties.mProperties2.properties.apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 325);
             properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint
                 = VK_RAY_TRACING_INVOCATION_REORDER_MODE_NONE_EXT;
-            properties.mOpacityMicromap.maxOpacity4StateSubdivisionLevel = 12;
 
             VkPhysicalDeviceMemoryProperties& memory = properties.mMemory;
             memory.memoryHeapCount = 3;
@@ -71,7 +69,6 @@ namespace Rtx
             properties.mProperties2.properties.apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 341);
             properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint
                 = VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT;
-            properties.mOpacityMicromap.maxOpacity4StateSubdivisionLevel = 12;
 
             VkPhysicalDeviceMemoryProperties& memory = properties.mMemory;
             memory.memoryHeapCount = 2;
@@ -137,7 +134,6 @@ namespace Rtx
             EXPECT_EQ(onTuring.mQueueFamily, 0u);
             EXPECT_EQ(onAda.mQueueFamily, 0u);
             EXPECT_EQ(onTuring.mTimestampBits, 64u);
-            EXPECT_EQ(onTuring.mMicromapLevel, onAda.mMicromapLevel);
         }
 
         /// An optional extension is taken where the device lists it and left where it does not.
@@ -199,13 +195,6 @@ namespace Rtx
                 const DeviceProfile profile = walled.profile();
                 EXPECT_EQ(profile.mHostWrittenBytes, 0u);
                 EXPECT_EQ(profile.mObstacle, "no memory type the host writes into and the device reads");
-            }
-            {
-                Card blunt(&describeTuring);
-                blunt.mProperties.mOpacityMicromap.maxOpacity4StateSubdivisionLevel = Shaders::MICROMAP_LEVEL_MAX - 1;
-                EXPECT_EQ(blunt.profile().mObstacle,
-                    "cuts a four-state micromap triangle to level " + std::to_string(Shaders::MICROMAP_LEVEL_MAX - 1)
-                        + " at most, and the bake wants " + std::to_string(Shaders::MICROMAP_LEVEL_MAX));
             }
         }
 

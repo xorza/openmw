@@ -208,7 +208,6 @@ namespace RtxTool
                 = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
             request.mProfile.mReorder
                 = Rtx::sReorderNames.require(variables["reorder"].as<std::string>(), "a reorder mode");
-            request.mProfile.mMicromaps = variables["micromaps"].as<bool>();
             request.mProfile.mDelight = variables["delight"].as<float>();
             request.mProfile.mFilter = variables["filter"].as<bool>();
             request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();

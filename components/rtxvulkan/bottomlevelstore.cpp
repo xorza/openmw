@@ -17,7 +17,6 @@
 #include "graveyard.hpp"
 #include "memory.hpp"
 #include "result.hpp"
-#include "scenemicromaps.hpp"
 
 namespace Rtx
 {
@@ -64,12 +63,11 @@ namespace Rtx
             mStructures[mesh] = VK_NULL_HANDLE;
             mAddresses[mesh] = 0;
             mRooms[mesh] = StructureRoom{};
-            mMicromapped[mesh] = 0;
         }
     }
 
     void BottomLevelStore::build(Batch& batch, const SceneTables& scene, std::span<const Index> meshes,
-        const SceneMicromaps& micromaps, const BlockedBuffer& poses, const BlockedBuffer& indices, Graveyard& graveyard)
+        const BlockedBuffer& poses, const BlockedBuffer& indices, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t held = scene.mMeshes.getRows().size();
@@ -86,7 +84,6 @@ namespace Rtx
         mUpdateScratch.resize(held, 0);
         mUpdatable.resize(held, 0);
         mBuiltSize.resize(held, 0);
-        mMicromapped.resize(held, 0);
         mCompacted.resize(held, 0);
 
         mBuild.sizeTo(meshes.size());
@@ -171,13 +168,6 @@ namespace Rtx
                 mRooms[slot] = StructureRoom{};
             }
 
-            // **Over its micromap, where the bake gave it one.** The structure is what carries the
-            // micromap from here on: a refit has to describe the same one, and a row placing the
-            // mesh counts by it.
-            mMicromapped[slot] = micromaps.has(slot) ? 1 : 0;
-            if (mMicromapped[slot] != 0)
-                mBuild.mMicromaps[at] = micromaps.describe(slot);
-
             // **A pose or an arrival's staging, and which one is what the mesh is.** A deforming
             // mesh is built over what `SkinPass` wrote into the first copy ahead of this, so its
             // structure carries the pose rather than the bind; a static one is built over the
@@ -191,9 +181,8 @@ namespace Rtx
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
             // are guarded here as well: a freed slot's run is nothing, and `addressOf` would name
             // where it used to be.
-            mBuild.mGeometries[at] = describeTriangles(mesh, vertices,
-                !mesh.mIndices.empty() ? indices.addressOf(mesh.mIndices.mOffset) : 0,
-                mMicromapped[slot] != 0 ? &mBuild.mMicromaps[at] : nullptr);
+            mBuild.mGeometries[at] = describeTriangles(
+                mesh, vertices, !mesh.mIndices.empty() ? indices.addressOf(mesh.mIndices.mOffset) : 0);
 
             // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the

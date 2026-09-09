@@ -806,17 +806,14 @@ namespace Rtx
         step.mMesh = mesh;
         step.mMaterial = material.mIndex;
 
-        // A mesh worn with an animated cutout is one no bake can answer for, and traversal stops for
-        // every placement of it; a placement wearing anything but the material its mesh arrived
-        // with is the canary — `SceneUtil::CopyOp` shares the state set under every copy, so the
-        // only material a mesh can be seen in two of is one a controller made per node.
+        // A placement wearing anything but the material its mesh arrived with is the canary —
+        // `SceneUtil::CopyOp` shares the state set under every copy, so the only material a mesh
+        // can be seen in two of is one a controller made per node.
         const Index arrivedWearing = mScene.getTables().mMeshes.getRows()[mesh].mMaterial;
         if (arrivedWearing != sNoIndex)
         {
             const Material& worn = mScene.getTables().mMaterials.getRows()[arrivedWearing];
-            if (worn.mAnimated)
-                stats.mUnbakeable += worn.isCutout() ? 1 : 0;
-            else if (material.mIndex != arrivedWearing)
+            if (!worn.mAnimated && material.mIndex != arrivedWearing)
                 ++stats.mWornOtherwise;
         }
 
