@@ -278,6 +278,10 @@ it is a Bullet ray cast per frame.
 
 ## Ranked
 
+**Superseded.** Items 1 and 3 have since landed, and half of 4 — the `fadeThrough` half.
+`.notes/rtx/cpu-redesign.md` holds 2, 5 and the other half of 4, against numbers re-taken after the
+three. What follows is left as the reading of the day it was taken.
+
 1. **Move `SpriteShade` to the device.** 2.4 ms a frame at Vivec, which is the only place the
    host is the limit. It removes the one CPU-bound row in the corpus.
 2. **Take `ShapeFold` and the chunk build off the frame path.** Together they are 2.9 ms of the
