@@ -59,6 +59,19 @@ namespace Rtx
 
         void collect(Collector& into) override;
 
+        /// How long the last `collect` stood waiting for the warming thread to leave the chunk it
+        /// was inside, in milliseconds.
+        ///
+        /// **What decides where the fold can be moved to.** `mBuilding` is not a lock the frame may
+        /// skip — two threads inside `Terrain::ChunkManager::getChunk` build one chunk twice and the
+        /// mirror keeps a different drawable — so what can change is only how long the frame is
+        /// held. That is a chunk build at worst and nothing at all wherever the eye stands still,
+        /// and a number is what says which it is in practice.
+        ///
+        /// Nought on a frame that collected nothing, which is a world with no terrain and a walk the
+        /// mask kept out of it.
+        double getWarmedMs() const { return mWarmedMs; }
+
     private:
         /// How many view points ahead the warming thread aims.
         ///
@@ -68,10 +81,17 @@ namespace Rtx
         /// ahead by the distance the eye covered over the last several frames is what puts the build
         /// before the crossing rather than on it.
         ///
-        /// **Thirty and not sixty, measured.** Twice the lead warms a square centred further from
-        /// the eye, so it spends the thread on chunks the near levels do not want yet: on the island
-        /// route it moved the median frame from 7.1–7.9 ms to 8.5–9.2 and left the p99 and the worst
-        /// frame where they were.
+        /// **Thirty, and re-measured since: the number does not matter.** A sweep of one, fifteen,
+        /// thirty, sixty and a hundred and twenty over the island route, three legs interleaved,
+        /// reads the same at every one of them — the spread across leads is inside the spread across
+        /// legs at any one lead, and a lead of one, which warms essentially where the eye already
+        /// is, reads the same as a hundred and twenty. An earlier note here claimed sixty moved the
+        /// median from 7.1–7.9 ms to 8.5–9.2, and that is not reproduced.
+        ///
+        /// **What the thread is worth is 0.2 ms of the walk's mean**, measured against a build that
+        /// never starts it, consistently over three legs and with nothing at the tail. So it earns
+        /// its place and its aim does not, and the crossing's worst frame is not its to fix.
+        /// `.notes/bench.txt` holds both readings.
         static constexpr float sLeadSteps = 30.0f;
 
         /// How far ahead that aim may reach, whatever the eye did. A door or a fast travel moves the
@@ -112,6 +132,9 @@ namespace Rtx
         /// **`Terrain::World::preload` is thread safe except into one view from two threads**, so
         /// the thread fills this one and `collect` fills `mView`.
         osg::ref_ptr<Terrain::View> mWarmView;
+
+        /// What the last `collect` spent waiting for `mBuilding`. See `getWarmedMs`.
+        double mWarmedMs = 0.0;
 
         /// Held by whichever of the two is inside `QuadTreeWorld::loadRenderingNode`.
         ///

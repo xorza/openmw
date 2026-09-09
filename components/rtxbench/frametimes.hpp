@@ -38,24 +38,33 @@ namespace Rtx
         double getLowRate() const;
     };
 
-    /// Which of a measured frame's four figures a row holds.
+    /// Which of a measured frame's five figures a row holds.
     ///
     /// **`Wait` is the CPU standing still for the device, `Walk` is the world being mirrored, and
     /// `Place` is the renderer being told what moved.** What is left of `Frame` is the frame's own
     /// record. Lumping them would hide which of them a place is slow because of; a wait near the
     /// frame is a device that cannot keep up, and a wait near nought is a CPU that cannot.
+    ///
+    /// **`Warm` is the second wait, and it is inside `Walk`.** `Rtx::TerrainResidency` builds the
+    /// paged chunks the graph does not parent, and a thread of its own builds them ahead of the eye
+    /// — but the two may not be inside the quad tree's caches at once, so a frame that arrives while
+    /// the thread is in a chunk waits it out. It is the one row that is a share of another rather
+    /// than a share of the frame, because what it answers is why a walk was long rather than what a
+    /// frame was spent on.
     enum class Timing : std::uint32_t
     {
         Frame,
         Wait,
         Walk,
         Place,
+        Warm,
     };
 
-    inline constexpr std::size_t sTimingCount = 4;
+    inline constexpr std::size_t sTimingCount = 5;
 
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it.
-    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "wait", "walk", "place" };
+    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "wait", "walk", "place",
+        "warm" };
 
     inline constexpr std::size_t indexOf(const Timing timing)
     {
@@ -92,12 +101,13 @@ namespace Rtx
                 row.clear();
         }
 
-        /// What one measured frame cost, and the two shares of it this fork itself owns.
-        void add(double frameMs, double walkMs, double placeMs)
+        /// What one measured frame cost, and the shares of it this fork itself owns.
+        void add(double frameMs, double walkMs, double placeMs, double warmMs)
         {
             at(Timing::Frame).push_back(frameMs);
             at(Timing::Walk).push_back(walkMs);
             at(Timing::Place).push_back(placeMs);
+            at(Timing::Warm).push_back(warmMs);
         }
 
         /// What the device reported for the frame behind, which arrives on its own schedule and on

@@ -82,6 +82,10 @@ namespace MWRender
         /// is made against.
         void settle();
 
+        /// How long the last walk stood waiting for the terrain's warming thread.
+        /// `Rtx::TerrainResidency::getWarmedMs` says what the wait is and why it is timed.
+        double getWarmedMs() const { return mResident.getWarmedMs(); }
+
         const Rtx::SceneExtractor& getExtractor() const { return mExtractor; }
 
         const Rtx::SceneDesc& getScene() const { return mScene; }

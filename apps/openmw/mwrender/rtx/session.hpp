@@ -80,9 +80,10 @@ namespace MWRender
         /// `frameMs` is the whole frame and not the wait: measured from one call to the next, so it
         /// carries everything the game does between them — which is the number a player feels and
         /// the one `result.mWaitMs` cannot see. `walkMs` and `placeMs` are the two shares of it
-        /// this fork owns.
+        /// this fork owns, and `warmMs` is a share of `walkMs` — `Rtx::Timing::Warm` says why it is
+        /// counted apart.
         void frame(const TracedRun& run, const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs,
-            bool rebuilt);
+            double warmMs, bool rebuilt);
 
         /// Whether the stop wants the graph walked a second time, so it can report what that added.
         bool wantsSecondWalk() const;

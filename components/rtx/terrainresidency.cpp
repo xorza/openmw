@@ -1,10 +1,13 @@
 #include "terrainresidency.hpp"
 
+#include <chrono>
 #include <mutex>
 
 #include <components/loadinglistener/reporter.hpp>
 #include <components/terrain/view.hpp>
 #include <components/terrain/world.hpp>
+
+#include "frameclock.hpp"
 
 namespace Rtx
 {
@@ -41,6 +44,8 @@ namespace Rtx
 
     void TerrainResidency::collect(Collector& into)
     {
+        mWarmedMs = 0.0;
+
         if (mTerrain == nullptr || mView == nullptr)
             return;
 
@@ -58,9 +63,18 @@ namespace Rtx
         // `QuadTreeWorld::loadRenderingNode`, whose caches neither lock nor rebuild atomically —
         // `mBuilding` says what that costs the picture. The yield is what bounds the wait to the one
         // chunk the thread is inside, so a frame pays a chunk and never a square.
+        //
+        // **Timed, because how long that bound actually is decides what the fold can be moved to.**
+        // A chunk build is about a millisecond and the thread is asleep wherever the eye stands
+        // still, so the wait is nothing most of the time and a chunk when the eye moves — but which
+        // it is, and how often, is the question `getWarmedMs` is the answer to.
+        const std::chrono::steady_clock::time_point asked = std::chrono::steady_clock::now();
+
         mYield = true;
         std::lock_guard<std::mutex> building(mBuilding);
         mYield = false;
+
+        mWarmedMs = since(asked, std::chrono::steady_clock::now());
 
         mTerrain->collect(mView.get(), mViewPoint, into);
     }

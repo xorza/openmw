@@ -837,7 +837,7 @@ namespace MWRender
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
 
             if (mSession != nullptr)
-                mSession->frame(describeRun(), *result, frameMs, walkMs, placeMs, rebuilt);
+                mSession->frame(describeRun(), *result, frameMs, walkMs, placeMs, mMirror.getWarmedMs(), rebuilt);
         }
 
         mEntered = now;
