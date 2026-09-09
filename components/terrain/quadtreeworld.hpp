@@ -39,7 +39,9 @@ namespace Terrain
 
         void accept(osg::NodeVisitor& nv);
 
-        void collect(View* view, const osg::Vec3f& viewPoint, ChunkTaker& into) override;
+        bool isEnabled() const override;
+
+        void collect(View* view, const Vantage& from, ChunkTaker& into) override;
 
         void enable(bool enabled) override;
 
@@ -94,7 +96,7 @@ namespace Terrain
         ///
         /// Shared by the cull and by `collect`, which differ over how the view is found and over
         /// nothing after that.
-        void handOver(ViewData* vd, ChunkTaker& into);
+        void handOver(ViewData* vd, const osg::Vec4i& grid, ChunkTaker& into);
 
         void ensureQuadTreeBuilt();
         void loadRenderingNode(

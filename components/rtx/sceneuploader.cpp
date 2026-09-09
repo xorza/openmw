@@ -1,8 +1,10 @@
 #include "sceneuploader.hpp"
 
+#include <chrono>
 #include <span>
 
 #include "compositequeue.hpp"
+#include "frameclock.hpp"
 #include "renderer.hpp"
 #include "scenedesc.hpp"
 #include "texturebuilder.hpp"
@@ -40,7 +42,17 @@ namespace Rtx
         // last before anything reads them. `SceneDesc::orderLights` says what depends on it.
         scene.orderLights();
 
+        SceneUpload done;
+
+        // **The three halves of the hand-over are timed apart**, because a frame that stalls stalls
+        // in one of them and the profile cannot say which: an arrival frame's time is in the driver,
+        // which carries no frame pointer. `Rtx::Timing::Bake` says the rest.
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
+
         const std::size_t baked = composites != nullptr ? composites->advance(scene, images) : 0;
+
+        const std::chrono::steady_clock::time_point gathered = std::chrono::steady_clock::now();
+        done.mBakeMs = since(began, gathered);
 
         // **After the two calls above, because both rewrite what the spans reach.**
         const SceneTables tables = scene.getTables();
@@ -53,10 +65,10 @@ namespace Rtx
         // arrival for everything below even though nothing was walked.
         const bool arrived = !mine || tables.getStructureRevision() != mBuilt || baked > 0;
 
-        SceneUpload done;
-
         if (!arrived)
         {
+            const std::chrono::steady_clock::time_point told = std::chrono::steady_clock::now();
+
             // **A departure with nothing arriving is the ordinary way to leave a region**, and it is
             // the frame that must not wait for an arrival to give the memory back: walking away from
             // a ring frees its slots and nothing takes them over until the walk reaches the far side
@@ -68,6 +80,8 @@ namespace Rtx
             // first would hand the renderer an empty list and hold a departed ring's structures
             // until something arrived to take the slots over.
             renderer.placeScene(slot, tables, sea);
+
+            done.mUploadMs = since(told, std::chrono::steady_clock::now());
             done.mKind = SceneUpload::Kind::Placed;
         }
         else
@@ -84,6 +98,9 @@ namespace Rtx
                 mTextures.describeAll(tables, images, composites);
             else
                 mTextures.describe(tables, images, tables.mTextures.getArrived(), composites);
+
+            const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();
+            done.mTexturesMs = since(gathered, described);
 
             done.mDescribed = mTextures.getDescriptions().size();
             done.mUnreadable = mTextures.getUnreadable();
@@ -102,6 +119,8 @@ namespace Rtx
                 renderer.extendScene(slot, tables, mTextures.getDescriptions(), sea);
                 done.mKind = SceneUpload::Kind::Extended;
             }
+
+            done.mUploadMs = since(described, std::chrono::steady_clock::now());
         }
 
         // **One tail, because all three hand-overs end the same way**: each has uploaded, so each is

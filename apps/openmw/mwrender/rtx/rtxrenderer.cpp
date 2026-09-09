@@ -43,6 +43,7 @@
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/upscale.hpp>
+#include <components/rtxbench/frametimes.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
@@ -837,7 +838,16 @@ namespace MWRender
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
 
             if (mSession != nullptr)
-                mSession->frame(describeRun(), *result, frameMs, walkMs, placeMs, mMirror.getWarmedMs(), rebuilt);
+                mSession->frame(describeRun(), *result, frameMs,
+                    Rtx::FrameSpend{
+                        .mWalkMs = walkMs,
+                        .mWarmMs = mMirror.getWarmedMs(),
+                        .mPlaceMs = placeMs,
+                        .mBakeMs = handed.mBakeMs,
+                        .mTexturesMs = handed.mTexturesMs,
+                        .mUploadMs = handed.mUploadMs,
+                    },
+                    rebuilt);
         }
 
         mEntered = now;

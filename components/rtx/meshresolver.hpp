@@ -12,12 +12,12 @@
 // forward-declared. It brings `osg::Vec3Array`, which a morph is keyed on, with it.
 #include <components/sceneutil/riggeometry.hpp>
 
+#include "geometryfold.hpp"
 #include "index.hpp"
 #include "mirroridentity.hpp"
 #include "mirrorpass.hpp"
 #include "scenedesc.hpp"
 #include "shaders/skinning.h"
-#include "shapefold.hpp"
 
 namespace osg
 {
@@ -170,13 +170,7 @@ namespace Rtx
         Identity<const SceneUtil::RigGeometry::InfluenceData> mRigs{ mPass };
         Identity<const osg::Vec3Array> mMorphs{ mPass };
 
-        /// Which cards the content drew as two coincident sheets, so a ray offset can tell them
-        /// from a wall.
-        ShapeFold mShapeFold;
-
-        // Refilled per drawable rather than reallocated, because a cell is tens of thousands of
-        // them.
-        std::vector<std::uint32_t> mIndexScratch;
+        GeometryFold mFold;
 
         /// Where an overall normal is spread across a drawable's vertices. See `readVertices`.
         std::vector<osg::Vec3f> mFlatNormalScratch;

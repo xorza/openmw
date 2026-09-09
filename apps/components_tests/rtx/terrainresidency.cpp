@@ -10,6 +10,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/loadinglistener/reporter.hpp>
 #include <components/rtx/terrainresidency.hpp>
+#include <components/terrain/chunktaker.hpp>
 #include <components/terrain/view.hpp>
 #include <components/terrain/world.hpp>
 
@@ -91,7 +92,7 @@ namespace Rtx
                 }
             }
 
-            void collect(Terrain::View*, const osg::Vec3f&, Terrain::ChunkTaker&) override
+            void collect(Terrain::View*, const Terrain::Vantage&, Terrain::ChunkTaker&) override
             {
                 const Inside held(*this);
                 ++mCollects;

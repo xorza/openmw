@@ -47,6 +47,20 @@ namespace Rtx
         /// where nothing arrives, and waiting for the next arrival to give the memory back is what
         /// made the island route settle at what it had visited.
         std::size_t mDropped = 0;
+
+        /// How long the ground the composite queue handed back took, in milliseconds.
+        double mBakeMs = 0.0;
+
+        /// How long the arrived textures took to open and describe. Nought on a `Placed`.
+        double mTexturesMs = 0.0;
+
+        /// How long the renderer took to be told — whichever of the three calls this was, and the
+        /// texture slots given back beside it.
+        ///
+        /// **Timed here and not inside the backend**, because what the three have in common is that
+        /// they are the hand-over, and a backend that timed itself would be answering a question
+        /// about the host's frame. `Rtx::Timing::Upload` says what the three rows are for.
+        double mUploadMs = 0.0;
     };
 
     /// Takes, once a frame, the cheapest of the three ways to hand a mirrored scene over.

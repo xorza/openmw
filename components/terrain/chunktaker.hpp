@@ -2,6 +2,8 @@
 #define COMPONENTS_TERRAIN_CHUNKTAKER_H
 
 #include <osg/Vec2f>
+#include <osg/Vec3f>
+#include <osg/Vec4i>
 
 namespace osg
 {
@@ -27,6 +29,26 @@ namespace Terrain
         float mSize = 0.0f;
         unsigned int mLodFlags = 0;
         bool mActiveGrid = false;
+    };
+
+    /// Where a collect looks from, and what of the world it may see.
+    ///
+    /// **Everything a collect would otherwise read off the world, captured by the thread that is
+    /// allowed to read it.** `Terrain::World` is written by the game's own thread — `setActiveGrid`
+    /// where a cell grid changes, `enable` where the player goes indoors — so a caller on any other
+    /// thread has to be handed them rather than look. What is left for a collect to read of the
+    /// world is settled at construction or guarded by a mutex of its own.
+    struct Vantage
+    {
+        osg::Vec3f mViewPoint;
+
+        /// The square the simulation holds. It decides a chunk's level of detail and whether it
+        /// stands inside the active grid, which is part of what names its contents.
+        osg::Vec4i mGrid;
+
+        /// Whether the terrain is on the graph at all. `QuadTreeWorld::enable` is what takes it
+        /// off, and a caller that may not see the terrain root may not see its chunks either.
+        bool mEnabled = false;
     };
 
     /// What a world hands its chunks to, when nothing in the graph parents them.

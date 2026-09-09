@@ -518,8 +518,8 @@ namespace MWRender
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mWalkTwice;
     }
 
-    void Session::frame(const TracedRun& run, const Rtx::FrameResult& result, const double frameMs, const double walkMs,
-        const double placeMs, const double warmMs, const bool rebuilt)
+    void Session::frame(const TracedRun& run, const Rtx::FrameResult& result, const double frameMs,
+        const Rtx::FrameSpend& spend, const bool rebuilt)
     {
         Rtx::Renderer& renderer = run.mBackend;
 
@@ -544,7 +544,7 @@ namespace MWRender
         if (mSeen <= warmup)
             return;
 
-        mHeld->mSamples.add(frameMs, walkMs, placeMs, warmMs);
+        mHeld->mSamples.add(frameMs, spend);
         mHeld->mSamples.addWait(result.mWaitMs);
         mHeld->mGpu.add(result.mGpu);
         mWallMs += frameMs;

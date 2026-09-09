@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include <components/loadinglistener/reporter.hpp>
+#include <components/terrain/chunktaker.hpp>
 #include <components/terrain/view.hpp>
 #include <components/terrain/world.hpp>
 
@@ -76,7 +77,13 @@ namespace Rtx
 
         mWarmedMs = since(asked, std::chrono::steady_clock::now());
 
-        mTerrain->collect(mView.get(), mViewPoint, into);
+        mTerrain->collect(mView.get(),
+            Terrain::Vantage{
+                .mViewPoint = mViewPoint,
+                .mGrid = mTerrain->getActiveGrid(),
+                .mEnabled = mTerrain->isEnabled(),
+            },
+            into);
     }
 
     void TerrainResidency::ask()

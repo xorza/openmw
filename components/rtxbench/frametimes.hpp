@@ -38,45 +38,68 @@ namespace Rtx
         double getLowRate() const;
     };
 
-    /// Which of a measured frame's five figures a row holds.
+    /// Which of a measured frame's figures a row holds.
     ///
     /// **`Wait` is the CPU standing still for the device, `Walk` is the world being mirrored, and
     /// `Place` is the renderer being told what moved.** What is left of `Frame` is the frame's own
     /// record. Lumping them would hide which of them a place is slow because of; a wait near the
     /// frame is a device that cannot keep up, and a wait near nought is a CPU that cannot.
     ///
-    /// **`Warm` is the second wait, and it is inside `Walk`.** `Rtx::TerrainResidency` builds the
-    /// paged chunks the graph does not parent, and a thread of its own builds them ahead of the eye
-    /// — but the two may not be inside the quad tree's caches at once, so a frame that arrives while
-    /// the thread is in a chunk waits it out. It is the one row that is a share of another rather
-    /// than a share of the frame, because what it answers is why a walk was long rather than what a
-    /// frame was spent on.
+    /// **Four of them are shares of another row rather than of the frame**, and they follow the row
+    /// they are inside. `Warm` is how long the walk stood waiting for the terrain's warming thread.
+    /// `Bake`, `Textures` and `Upload` are the three halves of `Place` that a spike could be in —
+    /// the ground the composite queue handed back, the arrived textures being opened and described,
+    /// and what the backend was then told. What is left of `Place` is the lists it reads either
+    /// side of them.
+    ///
+    /// **Why `Place` needed splitting at all**: on the island route it is 0.18 ms at the median and
+    /// 62 at the worst, and a profile cannot say which half — an arrival frame's time is in the
+    /// driver, and the driver carries no frame pointer for perf to walk.
     enum class Timing : std::uint32_t
     {
         Frame,
         Wait,
         Walk,
-        Place,
         Warm,
+        Place,
+        Bake,
+        Textures,
+        Upload,
     };
 
-    inline constexpr std::size_t sTimingCount = 5;
+    inline constexpr std::size_t sTimingCount = 8;
 
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it.
-    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "wait", "walk", "place",
-        "warm" };
+    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "wait", "walk", "warm", "place",
+        "bake", "textures", "upload" };
+
+    /// What one measured frame spent on the host, by phase.
+    ///
+    /// **One bag, because the list only ever grows.** Each of these arrives at the same call from a
+    /// different place, and a signature that named them one by one was six parameters of one type
+    /// in a row — which is six chances to hand them over in the wrong order and no way to be caught
+    /// at it.
+    struct FrameSpend
+    {
+        double mWalkMs = 0.0;
+        double mWarmMs = 0.0;
+        double mPlaceMs = 0.0;
+        double mBakeMs = 0.0;
+        double mTexturesMs = 0.0;
+        double mUploadMs = 0.0;
+    };
 
     inline constexpr std::size_t indexOf(const Timing timing)
     {
         return static_cast<std::size_t>(timing);
     }
 
-    /// The four figures a measured frame contributes, gathered over one run.
+    /// Every figure a measured frame contributes, gathered over one run.
     ///
-    /// **One object because they are cleared, filled and summarised together.** Four vectors kept
-    /// apart are four chances for a frame to reach three of them, and rows out of step with each
-    /// other are rows that cannot be read against each other at all. **One array**, because four
-    /// named members are four edits wherever a fifth figure is wanted.
+    /// **One object because they are cleared, filled and summarised together.** Rows kept apart are
+    /// a chance for a frame to reach all but one of them, and rows out of step with each other are
+    /// rows that cannot be read against each other at all. **One array**, because named members are
+    /// an edit apiece wherever a further figure is wanted.
     ///
     /// **Shared by the harness and the game**, whose two reports only mean something beside each
     /// other: a crossing in one is measured against a crossing in the other, and a row one of them
@@ -102,12 +125,15 @@ namespace Rtx
         }
 
         /// What one measured frame cost, and the shares of it this fork itself owns.
-        void add(double frameMs, double walkMs, double placeMs, double warmMs)
+        void add(double frameMs, const FrameSpend& spend)
         {
             at(Timing::Frame).push_back(frameMs);
-            at(Timing::Walk).push_back(walkMs);
-            at(Timing::Place).push_back(placeMs);
-            at(Timing::Warm).push_back(warmMs);
+            at(Timing::Walk).push_back(spend.mWalkMs);
+            at(Timing::Warm).push_back(spend.mWarmMs);
+            at(Timing::Place).push_back(spend.mPlaceMs);
+            at(Timing::Bake).push_back(spend.mBakeMs);
+            at(Timing::Textures).push_back(spend.mTexturesMs);
+            at(Timing::Upload).push_back(spend.mUploadMs);
         }
 
         /// What the device reported for the frame behind, which arrives on its own schedule and on

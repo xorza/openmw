@@ -12,6 +12,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/runrecord.hpp>
 
 #include "tracedrun.hpp"
@@ -79,11 +80,10 @@ namespace MWRender
         ///
         /// `frameMs` is the whole frame and not the wait: measured from one call to the next, so it
         /// carries everything the game does between them — which is the number a player feels and
-        /// the one `result.mWaitMs` cannot see. `walkMs` and `placeMs` are the two shares of it
-        /// this fork owns, and `warmMs` is a share of `walkMs` — `Rtx::Timing::Warm` says why it is
-        /// counted apart.
-        void frame(const TracedRun& run, const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs,
-            double warmMs, bool rebuilt);
+        /// the one `result.mWaitMs` cannot see. `spend` is what this fork owns of it, by phase, and
+        /// `Rtx::Timing` says which of its figures is a share of which.
+        void frame(const TracedRun& run, const Rtx::FrameResult& result, double frameMs, const Rtx::FrameSpend& spend,
+            bool rebuilt);
 
         /// Whether the stop wants the graph walked a second time, so it can report what that added.
         bool wantsSecondWalk() const;

@@ -7,7 +7,6 @@
 #include <string>
 
 #include <osg/Geometry>
-#include <osg/TriangleIndexFunctor>
 
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -23,26 +22,6 @@ namespace Rtx
 {
     namespace
     {
-        /// Collects triangle indices whatever primitive mode the geometry used.
-        ///
-        /// Strips, fans and quads all arrive here as triangles, which is the only form an
-        /// acceleration structure takes. Degenerate triangles — how a strip restarts — are dropped:
-        /// they contribute no surface and a zero-area triangle in a BLAS is wasted traversal.
-        struct TriangleCollector
-        {
-            std::vector<std::uint32_t>* mIndices = nullptr;
-
-            void operator()(unsigned int a, unsigned int b, unsigned int c) const
-            {
-                if (a == b || b == c || a == c)
-                    return;
-
-                mIndices->push_back(a);
-                mIndices->push_back(b);
-                mIndices->push_back(c);
-            }
-        };
-
         /// A geometry's per-vertex positions and normals.
         struct VertexArrays
         {
@@ -259,33 +238,28 @@ namespace Rtx
         if (read.mRig != nullptr && read.mDeform == Deform::None)
             ++stats.mUnskinned;
 
-        mIndexScratch.clear();
-        osg::TriangleIndexFunctor<TriangleCollector> collector;
-        collector.mIndices = &mIndexScratch;
-        geometry.accept(collector);
-
-        if (mIndexScratch.empty())
+        // Folded before the mesh is written, so the copy the content drew for a card's back never
+        // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
+        // together, so the pairs found in the bind pose are the pairs.
+        FoldedShape shape;
+        if (!mFold.read(geometry, arrays.mPositions, shape))
         {
             ++stats.mSkippedEmpty;
             return sNoIndex;
         }
+
+        if (shape.mSheet)
+            ++stats.mSheets;
 
         std::span<const osg::Vec2f> texCoords;
         const osg::Vec2Array* texCoordArray = asVec2Array(geometry.getTexCoordArray(0));
         if (texCoordArray != nullptr && texCoordArray->size() == arrays.mPositions.size())
             texCoords = std::span(texCoordArray->asVector());
 
-        // Before the mesh is written, so the copy the content drew for a card's back never reaches
-        // a structure. Once per drawable and never for a pose: a rig moves the two copies together,
-        // so the pairs found in the bind pose are the pairs.
-        const FoldedShape shape = mShapeFold.fold(arrays.mPositions, mIndexScratch);
-        if (shape.mSheet)
-            ++stats.mSheets;
-
         const Index deformer = addDeformer(read, arrays.mPositions.size());
 
         const Index mesh = mScene.addMesh(
-            arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, read.mDeform, deformer, material);
+            arrays.mPositions, arrays.mNormals, texCoords, mFold.getIndices(), shape, read.mDeform, deformer, material);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 

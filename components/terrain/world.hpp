@@ -97,12 +97,20 @@ namespace Terrain
         {
         }
 
-        /// Every chunk this world holds for `view`, at the detail `viewPoint` asks for, handed to
+        /// Whether the terrain stands on the graph at all.
+        ///
+        /// **What `enable` decides, asked of the world rather than worked out.** A caller building a
+        /// `Terrain::Vantage` needs it and cannot see the root node; it asks here, on the game's own
+        /// thread, and hands the answer to whatever thread collects. False where `collect` below
+        /// hands nothing over either.
+        virtual bool isEnabled() const { return false; }
+
+        /// Every chunk this world holds for `view`, at the detail `from` asks for, handed to
         /// `into`.
         ///
         /// **Not a cull, and this is the whole reason it exists.** Nothing is rejected and no
         /// frustum is consulted: a ray tracer decides what exists, and the answer is everything
-        /// within the view distance. The detail is still chosen by distance from `viewPoint`,
+        /// within the view distance. The detail is still chosen by distance from the view point,
         /// because a chunk has to be built at *some* level and the one an eye there would have
         /// picked is the one its rays should hit.
         ///
@@ -112,8 +120,14 @@ namespace Terrain
         /// resolves its chunks inside a cull and parents them to nothing, so it is the one that has
         /// to say where they are.
         ///
-        /// @note Not thread safe. `view` must be one `createView` handed out.
-        virtual void collect(View* view, const osg::Vec3f& viewPoint, ChunkTaker& into) {}
+        /// **Where it looks from arrives rather than being read.** `Terrain::Vantage` says why: a
+        /// caller on a thread other than the game's may not read what the game writes, and
+        /// everything a collect would otherwise take off the world is written there. `preload` takes
+        /// its grid for the same reason.
+        ///
+        /// @note Not thread safe against another call on the same `view`, which must be one
+        ///       `createView` handed out.
+        virtual void collect(View* view, const Vantage& from, ChunkTaker& into) {}
 
         virtual void rebuildViews() {}
 

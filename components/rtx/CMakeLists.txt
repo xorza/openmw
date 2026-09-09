@@ -48,6 +48,8 @@ set(RTX_FILES
     frameimage.hpp
     frameworld.cpp
     frameworld.hpp
+    geometryfold.cpp
+    geometryfold.hpp
     imageformat.cpp
     imageformat.hpp
     index.hpp
