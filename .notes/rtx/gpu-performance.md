@@ -387,6 +387,64 @@ saving grows with it, and git holds the code and its tests.
 frame 5.87 against 5.80. That is inside the run-to-run spread, so the choice is a picture question
 rather than a cost one.
 
+## Finding 6 — what the trace's passes cost, priced by removing them
+
+Taken at `161272fef7` plus the light-model stages of `.notes/rtx/light-model-plan.md`, with the
+same binary and fourteen shader builds, each with one pass taken out: the bounce; the bounce's own
+lights; the occlusion ray; the lamps; the sky's sources; the water shader; the shafts; the sprites and
+the cloud shells; the fog read; the emissive fetch; the peel; the terrain's layer stack; the cutout's
+any-hit reads; and every shadow ray. `bench --seconds=20`, the `trace` zone, each build handed to the
+harness as its own `--resources`.
+
+**The card was under its power cap throughout** — 70 °C, throttle reason 4, the clock walking
+between 1.8 and 2.1 GHz — and it made the ship's legs move by up to 0.5 ms between rounds where the
+guild's did not move at all. So the ship was re-run six rounds interleaved at ten seconds a leg and
+Vivec three rounds at twenty, and what is read is the median. The guild's base read 1.35 twice and
+the shore's 1.90 and 1.93, so their single legs stand. The morning's gates read the ship at 1.55 to
+1.63 and it read 1.7 to 2.3 here, so the shares are the finding and the milliseconds are the day's.
+
+Milliseconds taken off the `trace` zone by removing the pass, and its share of the base:
+
+| removed | ship, of 1.81 | guild, of 1.35 | vivec, of 1.63 | shore, of 1.92 |
+|---|---:|---:|---:|---:|
+| the bounce, with everything at its hit | 1.00 (55 %) | 0.83 (61 %) | 0.60 (37 %) | 0.76 (40 %) |
+| every shadow ray | 0.66 (36 %) | 0.25 (19 %) | 0.78 (48 %) | 0.88 (46 %) |
+| the lamps, both depths | 0.12 (6 %) | 0.43 (32 %) | 0.00 | 0.29 (15 %) |
+| the sky's sources, both depths | 0.29 (16 %) | 0.01 | 0.18 (11 %) | 0.28 (15 %) |
+| the bounce's lights alone | 0.29 (15 %) | 0.24 (18 %) | 0.33 (20 %) | 0.25 (13 %) |
+| the occlusion ray | 0.13 (7 %) | 0.15 (11 %) | 0.04 (2 %) | 0.20 (10 %) |
+| the water's shafts | 0.10 (5 %) | 0.02 | 0.39 (24 %) | 0.39 (20 %) |
+| the water shader whole | 0.19 (10 %) | 0.00 | 0.08 (5 %) | 0.33 (17 %) |
+| the cutout's any-hit reads | 0.25 (14 %) | 0.07 (5 %) | 0.00 | 0.18 (9 %) |
+| the terrain's layer stack | 0.03 (2 %) | 0.00 | 0.00 | 0.09 (5 %) |
+| the sprites and the shells | 0.00 | 0.07 (5 %) | 0.00 | 0.10 (5 %) |
+| the fog read | 0.05 (3 %) | 0.00 | 0.02 | 0.03 |
+| the peel | 0.13 (7 %) | 0.00 | 0.00 | 0.02 |
+| the emissive fetch | 0.02 | 0.05 (4 %) | 0.02 | 0.02 |
+
+The bounce's lights, the occlusion ray, the lamps and the sky are each partly inside the two rows
+above them, so the rows do not sum. Two readings are not to be trusted: the ship's peel, which has
+almost no see-through pixels and read 0.13 across a leg that drifted; and Vivec's water shader,
+which read less than its own shafts and cannot, so one of that pair is a bad leg.
+
+**What it says, in order.**
+
+- **The bounce is the trace.** Between 37 and 61 per cent of it, and roughly half of that is the
+  bounce's own traversal and material resolve and half is what its hit then asks for: an occlusion
+  ray, and a sun and a lamp ray at half rate. Every idea about the trace's cost is an idea about
+  the bounce first.
+- **Shadow rays are a third to a half**, and they are cheap only where they are short. The guild's
+  cost a fifth; the shore's, which run to `mFar` through foliage, nearly half.
+- **The lamp walk is a cost of its own where there are lamps.** At the guild removing the lamps
+  saves 0.43 ms and removing every shadow ray saves 0.25, so the walk of the cell's list — up to
+  256 lamps weighed at the eye's hit and again at the bounce's — is worth more there than the one
+  ray it buys. That is the one item this finding adds that nothing in the tree had named.
+- **The shafts are a quarter of Vivec's trace and a fifth of the shore's**, after the halving to
+  four steps. Each step is a shadow ray, and the march runs on both of a water pixel's rays.
+- **The sky's rays are a tenth to a sixth out of doors**, the cutout's reads a tenth where there are
+  cutouts, and everything else — the layer stack, the sprites, the fog read, the emissive fetch,
+  the peel — is at or under a twentieth apiece.
+
 ## What the tools can and cannot say
 
 **Nsight Systems needs `--trace=vulkan-annotations`, and it needs a build that labels.** Plain
@@ -421,9 +479,14 @@ Pricing them apart is a build per pass and a `shot` each.
 
 ## What to do next, in order
 
-1. **Price the trace's own passes by removing them.** The trace is 0.41 to 4.53 ms depending on the
-   place and the extent, and it is one number today.
-2. **Leave the upscaler alone unless the picture changes.** It is the largest cost in every frame and
+1. **Make the lamp walk cheaper where the list is long.** Finding 6: a third of the guild's trace is
+   weighing up to 256 candidates twice a pixel, for one ray. A cell that holds many lamps wants a
+   cheaper draw than a walk — a per-cell alias table built by `Rtx::LightGrid`, or a stratified
+   subset of the list — with the reservoir's own rule unchanged.
+2. **Then the bounce**, which is 37 to 61 per cent of the trace. Its hit's lights are half of it and
+   are already rated at a half; the other half is its traversal and resolve, which is where a
+   half-resolution bounce or a cheaper resolve at the bounce would land.
+3. **Leave the upscaler alone unless the picture changes.** It is the largest cost in every frame and
    it is a fixed function of the extent — the only knob on it is which extent to trace, and the
    target already names one that fits.
 
