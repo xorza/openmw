@@ -295,6 +295,47 @@ a node there may carry a light, a controller or a particle system.
 **And it is not urgent.** It is about 0.2 ms on a host with 2.4 ms of headroom at every view that
 stands still.
 
+## Finding 5 — the fold is three quarters of the walk at the tail
+
+The mean said the fold was 1.42 ms a frame. That is not the number the one per cent low is made of,
+so the walk now reports a `fold` row of its own. Milliseconds, `island-crossing`,
+`--settled=false`.
+
+| row | median | mean | p95 | p99 | worst |
+|---|---:|---:|---:|---:|---:|
+| `frame` | 5.23 | 9.50 | 24.63 | 60.02 | 122.56 |
+| `walk` | 0.80 | 2.52 | 12.17 | 31.07 | 84.65 |
+| — `fold` | 0.00 | 1.36 | 9.55 | 23.14 | 69.09 |
+| `place` | 0.24 | 1.32 | 4.36 | 10.64 | 33.72 |
+| `update` | 0.59 | 1.17 | 1.26 | 22.16 | 46.20 |
+
+**The fold is 74% of the walk at the p99 and 82% of it at the worst frame**, against 54% of its
+mean. Read against the whole frame it is 39% at the p99 and 56% at the worst. A place that stands
+still folds nothing, so the row is nought everywhere else. The mean understated it because the fold
+is all arrival and the mean divides by every frame.
+
+**And 92% of it could have been done before the frame asked.** By thread, from the same run's
+profile: `ObjectPaging::createChunk` is 1.528 ms a frame across the process and 0.119 of that on the
+frame. `GeometryFold::read` is 1.352 ms a frame, every sample of it on the frame. So the geometry
+the frame folds was, nearly always, built by the game's own preloader some frames earlier and left
+sitting unfolded.
+
+**What stands between the two numbers is which thread.** No thread this fork owns builds those
+chunks. `TerrainResidency::warm` resolves a decomposition of its own, which is why folding there
+reached 1.6% at the shipped lead and 31% at a lead of one. `.notes/bench.txt` records that attempt
+and names its cap: the warming pass was cut short by the frame, rather than aimed at the wrong
+squares.
+
+**So the work to do is a warming pass that folds what the preloader has already built**, and the
+thing to fix inside it is why the pass does not finish. The lag is not the problem — at 12,000 units
+a second a frame moves the view point about 120 units against a cell of 8192, so a pass one frame
+behind asks for nearly the same squares.
+
+**The risk is the one every cache here carries**: a fold that goes stale mirrors the wrong geometry.
+`ShapeFold` already documents itself as one instance a thread, and the fold is keyed on the
+drawable, so the guard is the same one `ChunkRuns` uses — the pointer is the proof, and a debug-only
+pass that folds anyway and compares is what says so.
+
 ## What is not a problem
 
 **The workers.** Recast, Bullet and Lua all run off the frame, and the frame pays only for scheduling
@@ -318,12 +359,14 @@ frame of one worker thread over the crossing, and `CompositeQueue::advance` on t
 
 1. ~~Name the crossing's 2.89 ms of block.~~ **Done.** Finding 3 says what it was and what it came
    to. The rows that found it are now part of every report.
-2. **Measure the fold cache hit rate against `SceneUtil::WorkThread`.** Count how many of the
-   geometries the frame folds were built by the preloader on an earlier frame. Below about a half,
-   the cache is not worth writing. Above it, the fold is 1.42 ms a frame of the crossing.
-3. **Then read what is left of the walk at the crossing.** `takeChunk` is 2.16 ms and the fold is
+2. ~~Measure the fold cache hit rate.~~ **Done, and both halves say build it.** The `fold` row
+   below says what it costs at the tail, and the thread split says 92% of it could have been done
+   before the frame asked.
+3. **Fold what the preloader has already built, on a thread of this fork's own.** The design and
+   the risk are below.
+4. **Then read what is left of the walk at the crossing.** `takeChunk` is 2.16 ms and the fold is
    1.42 of it. The other 0.74 is the walk of chunks whose runs did not replay.
-4. **The trace over the game's own graph is last.** It is 0.2 ms at a standing view and the host has
+5. **The trace over the game's own graph is last.** It is 0.2 ms at a standing view and the host has
    ten times that in headroom.
 
 **No frame time here is a budget failure.** The target is 60 fps at 1920×1080 internal. Every place

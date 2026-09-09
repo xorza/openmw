@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <span>
 #include <string>
@@ -15,6 +16,7 @@
 #include "deformertable.hpp"
 #include "error.hpp"
 #include "extractionstats.hpp"
+#include "frameclock.hpp"
 #include "instancerecord.hpp"
 #include "scenedesc.hpp"
 
@@ -259,7 +261,11 @@ namespace Rtx
         // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
         // together, so the pairs found in the bind pose are the pairs.
         FoldedShape shape;
-        if (!mFold.read(geometry, arrays.mPositions, shape))
+        const std::chrono::steady_clock::time_point folding = std::chrono::steady_clock::now();
+        const bool folded = mFold.read(geometry, arrays.mPositions, shape);
+        stats.mFoldMs += since(folding, std::chrono::steady_clock::now());
+
+        if (!folded)
         {
             ++stats.mSkippedEmpty;
             return sNoIndex;

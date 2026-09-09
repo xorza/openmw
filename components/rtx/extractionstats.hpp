@@ -30,6 +30,13 @@ namespace Rtx
         std::uint32_t mMeshesAdded = 0;
         std::uint32_t mMaterialsAdded = 0;
 
+        /// What the folding cost, of the meshes added above.
+        ///
+        /// **Timed rather than counted, because what it costs is triangles and not drawables.** A
+        /// paged chunk is one merged geometry of every static of a kind in it, so one entry of
+        /// `mMeshesAdded` can be tens of thousands of triangles and its neighbour a crate.
+        double mFoldMs = 0.0;
+
         /// Of those, the meshes that were nothing but reversed pairs and left here as one copy
         /// each. `ShapeFold` says what a sheet is; a cell with foliage in it has hundreds.
         std::uint32_t mSheets = 0;

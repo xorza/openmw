@@ -874,6 +874,7 @@ namespace MWRender
                         .mFinishMs = finishMs,
                         .mWalkMs = walkMs,
                         .mWarmMs = mMirror.getWarmedMs(),
+                        .mFoldMs = found.mFoldMs,
                         .mPlaceMs = placeMs,
                         .mBakeMs = handed.mBakeMs,
                         .mTexturesMs = handed.mTexturesMs,

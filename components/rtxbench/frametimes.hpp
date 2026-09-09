@@ -51,8 +51,11 @@ namespace Rtx
     /// that frame was the last to read. The two are apart because one is the device being slow and
     /// the other is this renderer being slow, and a frame can be either.
     ///
-    /// **Four more of them are shares of another row rather than of the frame**, and they follow
-    /// the row they are inside. `Warm` is how long the walk stood waiting for the terrain's warming thread.
+    /// **Five more of them are shares of another row rather than of the frame**, and they follow
+    /// the row they are inside. `Warm` is how long the walk stood waiting for the terrain's warming
+    /// thread, and `Fold` is what that walk spent folding the geometry which arrived on it — a
+    /// median of nothing and three quarters of the walk at the worst frames of a route, because a
+    /// paged chunk arrives as one merged geometry of every static of a kind in it.
     /// `Bake`, `Textures` and `Upload` are the three halves of `Place` that a spike could be in —
     /// the ground the composite queue handed back, the arrived textures being opened and described,
     /// and what the backend was then told. What is left of `Place` is the lists it reads either
@@ -84,6 +87,7 @@ namespace Rtx
         Wait,
         Walk,
         Warm,
+        Fold,
         Place,
         Bake,
         Textures,
@@ -93,11 +97,11 @@ namespace Rtx
         Update,
     };
 
-    inline constexpr std::size_t sTimingCount = 12;
+    inline constexpr std::size_t sTimingCount = 13;
 
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it.
     inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "finish", "wait", "walk", "warm",
-        "place", "bake", "textures", "upload", "trace", "present", "update" };
+        "fold", "place", "bake", "textures", "upload", "trace", "present", "update" };
 
     /// What one measured frame spent on the host, by phase.
     ///
@@ -110,6 +114,7 @@ namespace Rtx
         double mFinishMs = 0.0;
         double mWalkMs = 0.0;
         double mWarmMs = 0.0;
+        double mFoldMs = 0.0;
         double mPlaceMs = 0.0;
         double mBakeMs = 0.0;
         double mTexturesMs = 0.0;
@@ -161,6 +166,7 @@ namespace Rtx
             at(Timing::Finish).push_back(spend.mFinishMs);
             at(Timing::Walk).push_back(spend.mWalkMs);
             at(Timing::Warm).push_back(spend.mWarmMs);
+            at(Timing::Fold).push_back(spend.mFoldMs);
             at(Timing::Place).push_back(spend.mPlaceMs);
             at(Timing::Bake).push_back(spend.mBakeMs);
             at(Timing::Textures).push_back(spend.mTexturesMs);

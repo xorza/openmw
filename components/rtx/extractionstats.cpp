@@ -15,14 +15,16 @@ namespace Rtx
         /// sum below from dropping one and reporting a number that is short.
         auto countersOf(auto& stats)
         {
-            auto& [meshesAdded, materialsAdded, sheets, composites, meshesReused, materialsReused, instances, deformed,
-                unskinned, emitters, sprites, skippedUnknown, undescribedSurfaces, undescribedGround,
+            auto& [meshesAdded, materialsAdded, foldMs, sheets, composites, meshesReused, materialsReused, instances,
+                deformed, unskinned, emitters, sprites, skippedUnknown, undescribedSurfaces, undescribedGround,
                 spritelessEmitters, formats, unnamedFormat, skippedEmpty, lights, unbakeable, wornOtherwise]
                 = stats;
 
-            // The two the sum owes something other than addition, and so the two left out of it.
+            // The three the sum owes something other than an unsigned addition, and so the three
+            // left out of it.
             (void)formats;
             (void)unnamedFormat;
+            (void)foldMs;
 
             return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
                 &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedSurfaces,
@@ -49,6 +51,8 @@ namespace Rtx
         const auto add = countersOf(other);
         for (std::size_t at = 0; at < sum.size(); ++at)
             *sum[at] += *add[at];
+
+        mFoldMs += other.mFoldMs;
 
         for (std::size_t at = 0; at < mTextureFormats.size(); ++at)
         {
