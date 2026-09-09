@@ -69,8 +69,22 @@ namespace Rtx
         /// finished.
         void waitForLastUse(const Image& frame);
 
-        /// Rebuilds at `extent`. Waits for everything in flight, so it is a stall by construction.
-        void resize(VkExtent2D extent);
+        /// Whether the swapchain has to be remade to show `extent`.
+        ///
+        /// **Split from `rebuild` because a caller has work to do between the two.** A rebuild
+        /// resets the command pool, so whatever is staged in it has to be submitted and waited for
+        /// first — and that drain costs more than the rebuild it guards. `VulkanRenderer::resize`
+        /// used to pay it on every settled frame: measured on the island route, 2.70 ms a frame of
+        /// the host and up to 27 on the frames a ring arrived.
+        ///
+        /// **Not const, because a surface nobody can see is answered by remembering it.** A hidden
+        /// window takes no swapchain, so the staleness is what carries the rebuild to the frame the
+        /// window comes back on — and this is the call that finds out.
+        bool wantsResize(VkExtent2D extent);
+
+        /// Remakes the swapchain at `extent`, unconditionally. Waits for everything in flight, so
+        /// it is a stall by construction — ask `wantsResize` first.
+        void rebuild(VkExtent2D extent);
 
         /// Says how the presented image should meet the refresh, rebuilding only where that changes
         /// the mode the surface will actually run in.

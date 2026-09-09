@@ -141,9 +141,9 @@ namespace Rtx
             };
 
         // **A minimised window reports no extent at all, and a swapchain of none is invalid usage.**
-        // One pixel rather than a refusal, because a window comes back: `Presenter::resize` declines
-        // to rebuild while the surface is hidden, and what stands until then costs a blit of a
-        // single pixel.
+        // One pixel rather than a refusal, because a window comes back: `Presenter::wantsResize`
+        // declines to rebuild while the surface is hidden, and what stands until then costs a blit
+        // of a single pixel.
         mExtent.width = std::max(mExtent.width, 1u);
         mExtent.height = std::max(mExtent.height, 1u);
 

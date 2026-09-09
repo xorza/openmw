@@ -12,6 +12,10 @@
   ten identical to none of four. The scene columns repeat on every pair, which is why this is a
   report and not a gate.
 
+2026-09-09  8fb5cb803e+  — ten pairs of `one-cell-walk`, six seconds, build-debug, after the drain in
+  `VulkanRenderer::resize` was put behind `Presenter::wantsResize`. Identical over every pair, scene
+  columns and picture both.
+
 2026-09-09  0457a7d662+  — three readings of `one-cell-walk`, six seconds, build-debug, the exposure
   measured. The first taken with `--filter` reaching the backend at all: `RtxRenderer::traceWorld`
   built its `Rtx::FrameOptions` field by field and left `mFilter` out, so every reading above this

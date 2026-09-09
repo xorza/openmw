@@ -45,12 +45,34 @@ namespace Rtx
     /// record. Lumping them would hide which of them a place is slow because of; a wait near the
     /// frame is a device that cannot keep up, and a wait near nought is a CPU that cannot.
     ///
-    /// **Four of them are shares of another row rather than of the frame**, and they follow the row
-    /// they are inside. `Warm` is how long the walk stood waiting for the terrain's warming thread.
+    /// **`Finish` is the whole of collecting the frame behind, and `Wait` is its largest share.**
+    /// The fence is what `Wait` measures; what `Finish` adds is everything the ring does once the
+    /// fence has passed — reading the device's counters and its timestamps, and destroying what
+    /// that frame was the last to read. The two are apart because one is the device being slow and
+    /// the other is this renderer being slow, and a frame can be either.
+    ///
+    /// **Four more of them are shares of another row rather than of the frame**, and they follow
+    /// the row they are inside. `Warm` is how long the walk stood waiting for the terrain's warming thread.
     /// `Bake`, `Textures` and `Upload` are the three halves of `Place` that a spike could be in —
     /// the ground the composite queue handed back, the arrived textures being opened and described,
     /// and what the backend was then told. What is left of `Place` is the lists it reads either
     /// side of them.
+    ///
+    /// **`Trace` and `Present` are the other two calls the frame makes into the backend** — the
+    /// record and its submit, and the picture reaching the surface with the interface over it.
+    /// **`Update` is the rest of the loop and it is the game's**: the world stepping and the cells
+    /// arriving, between one call into the renderer and the next.
+    ///
+    /// **All four are timed rather than profiled, because a profile cannot read them.** Most of
+    /// what a call into the driver costs is inside the driver, which carries no frame pointer to
+    /// walk, and a thread asleep is counted by a sampling profiler as nothing at all. Measured on
+    /// the island route, perf reads the trace call at nine microseconds a frame and the wall clock
+    /// reads it at a hundred and eighty.
+    ///
+    /// **Together they close the frame.** `Frame` less `Finish`, `Walk`, `Place`, `Trace`,
+    /// `Present` and `Update` is under 0.05 ms at every place that stands still: what is left is the
+    /// window's extent being handed over, the sweep, and the frame's own record. A row that does
+    /// not close is a stretch nobody has named, which is what these were added to find.
     ///
     /// **Why `Place` needed splitting at all**: on the island route it is 0.18 ms at the median and
     /// 62 at the worst, and a profile cannot say which half — an arrival frame's time is in the
@@ -58,6 +80,7 @@ namespace Rtx
     enum class Timing : std::uint32_t
     {
         Frame,
+        Finish,
         Wait,
         Walk,
         Warm,
@@ -65,13 +88,16 @@ namespace Rtx
         Bake,
         Textures,
         Upload,
+        Trace,
+        Present,
+        Update,
     };
 
-    inline constexpr std::size_t sTimingCount = 8;
+    inline constexpr std::size_t sTimingCount = 12;
 
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it.
-    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "wait", "walk", "warm", "place",
-        "bake", "textures", "upload" };
+    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "finish", "wait", "walk", "warm",
+        "place", "bake", "textures", "upload", "trace", "present", "update" };
 
     /// What one measured frame spent on the host, by phase.
     ///
@@ -81,12 +107,16 @@ namespace Rtx
     /// at it.
     struct FrameSpend
     {
+        double mFinishMs = 0.0;
         double mWalkMs = 0.0;
         double mWarmMs = 0.0;
         double mPlaceMs = 0.0;
         double mBakeMs = 0.0;
         double mTexturesMs = 0.0;
         double mUploadMs = 0.0;
+        double mTraceMs = 0.0;
+        double mPresentMs = 0.0;
+        double mUpdateMs = 0.0;
     };
 
     inline constexpr std::size_t indexOf(const Timing timing)
@@ -128,12 +158,16 @@ namespace Rtx
         void add(double frameMs, const FrameSpend& spend)
         {
             at(Timing::Frame).push_back(frameMs);
+            at(Timing::Finish).push_back(spend.mFinishMs);
             at(Timing::Walk).push_back(spend.mWalkMs);
             at(Timing::Warm).push_back(spend.mWarmMs);
             at(Timing::Place).push_back(spend.mPlaceMs);
             at(Timing::Bake).push_back(spend.mBakeMs);
             at(Timing::Textures).push_back(spend.mTexturesMs);
             at(Timing::Upload).push_back(spend.mUploadMs);
+            at(Timing::Trace).push_back(spend.mTraceMs);
+            at(Timing::Present).push_back(spend.mPresentMs);
+            at(Timing::Update).push_back(spend.mUpdateMs);
         }
 
         /// What the device reported for the frame behind, which arrives on its own schedule and on

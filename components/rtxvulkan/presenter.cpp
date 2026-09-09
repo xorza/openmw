@@ -186,10 +186,10 @@ namespace Rtx
         mCommands = mPool->allocate(images);
     }
 
-    void Presenter::resize(VkExtent2D extent)
+    bool Presenter::wantsResize(const VkExtent2D extent)
     {
         if (!mStale && extent.width == getExtent().width && extent.height == getExtent().height)
-            return;
+            return false;
 
         // **A window that is not on screen is left alone.** Its surface reports no extent, a
         // swapchain of none is invalid usage, and rebuilding once a frame against a surface that
@@ -198,9 +198,14 @@ namespace Rtx
         if (mSwapchain->surfaceIsHidden())
         {
             mStale = true;
-            return;
+            return false;
         }
 
+        return true;
+    }
+
+    void Presenter::rebuild(const VkExtent2D extent)
+    {
         mDevice.waitIdle();
         mSwapchain->recreate(extent);
         remakeImageSync();
@@ -212,9 +217,11 @@ namespace Rtx
         if (!mSwapchain->setVerticalSync(mode))
             return;
 
-        // The same rebuild `resize` makes, for the same reason: a present mode is a property of the
-        // swapchain object, so changing it means a new one and every frame in flight has to be done
-        // with the old one first.
+        // The same three calls `rebuild` makes, for the same reason: a present mode is a property
+        // of the swapchain object, so changing it means a new one and every frame in flight has to
+        // be done with the old one first. Not `rebuild` itself, because that clears the staleness —
+        // and a window that changed size while the mode was being set still owes a rebuild at the
+        // extent this one does not know.
         mDevice.waitIdle();
         mSwapchain->recreate(getExtent());
         remakeImageSync();

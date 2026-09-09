@@ -465,7 +465,8 @@ namespace MWRender
         // which is not always the one it was asked for, and whether the swapchain has been told it
         // is stale. Stopping here on the window's own size would answer the first wrongly and would
         // never rebuild for the second — a swapchain that went stale without moving then failed its
-        // present for good. `Presenter::resize` returns on a comparison where neither has happened.
+        // present for good. `Presenter::wantsResize` says no on a comparison where neither has
+        // happened, which is what makes handing it over every frame cost a comparison.
         mRenderer->resize(mAskedWidth, mAskedHeight);
 
         // Whatever the backend settled on, which is what the trace and the GUI are both sized to.
@@ -549,6 +550,8 @@ namespace MWRender
     /// main menu, or the moment before the first cell finishes loading.
     void RtxRenderer::presentWithGui()
     {
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
+
         drawGui();
 
         // **A present that failed is a swapchain to rebuild, and `renderFrame` is where that
@@ -557,6 +560,12 @@ namespace MWRender
         // next frame. One that went stale mid-gesture waits for the gesture, which is the frozen
         // picture a window being dragged shows anyway.
         mRenderer->presentFrame();
+
+        // Summed and not assigned: a loading screen presents through `renderGui` as often as it
+        // likes between two traces, and every one of those is inside the frame the next row is for.
+        mPresentMs += Rtx::since(began, std::chrono::steady_clock::now());
+
+        leave();
     }
 
     void RtxRenderer::renderGui()
@@ -654,6 +663,12 @@ namespace MWRender
     {
         const osg::FrameStamp& when = frame.mWhen;
 
+        // **What the game spent since this renderer last let go of the frame** — its update, its
+        // cells arriving and whatever it waits on to get them. It is the one stretch of the loop
+        // nothing else measures, and it is timed rather than profiled because most of it is a
+        // thread asleep.
+        const double updateMs = Rtx::since(mLeft, std::chrono::steady_clock::now());
+
         mFrame = when.getFrameNumber();
 
         // **Ahead of the trace and not after the present**, so the frame this draws is the one the
@@ -691,7 +706,7 @@ namespace MWRender
         if (mSession != nullptr && mSession->wantsSecondWalk())
             mFoundAgain = mMirror.mirror(frame, mFrame);
 
-        traceWorld(frame, mFound, walkMs);
+        traceWorld(frame, mFound, walkMs, updateMs);
 
         presentWithGui();
 
@@ -699,9 +714,13 @@ namespace MWRender
         // the walk still ran, so its epoch is still the one the next walk has to be measured
         // against. `WorldMirror::settle` says what each half of it is for.
         mMirror.settle();
+
+        // After the sweep, because the sweep is this renderer's and not the game's.
+        leave();
     }
 
-    void RtxRenderer::traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs)
+    void RtxRenderer::traceWorld(
+        const SceneFrame& frame, const Rtx::ExtractionStats& found, const double walkMs, const double updateMs)
     {
         const osg::FrameStamp& when = frame.mWhen;
         const osg::Camera& camera = frame.mCamera;
@@ -714,13 +733,19 @@ namespace MWRender
         // writes the copy of the tables the frame behind is still tracing, so it waits that frame
         // out before it writes — and left to it the stall lands inside `place ms`, which then reads
         // as placement work rather than as a device the CPU is ahead of. One figure, in `wait ms`,
-        // and `RtxTool::measurePlace` splits it the same way so the two reports can be read against
-        // each other.
+        // which `Rtx::FrameSamples` carries for the harness and for the game alike so that the two
+        // reports can be read against each other.
         //
         // **Before the submit below, which is what keeps the CPU a frame ahead of the device**, and
         // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What comes
         // back is the frame behind, so the bench row below carries it beside this frame's wall time.
+        //
+        // **Timed as well as waited for**, because the fence is not the whole of it: the ring then
+        // reads the device's counters and its timestamps and destroys what that frame was the last
+        // to read, and none of that is in the figure the device reports.
+        const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
         const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
+        const double finishMs = Rtx::since(finishing, std::chrono::steady_clock::now());
 
         // Placed, appended or rebuilt — the decision, and the describing a rebuild needs, are the
         // harness's too and are written once (`Rtx::SceneUploader`).
@@ -825,6 +850,12 @@ namespace MWRender
         // the rule that would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell
         // got settled it, and a second derivation at the frame is a second place to get the
         // exception wrong.
+        //
+        // **Timed, because a profiler cannot read it.** The record and the submit are almost
+        // entirely inside the driver, which carries no frame pointer, so perf attributes what they
+        // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
+        const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
+
         const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(
             constants, Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias));
 
@@ -840,18 +871,26 @@ namespace MWRender
             if (mSession != nullptr)
                 mSession->frame(describeRun(), *result, frameMs,
                     Rtx::FrameSpend{
+                        .mFinishMs = finishMs,
                         .mWalkMs = walkMs,
                         .mWarmMs = mMirror.getWarmedMs(),
                         .mPlaceMs = placeMs,
                         .mBakeMs = handed.mBakeMs,
                         .mTexturesMs = handed.mTexturesMs,
                         .mUploadMs = handed.mUploadMs,
+                        .mTraceMs = Rtx::since(tracing, now),
+                        .mPresentMs = mPresentMs,
+                        .mUpdateMs = updateMs,
                     },
                     rebuilt);
         }
 
         mEntered = now;
         mEnteredOnce = true;
+
+        // Here and not inside the report above, because this is where one frame's span ends —
+        // including on the first frame, which has no row to carry what it presented.
+        mPresentMs = 0.0;
 
         // **Counted where it is summed**, because `finishFrame` answers nothing until a frame it
         // put in flight comes back. Counting every frame instead divided the total by frames that

@@ -794,15 +794,19 @@ namespace Rtx
     {
         if (mPresenter != nullptr)
         {
-            // Same reason as the destructor's: remaking a swapchain resets the command pool, and a
-            // batch handed over is sitting in it waiting for a submit.
-            mGuiTextures.finish();
+            // **Asked before anything is drained, because `fitToWindow` calls this every settled
+            // frame.** Same reason as the destructor's: remaking a swapchain resets the command
+            // pool, and a batch handed over is sitting in it waiting for a submit. What that costs
+            // where no rebuild follows is `Presenter::wantsResize`.
+            if (mPresenter->wantsResize(VkExtent2D{ width, height }))
+            {
+                mGuiTextures.finish();
+                mPresenter->rebuild(VkExtent2D{ width, height });
+            }
 
             // **What the swapchain came back with, not what was asked for.** A surface clamps to
             // what it can do, and targets sized to the request would then be blitted through a
             // scale nobody chose.
-            mPresenter->resize(VkExtent2D{ width, height });
-
             const VkExtent2D shown = mPresenter->getExtent();
             width = shown.width;
             height = shown.height;

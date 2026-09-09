@@ -195,9 +195,10 @@ namespace MWRender
         /// roll are both reasons not to trace and neither is a reason not to present, so they end
         /// here rather than in `renderFrame` — see the comment on the call.
         ///
-        /// `walkMs` is what the mirror took, carried through rather than measured here: the
-        /// benchmark's row is closed at the end of the trace and the walk is over before it starts.
-        void traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs);
+        /// `walkMs` and `updateMs` are what the mirror took and what the game took before it,
+        /// carried through rather than measured here: the benchmark's row is closed at the end of
+        /// the trace and both stretches are over before it starts.
+        void traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs, double updateMs);
 
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
@@ -231,6 +232,9 @@ namespace MWRender
         /// else. Said once, because a frame that walked on one of them and traced on the other
         /// would mirror a world it then threw away.
         bool drawsWorld() const { return mWorldShown && mWorldToggled; }
+
+        /// Stamps where the frame left this renderer, which is where `Rtx::Timing::Update` starts.
+        void leave() { mLeft = std::chrono::steady_clock::now(); }
 
         /// The world's, for a picture that has to resolve textures of its own. Null until
         /// `attachWorld`.
@@ -312,6 +316,24 @@ namespace MWRender
         /// this renderer's slice of it.
         std::chrono::steady_clock::time_point mEntered;
         bool mEnteredOnce = false;
+
+        /// When the frame last left this renderer, so the next one can say what the game spent
+        /// between the two. `Rtx::Timing::Update` says what that row answers and why it is timed
+        /// here rather than read off a profile.
+        ///
+        /// **Stamped after every present and after the sweep**, which is every path out of this
+        /// renderer — so what it measures is the game's own loop and never this renderer's own
+        /// tail. Valid whenever a row is written, because a row is written after a trace and a
+        /// trace is made from a call that ends in one of those stamps.
+        std::chrono::steady_clock::time_point mLeft;
+
+        /// What the presents since the last row cost, summed.
+        ///
+        /// **Summed rather than kept, because a span can hold several.** The frame is measured from
+        /// one trace to the next, so a present belongs to the span after it — and a loading screen
+        /// drives `renderGui` as often as it likes inside one of those. Cleared where the row that
+        /// carries it is written.
+        double mPresentMs = 0.0;
 
         /// The frame number the walk and the trace are both stamped with, so what the upscaler
         /// jitters and what the sampler walks are the same sequence the world is counting.
