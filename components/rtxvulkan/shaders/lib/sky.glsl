@@ -190,6 +190,17 @@ float cloudShadow(vec3 position, vec3 towards)
     return exp(-CLOUD_SHADOW_DEPTH * max(alpha - frame.mClouds.mCover, 0.0) * frame.mClouds.mOpacity);
 }
 
+/// Where a direction lands across a disc laid on the sky, in units of the disc's own radius.
+///
+/// **One mapping for a moon and for a painted patch**, which are the same kind of thing: a sheet
+/// laid once across a piece of sky, named by a direction, two axes and a limb. Inside the disc at
+/// under one, on its rim at one. The hemisphere test is the caller's, because the offsets below are
+/// the same for a direction and its opposite.
+vec2 discAt(vec3 direction, vec3 right, vec3 up, float limb)
+{
+    return vec2(dot(direction, right), dot(direction, up)) / limb;
+}
+
 /// What the nebulae and the constellations send back along a ray.
 ///
 /// **The same disc a moon is, and drawn by the same arithmetic.** Each is a sheet laid once across a
@@ -214,10 +225,7 @@ vec3 skyPatches(vec3 direction)
         if (sheet.mTexture == NO_TEXTURE || dot(direction, sheet.mDirection) <= 0.0)
             continue;
 
-        // Where across the face, in units of its radius — the moons' own mapping, for the reason
-        // they share.
-        const vec2 at
-            = vec2(dot(direction, sheet.mRight), dot(direction, sheet.mUp)) / max(sheet.mLimb, 1.0e-4);
+        const vec2 at = discAt(direction, sheet.mRight, sheet.mUp, max(sheet.mLimb, 1.0e-4));
         if (dot(at, at) >= 1.0)
             continue;
 
@@ -252,9 +260,7 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
     if (moon.mAlpha <= 0.0 || dot(direction, moon.mDirection) <= 0.0)
         return vec3(0.0);
 
-    // Where across the face, in units of its radius: dividing by the limb puts it at one and makes
-    // the cone test a comparison this needed anyway.
-    const vec2 at = vec2(dot(direction, moon.mRight), dot(direction, moon.mUp)) / moon.mLimb;
+    const vec2 at = discAt(direction, moon.mRight, moon.mUp, moon.mLimb);
     const float across = length(at);
 
     // The pixel's own spread in the same units, so the silhouette is antialiased rather than

@@ -65,4 +65,11 @@ void main()
         = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, FOG_COLUMN_MASK, true);
 
     imageStore(fogColumnDepth, column, vec4(surface, 0.0, 0.0, 0.0));
+
+    // **And what each sky source puts into this column's air**, which is the ray's angle to the
+    // source and nothing along the ray — so it is this pass's to state once. `fogSourceTermsAlong`
+    // says what the scatter pass used to spend on it.
+    const vec3 terms[SKY_SOURCES] = fogSourceTermsAlong(ray.mDirection);
+    for (uint source = 0u; source < SKY_SOURCES; ++source)
+        imageStore(fogColumnSources, ivec3(column, int(source)), vec4(terms[source], 0.0));
 }

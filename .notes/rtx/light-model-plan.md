@@ -181,3 +181,158 @@ Derived from the code at this commit, per pixel, out of doors, before any stage:
 
 And per froxel of the air: one sun, one moon, one lamp, one occlusion — four, which at the
 volume's one froxel a pixel is four rays a pixel, coherent, and 0.16 to 0.25 ms measured.
+
+## What happened
+
+Implemented in order on the tree above, each stage snapshotted and read against the one before it
+with the gate at the end of this file: `verify` over the twenty-two views, a thousand-frame
+reference and one frame at six views, and three interleaved rounds of `bench` at the ship and the
+guild. The bench's `trace` is the closest-hit shaders and the launch; `air` is the fog volume. All
+in milliseconds, three rounds each, and the card sat at 64 to 71 °C throughout.
+
+### Stage 1 — one sun and one moon
+
+Fourteen views moved. The nine that moved by one of 255 are the arithmetic re-associated around the
+new call. The five that moved for real are the views with a cloud deck over fog or water —
+Ald-ruhn on 42 per cent of its pixels, Dagon Fel on 57, Vivec on 38, the shore on 54 and the
+caldera on 7 — which is the deck's shadow reaching the air and the shafts.
+
+| view | reference moved, of its mean | one frame against its reference, before → after |
+|---|---:|---:|
+| seyda-neen-shore | 0.9 % | 0.00290 → 0.00290 |
+| seyda-neen-ship | 0.07 % | 0.00888 → 0.00888 |
+| dagoth-ur-caldera | 0.05 % | 0.00833 → 0.00833 |
+| the other three | under 0.05 % | unchanged |
+
+| place | trace before | trace after | air before | air after |
+|---|---:|---:|---:|---:|
+| seyda-neen-ship | 1.53, 1.62, 1.57 | 1.56, 1.53 | 0.23, 0.24, 0.24 | 0.23, 0.21, 0.24 |
+| balmora-mages-guild | 1.24, 1.24, 1.24 | 1.24, 1.25, 1.24 | 0.10 | 0.10 |
+
+One leg of the ship's `after` read 4.91 and is struck: a validated debug shot of my own ran beside
+it. The cloud sheet's two reads per froxel cost the `air` zone nothing the timer can see.
+
+### Stage 2 — the sun and the moons as one array and one rule
+
+Implemented as `skySourceAt` reading the frame's own sun and moons, and not as a fourth field the
+host fills, because the frame already states each once. Eighteen views moved by one of 255, and
+`seyda-neen-ship-dawn` moved on 9.6 per cent of its pixels, worst 73 — the hour when the sun and a
+moon both reach a point, where one ray now goes to one of them.
+
+The dawn's reference moved by 0.02 per cent of its mean, so the draw is unbiased, and its one frame
+went from 0.00256 to 0.00258 against its reference: a noise cost of under one per cent, at that hour
+only. Every other reference is unchanged to five figures.
+
+| place | trace before | trace after |
+|---|---:|---:|
+| seyda-neen-ship | 1.56, 1.56, 1.57 | 1.57, 1.60, 1.57 |
+| balmora-mages-guild | 1.24, 1.25, 1.25 | 1.26, 1.26, 1.24 |
+
+Inside the spread at both, as expected: neither view has both up. What it bought is the code — one
+loop where there were two blocks, and one pick rule shared with the air.
+
+### Stage 3 — a pane gets the path's end
+
+Eight views moved, all of them where the eye sees through something: the guild on 10.5 per cent of
+its pixels, worst 41, and Ald-ruhn on 1.2. The guild's reference brightened by 2.3 per cent of its
+mean, which is the panes and the faded actor gaining the term they lacked, and its one frame went
+from 0.00048 to 0.00055 against its reference — the one occlusion ray's noise.
+
+| place | trace before | trace after |
+|---|---:|---:|
+| seyda-neen-ship | 1.62, 1.59, 1.60 | 1.63, 1.63, 1.63 |
+| balmora-mages-guild | 1.26, 1.28, 1.27 | 1.29, 1.29, 1.29 |
+
+About two per cent of the trace at the guild, where six per cent of the pixels are see-through, and
+the same at the ship, which has almost none — so the ship's is the spread, and the guild's is the
+ray.
+
+**One test moved with stage 1 and was re-measured.** `aShaftIsBlockedByWhatStandsOverTheWaterWhereTheSunEnters`
+asserted that a strip over the shaft's entries leaves five per cent of it. The entries' ray is now
+drawn across the sun's two-degree penumbra, which at a lid five hundred units up is seventeen units
+either side of its edge, so the entries under the rim take part of the sun: 0.107 with eight steps
+and 0.115 with four. The expectation is now 0.115 and the comment says why.
+
+### Stage 4 — the reservoir names its lamp
+
+Three views moved by one of 255 on a handful of pixels: the air's ray now aims at the lamp's own
+row rather than at a position rebuilt from the walk's direction and distance, and the two differ in
+the last place. Every reference is unchanged to five figures.
+
+| place | trace before | trace after |
+|---|---:|---:|
+| seyda-neen-ship | 1.60, 1.62, 1.62 | 1.62, 1.63, 1.62 |
+| balmora-mages-guild | 1.27, 1.28, 1.28 | 1.26, 1.27, 1.28 |
+
+Inside the spread. Five words off the live state do not show on this timer, and no driver here
+reports the register count that would say whether they showed anywhere. What it bought is the code:
+`aimLampFrom` is one assignment, and a lamp is held one way.
+
+### Stage 5 — the air's sky term stays the weather's, and the shaft takes four steps
+
+The decision is written over the term in `fogscatter.comp`: the fog colour is the content's own
+record and stays the one deliberate fork. No picture moved for it.
+
+The shaft at four steps moved nine views by one of 255 on under a third of a per cent of their
+pixels. The shore's reference — the one view in the set with shafts — moved by 0.01 per cent of its
+mean, and its one frame went from 0.00290 to 0.00291 against it: the pattern's quadrature is
+coarser and nothing else is. The ship and the guild show no shafts, so their trace did not move;
+the shore is benched below on its own.
+
+### Stage 6 — the phase terms move to the column pass
+
+Every view is the same picture, bit for bit: the terms are the same numbers computed once a column
+instead of once a froxel, and stored in one more column image three layers deep.
+
+| place | air before | air after | trace before | trace after |
+|---|---:|---:|---:|---:|
+| seyda-neen-ship | 0.24, 0.24, 0.24 | 0.24, 0.24, 0.24 | 1.59, 1.61, 1.60 | 1.59, 1.62, 1.59 |
+| balmora-mages-guild | 0.10, 0.10, 0.10 | 0.10, 0.10, 0.10 | 1.29, 1.30, 1.29 | 1.28, 1.28, 1.30 |
+
+Nothing the timer resolves at two places. Three Mie evaluations a froxel were not a share of the
+`air` zone this timer can see, and what stays is the simpler pass: the scatter pass reads three
+texels where it evaluated three phases.
+
+**The albedo view stays a uniform branch.** The plan's third measurement was to fold
+`mShowAlbedo` into a specialization constant. The visibility tests toggle it per frame on one
+built pass — nine sites — so a build-time constant would mean a second pipeline set per test for a
+gain the plan already expected inside the spread. Not done, and this is why.
+
+**The shaft at four steps, benched where the shafts are.** Three rounds interleaved at
+`seyda-neen-shore`, the four-step build against the eight-step one:
+
+| steps | trace | air |
+|---|---:|---:|
+| eight | 1.97, 1.96, 1.99 | 0.14 |
+| four | 1.73, 1.74, 1.75 | 0.14 |
+
+**0.23 ms off the trace, twelve per cent of it, at a view that is mostly water**, for a reference
+that moved by 0.01 per cent of its mean. That is the one stage in this plan that bought frame time.
+
+### Stage 7 — the small consolidations
+
+`discAt` serves the moons and the painted patches, and `noSurface` builds the empty surface
+`resolveFor` used to fill by hand. Every view is the same picture, bit for bit, and the 599 tests
+pass. The third item — `waterRay` and `waterUnbounded` answering the miss question with two tests —
+is left as it was: the two tests are two questions after all. One asks which side of the plane a
+ray leaving the surface goes to, and the other whether the eye's own ray stands under the water,
+and folding them needs an argument for the origin's side that neither caller has for nothing.
+
+## Where it stands
+
+| stage | picture | trace at the ship | trace at the guild | kept |
+|---|---|---:|---:|---|
+| 1 — one sun and moon | clouds now shadow the air and the shafts; under 1 % at the shore, less elsewhere | 1.57 → 1.55 | 1.24 → 1.24 | yes |
+| 2 — one sky array and rule | dawn draws one ray for two; unbiased, under 1 % more noise there | 1.56 → 1.57 | 1.25 → 1.26 | yes |
+| 3 — the pane's indirect term | the guild's panes brighten 2.3 % | 1.60 → 1.63 | 1.27 → 1.29 | yes |
+| 4 — the reservoir by index | unchanged | 1.62 → 1.62 | 1.28 → 1.27 | yes |
+| 5 — the shaft at four steps | the shore's reference moves 0.01 % | — | — | yes: −12 % at the shore |
+| 6 — phase terms per column | bit-identical | 1.60 → 1.59 | 1.29 → 1.28 | yes |
+| 6 — albedo view folded | — | — | — | no: the tests toggle it per frame |
+| 7 — consolidations | bit-identical | — | — | yes |
+
+Medians of three. Every stage's converged reference is within a per cent of the one before it
+except where the stage's own purpose moved it, and the single frame's distance from its reference
+moved by under one per cent anywhere, at the dawn and the guild only. Over the whole plan the ship's
+trace read 1.57 at the start and 1.59 at the end, inside the spread; the guild's 1.24 and 1.28,
+which is the pane's ray and the one real cost; the shore's fell by 0.23.

@@ -76,6 +76,15 @@ uint paneSeed(uint layer)
     return layer == 0u ? SEED_LAMPS_PANE : SEED_LAMPS_PANE_DEEPER + layer - 1u;
 }
 
+/// And one for what each layer of the peel sees of the ambient, a block `PEEL_LAYERS` wide after
+/// the lamps' own, for the reason that block is where it is.
+const uint SEED_AMBIENT_PANE = SEED_LAMPS_PANE_DEEPER + (PEEL_LAYERS - 1u);
+
+uint paneAmbientSeed(uint layer)
+{
+    return SEED_AMBIENT_PANE + layer;
+}
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

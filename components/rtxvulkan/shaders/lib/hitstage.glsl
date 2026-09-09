@@ -63,11 +63,14 @@ uvec2 stagePixel()
 /// just made — the launch would have to be handed the material row and read it again. What the
 /// launch is handed instead is `mOpacity`, which is the whole of what it needs to peel.
 ///
-/// **A pane gets direct light and no bounce, and a lamp sequence of its own.** `bounceLight` draws
-/// from the pixel and nothing else, so a pane and the wall behind it would bounce off the same
-/// numbers — which is the correlation `SEED_LAMPS_PANE` exists to keep out of the direct term, and
-/// there is no such seed to hand a bounce. One sequence per layer, because a stack of them shades
-/// beside itself as well: the record says which layer this is, and `paneSeed` is the sequence that
+/// **A pane gets direct light, the path's end for everything else, and a lamp sequence of its own.**
+/// `bounceLight` draws from the pixel and nothing else, so a pane and the wall behind it would
+/// bounce off the same numbers — which is the correlation `SEED_LAMPS_PANE` exists to keep out of the
+/// direct term, and there is no such seed to hand a bounce. What a pane gets instead is what a
+/// surface a water ray finds gets: `pathEnd`, dimmed by one occlusion ray of its own. A faded actor
+/// is a stack of these, and drawn with no indirect term at all they stood in a room where nothing
+/// bounced near them. One sequence per layer, because a stack of them shades beside itself as well:
+/// the record says which layer this is, and `paneSeed` and `paneAmbientSeed` are the sequences that
 /// layer draws from.
 ///
 /// **The launch peels `PEEL_LAYERS` of them and the one after that is a solid.** Without that a
@@ -82,7 +85,12 @@ void answerSolid(inout VisibilityPayload answer, Surface surface)
 
     if (isSeenThrough(surface.mOpacity) && record.mLayer < PEEL_LAYERS)
     {
-        answer.mRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + paneSeed(record.mLayer), PATH_SEEN);
+        const uint key = pixelKey(pixel);
+        const float reaching = ambientReaching(surface.mPosition, surface.mNormal, surface.mGeometric,
+            surface.mTransmission, key + paneAmbientSeed(record.mLayer));
+
+        answer.mRadiance = shadeSurface(
+            surface, pathEnd(surface.mPosition, reaching), key + paneSeed(record.mLayer), PATH_SEEN);
         return;
     }
 

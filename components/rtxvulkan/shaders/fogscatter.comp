@@ -194,7 +194,16 @@ void main()
         = lampsInAir(lamps, lampState, fromMiddle, middle.mDirection, behind, clear) / (clear - behind);
     aimLampFrom(lamps, position);
 
-    const FogSources sources = fogSourcesAlong(direction);
+    // Drawn after the lamp's own pair, so a lamp keeps the numbers it drew before the sky asked for
+    // any: the ray's pair for the sun, the ray's pair for the moon, and the moon's pick.
+    const vec2 sunDraw = vec2(randomNext(lampState), randomNext(lampState));
+    const vec2 moonDraw = vec2(randomNext(lampState), randomNext(lampState));
+
+    vec3 terms[SKY_SOURCES];
+    for (uint source = 0u; source < SKY_SOURCES; ++source)
+        terms[source] = imageLoad(fogColumnSources, ivec3(column, int(source))).xyz;
+
+    const FogSources sources = fogSourcesFrom(terms, randomNext(lampState));
 
     // **Nought where no lamp reaches, which is not what `lampVisible` answers there.** That function
     // returns one for an empty reservoir, and it is right to: its own caller multiplies it by a
@@ -211,15 +220,19 @@ void main()
     // looks — `puffLight` — and a shadow it does not have is a splash under a canton lip lit as
     // though in the open.
     //
+    // **The question a surface asks, asked here too.** `skyVisible` draws the ray across the disc
+    // and reads the cloud deck over the point, so the air under a cloud is as dark as the ground
+    // under it, and so is every puff that reads this froxel.
+    //
     // **One path and not two.** A frame with no puff in it could skip both rays below, and that was
     // measured at 0.07 ms on an open-air view; the flag, the second history channel and the second
     // way of forming the sun's beam it takes to save that are not worth what they cost to read.
     float visible = 1.0;
     float lunar = 1.0;
     if (sources.mSunlit)
-        visible = lightThrough(position, frame.mSunPosition, frame.mFar);
+        visible = skyVisible(position, SKY_SOURCE_SUN, sunDraw);
     if (sources.mMoonlit)
-        lunar = lightThrough(position, sources.mMoonward, frame.mFar);
+        lunar = skyVisible(position, SKY_SOURCE_MASSER + sources.mMoon, moonDraw);
 
     // **And the ambient's, which the air never asked and a puff does.** The air scatters the
     // weather's fog colour unshadowed, which is Morrowind's convention for it; a puff is lit by the
@@ -238,6 +251,14 @@ void main()
 
     // Everything below is a property of this *point* and of nothing along the ray, which is what
     // lets it be reprojected and averaged. The transmittance is the integrate pass's.
+    //
+    // **The weather's own fog colour is what the air scatters, and that is the one place the sky is
+    // a different light from the one the surfaces bounce off.** A surface escapes to `skyGlow` and
+    // ends its path at `mAmbient`; a puff reads `mAmbient` through this froxel; the air reads
+    // Morrowind's record of what its air looks like, which the game authored per weather and per
+    // hour and which is the horizon's own colour at the horizon. Scattering the sky's mean here
+    // instead is a look decision, and it is deliberately not taken: the content states a colour,
+    // and a number the game states beats one derived here.
     vec3 inscatter = frame.mFogColour + moons;
     float density = extinction;
 

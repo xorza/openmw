@@ -244,6 +244,34 @@ namespace Rtx::Shaders
     /// acceleration structure, so a moon is a direction with a size and a face painted across it.
     /// What that buys is the same thing the sun's disc buys — water traces a reflection ray and
     /// finds the moon in it for nothing, and there is one place a moon's size lives.
+    /// One source in the sky as a shading point sees it: the sun, or a moon. What the eye sees of
+    /// a disc is `MoonDisc`'s and the sun's own field; this is the half that lights.
+    ///
+    /// **Three of them and one rule, where there were a sun block and a moon block.** A surface and
+    /// a froxel of the air weigh each by what it would deliver unshadowed, draw one, trace to it and
+    /// divide by the draw — the lamps' own estimator. In daylight the moons weigh nothing and the sun
+    /// is always drawn; at night the sun weighs nothing and the draw is between the moons; and the
+    /// hour either side of dusk spends one ray where it spent two, and carries the noise. `skySourceAt`
+    /// in `lib/lights.glsl` is where the three are read off the frame.
+    struct SkySource
+    {
+        /// Unit, from a point toward the source.
+        vec3 mDirection;
+
+        /// Nought where the source is down or faded out, which is the one test worth making before
+        /// a ray.
+        vec3 mIrradiance;
+
+        /// The sine of the half angle a shadow ray is drawn across: the sun's `SUN_SHADOW_RADIUS`,
+        /// and a moon's own limb.
+        float mLimb;
+    };
+
+    const uint SKY_SOURCE_SUN = 0u;
+    const uint SKY_SOURCE_MASSER = 1u;
+    const uint SKY_SOURCE_SECUNDA = 2u;
+    const uint SKY_SOURCES = 3u;
+
     struct MoonDisc
     {
         /// Unit vector toward the moon, and the two axes its face is painted along. The face turns

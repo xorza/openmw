@@ -811,7 +811,12 @@ namespace Rtx::Shaders
     /// The pattern varies along the ray at the scale the surface's own lens does, which is why the steps
     /// are even rather than bunched: unlike the air, there is no density falling off with height for
     /// them to follow, and what wants resolving is spread along the whole stretch.
-    const uint WATER_SHAFT_STEPS = 8u;
+    ///
+    /// **Four, from eight, and the beam's body does not change.** The march is a ratio against the
+    /// same steps without the lens, so the step count cancels out of everything but the pattern's own
+    /// quadrature — and each step is a shadow ray, on the two rays every water pixel already traces.
+    /// `.notes/rtx/light-model-plan.md` is where halving it was measured.
+    const uint WATER_SHAFT_STEPS = 4u;
 
     /// How far apart the rain's impacts are, in world units: a lattice with one splash a cell.
     ///

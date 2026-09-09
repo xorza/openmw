@@ -208,7 +208,13 @@ namespace Rtx::Testing
             // climbs toward the sun gains y as fast as its own entry point does — so its whole march
             // enters the water through a stretch a couple of tens of units long, and one strip
             // covers it. The pixels the strip misses are the ones that were dark anyway.
-            EXPECT_NEAR(shaded / open, 0.051f, 0.02f) << "a lid whose shadow falls on the entries";
+            //
+            // **Eleven per cent and not five, because the shadow has the edge every shadow has.**
+            // The entry's ray is drawn across the sun's own penumbra — `SUN_SHADOW_RADIUS`, two
+            // degrees, which at a lid five hundred units up is seventeen units either side of its
+            // edge — so the entries under the strip's rim take part of the sun where a straight ray
+            // took none. Measured at 0.107 with eight steps and 0.115 with the four the march takes.
+            EXPECT_NEAR(shaded / open, 0.115f, 0.02f) << "a lid whose shadow falls on the entries";
 
             // **The one that says where the gap belongs**, and it is 0.9991 of the open shaft.
             // Standing over the same water and casting its shadow elsewhere, it changes nothing.

@@ -10,11 +10,48 @@
 // they may not differ in is the reach and the falloff. A puff of smoke reads the air's answer.
 
 #include "colour.h"
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "variants.glsl"
 #include "random.glsl"
+#include "sky.glsl"
 #include "traversal.glsl"
+
+/// The `source`th light in the sky, read off the frame: `SKY_SOURCE_SUN`, then the two moons.
+///
+/// **A function and not a fourth field**, because the frame already states each of these once —
+/// the sun as a position and an irradiance, a moon as its disc — and a second copy of a fact is
+/// what the sides come to disagree about. `SkySource` says what the three are one of.
+SkySource skySourceAt(uint source)
+{
+    if (source == SKY_SOURCE_SUN)
+        return SkySource(frame.mSunPosition, frame.mSunIrradiance, sin(SUN_SHADOW_RADIUS));
+
+    const MoonDisc disc = frame.mMoons[source - SKY_SOURCE_MASSER];
+
+    return SkySource(disc.mDirection, disc.mIrradiance, disc.mLimb);
+}
+
+/// What the world leaves of a light in the sky at a point, from none of it to all.
+///
+/// **One question, asked by every reader.** A surface, a froxel of the air and a step of a water
+/// shaft each asked it their own way, and only the surface asked about the cloud deck — so a cloud
+/// darkened the ground and not the fog over it or the beam under it. The deck is the one occluder
+/// no ray finds, `cloudShadow` says why, and the ray is drawn across the disc's own penumbra: the
+/// sun's for the reason `SUN_SHADOW_RADIUS` gives, a moon's at its own limb.
+///
+/// What the water over the point takes is not here: that is per channel and it is the caustic as
+/// well as the absorption, and `lightThroughWater` is the one place it is answered.
+///
+/// @param draw one pair in `[0, 1)`, which aims the ray inside the disc's cone.
+float skyVisible(vec3 position, uint source, vec2 draw)
+{
+    const SkySource sky = skySourceAt(source);
+
+    return lightThrough(position, coneDirection(sky.mDirection, sky.mLimb, draw), frame.mFar)
+        * cloudShadow(position, sky.mDirection);
+}
 
 /// Which lamps one cell of the grid holds, as a range into the light list.
 ///
@@ -151,6 +188,25 @@ float falloffAlong(float perpendicular, float from, float to, float reach, float
     return (above - below) / reach;
 }
 
+/// Where a lamp stands from a point: unit toward it, and how far.
+///
+/// **Asked once and answered the same way for a weight and for a ray**, so the direction a shadow
+/// ray takes is the direction the lamp was weighed along. No reach test, because a caller that
+/// moved its origin after weighing — the air does — still has to aim at the lamp it held.
+struct LampRay
+{
+    vec3 mTowards;
+    float mDistance;
+};
+
+LampRay lampRayAt(GpuLight lamp, vec3 position)
+{
+    const vec3 offset = lamp.mPosition - position;
+    const float distance = length(offset);
+
+    return LampRay(distance > 0.0 ? offset / distance : vec3(0.0), distance);
+}
+
 /// One lamp as it arrives at a point.
 ///
 /// **The reach test and the falloff, which is the whole of what a lamp is at a distance.** Two
@@ -162,39 +218,25 @@ struct Lamp
     /// Unit, from the point toward the lamp. Zero where the lamp does not reach.
     vec3 mTowards;
 
-    /// How far, in world units.
-    float mDistance;
-
     /// The lamp's own intensity, carried so a caller needs nothing but this record.
     vec3 mIntensity;
 
     /// What share of that intensity arrives here, or nothing where the lamp does not reach.
     float mReaching;
-
-    /// How big the glowing part is, and how far short of it a ray stops.
-    ///
-    /// **The first is read twice and the second once.** `falloff` above softens its singularity by
-    /// the size, so every asker gets it and both still agree about what arrives — which is the
-    /// whole point of the record. The clearance is the tracer's alone: the air traces nothing and
-    /// reads past it.
-    float mSourceRadius;
-    float mClearance;
 };
 
 Lamp lampAt(GpuLight lamp, vec3 position)
 {
-    const vec3 offset = lamp.mPosition - position;
-    const float distance = length(offset);
+    const LampRay ray = lampRayAt(lamp, position);
 
     // **An early-out and not a rule**: the window in `falloff` is already exactly zero at and beyond
     // the reach, so this changes no pixel. What it saves is the shadow ray, which is the expensive
     // half of a light and the only reason the test is worth making at all. Zero distance is the
     // other half of it — a lamp standing exactly on the point has no direction to be lit from.
-    if (distance >= lamp.mReach || distance <= 0.0)
-        return Lamp(vec3(0.0), distance, lamp.mIntensity, 0.0, lamp.mSourceRadius, lamp.mClearance);
+    if (ray.mDistance >= lamp.mReach || ray.mDistance <= 0.0)
+        return Lamp(vec3(0.0), lamp.mIntensity, 0.0);
 
-    return Lamp(offset / distance, distance, lamp.mIntensity, falloff(distance, lamp.mReach, lamp.mSourceRadius),
-        lamp.mSourceRadius, lamp.mClearance);
+    return Lamp(ray.mTowards, lamp.mIntensity, falloff(ray.mDistance, lamp.mReach, lamp.mSourceRadius));
 }
 
 /// One lamp held out of all the ones that could reach a point, and what it stands for.
@@ -209,6 +251,10 @@ Lamp lampAt(GpuLight lamp, vec3 position)
 /// same rule that built it. **Measured before it was built and it is not worth building** — spending
 /// a shadow ray on every lamp instead of choosing one is 0.03% better at Seyda Neen's customs office
 /// and 0.32% at Wolverine Hall, and perfect selection cannot beat that.
+///
+/// **The lamp is named and not copied.** What the one ray needs of it — where it stands, how wide
+/// it is, how far short of it to stop — is read off its row when the ray is aimed, so nine words of
+/// live state become one and a reservoir whose origin moved aims from where it now is for nothing.
 struct Reservoir
 {
     /// Where the ray this buys leaves from — a shading point, or a froxel of the air.
@@ -217,12 +263,8 @@ struct Reservoir
     /// What the lamp held would deliver there with nothing in the way.
     vec3 mRadiance;
 
-    /// Where it stands, for the one shadow ray this buys, how wide that ray may be aimed, and how
-    /// far short of the centre it stops.
-    vec3 mTowards;
-    float mDistance;
-    float mSourceRadius;
-    float mClearance;
+    /// Which lamp, as a row of the light table.
+    uint mLamp;
 
     /// The held lamp's own weight, and the weight of every candidate including it.
     float mWeight;
@@ -232,7 +274,7 @@ struct Reservoir
 /// A reservoir that has weighed nothing, which buys no ray and delivers nothing.
 Reservoir noLamps()
 {
-    return Reservoir(vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0, 0.0);
+    return Reservoir(vec3(0.0), vec3(0.0), 0u, 0.0, 0.0);
 }
 
 /// The cosine a diffuse surface takes a light at, with what a sheet takes from its far side.
@@ -265,7 +307,8 @@ float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
 /// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
 /// the walk along a ray that `lampsInAir` takes. A second copy of this is a second chance for the
 /// two to disagree about what unbiased means.
-void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, Lamp lamp)
+/// @param lamp which row of the light table the candidate is.
+void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, uint lamp)
 {
     // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
     // because what it decides is which lamp this pixel would most notice the loss of.
@@ -281,10 +324,7 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
     {
         kept.mFrom = from;
         kept.mRadiance = unshadowed;
-        kept.mTowards = lamp.mTowards;
-        kept.mDistance = lamp.mDistance;
-        kept.mSourceRadius = lamp.mSourceRadius;
-        kept.mClearance = lamp.mClearance;
+        kept.mLamp = lamp;
         kept.mWeight = weight;
     }
 }
@@ -311,7 +351,8 @@ void weighLamps(
     const uvec2 near = lampsWithin(lampsReaching(from));
     for (uint i = near.x; i < near.y; ++i)
     {
-        const Lamp lamp = lampAt(lightAt(lightListAt(i)), from);
+        const uint row = lightListAt(i);
+        const Lamp lamp = lampAt(lightAt(row), from);
         if (!(lamp.mReaching > 0.0))
             continue;
 
@@ -319,7 +360,7 @@ void weighLamps(
         if (cosine <= 0.0)
             continue;
 
-        considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), lamp);
+        considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), row);
     }
 }
 
@@ -346,13 +387,18 @@ float lampVisible(Reservoir kept, vec2 draw)
     if (!(kept.mWeight > 0.0))
         return 1.0;
 
-    const vec3 towards = coneDirection(kept.mTowards, min(kept.mSourceRadius / kept.mDistance, 1.0), draw);
+    const GpuLight lamp = lightAt(kept.mLamp);
+    const LampRay ray = lampRayAt(lamp, kept.mFrom);
+    if (!(ray.mDistance > 0.0))
+        return 1.0;
+
+    const vec3 towards = coneDirection(ray.mTowards, min(lamp.mSourceRadius / ray.mDistance, 1.0), draw);
 
     // How far along this direction the source stands beside it, which is where the ray is closest to
     // the lamp and so where the clearance has to be measured from.
-    const float along = kept.mDistance * dot(towards, kept.mTowards);
+    const float along = ray.mDistance * dot(towards, ray.mTowards);
 
-    return lightThrough(kept.mFrom, towards, along - max(kept.mClearance, SHADOW_BIAS));
+    return lightThrough(kept.mFrom, towards, along - max(lamp.mClearance, SHADOW_BIAS));
 }
 
 /// Moves the ray a reservoir buys so that it leaves from `from` rather than from where the lamp it
@@ -365,22 +411,11 @@ float lampVisible(Reservoir kept, vec2 draw)
 /// frames that point walks the froxel, so a shadow's edge crossing one lands between two froxels as
 /// something the filter averages rather than as a step eight pixels wide.
 ///
-/// The selection is untouched, so the estimator stays what the walk that filled this says it is.
+/// The selection is untouched, so the estimator stays what the walk that filled this says it is;
+/// the lamp is named, so the ray aims itself from wherever it now leaves.
 void aimLampFrom(inout Reservoir kept, vec3 from)
 {
-    if (!(kept.mWeight > 0.0))
-        return;
-
-    // Where the lamp stands, recovered from the ray the walk aimed at it — which is the one thing
-    // a reservoir carries about a lamp that does not depend on where it was asked from.
-    const vec3 offset = kept.mFrom + kept.mTowards * kept.mDistance - from;
-    const float distance = length(offset);
-    if (!(distance > 0.0))
-        return;
-
     kept.mFrom = from;
-    kept.mTowards = offset / distance;
-    kept.mDistance = distance;
 }
 
 /// What every lamp a reservoir stands for delivers, once the one it held has been traced to.

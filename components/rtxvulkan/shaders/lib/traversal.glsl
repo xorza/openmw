@@ -538,7 +538,9 @@ struct Surface
 ///        such hit can arrive at. A closest-hit shader is picked by the instance's own material
 ///        kind, so the two that are not terrain's know the answer is no — which is the register
 ///        relief Stage 2 is for, and which no driver here will report a number for.
-Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
+/// A ray that met nothing, as far away as anything can be: what `resolveFor` answers with for a
+/// miss, and what it fills in from for a hit.
+Surface noSurface(vec3 origin)
 {
     Surface surface;
     surface.mHit = false;
@@ -550,10 +552,18 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     surface.mEmissiveColour = vec3(0.0);
     surface.mEmitted = vec3(0.0);
     surface.mDistance = frame.mFar;
+    surface.mInstance = 0u;
     surface.mFootprint = 0.0;
     surface.mOpacity = 1.0;
     surface.mClosed = false;
     surface.mTransmission = 0.0;
+
+    return surface;
+}
+
+Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
+{
+    Surface surface = noSurface(origin);
 
     if (!hit.mHit)
         return surface;

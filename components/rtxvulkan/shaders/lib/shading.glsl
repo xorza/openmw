@@ -72,95 +72,74 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     // place in the sequence and the reservoir's own draws follow them. Otherwise a lamp arriving in
     // the next cell along would move the penumbra of the one already there.
     const vec2 sunDraw = vec2(randomNext(state), randomNext(state));
-    // **Both pairs are drawn though one moon ray is traced.** The second pair now supplies the pick
-    // between the two moons and nothing else, and its `y` is drawn for its place alone: taking it
-    // out shortens the sequence and moves every lamp draw below.
+    // **Three pairs are drawn and one ray is traced.** The first aims the sky's one ray, the second
+    // pair's `x` picks which source it goes to, and the rest are drawn for their place alone: taking
+    // one out shortens the sequence and moves every lamp draw below.
     const vec2 moonDraw[2]
         = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
     const vec2 lampDraw = vec2(randomNext(state), randomNext(state));
 
-    // **The cloud deck stands over the sun and the moons alike**, and it is the one occluder no ray
-    // finds: the clouds are not in the acceleration structure and never will be, so what a light
-    // above a point has to cross is asked of the sheet directly. `cloudShadow` says why it reads a
-    // flat layer where the eye is given the mesh's bowl.
+    // **The sky's sources are weighed and drawn the way the lamps are.** What each would deliver
+    // unshadowed is its weight — its cosine and its irradiance, which is everything about it that can
+    // be known without tracing — one is drawn in proportion, one ray goes to it, and its share is
+    // divided by the draw. In daylight the moons weigh nothing and the sun is always the draw, so a
+    // day is what it was; at night the sun weighs nothing and the draw is between the moons, which
+    // is what it was; only the hour either side of dusk spends one ray where it spent two, and the
+    // accumulator carries the noise that buys.
     //
-    // The sun, which is one direction everywhere and needs none of the machinery below: no falloff,
-    // no reach, and a shadow ray that runs until it leaves the world rather than until it arrives.
-    //
-    // The cosine is taken against the sun's direction *in air*, which is exact for the flat bed this
-    // mostly lights: refraction at a level surface moves no flux across a horizontal patch, so the
-    // irradiance on one below is the irradiance above times whatever the path took. A tilted
+    // The cosine is taken against the source's direction *in air*, which is exact for the flat bed
+    // this mostly lights: refraction at a level surface moves no flux across a horizontal patch, so
+    // the irradiance on one below is the irradiance above times whatever the path took. A tilted
     // underwater surface would want the refracted direction and gets this one.
     //
     // **The disc is sampled for visibility and not for radiometry**, and that is the sharper of the
-    // two estimators rather than a saving. Across the two degrees of the shadow cone the cosine
+    // two estimators rather than a saving. Across the two degrees of the sun's shadow cone the cosine
     // varies by parts in a thousand, so drawing it as well would put variance into a term that has
-    // none and leave the penumbra — the only part of the integral the cone is wide enough to
-    // matter to — no better resolved for it.
-
-    const float sunCosine = litCosine(normal, side, frame.mSunPosition, transmission);
-    if (sunUp() && sunCosine > 0.0)
+    // none and leave the penumbra — the only part of the integral the cone is wide enough to matter
+    // to — no better resolved for it. Masser subtends thirty-five times the sun's angle, so the cone
+    // it is drawn from is that much wider and the penumbra under everything it lights that much
+    // softer.
+    //
+    // **The moons are asked only where the eye can see the surface.** A bounce's far hit is an
+    // indirect term nothing resolves on its own, so a moon reaching it through a shadow ray of its
+    // own was the dimmest half of the dimmest thing in the frame.
+    //
+    // **A probability compared against the draw, and not a weight against a scaled draw.** The two
+    // are the same until a source weighs nothing: the running share is then flat across it, and a
+    // draw under the share before it has already picked. The draw is the one the moons' pick used to
+    // take, and the ray's pair is the sun's, so every lamp draw below keeps its place.
+    float cosines[SKY_SOURCES];
+    float weights[SKY_SOURCES];
+    float total = 0.0;
+    for (uint source = 0u; source < SKY_SOURCES; ++source)
     {
-        const float through
-            = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), sunDraw), frame.mFar);
+        const SkySource sky = skySourceAt(source);
+        const bool asked = source == SKY_SOURCE_SUN ? sunUp() : HAS_MOONS && path == PATH_SEEN;
 
-        radiance += frame.mSunIrradiance * lightThroughWater(position, frame.mSunPosition, footprint)
-            * (sunCosine * INV_PI * through * cloudShadow(position, frame.mSunPosition));
+        cosines[source] = asked ? litCosine(normal, side, sky.mDirection, transmission) : 0.0;
+        weights[source] = cosines[source] > 0.0 ? cosines[source] * dot(sky.mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
+        total += weights[source];
     }
 
-    // **The moons, which is the whole of what lights a night out of doors.** The same estimator as
-    // the sun and for the same reasons, with two differences that are both the disc's size: Masser
-    // subtends thirty-five times the sun's angle, so the cone it is drawn from is that much wider
-    // and the penumbra under everything it lights is that much softer.
-    //
-    // **One ray for the pair, and the alpha decides whether it is spent.** The game fades both moons
-    // out over the hours around dawn, so a daylit frame weighs both at nothing and traces neither.
-    // Where both are up, one is drawn in proportion to what it would deliver unshadowed and its
-    // contribution divided by that probability — which is unbiased, and it is a shadow ray saved on
-    // every frame that has two moons over it. What it costs is the penumbra under crossed moonlight
-    // resolving at one sample a frame instead of two, and that is the trade the filter already
-    // carries for every lamp in the game.
-    //
-    // **And only where the eye can see the surface.** A bounce's far hit is an indirect term nothing
-    // resolves on its own, so a moon reaching it through a shadow ray of its own was the dimmest
-    // half of the dimmest thing in the frame.
-    if (HAS_MOONS && path == PATH_SEEN)
+    if (total > 0.0)
     {
-        // The weight is what each would deliver unshadowed, which is everything about a moon that
-        // can be known without tracing — the same rule the lamp reservoir picks its candidate by.
-        const float masserCosine = litCosine(normal, side, frame.mMoons[0].mDirection, transmission);
-        const float secundaCosine = litCosine(normal, side, frame.mMoons[1].mDirection, transmission);
-
-        const float masser
-            = masserCosine > 0.0 ? masserCosine * dot(frame.mMoons[0].mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
-        const float secunda
-            = secundaCosine > 0.0 ? secundaCosine * dot(frame.mMoons[1].mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
-
-        if (masser + secunda > 0.0)
+        uint picked = SKY_SOURCES - 1u;
+        float share = 0.0;
+        for (uint source = 0u; source + 1u < SKY_SOURCES; ++source)
         {
-            // **A probability compared against the draw, and not a weight against a scaled draw.**
-            // The two are the same until one moon weighs nothing: `takeMasser` is then nought or one
-            // and the comparison cannot choose the moon that would divide by it, whatever the draw
-            // generator's upper bound turns out to be.
-            //
-            // **Drawn from the pair the second ray no longer needs**, so every draw after it keeps
-            // its place in the sequence — taken as a step of its own it would move every lamp
-            // penumbra in the frame, which is what the ordering above exists to prevent.
-            const float takeMasser = masser / (masser + secunda);
-            const bool lit = moonDraw[1].x < takeMasser;
-
-            const uint moon = lit ? 0u : 1u;
-            const float moonCosine = lit ? masserCosine : secundaCosine;
-            const float picked = lit ? takeMasser : 1.0 - takeMasser;
-
-            const vec3 toward
-                = coneDirection(frame.mMoons[moon].mDirection, frame.mMoons[moon].mLimb, moonDraw[0]);
-
-            radiance += frame.mMoons[moon].mIrradiance
-                * lightThroughWater(position, frame.mMoons[moon].mDirection, footprint)
-                * (moonCosine * INV_PI * lightThrough(position, toward, frame.mFar)
-                    * cloudShadow(position, frame.mMoons[moon].mDirection) / picked);
+            share += weights[source] / total;
+            if (moonDraw[1].x < share)
+            {
+                picked = source;
+                break;
+            }
         }
+
+        const SkySource sky = skySourceAt(picked);
+        const float chance = weights[picked] / total;
+
+        radiance += sky.mIrradiance * lightThroughWater(position, sky.mDirection, footprint)
+            * (cosines[picked] * INV_PI * skyVisible(position, picked, sunDraw) / chance);
     }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the

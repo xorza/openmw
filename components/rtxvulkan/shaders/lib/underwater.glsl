@@ -15,6 +15,7 @@
 #include "scene.h"
 #include "bindings.glsl"
 #include "frame.glsl"
+#include "lights.glsl"
 #include "sea.glsl"
 #include "traversal.glsl"
 
@@ -141,7 +142,8 @@ vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
 /// way to. A submerged surface is shadowed because `shadeSurface` traces its own ray and water
 /// carries a mask bit that keeps it out of occlusion — so a rock over the sea darkened the bed under
 /// it and left the water in front of the bed as bright as ever. The ray goes from where the light
-/// met the surface, which the march has already worked out to read the lens at.
+/// met the surface, which the march has already worked out to read the lens at, and it is the
+/// surface's own question — `skyVisible`, with the cloud deck in it.
 ///
 /// **Only where the beam is a real share of what the stretch sends**, which is `WATER_SHAFT_FLOOR`.
 /// Everywhere else the closed form is the whole answer and nothing is marched.
@@ -234,8 +236,11 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         const vec2 met = at.xy - sun.mTravelling.xy * reach;
 
         // **Outside the fade, because a shadow is not fine detail.** `show` brings the *pattern* in
-        // across the gate, and a rock's edge has to be there whether or not the filaments are.
-        const float visible = lightThrough(vec3(met, frame.mWaterLevel), frame.mSunPosition, frame.mFar);
+        // across the gate, and a rock's edge has to be there whether or not the filaments are. The
+        // draw is the march's own offset carried along the R2 steps, so each step aims its own way
+        // inside the disc without a second draw a step.
+        const vec2 draw = fract(vec2(offset) + float(step) * vec2(STREAM_TURN[1], STREAM_TURN[2]));
+        const float visible = skyVisible(vec3(met, frame.mWaterLevel), SKY_SOURCE_SUN, draw);
 
         lit += weight * mix(1.0, caustic(met, under, footprint), show) * visible;
         plain += weight;

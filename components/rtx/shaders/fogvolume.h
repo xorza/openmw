@@ -4,6 +4,7 @@
 #define OPENMW_COMPONENTS_RTX_SHADERS_FOGVOLUME_H
 
 #include "portable.h"
+#include "visibility.h"
 
 // What the fog volume's images are made of and where each one is bound, said once for both sides
 // that have to agree. `gbuffer.h` says why a format is a macro rather than a constant, and what a
@@ -19,12 +20,14 @@
 #define FOG_VOLUME_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
 #define FOG_SUNWARD_FORMAT VK_FORMAT_R16_SFLOAT
 #define FOG_DEPTH_FORMAT VK_FORMAT_R32_SFLOAT
+#define FOG_SOURCES_FORMAT VK_FORMAT_R32G32B32A32_SFLOAT
 
 #else
 
 #define FOG_VOLUME_FORMAT rgba16f
 #define FOG_SUNWARD_FORMAT r16f
 #define FOG_DEPTH_FORMAT r32f
+#define FOG_SOURCES_FORMAT rgba32f
 
 #endif
 
@@ -85,9 +88,15 @@ namespace Rtx::Shaders
     /// this one storage binding because none of them samples it.
     const uint BIND_FOG_COLUMN_DEPTH = 16;
 
+    /// What each sky source puts into the air along each column's ray, before its slant through the
+    /// fog: one layer a source, in `SkySource` order. `fogdepth.comp` writes it once a column and the
+    /// scatter pass reads it once a froxel, which is the phase function evaluated once where it was
+    /// evaluated sixty-four times.
+    const uint BIND_FOG_COLUMN_SOURCES = 17;
+
     /// Where the sampled bindings end and the storage ones begin, and how many the set declares.
     const uint FOG_SAMPLED_COUNT = BIND_FOG_SCATTER_TARGET;
-    const uint FOG_BINDING_COUNT = BIND_FOG_COLUMN_DEPTH + 1;
+    const uint FOG_BINDING_COUNT = BIND_FOG_COLUMN_SOURCES + 1;
 
 #ifdef RTX_HOST
 }
