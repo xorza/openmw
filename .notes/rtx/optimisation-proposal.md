@@ -168,11 +168,13 @@ CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh
 and, for anything that could move a picture, `scene --twice` at three views against the previous
 build's digest.
 
-### Stage 1 — the cheap one first
+### Stage 1 — the cheap one first — **done**
 
-1. **The two exits in `ShapeFold::closes`.** A test that a closed shape still closes, and the `fold`
-   row on the island route, two legs of each. Keep it if it moves the row, delete it if it does not —
-   it is fifteen lines either way.
+1. ~~The two exits in `ShapeFold::closes`.~~ **Landed, and small.** The fold's p99 falls 1.2 to 1.9 ms
+   and the frame's p99 falls with it, with both `after` legs under both `before` legs on each pair.
+   The mean, the median and the one per cent low do not move, because the exits fire on merged
+   chunks and those are the tail. `.notes/bench.txt` holds the legs. The cross-check over six hundred
+   shapes now compares `mClosed` as well, which is a stronger guard than the change is a win.
 
 ### Stage 2 — the structural one
 

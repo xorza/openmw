@@ -69,12 +69,31 @@ namespace Rtx
     bool ShapeFold::closes(std::span<const osg::Vec3f> positions, std::span<const std::uint32_t> indices)
     {
         const std::size_t count = indices.size() / 3;
-        const std::size_t slots = std::bit_ceil(std::max<std::size_t>(count * 6, 16));
+
+        // **A closed shape carries three halves of a triangle's worth of edges**, because every edge
+        // of one has a triangle each way. Two things follow and neither is a threshold: an odd
+        // triangle count cannot close, and no shape passes `mostEdges` distinct edges and still
+        // closes. Nothing closes nothing, which is the third.
+        //
+        // **They are here for the merged terrain chunk**, which is hundreds of statics whose first
+        // grass card already passes the limit. Measured on the island route they take 1.2 to 1.9 ms
+        // off the fold's ninety-ninth percentile and two hundredths of one off its mean, which is
+        // what a saving in the tail alone looks like.
+        if (count == 0 || count % 2 != 0)
+            return false;
+
+        const std::size_t mostEdges = count * 3 / 2;
+
+        // **Sized against what can be reached and not against what could be pushed.** The limit
+        // above bounds the table, so the same one entry in two costs half the slots it did when the
+        // bound was every side of every triangle — half a megabyte of the `assign` below, on a
+        // chunk of thirty thousand triangles.
+        const std::size_t slots = std::bit_ceil(std::max<std::size_t>(mostEdges * 2, 16));
         const std::size_t mask = slots - 1;
 
         mEdgeTable.assign(slots, sNoEntry);
         mEdges.clear();
-        mEdges.reserve(count * 3);
+        mEdges.reserve(mostEdges);
 
         for (std::size_t t = 0; t < count; ++t)
             for (int side = 0; side < 3; ++side)
@@ -97,6 +116,12 @@ namespace Rtx
                     const std::uint32_t held = mEdgeTable[at];
                     if (held == sNoEntry)
                     {
+                        // **Reaching the limit is what a closed shape does, and passing it is what
+                        // says this is not one.** A tetrahedron is four triangles and six edges,
+                        // which is exactly the limit.
+                        if (mEdges.size() == mostEdges)
+                            return false;
+
                         mEdgeTable[at] = static_cast<std::uint32_t>(mEdges.size());
                         mEdges.push_back(Edge{ { low, high }, 0, 0 });
                         break;
@@ -119,7 +144,7 @@ namespace Rtx
             if (edge.mForward != 1 || edge.mBackward != 1)
                 return false;
 
-        return !mEdges.empty();
+        return true;
     }
 
     FoldedShape ShapeFold::fold(std::span<const osg::Vec3f> positions, std::vector<std::uint32_t>& indices)

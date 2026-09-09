@@ -153,12 +153,14 @@ namespace Rtx
         /// because they share a mistake.
         struct Reference
         {
+            /// Which of two positions the rule counts as first. Both halves below turn on it.
+            static bool lower(const osg::Vec3f& l, const osg::Vec3f& r)
+            {
+                return std::make_tuple(l.x(), l.y(), l.z()) < std::make_tuple(r.x(), r.y(), r.z());
+            }
+
             static std::array<osg::Vec3f, 3> spelling(const osg::Vec3f& a, const osg::Vec3f& b, const osg::Vec3f& c)
             {
-                const auto lower = [](const osg::Vec3f& l, const osg::Vec3f& r) {
-                    return std::make_tuple(l.x(), l.y(), l.z()) < std::make_tuple(r.x(), r.y(), r.z());
-                };
-
                 std::array<osg::Vec3f, 3> rotated{ a, b, c };
                 for (int turn = 0; turn < 2; ++turn)
                     if (lower(rotated[1], rotated[0]) || lower(rotated[2], rotated[0]))
@@ -217,6 +219,59 @@ namespace Rtx
 
                 return { kept, sheet };
             }
+
+            /// Whether every edge carries a triangle each way, written the slow obvious way too.
+            ///
+            /// **Every edge against every other rather than a table**, for the reason the fold's
+            /// reference is written that way: the two agree only where the rule they share is the
+            /// rule. What this guards is the arithmetic `ShapeFold::closes` exits early on — an odd
+            /// triangle count and a count of distinct edges past three halves of one — neither of
+            /// which appears here at all.
+            ///
+            /// **It guards the refusals and not the answers.** The sweep draws from a plane, so no
+            /// shape it makes closes, and every comparison below is a no against a no. That a shape
+            /// which does close still does is
+            /// `aShapeIsClosedWhenEveryEdgeCarriesATriangleEachWay`'s tetrahedron, which is four
+            /// triangles and six edges — exactly the limit the second exit refuses to pass.
+            static bool closes(std::span<const osg::Vec3f> positions, const std::vector<std::uint32_t>& indices)
+            {
+                const std::size_t count = indices.size() / 3;
+                if (count == 0)
+                    return false;
+
+                using Ends = std::array<float, 6>;
+                const auto ends = [](const osg::Vec3f& low, const osg::Vec3f& high) {
+                    return Ends{ low.x(), low.y(), low.z(), high.x(), high.y(), high.z() };
+                };
+                std::vector<std::pair<Ends, bool>> edges;
+                for (std::size_t t = 0; t < count; ++t)
+                    for (std::size_t side = 0; side < 3; ++side)
+                    {
+                        const osg::Vec3f& from = positions[indices[3 * t + side]];
+                        const osg::Vec3f& to = positions[indices[3 * t + (side + 1) % 3]];
+
+                        // A degenerate edge belongs to no pair and would pair with itself.
+                        if (from == to)
+                            return false;
+
+                        const bool forward = lower(from, to);
+                        edges.emplace_back(forward ? ends(from, to) : ends(to, from), forward);
+                    }
+
+                for (const auto& [key, ignored] : edges)
+                {
+                    std::size_t forwards = 0;
+                    std::size_t backwards = 0;
+                    for (const auto& [other, otherForward] : edges)
+                        if (other == key)
+                            (otherForward ? forwards : backwards) += 1;
+
+                    if (forwards != 1 || backwards != 1)
+                        return false;
+                }
+
+                return true;
+            }
         };
 
         /// Every shape the content can hand it, against the rule written the slow way.
@@ -263,11 +318,15 @@ namespace Rtx
 
                     const auto [expected, expectedSheet] = Reference::fold(positions, indices);
 
+                    // **On what survives**, because that is what `fold` asks the question of.
+                    const bool expectedClosed = Reference::closes(positions, expected);
+
                     std::vector<std::uint32_t> folded = indices;
-                    const bool sheet = fold.fold(positions, folded).mSheet;
+                    const FoldedShape shape = fold.fold(positions, folded);
 
                     EXPECT_EQ(folded, expected) << "corners " << corners << ", attempt " << attempt;
-                    EXPECT_EQ(sheet, expectedSheet) << "corners " << corners << ", attempt " << attempt;
+                    EXPECT_EQ(shape.mSheet, expectedSheet) << "corners " << corners << ", attempt " << attempt;
+                    EXPECT_EQ(shape.mClosed, expectedClosed) << "corners " << corners << ", attempt " << attempt;
                 }
             }
         }
