@@ -326,15 +326,48 @@ reached 1.6% at the shipped lead and 31% at a lead of one. `.notes/bench.txt` re
 and names its cap: the warming pass was cut short by the frame, rather than aimed at the wrong
 squares.
 
-**So the work to do is a warming pass that folds what the preloader has already built**, and the
-thing to fix inside it is why the pass does not finish. The lag is not the problem — at 12,000 units
-a second a frame moves the view point about 120 units against a cell of 8192, so a pass one frame
-behind asks for nearly the same squares.
+## Finding 6 — the fold cannot be walked to off the frame — **withdrawn**
 
-**The risk is the one every cache here carries**: a fold that goes stale mirrors the wrong geometry.
-`ShapeFold` already documents itself as one instance a thread, and the fold is keyed on the
-drawable, so the guard is the same one `ChunkRuns` uses — the pointer is the proof, and a debug-only
-pass that folds anyway and compares is what says so.
+Built, measured and taken out. What it bought was real and what stopped it is a crash nobody can
+name, which is the wrong half to ship.
+
+**The shape.** `Rtx::FoldCache` held what a geometry folded to. `TerrainResidency` filled it from the
+thread that warms the ground — a `Terrain::World::collect` of the square it had just preloaded, then
+the folding itself outside `mBuilding`, since a fold builds nothing. `MeshResolver` took what it
+found and folded only what it did not.
+
+**What it bought.** Two legs of each, interleaved, `--settled=false`:
+
+| leg | median | mean | p99 | worst | `walk` mean | `fold` mean | 1% low |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| before | 6.06 | 10.20 | 65.04 | 126.01 | 2.85 | 1.41 | 15.4 |
+| after | 6.25 | 9.57 | 48.28 | 82.52 | 1.88 | 0.45 | 20.7 |
+| before | 6.01 | 10.25 | 63.99 | 128.73 | 2.82 | 1.43 | 15.6 |
+| after | 6.08 | 9.49 | 47.76 | 82.11 | 1.87 | 0.42 | 20.9 |
+
+Seventy per cent of the fold, a third of the one per cent low, a quarter of the frame's p99 and a
+third of the worst frame. The scene was identical: `scene --twice` at three views reported the same
+instances, meshes, triangles, sheets and the same `handed over` digest with the cache on and off.
+
+**Why it is out.** `bench --views=one-cell-walk --seconds=6` in `build-debug` crashed in two runs of
+six, and six of twelve after the first repair — a segmentation fault in the warming thread, jumping
+to an address that is not code. Bisected: a `collect` on the warming thread with a taker that does
+nothing is safe over six runs, and the same collect with a taker that walks each chunk for its
+geometry is what crashes. **Walking a paged chunk's subtree from any thread but the frame's is what
+this fork cannot do**, and nothing in `components/rtx` can say what it races with.
+
+**What was found on the way, and kept.** The warming thread read `Terrain::World::isEnabled` for
+itself. `Terrain::Vantage` documents that the game's own thread writes it and that any other has to
+be handed the answer. That was a real contract violation, and repairing it did not stop the crash.
+
+**What would make it possible.** A hand-over from the thread that builds a chunk, rather than a walk
+of one already built — which is `components/terrain/objectpaging.cpp` telling this fork what it
+merged. That is an upstream file, so it is a change to name and wait on rather than to make.
+
+**And what is left that needs no thread.** `ShapeFold::closes` is about half of the fold and its
+answer for a merged chunk is almost certainly no. It has two exact early exits nobody takes: a
+closed shape has an even triangle count, and it has exactly three halves of one edge per triangle —
+so a shape that passes either limit cannot close. Neither is a guess, and both are local.
 
 ## What is not a problem
 
@@ -362,11 +395,12 @@ frame of one worker thread over the crossing, and `CompositeQueue::advance` on t
 2. ~~Measure the fold cache hit rate.~~ **Done, and both halves say build it.** The `fold` row
    below says what it costs at the tail, and the thread split says 92% of it could have been done
    before the frame asked.
-3. **Fold what the preloader has already built, on a thread of this fork's own.** The design and
-   the risk are below.
-4. **Then read what is left of the walk at the crossing.** `takeChunk` is 2.16 ms and the fold is
-   1.42 of it. The other 0.74 is the walk of chunks whose runs did not replay.
-5. **The trace over the game's own graph is last.** It is 0.2 ms at a standing view and the host has
+3. ~~Fold what the preloader has already built.~~ **Withdrawn.** Finding 6 says what it bought and
+   what stopped it.
+4. **Take the two exact early exits in `ShapeFold::closes`.** About half the fold, no thread, and
+   both are arithmetic rather than a guess. Measure them with the `fold` row.
+5. **Then read what is left of the walk at the crossing.** Its mean is 2.8 ms and its worst frame 87.
+6. **The trace over the game's own graph is last.** It is 0.2 ms at a standing view and the host has
    ten times that in headroom.
 
 **No frame time here is a budget failure.** The target is 60 fps at 1920×1080 internal. Every place
