@@ -110,9 +110,9 @@ namespace Rtx
                 // content: it does not change with the hour, the weather or the eye, so a cell costs
                 // one reading for the life of the scene and the frames after it cost a pointer. The
                 // whole reach is eighty-one cells and reading all of them measured under the
-                // run-to-run noise of a still — see `.notes/rtx/performance.md`. **A budget per
-                // frame would be worse than the spike it avoided**: what a picture holds would then
-                // depend on how many frames had been drawn before it, and `verify` compares stills.
+                // run-to-run noise of a still. **A budget per frame would be worse than the spike
+                // it avoided**: what a picture holds would then depend on how many frames had been
+                // drawn before it, and `verify` compares stills.
                 if (found == mCells.end() || found->mCell != key)
                     found = mCells.insert(found, ReadCell{ .mCell = key, .mLights = build(key) });
 

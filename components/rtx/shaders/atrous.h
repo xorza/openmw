@@ -25,8 +25,8 @@
 // **What it costs is a floor, and the floor is measured.** Five levels each round what they store,
 // which puts about 3e-4 of the value under the cascade's own error — visible only where the cascade
 // had already driven that error below it, which is a flat sheet under a smooth sky.
-// `theFilterAndItsHistoryConvergeOnAGrazingSurface` is that scene and carries the pair of figures,
-// and `.notes/rtx/shader-review.md` §4 is what the width bought.
+// `theFilterAndItsHistoryConvergeOnAGrazingSurface` is that scene, and it carries the pair of
+// figures.
 
 #ifdef RTX_HOST
 

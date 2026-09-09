@@ -190,9 +190,9 @@ namespace Rtx
         /// The report accounts for every block, and a range taken moves the live figure and not the
         /// reserved one.
         ///
-        /// **What Stage 0 of `.notes/design-vulkan.md` exists for.** A card whose host-visible heap
-        /// is a couple of hundred megabytes fails on a figure nothing in this renderer could state,
-        /// so the first thing to get right is that the figure is real: reserved is what
+        /// **The figure has to be real before anything can be decided on it.** A card whose
+        /// host-visible heap is a couple of hundred megabytes fails on a number nothing in this
+        /// renderer could state, so this is what says the number means something: reserved is what
         /// `vkAllocateMemory` asked for, live is what is inside it, and one never exceeds the other.
         TEST_F(RtxMemoryTest, theReportCountsWhatWasReservedAndWhatIsLive)
         {

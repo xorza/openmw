@@ -128,7 +128,7 @@ namespace Rtx
             EXPECT_TRUE(onAda.mReorders);
 
             // 246 MiB against the whole of video memory, which is the difference resizable BAR
-            // makes and the one figure Stage 2 of `.notes/design-vulkan.md` is written against.
+            // makes. `DeviceProfile::mHostWrittenBytes` says what the figure then decides.
             EXPECT_EQ(onTuring.mHostWrittenBytes, 257949696ull);
             EXPECT_EQ(onAda.mHostWrittenBytes, 17171480576ull);
             EXPECT_NE(onTuring.mHostWrittenBytes, onAda.mHostWrittenBytes);

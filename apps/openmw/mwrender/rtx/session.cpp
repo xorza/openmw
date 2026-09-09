@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -190,6 +192,14 @@ namespace MWRender
         return result;
     }
 
+    void Session::abandon(const std::string_view why)
+    {
+        Log(Debug::Error) << "Ray tracing session: " << why;
+        mRecord.fail();
+        mDone = true;
+        MWBase::Environment::get().getStateManager()->requestQuit();
+    }
+
     bool Session::isPlaying() const
     {
         if (MWBase::Environment::get().getStateManager()->getState() != MWBase::StateManager::State_Running)
@@ -259,10 +269,7 @@ namespace MWRender
 
             if (found.empty())
             {
-                Log(Debug::Error) << "Ray tracing session: no cell is called \"" << stop.mStand.mCell << '"';
-                mRecord.fail();
-                mDone = true;
-                MWBase::Environment::get().getStateManager()->requestQuit();
+                abandon("no cell is called \"" + stop.mStand.mCell + '"');
                 return;
             }
 
@@ -316,6 +323,14 @@ namespace MWRender
         // reference: nothing animates, so a frame traced many times is the same frame and an
         // accumulated picture converges on the integral rather than on the animation.
         world.getTimeManager()->setSimulationTimeScale(stop.mSchedule.mFrozen ? 0.0f : 1.0f);
+
+        // **Nothing a session does to the player may kill them.** A route flies the body across
+        // the world at whatever speed its view names and leaves it wherever the line ends, and the
+        // player dies of that: measured on `island-crossing`, the game reached `State_Ended` on the
+        // frame the route arrived. A dead player ends the game, which strands every stop after this
+        // one. `tgm` is the same call, so a run stands where a player who typed it would.
+        if (!world.getGodModeState())
+            world.toggleGodMode();
 
         const MWWorld::Ptr player = world.getPlayerPtr();
         mCell = player.getCell();
@@ -473,7 +488,22 @@ namespace MWRender
 
     void Session::beforeFrame()
     {
-        if (mDone || !isPlaying())
+        if (mDone)
+            return;
+
+        // **A game that has ended cannot be flown any further, and a session that waited for one
+        // would wait for ever.** Every stop after this one is unreachable, so the run says what
+        // happened and stops rather than drawing the same frame until somebody kills it. What ends
+        // a game here is the player dying, which `beginStop` turns god mode on to prevent — this is
+        // for whatever else might.
+        if (MWBase::Environment::get().getStateManager()->getState() == MWBase::StateManager::State_Ended)
+        {
+            abandon(std::format("the game ended during stop {} of {}, so no place after it can be reached", mAt + 1,
+                mRequest.mStops.size()));
+            return;
+        }
+
+        if (!isPlaying())
             return;
 
         if (!mStarted)

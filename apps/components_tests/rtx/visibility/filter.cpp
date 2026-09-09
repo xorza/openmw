@@ -187,7 +187,7 @@ namespace Rtx::Testing
             // point this is measuring a storage format and not an accumulator. Measured on this box:
             // at full width the pair is 0.00201 and 0.00203, at half width it was 0.00201 and
             // 0.00210, and with SVGF's feedback it is 0.00201 and 0.00213, against an unfiltered
-            // 0.042. `.notes/rtx/shader-review.md` §4 says what the width was worth and what it cost.
+            // 0.042.
             //
             // **A flat sheet is where feeding the filtered light back has least to give**, since the
             // cascade has every neighbour it could want and averaging its answers over frames only

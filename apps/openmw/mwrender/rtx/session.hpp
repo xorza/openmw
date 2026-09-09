@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 
 #include <osg/Quat>
 #include <osg/Vec3d>
@@ -91,6 +92,13 @@ namespace MWRender
     private:
         /// Whether the game has a world with a player in it. Nothing happens before it does.
         bool isPlaying() const;
+
+        /// Ends the run as a failure, saying why, and asks the game to quit.
+        ///
+        /// **The record's exit status and not a throw**, because a run that cannot go on has still
+        /// measured whatever it reached: what it holds is reported, and the process leaves non-zero
+        /// so nothing reads the report as a pass.
+        void abandon(std::string_view why);
 
         /// Puts the camera where the player stands, facing the way they face.
         ///
