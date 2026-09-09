@@ -114,6 +114,7 @@ if (OPENMW_RTX)
         rtx/bloompass.cpp
         rtx/bluenoise.cpp
         rtx/buffer.cpp
+        rtx/chunkruns.cpp
         rtx/cloudshell.cpp
         rtx/commands.cpp
         rtx/computepipeline.cpp

@@ -14,6 +14,7 @@
 
 #include <components/terrain/chunktaker.hpp>
 
+#include "chunkruns.hpp"
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
 #include "materialresolver.hpp"
@@ -282,6 +283,13 @@ namespace Rtx
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, bool firstPerson);
 
+        /// Opens the run of the chunk `name` describes, and closes it. `ChunkRuns` says what a run
+        /// is and why it is keyed on the name. **Bracketing the descent is the walk's to do**, since
+        /// the walk is what descends; what each drawable inside came to is recorded by the call
+        /// that resolved it.
+        void openChunk(const Terrain::ChunkName& name) { mChunkRuns.open(name); }
+        void closeChunk(ChunkRuns::Ended how) { mChunkRuns.close(how); }
+
         /// The state set a node's controllers write, or null where it has none.
         ///
         /// **Applied here rather than left to a callback.** A `SceneUtil::StateSetUpdater` set as a
@@ -306,6 +314,14 @@ namespace Rtx
         /// geometry is asked for.
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
             std::size_t frame, std::span<Residency* const> hidden);
+
+        /// The whole of what `addDrawable` does, and what the drawable came to.
+        ///
+        /// **Apart from `addDrawable` so that every way out of it is recorded.** Four of them are
+        /// early — a particle system, a drawable with no geometry, a mesh that mirrored nothing —
+        /// and a step a replay is missing is a chunk it would mirror short.
+        ChunkStep mirrorDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
+            const osg::Matrixf& place, bool firstPerson);
 
         SceneDesc& mScene;
 
@@ -340,6 +356,9 @@ namespace Rtx
 
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;
+
+        /// What the last walk of each paged chunk came to. `ChunkRuns` says what it is for.
+        ChunkRuns mChunkRuns;
 
         /// Which sweep is current, and where the walk in progress puts its counts.
         ///

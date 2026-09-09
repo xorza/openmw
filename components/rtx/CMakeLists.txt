@@ -20,6 +20,8 @@ set(RTX_FILES
     camera.hpp
     channel.cpp
     channel.hpp
+    chunkruns.cpp
+    chunkruns.hpp
     cloudshell.cpp
     cloudshell.hpp
     colourblock.cpp

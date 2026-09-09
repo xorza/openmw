@@ -29,6 +29,8 @@ namespace Terrain
         float mSize = 0.0f;
         unsigned int mLodFlags = 0;
         bool mActiveGrid = false;
+
+        bool operator==(const ChunkName&) const = default;
     };
 
     /// Where a collect looks from, and what of the world it may see.

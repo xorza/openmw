@@ -277,6 +277,8 @@ namespace Rtx
     {
         const std::size_t identity = identityWith(mPathHash, name);
 
+        mExtractor.openChunk(name);
+
         // **The dispatch `accept` would have done, done here instead.** What arrives is the
         // transform `loadRenderingNode` puts a chunk under, and its position is the chunk's place in
         // the world; going through `accept` would name the node by its address on the way past.
@@ -284,6 +286,8 @@ namespace Rtx
             enterTransform(*placed, identity);
         else
             enter(node, identity);
+
+        mExtractor.closeChunk(ChunkRuns::Ended::Walked);
     }
 
     void MirrorTraversal::enter(osg::Node& node, const std::size_t identity)
@@ -604,6 +608,7 @@ namespace Rtx
         mAnchor = anchor;
         mPass.mStats = &stats;
 
+        mChunkRuns.beginWalk(mPass.mEpoch);
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
@@ -717,10 +722,17 @@ namespace Rtx
         ++mPass.getStats().mLights;
     }
 
-    void SceneExtractor::addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
-        const osg::Matrixf& place, bool firstPerson)
+    void SceneExtractor::addDrawable(const osg::Drawable& drawable, const std::size_t who,
+        const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
+    {
+        mChunkRuns.add(mirrorDrawable(drawable, who, shading, place, firstPerson));
+    }
+
+    ChunkStep SceneExtractor::mirrorDrawable(const osg::Drawable& drawable, const std::size_t who,
+        const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
     {
         ExtractionStats& stats = mPass.getStats();
+        ChunkStep step{ .mWho = who };
 
         // Asked before the geometry, because a particle system is an `osg::Drawable` with no
         // triangles in it at all: its sprites *are* the drawing, and they leave here as a run of
@@ -738,14 +750,14 @@ namespace Rtx
         if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
         {
             mEmitters.add(*particles, shading, place);
-            return;
+            return step;
         }
 
         const MeshResolver::Read read = MeshResolver::readDrawable(drawable);
         if (read.mGeometry == nullptr)
         {
             ++stats.mSkippedUnknown;
-            return;
+            return step;
         }
 
         const osg::Geometry& geometry = *read.mGeometry;
@@ -773,7 +785,10 @@ namespace Rtx
 
         const Index mesh = mMeshes.resolve(drawable, read, material);
         if (mesh == sNoIndex)
-            return;
+            return step;
+
+        step.mMesh = mesh;
+        step.mMaterial = material;
 
         // A mesh worn with an animated cutout is one no bake can answer for, and traversal stops for
         // every placement of it; a placement wearing anything but the material its mesh arrived
@@ -810,15 +825,19 @@ namespace Rtx
             });
 
             mPlacements.add(who, Known{ .mIndex = slot });
+            step.mPlacement = slot;
         }
         else
         {
             mPlacements.stamp(held);
             mScene.moveInstance(held->second.mIndex, place);
             mScene.fadeInstance(held->second.mIndex, fade);
+            step.mPlacement = held->second.mIndex;
         }
 
         ++stats.mInstances;
+
+        return step;
     }
 
     bool SceneExtractor::isWater(osg::Node::NodeMask mask) const
