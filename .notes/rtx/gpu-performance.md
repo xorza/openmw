@@ -126,20 +126,71 @@ pixel could show.
 code says a rebuild costs an arrival nothing because it happens regardless; what it does not say is
 what a refit would cost on the frames where only transforms moved.
 
-## Finding 3 — Shader Execution Reordering is still slower
+## Finding 3 — the reorder loses everywhere, and it changes the picture
 
-Measured again at Vivec, which has the heaviest trace in the corpus, because the shaders have been
-rewritten since the reading `AGENTS.md` records.
+**Two separate things wear the name SER here, and only one of them is optional.** The trace is a ray
+generation shader that launches through hit objects — `hitObjectTraceRayEXT` then
+`hitObjectExecuteShaderEXT` — whatever mode is asked for, so `VK_EXT_ray_tracing_invocation_reorder`
+is required for the launch and not for the sort. `Rtx::Reorder` records the launch as worth 6 to 10
+per cent against the dispatch it replaced. That reading is inherited, not retaken: there is no
+dispatch path left to measure it against.
 
-| mode | trace | frame |
-|---|---:|---:|
-| off | 1.85 | 6.59 |
-| hit | 2.20 | 6.94 |
-| hint | 2.22 | 6.93 |
-| both | 2.21 | 6.93 |
+**What is optional is the sort**, and it is `Reorder::Hit`, `Hint` and `Both`.
 
-**Nineteen per cent slower, and the three modes are indistinguishable from one another.** The
-default stays off, and the decision is now measured against the current shaders rather than inherited.
+### It costs 17 to 23 per cent of the trace, at every place
+
+Order-balanced — `off` first in rounds 1 and 3, `hit` first in 2 and 4 — four pairs of
+`--seconds=20`, reading the `trace` zone.
+
+| place | trace off | trace hit | hit − off | % | t | frame off | frame hit |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| dagoth-ur-caldera | 2.453 | 3.015 | +0.562 | +22.9 | 29.1 | 6.47 | 7.01 |
+| vivec | 1.887 | 2.305 | +0.417 | +22.1 | 23.2 | 6.72 | 7.10 |
+| seyda-neen-ship | 1.948 | 2.312 | +0.365 | +18.7 | 56.5 | 6.31 | 6.60 |
+| seyda-neen-shore | 1.677 | 1.970 | +0.293 | +17.4 | 16.3 | 5.79 | 6.06 |
+| balmora-mages-guild | 1.478 | 1.750 | +0.273 | +18.4 | 24.6 | 5.23 | 5.50 |
+| arkngthand | 0.140 | 0.200 | +0.060 | +42.9 | — | 3.85 | 3.91 |
+
+**Every place, every mode, far outside the drift.** One round of the other two reads +19.1 to +24.6
+per cent for `hint` and +17.8 to +28.0 for `both`, and the three are indistinguishable from one
+another. `arkngthand` traces 0.14 ms and pays 0.06 of it, which is the call's fixed cost with almost
+no divergence to recover — the sort's floor, showing on the smallest trace in the corpus.
+
+**That is the third arrangement to lose.** `Rtx::Reorder` records one sort in front of a kernel
+holding every kind at 7 to 17 per cent, the same sort in front of a shader per kind at 12 to 25, and
+a reorder at the bounce at 20 to 30. This is the fourth reading and it agrees with all three.
+
+### And it does not draw the same picture
+
+A sort regroups threads; it must not change what they compute. It does.
+
+`verify --exposure=1 --upscale=off --filter=false`, which is the raw trace with no denoiser,
+`hint` against `off`: **five of twenty-two views differ**, worst 50 of 255 at
+`balmora-mages-guild`, on 0.00 to 0.27 per cent of the pixels. Three runs of `hint` against each
+other are bit-identical, so the sort is repeatable — it is simply not the same answer.
+
+With the upscaler on, `hit` moves **eight of twenty-two views**, worst 16 of 255 on about a quarter
+of the pixels, the same eight every run. `hit` is the one mode that takes the shading payload
+through traversal — `lib/reorder.glsl` says so — so it differs by more than its sort.
+
+**A null control says none of this is noise**: six runs of `off` against each other are the same
+picture at all twenty-two views.
+
+**The determinism gate cannot see it.** `repeatable.sh` passes under every mode, because it walks
+`one-cell-walk` — which is one of the views that never moves — and forces `--upscale=off
+--filter=false`. A gate that misses a picture change in the one switch whose whole promise is that
+it changes nothing is a gap worth knowing about.
+
+### What follows
+
+The sort has lost four measurements on three arrangements, costs a fifth of the trace, and is not
+picture-neutral. It is off by default and folds away at compile time, so it costs nothing at runtime
+— what it costs is `components/rtx/reorder.hpp`, about half of `lib/reorder.glsl`, a specialization
+constant, a command-line option, a setting, a device-profile field, a throw and four static asserts.
+
+**As an instrument it is unsound as written**: a future re-measurement would compare two different
+pictures, which is the trap the micromap A/B fell into. Either the picture difference is found and
+fixed before the switch is trusted again, or the three modes go and the hit-object launch stays.
 
 ## Finding 4 — the opacity micromap bake costs more than it buys, and it speckles distant foliage
 
