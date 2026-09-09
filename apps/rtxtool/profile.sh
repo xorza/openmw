@@ -4,7 +4,7 @@
 #   profile.sh                             # seyda-neen-ship, on-CPU
 #   profile.sh --view=balmora-mages-guild
 #   profile.sh --suite=default             # every place the benchmark reports
-#   profile.sh --offcpu                    # where it waits instead of works (needs root, for BPF)
+#   profile.sh --offcpu                    # where it waits instead of works (needs cap_bpf, or root)
 #   profile.sh --dwarf                     # unwind the driver too, at about five times the cost
 #   profile.sh --tui                       # browse the last recording, run nothing
 #
@@ -116,15 +116,21 @@ bench=("$build/openmw-rtxtool" bench --validation=false --window=false "${place[
 cd "$build"
 
 if [ "$mode" = offcpu ]; then
-    # Off-CPU sampling is BPF, and BPF here is root's — `unprivileged_bpf_disabled` is 2. So the
-    # harness runs as the user, where it has a home directory, a Wayland socket and a GPU, and perf
-    # attaches to it from root. `perf record -p` exits by itself when its target does.
+    # **Off-CPU sampling is BPF, and BPF here is privileged** — `unprivileged_bpf_disabled` is 2. A
+    # `perf` that carries the capabilities needs nothing more:
     #
     #   sudo setcap cap_perfmon,cap_bpf,cap_sys_ptrace+ep "$(command -v perf)"
     #
-    # removes the sudo, at the price of a system change that the next perf upgrade undoes.
-    echo "profile: off-CPU sampling needs root for BPF — perf runs under sudo, the harness does not"
-    sudo -v
+    # **Asked of the binary rather than assumed either way.** A `perf` upgrade replaces the file and
+    # drops what was set on it, so a run that took no password last week can want one today — and a
+    # `sudo` asked for unconditionally is a password prompt in front of a profile that did not need
+    # one.
+    elevate=()
+    if ! getcap "$(command -v perf)" 2>/dev/null | grep -q cap_bpf; then
+        echo "profile: perf carries no cap_bpf — it runs under sudo, and the harness does not"
+        elevate=(sudo)
+        sudo -v
+    fi
 
     "${bench[@]}" 2>&1 | tee "$out/bench.txt" &
     harness=$!
@@ -135,12 +141,16 @@ if [ "$mode" = offcpu ]; then
     target="$(pgrep -n -x openmw-rtxtool || true)"
     [ -n "$target" ] || { echo "profile: the harness did not start" >&2; exit 1; }
 
-    sudo "${record[@]}" -p "$target" &
+    # The harness runs as the user throughout, where it has a home directory, a Wayland socket and
+    # a GPU, and perf attaches to it. `perf record -p` exits by itself when its target does.
+    "${elevate[@]}" "${record[@]}" -p "$target" &
     recorder=$!
 
     wait "$harness"
     wait "$recorder" || true
-    sudo chown "$(id -u):$(id -g)" "$data"
+
+    # Only what root wrote is owned by root.
+    [ ${#elevate[@]} -eq 0 ] || sudo chown "$(id -u):$(id -g)" "$data"
 else
     "${record[@]}" -- "${bench[@]}" 2>&1 | tee "$out/bench.txt"
 fi
