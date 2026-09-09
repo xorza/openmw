@@ -60,11 +60,14 @@ harness teleporting between stops, outside any measured frame. Outside it the lo
 is 20 ms and about a dozen pass 2 ms. No 150 ms frame of this route is one long wait: not the ring
 wait in `placeScene`, not a cell load, nothing.
 
-**One thing is not accounted for.** `place` has a median of 0.18 ms against a mean of 2.63, so its
-cost is a handful of arrival frames — and the on-CPU profile cannot attribute them, because they run
-in the driver, which carries no frame pointer. What is visible of it is the driver's own allocate
-and free at about 1.1 ms a frame: `Nv04VidHeapControl` into `nv_alloc_system_pages` at 0.66 and
-`rmapiFree` at 0.41.
+**Where `place` goes, now that its phases are timed apart.** It is the upload. The composite bake is
+nothing at all unsettled, the arrived textures are 0.07 ms a frame with one frame at 12.5, and
+telling the backend is 2.58 ms of the mean 2.67 and 47.6 of the worst 60.3. So the spike is
+`extendScene` — the texture writes, the buffer extends, and the recording of the micromap bake and
+the structure build. Under it is the driver's own allocate and free at about 1.1 ms a frame:
+`Nv04VidHeapControl` into `nv_alloc_system_pages` at 0.66 and `rmapiFree` at 0.41. The on-CPU
+profile goes no further in: an arrival frame's time is in the driver, which carries no frame
+pointer. `.notes/bench.txt` holds the rows.
 
 ## The finding: the warming thread cannot work, by construction
 
@@ -101,9 +104,9 @@ set, hands it to the mirror, and posts its own view point for the worker's next 
 - **`mBuilding` goes.** Only one thread enters `QuadTreeWorld::loadRenderingNode`, so the lock that
   keeps the two out of its caches has nothing to guard, and `warm ms` becomes the wait for a
   snapshot rather than for a chunk.
-- **The fold goes with it.** The worker holds each chunk's geometry before any frame sees it, so it
-  runs the triangle collector and `ShapeFold` there and publishes the folded index runs beside the
-  nodes. `MeshResolver` takes them instead of folding.
+- **The fold goes with it.** `GeometryFold` reads a geometry's triangles and folds them in one call.
+  The worker holds each chunk's geometry before any frame sees it, so it folds there and publishes
+  the runs beside the nodes. `MeshResolver` takes them instead of folding.
 
 **What it removes from the crossing's frame.** `loadRenderingNode` at 1.77 ms and `ShapeFold` at
 1.31, of a 4.34 ms main thread. It buys nothing at a standing camera, where nothing is arriving.
@@ -118,30 +121,18 @@ the schedule's, which is the same problem `CompositeQueue::setSettled` already s
 bake and by the same means: a settled mode that waits for the round, used by `verify`, `shot` and
 the hashes, and off for a run that is timing the streaming path.
 
-**The seam.** `Terrain::World::collect(View*, viewPoint, ChunkTaker&)` is the whole interface the
-worker needs — it resolves the view, builds every entry and hands each over with its `ChunkName`.
-Nothing is cast and no upstream file is touched. `TerrainResidency` already owns two views; one of
-them becomes the worker's and the other is not needed.
+**The seam.** `Terrain::World::collect(View*, const Vantage&, ChunkTaker&)` is the whole interface
+the worker needs — it resolves the view, builds every entry and hands each over with its
+`ChunkName`. `Terrain::Vantage` is what makes it callable off the game's thread: everything a
+collect would otherwise read off the world arrives in it, captured by the thread that is allowed to
+read it. Nothing is cast. `TerrainResidency` already owns two views; one of them becomes the
+worker's and the other is not needed.
 
 **Risk.** Moderate, and it is the largest change here. What it rests on is that a published chunk
 node is immutable and safe to walk from another thread once built, which is the same claim
 `ObjectPaging`'s cache already rests on.
 
-## Proposal 2 — `place` is one row and needs to be four
-
-`place` is 0.18 ms at the median and 62 ms at the worst, and nothing says which half of
-`SceneUploader::hand` the 62 is. The profile cannot answer it: an arrival frame's time is in the
-driver, and the driver has no frame pointers for perf to walk.
-
-**Split the row the way `walk` is split.** `hand` runs a sequence with names already —
-`composites->advance`, `mTextures.describe`, `extendScene`, `placeScene` — and timing each on the
-host costs four `steady_clock` reads on a path that already takes two. The report gains a line and
-the question becomes answerable.
-
-**Expected.** Nothing. It is an instrument, and it is here because the second-largest term in the
-crossing's frame is currently unattributable.
-
-## Proposal 3 — the walk reads what it wrote last frame
+## Proposal 2 — the walk reads what it wrote last frame
 
 **What it costs now.** At Seyda Neen the walk is 0.98 ms, of which `TerrainResidency::collect` is
 0.499 — and with Proposal 1 that becomes walking the published chunks rather than building them, so
@@ -175,23 +166,6 @@ agreed.
 **And it is not urgent.** It is 0.6 ms on a host with 1.7 to 2.9 ms of headroom at every view that
 stands still. It is here because it is the largest steady item, not because anything waits on it.
 
-## Considered and not proposed
-
-**Fixing the warming thread's aim.** No aim works: the decomposition follows the view point, so only
-a lead of nought builds the frame's own chunks, and a lead of nought has no head start. Proposal 1
-is that observation taken to its conclusion.
-
-**A fold cache filled by the warming thread.** It moves one of the two arrival costs and depends on
-the thread landing, which it does not. Proposal 1 subsumes it.
-
-**Slicing the arrival over frames.** `AGENTS.md` rules out work batched behind a threshold, and for
-the reason that applies here: what a picture holds would depend on how many frames came before it.
-Off the frame path entirely is the alternative the same rule names.
-
-**Shrinking the buffers between arrivals.** They already grow and never shrink — `growTo` returns
-early where the buffer is big enough. Whatever the driver is allocating in an arrival frame, it is
-not a table being resized down and up.
-
 ## The plan
 
 Each step is a commit. Each states what it is verified by.
@@ -207,21 +181,9 @@ CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh
 
 and, for anything that could move a picture, a `bench --hashes` against the previous build's run.
 
-### Stage 1 — see the other half of the spike
+### Stage 1 — the crossing
 
-1. **Split `place` (Proposal 2).** Four rows where there is one.
-   *Verified by*: the rows summing to `place` within a tenth of a millisecond over a run; the
-   numbers, written into `.notes/bench.txt`.
-
-### Stage 2 — the crossing
-
-2. **One fold, held by two.** Lift what `MeshResolver::resolve` does between reading a drawable and
-   adding a mesh — the triangle collector and `ShapeFold` over it — into a type both the resolver and
-   the terrain worker hold an instance of. No behaviour changes.
-   *Verified by*: the extractor's tests, and `scene` reporting the same mesh, sheet and triangle
-   counts at every view of the default suite; `repeatable.sh`.
-
-3. **The worker resolves and publishes (Proposal 1), the frame still folding.** The snapshot, the
+1. **The worker resolves and publishes (Proposal 1), the frame still folding.** The snapshot, the
    view point posted back, `mBuilding` removed, and the frame reading what was published. Settled
    mode waits for the round.
    *Verified by*: `scene` reporting the same instance and mesh counts as before at every view of the
@@ -230,29 +192,30 @@ and, for anything that could move a picture, a `bench --hashes` against the prev
    --settled=false` before and after, three legs interleaved.
    *Expected*: `loadRenderingNode`'s 1.77 ms a frame off the crossing's main thread.
 
-4. **The worker folds what it publishes.** The folded runs travel with the nodes.
+2. **The worker folds what it publishes.** The folded runs travel with the nodes.
    *Verified by*: a test that a geometry folded on the worker and folded on the frame give identical
    indices and an identical `FoldedShape`; the same bench legs.
    *Expected*: `ShapeFold`'s 1.31 ms a frame with it.
 
-5. **Read what Stage 1 now shows of `place`**, and propose against it.
+3. **Propose against the upload.** The split says where `place`'s spike is. Nothing here yet says
+   what to do about it.
 
-### Stage 3 — the walk, if it is still worth it
+### Stage 2 — the walk, if it is still worth it
 
-6. **The trace (Proposal 3, first half).** Record it and use it for the three slot lookups.
+4. **The trace (Proposal 2, first half).** Record it and use it for the three slot lookups.
    *Verified by*: a test that a second walk over an unchanged graph makes no map lookup at all,
    counted; the allocation guard, since the trace is scratch and never a per-frame allocation;
    `repeatable.sh`.
 
-7. **The trace carries the transform**, and `PlacementTable` is reached only on a difference.
+5. **The trace carries the transform**, and `PlacementTable` is reached only on a difference.
 
-8. **The chunk replay (Proposal 3, second half).** First the assertion — a debug-only check that a
+6. **The chunk replay (Proposal 2, second half).** First the assertion — a debug-only check that a
    chunk published twice under one name and one node walks to an identical run — then the replay
    behind it.
 
-### Stage 4
+### Stage 3
 
-9. Re-run every suite, re-take the profiles, and update this file.
+7. Re-run every suite, re-take the profiles, and update this file.
 
 ## How to repeat the measurements
 
