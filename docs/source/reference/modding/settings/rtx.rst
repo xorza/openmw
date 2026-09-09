@@ -5,10 +5,10 @@ The experimental Vulkan ray tracing renderer. It replaces primary visibility, sh
 indirect light, sky, water and fog; the OpenGL renderer is untouched and is what you get with
 :code:`enabled = false`.
 
-It exists only in a build configured with :code:`-DOPENMW_RTX=ON`, and it needs an Ada-class NVIDIA
-GPU: acceleration structures, ray query, ray tracing pipelines, position fetch and shader execution
-reordering are all required, and a device missing any of them refuses to start rather than falling
-back.
+It exists only in a build configured with :code:`-DOPENMW_RTX=ON`, and it needs an NVIDIA GPU with
+hardware ray tracing, Turing or later: acceleration structures, ray query, ray tracing pipelines,
+position fetch and the hit objects of the invocation-reorder extension are all required, and a device
+missing any of them refuses to start rather than falling back.
 
 Every setting here is read once, at startup.
 

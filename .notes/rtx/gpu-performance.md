@@ -28,7 +28,7 @@ that stands still waits on the device, so these zones are the frame's budget.
 | `shade`, `sprites` | the emitters' lighting and their screen-space bin |
 | `tlas` | the top level, rebuilt every frame |
 | `refit`, `skin` | the bottom levels a pose moved, and the pose itself |
-| `blas`, `compact` | what a cell arriving builds. A `micromap` zone stood beside them until the bake was removed — Finding 4 |
+| `blas`, `compact` | what a cell arriving builds |
 
 ## Where it stands
 
@@ -118,13 +118,15 @@ Neen and 11 in the ruin, where the trace itself is 0.41 ms.
 
 **`waves` is the one to look at first.** It is a spectrum synthesised once a frame for a sea that a
 cell may show a sliver of or none at all, and it costs the same 0.22 ms either way. It is skipped
-where a cell holds no water, which is what makes the interiors read nought — so the question is not
-whether it can be skipped but whether it has to run on a frame where the sea moved by nothing a
-pixel could show.
+where a cell holds no water, which is what makes the interiors read nought. Skipping it on a frame
+that shows no sea needs a frame-late answer about whether any water was hit, which would make a
+picture depend on how many frames came before it — `.notes/rtx/optimisation-proposal.md` is where
+that is declined.
 
 **And `tlas` is rebuilt every frame.** 0.24 ms is five per cent of an exterior's device frame. The
-code says a rebuild costs an arrival nothing because it happens regardless; what it does not say is
-what a refit would cost on the frames where only transforms moved.
+code says a rebuild costs an arrival nothing because it happens regardless, and NVIDIA's guidance is
+to rebuild it every frame whatever moved, so a refit is not priced — `.notes/rtx/gpu-techniques.md`
+says where that comes from.
 
 ## Finding 3 — the reorder loses everywhere, and it changes the picture
 
@@ -419,13 +421,9 @@ Pricing them apart is a build per pass and a `shot` each.
 
 ## What to do next, in order
 
-1. **Ask what the sea's spectrum costs on a frame that does not need it.** 0.22 ms every frame with
-   water in the cell, whatever the camera can see of it.
-2. **Price a top-level refit against the rebuild.** 0.24 ms a frame, on frames where only transforms
-   moved.
-3. **Price the trace's own passes by removing them.** The trace is 0.41 to 4.53 ms depending on the
+1. **Price the trace's own passes by removing them.** The trace is 0.41 to 4.53 ms depending on the
    place and the extent, and it is one number today.
-4. **Leave the upscaler alone unless the picture changes.** It is the largest cost in every frame and
+2. **Leave the upscaler alone unless the picture changes.** It is the largest cost in every frame and
    it is a fixed function of the extent — the only knob on it is which extent to trace, and the
    target already names one that fits.
 

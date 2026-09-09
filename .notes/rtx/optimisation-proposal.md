@@ -22,13 +22,12 @@ only so that nobody has to rediscover why they are last.
 
 ## 1 — The acceleration structures move to a second queue
 
-**Overtaken by what Stage 2 found.** The bake is half of what this item was aimed at, and it is now a
-picture question rather than a cost to hide — so read this item beside Stage 2 below rather than on
-its own.
-
-**What it is worth.** Over the island route the device spends **0.81 ms a frame baking micromaps and
-0.69 building bottom levels**, and both land on the frames a ring arrives on — the frames whose p99 is
-49 ms. Today they are serial with the trace, because there is one queue.
+**What it is worth.** Over the island route the device spends **0.69 ms a frame building bottom
+levels**, on the frames a ring arrives on — the frames whose p99 is 49 ms. Today they are serial with
+the trace, because there is one queue. **And the frames that set the one per cent low are
+host-bound**: with the device's build work taken off them, the route's p99, worst frame and one per
+cent low did not move and only the p95 and the wait did. So this buys the p95, and is priced against
+that.
 
 **Why now.** Every source says the same thing, and this is the one structural recommendation the tree
 does not follow. NVIDIA: "Move AS management (build/update) to an async compute queue, which pairs
@@ -39,8 +38,8 @@ well with graphics workloads and in many cases hides the cost almost completely.
 - `Device` takes a second queue at creation, from a family that offers compute without graphics.
   This card has one: family 2, compute and transfer, eight queues. A device that offers no such
   family keeps the single queue it has, which is the same code path as today.
-- The micromap bake and the bottom-level builds are recorded into a command buffer of that queue's
-  own family and submitted there.
+- The bottom-level builds are recorded into a command buffer of that queue's own family and
+  submitted there.
 - A timeline semaphore orders them: the placement's submit signals what the builds wait on, and the
   builds signal what the frame's trace waits on. Nothing waits on the host.
 - `mBuilding` is untouched. That mutex holds two *host* threads out of `loadRenderingNode`, and this
@@ -49,10 +48,10 @@ well with graphics workloads and in many cases hides the cost almost completely.
 **The risk.** The sources warn that on hardware older than Ampere, overlapping compute on the
 graphics queue with a dedicated async queue can leave gaps in the async queue. The floor is Turing,
 so this needs a reading on the floor and not only on this card — and if it costs there, the second
-queue becomes a decision made once at device creation, which is the shape `Rtx::Reorder` already has.
+queue becomes a decision made once at device creation.
 
 **How it is verified.** `bench --views=island-crossing --seconds=20 --settled=false`, two legs of each
-interleaved, reading the `micromap` and `blas` zones, the frame's p99 and the one per cent low.
+interleaved, reading the `blas` zone, the frame's p95 and the wait.
 `scene --twice` at three views for the digest, and `repeatable.sh --pairs=10`.
 
 ## 2 — The fold moves off the frame, through a seam upstream has to open
@@ -87,33 +86,7 @@ thread, no lock, and the fold then happens on the thread that already holds the 
 **This item is a proposal to the tree's owner and not a plan.** `AGENTS.md` says an upstream change
 is named and waited on, so it is named here.
 
-## 3 — Two exact early exits in `ShapeFold::closes`
-
-**What it is worth.** Unmeasured, and honestly so. `closes` is 0.62 ms of the fold's 1.36 ms mean on
-the island route — about half — and its answer for a merged terrain chunk is almost always no. What
-the exits are worth is what fraction of that half they cut, and only a run says.
-
-**Why it is worth trying anyway.** It needs no thread, no lag and no upstream change, and both exits
-are arithmetic rather than a heuristic.
-
-**The shape.** A closed shape has every edge on exactly two triangles, so it has exactly `3T/2`
-distinct edges. Two things follow, and neither is a guess:
-
-- `T` odd cannot close, because `3T/2` is not an integer. That exit fires before a single edge is
-  hashed.
-- More than `3T/2` distinct edges cannot close. That exit fires inside the insertion loop, as soon as
-  the count passes the limit — which for a merge full of grass cards, each contributing five distinct
-  edges for two triangles, is well before the end.
-
-**The one way to get it wrong.** A shape that closes reaches the limit exactly, so the refusal is
-for a push that would *exceed* it and never for one that reaches it. The tetrahedron in
-`apps/components_tests/rtx/shapefold.cpp` is four triangles and six edges — exactly `3T/2` — and it
-must still read closed. That test is the guard, and it is already written.
-
-**How it is verified.** The `fold` row on the island route, two legs of each. A test that a closed
-shape still closes and that an odd triangle count is refused before any work.
-
-## 4 — Settle whether a refitted structure may be compacted
+## 3 — Settle whether a refitted structure may be compacted
 
 **What it is worth.** Memory rather than frame time. Indiana Jones compacts its dynamic bottom levels
 and took its vegetation from 1027 MB to 606 — 41 per cent, with individual structures halving.
@@ -126,7 +99,7 @@ under one constraint — a compacted structure must be refitted and never rebuil
 if the specification allows an update of a compacted structure, the flags change and the memory
 follows. If it does not, the comment gains the reference that settles it for good.
 
-## 5 — The walk reads what it wrote, over the game's own graph
+## 4 — The walk reads what it wrote, over the game's own graph
 
 **What it is worth.** About 0.2 ms of a standing frame — the three `std::unordered_map` lookups every
 drawable makes, at 0.159 ms at Seyda Neen and 0.232 at Vivec, plus what `osg::Group::traverse`'s
@@ -147,11 +120,8 @@ holds the design.
   fits, and the picture is what the fork is for.
 - **The top level.** 0.24 ms a frame, rebuilt every frame. The guidance is to rebuild it every frame
   with `PREFER_FAST_TRACE` whatever moved, which is what this tree does.
-- **Reordering, the ray flags and the build flags.** Every one was measured here and every reading
-  agrees with what the sources say about a frame shaped like this one. **Opacity micromaps came off
-  this list**: the reading that put them here was inside the run-to-run spread, and an order-balanced
-  one says they buy three per cent of the trace and cost a picture. Finding 4 of
-  `.notes/rtx/gpu-performance.md` has taken their place.
+- **The ray flags and the build flags.** Every one was measured here and every reading agrees with
+  what the sources say about a frame shaped like this one.
 - **The sea's spectrum.** 0.22 ms a frame wherever a cell holds water, whatever the camera can see.
   Skipping it needs a frame-late answer about whether any water was hit, which makes what a picture
   holds depend on how many frames came before it — the objection the tree already raised against a
@@ -175,41 +145,21 @@ CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh
 and, for anything that could move a picture, `scene --twice` at three views against the previous
 build's digest.
 
-### Stage 1 — the cheap one first — **done**
+### Stage 1 — the structural one
 
-1. ~~The two exits in `ShapeFold::closes`.~~ **Landed, and small.** The fold's p99 falls 1.2 to 1.9 ms
-   and the frame's p99 falls with it, with both `after` legs under both `before` legs on each pair.
-   The mean, the median and the one per cent low do not move, because the exits fire on merged
-   chunks and those are the tail. `.notes/bench.txt` holds the legs. The cross-check over six hundred
-   shapes now compares `mClosed` as well, which is a stronger guard than the change is a win.
+1. **The second queue, priced against the p95.** `blas` is 0.69 ms a frame on the route's arrival
+   frames, and the route measurement already showed it does not set the one per cent low. The design
+   stands as written in item 1: a `Queue` value whose fallback is that there is only one, concurrent
+   sharing measured before ownership transfers are written, a timeline semaphore, and a timer per
+   stream.
 
-### Stage 2 — the structural one — **re-aimed twice, and now answered**
+### Stage 2 — the readings
 
-**The gate this stage was given cannot pass.** `--micromaps=false` removes more of the device's build
-work than any queue could hide, and the island route's p99, worst frame and one per cent low do not
-move at all — only the p95 and the wait do. The frames that set the one per cent low are host-bound.
-
-2. ~~Decide whether the micromap bake earns its place first.~~ **Answered, and the answer is no.**
-   Order-balanced, the bake saves 0.03 to 0.07 ms of the trace — three per cent of it and under one
-   per cent of the device frame. It costs 6.3 ms on each arrival frame. **And it is not
-   picture-neutral: eighteen views of twenty-two draw a different frame under it, and the difference
-   is a scatter of pinholes through distant foliage** that the any-hit's cone-filtered read closes.
-   `.notes/rtx/gpu-performance.md` Finding 4 holds the tables, the null controls and what was done:
-   **the bake is removed**, with the required extension and the hardware gate that came with it.
-3. **The queue's case is weaker than when it was written.** Its largest customer was the bake, and
-   the bake is gone. What is left is `blas` at 0.69 ms a
-   frame, which the route measurement already showed does not set the one per cent low. Build it
-   against the p95 or not at all. The design stands as written: a `Queue` value whose fallback is
-   that there is only one, concurrent sharing measured before ownership transfers are written, a
-   timeline semaphore, and a timer per stream.
-
-### Stage 3 — the readings
-
-4. **Read the specification on compacting a structure that is later refitted**, and either change the
+2. **Read the specification on compacting a structure that is later refitted**, and either change the
    flags and measure the memory, or write the reference into the comment that says why not.
-5. **Take a reading on Turing**, if one can be reached, for the second queue's pre-Ampere caveat.
+3. **Take a reading on Turing**, if one can be reached, for the second queue's pre-Ampere caveat.
 
-### Stage 4 — only if somebody opens the seam
+### Stage 3 — only if somebody opens the seam
 
-6. **The fold off the frame**, once `ObjectPaging` can say what it built. The measurement above is
+4. **The fold off the frame**, once `ObjectPaging` can say what it built. The measurement above is
    what it is worth, and it was taken on a working implementation of everything except the hand-over.

@@ -390,17 +390,8 @@ frame of one worker thread over the crossing, and `CompositeQueue::advance` on t
 
 ## What to do next, in order
 
-1. ~~Name the crossing's 2.89 ms of block.~~ **Done.** Finding 3 says what it was and what it came
-   to. The rows that found it are now part of every report.
-2. ~~Measure the fold cache hit rate.~~ **Done, and both halves say build it.** The `fold` row
-   below says what it costs at the tail, and the thread split says 92% of it could have been done
-   before the frame asked.
-3. ~~Fold what the preloader has already built.~~ **Withdrawn.** Finding 6 says what it bought and
-   what stopped it.
-4. **Take the two exact early exits in `ShapeFold::closes`.** About half the fold, no thread, and
-   both are arithmetic rather than a guess. Measure them with the `fold` row.
-5. **Then read what is left of the walk at the crossing.** Its mean is 2.8 ms and its worst frame 87.
-6. **The trace over the game's own graph is last.** It is 0.2 ms at a standing view and the host has
+1. **Read what is left of the walk at the crossing.** Its mean is 2.8 ms and its worst frame 87.
+2. **The trace over the game's own graph is last.** It is 0.2 ms at a standing view and the host has
    ten times that in headroom.
 
 **No frame time here is a budget failure.** The target is 60 fps at 1920×1080 internal. Every place

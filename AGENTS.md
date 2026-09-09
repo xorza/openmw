@@ -19,8 +19,8 @@ current than its prose. Same author, MIT OR Apache-2.0; this fork is GPLv3.
 ## Posture
 
 A 2002 game made to look astonishing on current hardware — ray-traced visibility, path-traced
-indirect light, materials recovered from pre-lit vanilla textures, DLSS Ray Reconstruction, opacity
-micromaps, SER. Vanilla content, new light transport.
+indirect light, materials recovered from pre-lit vanilla textures, DLSS Ray Reconstruction. Vanilla
+content, new light transport.
 
 Priorities, in order:
 
@@ -32,8 +32,9 @@ no abstraction over hardware this does not target.
 
 **Turing and later — every card with hardware ray tracing.** What the frame path asks for exists on
 Turing, and a card below that floor is a hard failure naming what it lacks. Anything newer is an
-optional accelerator decided once at device creation — Ada's SER and its opacity micromaps are that
-— and a second path per architecture needs a measurement saying the gain is real.
+optional accelerator decided once at device creation, and a second path per architecture needs a
+measurement saying the gain is real — Ada's reordering and its opacity micromaps both failed that
+measurement here and are gone.
 
 **Feature-complete first, then fast.** Land what is missing, note what it costs, act on the number
 later. A cost large enough to stop the work is the exception, and it is said out loud.
@@ -172,8 +173,8 @@ state and agree on nothing. Run it after touching anything a frame reads.
 **The scene columns are the gate and the picture is a report.** What a run is handed — every column
 of the hashes table — repeats exactly, and that is what a regression has to keep. The picture is
 printed beside it and does not fail the run, because it carried a residual nobody hunted and a gate
-red for that is a gate nobody reads. It is exact at the moment, and `.notes/repeatable.txt` says over
-how many pairs — enough of them and the picture earns the gate as well.
+red for that is a gate nobody reads. It is exact at the moment, over the pairs `repeatable.sh` has
+been run for — enough of them and the picture earns the gate as well.
 
 **A count of differing pictures says when, and never how much.** The exposure is measured off the
 frame and approaches its target from the value it held, so every pixel depends on the whole frame and
@@ -184,9 +185,8 @@ renderer: it scales with the walk. This file carried "26 or 27 frames of 45" tak
 while `repeatable.sh` has walked 360 since the day it was written — so the number never described
 what the gate reports, and six pairs of the walk it does run differed on 204 to 343 pictures.
 
-**The readings live in `.notes/repeatable.txt`**, dated and stamped with the commit they were taken
-at, the way `.notes/bench.txt` holds a frame time. `repeatable.sh` prints the current one on every
-run, and a number in prose here would go stale the next time the walk changed length.
+**`repeatable.sh` prints the current reading on every run**, and a number in prose here would go
+stale the next time the walk changed length.
 
 **A determinism reading needs ten pairs.** A pair that finds nothing has found nothing, and every
 cause this fork has withdrawn was named from a single pair. `--pairs` is what runs them.
