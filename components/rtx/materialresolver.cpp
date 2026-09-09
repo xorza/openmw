@@ -154,16 +154,21 @@ namespace Rtx
         return entry->second.mStateSet;
     }
 
-    Index MaterialResolver::reuse(const osg::StateSet* const key)
+    Known* MaterialResolver::find(const osg::StateSet* const key)
     {
         const auto known = mMaterials.find(key);
-        if (known == mMaterials.end())
+        return known == mMaterials.end() ? nullptr : &known->second;
+    }
+
+    Index MaterialResolver::reuse(const osg::StateSet* const key)
+    {
+        Known* const held = find(key);
+        if (held == nullptr)
             return sNoIndex;
 
-        ++mPass.getStats().mMaterialsReused;
-        mMaterials.stamp(known);
+        stampReused(*held);
 
-        return known->second.mIndex;
+        return held->mIndex;
     }
 
     Index MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
@@ -175,13 +180,13 @@ namespace Rtx
         return index;
     }
 
-    Index MaterialResolver::resolveTerrain(const Terrain::TerrainDrawable& terrain)
+    MaterialResolver::Resolved MaterialResolver::resolveTerrain(const Terrain::TerrainDrawable& terrain)
     {
         ExtractionStats& stats = mPass.getStats();
 
         const Terrain::TerrainDrawable::PassVector& passes = terrain.getPasses();
         if (passes.empty())
-            return sNoIndex;
+            return Resolved{};
 
         // The first pass is as good an identity as the chunk itself and is already a state set, so
         // terrain shares the material map with everything else.
@@ -189,7 +194,7 @@ namespace Rtx
         assert(identity != nullptr && "a terrain pass with no state set, which would key as the sea");
 
         if (const Index held = reuse(identity); held != sNoIndex)
-            return held;
+            return Resolved{ .mIndex = held, .mKey = identity };
 
         Material material;
         material.mKind = MaterialKind::Terrain;
@@ -233,7 +238,7 @@ namespace Rtx
         }
 
         if (mLayerScratch.empty())
-            return sNoIndex;
+            return Resolved{};
 
         material.mLayers = mScene.addLayers(mLayerScratch);
 
@@ -254,10 +259,10 @@ namespace Rtx
             ++stats.mComposites;
         }
 
-        return adopt(identity, material);
+        return Resolved{ .mIndex = adopt(identity, material), .mKey = identity };
     }
 
-    Index MaterialResolver::resolveWater()
+    MaterialResolver::Resolved MaterialResolver::resolveWater()
     {
         // **One material for the sea, and what identifies it is the state set it has not got.**
         // Water has no albedo — what it looks like is what is behind and above it, worked out from
@@ -274,15 +279,15 @@ namespace Rtx
         // for every material the walk met. A slot held outside them is a slot the survivor list has
         // to be told about by hand.
         if (const Index held = reuse(sSea); held != sNoIndex)
-            return held;
+            return Resolved{ .mIndex = held, .mKey = sSea };
 
-        return adopt(sSea, Material{ .mKind = MaterialKind::Water });
+        return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water }), .mKey = sSea };
     }
 
-    Index MaterialResolver::resolve(std::span<const Shading> shading)
+    MaterialResolver::Resolved MaterialResolver::resolve(std::span<const Shading> shading)
     {
         if (shading.empty())
-            return sNoIndex;
+            return Resolved{};
 
         // The material's identity is the state set nearest the drawable. Two drawables that share
         // it share their shading: OpenMW's optimizer collapses equivalent state sets into one
@@ -298,10 +303,10 @@ namespace Rtx
             if (own.mAnimated)
                 mScene.setMaterial(held, readMaterial(shading));
 
-            return held;
+            return Resolved{ .mIndex = held, .mKey = own.mStateSet };
         }
 
-        return adopt(own.mStateSet, readMaterial(shading));
+        return Resolved{ .mIndex = adopt(own.mStateSet, readMaterial(shading)), .mKey = own.mStateSet };
     }
 
     Index MaterialResolver::takeTexture(const osg::Image* image)

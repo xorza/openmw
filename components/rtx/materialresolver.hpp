@@ -50,6 +50,18 @@ namespace Rtx
     class MaterialResolver
     {
     public:
+        /// A material slot and the state set it is held under.
+        ///
+        /// **The key travels with the slot** because a replay of a paged chunk has to stamp the
+        /// material without reading the drawable again, and which state set of a chain names a
+        /// material is this class's answer. A caller that picked one for itself would be a second
+        /// answer to that.
+        struct Resolved
+        {
+            Index mIndex = sNoIndex;
+            const osg::StateSet* mKey = nullptr;
+        };
+
         /// @param pass the walk in progress: its sweep stamp and its counts, read at every call.
         ///        Borrowed, so that the mirror and everything resolving into it cannot come to hold
         ///        two answers.
@@ -60,14 +72,28 @@ namespace Rtx
         }
 
         /// The material slot for the chain of state sets in force at a drawable.
-        Index resolve(std::span<const Shading> shading);
+        Resolved resolve(std::span<const Shading> shading);
 
         /// The same for a terrain chunk, whose material is on the drawable rather than on the graph.
-        Index resolveTerrain(const Terrain::TerrainDrawable& terrain);
+        Resolved resolveTerrain(const Terrain::TerrainDrawable& terrain);
 
         /// The sea's own, keyed on the state set it has not got because a node mask is what
         /// identifies it.
-        Index resolveWater();
+        Resolved resolveWater();
+
+        /// The entry `key` is held under, unstamped, or null where the map holds none.
+        ///
+        /// **What a replay of a chunk looks its materials up with.** Which key a drawable's
+        /// material is held under is this class's answer and not its caller's, so a replay carries
+        /// the one it was given rather than working it out a second time.
+        Known* find(const osg::StateSet* key);
+
+        /// Records that the walk met `held` again, which is what `find` found.
+        void stampReused(Known& held)
+        {
+            ++mPass.getStats().mMaterialsReused;
+            mMaterials.stamp(held);
+        }
 
         /// Runs the state-set controller on `node`, if it carries one, and hands back what it wrote.
         ///

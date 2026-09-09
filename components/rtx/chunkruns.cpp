@@ -48,10 +48,21 @@ namespace Rtx
         mOpen = name;
         mOpenAt = static_cast<std::uint32_t>(mNow.mSteps.size());
         mOpened = true;
+        mWalkReplayable = true;
 
         mRecorded = {};
+        mCanReplay = false;
         if (const auto found = mLast.mRuns.find(mOpen); found != mLast.mRuns.end())
+        {
             mRecorded = std::span(mLast.mSteps).subspan(found->second.mFirst, found->second.mCount);
+            mCanReplay = found->second.mReplayable;
+        }
+    }
+
+    void ChunkRuns::refuse()
+    {
+        if (mOpened)
+            mWalkReplayable = false;
     }
 
     void ChunkRuns::add(const ChunkStep& step)
@@ -66,6 +77,7 @@ namespace Rtx
 
         if (how == Ended::Replayed)
         {
+            assert(canReplay() && "a chunk replayed from a run that refused one");
             assert(mNow.mSteps.size() == mOpenAt && "a chunk that was replayed also walked");
             mNow.mSteps.insert(mNow.mSteps.end(), mRecorded.begin(), mRecorded.end());
         }
@@ -86,14 +98,22 @@ namespace Rtx
         // that asks for the graph twice — `Session::wantsSecondWalk` — hands every chunk over on
         // both walks, and the two produce the same run. Kept, the buffer would carry a copy of the
         // whole terrain that no run names and every chunk after it would sit further along.
-        const auto recorded = mNow.mRuns.emplace(
-            mOpen, Run{ .mFirst = mOpenAt, .mCount = static_cast<std::uint32_t>(mNow.mSteps.size() - mOpenAt) });
+        const auto recorded = mNow.mRuns.emplace(mOpen,
+            Run{
+                .mFirst = mOpenAt,
+                .mCount = static_cast<std::uint32_t>(mNow.mSteps.size() - mOpenAt),
+
+                // A replayed chunk was not walked, so what it holds is what the walk that recorded
+                // it found — and that run was replayable or it would not have been replayed.
+                .mReplayable = how == Ended::Replayed || mWalkReplayable,
+            });
 
         if (!recorded.second)
             mNow.mSteps.resize(mOpenAt);
 
         mOpened = false;
         mRecorded = {};
+        mCanReplay = false;
     }
 
     void ChunkRuns::clear()
@@ -101,6 +121,7 @@ namespace Rtx
         mLast.clear();
         mNow.clear();
         mRecorded = {};
+        mCanReplay = false;
         mOpened = false;
     }
 }

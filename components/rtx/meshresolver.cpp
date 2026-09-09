@@ -167,6 +167,23 @@ namespace Rtx
         return Read{};
     }
 
+    Known* MeshResolver::findStatic(const osg::Drawable& drawable)
+    {
+        const auto known = mMeshes.find(&drawable);
+        if (known == mMeshes.end())
+            return nullptr;
+
+        // **Both halves of the pair `resolve` asks before it reuses a slot**, and for its reason: a
+        // drawable is a shell over a source geometry the engine may replace, so what the scene
+        // recorded and what the drawable is now have each to say the mesh stands still. The row
+        // first, because the other answer costs two casts.
+        if (mScene.getTables().mMeshes.getRows()[known->second.mIndex].mDeform != Deform::None
+            || readDrawable(drawable).mDeform != Deform::None)
+            return nullptr;
+
+        return &known->second;
+    }
+
     Index MeshResolver::resolve(const osg::Drawable& drawable, const Read& read, const Index material)
     {
         ExtractionStats& stats = mPass.getStats();

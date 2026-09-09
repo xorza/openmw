@@ -135,9 +135,12 @@ namespace Rtx
             EXPECT_EQ(runs.getRecorded()[1], stepOf(3, 3));
             runs.close(ChunkRuns::Ended::Replayed);
 
+            // A chunk that placed nothing has nothing to stamp, so it is walked however often it
+            // is met.
             runs.open(nameAt(2.0f, 0.0f));
             EXPECT_TRUE(runs.getRecorded().empty()) << "a chunk with no drawables read another chunk's run";
-            runs.close(ChunkRuns::Ended::Replayed);
+            EXPECT_FALSE(runs.canReplay());
+            runs.close(ChunkRuns::Ended::Walked);
 
             runs.open(nameAt(0.0f, 0.0f));
             ASSERT_EQ(runs.getRecorded().size(), 1);
@@ -189,6 +192,37 @@ namespace Rtx
             runs.open(nameAt(1.0f, 0.0f));
             ASSERT_EQ(runs.getRecorded().size(), 1);
             EXPECT_EQ(runs.getRecorded()[0], stepOf(3, 3));
+            runs.close(ChunkRuns::Ended::Replayed);
+        }
+
+        /// A chunk that held something no step describes is walked for ever after.
+        TEST(RtxChunkRunsTest, aRefusedChunkIsNeverReplayed)
+        {
+            ChunkRuns runs;
+
+            runs.beginWalk(1);
+            runs.open(nameAt(0.0f, 0.0f));
+            runs.add(stepOf(1, 1));
+            runs.refuse();
+            runs.add(stepOf(2, 2));
+            runs.close(ChunkRuns::Ended::Walked);
+
+            runs.open(nameAt(1.0f, 0.0f));
+            runs.add(stepOf(3, 3));
+            runs.close(ChunkRuns::Ended::Walked);
+
+            // The refusal reaches the round after it, and the chunk beside it is untouched.
+            runs.beginWalk(2);
+
+            runs.open(nameAt(0.0f, 0.0f));
+            EXPECT_EQ(runs.getRecorded().size(), 2) << "a refused chunk lost the run it recorded";
+            EXPECT_FALSE(runs.canReplay());
+            runs.add(stepOf(1, 1));
+            runs.add(stepOf(2, 2));
+            runs.close(ChunkRuns::Ended::Walked);
+
+            runs.open(nameAt(1.0f, 0.0f));
+            EXPECT_TRUE(runs.canReplay());
             runs.close(ChunkRuns::Ended::Replayed);
         }
 

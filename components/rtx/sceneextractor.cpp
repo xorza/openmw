@@ -279,6 +279,12 @@ namespace Rtx
 
         mExtractor.openChunk(name);
 
+        if (mExtractor.replayChunk())
+        {
+            mExtractor.closeChunk(ChunkRuns::Ended::Replayed);
+            return;
+        }
+
         // **The dispatch `accept` would have done, done here instead.** What arrives is the
         // transform `loadRenderingNode` puts a chunk under, and its position is the chunk's place in
         // the world; going through `accept` would name the node by its address on the way past.
@@ -720,6 +726,9 @@ namespace Rtx
 
         mScene.addLight(*made);
         ++mPass.getStats().mLights;
+
+        // A light stands in no run, so a chunk holding one is walked rather than replayed.
+        mChunkRuns.refuse();
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, const std::size_t who,
@@ -750,6 +759,7 @@ namespace Rtx
         if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
         {
             mEmitters.add(*particles, shading, place);
+            mChunkRuns.refuse();
             return step;
         }
 
@@ -757,6 +767,7 @@ namespace Rtx
         if (read.mGeometry == nullptr)
         {
             ++stats.mSkippedUnknown;
+            mChunkRuns.refuse();
             return step;
         }
 
@@ -775,7 +786,7 @@ namespace Rtx
         // **The material before the mesh, because a mesh records the material it arrives wearing.**
         // `MeshRange::mMaterial` says why a static mesh has one to record; a backend bakes its mask
         // against that one, and the two counts past the mesh are what say the loader keeps it so.
-        Index material;
+        MaterialResolver::Resolved material;
         if (water)
             material = mMaterials.resolveWater();
         else if (terrain != nullptr)
@@ -783,12 +794,17 @@ namespace Rtx
         else
             material = mMaterials.resolve(shading);
 
-        const Index mesh = mMeshes.resolve(drawable, read, material);
+        const Index mesh = mMeshes.resolve(drawable, read, material.mIndex);
         if (mesh == sNoIndex)
+        {
+            mChunkRuns.refuse();
             return step;
+        }
 
+        step.mDrawable = &drawable;
+        step.mMaterialKey = material.mKey;
         step.mMesh = mesh;
-        step.mMaterial = material;
+        step.mMaterial = material.mIndex;
 
         // A mesh worn with an animated cutout is one no bake can answer for, and traversal stops for
         // every placement of it; a placement wearing anything but the material its mesh arrived
@@ -800,7 +816,7 @@ namespace Rtx
             const Material& worn = mScene.getTables().mMaterials.getRows()[arrivedWearing];
             if (worn.mAnimated)
                 stats.mUnbakeable += worn.isCutout() ? 1 : 0;
-            else if (material != arrivedWearing)
+            else if (material.mIndex != arrivedWearing)
                 ++stats.mWornOtherwise;
         }
 
@@ -819,7 +835,7 @@ namespace Rtx
             const Index slot = mScene.addInstance(MeshInstance{
                 .mTransform = place,
                 .mMesh = mesh,
-                .mMaterial = material,
+                .mMaterial = material.mIndex,
                 .mOpacity = fade,
                 .mFirstPerson = firstPerson,
             });
@@ -838,6 +854,58 @@ namespace Rtx
         ++stats.mInstances;
 
         return step;
+    }
+
+    bool SceneExtractor::replayChunk()
+    {
+        if (!mChunkRuns.canReplay())
+            return false;
+
+        const std::span<const ChunkStep> run = mChunkRuns.getRecorded();
+        const MaterialTable& materials = mScene.getTables().mMaterials;
+
+        mReplayScratch.clear();
+        mReplayScratch.reserve(run.size());
+
+        for (const ChunkStep& step : run)
+        {
+            // **A drawable that mirrored no material at all**, which the sea's own key cannot be
+            // told from: `MaterialResolver` holds the sea under a null state set, so a step with
+            // neither would look the sea up. Asked before the map is, rather than left to the
+            // compare below to refuse by accident.
+            if (step.mMaterial == sNoIndex)
+                return false;
+
+            // **A material a controller rewrites is read again on every frame it is met**, which is
+            // what `MaterialResolver::resolve` does and a replay does not. The row says which those
+            // are, and it is the row `addDrawable` reads for its own canary.
+            Known* const material = mMaterials.find(step.mMaterialKey);
+            if (material == nullptr || material->mIndex != step.mMaterial
+                || materials.getRows()[step.mMaterial].mAnimated)
+                return false;
+
+            Known* const mesh = mMeshes.findStatic(*step.mDrawable);
+            if (mesh == nullptr || mesh->mIndex != step.mMesh)
+                return false;
+
+            const auto placement = mPlacements.find(step.mWho);
+            if (placement == mPlacements.end() || placement->second.mIndex != step.mPlacement)
+                return false;
+
+            mReplayScratch.push_back(
+                Replayed{ .mMesh = mesh, .mMaterial = material, .mPlacement = &placement->second });
+        }
+
+        for (const Replayed& held : mReplayScratch)
+        {
+            mMeshes.stampReused(*held.mMesh);
+            mMaterials.stampReused(*held.mMaterial);
+            mPlacements.stamp(*held.mPlacement);
+        }
+
+        mPass.getStats().mInstances += static_cast<std::uint32_t>(run.size());
+
+        return true;
     }
 
     bool SceneExtractor::isWater(osg::Node::NodeMask mask) const

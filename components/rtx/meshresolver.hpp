@@ -79,6 +79,21 @@ namespace Rtx
         ///        arrives — `MeshRange::mMaterial`.
         Index resolve(const osg::Drawable& drawable, const Read& read, Index material);
 
+        /// The entry `drawable` is held under, where the mesh in it stands still.
+        ///
+        /// **What a replay of a paged chunk looks its meshes up with, and it does not stamp** —
+        /// `MirrorIdentity`'s `stamp` is what does that, once the whole run is known to hold. Null
+        /// where the mirror does not hold the drawable, and where the mesh deforms: a rig or a morph
+        /// is posed into its slot on every frame it is met, and a replay does not pose.
+        Known* findStatic(const osg::Drawable& drawable);
+
+        /// Records that the walk met `held` again, which is what `findStatic` found.
+        void stampReused(Known& held)
+        {
+            ++mPass.getStats().mMeshesReused;
+            mMeshes.stamp(held);
+        }
+
         /// Whether every mesh the map holds was met this epoch — see `Kept::whole`. What the
         /// mirror asks before it sweeps, because the survivor list this fills is read beside the
         /// material resolver's.

@@ -290,6 +290,21 @@ namespace Rtx
         void openChunk(const Terrain::ChunkName& name) { mChunkRuns.open(name); }
         void closeChunk(ChunkRuns::Ended how) { mChunkRuns.close(how); }
 
+        /// Stamps what the last walk of the open chunk placed, in place of walking it again.
+        ///
+        /// **What makes an unchanged chunk cost nothing.** `ObjectPaging` builds a chunk once and
+        /// hands the same geometry back until it expires, so the walk of one arrives at the mesh,
+        /// the material and the placement it arrived at last round — and all the sweep is owed is
+        /// that the three were reached. Measured on the island route, 98.5% of the chunks a frame
+        /// is handed carry the name they carried last frame.
+        ///
+        /// **Every entry is looked up before any of them is stamped.** A run that turns out not to
+        /// hold leaves the chunk exactly as a walk would find it — where a half-stamped chunk would
+        /// leave the walk after it counting a reuse twice, which `Check::WalkTwice` reads.
+        ///
+        /// @return false where the chunk has to be walked after all.
+        bool replayChunk();
+
         /// The state set a node's controllers write, or null where it has none.
         ///
         /// **Applied here rather than left to a callback.** A `SceneUtil::StateSetUpdater` set as a
@@ -359,6 +374,22 @@ namespace Rtx
 
         /// What the last walk of each paged chunk came to. `ChunkRuns` says what it is for.
         ChunkRuns mChunkRuns;
+
+        /// What one step of a run resolved to, held between the look-up and the stamp.
+        ///
+        /// **Three maps and so three entries**, each stamped by the resolver that owns it: a stamp
+        /// keeps its own map's count of what the walk has reached, and one map's entry stamped
+        /// through another's would leave both counts wrong.
+        struct Replayed
+        {
+            Known* mMesh = nullptr;
+            Known* mMaterial = nullptr;
+            Known* mPlacement = nullptr;
+        };
+
+        /// What one chunk's replay is about to stamp. Refilled per chunk, because a frame is handed
+        /// a hundred of them.
+        std::vector<Replayed> mReplayScratch;
 
         /// Which sweep is current, and where the walk in progress puts its counts.
         ///

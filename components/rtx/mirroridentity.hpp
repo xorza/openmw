@@ -98,11 +98,16 @@ namespace Rtx
         ///
         /// Counted on the way to the stamp rather than by the stamp, so an entry two walks of one
         /// epoch both reach counts once.
-        void stamp(Entry entry)
+        void stamp(Entry entry) { stamp(entry->second); }
+
+        /// The same for an entry a caller already holds, which is what a replay of a paged chunk
+        /// stamps with: it looks every entry of a run up before it stamps any of them, so that a
+        /// run it turns out not to hold is a walk rather than a half-stamped chunk.
+        void stamp(Known& held)
         {
             freshen();
-            mReached += entry->second.mEpoch != mPass.mEpoch ? 1 : 0;
-            entry->second.mEpoch = mPass.mEpoch;
+            mReached += held.mEpoch != mPass.mEpoch ? 1 : 0;
+            held.mEpoch = mPass.mEpoch;
         }
 
         /// Adds what the walk has just resolved, stamped. `key` must not already be held.

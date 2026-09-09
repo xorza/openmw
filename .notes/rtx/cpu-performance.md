@@ -118,7 +118,10 @@ instance compare, and the traversal itself. At a standing camera the same walk c
 nothing built, nothing folded and nothing new. **The frame's terrain cost is re-derivation, and it is
 paid at every view rather than at a crossing alone.**
 
-## Proposal 1 — a chunk the walk can prove unchanged is not walked
+## Proposal 1 — a chunk the walk can prove unchanged is not walked — **landed**
+
+**What it came to.** A third to two fifths of the walk at every view, and 11% of the crossing's
+frame rate. `.notes/bench.txt` holds the legs. What follows is the shape it took.
 
 **The shape.** `TerrainResidency` keeps, per chunk, the run of scene slots the last walk of it
 produced, keyed on the `ChunkName` and the node. Where `takeChunk` is handed the same name and the
@@ -209,37 +212,29 @@ and, for anything that could move a picture, a `bench --hashes` against the prev
 
 ### Stage 1 — the terrain, which is most of the frame at every view
 
-1. **The chunk replay (Proposal 1).** The assertion first — a debug-only pass that walks a chunk
-   handed over twice under one name and one node and asserts the run agreed — then the replay behind
-   it, then the generation counter a sweep bumps.
-   *Verified by*: the assertion itself, left on in the debug build; `scene` reporting the same
-   instance and mesh counts at every view of the default suite, which is what says the same world
-   arrived; `check` at every place of every suite; `repeatable.sh --pairs=10`.
-   *Expected*: 2.6 ms a frame off the crossing's main thread and 0.7 off a standing exterior's.
-
-2. **The fold moves to the terrain worker (Proposal 2).** A cache keyed on the drawable, filled in
+1. **The fold moves to the terrain worker (Proposal 2).** A cache keyed on the drawable, filled in
    `warm` behind `mBuilding` and read by `MeshResolver`.
    *Verified by*: a test that a geometry folded on the worker and folded on the frame give identical
    indices and an identical `FoldedShape`; the allocation guard; `repeatable.sh --pairs=10`.
-   *Expected*: what is left of the crossing's 1.42 ms of folding once step 1 has taken the chunks
-   that did not change — a first arrival still folds, and it does so off the frame.
+   *Expected*: what is left of the crossing's 1.42 ms of folding now that the replay has taken the
+   chunks that did not change — a first arrival still folds, and it would do so off the frame.
 
-3. **Read what is then left of `place`.** Timed from inside the backend it is now the structures the
+2. **Read what is then left of `place`.** Timed from inside the backend it is now the structures the
    arrivals create at 0.7 ms a frame and the textures they write at 0.45, and neither has been looked
-   at. Propose against whichever is larger after step 1 and step 2 have moved the walk.
+   at. Propose against whichever is larger.
 
 ### Stage 2 — the game's own graph, if it is still worth it
 
-4. **The trace (Proposal 3, first half).** Record it and use it for the three slot lookups.
+3. **The trace (Proposal 3, first half).** Record it and use it for the three slot lookups.
    *Verified by*: a test that a second walk over an unchanged graph makes no map lookup at all,
    counted; the allocation guard, since the trace is scratch and never a per-frame allocation;
    `repeatable.sh`.
 
-5. **The trace carries the transform**, and `PlacementTable` is reached only on a difference.
+4. **The trace carries the transform**, and `PlacementTable` is reached only on a difference.
 
 ### Stage 3
 
-6. Re-run every suite, re-take the profiles, and update this file.
+5. Re-run every suite, re-take the profiles, and update this file.
 
 ## How to repeat the measurements
 

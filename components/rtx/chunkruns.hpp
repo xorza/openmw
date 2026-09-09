@@ -10,6 +10,12 @@
 
 #include "index.hpp"
 
+namespace osg
+{
+    class Drawable;
+    class StateSet;
+}
+
 namespace Rtx
 {
     /// What one drawable of a paged chunk came to, in the order the walk met it.
@@ -20,9 +26,13 @@ namespace Rtx
     /// scene already holds.
     struct ChunkStep
     {
-        /// The identity the placement is held under, which is what a replay has to look it up by.
+        /// What each of the three is held under, which is what a replay stamps them by.
         std::size_t mWho = 0;
+        const osg::Drawable* mDrawable = nullptr;
+        const osg::StateSet* mMaterialKey = nullptr;
 
+        /// What each came to. A replay compares what it stamps against these, so a run that has
+        /// gone stale between one round and the next is a walk rather than a wrong mirror.
         Index mMesh = sNoIndex;
         Index mMaterial = sNoIndex;
         Index mPlacement = sNoIndex;
@@ -55,7 +65,17 @@ namespace Rtx
         /// What the walk before recorded for the open chunk, or nothing where it met no such chunk.
         std::span<const ChunkStep> getRecorded() const { return mRecorded; }
 
+        /// Whether the recorded run may be stamped in place of a walk.
+        ///
+        /// **False for a chunk holding anything a step cannot describe** — a light, a particle
+        /// system, a drawable that mirrored nothing. A run is what the walk placed; a replay of one
+        /// short of what the walk also did would drop whatever it left out.
+        bool canReplay() const { return mCanReplay && !mRecorded.empty(); }
+
         void add(const ChunkStep& step);
+
+        /// Says the open chunk holds something no run describes, so it is never replayed.
+        void refuse();
 
         /// How the open chunk was answered, which decides what closing it means.
         enum class Ended
@@ -90,6 +110,7 @@ namespace Rtx
         {
             std::uint32_t mFirst = 0;
             std::uint32_t mCount = 0;
+            bool mReplayable = true;
         };
 
         /// One walk's worth: every chunk's steps end to end, and where each chunk's own begin.
@@ -110,6 +131,10 @@ namespace Rtx
         std::uint32_t mOpenAt = 0;
         bool mOpened = false;
 
+        /// Whether the chunk being walked has kept to what a run can describe.
+        bool mWalkReplayable = true;
+
         std::span<const ChunkStep> mRecorded;
+        bool mCanReplay = false;
     };
 }
