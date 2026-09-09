@@ -339,6 +339,7 @@ namespace Rtx
         mCompactableHandles.clear();
         mCompactableSlots.clear();
         mCompactableNow = 0;
+        mCompactableTight = 0;
         for (std::size_t slot = 0; slot < mStructures.size(); ++slot)
         {
             if (mStructures[slot] == VK_NULL_HANDLE || mUpdatable[slot] != 0 || mCompacted[slot] != 0)
@@ -415,6 +416,14 @@ namespace Rtx
                 mCompactionAt = 0;
                 if (read != VK_SUCCESS)
                     mCompactedSizes.clear();
+
+                // Summed where the answers arrive, because this is the only place they are read.
+                // `getCompactableBytes` says what asking a second time would cost.
+                VkDeviceSize tight = 0;
+                for (const VkDeviceSize size : mCompactedSizes)
+                    tight += size;
+
+                mCompactableTight = tight;
             }
         }
 
@@ -506,25 +515,4 @@ namespace Rtx
         closeZone(timer, commands);
     }
 
-    VkDeviceSize BottomLevelStore::getCompactableBytes() const
-    {
-        if (mCompactableCount == 0)
-            return 0;
-
-        std::vector<VkDeviceSize> sizes(mCompactableCount);
-        const VkResult read = vkGetQueryPoolResults(mDevice.getHandle(), mCompactable.get(), 0, mCompactableCount,
-            sizes.size() * sizeof(VkDeviceSize), sizes.data(), sizeof(VkDeviceSize),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
-
-        // A driver that will not answer says so rather than being asked again: what this reports is
-        // a figure to act on, and no figure is a clearer answer than a wrong one.
-        if (read != VK_SUCCESS)
-            return 0;
-
-        VkDeviceSize total = 0;
-        for (const VkDeviceSize size : sizes)
-            total += size;
-
-        return total;
-    }
 }

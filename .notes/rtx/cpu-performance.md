@@ -1,8 +1,12 @@
 # The CPU side of the RTX frame
 
-What the host spends a frame on, what is wrong with it, and what to do. Taken at `7b1c6a7402` on
+What the host spends a frame on, what is wrong with it, and what to do. Taken at `5e8eb18563` on
 an RTX 4090 Laptop and an i9-13980HX, release build, `bench --seconds=20`. The crossing is measured
 `--settled=false`, without which the row is the harness's own composite wait rather than the game's.
+
+**Read a profile by thread id and never by symbol.** The warming thread and the frame call the same
+functions, and an earlier reading of this route summed a symbol over both and put the total under the
+frame. Everything it then concluded about the terrain was wrong by about a factor of ten.
 
 ## Where it stands
 
@@ -10,28 +14,34 @@ Medians in milliseconds. `host` is `frame - wait`, `gpu` is the sum of the frame
 
 | view | host | gpu | walk | place |
 |---|---:|---:|---:|---:|
-| vivec | 3.89 | 5.76 | 1.76 | 0.82 |
-| balmora-fog-night | 2.60 | 4.57 | 1.07 | 0.48 |
-| seyda-neen-ship | 2.38 | 5.03 | 0.98 | 0.44 |
-| seyda-neen-shore | 1.93 | 5.09 | 0.97 | 0.17 |
-| balmora-mages-guild | 1.10 | 4.49 | 0.28 | 0.21 |
-| arkngthand | 0.85 | 3.71 | 0.21 | 0.11 |
+| vivec | 4.75 | 6.09 | 2.23 | 0.85 |
+| ald-ruhn | 3.01 | 4.90 | 1.26 | 0.46 |
+| balmora | 2.86 | 4.98 | 1.38 | 0.40 |
+| seyda-neen-ship | 2.83 | 5.32 | 1.26 | 0.45 |
+| seyda-neen-shore | 2.40 | 5.40 | 1.32 | 0.18 |
+| balmora-mages-guild | 1.23 | 4.88 | 0.30 | 0.21 |
+| arkngthand | 1.08 | 3.95 | 0.28 | 0.12 |
 
-**No place that stands still is CPU-bound.** Every `host` is under its own `gpu`, with 1.7 to 2.9 ms
-of headroom. Nothing in this document is about them.
+**No place that stands still is CPU-bound.** Every `host` is under its own `gpu`, with 1.3 to 2.9 ms
+of headroom — and vivec, the worst of them, has 1.3.
 
 **One place moves, and it is the whole problem.** `island-crossing` flies the Bitter Coast to the
 Ashlands at 12,000 units a second:
 
 | | median | mean | p95 | p99 | worst |
 |---|---:|---:|---:|---:|---:|
-| frame | 5.85 | 10.87 | 33.02 | 78.73 | 153.83 |
-| walk | 1.14 | 2.98 | 12.63 | 32.40 | 84.57 |
-| place | 0.18 | 2.63 | 13.41 | 25.09 | 61.71 |
-| wait | 2.27 | 1.61 | 3.29 | 4.39 | 20.22 |
+| frame | 6.45 | 11.71 | 35.66 | 81.69 | 164.52 |
+| walk | 1.60 | 3.39 | 14.09 | 33.82 | 93.83 |
+| place | 0.20 | 2.81 | 14.02 | 26.97 | 63.41 |
+| wait | 0.96 | 1.53 | 3.64 | 5.17 | 21.28 |
 
-12.4 fps at the one per cent low, against 160 at the median. **The worst frame is a walk of 85 ms
-and a place of 62 ms**, which is a whole cell ring arriving inside one frame.
+12.2 fps at the one per cent low, against 155 at the median. **The worst frame is a walk of 94 ms
+and a place of 63 ms**, which is a whole cell ring arriving inside one frame.
+
+**And the device is not the limit.** Its zones sum to 5.76 ms a frame against 10.25 of host, so the
+route is CPU-bound by nearly two to one. An arrival frame's device work is larger — a 5.97 ms
+micromap bake on 178 frames of 1200 and a 2.08 ms structure build on 364 — and still nowhere near
+the frames it lands in.
 
 ## What a crossing frame is made of
 
@@ -40,105 +50,126 @@ Milliseconds a frame, averaged over the run, from `profile.sh --view=island-cros
 
 | | ms |
 |---|---:|
-| `OMW::Engine::frame` | **4.34** |
-| — `WorldMirror::mirror` | 2.95 |
-| — — `TerrainResidency::collect` | 2.50 |
-| — — — `QuadTreeWorld::loadRenderingNode` | 1.77 |
-| — — — — `ObjectPaging::createChunk` | 1.54 |
-| — — `SceneExtractor::addDrawable` | 1.95 |
-| — — — `MeshResolver::resolve` | 1.68 |
-| — — — — `ShapeFold::fold` | 1.31 |
-| — `WorldMirror::hand` | 0.30 |
+| **the main thread, on a core** | **8.57** |
+| — attributed under `OMW::Engine::frame` | 4.92 |
+| — — `MWRender::RtxRenderer::renderFrame` | 3.81 |
+| — — — `WorldMirror::mirror` | 3.33 |
+| — — — — `TerrainResidency::collect` | 2.79 |
+| — — — — — `QuadTreeWorld::handOver` | 2.76 |
+| — — — — — — `QuadTreeWorld::loadRenderingNode` | 0.16 |
+| — — — — `SceneExtractor::addDrawable` | 2.14 |
+| — — — — — `MeshResolver::resolve` | 1.80 |
+| — — — — — — `GeometryFold::read` | 1.44 |
+| — — — `SceneUploader::hand` | 0.34 |
+| — — `MWWorld::World::update` | 0.63 |
+| — inside `libnvidia-glcore` | 3.26 |
 | *on worker threads* | |
-| `CompositeQueue::bake` | 4.39 |
-| `QuadTreeWorld::preload` | 1.66 |
-| `SceneUtil::WorkThread::run` | 1.52 |
+| `CompositeQueue::bake` | 4.61 |
+| `QuadTreeWorld::preload` | 1.80 |
+| — `ObjectPaging::createChunk` | 1.53 |
+| `SceneUtil::WorkThread::run` | 1.63 |
 
-**And the spike is work, not a wait.** `profile.sh --offcpu` puts every sleep of the main thread
-over a millisecond at 405 ms across 1200 frames, and 291 ms of that is `Session::beginStop` — the
-harness teleporting between stops, outside any measured frame. Outside it the longest single sleep
-is 20 ms and about a dozen pass 2 ms. No 150 ms frame of this route is one long wait: not the ring
-wait in `placeScene`, not a cell load, nothing.
+`collect` and `addDrawable` overlap: the collector walks each chunk it is handed, so `addDrawable` is
+reached both through the graph and through `handOver`. **99% of the folding is chunk geometry** —
+1.42 ms of 1.44 — and 92% of `addDrawable` is, 1.96 of 2.14. The game's own graph is 0.5 ms of the
+walk and the paged chunks are the rest.
 
-**Where `place` goes, now that its phases are timed apart.** It is the upload. The composite bake is
-nothing at all unsettled, the arrived textures are 0.07 ms a frame with one frame at 12.5, and
-telling the backend is 2.58 ms of the mean 2.67 and 47.6 of the worst 60.3. So the spike is
-`extendScene` — the texture writes, the buffer extends, and the recording of the micromap bake and
-the structure build. Under it is the driver's own allocate and free at about 1.1 ms a frame:
-`Nv04VidHeapControl` into `nv_alloc_system_pages` at 0.66 and `rmapiFree` at 0.41. The on-CPU
-profile goes no further in: an arrival frame's time is in the driver, which carries no frame
-pointer. `.notes/bench.txt` holds the rows.
+**And the spike is work, not a wait.** The main thread is on a core for 8.57 ms of an 11.80 ms
+frame, and `wait ms` accounts for 1.55 of the remaining 3.23 — so 1.7 ms a frame is an uncounted
+block and everything else is the CPU running. `profile.sh --offcpu` agrees: every sleep over a
+millisecond comes to 405 ms across 1200 frames, and 291 of that is the harness teleporting between
+stops, outside any measured frame.
 
-## The finding: the warming thread cannot work, by construction
+**A third of the main thread is inside the driver and no unwinder reaches it.** 3.26 ms a frame is
+in `libnvidia-glcore`, 1.41 of it down the kernel's ioctl path. Frame pointers stop at the driver's
+first frame, and `--dwarf` does worse: it reaches `Engine::frame` on 4% of samples against 24%. What
+names driver time is a `steady_clock` around the call that enters it.
 
-`TerrainResidency` runs a thread that warms the quad tree ahead of the eye, so that the chunks the
-next frames want are built before they are asked for. It does not do that, and it cannot.
+**Where `place` went, timed from inside the backend.** Over the island route, by phase and summed
+over the run: the report at the end of `extendScene` **1561.7 ms**, the acceleration structures the
+arrivals created 826.3, the textures they wrote 539.9, the placement's own recording 245.9, the ring
+wait in `placeScene` **0.1**, the textures the departures dropped 0.1.
 
-**A chunk's identity depends on where it was resolved from.** `QuadTreeNode::traverseNodes` splits
-on `isSufficientDetail(this, distance(viewPoint))`, so the *decomposition* — which nodes exist and
-how wide each is — is a function of the view point. `ObjectPaging`'s cache is keyed on
-`(centre, size, activeGrid)`. A thread that resolves from a point ahead of the eye produces a
-different decomposition, and the chunks it builds have sizes the frame never asks for.
+So the spike was neither the device nor the recording. `readStats` called
+`BottomLevelStore::getCompactableBytes`, which read the compacted-size queries with
+`VK_QUERY_RESULT_WAIT_BIT` — standing the CPU still until the builds that frame had just recorded had
+run. 3.5 ms an arrival, for a figure the report prints once. The compaction path in the same file
+already forbids exactly this and reads the same pool without waiting, a placement later; the report
+now reads what that read found. `place` fell from a mean of 2.7 to 1.4 and a p99 of 25.6 to 11.0,
+and the one per cent low rose from 12.5 fps to 14.9. `.notes/bench.txt` holds the legs.
 
-**The measurement says exactly this.** A sweep of `sLeadSteps` at 1, 15, 30, 60 and 120, three legs
-interleaved, reads the same at every value: the spread across leads is inside the spread across legs
-at any one of them. A lead of one warms essentially where the eye already is and reads the same as a
-hundred and twenty. And against a build that never starts the thread at all, the thread is worth
-0.2 ms of the walk's mean and nothing at the tail — which is the few chunks whose decomposition
-happens to coincide.
+## The finding: the frame does not build chunks — it walks them
 
-So the thread burns a core building chunks nobody asks for — `preload` at 1.66 ms a frame beside the
-frame's own 1.54 — and the frame builds the ring itself, in one frame.
+**The warming thread lands.** Split by thread id, `QuadTreeWorld::loadRenderingNode` is 0.16 ms a
+frame on the frame and 1.75 on the thread; `ObjectPaging::createChunk` is 0.12 against 1.53. The
+caches both go through are keyed on the chunk and not on the eye — `(centre, size, activeGrid)` for
+the paging, `(centre, lod, lodFlags)` for the terrain — so what the thread builds a little ahead is
+what the frame then finds already built.
 
-## Proposal 1 — one thread owns the quad tree, and the frame reads what it published
+**What the lead sweep measured was the wrong thing.** `sLeadSteps` at 1, 15, 30, 60 and 120 reads the
+same at every value because the decomposition changes slowly: the route moves 200 units a frame
+against a cell of 8192, so a lead of one and a lead of a hundred and twenty ask for nearly the same
+squares. The sweep says the lead does not matter. It does not say the thread does not work.
 
-**The shape.** The frame stops entering the quad tree at all. A worker resolves it, builds every
-chunk, folds every geometry it finds, and publishes the set. The frame takes the newest published
-set, hands it to the mirror, and posts its own view point for the worker's next round.
+**So what is left on the frame is the walk over the chunks, not their building.** `handOver` is
+2.76 ms and `loadRenderingNode` is 0.16 of it; the other 2.6 is `takeChunk` handing each chunk to the
+collector, which walks its geometry into the scene — a fold at 1.42 ms, a material resolve, an
+instance compare, and the traversal itself. At a standing camera the same walk costs 1.77 ms with
+nothing built, nothing folded and nothing new. **The frame's terrain cost is re-derivation, and it is
+paid at every view rather than at a crossing alone.**
 
-- **The worker resolves at the frame's own view point**, not at a lead. That is the whole of what
-  makes it land: the decomposition it builds is the one the frame asked for, so nothing is built
-  that nothing wants.
-- **The frame's terrain lags by one round.** In steady state that is one frame. At a crossing it is
-  as many frames as the ring takes to build — which is the stall, turned into a delay.
-- **`mBuilding` goes.** Only one thread enters `QuadTreeWorld::loadRenderingNode`, so the lock that
-  keeps the two out of its caches has nothing to guard, and `warm ms` becomes the wait for a
-  snapshot rather than for a chunk.
-- **The fold goes with it.** `GeometryFold` reads a geometry's triangles and folds them in one call.
-  The worker holds each chunk's geometry before any frame sees it, so it folds there and publishes
-  the runs beside the nodes. `MeshResolver` takes them instead of folding.
+## Proposal 1 — a chunk the walk can prove unchanged is not walked
 
-**What it removes from the crossing's frame.** `loadRenderingNode` at 1.77 ms and `ShapeFold` at
-1.31, of a 4.34 ms main thread. It buys nothing at a standing camera, where nothing is arriving.
+**The shape.** `TerrainResidency` keeps, per chunk, the run of scene slots the last walk of it
+produced, keyed on the `ChunkName` and the node. Where `takeChunk` is handed the same name and the
+same `osg::Node*` as last frame, the residency replays the run — stamping the identities so the
+sweep keeps them — instead of descending.
 
-**What it costs the picture.** A chunk appears a frame or more after the frame that first wanted it.
-At the reach's edge — 32,768 units at `distant-cells=4` — a chunk entering the view has two thirds
-of a second before the eye is a cell closer, so a few frames of it is a handful of pixels arriving
-late at the horizon. Against that, the stall it replaces is 150 ms.
+- **A paged chunk is immutable once built.** `ObjectPaging` builds it, caches it and hands the same
+  node out until it expires; nothing runs a controller over it, no light hangs in it and no particle
+  system sits under it. So the walk's answer for it cannot change while the node does not.
+- **The node is the proof.** `loadRenderingNode` drops `entry.mRenderingNode` whenever the level of
+  detail or its neighbours' change, and builds a new transform over freshly fetched chunks. A run is
+  therefore valid exactly while the pointer is.
+- **What it removes.** 2.6 ms a frame at the crossing and 0.7 at a standing exterior — the fold, the
+  material resolve, the per-drawable map lookups and the traversal, for every chunk that did not
+  change. It is the one item both a moving and a standing camera pay.
+- **The run records what it saw.** A subtree holding anything but transforms, groups and plain
+  drawables is never replayed, so the rule fails closed against content this does not know about.
 
-**What it costs determinism.** Which frame a chunk lands on becomes a thread's answer rather than
-the schedule's, which is the same problem `CompositeQueue::setSettled` already solves for the ground
-bake and by the same means: a settled mode that waits for the round, used by `verify`, `shot` and
-the hashes, and off for a run that is timing the streaming path.
+**Risk.** A run that goes stale silently mirrors the wrong geometry. Three guards: the node compare,
+a generation counter that voids every run whenever a sweep erases anything, and a debug-only pass
+that walks the chunk anyway and asserts the run agreed.
 
-**The seam.** `Terrain::World::collect(View*, const Vantage&, ChunkTaker&)` is the whole interface
-the worker needs — it resolves the view, builds every entry and hands each over with its
-`ChunkName`. `Terrain::Vantage` is what makes it callable off the game's thread: everything a
-collect would otherwise read off the world arrives in it, captured by the thread that is allowed to
-read it. Nothing is cast. `TerrainResidency` already owns two views; one of them becomes the
-worker's and the other is not needed.
+**What it does not need.** No second thread, no published snapshot, no round of lag, and no settled
+mode — the frame still asks for what it wants, when it wants it, and gets the same answer.
 
-**Risk.** Moderate, and it is the largest change here. What it rests on is that a published chunk
-node is immutable and safe to walk from another thread once built, which is the same claim
-`ObjectPaging`'s cache already rests on.
+## Proposal 2 — the fold happens on the thread that built the chunk
 
-## Proposal 2 — the walk reads what it wrote last frame
+**The shape.** `GeometryFold` moves behind a cache keyed on the drawable: the triangles a geometry
+folds to, and its `FoldedShape`. The terrain worker fills it for every chunk it builds, in
+`TerrainResidency::warm` and behind the same `mBuilding` lock. `MeshResolver` reads it and folds only
+what it finds missing.
 
-**What it costs now.** At Seyda Neen the walk is 0.98 ms, of which `TerrainResidency::collect` is
-0.499 — and with Proposal 1 that becomes walking the published chunks rather than building them, so
-it stays. The three `std::unordered_map` lookups every drawable makes are 0.143 ms a frame, against
-0.249 ms for the whole of `addDrawable`, `MeshResolver::resolve` and `MaterialResolver::reuse` in
-self time. `Group.cpp:63`, the child loop, is 0.209 ms and the hottest single line in the profile.
+**What it removes.** 1.42 ms a frame at the crossing, which is 99% of the folding the frame does.
+Nothing at a standing camera, where nothing is built — Proposal 1 is what covers that.
+
+**Why this is not the thread's whole job.** Owning the quad tree outright — a worker that resolves,
+builds and publishes a set the frame then reads — buys `loadRenderingNode`'s 0.16 ms on top of this,
+and costs a round of lag, a snapshot, and a settled mode to keep the hashes repeatable. The thread
+already builds the chunks; what it does not do is fold them, and that is the part worth moving.
+
+**Risk.** Low. The cache is written by one thread while the frame is out of `loadRenderingNode`, and
+a miss is the fold the frame does today. `GeometryFold` already documents itself as one instance a
+thread.
+
+## Proposal 3 — the walk reads what it wrote last frame
+
+**What is left once Proposal 1 has taken the chunks.** The game's own graph: 0.5 ms of the
+crossing's walk and about 1.1 of vivec's 1.77. The three `std::unordered_map` lookups every drawable
+makes are 0.143 ms a frame at Seyda Neen, against 0.249 ms for the whole of `addDrawable`,
+`MeshResolver::resolve` and `MaterialResolver::reuse` in self time. `Group.cpp:63`, the child loop,
+is the hottest single line in the profile.
 
 **The shape.** The walk visits the same nodes in the same order every frame — `descend` walks
 children in order, a `Switch` in branch order, a residency in cell order — and a cell of 4916
@@ -149,22 +180,17 @@ folded, it has the slots without touching a map, and it compares the transform i
 than reaching into `PlacementTable`. A mismatch falls back to the maps and rebuilds the trace from
 there.
 
-**And a subtree the walk can prove unchanged is not descended at all.** A paged chunk is immutable
-once built and carries no light, no particle system and no callback, so a chunk published under the
-same `ChunkName` and the same node replays its run of trace entries rather than being walked. The
-run records whether the subtree held anything but transforms, groups and plain drawables, and one
-that did is never replayed.
+**Proposal 1 is this rule applied to the one subtree it is easy on**, and this is the rest of the
+graph, where a node may carry a light, a controller or a particle system and the proof has to be per
+drawable rather than per subtree. So it comes after, and it is worth less: the chunks are the bulk.
 
-**Expected.** About 0.16 ms of the trace and 0.40 ms of the replay at Seyda Neen, 0.28 and 0.55 at
-Vivec.
+**Expected.** About 0.16 ms of the trace and 0.40 ms of the replay at Seyda Neen.
 
-**Risk.** The highest here. A trace that goes stale silently mirrors the wrong geometry. Three
-guards: the identity compare, a generation counter that invalidates the whole trace whenever a sweep
-erases anything, and a debug-only pass that re-resolves through the maps and asserts the trace
-agreed.
+**Risk.** The highest here, and the same failure as Proposal 1's — a trace that goes stale silently
+mirrors the wrong geometry — over a graph the game writes rather than a chunk nothing touches.
 
-**And it is not urgent.** It is 0.6 ms on a host with 1.7 to 2.9 ms of headroom at every view that
-stands still. It is here because it is the largest steady item, not because anything waits on it.
+**And it is not urgent.** It is 0.6 ms on a host with 1.3 to 2.9 ms of headroom at every view that
+stands still. It is here because it is what is left, not because anything waits on it.
 
 ## The plan
 
@@ -181,41 +207,39 @@ CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh
 
 and, for anything that could move a picture, a `bench --hashes` against the previous build's run.
 
-### Stage 1 — the crossing
+### Stage 1 — the terrain, which is most of the frame at every view
 
-1. **The worker resolves and publishes (Proposal 1), the frame still folding.** The snapshot, the
-   view point posted back, `mBuilding` removed, and the frame reading what was published. Settled
-   mode waits for the round.
-   *Verified by*: `scene` reporting the same instance and mesh counts as before at every view of the
-   default suite, which is what says the same world arrived; `check` at every place of every suite;
-   `repeatable.sh --pairs=10` under the settled path; `bench --views=island-crossing
-   --settled=false` before and after, three legs interleaved.
-   *Expected*: `loadRenderingNode`'s 1.77 ms a frame off the crossing's main thread.
+1. **The chunk replay (Proposal 1).** The assertion first — a debug-only pass that walks a chunk
+   handed over twice under one name and one node and asserts the run agreed — then the replay behind
+   it, then the generation counter a sweep bumps.
+   *Verified by*: the assertion itself, left on in the debug build; `scene` reporting the same
+   instance and mesh counts at every view of the default suite, which is what says the same world
+   arrived; `check` at every place of every suite; `repeatable.sh --pairs=10`.
+   *Expected*: 2.6 ms a frame off the crossing's main thread and 0.7 off a standing exterior's.
 
-2. **The worker folds what it publishes.** The folded runs travel with the nodes.
+2. **The fold moves to the terrain worker (Proposal 2).** A cache keyed on the drawable, filled in
+   `warm` behind `mBuilding` and read by `MeshResolver`.
    *Verified by*: a test that a geometry folded on the worker and folded on the frame give identical
-   indices and an identical `FoldedShape`; the same bench legs.
-   *Expected*: `ShapeFold`'s 1.31 ms a frame with it.
+   indices and an identical `FoldedShape`; the allocation guard; `repeatable.sh --pairs=10`.
+   *Expected*: what is left of the crossing's 1.42 ms of folding once step 1 has taken the chunks
+   that did not change — a first arrival still folds, and it does so off the frame.
 
-3. **Propose against the upload.** The split says where `place`'s spike is. Nothing here yet says
-   what to do about it.
+3. **Read what is then left of `place`.** Timed from inside the backend it is now the structures the
+   arrivals create at 0.7 ms a frame and the textures they write at 0.45, and neither has been looked
+   at. Propose against whichever is larger after step 1 and step 2 have moved the walk.
 
-### Stage 2 — the walk, if it is still worth it
+### Stage 2 — the game's own graph, if it is still worth it
 
-4. **The trace (Proposal 2, first half).** Record it and use it for the three slot lookups.
+4. **The trace (Proposal 3, first half).** Record it and use it for the three slot lookups.
    *Verified by*: a test that a second walk over an unchanged graph makes no map lookup at all,
    counted; the allocation guard, since the trace is scratch and never a per-frame allocation;
    `repeatable.sh`.
 
 5. **The trace carries the transform**, and `PlacementTable` is reached only on a difference.
 
-6. **The chunk replay (Proposal 2, second half).** First the assertion — a debug-only check that a
-   chunk published twice under one name and one node walks to an identical run — then the replay
-   behind it.
-
 ### Stage 3
 
-7. Re-run every suite, re-take the profiles, and update this file.
+6. Re-run every suite, re-take the profiles, and update this file.
 
 ## How to repeat the measurements
 
@@ -233,9 +257,10 @@ apps/rtxtool/profile.sh --offcpu --view=island-crossing --settled=false
 Warm the card with one thrown-away `bench` first; the clock and the temperature are printed beside
 every result, and a leg whose clock differs from its neighbour's is the leg to repeat.
 
-**Read the off-CPU run by thread, not by the summary.** Its totals are dominated by driver workers
-parked for the length of the run. What answers a question is the main thread's own stacks, and those
-resolve through this fork's frames:
+**Read every run by thread id.** `perf script` prints `comm pid/tid` where the two differ and
+`comm tid` where they do not, so the main thread is the record with one number. A symbol summed over
+every thread is what put the terrain's building on the frame that does not do it. The off-CPU run is
+worse still: its totals are dominated by driver workers parked for the length of the run.
 
 ```
 perf script -i build-release/perf/blocked.data --no-inline > /tmp/blocked.txt
@@ -244,3 +269,9 @@ awk 'BEGIN{RS=""} /Engine::frame/ { ... }' /tmp/blocked.txt
 
 **Its threshold is a millisecond and that is the floor.** `--off-cpu-thresh` counts milliseconds, so
 a sleep shorter than one is invisible, and there is no way below it.
+
+**And neither mode reaches inside the driver.** A third of the main thread is in `libnvidia-glcore`
+at the crossing; frame pointers stop at its first frame, and `--dwarf` reaches `Engine::frame` on 4%
+of samples where the frame-pointer walk reaches it on 24%. What names driver time is a
+`steady_clock` around the call that enters it, added for the reading and taken out after — which is
+how the compaction stall above was found.

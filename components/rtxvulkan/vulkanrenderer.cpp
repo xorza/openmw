@@ -749,6 +749,13 @@ namespace Rtx
     {
         mStats.mInstances = held.mAcceleration->getInstanceCounts();
         mStats.mTableBytes = held.mBuffers->getBytes() + held.mSkinTables->getBytes();
+
+        // **Read every placement and not with the rest of the report**, because a placement is
+        // where the answer lands: the queries a build wrote are read some placements later, so a
+        // pair read at the build would be the nought that stands between the question and its
+        // answer. `BottomLevelStore::getCompactableBytes` says why it is not asked for sooner.
+        mStats.mCompactableBytes = held.mAcceleration->getCompactableBytes();
+        mStats.mCompactableNowBytes = held.mAcceleration->getCompactableNowBytes();
     }
 
     void VulkanRenderer::readStats(const ViewScene& held)
@@ -757,8 +764,6 @@ namespace Rtx
 
         mStats.mStructureBytes = held.mAcceleration->getStructureBytes();
         mStats.mStructureLiveBytes = held.mAcceleration->getStructureLiveBytes();
-        mStats.mCompactableBytes = held.mAcceleration->getCompactableBytes();
-        mStats.mCompactableNowBytes = held.mAcceleration->getCompactableNowBytes();
         mStats.mMicromapBytes = held.mMicromaps->getBytes();
         mStats.mMicromapsUntextured = held.mMicromaps->getUntexturedCount();
 

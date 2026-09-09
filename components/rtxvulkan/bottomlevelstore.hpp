@@ -112,10 +112,13 @@ namespace Rtx
         /// placement. So this falls to nothing over the placements after an arrival, while
         /// `getBytes` falls by what it named.
         ///
-        /// **Every structure the scene holds that is still loose**, asked afresh whenever anything
-        /// is built: a route that builds at every crossing would otherwise report whatever the last
-        /// crossing brought, which is nought where it brought only actors.
-        VkDeviceSize getCompactableBytes() const;
+        /// **The answer to the last question asked, and not a question of its own.** The queries
+        /// are read where `prepareCompaction` reads them, a placement after the one that wrote them
+        /// — asking here instead means `VK_QUERY_RESULT_WAIT_BIT`, which stands the CPU still until
+        /// the builds this frame recorded have run. That is the frame a cell arrives in, and it is
+        /// the one frame that can least afford it: measured at 3.5 ms an arrival, half of what the
+        /// hand-over cost. Nought until the answers land, which is the placement after a build.
+        VkDeviceSize getCompactableBytes() const { return mCompactableTight; }
 
         /// What those same structures occupy now. The pair says what compaction has left to give
         /// back.
@@ -181,6 +184,9 @@ namespace Rtx
         /// What the structures the last question named occupy as they stand, so the pair the report
         /// prints is a saving rather than a number on its own.
         VkDeviceSize mCompactableNow = 0;
+
+        /// What those same structures would come to tight, summed as the answers are read.
+        VkDeviceSize mCompactableTight = 0;
 
         /// What each mesh's structure was created at, by slot.
         std::vector<VkDeviceSize> mBuiltSize;
