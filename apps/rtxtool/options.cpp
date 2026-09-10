@@ -247,10 +247,12 @@ namespace RtxTool
             "twelve hundred frames either way and two builds render the same twelve hundred. Twenty "
             "because ten left the CPU medians moving by more than the changes being measured");
 
-        option(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(3.0f),
+        option(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(2.0f),
             "how many seconds of world to draw and throw away before measuring. This "
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
-            "for its residency as well");
+            "for its residency as well. Two rather than three: the ramp and the residency are over "
+            "well inside it, and the third second was a fifth of every run's wall time for frames "
+            "nobody reads");
 
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "

@@ -148,6 +148,20 @@ Build the targets you touched, run the test binary that covers them with a filte
 Building the world for a one-line change in the harness is waste, and so is calling a change
 verified because it compiled.
 
+**What each step costs on this box**, because the rule above is only worth keeping if the numbers
+are known: `ninja` with nothing to do 0 s; a rebuild after touching a header 84 objects read 1 s;
+`components-tests --gtest_filter='Rtx*'` 16 s, of which 7 is four upscaler tests; the same filtered
+to `Rtx*Cell*` 2 s; one `bench` place 20 s; `check` 122 s; `repeatable.sh --pairs=1` 70 s.
+
+**The build is not the slow part.** `ccache` and `mold` are configured and the cache runs about
+seventy per cent hits. Filter the tests to what the change touched and run the whole `Rtx*` once,
+before saying it works — not after every edit. `repeatable.sh --pairs=2` while iterating and
+`--pairs=10` once at the end.
+
+**Never run a gate beside a build, or beside another gate.** The reading is then about the machine.
+Take the throwaway warm-up leg before any A/B: a first `bench` after a gap read 2.29 ms against a
+settled 1.62 to 1.67 at `seyda-neen-ship`.
+
 **Every verb but `info` drives a real game.** `openmw-rtxtool` starts an engine, teleports to the
 place a view names and warms the world up, so cells are read by `MWWorld::Scene`, people are dressed
 by `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`. `info` reports the device
