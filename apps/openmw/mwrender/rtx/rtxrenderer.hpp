@@ -84,9 +84,17 @@ namespace MWRender
 
         int getMaxTextureUnits() const override { return mMaxTextureUnits; }
 
-        /// Always. A trace has no frustum to cull against, so how much world exists is the whole
-        /// question — and `TerrainGrid` answers it with the cells the simulation happens to hold.
+        /// Always. The map reads how far the ground reaches through this, and this renderer's
+        /// ground reaches that far — the ground itself is `Rtx::CellRing`'s, off the land records,
+        /// and what the quad tree builds nobody traces.
         bool wantsPagedTerrain() const override;
+
+        /// Never: `Rtx::CellRing` stands the distance's statics as instances of their templates,
+        /// and a merged chunk is the fold of the merge on the frame it arrives.
+        bool wantsObjectPaging() const override { return false; }
+
+        void enableReference(ESM::RefNum refnum, bool enabled) override;
+        void detachWorld() override;
 
         /// Never, because this path initialises no OpenGL at all: a composite map is a render
         /// target, and `Rtx::TerrainComposite` bakes the flattened texture on the CPU instead.

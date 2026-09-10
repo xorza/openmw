@@ -39,7 +39,8 @@ namespace Rtx
             EXPECT_EQ(rate.getText(), "100 fps, 10.0 ms, worst 10.0 ms") << "an open second leaves the line alone";
 
             EXPECT_TRUE(rate.add(45.0));
-            EXPECT_EQ(rate.getText(), "40 fps, 25.0 ms, worst 45.0 ms") << "the first second's worst did not carry over";
+            EXPECT_EQ(rate.getText(), "40 fps, 25.0 ms, worst 45.0 ms")
+                << "the first second's worst did not carry over";
 
             // A rate that does not divide a second: 117 x 8.5 = 994.5 is open and 118 x 8.5 = 1003
             // closes, at 1000 / 8.5 = 117.6 frames a second rounded to the nearest whole one.

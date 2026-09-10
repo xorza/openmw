@@ -199,11 +199,12 @@ namespace Rtx
         std::uint16_t mMaskWidth = 0;
         std::uint16_t mMaskHeight = 0;
 
-        /// Chunk texture coordinates to this layer's, as `uv * xy + zw`.
+        /// Cell texture coordinates to this layer's, as `uv * xy + zw`.
         ///
-        /// Read off the texture matrices the terrain builder attached rather than recomputed: the
+        /// `GroundReader` derives both from the tile count as `Terrain::createPasses` does: the
         /// mask's carries a half-texel inset and a nudge that exist to match the original game, and
-        /// deriving them again from the tile size is how the two quietly stop agreeing.
+        /// the numbers the derivation reaches are held by a test so the two cannot quietly stop
+        /// agreeing.
         osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
         osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
 

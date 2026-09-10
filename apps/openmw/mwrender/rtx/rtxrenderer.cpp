@@ -321,6 +321,16 @@ namespace MWRender
         return true;
     }
 
+    void RtxRenderer::enableReference(const ESM::RefNum refnum, const bool enabled)
+    {
+        mMirror.getRing().setReferenceEnabled(refnum, enabled);
+    }
+
+    void RtxRenderer::detachWorld()
+    {
+        mMirror.detach();
+    }
+
     float RtxRenderer::getTerrainCompositeMapLevel() const
     {
         return Terrain::sNoCompositeMap;
@@ -869,7 +879,6 @@ namespace MWRender
                     Rtx::FrameSpend{
                         .mFinishMs = finishMs,
                         .mWalkMs = walkMs,
-                        .mWarmMs = mMirror.getWarmedMs(),
                         .mFoldMs = found.mFoldMs,
                         .mPlaceMs = placeMs,
                         .mBakeMs = handed.mBakeMs,

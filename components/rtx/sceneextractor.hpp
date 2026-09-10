@@ -12,9 +12,6 @@
 #include <osg/Node>
 #include <osg/Vec3f>
 
-#include <components/terrain/chunktaker.hpp>
-
-#include "chunkruns.hpp"
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
 #include "materialresolver.hpp"
@@ -45,23 +42,16 @@ namespace SceneUtil
     class StateSetUpdater;
 }
 
-namespace Terrain
-{
-    class TerrainDrawable;
-}
-
 namespace Rtx
 {
     class MirrorTraversal;
 
     /// What a residency hands its contents to.
-    ///
-    /// **A chunk arrives named and everything else arrives as itself.** A walk names a node by the
-    /// address it sits at, which is the only name a node has; a terrain chunk has a better one, and
-    /// `Terrain::ChunkTaker` says why the address will not do for it.
-    class Collector : public Terrain::ChunkTaker
+    class Collector
     {
     public:
+        virtual ~Collector() = default;
+
         /// Walks `node` as though the graph had parented it where the residency was asked.
         virtual void take(osg::Node& node) = 0;
 
@@ -76,25 +66,20 @@ namespace Rtx
 
     /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.
     ///
-    /// **`Terrain::QuadTreeWorld` is the reason this exists.** With `distant terrain` on it resolves
-    /// its chunks inside a cull, against a view keyed on the camera culling, and parents them to
-    /// nothing — so the ground, the paged objects and the grass are invisible to any visitor that is
-    /// not a cull, which is every visitor a ray tracer has. It cannot be made a cull either: a cull
-    /// puts a chunk in a render bin instead of applying it, so walking the graph that way makes the
-    /// ground vanish rather than appear.
-    ///
-    /// So it is asked instead of walked, and this is the shape of the question. `TerrainResidency`
-    /// stands the chunks. **What comes back is not only geometry**: `DistantLights` stands the lamps
-    /// of the cells the paging leaves dark, which have no node in either renderer because `LIGH` is
-    /// not a paged type. The abstraction is here because the extractor may be handed none, which is
-    /// every world that parents its chunks like anything else.
+    /// **What this renderer stands for itself, and the content files state.** A walk of the graph
+    /// finds what the game stood: the active cells' objects and actors. The distance is nobody's
+    /// node — `CellRing` stands its ground off the land records and its statics as instances of
+    /// their templates, and `DistantLights` stands the lamps of cells the paging leaves dark, which
+    /// have no node in either renderer because `LIGH` is not a paged type. Each is asked, inside
+    /// the walk, for what it stands; the abstraction is here because the extractor may be handed
+    /// none, which is every scene that is not a world.
     ///
     /// **One method, because a host holds each of these as itself and not through this.** What a
-    /// residency has to be told differs by what it stands — a terrain wants the eye, distant lights
-    /// want the eye, the reach and the active grid — so the setters stay on the classes and only
-    /// the asking is shared. Hoisting the one setter both happen to have would leave a host
-    /// reaching the rest by name anyway, and a reader wondering why the eye arrived by a different
-    /// route than the grid.
+    /// residency has to be told differs by what it stands — the ring wants the eye, the reach, the
+    /// active grid and the size rule, distant lights want three of those — so the setters stay on
+    /// the classes and only the asking is shared. Hoisting the one setter both happen to have
+    /// would leave a host reaching the rest by name anyway, and a reader wondering why the eye
+    /// arrived by a different route than the grid.
     class Residency
     {
     public:
@@ -199,7 +184,7 @@ namespace Rtx
         ///        under many of them: OpenMW hands out one template node per model and a hundred
         ///        crates are a hundred calls on that same node, all with the same path and all
         ///        differing only in the `transform` given here. Anything the caller can keep is a
-        ///        good anchor — a reference id, an actor's address, a terrain chunk — and a caller
+        ///        good anchor — a reference id, an actor's address — and a caller
         ///        that walks one whole graph, where every path is already distinct, can pass zero.
         /// @param frame the game's own, which is what tells a semi-active `SceneUtil::Skeleton` it
         ///        was reached. A caller with no actors in its graph can leave it.
@@ -216,18 +201,18 @@ namespace Rtx
         /// **The residency comes from `follow` rather than from an argument, and that is the point.**
         /// The sweep is global: anything a walk did not meet is dropped. So a frame walked by two
         /// owners, only one of which remembered to hand over what the graph does not parent, retires
-        /// the other's placements — which is how a paged world's chunks reached the mirror on the
-        /// first frame and were swept on every one after it, leaving a town standing on open sea.
-        /// Held on the extractor, no caller can be the one that forgets.
+        /// the other's placements — which is how the distant ground reached the mirror on the first
+        /// frame and was swept on every one after it, leaving a town standing on open sea. Held on
+        /// the extractor, no caller can be the one that forgets.
         ExtractionStats extractWorld(
             const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
 
         /// What the graph does not parent, walked with every world walk from here on.
         ///
-        /// **A list, because more than one thing keeps its own.** A quad tree resolves its chunks
-        /// inside a cull and parents them to nothing; the lights of the cells it pages have no node
-        /// anywhere, because the reference that carries one is not a paged type. Each is collected
-        /// into the same walk, in the order given.
+        /// **A list, because more than one thing keeps its own.** The cell ring stands the ground
+        /// and the distance's statics on rows of its own; the lights of the distant cells have no
+        /// node anywhere, because the reference that carries one is not a paged type. Each is
+        /// collected into the same walk, in the order given.
         ///
         /// Copied, so a caller may hand over a temporary. Empty where nothing hides, which is every
         /// world whose ground is in the graph.
@@ -267,6 +252,54 @@ namespace Rtx
         /// record, and neither is a lamp something picked up and put down.
         void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime);
 
+        /// What a residency that stands rows rather than nodes calls, inside the walk.
+        ///
+        /// **Through the resolvers and not beside them**, so a mesh the static ring adopts is held
+        /// under the identity the walk finds a clone's mesh under, stamped by the same rule and
+        /// swept by the same sweep. `CellRing` says why the rows were read on another thread.
+        Known& adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material)
+        {
+            return mMeshes.adopt(drawable, reading, material);
+        }
+        MaterialResolver::Resolved adoptMaterial(const MaterialReading& reading) { return mMaterials.adopt(reading); }
+        Known* findMaterial(const osg::StateSet* key) { return mMaterials.find(key); }
+        void keepMesh(Known& held) { mMeshes.stampReused(held); }
+        void keepMaterial(Known& held) { mMaterials.stampReused(held); }
+
+        /// Counts what the cell ring stood this walk, among the instances and on their own.
+        void countDistantStatics(std::uint32_t placed)
+        {
+            mPass.getStats().mInstances += placed;
+            mPass.getStats().mDistantStatics += placed;
+        }
+        void countGround(std::uint32_t placed)
+        {
+            mPass.getStats().mInstances += placed;
+            mPass.getStats().mGroundCells += placed;
+        }
+
+        /// What a residency that owns its rows outright calls, inside the walk.
+        ///
+        /// **For rows nothing in the graph will ever name.** A cell's ground has no drawable and no
+        /// state set, so the identity maps have no key to hold it under and the sweep would release
+        /// it on the first frame; the residency names its rows here on every walk instead, and they
+        /// join the survivors the sweep hands the scene. `disownRows` is the other half: a row let
+        /// go of is simply not named, and this is what tells the sweep to run the release even
+        /// where every map stands whole. `countOwnedRows` is what an arrival on such a row adds to
+        /// the walk's count, as the resolvers count their own.
+        void keepOwnedMesh(Index mesh) { mOwnedMeshes.push_back(mesh); }
+        void keepOwnedMaterial(Index material) { mOwnedMaterials.push_back(material); }
+        void disownRows(std::uint32_t meshes, std::uint32_t materials)
+        {
+            mDisownedMeshes += meshes;
+            mDisownedMaterials += materials;
+        }
+        void countOwnedRows(std::uint32_t meshes, std::uint32_t materials)
+        {
+            mPass.getStats().mMeshesAdded += meshes;
+            mPass.getStats().mMaterialsAdded += materials;
+        }
+
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         ///
         /// `place` is where the drawable stands in the world, which the visitor has accumulated on
@@ -282,28 +315,6 @@ namespace Rtx
         /// answer it from.
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, bool firstPerson);
-
-        /// Opens the run of the chunk `name` describes, and closes it. `ChunkRuns` says what a run
-        /// is and why it is keyed on the name. **Bracketing the descent is the walk's to do**, since
-        /// the walk is what descends; what each drawable inside came to is recorded by the call
-        /// that resolved it.
-        void openChunk(const Terrain::ChunkName& name) { mChunkRuns.open(name); }
-        void closeChunk(ChunkRuns::Ended how) { mChunkRuns.close(how); }
-
-        /// Stamps what the last walk of the open chunk placed, in place of walking it again.
-        ///
-        /// **What makes an unchanged chunk cost nothing.** `ObjectPaging` builds a chunk once and
-        /// hands the same geometry back until it expires, so the walk of one arrives at the mesh,
-        /// the material and the placement it arrived at last round — and all the sweep is owed is
-        /// that the three were reached. Measured on the island route, 98.5% of the chunks a frame
-        /// is handed carry the name they carried last frame.
-        ///
-        /// **Every entry is looked up before any of them is stamped.** A run that turns out not to
-        /// hold leaves the chunk exactly as a walk would find it — where a half-stamped chunk would
-        /// leave the walk after it counting a reuse twice, which `Check::WalkTwice` reads.
-        ///
-        /// @return false where the chunk has to be walked after all.
-        bool replayChunk();
 
         /// The state set a node's controllers write, or null where it has none.
         ///
@@ -330,12 +341,8 @@ namespace Rtx
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
             std::size_t frame, std::span<Residency* const> hidden);
 
-        /// The whole of what `addDrawable` does, and what the drawable came to.
-        ///
-        /// **Apart from `addDrawable` so that every way out of it is recorded.** Four of them are
-        /// early — a particle system, a drawable with no geometry, a mesh that mirrored nothing —
-        /// and a step a replay is missing is a chunk it would mirror short.
-        ChunkStep mirrorDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
+        /// The whole of what `addDrawable` does.
+        void mirrorDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, bool firstPerson);
 
         SceneDesc& mScene;
@@ -372,24 +379,12 @@ namespace Rtx
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;
 
-        /// What the last walk of each paged chunk came to. `ChunkRuns` says what it is for.
-        ChunkRuns mChunkRuns;
-
-        /// What one step of a run resolved to, held between the look-up and the stamp.
-        ///
-        /// **Three maps and so three entries**, each stamped by the resolver that owns it: a stamp
-        /// keeps its own map's count of what the walk has reached, and one map's entry stamped
-        /// through another's would leave both counts wrong.
-        struct Replayed
-        {
-            Known* mMesh = nullptr;
-            Known* mMaterial = nullptr;
-            Known* mPlacement = nullptr;
-        };
-
-        /// What one chunk's replay is about to stamp. Refilled per chunk, because a frame is handed
-        /// a hundred of them.
-        std::vector<Replayed> mReplayScratch;
+        /// The rows a residency owns and named on the walk in progress, and how many it let go of
+        /// since the last sweep. See `keepOwnedMesh`.
+        std::vector<Index> mOwnedMeshes;
+        std::vector<Index> mOwnedMaterials;
+        std::uint32_t mDisownedMeshes = 0;
+        std::uint32_t mDisownedMaterials = 0;
 
         /// Which sweep is current, and where the walk in progress puts its counts.
         ///

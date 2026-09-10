@@ -10,6 +10,7 @@
 #include "index.hpp"
 #include "mipchain.hpp"
 #include "pool.hpp"
+#include "preparedtexture.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"
 
@@ -40,7 +41,23 @@ namespace Rtx
     ///
     /// **Null and not an exception**, because a live scene graph names textures that were never
     /// files and a renderer that fell over on one would fall over on a cell.
-    osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, const VFS::Path::Normalized& path);
+    osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, VFS::Path::NormalizedView path);
+
+    /// Where images already described off the frame are found, by the image.
+    ///
+    /// **What lets an arrival's describe cost a lookup instead of a read.** The chain a file did
+    /// not carry and the shading estimate both read every texel, and a reader on its own thread has
+    /// done both for the images its models name; a describe asks here first, and reads only what
+    /// nobody read ahead of it.
+    class TextureReadings
+    {
+    public:
+        virtual ~TextureReadings() = default;
+
+        /// The reading of `image`, or null where nothing read it. What comes back stays where it is
+        /// for at least as long as the caller's descriptions span it.
+        virtual const PreparedTexture* find(const osg::Image& image) const = 0;
+    };
 
     /// Every live texture a scene names, described, and the storage those descriptions point into.
     ///
@@ -77,8 +94,10 @@ namespace Rtx
         ///        that bakes none. A terrain slot the queue has no composite for is one whose bake
         ///        has not finished, and it is passed over rather than described — nothing points at
         ///        it until it has bytes.
-        void describeAll(
-            const SceneTables& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
+        /// @param readings where images read ahead of the frame are found, or null for a caller
+        ///        with none: a doll, a map tile, the harness's own world.
+        void describeAll(const SceneTables& scene, Resource::ImageManager& images,
+            const CompositeQueue* composites = nullptr, const TextureReadings* readings = nullptr);
 
         /// The same, for `slots` and nothing else.
         ///
@@ -91,7 +110,7 @@ namespace Rtx
         /// wherever it sits: what arrived is no longer the end of the table. Each description
         /// carries the slot it belongs to, and a slot that has since been given back is skipped.
         void describe(const SceneTables& scene, Resource::ImageManager& images, std::span<const Index> slots,
-            const CompositeQueue* composites = nullptr);
+            const CompositeQueue* composites = nullptr, const TextureReadings* readings = nullptr);
 
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }

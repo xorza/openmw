@@ -1,8 +1,10 @@
 #include "worldmirror.hpp"
 
 #include <array>
+#include <memory>
 
 #include <components/debug/debuglog.hpp>
+#include <components/esm/refid.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -78,6 +80,22 @@ namespace MWRender
         mExtractor.setFirstPersonMask(SceneUtil::Mask_FirstPerson);
     }
 
+    void WorldMirror::attach(Resource::ResourceSystem& resources)
+    {
+        mResources = &resources;
+        mContent = std::make_unique<Rtx::SceneContent>(*resources.getSceneManager());
+    }
+
+    void WorldMirror::detach()
+    {
+        // **The ring first, because its thread reads the storages the world owns.**
+        mRing.follow(nullptr, nullptr, nullptr, ESM::RefId(), 0);
+        mDistantLights.follow(nullptr, ESM::RefId());
+
+        mContent.reset();
+        mResources = nullptr;
+    }
+
     void WorldMirror::setShowsPlayer(const bool shows)
     {
         if (shows == mShowsPlayer)
@@ -131,13 +149,8 @@ namespace MWRender
         // owns them and neither renderer does.
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mPrecipitation, frameNumber);
 
-        // **The eye, which is what a cull would have used.** The detail a chunk is built at has to
-        // be the detail the primary rays hit, and asking from anywhere else would put the ground a
-        // reflection sees at a different level from the ground beside it.
+        // **The eye, which decides the rings.** Where it stands is what the reach is measured from.
         const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
-
-        mResident.follow(&frame.mTerrain);
-        mResident.setViewPoint(eye);
 
         // **The same eye and the world's own grid.** What the game has stood for itself is what
         // these must not stand again, and `Terrain::World` is where both renderers read that from.
@@ -147,9 +160,23 @@ namespace MWRender
         mDistantLights.setActiveGrid(frame.mTerrain.getActiveGrid());
         mDistantLights.setOutdoors(!frame.mWorld.isInteriorCell());
 
-        // Told once a frame, because what a paged world hides is the frame's to say. Every world
-        // walk asks it from here, and the precipitation walk above cannot: it is a subtree.
-        std::array<Rtx::Residency*, 2> hidden{ &mResident, &mDistantLights };
+        // **The same storage the lights are read from, the land the world reads its heights from,
+        // and the same switch the paging read.** With `object paging` off this renderer stands the
+        // distance's statics itself, and the harness's `--distant-statics` drives the one setting
+        // either way. The ground stands whatever the switch says.
+        mRing.follow(&frame.mObjectStorage, frame.mTerrain.getStorage(), mContent.get(), frame.mTerrain.getWorldspace(),
+            mExtractor.getTraversalMask());
+        mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
+        mRing.setReach(landReach());
+        mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
+        mRing.setActiveGrid(frame.mTerrain.getActiveGrid());
+        mRing.setViewPoint(eye);
+        mRing.setOutdoors(!frame.mWorld.isInteriorCell());
+        mRing.setFrame(frameNumber);
+
+        // Told once a frame, because what the graph does not hold is the frame's to say. Every
+        // world walk asks it from here, and the precipitation walk above cannot: it is a subtree.
+        std::array<Rtx::Residency*, 2> hidden{ &mDistantLights, &mRing };
         mExtractor.follow(hidden);
 
         // One walk over the whole graph, where every path is already distinct.
@@ -158,7 +185,7 @@ namespace MWRender
 
     Rtx::SceneUpload WorldMirror::hand(Rtx::SceneSink& renderer, Resource::ImageManager& images)
     {
-        return mUploader.hand(renderer, Rtx::SceneSlot::world(), mScene, images, &mComposites, Rtx::SeaState{});
+        return mUploader.hand(renderer, Rtx::SceneSlot::world(), mScene, images, &mComposites, Rtx::SeaState{}, &mRing);
     }
 
     void WorldMirror::settle()

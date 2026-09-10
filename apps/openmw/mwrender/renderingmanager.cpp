@@ -431,6 +431,8 @@ namespace MWRender
 
     RenderingManager::~RenderingManager()
     {
+        mRenderer.detachWorld();
+
         // let background loading thread finish before we delete anything else
         mWorkQueue = nullptr;
     }
@@ -1469,7 +1471,7 @@ namespace MWRender
             auto quadTreeWorld = std::make_unique<Terrain::QuadTreeWorld>(mSceneRoot, mRootNode, mResourceSystem,
                 mTerrainStorage.get(), Mask_Terrain, Mask_PreCompile, Mask_Debug, compMapResolution, compMapLevel,
                 lodFactor, vertexLodMod, maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
-            if (Settings::terrain().mObjectPaging)
+            if (mRenderer.wantsObjectPaging())
             {
                 newChunkMgr.mObjectPaging = std::make_unique<Terrain::ObjectPaging>(mResourceSystem->getSceneManager(),
                     mObjectStorage, worldspace, Mask_Static, Settings::terrain().mObjectPagingActiveGrid);
@@ -1842,7 +1844,10 @@ namespace MWRender
     }
     bool RenderingManager::pagingEnableObject(int type, const MWWorld::ConstPtr& ptr, bool enabled)
     {
-        if (!ptr.isInCell() || !ptr.getCell()->isExterior() || !mObjectPaging)
+        if (!ptr.isInCell() || !ptr.getCell()->isExterior())
+            return false;
+        mRenderer.enableReference(ptr.getCellRef().getRefNum(), enabled);
+        if (!mObjectPaging)
             return false;
         if (mObjectPaging->enableObject(type, ptr.getCellRef().getRefNum(), ptr.getCellRef().getPosition().asVec3(),
                 osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY()), enabled))

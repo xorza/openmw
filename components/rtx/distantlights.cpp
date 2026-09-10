@@ -13,6 +13,7 @@
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/terrain/objectstorage.hpp>
 
+#include "distantland.hpp"
 #include "lightbuilder.hpp"
 
 namespace Rtx
@@ -36,14 +37,6 @@ namespace Rtx
     void DistantLights::restart()
     {
         mCells.clear();
-    }
-
-    osg::Vec2i DistantLights::cellOf(const osg::Vec3f& position)
-    {
-        constexpr float size = static_cast<float>(Constants::CellSizeInUnits);
-
-        return osg::Vec2i(
-            static_cast<int>(std::floor(position.x() / size)), static_cast<int>(std::floor(position.y() / size)));
     }
 
     osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell) const

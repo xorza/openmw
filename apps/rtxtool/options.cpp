@@ -285,16 +285,17 @@ namespace RtxTool
         option(sFramed, "distant-statics",
             bpo::value<bool>()->default_value(byDefault.mDistantStatics)->implicit_value(true),
             "stand on the distant ground what the content files put there — the buildings, trees "
-            "and rocks — which is the game's own `object paging`. **Off is the A/B that says what "
-            "they cost**: the same ground with nothing on it. The ground itself is always paged, "
-            "because `Renderer::wantsPagedTerrain` answers for a renderer that traces rather than "
-            "draws");
+            "and rocks — as instances of their templates, read ahead of the eye on a thread of the "
+            "renderer's own (`Rtx::CellRing`); it is the game's `object paging` setting, which "
+            "this renderer never pages by. **Off is the A/B that says what they cost**: the same "
+            "ground with nothing on it. The ground itself always stands, read off the land records "
+            "by the same ring");
 
         option(sFramed, "distant-cells", bpo::value<float>()->default_value(byDefault.mDistantCells),
-            "with `--distant-statics`, how far out the quad tree may make ground, in cells. Past a "
-            "cell a chunk's layer stack is flattened into one baked texture, so this is also what "
-            "decides whether that path is reached at all. Zero hands `viewing distance` back the "
-            "decision, which is 7168 against a cell of 8192 and so barely leaves the active grid");
+            "how far out the cell ring stands ground and statics, in cells. Outside the active grid "
+            "a cell's layer stack is flattened into one baked texture, so this is also how many "
+            "cells that path is reached for. Zero hands `viewing distance` back the decision, which "
+            "is 7168 against a cell of 8192 and so barely leaves the active grid");
 
         option(Verbs::Bench | Verbs::Verify, "against", bpo::value<std::string>()->default_value(""),
             "what to subtract this run from: the directory a previous `verify` wrote, or the file "

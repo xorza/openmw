@@ -92,8 +92,9 @@ namespace Rtx
         ///        hand-over's**: a doll and a map tile go through the same three branches and
         ///        neither has ground to flatten, so an uploader of its own would carry a mutex, a
         ///        thread and a shading cache to bake nothing.
+        /// @param readings where a describe finds images read ahead of the frame, or null.
         SceneUpload hand(SceneSink& renderer, SceneSlot slot, SceneDesc& scene, Resource::ImageManager& images,
-            CompositeQueue* composites, const SeaState& sea = SeaState{});
+            CompositeQueue* composites, const SeaState& sea = SeaState{}, const TextureReadings* readings = nullptr);
 
     private:
         /// **Whether the pair in front of it is the pair it last built, and appending is only

@@ -9,22 +9,15 @@
 
 #include <osg/Image>
 #include <osg/StateSet>
-#include <osg/Texture2D>
-#include <osg/Uniform>
 
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/surface/material.hpp>
-// `terraindrawable.hpp` holds `osg::ref_ptr`s to composite-map types it only forward-declares, so it
-// does not compile on its own. This is what completes them.
-#include <components/terrain/compositemaprenderer.hpp>
-#include <components/terrain/terraindrawable.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "alphaimage.hpp"
 #include "extractionstats.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
-#include "terraincomposite.hpp"
 
 namespace Rtx
 {
@@ -33,75 +26,8 @@ namespace Rtx
         /// What the sea's material is keyed on: the state set it has not got. See `resolveWater`.
         ///
         /// **Nothing else in the world can key as null.** A shading chain's entries come from
-        /// `MirrorTraversal::pushShading`, which takes a reference; a terrain chunk's first pass is
-        /// asserted in `resolveTerrain`, where a null one would otherwise be handed the sea.
+        /// `MirrorTraversal::pushShading`, which takes a reference.
         constexpr const osg::StateSet* sSea = nullptr;
-
-        const osg::Texture2D* getTexture(const osg::StateSet& stateSet, unsigned int unit)
-        {
-            return dynamic_cast<const osg::Texture2D*>(
-                stateSet.getTextureAttribute(unit, osg::StateAttribute::TEXTURE));
-        }
-
-        /// A pass's texture matrix for `unit`, as the `uv * xy + zw` the shader wants.
-        ///
-        /// OpenSceneGraph hands the matrix to GLSL transposed — it stores rows where GLSL reads
-        /// columns — so what a shader multiplies its coordinate by is the transpose of what is here,
-        /// and the translation it picks up is this matrix's last row.
-        osg::Vec4f getTextureTransform(const osg::StateSet& stateSet, unsigned int unit)
-        {
-            // Terrain binds two units and no more, so the names are spelled rather than built —
-            // and named once for the process, because `getUniform` asks for a `std::string` and a
-            // ground material is read for every chunk that arrives.
-            static const std::array<std::string, 2> sNames{ "texMat0", "texMat1" };
-            assert(unit < sNames.size());
-
-            const osg::Uniform* uniform = stateSet.getUniform(sNames[unit]);
-            osg::Matrixf matrix;
-            if (uniform == nullptr || !uniform->get(matrix))
-                return osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
-
-            return osg::Vec4f(matrix(0, 0), matrix(1, 1), matrix(3, 0), matrix(3, 1));
-        }
-
-        /// The weights of one blend map, as floats in row order.
-        ///
-        /// `ESMTerrain` builds these as one byte per texel in `GL_ALPHA`, which is a hundred bytes
-        /// for a chunk; widening them costs a few kilobytes a cell and saves requiring 8-bit storage
-        /// of the device for the sake of it.
-        ///
-        /// **That one format is read along the row, and everything else asks `getColor`.**
-        /// `getColor` decides on the pixel format and the data type per texel and builds a `Vec4` to
-        /// hand back one component of it, which is 0.44% of a crossing — spent on the frame a chunk
-        /// arrives, which is the frame with the least room. A blend map in any other format is a
-        /// mod's or a test's, and the slow path is both what serves it and what the fast path is
-        /// checked against.
-        void readMask(const osg::Image& image, std::vector<float>& weights)
-        {
-            weights.clear();
-            weights.reserve(static_cast<std::size_t>(image.s()) * image.t());
-
-            if (image.getPixelFormat() == GL_ALPHA && image.getDataType() == GL_UNSIGNED_BYTE)
-            {
-                // **The reciprocal and not a divide, because that is `getColor`'s own arithmetic.**
-                // The two disagree in the last place for 126 of the 256 byte values, and a weight is
-                // what a chunk's ground is blended by and what its composite is baked from — so a
-                // divide here would move the picture by a bit and the scene digests with it.
-                constexpr float perByte = 1.0f / 255.0f;
-
-                for (int row = 0; row < image.t(); ++row)
-                {
-                    const unsigned char* along = image.data(0, row);
-                    for (int column = 0; column < image.s(); ++column)
-                        weights.push_back(along[column] * perByte);
-                }
-                return;
-            }
-
-            for (int row = 0; row < image.t(); ++row)
-                for (int column = 0; column < image.s(); ++column)
-                    weights.push_back(image.getColor(column, row).a());
-        }
 
         /// The state-set controller on `node`, from whichever callback chain carries it.
         ///
@@ -180,88 +106,6 @@ namespace Rtx
         return index;
     }
 
-    MaterialResolver::Resolved MaterialResolver::resolveTerrain(const Terrain::TerrainDrawable& terrain)
-    {
-        ExtractionStats& stats = mPass.getStats();
-
-        const Terrain::TerrainDrawable::PassVector& passes = terrain.getPasses();
-        if (passes.empty())
-            return Resolved{};
-
-        // The first pass is as good an identity as the chunk itself and is already a state set, so
-        // terrain shares the material map with everything else.
-        const osg::StateSet* identity = passes.front().get();
-        assert(identity != nullptr && "a terrain pass with no state set, which would key as the sea");
-
-        if (const Index held = reuse(identity); held != sNoIndex)
-            return Resolved{ .mIndex = held, .mKey = identity };
-
-        Material material;
-        material.mKind = MaterialKind::Terrain;
-
-        mLayerScratch.clear();
-
-        for (const osg::ref_ptr<osg::StateSet>& pass : passes)
-        {
-            const Surface::Material* described = Surface::getMaterial(*pass);
-            if (described == nullptr)
-            {
-                ++stats.mUndescribedGround;
-                continue;
-            }
-
-            MaterialLayer layer;
-            layer.mDiffuse = takeTexture(described->getTexture(Surface::TextureRole::Diffuse));
-            if (layer.mDiffuse == sNoIndex)
-                continue;
-
-            layer.mDiffuseTransform = getTextureTransform(*pass, 0);
-
-            // A chunk of a single ground type is given no blend map at all, and stays at full weight.
-            const osg::Texture2D* mask = getTexture(*pass, 1);
-            if (mask != nullptr && mask->getImage(0) != nullptr)
-            {
-                const osg::Image& image = *mask->getImage(0);
-                readMask(image, mMaskScratch);
-
-                // The two sides are what a shader walks the run with, so a mask shorter than its
-                // own grid is read past its end.
-                assert(mMaskScratch.size() == static_cast<std::size_t>(image.s()) * image.t());
-
-                layer.mMask = mScene.addMask(mMaskScratch);
-                layer.mMaskWidth = static_cast<std::uint16_t>(image.s());
-                layer.mMaskHeight = static_cast<std::uint16_t>(image.t());
-                layer.mMaskTransform = getTextureTransform(*pass, 1);
-            }
-
-            mLayerScratch.push_back(layer);
-        }
-
-        if (mLayerScratch.empty())
-            return Resolved{};
-
-        material.mLayers = mScene.addLayers(mLayerScratch);
-
-        // **A chunk this wide is a shading question and not only a texturing one.** It covers whole
-        // cells and carries every ground type in them, so shading it live costs a mask lookup and a
-        // texture fetch per layer at every hit — and once there is distance to look at, distant hits
-        // are most of the pixels. Past a cell the stack is flattened into one texture and a hit
-        // takes a single fetch; the layers stay, because they are the recipe the bake reads.
-        //
-        // **A single layer is already a single fetch**, and flattening one would do nothing but
-        // resample a tiling ground texture into something coarser than the file it came from.
-        const osg::BoundingBox& bounds = terrain.getBoundingBox();
-        const float across = std::max(bounds.xMax() - bounds.xMin(), bounds.yMax() - bounds.yMin());
-
-        if (mLayerScratch.size() > 1 && across >= sCompositeFrom)
-        {
-            material.mFlatten = true;
-            ++stats.mComposites;
-        }
-
-        return Resolved{ .mIndex = adopt(identity, material), .mKey = identity };
-    }
-
     MaterialResolver::Resolved MaterialResolver::resolveWater()
     {
         // **One material for the sea, and what identifies it is the state set it has not got.**
@@ -282,6 +126,40 @@ namespace Rtx
             return Resolved{ .mIndex = held, .mKey = sSea };
 
         return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water }), .mKey = sSea };
+    }
+
+    MaterialReading MaterialResolver::read(std::span<const Shading> shading, AlphaScratch& scratch)
+    {
+        if (shading.empty())
+            return MaterialReading{};
+
+        MaterialReading reading{ .mKey = shading.back().mStateSet, .mDescribed = findDescription(shading) };
+        if (reading.mDescribed == nullptr)
+            return reading;
+
+        // **The same two facts `Material::isTranslucent` reads**, off the description they are
+        // copied from, so the reader walks the texels of exactly the images `describe` would.
+        const Surface::Material& described = *reading.mDescribed;
+        const bool translucent
+            = described.mAlphaMode == Surface::AlphaMode::Blend && described.mDiffuseColour.a() < 1.0f;
+        const osg::Image* const diffuse = described.getTexture(Surface::TextureRole::Diffuse);
+
+        if (translucent && diffuse != nullptr && !diffuse->getFileName().empty())
+            reading.mDiffuseSolid = reachesSolid(*diffuse, scratch);
+
+        return reading;
+    }
+
+    MaterialResolver::Resolved MaterialResolver::adopt(const MaterialReading& reading)
+    {
+        if (reading.mKey == nullptr)
+            return Resolved{};
+
+        if (const Index held = reuse(reading.mKey); held != sNoIndex)
+            return Resolved{ .mIndex = held, .mKey = reading.mKey };
+
+        return Resolved{ .mIndex = adopt(reading.mKey, describe(reading.mDescribed, false, reading.mDiffuseSolid)),
+            .mKey = reading.mKey };
     }
 
     MaterialResolver::Resolved MaterialResolver::resolve(std::span<const Shading> shading)
@@ -358,15 +236,20 @@ namespace Rtx
 
     Material MaterialResolver::readMaterial(std::span<const Shading> shading)
     {
+        return describe(findDescription(shading), !shading.empty() && shading.back().mAnimated, std::nullopt);
+    }
+
+    Material MaterialResolver::describe(
+        const Surface::Material* const described, const bool animated, const std::optional<bool> diffuseSolid)
+    {
         ExtractionStats& stats = mPass.getStats();
 
         Material material;
 
         // Before the description, because a surface nothing described is still one a controller
         // rewrites: what the flag states is a fact about the state set and not about what is in it.
-        material.mAnimated = !shading.empty() && shading.back().mAnimated;
+        material.mAnimated = animated;
 
-        const Surface::Material* described = findDescription(shading);
         if (described == nullptr)
         {
             ++stats.mUndescribedSurfaces;
@@ -408,7 +291,7 @@ namespace Rtx
         // filled above, and the walk over a texture's texels is worth nothing to a material that is
         // opaque, masked, or has no diffuse map to read — `Material::isMedium` is the other half.
         if (material.isTranslucent() && material.mDiffuse != sNoIndex)
-            material.mDiffuseNeverSolid = !diffuseReachesSolid(diffuse);
+            material.mDiffuseNeverSolid = !diffuseSolid.value_or(diffuseReachesSolid(diffuse));
 
         return material;
     }

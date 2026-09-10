@@ -31,11 +31,11 @@ namespace Rtx
     /// rasterizer's. What this fork cannot keep is the *light*: rays go everywhere, so a town that
     /// exists at dusk but casts nothing is the world stating something the content files do not.
     ///
-    /// **A `Residency` and not a graph, for `TerrainResidency`'s reason.** What it builds is parented
-    /// to nothing the rasterizer walks, handed to the mirror on the frame that asks, and gone from
-    /// every other question anybody puts to the scene. The mirror then turns a `SceneUtil::LightSource`
-    /// into a `Rtx::Light` exactly as it does for a lamp in the cell the player stands in — flicker,
-    /// pulse and negative light included — so nothing here computes what a light is.
+    /// **A `Residency` and not a graph.** What it builds is parented to nothing the rasterizer
+    /// walks, handed to the mirror on the frame that asks, and gone from every other question
+    /// anybody puts to the scene. The mirror then turns a `SceneUtil::LightSource` into a
+    /// `Rtx::Light` exactly as it does for a lamp in the cell the player stands in — flicker, pulse
+    /// and negative light included — so nothing here computes what a light is.
     ///
     /// **Outside the active grid and nowhere else.** Inside it the game has stood the real object,
     /// its light is on the graph, and the mirror has already found it; a second copy would be the
@@ -92,9 +92,6 @@ namespace Rtx
             osg::Vec2i mCell;
             osg::ref_ptr<osg::Group> mLights;
         };
-
-        /// The cell a world position stands in, on the exterior grid.
-        static osg::Vec2i cellOf(const osg::Vec3f& position);
 
         /// Reads one cell's `LIGH` references and stands a light at each. Null where it holds none.
         osg::ref_ptr<osg::Group> build(const osg::Vec2i& cell) const;

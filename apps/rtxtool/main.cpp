@@ -701,6 +701,7 @@ namespace RtxTool
                 case Rtx::Check::SurfacesDescribed:
                 case Rtx::Check::LightsPlaced:
                 case Rtx::Check::GroundReaches:
+                case Rtx::Check::GroundStands:
                 case Rtx::Check::LightsNotDoubled:
                 case Rtx::Check::TexturesReadable:
                     return true;

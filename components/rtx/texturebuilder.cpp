@@ -25,7 +25,7 @@
 
 namespace Rtx
 {
-    osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, const VFS::Path::Normalized& path)
+    osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, const VFS::Path::NormalizedView path)
     {
         try
         {
@@ -149,17 +149,17 @@ namespace Rtx
         };
     }
 
-    void SceneTextures::describeAll(
-        const SceneTables& scene, Resource::ImageManager& images, const CompositeQueue* composites)
+    void SceneTextures::describeAll(const SceneTables& scene, Resource::ImageManager& images,
+        const CompositeQueue* composites, const TextureReadings* readings)
     {
         mEverything.resize(scene.mTextures.getPaths().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
-        describe(scene, images, mEverything, composites);
+        describe(scene, images, mEverything, composites, readings);
     }
 
     void SceneTextures::describe(const SceneTables& scene, Resource::ImageManager& images, std::span<const Index> slots,
-        const CompositeQueue* composites)
+        const CompositeQueue* composites, const TextureReadings* readings)
     {
         mLevels.clear();
         mDescriptions.clear();
@@ -260,14 +260,29 @@ namespace Rtx
                 {
                     described = describeImage(*kept.mImage, mLevels);
 
-                    // **What the file did not carry, built rather than done without.** `MipChain`
-                    // says why almost nothing in the game needs this and why the rain does.
-                    MipChain& chain = mChains.next();
-                    chain.build(*described);
-                    if (!chain.isEmpty())
+                    // **What was read ahead of the frame is taken, and the rest read here.** A
+                    // reading carries the chain the file did not have and the shading estimate;
+                    // both span the reading's own storage, which outlives this describe.
+                    const PreparedTexture* read = readings != nullptr ? readings->find(*kept.mImage) : nullptr;
+                    if (read != nullptr && read->mReadable)
                     {
-                        described = chain.describe();
-                        mChains.keep();
+                        if (!read->mChain.isEmpty())
+                            described = read->mChain.describe();
+
+                        described->mShading = std::span<const float>(read->mShading);
+                    }
+                    else
+                    {
+                        // **What the file did not carry, built rather than done without.**
+                        // `MipChain` says why almost nothing in the game needs this and why the
+                        // rain does.
+                        MipChain& chain = mChains.next();
+                        chain.build(*described);
+                        if (!chain.isEmpty())
+                        {
+                            described = chain.describe();
+                            mChains.keep();
+                        }
                     }
                 }
                 catch (const Error&)

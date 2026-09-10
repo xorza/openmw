@@ -18,10 +18,10 @@ set(RTX_FILES
     bluenoise.hpp
     camera.cpp
     camera.hpp
+    cellreader.cpp
+    cellreader.hpp
     channel.cpp
     channel.hpp
-    chunkruns.cpp
-    chunkruns.hpp
     cloudshell.cpp
     cloudshell.hpp
     colourblock.cpp
@@ -52,6 +52,8 @@ set(RTX_FILES
     frameworld.hpp
     geometryfold.cpp
     geometryfold.hpp
+    groundreader.cpp
+    groundreader.hpp
     imageformat.cpp
     imageformat.hpp
     index.hpp
@@ -74,6 +76,8 @@ set(RTX_FILES
     memoryreport.cpp
     memoryreport.hpp
     meshinstance.hpp
+    meshreader.cpp
+    meshreader.hpp
     meshrange.hpp
     meshtable.cpp
     meshtable.hpp
@@ -97,6 +101,9 @@ set(RTX_FILES
     placementtable.cpp
     placementtable.hpp
     pool.hpp
+    preparedcell.hpp
+    preparedground.hpp
+    preparedtexture.hpp
     png.cpp
     png.hpp
     posecull.hpp
@@ -134,14 +141,19 @@ set(RTX_FILES
     spritelight.hpp
     spritelistsize.cpp
     spritelistsize.hpp
+    spares.hpp
     sprite.hpp
+    cellring.cpp
+    cellring.hpp
     srgb.cpp
     srgb.hpp
     sun.hpp
+    contentsource.cpp
+    contentsource.hpp
+    templatewalk.cpp
+    templatewalk.hpp
     terraincomposite.cpp
     terraincomposite.hpp
-    terrainresidency.cpp
-    terrainresidency.hpp
     slot.hpp
     slotrows.hpp
     scenetables.cpp

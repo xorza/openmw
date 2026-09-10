@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <format>
 #include <limits>
 #include <vector>
@@ -56,9 +57,9 @@ namespace MWRender
                 // **The emitters are reported and not asserted**, for the reason
                 // `ExtractionStats::mSpritelessEmitters` gives: every world carries one of the
                 // rasterizer's that the traced path answers for itself.
-                found = std::format("{} surfaces and {} ground passes undescribed, {} emitters spriteless",
-                    stats.mUndescribedSurfaces, stats.mUndescribedGround, stats.mSpritelessEmitters);
-                return stats.mUndescribedSurfaces == 0 && stats.mUndescribedGround == 0;
+                found = std::format("{} surfaces undescribed, {} emitters spriteless", stats.mUndescribedSurfaces,
+                    stats.mSpritelessEmitters);
+                return stats.mUndescribedSurfaces == 0;
 
             case Rtx::Check::LightsPlaced:
             {
@@ -92,6 +93,20 @@ namespace MWRender
                 found = std::format(
                     "the ground spans {:.0f} units against an active grid {:.0f} wide", widest, sActiveGridWidth);
                 return !outdoors || widest > sActiveGridWidth;
+            }
+
+            case Rtx::Check::GroundStands:
+            {
+                // **Every cell of the reach, the active grid's included**: the game builds no ground
+                // for this renderer, so a cell short is a hole the player can walk on.
+                const bool outdoors = MWBase::Environment::get().getWorld()->isCellExterior();
+                const int reach
+                    = static_cast<int>(std::ceil(landReach() / static_cast<float>(Constants::CellSizeInUnits)));
+                const auto expected = static_cast<std::uint32_t>((2 * reach + 1) * (2 * reach + 1));
+
+                found = std::format(
+                    "{} cells of ground stand against {} in the reach", stats.mGroundCells, outdoors ? expected : 0);
+                return !outdoors || stats.mGroundCells == expected;
             }
 
             case Rtx::Check::LightsNotDoubled:

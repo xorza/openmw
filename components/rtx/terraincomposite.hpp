@@ -8,21 +8,11 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
-#include <components/misc/constants.hpp>
-
 #include "ownedtexture.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx
 {
-    /// How wide a chunk has to be before its stack is flattened rather than shaded live.
-    ///
-    /// **One cell, which is the same answer the rasterizer reaches** — `chunkSize >= 1` is what
-    /// `ChunkManager` composites at, and a quad tree only builds a chunk that wide once distance has
-    /// already cost it its geometric detail. Shading detail going with it is consistent rather than
-    /// arbitrary.
-    inline constexpr float sCompositeFrom = static_cast<float>(Constants::CellSizeInUnits);
-
     /// How large a baked composite is, square.
     ///
     /// The rasterizer's `composite map resolution` in all but name, and its default; stated here

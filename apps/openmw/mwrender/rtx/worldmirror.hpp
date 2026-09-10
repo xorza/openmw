@@ -1,15 +1,17 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 
+#include <components/rtx/cellring.hpp>
 #include <components/rtx/compositequeue.hpp>
+#include <components/rtx/contentsource.hpp>
 #include <components/rtx/distantlights.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/skybuilder.hpp>
-#include <components/rtx/terrainresidency.hpp>
 
 namespace Resource
 {
@@ -36,9 +38,9 @@ namespace MWRender
     /// The engine's scene graph mirrored into what a ray can meet.
     ///
     /// **Everything between "the game has a frame" and "trace it".** The walk, what it walks past,
-    /// what stands for the ground and the lights the game has already placed, and the hand-over that
-    /// decides whether the device is placed, extended or rebuilt. Nothing here touches a window, an
-    /// event, the interface or a benchmark.
+    /// what this renderer stands for the ground and the distance, the lights the game has already
+    /// placed, and the hand-over that decides whether the device is placed, extended or rebuilt.
+    /// Nothing here touches a window, an event, the interface or a benchmark.
     ///
     /// **The maps live across frames**, which is what makes the mirror incremental: the same crate
     /// met again resolves to the mesh already uploaded rather than to a copy of it, and a cell that
@@ -48,9 +50,12 @@ namespace MWRender
     public:
         WorldMirror();
 
-        /// The resource system the sky's own meshes are loaded through. Told once, where the world
-        /// is attached.
-        void attach(Resource::ResourceSystem& resources) { mResources = &resources; }
+        /// The resource system the sky's own meshes are loaded through, and the cell ring's models
+        /// and images with them. Told once, where the world is attached.
+        void attach(Resource::ResourceSystem& resources);
+
+        /// The world is going: every thread that reads it stops, and what was read of it goes.
+        void detach();
 
         /// Walks this frame's world into the scene, and says what the walk found.
         ///
@@ -61,9 +66,17 @@ namespace MWRender
         /// Hands the scene to `renderer`, building only what has to be built.
         Rtx::SceneUpload hand(Rtx::SceneSink& renderer, Resource::ImageManager& images);
 
-        /// Whether each hand-over waits for the ground it queued. `Rtx::CompositeQueue::setSettled`
-        /// says why a run would, and what waiting costs it.
-        void setSettled(bool settled) { mComposites.setSettled(settled); }
+        /// Whether each hand-over waits for the composites it queued, and each walk for the cells
+        /// the ring lacks. `Rtx::CompositeQueue::setSettled` says why a run would, and what waiting
+        /// costs it.
+        void setSettled(bool settled)
+        {
+            mComposites.setSettled(settled);
+            mRing.setSettled(settled);
+        }
+
+        /// What the game says of one reference, on its way to the ring.
+        Rtx::CellRing& getRing() { return mRing; }
 
         /// Whether the world walk includes the player's own model. True for a game somebody is
         /// playing.
@@ -81,10 +94,6 @@ namespace MWRender
         /// the next one measures its motion against, and the sweep bumps the epoch that measurement
         /// is made against.
         void settle();
-
-        /// How long the last walk stood waiting for the terrain's warming thread.
-        /// `Rtx::TerrainResidency::getWarmedMs` says what the wait is and why it is timed.
-        double getWarmedMs() const { return mResident.getWarmedMs(); }
 
         const Rtx::SceneExtractor& getExtractor() const { return mExtractor; }
 
@@ -111,14 +120,20 @@ namespace MWRender
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;
 
-        /// What stands for the terrain a paged world has not built, and for the lights of the cells
-        /// it stands for.
-        Rtx::TerrainResidency mResident;
+        /// The lights of the cells the game has not stood.
         Rtx::DistantLights mDistantLights;
+
+        /// The cells themselves: their ground off the land records, and their statics as instances
+        /// of their templates. After the extractor and the scene, which it adopts into.
+        Rtx::CellRing mRing{ mExtractor, mScene };
+
+        /// Where the ring's models and images come from: the game's own. Made where the world is
+        /// attached, because that is when there is a scene manager.
+        std::unique_ptr<Rtx::SceneContent> mContent;
 
         Rtx::SceneUploader mUploader;
 
-        /// The distant chunks waiting for their ground to be flattened, and the thread flattening
+        /// The distant cells waiting for their ground to be flattened, and the thread flattening
         /// them.
         ///
         /// **Here because only a world has ground.** A bake outlives the frame that asked for it,

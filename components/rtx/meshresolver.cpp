@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <chrono>
 #include <cstddef>
 #include <span>
 #include <string>
@@ -16,7 +15,6 @@
 #include "deformertable.hpp"
 #include "error.hpp"
 #include "extractionstats.hpp"
-#include "frameclock.hpp"
 #include "instancerecord.hpp"
 #include "scenedesc.hpp"
 
@@ -24,83 +22,15 @@ namespace Rtx
 {
     namespace
     {
-        /// A geometry's per-vertex positions and normals.
-        struct VertexArrays
-        {
-            std::span<const osg::Vec3f> mPositions;
-
-            /// Empty only where the geometry names no normal at all. A per-vertex array is taken as
-            /// it stands and a single overall one is spread across the vertices, which is the same
-            /// answer at every point of a flat surface.
-            std::span<const osg::Vec3f> mNormals;
-        };
-
-        /// The array as a `Vec3Array`, or null where it is anything else.
-        ///
-        /// **`osg::Array` states its own type in a byte**, which is what a `dynamic_cast` walks the
-        /// class hierarchy to work out — the same shape as the library-name test the walk already
-        /// makes of a drawable and of a terrain chunk before it casts either. `vertexCountOf` asks
-        /// it of every posed part every frame; the two in `readVertices` are on the arrival path.
-        const osg::Vec3Array* asVec3Array(const osg::Array* array)
-        {
-            if (array == nullptr || array->getType() != osg::Array::Vec3ArrayType)
-                return nullptr;
-
-            return static_cast<const osg::Vec3Array*>(array);
-        }
-
-        /// @param flat scratch for an overall normal spread across the vertices. Refilled here and
-        ///        borrowed by the returned span, so it has to outlive the read.
-        VertexArrays readVertices(const osg::Geometry& geometry, std::vector<osg::Vec3f>& flat)
-        {
-            VertexArrays arrays;
-
-            const osg::Vec3Array* positions = asVec3Array(geometry.getVertexArray());
-            if (positions == nullptr)
-                return arrays;
-
-            arrays.mPositions = std::span(positions->asVector());
-
-            const osg::Vec3Array* normals = asVec3Array(geometry.getNormalArray());
-            if (normals == nullptr || normals->empty())
-                return arrays;
-
-            if (normals->size() == positions->size())
-            {
-                arrays.mNormals = std::span(normals->asVector());
-                return arrays;
-            }
-
-            // **One normal for the whole drawable is a normal, and dropping it made the sea flat
-            // black.** `SceneUtil::createWaterGeometry` binds exactly this — a thousand vertices and
-            // one `(0, 0, 1)` — so the game's water mirrored with no normal at all, and shading a
-            // surface by a zero vector produces radiance that the frame's own exposure then reads.
-            // Everything else in the picture goes with it.
-            if (normals->getBinding() != osg::Array::BIND_OVERALL)
-                return arrays;
-
-            flat.assign(positions->size(), normals->at(0));
-            arrays.mNormals = std::span(flat);
-            return arrays;
-        }
-
-        /// The array as a `Vec2Array`, or null where it is anything else. `asVec3Array` says why
-        /// the type byte and not a `dynamic_cast`.
-        const osg::Vec2Array* asVec2Array(const osg::Array* array)
-        {
-            if (array == nullptr || array->getType() != osg::Array::Vec2ArrayType)
-                return nullptr;
-
-            return static_cast<const osg::Vec2Array*>(array);
-        }
-
         /// How many vertices a geometry has, or nought where it holds none it can be read for.
         /// Asked on its own where the count is the whole question, so a body met again does not
         /// spread its normals to find out.
         std::size_t vertexCountOf(const osg::Geometry& geometry)
         {
-            const osg::Vec3Array* positions = asVec3Array(geometry.getVertexArray());
-            return positions != nullptr ? positions->size() : 0;
+            const osg::Array* positions = geometry.getVertexArray();
+            return positions != nullptr && positions->getType() == osg::Array::Vec3ArrayType
+                ? positions->getNumElements()
+                : 0;
         }
 
         /// The box a drawable's own bound reaches, in its own space.
@@ -122,71 +52,9 @@ namespace Rtx
             return osg::BoundingBoxf(centre - reach, centre + reach);
         }
 
-        /// A morph's base target, which `MorphGeometry::cull` reads its positions from. The source
-        /// geometry's own array is what `NifOsg` built the drawable from and the two agree in every
-        /// file it builds, so the length is asserted and the base is what is read.
-        std::span<const osg::Vec3f> baseOf(const SceneUtil::MorphGeometry& morph)
-        {
-            const osg::Vec3Array* base = morph.getMorphTarget(0).getOffsets();
-            assert(base != nullptr && "a morph whose base is no array");
-            return std::span(base->asVector());
-        }
     }
 
-    /// Nearly everything in a cell is an `osg::Geometry` and answers in one virtual call. A skinned
-    /// body and a morphed face are not: each is an `osg::Drawable` over a source geometry, and the
-    /// source is what this reads — the bind pose a skin is computed from, the base a morph starts
-    /// from. **Not the double-buffered copy a cull traversal writes**, which no walk of this
-    /// renderer runs any more: the pose is bone rows and weights handed to the device, and the
-    /// device computes the vertices where the structure is refitted from them.
-    ///
-    /// **A rig no update traversal has resolved is read as it stands.** Its bones are what
-    /// `RigGeometry::updateBounds` finds under the update traversal, and a rig with none has nothing
-    /// to be posed against; the rasterizer draws that rig in its bind pose, and so does this. A morph
-    /// with no target past its base has nothing to move either, and is a static mesh whose
-    /// positions are the base.
-    MeshResolver::Read MeshResolver::readDrawable(const osg::Drawable& drawable)
-    {
-        if (const osg::Geometry* geometry = drawable.asGeometry())
-            return Read{ .mGeometry = geometry };
-
-        if (const auto* rig = dynamic_cast<const SceneUtil::RigGeometry*>(&drawable))
-        {
-            const bool skinned = rig->getInfluenceData() != nullptr && !rig->getBones().empty();
-            return Read{ .mGeometry = rig->getSourceGeometry().get(),
-                .mDeform = skinned ? Deform::Rig : Deform::None,
-                .mRig = rig };
-        }
-
-        if (const auto* morph = dynamic_cast<const SceneUtil::MorphGeometry*>(&drawable))
-        {
-            const bool moving = morph->getMorphTargetList().size() > 1;
-            return Read{ .mGeometry = morph->getSourceGeometry().get(),
-                .mDeform = moving ? Deform::Morph : Deform::None,
-                .mMorph = morph };
-        }
-
-        return Read{};
-    }
-
-    Known* MeshResolver::findStatic(const osg::Drawable& drawable)
-    {
-        const auto known = mMeshes.find(&drawable);
-        if (known == mMeshes.end())
-            return nullptr;
-
-        // **Both halves of the pair `resolve` asks before it reuses a slot**, and for its reason: a
-        // drawable is a shell over a source geometry the engine may replace, so what the scene
-        // recorded and what the drawable is now have each to say the mesh stands still. The row
-        // first, because the other answer costs two casts.
-        if (mScene.getTables().mMeshes.getRows()[known->second.mIndex].mDeform != Deform::None
-            || readDrawable(drawable).mDeform != Deform::None)
-            return nullptr;
-
-        return &known->second;
-    }
-
-    Index MeshResolver::resolve(const osg::Drawable& drawable, const Read& read, const Index material)
+    Index MeshResolver::resolve(const osg::Drawable& drawable, const DrawableRead& read, const Index material)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -217,7 +85,7 @@ namespace Rtx
             // so it goes and the geometry is mirrored afresh. The slot it abandons keeps the epoch
             // it had and the next sweep takes it.
             const std::size_t vertices
-                = read.mDeform == Deform::Morph ? baseOf(*read.mMorph).size() : vertexCountOf(geometry);
+                = read.mDeform == Deform::Morph ? morphBase(*read.mMorph).size() : vertexCountOf(geometry);
 
             const Held held = holdDeformer(read);
 
@@ -234,55 +102,25 @@ namespace Rtx
             mMeshes.abandon(known);
         }
 
-        VertexArrays arrays = readVertices(geometry, mFlatNormalScratch);
-
-        // A morph starts from its base target and not from the source's array, because that is
-        // what `MorphGeometry::cull` starts from. The normals and everything else are the source's.
-        if (read.mDeform == Deform::Morph)
-        {
-            const std::span<const osg::Vec3f> base = baseOf(*read.mMorph);
-            if (base.size() != arrays.mPositions.size())
-                throw Error("a morphed face of " + std::to_string(arrays.mPositions.size())
-                    + " vertices whose base target has " + std::to_string(base.size()));
-
-            arrays.mPositions = base;
-        }
-
-        if (arrays.mPositions.empty())
+        MeshReading reading;
+        if (!mReader.read(read, reading))
         {
             ++stats.mSkippedEmpty;
             return sNoIndex;
         }
+
+        stats.mFoldMs += reading.mFoldMs;
 
         if (read.mRig != nullptr && read.mDeform == Deform::None)
             ++stats.mUnskinned;
 
-        // Folded before the mesh is written, so the copy the content drew for a card's back never
-        // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
-        // together, so the pairs found in the bind pose are the pairs.
-        FoldedShape shape;
-        const std::chrono::steady_clock::time_point folding = std::chrono::steady_clock::now();
-        const bool folded = mFold.read(geometry, arrays.mPositions, shape);
-        stats.mFoldMs += since(folding, std::chrono::steady_clock::now());
-
-        if (!folded)
-        {
-            ++stats.mSkippedEmpty;
-            return sNoIndex;
-        }
-
-        if (shape.mSheet)
+        if (reading.mShape.mSheet)
             ++stats.mSheets;
 
-        std::span<const osg::Vec2f> texCoords;
-        const osg::Vec2Array* texCoordArray = asVec2Array(geometry.getTexCoordArray(0));
-        if (texCoordArray != nullptr && texCoordArray->size() == arrays.mPositions.size())
-            texCoords = std::span(texCoordArray->asVector());
+        const Index deformer = addDeformer(read, reading.mPositions.size());
 
-        const Index deformer = addDeformer(read, arrays.mPositions.size());
-
-        const Index mesh = mScene.addMesh(
-            arrays.mPositions, arrays.mNormals, texCoords, mFold.getIndices(), shape, read.mDeform, deformer, material);
+        const Index mesh = mScene.addMesh(reading.mPositions, reading.mNormals, reading.mTexCoords, reading.mIndices,
+            reading.mShape, read.mDeform, deformer, material);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 
@@ -293,9 +131,37 @@ namespace Rtx
         return mesh;
     }
 
+    Known& MeshResolver::adopt(const osg::Drawable& drawable, const MeshReading& reading, const Index material)
+    {
+        ExtractionStats& stats = mPass.getStats();
+
+        if (const auto known = mMeshes.find(&drawable); known != mMeshes.end())
+        {
+            // A template's drawable is never the walk's: the walk meets clones, and a clone of a
+            // deforming drawable is a deep copy at another address. So what the map holds under
+            // this key is what this class adopted, and that stands.
+            assert(mScene.getTables().mMeshes.getRows()[known->second.mIndex].mDeform == Deform::None
+                && "a reading adopted under a drawable the mirror poses");
+
+            ++stats.mMeshesReused;
+            mMeshes.stamp(known);
+            return known->second;
+        }
+
+        if (reading.mShape.mSheet)
+            ++stats.mSheets;
+
+        const Index mesh = mScene.addMesh(reading.mPositions, reading.mNormals, reading.mTexCoords, reading.mIndices,
+            reading.mShape, Deform::None, sNoIndex, material);
+        mMeshes.add(&drawable, Known{ .mIndex = mesh });
+        ++stats.mMeshesAdded;
+
+        return mMeshes.find(&drawable)->second;
+    }
+
     /// Added once per skin and once per set of targets however many drawables share them, and
     /// stamped through `reach` as it goes — so the sweep keeps it for as long as a mesh stands on it.
-    Index MeshResolver::addDeformer(const Read& read, const std::size_t vertices)
+    Index MeshResolver::addDeformer(const DrawableRead& read, const std::size_t vertices)
     {
         if (read.mDeform == Deform::None)
             return sNoIndex;
@@ -313,7 +179,7 @@ namespace Rtx
         return deformer;
     }
 
-    MeshResolver::Held MeshResolver::holdDeformer(const Read& read)
+    MeshResolver::Held MeshResolver::holdDeformer(const DrawableRead& read)
     {
         Held held;
 
@@ -337,7 +203,7 @@ namespace Rtx
         return held;
     }
 
-    void MeshResolver::stampDeformer(const Read& read, const Held& held)
+    void MeshResolver::stampDeformer(const DrawableRead& read, const Held& held)
     {
         // **The entry is there, and the fit test is why.** It agreed that the slot's deformer is
         // this drawable's, and neither `resolveRig` nor `resolveMorph` ever hands back `sNoIndex` —
@@ -356,7 +222,7 @@ namespace Rtx
 
     /// A pose is rows and not vertices, which is why the mirror pays a few dozen matrices for what
     /// is actually moving.
-    void MeshResolver::pose(const Index mesh, const Read& read, ExtractionStats& stats)
+    void MeshResolver::pose(const Index mesh, const DrawableRead& read, ExtractionStats& stats)
     {
         if (read.mDeform == Deform::None)
             return;
@@ -424,7 +290,7 @@ namespace Rtx
         const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
         assert(targets.size() > 1);
 
-        const std::size_t vertices = baseOf(morph).size();
+        const std::size_t vertices = morphBase(morph).size();
 
         // A set of targets grown or shrunk under the same base is a new set, for the reason a
         // rewritten skin is a new skin.

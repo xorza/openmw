@@ -12,8 +12,8 @@
 // forward-declared. It brings `osg::Vec3Array`, which a morph is keyed on, with it.
 #include <components/sceneutil/riggeometry.hpp>
 
-#include "geometryfold.hpp"
 #include "index.hpp"
+#include "meshreader.hpp"
 #include "mirroridentity.hpp"
 #include "mirrorpass.hpp"
 #include "scenedesc.hpp"
@@ -55,39 +55,30 @@ namespace Rtx
         {
         }
 
-        /// What of a drawable there is to mirror: the geometry its triangles and attributes are
-        /// read from, and what poses it, where something does.
-        ///
-        /// A skinned body's geometry is its **source** — the bind pose, which is what a pose is
-        /// computed from on the device — and a morphed face's is its source too, with the base
-        /// target standing in for its positions. Neither is the double-buffered copy a cull writes,
-        /// which nothing here runs any more.
-        struct Read
-        {
-            const osg::Geometry* mGeometry = nullptr;
-            Deform mDeform = Deform::None;
-            const SceneUtil::RigGeometry* mRig = nullptr;
-            const SceneUtil::MorphGeometry* mMorph = nullptr;
-        };
-
-        /// Reads what a drawable is, in one virtual call for nearly everything in a cell.
-        static Read readDrawable(const osg::Drawable& drawable);
-
         /// The mesh index for one drawable, adding it or posing it as its kind requires.
         ///
         /// @param material what the drawable wears, resolved first, which a mesh records as it
         ///        arrives — `MeshRange::mMaterial`.
-        Index resolve(const osg::Drawable& drawable, const Read& read, Index material);
+        Index resolve(const osg::Drawable& drawable, const DrawableRead& read, Index material);
 
-        /// The entry `drawable` is held under, where the mesh in it stands still.
+        /// The mesh index for a drawable somebody else has already read, adding it where the mirror
+        /// does not hold it and stamping it where it does.
         ///
-        /// **What a replay of a paged chunk looks its meshes up with, and it does not stamp** —
-        /// `MirrorIdentity`'s `stamp` is what does that, once the whole run is known to hold. Null
-        /// where the mirror does not hold the drawable, and where the mesh deforms: a rig or a morph
-        /// is posed into its slot on every frame it is met, and a replay does not pose.
-        Known* findStatic(const osg::Drawable& drawable);
+        /// **The insertion half of `resolve`, for a reading made off the frame.** A ring preparing
+        /// cells ahead of the eye reads and folds on a thread of its own; what the frame owes is the
+        /// copy into the scene and the identity the walk will find the mesh under — which is the
+        /// drawable, so that a clone of the same template met by the walk resolves to this mesh
+        /// rather than to a copy of it.
+        ///
+        /// Standing only: a reading carries no rig and no morph, and a drawable the mirror holds as
+        /// deforming is not one this may be asked about.
+        ///
+        /// @return the entry the mesh is held under, whose index is the mesh and which stays where
+        ///         it is for as long as it is stamped — so a caller that stamps it every frame may
+        ///         keep it rather than look the drawable up again.
+        Known& adopt(const osg::Drawable& drawable, const MeshReading& reading, Index material);
 
-        /// Records that the walk met `held` again, which is what `findStatic` found.
+        /// Records that the walk met `held` again, for a caller that kept what `adopt` handed it.
         void stampReused(Known& held)
         {
             ++mPass.getStats().mMeshesReused;
@@ -132,7 +123,7 @@ namespace Rtx
         /// **The entry and not only the index**, because the stamp wants the one the lookup found:
         /// a second `find` per posed part per frame is a pointer hash and a bucket walk for an
         /// answer already in hand, and Vivec poses 332. Which of the two entries is set follows
-        /// from `Read::mDeform`, and neither is looked at while `mIndex` is `sNoIndex`.
+        /// from `DrawableRead::mDeform`, and neither is looked at while `mIndex` is `sNoIndex`.
         struct Held
         {
             Index mIndex = sNoIndex;
@@ -147,7 +138,7 @@ namespace Rtx
         ///
         /// **Stamps nothing.** Whether the slot still fits is decided after this, and a stamp in
         /// front of that decision would keep a deformer the sweep is about to be told to drop.
-        Held holdDeformer(const Read& read);
+        Held holdDeformer(const DrawableRead& read);
 
         /// The same for a drawable the mirror is meeting afresh: the deformer added and stamped,
         /// or `sNoIndex` where the drawable stands.
@@ -155,7 +146,7 @@ namespace Rtx
         /// Throws where it does not pose exactly `vertices`. **Named rather than asserted**,
         /// because a vertex count comes out of a content file and a mesh posed by a deformer of
         /// another length is a kernel writing past the run it was handed.
-        Index addDeformer(const Read& read, std::size_t vertices);
+        Index addDeformer(const DrawableRead& read, std::size_t vertices);
 
         /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept.
         ///
@@ -164,10 +155,10 @@ namespace Rtx
         ///
         /// The arrival path needs none of this: `resolveRig` and `resolveMorph` stamp through
         /// `reach` as they go.
-        void stampDeformer(const Read& read, const Held& held);
+        void stampDeformer(const DrawableRead& read, const Held& held);
 
         /// Poses `mesh` where the drawable deforms, and counts it. Nothing where it stands.
-        void pose(Index mesh, const Read& read, ExtractionStats& stats);
+        void pose(Index mesh, const DrawableRead& read, ExtractionStats& stats);
 
         SceneDesc& mScene;
         const MirrorPass& mPass;
@@ -185,10 +176,7 @@ namespace Rtx
         Identity<const SceneUtil::RigGeometry::InfluenceData> mRigs{ mPass };
         Identity<const osg::Vec3Array> mMorphs{ mPass };
 
-        GeometryFold mFold;
-
-        /// Where an overall normal is spread across a drawable's vertices. See `readVertices`.
-        std::vector<osg::Vec3f> mFlatNormalScratch;
+        MeshReader mReader;
 
         // Refilled per rig and per morph, which a crowd is hundreds of.
         std::vector<std::uint32_t> mRunScratch;

@@ -1,11 +1,15 @@
 #include "fixture.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <vector>
 
-#include <components/terrain/chunktaker.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/meshinstance.hpp>
+#include <components/rtx/meshrange.hpp>
 
 namespace Rtx::Testing
 {
@@ -73,68 +77,92 @@ namespace Rtx::Testing
             EXPECT_FALSE(watch.valid()) << "the sweep dropped the entry and kept the drawable alive";
         }
 
-        /// A residency that names what it hands over, exactly as `QuadTreeWorld::handOver` does.
-        class NamedChunk : public Residency
+        /// A residency standing a mesh and a material of its own, which no drawable names.
+        ///
+        /// What the cell ring does for a cell's ground: the rows are added straight to the scene,
+        /// named to the extractor on every walk, and let go of by not being named.
+        class OwnedRows : public Residency
         {
         public:
-            explicit NamedChunk(osg::Node& held)
-                : mHeld(&held)
+            OwnedRows(SceneExtractor& extractor, SceneDesc& scene)
+                : mExtractor(extractor)
+                , mScene(scene)
             {
             }
 
-            void hold(osg::Node& held) { mHeld = &held; }
+            void letGo() { mHolding = false; }
 
-            void collect(Collector& into) override
+            Index getMesh() const { return mMesh; }
+
+            void collect(Collector&) override
             {
-                into.takeChunk(Terrain::ChunkName{ .mCentre = osg::Vec2f(-1.1875f, -9.1875f),
-                                   .mSize = 0.125f,
-                                   .mLodFlags = 0,
-                                   .mActiveGrid = true },
-                    *mHeld);
+                if (mMesh == sNoIndex)
+                {
+                    const std::array<osg::Vec3f, 3> corners{ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
+                        osg::Vec3f(0.0f, 1.0f, 0.0f) };
+                    const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
+
+                    mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
+                    mMesh = mScene.addMesh(corners, {}, {}, triangle, FoldedShape{}, Deform::None, sNoIndex, mMaterial);
+                    mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
+                    mExtractor.countOwnedRows(1, 1);
+                }
+
+                if (mHolding)
+                {
+                    mExtractor.keepOwnedMesh(mMesh);
+                    mExtractor.keepOwnedMaterial(mMaterial);
+                }
+                else if (mSlot != sNoIndex)
+                {
+                    mScene.dropInstance(mSlot);
+                    mSlot = sNoIndex;
+                    mExtractor.disownRows(1, 1);
+                }
             }
 
         private:
-            osg::Node* mHeld;
+            SceneExtractor& mExtractor;
+            SceneDesc& mScene;
+            Index mMesh = sNoIndex;
+            Index mMaterial = sNoIndex;
+            Index mSlot = sNoIndex;
+            bool mHolding = true;
         };
 
-        /// **A chunk arriving on another node is the same chunk.** `Terrain::ChunkName` says why
-        /// the node is not the identity: an entry with no rendering node gets a fresh transform and
-        /// is handed whatever the chunk cache already held, so the ground comes back unchanged on an
-        /// address the allocator picked. A walk that folded that address placed the ground again and
-        /// left the old placement to be swept — and which frame that happened on was the allocator's
-        /// answer rather than the world's.
-        TEST_F(RtxSceneExtractorTest, aChunkNamedTheSameKeepsItsPlacementThroughANewNode)
+        /// **A row a residency owns survives every sweep it is named through, and goes on the first
+        /// it is not.** The identity maps hold nothing for it, so without the naming the sweep after
+        /// the first walk would release the ground under the player's feet — and without the
+        /// disowning, a sweep on a frame where every map stood whole would never run at all.
+        TEST_F(RtxSceneExtractorTest, aRowAResidencyOwnsIsKeptWhileNamedAndReleasedWhenDisowned)
         {
-            osg::ref_ptr<osg::Geometry> ground = makeQuad();
-
-            osg::ref_ptr<osg::Group> arrivedOn = new osg::Group;
-            arrivedOn->addChild(ground);
-
-            NamedChunk chunk(*arrivedOn);
-            Residency* held = &chunk;
+            OwnedRows rows(mExtractor, mScene);
+            Residency* held = &rows;
             mExtractor.follow(std::span<Residency* const>(&held, 1));
 
             osg::ref_ptr<osg::Group> nothing = new osg::Group;
-            ASSERT_EQ(mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 1).mInstances, 1u);
-            ASSERT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 1u);
-            ASSERT_TRUE(mExtractor.retire().empty());
+            const ExtractionStats first = mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 1);
+            EXPECT_EQ(first.mMeshesAdded, 1u);
+            EXPECT_EQ(first.mMaterialsAdded, 1u);
+            ASSERT_EQ(mScene.getTables().mMeshes.getLiveCount(), 1u);
 
-            // The same ground, handed over on a transform that is not the one before it — which is
-            // what the terrain does whenever an entry has to make a rendering node again.
-            osg::ref_ptr<osg::Group> arrivedOnAnother = new osg::Group;
-            arrivedOnAnother->addChild(ground);
-            ASSERT_NE(arrivedOnAnother.get(), arrivedOn.get());
-            chunk.hold(*arrivedOnAnother);
+            EXPECT_TRUE(mExtractor.retire().empty()) << "a named row is a survivor";
+            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 1u);
 
-            const ExtractionStats again = mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 2);
-            EXPECT_EQ(again.mInstances, 1u);
-            EXPECT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 1u);
+            // A second walk with nothing else in it: every map stands whole, and the row still
+            // stands.
+            mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 2);
+            EXPECT_TRUE(mExtractor.retire().empty());
+            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 1u);
 
-            // **The slot, which is the whole of it.** A placement that was added again would stand
-            // in a second slot and leave the first to be swept, and a slot is the custom index a hit
-            // reads back and the row a top-level structure is built in.
-            EXPECT_EQ(mScene.getTables().mPlacements.getAll().size(), 1u) << "the ground was placed a second time";
-            EXPECT_EQ(mExtractor.retire().mMeshes, 0u) << "nothing went stale";
+            rows.letGo();
+            mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 3);
+
+            const Retirement went = mExtractor.retire();
+            EXPECT_EQ(went.mMeshes, 1u);
+            EXPECT_EQ(went.mMaterials, 1u);
+            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 0u) << "the disowned row was released";
+            EXPECT_EQ(mScene.getTables().mMaterials.getLiveCount(), 0u);
         }
 
         TEST_F(RtxSceneExtractorTest, aSweepDropsWhatTheWalkNoLongerFindsAndCarriesTheRest)

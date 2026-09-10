@@ -54,12 +54,17 @@ namespace Rtx
 
         /// An exterior's ground reaches past the square the simulation holds.
         ///
-        /// **`Terrain::QuadTreeWorld` parents its chunks to nothing**, so distant land is the one
-        /// thing a mirror cannot find by walking the graph — it is collected through a residency
-        /// instead. A world whose scene stops at the active grid is one where that collection
-        /// silently did nothing, and it looks like a world with a short view rather than like a
-        /// fault.
+        /// **The ground is nobody's node**: `Rtx::CellRing` stands it off the land records, inside
+        /// the walk, and a world whose scene stops at the active grid is one where the ring stood
+        /// nothing — which looks like a world with a short view rather than like a fault.
         GroundReaches,
+
+        /// Every cell of the reach stands its ground.
+        ///
+        /// **The ground is this renderer's own, off the land records, and one placement a cell.**
+        /// The game builds none for it, so a cell the ring did not stand is a hole — under the
+        /// player's feet as readily as at the horizon — and nothing else in the frame says so.
+        GroundStands,
 
         /// No two lights stand at the same point.
         ///

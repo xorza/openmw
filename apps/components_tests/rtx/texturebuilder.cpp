@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -12,7 +14,10 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/objectcache.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/mipchain.hpp>
+#include <components/rtx/preparedtexture.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shadingmap.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/vfs/manager.hpp>
@@ -289,5 +294,66 @@ namespace Rtx
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
             EXPECT_EQ(described.getUnreadable(), 1u);
         }
+        /// A fake of what the static ring answers: one image, read ahead of the frame.
+        class OneReading final : public TextureReadings
+        {
+        public:
+            PreparedTexture mTexture;
+
+            const PreparedTexture* find(const osg::Image& image) const override
+            {
+                return &image == mTexture.mImage.get() ? &mTexture : nullptr;
+            }
+        };
+
+        /// A describe takes a reading's chain and shading over building its own, and builds its own
+        /// where nothing read the image ahead of it.
+        TEST(RtxTextureBuilderTest, aReadingIsTakenOverABuildAndAMissIsBuilt)
+        {
+            constexpr VFS::Path::NormalizedView path("textures/tx_read.dds");
+
+            // Four by four, one level, so the builder has a chain to build and the reading has one to
+            // carry: 4x4, 2x2 and 1x1.
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+            image->setFileName(std::string(path.value()));
+            image->allocateImage(4, 4, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+            std::fill_n(image->data(), image->getTotalSizeInBytes(), static_cast<unsigned char>(128));
+
+            VFS::Manager vfs;
+            HeldImages images(&vfs, 0);
+            images.hold(path, image);
+
+            Rtx::SceneDesc scene;
+            addModel(scene, path);
+
+            OneReading reading;
+            reading.mTexture.mImage = image;
+            std::vector<Rtx::MipLevel> levels;
+            reading.mTexture.mChain.build(describeImage(*image, levels));
+            ASSERT_FALSE(reading.mTexture.mChain.isEmpty());
+            reading.mTexture.mShading.fill(2.0f);
+            reading.mTexture.mReadable = true;
+
+            SceneTextures taken;
+            taken.describeAll(scene.getTables(), images, nullptr, &reading);
+            ASSERT_EQ(taken.getDescriptions().size(), 1u);
+            EXPECT_EQ(taken.getDescriptions()[0].mLevels.size(), 3u) << "the reading's chain, down to one texel";
+            EXPECT_EQ(taken.getDescriptions()[0].mShading[0], 2.0f) << "the reading's estimate, not one made here";
+            EXPECT_EQ(taken.getDescriptions()[0].mShading.size(), Rtx::ShadingMap::sCells);
+
+            SceneTextures built;
+            built.describeAll(scene.getTables(), images);
+            ASSERT_EQ(built.getDescriptions().size(), 1u);
+            EXPECT_EQ(built.getDescriptions()[0].mLevels.size(), 3u) << "built here, to the same chain";
+            EXPECT_NEAR(built.getDescriptions()[0].mShading[0], 1.0f, 0.01f)
+                << "a flat grey estimates to one everywhere, which is not the reading's two";
+
+            // An unreadable reading is no reading: the miss path runs and the stand-in follows.
+            reading.mTexture.mReadable = false;
+            SceneTextures again;
+            again.describeAll(scene.getTables(), images, nullptr, &reading);
+            EXPECT_NEAR(again.getDescriptions()[0].mShading[0], 1.0f, 0.01f);
+        }
+
     }
 }

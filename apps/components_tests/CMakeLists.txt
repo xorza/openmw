@@ -114,7 +114,7 @@ if (OPENMW_RTX)
         rtx/bloompass.cpp
         rtx/bluenoise.cpp
         rtx/buffer.cpp
-        rtx/chunkruns.cpp
+        rtx/cellring.cpp
         rtx/cloudshell.cpp
         rtx/commands.cpp
         rtx/computepipeline.cpp
@@ -134,6 +134,7 @@ if (OPENMW_RTX)
         rtx/frameworld.cpp
         rtx/geometry.hpp
         rtx/graphlight.hpp
+        rtx/groundreader.cpp
         rtx/gputimer.cpp
         rtx/guipass.cpp
         rtx/guitextures.cpp
@@ -144,6 +145,7 @@ if (OPENMW_RTX)
         rtx/lightbuilder.cpp
         rtx/lightgrid.cpp
         rtx/meantexel.cpp
+        rtx/meshreader.cpp
         rtx/memory.cpp
         rtx/mipchain.cpp
         rtx/moonbuilder.cpp
@@ -179,7 +181,7 @@ if (OPENMW_RTX)
         rtx/statistics.hpp
         rtx/structurestorage.cpp
         rtx/terraincomposite.cpp
-        rtx/terrainresidency.cpp
+        rtx/templatewalk.cpp
         rtx/testtexture.hpp
         rtx/texturebuilder.cpp
         rtx/tracepipeline.cpp

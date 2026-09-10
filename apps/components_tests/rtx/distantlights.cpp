@@ -89,9 +89,6 @@ namespace Rtx
 
             void take(osg::Node& node) override { node.accept(*this); }
 
-            /// Lights stand on nodes of their own, so this residency names nothing.
-            void takeChunk(const Terrain::ChunkName&, osg::Node&) override { FAIL() << "a light arrived as a chunk"; }
-
             void apply(osg::Node& node) override
             {
                 if (dynamic_cast<SceneUtil::LightSource*>(&node) != nullptr)

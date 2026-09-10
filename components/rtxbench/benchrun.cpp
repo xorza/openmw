@@ -20,6 +20,7 @@ namespace Rtx
             std::pair{ Check::SurfacesDescribed, std::string_view("surfaces-described") },
             std::pair{ Check::LightsPlaced, std::string_view("lights-placed") },
             std::pair{ Check::GroundReaches, std::string_view("ground-reaches") },
+            std::pair{ Check::GroundStands, std::string_view("ground-stands") },
             std::pair{ Check::LightsNotDoubled, std::string_view("lights-not-doubled") },
             std::pair{ Check::TexturesReadable, std::string_view("textures-readable") },
             std::pair{ Check::CrossingsAppend, std::string_view("crossings-append") },

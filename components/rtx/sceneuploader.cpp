@@ -32,7 +32,8 @@ namespace Rtx
     }
 
     SceneUpload SceneUploader::hand(SceneSink& renderer, const SceneSlot slot, SceneDesc& scene,
-        Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea)
+        Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea,
+        const TextureReadings* const readings)
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
 
@@ -95,9 +96,9 @@ namespace Rtx
             // what it wants is the table in its own order; a frame that grew wants the slots that
             // were written and no others, wherever in the table they sit.
             if (!mine)
-                mTextures.describeAll(tables, images, composites);
+                mTextures.describeAll(tables, images, composites, readings);
             else
-                mTextures.describe(tables, images, tables.mTextures.getArrived(), composites);
+                mTextures.describe(tables, images, tables.mTextures.getArrived(), composites, readings);
 
             const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();
             done.mTexturesMs = since(gathered, described);

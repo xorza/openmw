@@ -11,10 +11,6 @@
 #include <components/rtx/nodelibrary.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/skeleton.hpp>
-// `terraindrawable.hpp` holds `osg::ref_ptr`s to composite-map types it only forward-declares, so it
-// does not compile on its own. This is what completes them.
-#include <components/terrain/compositemaprenderer.hpp>
-#include <components/terrain/terraindrawable.hpp>
 
 namespace Rtx
 {
@@ -34,7 +30,7 @@ namespace Rtx
         /// of a library name rather than on a class: what has to hold is that two classes of one
         /// library agree. `osg` is nearly every node in a cell and no cast down the walk is gated on
         /// it, so it shares `Other` with every library the walk has never met.
-        std::array<Named, 7> everyLibrary()
+        std::array<Named, 6> everyLibrary()
         {
             return {
                 Named{ new osg::Group, Library::Other, "osg" },
@@ -43,7 +39,6 @@ namespace Rtx
                 Named{ new SceneUtil::Skeleton, Library::SceneUtil, "SceneUtil" },
                 Named{ new osgParticle::ParticleSystem, Library::OsgParticle, "osgParticle" },
                 Named{ new NifOsg::MatrixTransform, Library::NifOsg, "NifOsg" },
-                Named{ new Terrain::TerrainDrawable, Library::Terrain, "Terrain" },
             };
         }
 
@@ -75,7 +70,7 @@ namespace Rtx
         TEST(RtxNodeLibraryTest, aGateHoldingEveryLibraryStillTellsThemApart)
         {
             const NodeLibrary gate;
-            const std::array<Named, 7> named = everyLibrary();
+            const std::array<Named, 6> named = everyLibrary();
 
             for (int round = 0; round < 3; ++round)
                 for (const Named& one : named)

@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <optional>
 #include <span>
@@ -81,27 +80,6 @@ namespace Rtx
             return identityWith(key, std::hash<const osg::Node*>{}(node));
         }
 
-        /// The same fold, over a number the content states rather than an address it happens to
-        /// sit at.
-        std::size_t identityWith(std::size_t key, const float part)
-        {
-            std::uint32_t bits = 0;
-            std::memcpy(&bits, &part, sizeof(bits));
-
-            return identityWith(key, static_cast<std::size_t>(bits));
-        }
-
-        /// The same fold, over what the terrain says a chunk is. `Terrain::ChunkName` says why a
-        /// chunk is named by its contents and not by the node it arrives on.
-        std::size_t identityWith(std::size_t key, const Terrain::ChunkName& name)
-        {
-            key = identityWith(key, name.mCentre.x());
-            key = identityWith(key, name.mCentre.y());
-            key = identityWith(key, name.mSize);
-            key = identityWith(key, static_cast<std::size_t>(name.mLodFlags));
-
-            return identityWith(key, static_cast<std::size_t>(name.mActiveGrid));
-        }
     }
 
     /// Runs an `osg::Sequence`'s clock, and reaches nothing. See `MirrorTraversal::descend`.
@@ -145,14 +123,10 @@ namespace Rtx
         void apply(osg::Drawable& drawable) override;
 
         void take(osg::Node& node) override { node.accept(*this); }
-        void takeChunk(const Terrain::ChunkName& name, osg::Node& node) override;
         bool wouldReach(const osg::Node& root) const override { return validNodeMask(root); }
 
     private:
         /// Walks `node` and everything under it, under the identity the caller worked out for it.
-        ///
-        /// **The identity arrives rather than being taken here**, because a node's address is only
-        /// the name it has when nothing states a better one. A terrain chunk states one.
         void enter(osg::Node& node, std::size_t identity);
 
         /// The same, with `node`'s own transform composed into where the walk stands.
@@ -271,29 +245,6 @@ namespace Rtx
     void MirrorTraversal::apply(osg::Node& node)
     {
         enter(node, identityWith(mPathHash, &node));
-    }
-
-    void MirrorTraversal::takeChunk(const Terrain::ChunkName& name, osg::Node& node)
-    {
-        const std::size_t identity = identityWith(mPathHash, name);
-
-        mExtractor.openChunk(name);
-
-        if (mExtractor.replayChunk())
-        {
-            mExtractor.closeChunk(ChunkRuns::Ended::Replayed);
-            return;
-        }
-
-        // **The dispatch `accept` would have done, done here instead.** What arrives is the
-        // transform `loadRenderingNode` puts a chunk under, and its position is the chunk's place in
-        // the world; going through `accept` would name the node by its address on the way past.
-        if (osg::Transform* placed = node.asTransform())
-            enterTransform(*placed, identity);
-        else
-            enter(node, identity);
-
-        mExtractor.closeChunk(ChunkRuns::Ended::Walked);
     }
 
     void MirrorTraversal::enter(osg::Node& node, const std::size_t identity)
@@ -614,7 +565,6 @@ namespace Rtx
         mAnchor = anchor;
         mPass.mStats = &stats;
 
-        mChunkRuns.beginWalk(mPass.mEpoch);
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
@@ -623,9 +573,12 @@ namespace Rtx
         // fire lit; OSG's visitor API is non-const regardless, so the cast happens once, here.
         const_cast<osg::Node&>(node).accept(*mWalk);
 
-        // **Inside the same walk, not beside it.** The chunks a quad tree keeps out of the graph are
-        // part of the same frame as everything else — the same epoch, the same stats, the same
-        // sweep — and a second `begin` would date them apart from it.
+        // **Inside the same walk, not beside it.** What a residency stands is part of the same
+        // frame as everything else — the same epoch, the same stats, the same sweep — and a second
+        // `begin` would date it apart from the rest. The rows a residency owns are what this walk's
+        // residencies name, and nothing older.
+        mOwnedMeshes.clear();
+        mOwnedMaterials.clear();
         for (Residency* resident : hidden)
             resident->collect(*mWalk);
 
@@ -671,10 +624,17 @@ namespace Rtx
         // release has nothing to free and the lists have nothing to say — and what that saves is two
         // walks of a map with one entry per drawable, plus the two keep-set tables `release` writes
         // to reach the same answer.
-        if (!mMeshes.whole() || !mMaterials.whole())
+        // **And where a residency let go of a row it owned**, which no map can see: the row was
+        // never in one, and it is released by not being named below.
+        if (!mMeshes.whole() || !mMaterials.whole() || mDisownedMeshes > 0 || mDisownedMaterials > 0)
         {
-            went.mMeshes = mMeshes.retire(mLiveMeshes);
-            went.mMaterials = mMaterials.retire(mLiveMaterials);
+            went.mMeshes = mMeshes.retire(mLiveMeshes) + mDisownedMeshes;
+            went.mMaterials = mMaterials.retire(mLiveMaterials) + mDisownedMaterials;
+            mDisownedMeshes = 0;
+            mDisownedMaterials = 0;
+
+            mLiveMeshes.insert(mLiveMeshes.end(), mOwnedMeshes.begin(), mOwnedMeshes.end());
+            mLiveMaterials.insert(mLiveMaterials.end(), mOwnedMaterials.begin(), mOwnedMaterials.end());
 
             // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the
             // gaps renumbered every mesh and every material, so everything built from an index —
@@ -726,31 +686,27 @@ namespace Rtx
 
         mScene.addLight(*made);
         ++mPass.getStats().mLights;
-
-        // A light stands in no run, so a chunk holding one is walked rather than replayed.
-        mChunkRuns.refuse();
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, const std::size_t who,
         const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
     {
-        mChunkRuns.add(mirrorDrawable(drawable, who, shading, place, firstPerson));
+        mirrorDrawable(drawable, who, shading, place, firstPerson);
     }
 
-    ChunkStep SceneExtractor::mirrorDrawable(const osg::Drawable& drawable, const std::size_t who,
+    void SceneExtractor::mirrorDrawable(const osg::Drawable& drawable, const std::size_t who,
         const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
     {
         ExtractionStats& stats = mPass.getStats();
-        ChunkStep step{ .mWho = who };
 
         // Asked before the geometry, because a particle system is an `osg::Drawable` with no
         // triangles in it at all: its sprites *are* the drawing, and they leave here as a run of
         // discs rather than as a mesh anything could build a structure over.
         //
         // **Gated on the library before the cast**, which is what every other cast down this walk
-        // does and for the reason `apply(osg::Node&)` states: a cell's drawables are `osg`'s and
-        // `Terrain`'s, and those are ruled out by a compare where a failed `dynamic_cast` walks the
-        // class hierarchy to say the same thing. The two libraries are the ones a system can come from —
+        // does and for the reason `apply(osg::Node&)` states: a cell's drawables are `osg`'s, and
+        // those are ruled out by a compare where a failed `dynamic_cast` walks the class hierarchy
+        // to say the same thing. The two libraries are the ones a system can come from —
         // `osgParticle`'s own, and `NifOsg::ParticleSystem` over it — which is the pair
         // `stepParticles` already names — which is why the gate is spelled here rather than
         // reached for: `castFrom` names one library and this rules out all but two.
@@ -759,26 +715,16 @@ namespace Rtx
         if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
         {
             mEmitters.add(*particles, shading, place);
-            mChunkRuns.refuse();
-            return step;
+            return;
         }
 
-        const MeshResolver::Read read = MeshResolver::readDrawable(drawable);
+        const DrawableRead read = readDrawable(drawable);
         if (read.mGeometry == nullptr)
         {
             ++stats.mSkippedUnknown;
-            mChunkRuns.refuse();
-            return step;
+            return;
         }
 
-        const osg::Geometry& geometry = *read.mGeometry;
-
-        // Terrain keeps its material on the drawable rather than on the graph, so it is asked first
-        // and the state-set walk never sees a chunk.
-        // The geometry's own library and not the drawable's: a rigged mesh hands its source
-        // geometry back here, and that is a different object from the one `couldEmit` asked about.
-        const auto* terrain
-            = castFrom<const Terrain::TerrainDrawable>(mLibrary.of(geometry), Library::Terrain, geometry);
         // **Asked of the drawable and not of the path.** OpenMW marks the water geometry itself, and
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());
@@ -786,25 +732,11 @@ namespace Rtx
         // **The material before the mesh, because a mesh records the material it arrives wearing.**
         // `MeshRange::mMaterial` says why a static mesh has one to record; a backend bakes its mask
         // against that one, and the two counts past the mesh are what say the loader keeps it so.
-        MaterialResolver::Resolved material;
-        if (water)
-            material = mMaterials.resolveWater();
-        else if (terrain != nullptr)
-            material = mMaterials.resolveTerrain(*terrain);
-        else
-            material = mMaterials.resolve(shading);
+        const MaterialResolver::Resolved material = water ? mMaterials.resolveWater() : mMaterials.resolve(shading);
 
         const Index mesh = mMeshes.resolve(drawable, read, material.mIndex);
         if (mesh == sNoIndex)
-        {
-            mChunkRuns.refuse();
-            return step;
-        }
-
-        step.mDrawable = &drawable;
-        step.mMaterialKey = material.mKey;
-        step.mMesh = mesh;
-        step.mMaterial = material.mIndex;
+            return;
 
         // A placement wearing anything but the material its mesh arrived with is the canary —
         // `SceneUtil::CopyOp` shares the state set under every copy, so the only material a mesh
@@ -838,71 +770,15 @@ namespace Rtx
             });
 
             mPlacements.add(who, Known{ .mIndex = slot });
-            step.mPlacement = slot;
         }
         else
         {
             mPlacements.stamp(held);
             mScene.moveInstance(held->second.mIndex, place);
             mScene.fadeInstance(held->second.mIndex, fade);
-            step.mPlacement = held->second.mIndex;
         }
 
         ++stats.mInstances;
-
-        return step;
-    }
-
-    bool SceneExtractor::replayChunk()
-    {
-        if (!mChunkRuns.canReplay())
-            return false;
-
-        const std::span<const ChunkStep> run = mChunkRuns.getRecorded();
-        const MaterialTable& materials = mScene.getTables().mMaterials;
-
-        mReplayScratch.clear();
-        mReplayScratch.reserve(run.size());
-
-        for (const ChunkStep& step : run)
-        {
-            // **A drawable that mirrored no material at all**, which the sea's own key cannot be
-            // told from: `MaterialResolver` holds the sea under a null state set, so a step with
-            // neither would look the sea up. Asked before the map is, rather than left to the
-            // compare below to refuse by accident.
-            if (step.mMaterial == sNoIndex)
-                return false;
-
-            // **A material a controller rewrites is read again on every frame it is met**, which is
-            // what `MaterialResolver::resolve` does and a replay does not. The row says which those
-            // are, and it is the row `addDrawable` reads for its own canary.
-            Known* const material = mMaterials.find(step.mMaterialKey);
-            if (material == nullptr || material->mIndex != step.mMaterial
-                || materials.getRows()[step.mMaterial].mAnimated)
-                return false;
-
-            Known* const mesh = mMeshes.findStatic(*step.mDrawable);
-            if (mesh == nullptr || mesh->mIndex != step.mMesh)
-                return false;
-
-            const auto placement = mPlacements.find(step.mWho);
-            if (placement == mPlacements.end() || placement->second.mIndex != step.mPlacement)
-                return false;
-
-            mReplayScratch.push_back(
-                Replayed{ .mMesh = mesh, .mMaterial = material, .mPlacement = &placement->second });
-        }
-
-        for (const Replayed& held : mReplayScratch)
-        {
-            mMeshes.stampReused(*held.mMesh);
-            mMaterials.stampReused(*held.mMaterial);
-            mPlacements.stamp(*held.mPlacement);
-        }
-
-        mPass.getStats().mInstances += static_cast<std::uint32_t>(run.size());
-
-        return true;
     }
 
     bool SceneExtractor::isWater(osg::Node::NodeMask mask) const

@@ -1,7 +1,13 @@
 #pragma once
 
+#include <osg/Vec2i>
+#include <osg/Vec3f>
+
 namespace Rtx
 {
+    /// The cell a world position stands in, on the exterior grid.
+    osg::Vec2i cellOf(const osg::Vec3f& position);
+
     /// How far from the eye the world is built, in units.
     ///
     /// **One number, and both the ground and the air are measured against it.** Rays go everywhere,

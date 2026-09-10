@@ -19,7 +19,6 @@ namespace Rtx
         NifOsg,
         OsgParticle,
         SceneUtil,
-        Terrain,
     };
 
     /// The library a node comes from, which is the one question cheap enough to ask of every node

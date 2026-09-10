@@ -15,8 +15,6 @@ namespace Rtx
                 return Library::OsgParticle;
             if (std::strcmp(name, "SceneUtil") == 0)
                 return Library::SceneUtil;
-            if (std::strcmp(name, "Terrain") == 0)
-                return Library::Terrain;
 
             return Library::Other;
         }

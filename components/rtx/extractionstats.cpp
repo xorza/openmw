@@ -15,9 +15,9 @@ namespace Rtx
         /// sum below from dropping one and reporting a number that is short.
         auto countersOf(auto& stats)
         {
-            auto& [meshesAdded, materialsAdded, foldMs, sheets, composites, meshesReused, materialsReused, instances,
-                deformed, unskinned, emitters, sprites, skippedUnknown, undescribedSurfaces, undescribedGround,
-                spritelessEmitters, formats, unnamedFormat, skippedEmpty, lights, wornOtherwise]
+            auto& [meshesAdded, materialsAdded, foldMs, sheets, meshesReused, materialsReused, instances, deformed,
+                unskinned, emitters, sprites, skippedUnknown, undescribedSurfaces, spritelessEmitters, formats,
+                unnamedFormat, skippedEmpty, lights, wornOtherwise, distantStatics, groundCells]
                 = stats;
 
             // The three the sum owes something other than an unsigned addition, and so the three
@@ -26,9 +26,9 @@ namespace Rtx
             (void)unnamedFormat;
             (void)foldMs;
 
-            return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
-                &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedSurfaces,
-                &undescribedGround, &spritelessEmitters, &skippedEmpty, &lights, &wornOtherwise };
+            return std::array{ &meshesAdded, &materialsAdded, &sheets, &meshesReused, &materialsReused, &instances,
+                &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedSurfaces, &spritelessEmitters,
+                &skippedEmpty, &lights, &wornOtherwise, &distantStatics, &groundCells };
         }
     }
 

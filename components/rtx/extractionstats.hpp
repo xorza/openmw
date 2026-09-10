@@ -32,18 +32,13 @@ namespace Rtx
 
         /// What the folding cost, of the meshes added above.
         ///
-        /// **Timed rather than counted, because what it costs is triangles and not drawables.** A
-        /// paged chunk is one merged geometry of every static of a kind in it, so one entry of
-        /// `mMeshesAdded` can be tens of thousands of triangles and its neighbour a crate.
+        /// **Timed rather than counted, because what it costs is triangles and not drawables.** One
+        /// entry of `mMeshesAdded` can be a building and its neighbour a crate.
         double mFoldMs = 0.0;
 
         /// Of those, the meshes that were nothing but reversed pairs and left here as one copy
         /// each. `ShapeFold` says what a sheet is; a cell with foliage in it has hundreds.
         std::uint32_t mSheets = 0;
-
-        /// Ground wide enough that its layer stack is baked into one texture rather than shaded a
-        /// layer at a time. Distant chunks and nothing else — see `sCompositeFrom`.
-        std::uint32_t mComposites = 0;
 
         /// Drawables that resolved to something already known. A count of lookups, not of meshes:
         /// a hundred crates sharing one model contribute a hundred here and one above.
@@ -84,15 +79,11 @@ namespace Rtx
         /// Surfaces the content pipeline never described, which are drawn as whatever a default
         /// `Material` is — untextured, opaque and one-sided.
         ///
-        /// **A canary, and it should be zero.** `NifOsg` and `Terrain` author a `Surface::Material`
-        /// for everything they build; a drawable arriving without one means a state set was made
+        /// **A canary, and it should be zero.** `NifOsg` authors a `Surface::Material` for
+        /// everything it builds; a drawable arriving without one means a state set was made
         /// somewhere else, or remade by something that copied the pipeline state and dropped the
         /// description with it.
         std::uint32_t mUndescribedSurfaces = 0;
-
-        /// Ground passes with no description, which are left out of the chunk's layer stack — so
-        /// the chunk shades from whatever layers were described, and from nothing else.
-        std::uint32_t mUndescribedGround = 0;
 
         /// Particle systems the walk met and could not draw, because nothing described them or
         /// because what did named no diffuse map. Dropped whole: a sprite's silhouette is its
@@ -143,6 +134,12 @@ namespace Rtx
         /// another would be traced against a mask it does not carry. The loader says it cannot
         /// happen, and this is the number that says so every frame.
         std::uint32_t mWornOtherwise = 0;
+
+        /// Placements the cell ring stood this walk: the distant statics, as instances of their
+        /// templates rather than as the paging's merged chunks, and the cells' ground, one
+        /// placement a cell. Among `mInstances` as well.
+        std::uint32_t mDistantStatics = 0;
+        std::uint32_t mGroundCells = 0;
 
         ExtractionStats& operator+=(const ExtractionStats& other);
     };

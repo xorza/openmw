@@ -200,6 +200,8 @@ namespace MWRender
         into.mRecord.note(
             std::format("\nplaced\n"
                         "  instances:            {}\n"
+                        "  distant statics:      {}\n"
+                        "  ground cells:         {}\n"
                         "  meshes:               {}\n"
                         "  materials:            {}\n"
                         "  textures:             {}\n"
@@ -207,10 +209,10 @@ namespace MWRender
                         "  vertex+index bytes:   {} KiB\n"
                         "  handed over:          {}\n"
                         "  laid out as:          {}\n",
-                scene.mPlacements.getPlacedCount(), scene.mMeshes.getRows().size(), scene.mMaterials.getRows().size(),
-                scene.mTextures.getPaths().size(), scene.mMeshes.getTriangleCount(),
-                scene.mMeshes.getGeometryBytes() / 1024, Rtx::spellHash(Rtx::digestScene(scene)),
-                Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
+                scene.mPlacements.getPlacedCount(), stats.mDistantStatics, stats.mGroundCells,
+                scene.mMeshes.getRows().size(), scene.mMaterials.getRows().size(), scene.mTextures.getPaths().size(),
+                scene.mMeshes.getTriangleCount(), scene.mMeshes.getGeometryBytes() / 1024,
+                Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
         for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
         {
@@ -261,7 +263,7 @@ namespace MWRender
                         "  emissive materials:   {}\n"
                         "  lights:               {} casting\n"
                         "  deforming drawables:  {}\n"
-                        "  flattened ground:     {} chunks past a cell\n"
+                        "  flattened ground:     {} cells outside the active grid\n"
                         "  emitters:             {} holding {} live particles\n",
                 cutouts, tested, translucent, media, glowing, scene.mLights.size(), stats.mDeformed, flattened,
                 stats.mEmitters, stats.mSprites));
@@ -272,12 +274,11 @@ namespace MWRender
                         "  unskinned rigs:       {} met before an update found their skeleton\n"
                         "  empty geometry:       {}\n"
                         "  undescribed surfaces: {} drawn as a default material\n"
-                        "  undescribed ground:   {} passes left out of their chunk's stack\n"
                         "  spriteless emitters:  {} dropped whole\n"
                         "  worn otherwise:       {} placements wearing another material than their mesh\n"
                         "  sheets:               {} of the meshes, doubled for their backs\n",
                 stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces,
-                stats.mUndescribedGround, stats.mSpritelessEmitters, stats.mWornOtherwise, sheets));
+                stats.mSpritelessEmitters, stats.mWornOtherwise, sheets));
 
         if (walkedTwice)
         {

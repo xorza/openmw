@@ -6,7 +6,87 @@ Every number below is from this box unless it says otherwise: RTX 4090 Laptop, i
 `apps/rtxtool/release.sh`, `bench --views=island-crossing --seconds=20 --settled=false
 --window=false --validation=false`, four legs interleaved, one thrown-away warm-up first.
 
-## Where it stands today
+## Where it landed
+
+Stages 0 to 2 are built, and the first half of stage 3 with them: the prepared ring is one cell
+wider than the placed ring. `.notes/bench.txt` at `2026-09-10 05:40` holds the legs.
+
+| leg | median | mean | p95 | p99 | worst | 1% low | instances |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| the paging, before | 5.67 | 9.45 | 21.97 | 63.63 | 121.86 | 15.7 | 2484 |
+| the ring | 6.15 | 7.22 | 13.35 | 20.92 | 37.13 | 47.8 | 11187 |
+| nothing in the distance | 5.82 | 6.88 | 12.54 | 23.51 | 44.93 | 42.5 | 1747 |
+
+**The tail is the floor's**, with the distance standing: p99 64 to 21, worst 122 to 37, one per cent
+low 15.7 to 48 fps. The ring costs half a millisecond of the mean, most of it more world for the
+trace. Structures fall from 72 MiB to 30, because a template's structure is built once for every
+copy of it.
+
+**What was built.** `Rtx::MeshReader` and `MaterialReading` are the reading halves of the two
+resolvers, with `adopt` beside `resolve` on each; `Rtx::TemplateWalk` is the read-only walk over a
+template; `Rtx::CellReader` reads a cell into a `PreparedCell` on the ring's thread, out of
+`Terrain::ObjectStorage` and a `TemplateSource`; `Rtx::StaticRing` is the residency that adopts,
+places and stamps. The seam gained `wantsObjectPaging`, `enableReference` and `detachWorld`, and
+`renderingmanager.cpp` reads the first where it read the setting, forwards the second from
+`pagingEnableObject` and calls the third from its destructor — the three lines the plan named.
+
+**What the readings said.** The ring places far more than the paging merged: 23,512 distant
+statics at the ship and 34,121 at the shore, because the size rule is applied per reference at the
+eye's distance where the paging thinned a whole chunk by its own reach. The top level takes it at
+0.28 ms against 0.22. And the `fold` row did not move — 0.30 mean, 15 worst on both legs — because
+what still folds on the frame is the quad tree's ground, which the ring does not stand. That is
+stage 5, and it is now the largest item left on an arrival frame.
+
+**Stage 3 landed whole afterwards.** The ring's thread describes every image its models name —
+the chain a file lacked and the shading estimate, both a read of every texel — and the frame's
+describe takes the reading over its own build. The `textures` row's worst fell from 10.9 ms to
+under 4, and its p95 from 0.66 to 0.05, below the floor's, because the readings serve the active
+cells' images as well. `.notes/bench.txt` at `06:30` holds the legs.
+
+**Every loader is persistent and refills its buffers.** `CellReader` keeps its cells, models and
+image readings in `Rtx::Spares`; the frame holds them by address and gives each cell's holds back
+through the lock when it lets the cell go, so a walk across the world reads into the buffers its
+first cells grew. The frame side keeps its cells and model entries in spares of its own, and a test
+holds that a steady walk of the ring reaches the heap zero times. What still allocates on the
+thread is `Terrain::ObjectStorage::getModel` and `correctMeshPath`, which return a path by value:
+an interface the paging shares, and a string per reference on a thread with time to spare.
+
+**A hold is a cell's and not the frame's, and that was a bug for a day.** The first protocol had
+the frame return a model once nothing it held named it, and the thread keep such a return for a
+round where a delivered cell still named the model. The frame cannot know what the thread lent
+since it last looked: a settled walk lets go of the cells that left the band, waits for the thread
+to read the cells that entered — one of which names the same model, read while the frame still
+held it — and publishes the return afterwards, so the reader gave the model back under the frame's
+feet and refilled it for the next path. Under `-O3` that was a wrong erase in the reader's sorted
+list and, eventually, `free(): invalid size` at shutdown; `check --suite=exteriors` reproduced it
+on every run and AddressSanitizer named the write. The reader now counts one hold per cell that
+names a model, exactly as it does for a ground texture, and the frame returns a cell's holds when
+it drops or discards the cell; nothing the frame says can then be stale, whatever the thread read in
+between, and a test holds a model across such a walk.
+
+**Stage 4 is not built, on a reading.** The `blas` zone that stage was priced against was 0.75 ms
+a frame with the paging — a structure per merged chunk, rebuilt at every decomposition. With the
+ring it is 0.30, on the frames a model first stands, and it lands on cells a band away from being
+seen. What a compute queue could still hide is under the spread between two legs of one build, and
+the pre-Ampere caveat has no reading. It stays on the list for when a measurement says otherwise.
+
+**Stage 5a landed: the ground is the ring's, and the fold row is nought.** `ground-plan.md` is the
+design and holds the readings. `Rtx::CellRing` — the static ring renamed, because it stands the
+cells — reads each cell's 65 × 65 heights, normals and blend maps off `Terrain::Storage` on its
+thread through `Rtx::GroundReader`, and the frame adopts one cell's ground a walk on rows the ring
+owns and names to the sweep. `TerrainResidency`, the chunk replay and `resolveTerrain` are gone.
+On the crossing the `fold` row went from 0.29 mean and 14.7 worst to 0.01 and 0.5, the walk's worst
+from 21 ms to 5, and the crossing frames' own worst from 31 to 16–22; the frame's p99 and worst did
+not move, because what is left at the tail is `update` and the adopt frames, and the p95 rose three
+milliseconds on the adopt frames' `upload` and `wait`. `.notes/bench.txt` at `07:00` holds the legs.
+
+**What is left of the plan.** Stage 5b, the game building no ground for this renderer, which is
+three lines in two upstream files and waits on a go-ahead — `ground-plan.md` names them. And stage
+4, which now has the reading it was waiting for: the adopt frames wait on the device for three
+milliseconds more at the p99 than the frames before them did, and an `nsys` timeline of one is what
+says whether the structure build is what they wait for.
+
+## Where it stood before
 
 **Nothing that stands still is short of anything.** Every standing place in the corpus waits on
 the device with 2.4 to 3.8 ms of host headroom. **The frames a cell ring arrives on are the whole
@@ -316,13 +396,12 @@ route.
 
 ### Stage 5 — the ground the same way
 
-Later, and its own document. The same ring standing each cell's ground from `Terrain::Storage` —
-the heights as one mesh per cell, the blend maps as one composite per cell baked on the queue that
-already bakes them — would take `TerrainResidency`, its warming thread, the chunk replay and the
-quad tree's level-of-detail seams out of this renderer, and put the `update` row's synchronous
-terrain wait back into upstream's own hands. It is last because its share of the tail is the
-smallest of the four and because its picture question — full-detail ground everywhere, at 8k
-triangles a cell and 121 cells — deserves a reading of its own.
+`ground-plan.md`, its own document. The same ring standing each cell's ground from
+`Terrain::Storage` — the heights as one mesh per cell, the blend maps as one composite per cell
+baked on the queue that already bakes them — takes `TerrainResidency`, its warming thread, the chunk
+replay and the quad tree's level-of-detail seams out of this renderer, and puts the `update` row's
+synchronous terrain wait back into upstream's own hands. Its picture question — full-detail ground
+everywhere, at 8k triangles a cell and 121 cells — is answered there: the trace does not see it.
 
 ## What is deliberately not proposed
 

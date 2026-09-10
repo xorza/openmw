@@ -8,8 +8,10 @@
 
 #include <osg/Timer>
 
+#include <components/esm3/refnum.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
+#include <components/settings/values.hpp>
 #include <components/vfs/pathutil.hpp>
 
 struct SDL_Window;
@@ -135,6 +137,25 @@ namespace MWRender
         /// any radius — which is why this is asked of the renderer and not read from `distant
         /// terrain`, whose default is off and whose business is what a rasterizer can afford to draw.
         virtual bool wantsPagedTerrain() const = 0;
+
+        /// Whether the statics of the distance are merged into the quad tree's chunks by
+        /// `Terrain::ObjectPaging`.
+        ///
+        /// **The setting's answer for a rasterizer, and a renderer's own where it stands the
+        /// distance itself.** The paging exists to turn a thousand draw calls into a few; a ray
+        /// tracer instances a thousand copies of one model for the price of one, and what a merged
+        /// chunk costs it is the fold of the merge on the frame it arrives. `Rtx::CellRing` is
+        /// that renderer's answer, and it reads the same setting as its own switch.
+        virtual bool wantsObjectPaging() const { return Settings::terrain().mObjectPaging; }
+
+        /// What the game says of one reference the content files cannot: a script has disabled it,
+        /// or enabled it again. For a renderer standing the distance itself; the paging is told by
+        /// its own route.
+        virtual void enableReference(ESM::RefNum refnum, bool enabled) {}
+
+        /// The world is going. Anything of it a renderer reads from a thread of its own has to be
+        /// let go of before it does, and `attachWorld` had no counterpart to say so.
+        virtual void detachWorld() {}
 
         /// Chunk size, in cells, past which the terrain flattens a chunk's layer stack into one
         /// composite map — or `Terrain::sNoCompositeMap` for a renderer that will never ask for one.

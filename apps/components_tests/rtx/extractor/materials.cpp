@@ -1,13 +1,8 @@
-// `terraindrawable.hpp` holds `osg::ref_ptr`s to composite-map types it only forward-declares, so it
-// does not compile on its own. This is what completes them.
 #include <cstddef>
 #include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
-
-#include <components/terrain/compositemaprenderer.hpp>
-#include <components/terrain/terraindrawable.hpp>
 
 #include "../allocations.hpp"
 #include "fixture.hpp"
@@ -700,91 +695,6 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
             EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, osg::Vec4f(0.75f, 0.0f, 0.0f, 1.0f))
                 << "the controller swapped under the walk is not the one that painted the surface";
-        }
-
-        /// A blend map is read exactly as `osg::Image::getColor` reads it, on both paths that read
-        /// one.
-        ///
-        /// **The game's own masks are one byte a texel in `GL_ALPHA`**, and that one format is read
-        /// along the row rather than a texel at a time: `getColor` decides on the pixel format and
-        /// the data type per texel and builds a `Vec4` to hand back one component of it, which is
-        /// 0.44% of a crossing spent on the frame a chunk arrives. Every other format still takes
-        /// `getColor`, so a mod's blend map is read as it always was.
-        ///
-        /// **The two have to agree to the bit.** A weight is what a chunk's ground is blended by and
-        /// what its composite is baked from, and `getColor` multiplies by a reciprocal where a
-        /// divide differs in the last place for 126 of the 256 byte values.
-        TEST_F(RtxSceneExtractorTest, aBlendMapReadsTheSameOnTheRowPathAndTheFallback)
-        {
-            // Sixteen by sixteen, so the game's format carries every byte a texel can hold — and the
-            // other one carries them backwards, which is a different picture rather than the same
-            // one twice.
-            osg::ref_ptr<osg::Image> alpha = new osg::Image;
-            alpha->allocateImage(16, 16, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
-
-            osg::ref_ptr<osg::Image> rgba = new osg::Image;
-            rgba->allocateImage(16, 16, 1, GL_RGBA, GL_UNSIGNED_BYTE);
-
-            for (int row = 0; row < 16; ++row)
-            {
-                unsigned char* alphaRow = alpha->data(0, row);
-                unsigned char* rgbaRow = rgba->data(0, row);
-                ASSERT_NE(alphaRow, nullptr);
-                ASSERT_NE(rgbaRow, nullptr);
-
-                for (int column = 0; column < 16; ++column)
-                {
-                    const auto value = static_cast<unsigned char>(row * 16 + column);
-                    alphaRow[column] = value;
-
-                    rgbaRow[column * 4 + 0] = 7;
-                    rgbaRow[column * 4 + 1] = 11;
-                    rgbaRow[column * 4 + 2] = 13;
-                    rgbaRow[column * 4 + 3] = static_cast<unsigned char>(255 - value);
-                }
-            }
-
-            const auto layerWith = [](std::string_view diffuse, osg::Image& mask) {
-                osg::ref_ptr<osg::StateSet> pass = new osg::StateSet;
-                paint(*pass, diffuse);
-                pass->setTextureAttributeAndModes(1, new osg::Texture2D(&mask), osg::StateAttribute::ON);
-                return pass;
-            };
-
-            osg::ref_ptr<Terrain::TerrainDrawable> chunk = new Terrain::TerrainDrawable;
-            chunk->setVertexArray(makeQuad()->getVertexArray());
-            chunk->addPrimitiveSet(makeTriangles({ 0, 1, 2, 0, 2, 3 }));
-            chunk->setPasses({ layerWith("ground0.dds", *alpha), layerWith("ground1.dds", *rgba) });
-
-            walk(*chunk);
-
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            const Material& material = mScene.getTables().mMaterials.getRows()[0];
-            ASSERT_EQ(material.mKind, MaterialKind::Terrain);
-            ASSERT_EQ(material.mLayers.mCount, 2u);
-
-            const std::span<const MaterialLayer> layers
-                = material.mLayers.in(mScene.getTables().mMaterials.getLayers());
-
-            const auto readsAs = [&](const MaterialLayer& layer, const osg::Image& image) {
-                ASSERT_EQ(layer.mMaskWidth, 16u);
-                ASSERT_EQ(layer.mMaskHeight, 16u);
-
-                const std::span<const float> weights = layer.mMask.in(mScene.getTables().mMaterials.getMasks());
-                for (int row = 0; row < 16; ++row)
-                    for (int column = 0; column < 16; ++column)
-                        ASSERT_EQ(weights[static_cast<std::size_t>(row) * 16 + column], image.getColor(column, row).a())
-                            << "texel " << column << ", " << row << " of " << image.getPixelFormat();
-            };
-
-            readsAs(layers[0], *alpha);
-            readsAs(layers[1], *rgba);
-
-            // And the two ends of the range by hand, which is the one claim `getColor` cannot be
-            // asked to make about itself: an empty texel is no weight and a full one is all of it.
-            const std::span<const float> game = layers[0].mMask.in(mScene.getTables().mMaterials.getMasks());
-            EXPECT_EQ(game.front(), 0.0f);
-            EXPECT_EQ(game.back(), 1.0f);
         }
     }
 }

@@ -69,7 +69,7 @@ namespace Rtx::Testing
             stats.mMeshesAdded = from + 1;
             stats.mMaterialsAdded = from + 2;
             stats.mSheets = from + 3;
-            stats.mComposites = from + 4;
+            stats.mDistantStatics = from + 4;
             stats.mMeshesReused = from + 5;
             stats.mMaterialsReused = from + 6;
             stats.mInstances = from + 7;
@@ -83,7 +83,7 @@ namespace Rtx::Testing
             stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)]
                 = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
             stats.mUnskinned = from + 17;
-            stats.mUndescribedGround = from + 18;
+            stats.mGroundCells = from + 18;
             stats.mSpritelessEmitters = from + 19;
             return stats;
         }
@@ -91,8 +91,8 @@ namespace Rtx::Testing
         /// Two walks add up count by count, and the report adds the settled walk to the staged one.
         ///
         /// **A count the sum passes over is a number that is quietly short**, which is what a report
-        /// of an incremental mirror is least able to survive: it dropped the sheets and the flattened
-        /// ground, and both read as zero however much of either a cell held.
+        /// of an incremental mirror is least able to survive: it dropped the sheets and the
+        /// composites once, and both read as zero however much of either a cell held.
         TEST_F(RtxSceneExtractorTest, twoWalksAddUpCountByCount)
         {
             ExtractionStats sum = counted(0);
@@ -101,7 +101,7 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mMeshesAdded, 102u);
             EXPECT_EQ(sum.mMaterialsAdded, 104u);
             EXPECT_EQ(sum.mSheets, 106u);
-            EXPECT_EQ(sum.mComposites, 108u);
+            EXPECT_EQ(sum.mDistantStatics, 108u);
             EXPECT_EQ(sum.mMeshesReused, 110u);
             EXPECT_EQ(sum.mMaterialsReused, 112u);
             EXPECT_EQ(sum.mInstances, 114u);
@@ -113,7 +113,7 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mSkippedEmpty, 126u);
             EXPECT_EQ(sum.mLights, 128u);
             EXPECT_EQ(sum.mUnskinned, 134u);
-            EXPECT_EQ(sum.mUndescribedGround, 136u);
+            EXPECT_EQ(sum.mGroundCells, 136u);
             EXPECT_EQ(sum.mSpritelessEmitters, 138u);
 
             const FormatCount& blocks = sum.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)];

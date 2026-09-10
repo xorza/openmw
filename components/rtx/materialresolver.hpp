@@ -26,14 +26,37 @@ namespace SceneUtil
     class StateSetUpdater;
 }
 
-namespace Terrain
+namespace Surface
 {
-    class TerrainDrawable;
+    struct Material;
 }
 
 namespace Rtx
 {
+    struct AlphaScratch;
     struct Shading;
+
+    /// What a chain of state sets says a surface is, read where the chain is and adopted where the
+    /// scene is.
+    ///
+    /// **The half of a material's arrival that reads, apart from the half that inserts.** Everything
+    /// here points into the state sets it was read from — the key and the description are theirs —
+    /// so a reading is good for as long as the model that carries them stands, and a ring preparing
+    /// cells ahead of the eye holds the model for exactly that.
+    struct MaterialReading
+    {
+        /// The state set the material is held under: the nearest one to the drawable. Null where
+        /// the chain was empty, which is a drawable that wears nothing.
+        const osg::StateSet* mKey = nullptr;
+
+        /// What the content said, or null where nothing did.
+        const Surface::Material* mDescribed = nullptr;
+
+        /// Whether the diffuse map's alpha ever reaches solid — decided by the reader for the one
+        /// kind of surface the answer changes, a translucent one, and left unset for every other.
+        /// The reader answers it because the walk over the texels is the reading's whole cost.
+        std::optional<bool> mDiffuseSolid;
+    };
 
     /// Turns what the content says a surface is into the scene's materials, and keeps the textures
     /// they name.
@@ -52,10 +75,10 @@ namespace Rtx
     public:
         /// A material slot and the state set it is held under.
         ///
-        /// **The key travels with the slot** because a replay of a paged chunk has to stamp the
-        /// material without reading the drawable again, and which state set of a chain names a
-        /// material is this class's answer. A caller that picked one for itself would be a second
-        /// answer to that.
+        /// **The key travels with the slot** because a caller stamping the material on later walks
+        /// — the cell ring, for a model it adopted — has to find the entry without reading the
+        /// drawable again, and which state set of a chain names a material is this class's answer.
+        /// A caller that picked one for itself would be a second answer to that.
         struct Resolved
         {
             Index mIndex = sNoIndex;
@@ -74,8 +97,15 @@ namespace Rtx
         /// The material slot for the chain of state sets in force at a drawable.
         Resolved resolve(std::span<const Shading> shading);
 
-        /// The same for a terrain chunk, whose material is on the drawable rather than on the graph.
-        Resolved resolveTerrain(const Terrain::TerrainDrawable& terrain);
+        /// Reads the chain of state sets in force at a drawable, for a thread that has no scene to
+        /// resolve into. `resolve` is the same reading followed by `adopt`.
+        ///
+        /// @param scratch what a translucent diffuse map's texels are walked through.
+        static MaterialReading read(std::span<const Shading> shading, AlphaScratch& scratch);
+
+        /// The material slot for a reading, adding it where the mirror holds none under its key and
+        /// stamping it where it does. Standing only: a reading carries no controller.
+        Resolved adopt(const MaterialReading& reading);
 
         /// The sea's own, keyed on the state set it has not got because a node mask is what
         /// identifies it.
@@ -124,11 +154,17 @@ namespace Rtx
         /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
         Material readMaterial(std::span<const Shading> shading);
 
+        /// The material a description comes to, with its images taken into the scene.
+        ///
+        /// @param diffuseSolid whether the diffuse map reaches solid, where a reader already
+        ///        answered; asked of the image here otherwise, and only where it matters.
+        Material describe(const Surface::Material* described, bool animated, std::optional<bool> diffuseSolid);
+
         /// The slot `key` already holds, stamped and counted as a reuse, or `sNoIndex`.
         ///
-        /// **One statement for the three resolvers**, so that what is left in each is only what it
-        /// does differently: `resolve` re-reads an animated material, `resolveTerrain` builds a
-        /// layer stack, and `resolveWater` builds nothing at all.
+        /// **One statement for the two resolvers**, so that what is left in each is only what it
+        /// does differently: `resolve` re-reads an animated material, and `resolveWater` builds
+        /// nothing at all.
         Index reuse(const osg::StateSet* key);
 
         /// Adds `material` under `key`, counted as an arrival.
@@ -190,12 +226,5 @@ namespace Rtx
         /// What `diffuseReachesSolid` reads a texture's alpha in, refilled per image it is asked
         /// about — which is once per translucent diffuse map a cell arrives with.
         AlphaScratch mAlphaScratch;
-
-        /// One blend map's weights as floats, refilled per terrain layer that carries one.
-        std::vector<float> mMaskScratch;
-
-        /// One terrain material's layers, refilled per chunk: a run is allocated by length and the
-        /// length is only known once the passes with no texture on them have been passed over.
-        std::vector<MaterialLayer> mLayerScratch;
     };
 }
