@@ -48,6 +48,9 @@ namespace Rtx
         /// be reading through.
         void bury(VkDescriptorPool pool);
 
+        /// A query pool a batch in flight may still be writing answers into.
+        void bury(VkQueryPool pool);
+
         /// A room in `storage`, given back once nothing can be built or traced in it.
         void bury(StructureStorage& storage, const StructureRoom& room);
 
@@ -74,6 +77,7 @@ namespace Rtx
         std::vector<std::unique_ptr<Image>> mImages;
         std::vector<VkAccelerationStructureKHR> mStructures;
         std::vector<VkDescriptorPool> mPools;
+        std::vector<VkQueryPool> mQueryPools;
         std::vector<Room> mRooms;
         std::vector<VkCommandBuffer> mCommands;
     };

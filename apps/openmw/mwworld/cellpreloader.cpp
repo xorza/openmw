@@ -182,6 +182,11 @@ namespace MWWorld
         {
             for (unsigned int i = 0; i < mTerrainViews.size() && i < mPreloadPositions.size() && !mAbort; ++i)
             {
+                // A world that hands out no view — `Terrain::World::createView` itself — has
+                // nothing to preload into.
+                if (mTerrainViews[i] == nullptr)
+                    continue;
+
                 mTerrainViews[i]->reset();
                 mWorld->preload(mTerrainViews[i], mPreloadPositions[i].mPosition, mPreloadPositions[i].mCellBounds,
                     mAbort, mLoadingReporter);

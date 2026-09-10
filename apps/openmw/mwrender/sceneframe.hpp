@@ -311,12 +311,11 @@ namespace MWRender
         /// Where a texture the mirror has not seen before is read from.
         Resource::ImageManager& mImages;
 
-        /// The ground, which the graph does not always parent.
+        /// The world's terrain, for its storage, its worldspace and the active grid.
         ///
-        /// **`Terrain::QuadTreeWorld` resolves its chunks inside a cull and parents them to
-        /// nothing**, so with `distant terrain` on, the ground, the paged objects and the grass are
-        /// under no node `mScene` reaches. A renderer that walks rather than culls asks this with
-        /// `Terrain::World::collect` instead, and holds whatever that asking needs itself.
+        /// **Not for its chunks.** A renderer that stands the ground itself is given a world that
+        /// builds none — `Renderer::wantsTerrainChunks` — and reads every cell off the storage
+        /// this carries.
         Terrain::World& mTerrain;
 
         /// What the content files say stands where, which the paging above reads and a renderer that

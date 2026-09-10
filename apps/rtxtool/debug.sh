@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds with debug info and opens the harness on the ship at Seyda Neen, under the validation
-# layers. Extra arguments are passed to the tool: `debug.sh --view=balmora`.
+# Builds with debug info, under the validation layers. With no argument it stops at the binary.
+# With a verb it runs the harness on it: `debug.sh view --view=balmora` opens the window,
+# `debug.sh shot --view=balmora` writes a frame.
 #
 # **There is no `game` entry point any more, because every verb is one.** `view` opens a window on
 # the game with the player own camera, and `--load-savegame=<file>` starts from a save rather than
@@ -32,17 +33,26 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold
 fi
 
+# **No argument, or `build`, stops at the binary.** A run needs a verb named on the command line:
+# the tool's own default is `view`, and a game window is not something a build should open on its
+# own.
+if [ $# -eq 0 ] || [ "${1}" = build ]; then
+    exec cmake --build "$build" -j32 --target openmw-rtxtool
+fi
+
+if [[ "${1}" == -* ]]; then
+    echo "debug.sh: name a verb before the switches — \`debug.sh view $*\`" >&2
+    exit 2
+fi
+
 cmake --build "$build" -j32 --target openmw-rtxtool
 
 # **The verb stays first.** `dispatch` reads it off argv[1] and takes a leading dash to mean nobody
 # named one, so appending it after the switches below silently ran `view` instead — `release.sh
 # bench` opened a window and profiled nothing.
-verb=()
-if [ $# -gt 0 ] && [[ "${1}" != -* ]]; then
-    verb=("$1")
-    shift
-fi
+verb="$1"
+shift
 
 # From the build directory, because --resources defaults to ./resources.
 cd "$build"
-exec ./openmw-rtxtool "${verb[@]}" --validation --sync-validation "$@"
+exec ./openmw-rtxtool "$verb" --validation --sync-validation "$@"

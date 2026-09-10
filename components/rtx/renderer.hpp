@@ -249,8 +249,8 @@ namespace Rtx
 
         std::uint64_t mTableBytes = 0;
 
-        /// What the last build's structures would come to if each were copied tight, or nought
-        /// where the device would not say.
+        /// What the structures answered for and not yet copied tight would come to, or nought
+        /// where there are none and where the device would not say.
         ///
         /// **Beside `mStructureBytes`, because the pair is the question.** A structure is built loose
         /// — the builder cannot know the answer until it has finished — and the difference between

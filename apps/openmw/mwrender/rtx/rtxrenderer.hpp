@@ -85,9 +85,12 @@ namespace MWRender
         int getMaxTextureUnits() const override { return mMaxTextureUnits; }
 
         /// Always. The map reads how far the ground reaches through this, and this renderer's
-        /// ground reaches that far — the ground itself is `Rtx::CellRing`'s, off the land records,
-        /// and what the quad tree builds nobody traces.
+        /// ground reaches that far; which world the game builds is `wantsTerrainChunks`'s answer.
         bool wantsPagedTerrain() const override;
+
+        /// Never: the ground is `Rtx::CellRing`'s, off the land records, and a chunk the game built
+        /// beside it would be one nothing traces.
+        bool wantsTerrainChunks() const override { return false; }
 
         /// Never: `Rtx::CellRing` stands the distance's statics as instances of their templates,
         /// and a merged chunk is the fold of the merge on the frame it arrives.

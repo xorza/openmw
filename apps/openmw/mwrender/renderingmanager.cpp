@@ -1456,7 +1456,14 @@ namespace MWRender
         const bool groundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
         const bool paged = mRenderer.wantsPagedTerrain();
         const double expiryDelay = Settings::cells().mCacheExpiryDelay;
-        if (paged || groundcover)
+        if (!mRenderer.wantsTerrainChunks())
+        {
+            // **A world that builds nothing**, for a renderer that stands the ground itself: the
+            // storage, the worldspace and the active grid, which is all such a renderer asks of it.
+            newChunkMgr.mTerrain
+                = std::make_unique<Terrain::World>(mSceneRoot, mTerrainStorage.get(), Mask_Terrain, worldspace);
+        }
+        else if (paged || groundcover)
         {
             const int compMapResolution = Settings::terrain().mCompositeMapResolution;
 

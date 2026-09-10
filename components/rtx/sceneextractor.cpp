@@ -123,7 +123,6 @@ namespace Rtx
         void apply(osg::Drawable& drawable) override;
 
         void take(osg::Node& node) override { node.accept(*this); }
-        bool wouldReach(const osg::Node& root) const override { return validNodeMask(root); }
 
     private:
         /// Walks `node` and everything under it, under the identity the caller worked out for it.

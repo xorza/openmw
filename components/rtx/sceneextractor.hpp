@@ -54,14 +54,6 @@ namespace Rtx
 
         /// Walks `node` as though the graph had parented it where the residency was asked.
         virtual void take(osg::Node& node) = 0;
-
-        /// Whether a walk of the graph would have been let past `root`.
-        ///
-        /// **Asked because a residency goes around the graph.** What it stands is parented under a
-        /// node the walk would have met and may have been refused at, and a collector that says yes
-        /// to everything would show what the mask hides. The default is the answer for a collector
-        /// with no mask to consult.
-        virtual bool wouldReach(const osg::Node& root) const { return true; }
     };
 
     /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.

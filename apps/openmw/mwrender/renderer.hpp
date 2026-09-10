@@ -138,6 +138,15 @@ namespace MWRender
         /// terrain`, whose default is off and whose business is what a rasterizer can afford to draw.
         virtual bool wantsPagedTerrain() const = 0;
 
+        /// Whether the game builds the ground's chunks for this renderer at all.
+        ///
+        /// **A renderer that stands the ground itself answers no**, and the world it is given holds
+        /// the storage, the worldspace and the active grid and builds nothing: `Rtx::CellRing` reads
+        /// every cell's heights and blend maps off `Terrain::Storage` on a thread of its own, so a
+        /// quad tree beside it would build chunks nobody draws — on the work thread, and inside
+        /// `Scene::changeCellGrid`'s synchronous wait for them.
+        virtual bool wantsTerrainChunks() const { return true; }
+
         /// Whether the statics of the distance are merged into the quad tree's chunks by
         /// `Terrain::ObjectPaging`.
         ///

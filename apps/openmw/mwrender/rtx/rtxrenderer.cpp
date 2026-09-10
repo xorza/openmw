@@ -237,6 +237,12 @@ namespace MWRender
         Log(Debug::Info) << "Ray tracing: upscale " << Rtx::upscaleName(upscale) << ", Ray Reconstruction preset "
                          << Rtx::presetName(preset);
 
+        // **Grass hangs off the quad tree, and this renderer has the game build none.** Its ground
+        // is the cell ring's, and a quad tree beside it would build chunks nothing traces; a setting
+        // that wants one is refused by name rather than honoured by a rasterizer's route.
+        if (Settings::groundcover().mEnabled)
+            throw std::runtime_error("groundcover is on, and the ray tracing renderer builds no quad tree to carry it");
+
         std::string reason;
         mRenderer = Rtx::createRenderer(options, reason);
         if (mRenderer == nullptr)

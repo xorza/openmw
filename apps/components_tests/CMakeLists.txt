@@ -113,6 +113,7 @@ if (OPENMW_RTX)
         rtx/alphaimage.cpp
         rtx/bloompass.cpp
         rtx/bluenoise.cpp
+        rtx/bottomlevelstore.cpp
         rtx/buffer.cpp
         rtx/cellring.cpp
         rtx/cloudshell.cpp

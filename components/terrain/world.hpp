@@ -11,7 +11,6 @@
 #include <components/esm/refid.hpp>
 
 #include "cellborder.hpp"
-#include "chunktaker.hpp"
 
 namespace osg
 {
@@ -97,38 +96,6 @@ namespace Terrain
         {
         }
 
-        /// Whether the terrain stands on the graph at all.
-        ///
-        /// **What `enable` decides, asked of the world rather than worked out.** A caller building a
-        /// `Terrain::Vantage` needs it and cannot see the root node; it asks here, on the game's own
-        /// thread, and hands the answer to whatever thread collects. False where `collect` below
-        /// hands nothing over either.
-        virtual bool isEnabled() const { return false; }
-
-        /// Every chunk this world holds for `view`, at the detail `from` asks for, handed to
-        /// `into`.
-        ///
-        /// **Not a cull, and this is the whole reason it exists.** Nothing is rejected and no
-        /// frustum is consulted: a ray tracer decides what exists, and the answer is everything
-        /// within the view distance. The detail is still chosen by distance from the view point,
-        /// because a chunk has to be built at *some* level and the one an eye there would have
-        /// picked is the one its rays should hit.
-        ///
-        /// **Nothing here, and that is the right answer for most worlds.** A world whose chunks are
-        /// children of its own root — `TerrainGrid`'s are — is reached by walking the graph like
-        /// anything else, and would be reached twice if it answered this as well. `QuadTreeWorld`
-        /// resolves its chunks inside a cull and parents them to nothing, so it is the one that has
-        /// to say where they are.
-        ///
-        /// **Where it looks from arrives rather than being read.** `Terrain::Vantage` says why: a
-        /// caller on a thread other than the game's may not read what the game writes, and
-        /// everything a collect would otherwise take off the world is written there. `preload` takes
-        /// its grid for the same reason.
-        ///
-        /// @note Not thread safe against another call on the same `view`, which must be one
-        ///       `createView` handed out.
-        virtual void collect(View* view, const Vantage& from, ChunkTaker& into) {}
-
         virtual void rebuildViews() {}
 
         virtual void reportStats(unsigned int frameNumber, osg::Stats* stats) {}
@@ -142,15 +109,10 @@ namespace Terrain
         void enableHeightCullCallback(bool enable);
         osg::Callback* getHeightCullCallback(float highz, unsigned int mask);
 
-        /// The node a walk of the graph meets the terrain at, for a caller that reaches the chunks
-        /// through `collect` instead and owes the same answer about the mask.
-        const osg::Group& getTerrainRoot() const { return *mTerrainRoot; }
-
         void setActiveGrid(const osg::Vec4i& grid) { mActiveGrid = grid; }
 
-        /// The square `collect` and a cull resolve against, for a caller that has to `preload` the
-        /// same one — `preload` takes it as an argument and would otherwise be warming a different
-        /// set of chunks than the one about to be asked for.
+        /// The square the simulation holds, as `setActiveGrid` was last told it, for a renderer
+        /// that stands the cells outside it for itself.
         const osg::Vec4i& getActiveGrid() const { return mActiveGrid; }
 
     protected:

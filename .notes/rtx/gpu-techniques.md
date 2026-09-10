@@ -112,17 +112,26 @@ The other item on the list is done too. The sources call
 translucent candidate does not cost it, since such a hit is never confirmed and traversal keeps the
 early out for the first thing that stops the ray.
 
+## The second queue, priced and withdrawn
+
+The bottom-level builds were to go on a queue of their own, because every source says their device
+time can be hidden almost completely and the island route's arrival frames carried 0.6 ms a frame
+of it. An `nsys` timeline of those frames (`bench.txt`, 2026-09-10 15:45) found the device time
+was not the builds: `BottomLevelStore` asked the driver what every loose structure in the scene
+would compact to at every build, and on a route that builds on nearly every frame the answers were
+never read and the question grew with the scene — 8 to 13 ms in front of the trace for two or three
+structures built. Asked once per structure, the builds themselves are 0.27 ms on the frames that
+build and the wait behind them is gone. A second queue has nothing left to hide, and it comes back
+only on a reading that says otherwise.
+
 ## What to check next in this tree, in order
 
-1. **Price a second queue for the acceleration-structure work.** 0.69 ms a frame of bottom-level
-   builds on the island route's arrival frames, and every source says it can be hidden almost
-   completely. Turing is the floor, so the measurement has to be taken there too.
-2. **Settle whether a refitted structure can be compacted.** A shipping title says yes and took
+1. **Settle whether a refitted structure can be compacted.** A shipping title says yes and took
    41 per cent of its vegetation memory back. This tree says no in a comment. One of the two is
    wrong, and the specification says which.
-3. **Read the twenty-one broad barriers.** Not because they are known to cost anything, but because
+2. **Read the twenty-one broad barriers.** Not because they are known to cost anything, but because
    nothing in this tree can currently say whether they do.
-4. **Leave the ray flags and the build flags where they are.** Every one of them was measured here,
+3. **Leave the ray flags and the build flags where they are.** Every one of them was measured here,
    and every reading agrees with what the sources say about a frame shaped like this one.
 
 ## Sources

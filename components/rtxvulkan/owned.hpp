@@ -71,6 +71,10 @@ namespace Rtx
             mHandle = VK_NULL_HANDLE;
         }
 
+        /// Hands the handle over undestroyed, for a caller that buries it instead: a batch in
+        /// flight may still name it.
+        Handle release() { return std::exchange(mHandle, VK_NULL_HANDLE); }
+
     private:
         VkDevice mDevice = VK_NULL_HANDLE;
         Handle mHandle = VK_NULL_HANDLE;

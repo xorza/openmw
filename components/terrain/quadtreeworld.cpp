@@ -364,32 +364,6 @@ namespace Terrain
         return lodFlags;
     }
 
-    namespace
-    {
-        /// Whether a chunk stands in the square the simulation holds, which decides what
-        /// `ChunkManager::getChunk` builds for it.
-        ///
-        /// **One rule, read by the build and by the name.** Two spellings of it would let a chunk be
-        /// named as one thing and built as another.
-        bool standsInActiveGrid(const osg::Vec2f& centre, const osg::Vec4i& grid)
-        {
-            return centre.x() > grid.x() && centre.y() > grid.y() && centre.x() < grid.z() && centre.y() < grid.w();
-        }
-
-        /// A taker for a cull, which keeps no identity and only wants the node walked.
-        struct AcceptInto : ChunkTaker
-        {
-            explicit AcceptInto(osg::NodeVisitor& visitor)
-                : mVisitor(visitor)
-            {
-            }
-
-            void takeChunk(const ChunkName&, osg::Node& node) override { node.accept(mVisitor); }
-
-            osg::NodeVisitor& mVisitor;
-        };
-    }
-
     void QuadTreeWorld::loadRenderingNode(
         ViewDataEntry& entry, ViewData* vd, float cellWorldSize, const osg::Vec4i& gridbounds, bool compile)
     {
@@ -417,7 +391,8 @@ namespace Terrain
                 entry.mNode->getCenter().x() * cellWorldSize, entry.mNode->getCenter().y() * cellWorldSize, 0.f));
 
             const osg::Vec2f& center = entry.mNode->getCenter();
-            const bool activeGrid = standsInActiveGrid(center, gridbounds);
+            bool activeGrid = (center.x() > gridbounds.x() && center.y() > gridbounds.y() && center.x() < gridbounds.z()
+                && center.y() < gridbounds.w());
 
             for (QuadTreeWorld::ChunkManager* m : mChunkManagers)
             {
@@ -514,8 +489,14 @@ namespace Terrain
             mRootNode->traverseNodes(vd, viewPoint, &lodCallback);
         }
 
-        AcceptInto culling(nv);
-        handOver(vd, mActiveGrid, culling);
+        const float cellWorldSize = static_cast<float>(ESM::getCellSize(mWorldspace));
+
+        for (unsigned int i = 0; i < vd->getNumEntries(); ++i)
+        {
+            ViewDataEntry& entry = vd->getEntry(i);
+            loadRenderingNode(entry, vd, cellWorldSize, mActiveGrid, false);
+            entry.mRenderingNode->accept(nv);
+        }
 
         if (mHeightCullCallback && isCullVisitor)
             updateWaterCullingView(mHeightCullCallback, vd, static_cast<osgUtil::CullVisitor*>(&nv),
@@ -529,64 +510,6 @@ namespace Terrain
             vd->setLastUsageTimeStamp(referenceTime);
             mViewDataMap->clearUnusedViews(referenceTime);
         }
-    }
-
-    void QuadTreeWorld::handOver(ViewData* vd, const osg::Vec4i& grid, ChunkTaker& into)
-    {
-        const float cellWorldSize = static_cast<float>(ESM::getCellSize(mWorldspace));
-
-        for (unsigned int i = 0; i < vd->getNumEntries(); ++i)
-        {
-            ViewDataEntry& entry = vd->getEntry(i);
-            loadRenderingNode(entry, vd, cellWorldSize, grid, false);
-
-            const osg::Vec2f& centre = entry.mNode->getCenter();
-            into.takeChunk(
-                ChunkName{
-                    .mCentre = centre,
-                    .mSize = entry.mNode->getSize(),
-                    .mLodFlags = entry.mLodFlags,
-                    .mActiveGrid = standsInActiveGrid(centre, grid),
-                },
-                *entry.mRenderingNode);
-        }
-    }
-
-    bool QuadTreeWorld::isEnabled() const
-    {
-        return mRootNode != nullptr && mRootNode->getNumParents() != 0;
-    }
-
-    void QuadTreeWorld::collect(View* view, const Vantage& from, ChunkTaker& into)
-    {
-        // **A view of the caller's and not one keyed on a camera.** `accept` looks its `ViewData` up
-        // by the camera culling, reuses it where another camera stood close enough, and skips the
-        // traversal when it does; none of that applies to something asking what exists. This is
-        // handed a view it owns and always resolves it.
-        if (view == nullptr)
-            return;
-
-        ensureQuadTreeBuilt();
-
-        // **Disabled means gone, as it does for a walk.** `enable(false)` takes the root off the
-        // terrain node, so a cull finds nothing there — and handing over an exterior's ground while
-        // the player stands in a cave is what going to the root directly would do. The caller
-        // reports it in the vantage rather than this reading it, because `enable` is written on the
-        // game's thread and a collect may be on another. The other half of what a walk would have
-        // asked is the mask, and `Rtx::Collector::wouldReach` is where a caller with one asks it.
-        if (!from.mEnabled)
-            return;
-
-        ViewData* vd = static_cast<ViewData*>(view);
-        vd->setViewPoint(from.mViewPoint);
-        vd->setActiveGrid(from.mGrid);
-        vd->reset();
-
-        DefaultLodCallback lodCallback(mLodFactor, mMinSize, mViewDistance, from.mGrid, ESM::getCellSize(mWorldspace));
-        mRootNode->traverseNodes(vd, from.mViewPoint, &lodCallback);
-
-        handOver(vd, from.mGrid, into);
-        vd->resetChanged();
     }
 
     void QuadTreeWorld::ensureQuadTreeBuilt()

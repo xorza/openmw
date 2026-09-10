@@ -78,8 +78,8 @@ namespace Rtx
         /// Nought for a mesh that was not built to be refitted.
         VkDeviceSize getUpdateScratch(const Index mesh) const { return mUpdateScratch[mesh]; }
 
-        /// Reads the compaction answers, once the placement that asked for them has certainly run,
-        /// and makes a tight structure for as many as this placement's budget takes.
+        /// Reads every compaction answer whose placement has certainly run, and makes a tight
+        /// structure for as many of the answered as this placement's budget takes.
         ///
         /// The set it returns names the meshes whose structures moved: every row placing one names
         /// an address that is no longer there, and the caller writes those rows again. Empty where
@@ -106,12 +106,11 @@ namespace Rtx
         /// placement. So this falls to nothing over the placements after an arrival, while
         /// `getBytes` falls by what it named.
         ///
-        /// **The answer to the last question asked, and not a question of its own.** The queries
-        /// are read where `prepareCompaction` reads them, a placement after the one that wrote them
-        /// — asking here instead means `VK_QUERY_RESULT_WAIT_BIT`, which stands the CPU still until
-        /// the builds this frame recorded have run. That is the frame a cell arrives in, and it is
-        /// the one frame that can least afford it: measured at 3.5 ms an arrival, half of what the
-        /// hand-over cost. Nought until the answers land, which is the placement after a build.
+        /// **The answers already read, and not a question of its own.** The queries are read where
+        /// `prepareCompaction` reads them, `mSlots` placements after the one that wrote them — asking
+        /// here instead means `VK_QUERY_RESULT_WAIT_BIT`, which stands the CPU still until the builds
+        /// this frame recorded have run. That is the frame a cell arrives in, and it is the one frame
+        /// that can least afford it: measured at 3.5 ms an arrival, half of what the hand-over cost.
         VkDeviceSize getCompactableBytes() const { return mCompactableTight; }
 
         /// What those same structures occupy now. The pair says what compaction has left to give
@@ -119,11 +118,85 @@ namespace Rtx
         VkDeviceSize getCompactableNowBytes() const { return mCompactableNow; }
 
     private:
-        /// No placement, which is what `mQueriedAt` holds while nothing has been asked.
-        static constexpr std::uint64_t sNoPlacement = ~std::uint64_t{ 0 };
+        /// What the compaction knows about the structure in a slot.
+        ///
+        /// **A state per slot and a question per structure, asked once.** This used to ask about
+        /// every loose structure the scene held at every build and read the answers only when no
+        /// build followed within `mSlots` placements — so on a route that builds on every frame the
+        /// answers were never read, nothing was ever copied tight, and each build asked the device
+        /// about thousands of structures over again: eight to thirteen milliseconds of device time
+        /// on an arrival frame, in front of the trace, for two structures actually built.
+        enum class Tightness : std::uint8_t
+        {
+            /// No structure, or one that refits and so keeps its slack.
+            None,
 
-        /// Writes what a tight copy of each structure the last build made would come to.
-        void askWhatCompactionWouldSave(VkCommandBuffer commands);
+            /// Built loose and not yet asked about.
+            Loose,
+
+            /// Its question is in a batch the queue may not have reached.
+            Asked,
+
+            /// The driver's answer is in `mTightSize`, and the copy is owed.
+            Answered,
+
+            /// Copied tight, or no smaller tight: nothing more to do.
+            Tight,
+        };
+
+        /// One question recorded, in the order they were, so the ones ready to read are a prefix.
+        struct Ask
+        {
+            Index mSlot = sNoIndex;
+            std::uint64_t mAt = 0;
+        };
+
+        /// A list consumed from the front in the order it was filled.
+        ///
+        /// **Emptied once it is drained and never before**, so a route allocates for it only while
+        /// it grows, and what is left in it is never moved.
+        template <class T>
+        struct Backlog
+        {
+            std::vector<T> mItems;
+            std::size_t mRead = 0;
+
+            std::size_t size() const { return mItems.size() - mRead; }
+            bool empty() const { return size() == 0; }
+            const T& at(std::size_t offset) const { return mItems[mRead + offset]; }
+            void push(const T& item) { mItems.push_back(item); }
+            void pop(std::size_t count) { mRead += count; }
+
+            /// Lets go of what was consumed, where everything was.
+            void settle()
+            {
+                if (mRead == mItems.size())
+                {
+                    mItems.clear();
+                    mRead = 0;
+                }
+            }
+        };
+
+        /// Records the compaction question for every loose structure not yet asked about.
+        void askWhatCompactionWouldSave(VkCommandBuffer commands, Graveyard& graveyard);
+
+        /// Records the question for the run of consecutive slots gathered in `mAskScratch`, which
+        /// starts at `first`, and empties it. Nothing where nothing was gathered.
+        void askRun(VkCommandBuffer commands, std::uint32_t first);
+
+        /// Reads every answer whose placement has certainly run.
+        void readAnswers();
+
+        /// Whether `ask` is still the question its slot is waiting on: a slot built again since is
+        /// waiting on a later one.
+        bool isOutstanding(const Ask& ask) const
+        {
+            return mTightness[ask.mSlot] == Tightness::Asked && mAskedAt[ask.mSlot] == ask.mAt;
+        }
+
+        /// Drops what the compaction knew about `slot`, ahead of its structure going.
+        void forget(Index slot);
 
         const Device& mDevice;
 
@@ -163,42 +236,36 @@ namespace Rtx
         /// at nought bytes — a mesh with no triangles is described by nobody and built by nobody.
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mLiveBuilds;
 
-        /// One query per compactable structure — every built mesh that does not refit — holding
-        /// what a tight copy of it would come to.
-        ///
-        /// Made again when the scene outgrows it, which loses what it held: a figure is a figure
-        /// about the build that wrote it.
-        Owned<VkQueryPool, vkDestroyQueryPool> mCompactable;
-
-        /// How many queries the pool holds, and how many the last build wrote. The first only grows.
-        std::uint32_t mCompactablePool = 0;
-        std::uint32_t mCompactableCount = 0;
-
-        /// What the structures the last question named occupy as they stand, so the pair the report
-        /// prints is a saving rather than a number on its own.
-        VkDeviceSize mCompactableNow = 0;
-
-        /// What those same structures would come to tight, summed as the answers are read.
-        VkDeviceSize mCompactableTight = 0;
-
         /// What each mesh's structure was created at, by slot.
         std::vector<VkDeviceSize> mBuiltSize;
 
-        /// Refilled per build, so the walk that gathers them allocates nothing.
-        std::vector<VkAccelerationStructureKHR> mCompactableHandles;
+        /// Per slot: where its structure stands with the compaction, the placement count when its
+        /// question was recorded — what `readAnswers` reads it against — and what the driver said a
+        /// tight copy would come to, once answered.
+        std::vector<Tightness> mTightness;
+        std::vector<std::uint64_t> mAskedAt;
+        std::vector<VkDeviceSize> mTightSize;
 
-        /// The mesh each of those belongs to. Beside the handles because the pool is packed over
-        /// what is compactable, so a query's index is not a mesh slot.
-        std::vector<Index> mCompactableSlots;
+        /// One query per slot, grown with the mesh table.
+        ///
+        /// **Indexed by slot, so a question needs no bookkeeping of where its answer went.** The
+        /// pool it outgrows is buried and not destroyed — a batch in flight may still be writing into
+        /// it — and whoever was asked through it is asked again through the new one.
+        Owned<VkQueryPool, vkDestroyQueryPool> mCompactable;
+        std::uint32_t mCompactablePool = 0;
 
-        /// What the driver said each would come to, and how far through them the copies have got.
-        /// Empty where nothing is outstanding.
-        std::vector<VkDeviceSize> mCompactedSizes;
-        std::size_t mCompactionAt = 0;
+        /// The questions outstanding, oldest first, and the slots answered and not yet copied.
+        Backlog<Ask> mAsked;
+        Backlog<Index> mAnswered;
 
-        /// Whether each mesh's structure has already been copied tight, so the next build's question
-        /// passes over it and nothing is copied twice. Cleared where a slot is built again.
-        std::vector<std::uint8_t> mCompacted;
+        /// One run of consecutive slots' handles, and one run's answers. Refilled per run.
+        std::vector<VkAccelerationStructureKHR> mAskScratch;
+        std::vector<VkDeviceSize> mReadScratch;
+
+        /// What the answered structures occupy as they stand, and what they would come to tight,
+        /// so the pair the report prints is a saving rather than a number on its own.
+        VkDeviceSize mCompactableNow = 0;
+        VkDeviceSize mCompactableTight = 0;
 
         /// What this placement copies, refilled each time. Kept so a compaction allocates nothing.
         std::vector<VkCopyAccelerationStructureInfoKHR> mCompactionCopies;
@@ -206,16 +273,13 @@ namespace Rtx
         /// The meshes those copies moved, for the caller's walk over the rows placing them.
         SlotSet mMovedMeshes;
 
-        /// How many placements this store has been through, and which one asked the compaction
-        /// questions — `sNoPlacement` where none are outstanding.
+        /// How many placements this store has been through.
         ///
         /// **What stands in for a fence.** The ring waits for the frame `mSlots` back before it
-        /// records this one, so a placement that far behind has finished on the queue and its
-        /// answers are there to be read. Asking with `WAIT_BIT` instead would stall the frame a
-        /// cell arrives in, which is the one frame that can least afford it.
+        /// records this one, so a placement that far behind has finished on the queue and the
+        /// answers it carried are there to be read. Asking with `WAIT_BIT` instead would stall the
+        /// frame a cell arrives in, which is the one frame that can least afford it.
         std::uint64_t mPlacements = 0;
-        std::uint64_t mQueriedAt = sNoPlacement;
-
         std::uint32_t mSlots = 1;
     };
 }

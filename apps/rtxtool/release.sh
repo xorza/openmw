@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Builds optimised and opens the harness on the ship at Seyda Neen, with no validation layers. Its
-# own build directory, so it does not fight debug.sh over one set of objects. Extra arguments are
-# passed to the tool: `release.sh --view=balmora`.
-#
-# `release.sh build` only builds and `release.sh bench` measures, which is what an optimised build
-# with no layers in it is for. `profile.sh` is where the measurement turns into an explanation.
+# Builds optimised, with no validation layers, in its own build directory so it does not fight
+# debug.sh over one set of objects. With no argument it stops at the binary. With a verb it runs the
+# harness on it: `release.sh bench` measures, which is what an optimised build with no layers in it
+# is for, and `release.sh view --view=balmora` opens the window. `profile.sh` is where the
+# measurement turns into an explanation.
 #
 # **Every verb drives a real game**, so there is one binary and one bench: `bench` stands at each
 # place of a suite and measures the frames a player would have seen.
@@ -38,11 +37,17 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold
 fi
 
-# `release.sh build` stops at the binary. That is what `profile.sh` calls: the flags above and the
-# configure line under them are this script's, and perf has to read the binary they produced rather
-# than one built beside it.
-if [ "${1-}" = build ]; then
+# **No argument, or `build`, stops at the binary.** `profile.sh` calls it that way: the flags above
+# and the configure line under them are this script's, and perf has to read the binary they
+# produced rather than one built beside it. A run needs a verb named on the command line: the
+# tool's own default is `view`, and a game window is not something a build should open on its own.
+if [ $# -eq 0 ] || [ "${1}" = build ]; then
     exec cmake --build "$build" -j32 --target openmw-rtxtool
+fi
+
+if [[ "${1}" == -* ]]; then
+    echo "release.sh: name a verb before the switches — \`release.sh view $*\`" >&2
+    exit 2
 fi
 
 cmake --build "$build" -j32 --target openmw-rtxtool
@@ -50,11 +55,8 @@ cmake --build "$build" -j32 --target openmw-rtxtool
 # **The verb stays first.** `dispatch` reads it off argv[1] and takes a leading dash to mean nobody
 # named one, so appending it after the switches below silently ran `view` instead — `release.sh
 # bench` opened a window and profiled nothing.
-verb=()
-if [ $# -gt 0 ] && [[ "${1}" != -* ]]; then
-    verb=("$1")
-    shift
-fi
+verb="$1"
+shift
 
 cd "$build"
-exec ./openmw-rtxtool "${verb[@]}" --validation=false "$@"
+exec ./openmw-rtxtool "$verb" --validation=false "$@"

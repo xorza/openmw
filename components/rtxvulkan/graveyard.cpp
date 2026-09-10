@@ -53,6 +53,12 @@ namespace Rtx
             mPools.push_back(pool);
     }
 
+    void Graveyard::bury(VkQueryPool pool)
+    {
+        if (pool != VK_NULL_HANDLE)
+            mQueryPools.push_back(pool);
+    }
+
     void Graveyard::bury(StructureStorage& storage, const StructureRoom& room)
     {
         if (!room.empty())
@@ -84,10 +90,13 @@ namespace Rtx
             room.mStorage->give(room.mRoom);
         for (const VkDescriptorPool pool : mPools)
             vkDestroyDescriptorPool(mDevice.getHandle(), pool, nullptr);
+        for (const VkQueryPool pool : mQueryPools)
+            vkDestroyQueryPool(mDevice.getHandle(), pool, nullptr);
 
         mStructures.clear();
         mRooms.clear();
         mPools.clear();
+        mQueryPools.clear();
         mBuffers.clear();
         mTextures.clear();
         mImages.clear();

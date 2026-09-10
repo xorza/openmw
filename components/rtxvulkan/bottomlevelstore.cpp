@@ -57,6 +57,7 @@ namespace Rtx
             if (mesh >= mStructures.size())
                 continue;
 
+            forget(mesh);
             graveyard.bury(mStructures[mesh]);
             graveyard.bury(mStorage, mRooms[mesh]);
 
@@ -84,7 +85,9 @@ namespace Rtx
         mUpdateScratch.resize(held, 0);
         mUpdatable.resize(held, 0);
         mBuiltSize.resize(held, 0);
-        mCompacted.resize(held, 0);
+        mTightness.resize(held, Tightness::None);
+        mAskedAt.resize(held, 0);
+        mTightSize.resize(held, 0);
 
         mBuild.sizeTo(meshes.size());
         mLiveBuilds.clear();
@@ -161,6 +164,7 @@ namespace Rtx
             // two can be the same run.
             if (mStructures[slot] != VK_NULL_HANDLE)
             {
+                forget(slot);
                 graveyard.bury(mStructures[slot]);
                 graveyard.bury(mStorage, mRooms[slot]);
                 mStructures[slot] = VK_NULL_HANDLE;
@@ -188,9 +192,6 @@ namespace Rtx
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
             // thousands of static meshes around them do not.
             mUpdatable[slot] = mesh.mDeform != Deform::None ? 1 : 0;
-
-            // What is built here is built loose, whatever stood in the slot before was.
-            mCompacted[slot] = 0;
 
             // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
             // the structure, which is the whole reason nothing here binds a vertex buffer.
@@ -292,6 +293,10 @@ namespace Rtx
             // than the meshes this call happened to build.
             mBuiltSize[slot] = mBuildSizes[at];
 
+            // **Built loose whatever stood in the slot before**, and a mesh that refits keeps its
+            // slack: a refit writes back into it.
+            mTightness[slot] = mUpdatable[slot] != 0 ? Tightness::None : Tightness::Loose;
+
             mLiveBuilds.push_back(mBuild.mBuilds[at]);
             mBuild.mRangePointers.push_back(&mBuild.mRanges[at]);
         }
@@ -301,57 +306,35 @@ namespace Rtx
             commands, static_cast<std::uint32_t>(mLiveBuilds.size()), mLiveBuilds.data(), mBuild.mRangePointers.data());
         barrierAfterBuild(commands);
 
-        askWhatCompactionWouldSave(commands);
+        askWhatCompactionWouldSave(commands, graveyard);
 
         batch.keep(std::move(scratch));
     }
 
-    void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands)
+    void BottomLevelStore::forget(const Index slot)
     {
-        // **Every structure the scene holds, and not the ones this build made.** A route builds at
-        // every crossing, so a figure about the last build is a figure about whatever the last
-        // crossing happened to bring — nought, where it brought only actors. Asking about a
-        // structure built earlier costs the query and nothing else.
-        //
-        // Only the ones built to allow it, which is every one that does not refit: a mesh that
-        // deforms keeps its slack, because a refit writes back into it. And only the ones still
-        // loose: a structure already copied tight would answer with its own size and be copied
-        // again for nothing, so what the pair reports is what is left to save rather than what was
-        // saved once.
-        // **What is outstanding is dropped, not carried.** The handles and slots below are refilled,
-        // so an answer from the round before would be read against another structure's slot — and a
-        // tight size that belongs to a different mesh is a destination too small for the copy. What
-        // that round had not reached is still loose, so this question asks about it again.
-        mCompactedSizes.clear();
-        mCompactionAt = 0;
-
-        mCompactableHandles.clear();
-        mCompactableSlots.clear();
-        mCompactableNow = 0;
-        mCompactableTight = 0;
-        for (std::size_t slot = 0; slot < mStructures.size(); ++slot)
+        if (mTightness[slot] == Tightness::Answered)
         {
-            if (mStructures[slot] == VK_NULL_HANDLE || mUpdatable[slot] != 0 || mCompacted[slot] != 0)
-                continue;
-
-            mCompactableHandles.push_back(mStructures[slot]);
-            mCompactableSlots.push_back(static_cast<Index>(slot));
-            mCompactableNow += mBuiltSize[slot];
+            mCompactableNow -= mBuiltSize[slot];
+            mCompactableTight -= mTightSize[slot];
         }
 
-        mCompactableCount = 0;
-        mQueriedAt = sNoPlacement;
+        mTightness[slot] = Tightness::None;
+    }
 
-        if (mCompactableHandles.empty())
-            return;
-
-        const auto wanted = static_cast<std::uint32_t>(mCompactableHandles.size());
-        if (wanted > mCompactablePool)
+    void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands, Graveyard& graveyard)
+    {
+        const auto held = static_cast<std::uint32_t>(mStructures.size());
+        if (held > mCompactablePool)
         {
-            // **Destroyed rather than buried, because nothing is in flight here.** Both callers
-            // drain the frames before they build — `setScene` waits the device idle and
-            // `extendScene` finishes the ring — so a pool this replaces is named by no command
-            // buffer the queue has yet to reach.
+            // Twice what it held, so a route's arrivals make a pool a logarithmic number of times
+            // rather than one per cell.
+            const std::uint32_t wanted = std::max(held, 2 * mCompactablePool);
+
+            // The pool this replaces may be named by a batch the queue has not reached, and every
+            // answer it was to carry is lost with it: whoever was asked through it is asked again
+            // through the new one, below.
+            graveyard.bury(mCompactable.release());
 
             const VkQueryPoolCreateInfo create{
                 .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
@@ -360,18 +343,112 @@ namespace Rtx
             };
             checkVk(vkCreateQueryPool(mDevice.getHandle(), &create, nullptr, mCompactable.put(mDevice.getHandle())),
                 "vkCreateQueryPool");
-
             mCompactablePool = wanted;
+
+            for (Tightness& tightness : mTightness)
+                if (tightness == Tightness::Asked)
+                    tightness = Tightness::Loose;
         }
 
-        vkCmdResetQueryPool(commands, mCompactable.get(), 0, mCompactablePool);
-        mDevice.getFunctions().mCmdWriteAccelerationStructuresProperties(commands, wanted, mCompactableHandles.data(),
-            VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, mCompactable.get(), 0);
+        // **One reset and one write per run of consecutive slots**, which is what a cell's
+        // arrivals are: the scene hands out its slots in order. Each query is reset before it is
+        // written because the slot may have been asked about before, for a structure that has
+        // since gone.
+        std::uint32_t first = 0;
+        mAskScratch.clear();
+        for (std::uint32_t slot = 0; slot < held; ++slot)
+        {
+            if (mTightness[slot] != Tightness::Loose)
+            {
+                askRun(commands, first);
+                continue;
+            }
 
-        mCompactableCount = wanted;
+            if (mAskScratch.empty())
+                first = slot;
+            mAskScratch.push_back(mStructures[slot]);
 
-        // What says the answers are readable. `prepareCompaction` gives the rule.
-        mQueriedAt = mPlacements;
+            mTightness[slot] = Tightness::Asked;
+            mAskedAt[slot] = mPlacements;
+            mAsked.push(Ask{ .mSlot = static_cast<Index>(slot), .mAt = mPlacements });
+        }
+        askRun(commands, first);
+    }
+
+    void BottomLevelStore::askRun(const VkCommandBuffer commands, const std::uint32_t first)
+    {
+        if (mAskScratch.empty())
+            return;
+
+        const auto count = static_cast<std::uint32_t>(mAskScratch.size());
+        vkCmdResetQueryPool(commands, mCompactable.get(), first, count);
+        mDevice.getFunctions().mCmdWriteAccelerationStructuresProperties(commands, count, mAskScratch.data(),
+            VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, mCompactable.get(), first);
+        mAskScratch.clear();
+    }
+
+    void BottomLevelStore::readAnswers()
+    {
+        while (!mAsked.empty())
+        {
+            const Ask& oldest = mAsked.at(0);
+
+            // **Read once the placement that recorded the question has certainly run.** The ring
+            // waits for the frame `mSlots` back before it records this one, so a placement one
+            // further behind than the submit that carried the question has finished on the queue.
+            // That is the fence this would otherwise have to keep, and `WAIT_BIT` in its place would
+            // stall the frame a cell arrives in — the one frame that can least afford it. The
+            // questions are in the order they were asked, so what is ready is a prefix.
+            if (mPlacements <= oldest.mAt + mSlots)
+                break;
+
+            if (!isOutstanding(oldest))
+            {
+                mAsked.pop(1);
+                continue;
+            }
+
+            // The run of consecutive slots asked together, read as one range. Cut where a slot was
+            // asked again since, whose query a later batch may still be writing.
+            std::size_t count = 1;
+            while (count < mAsked.size() && mAsked.at(count).mAt == oldest.mAt
+                && mAsked.at(count).mSlot == mAsked.at(count - 1).mSlot + 1 && isOutstanding(mAsked.at(count)))
+                ++count;
+
+            mReadScratch.resize(count);
+            const VkResult read = vkGetQueryPoolResults(mDevice.getHandle(), mCompactable.get(), oldest.mSlot,
+                static_cast<std::uint32_t>(count), count * sizeof(VkDeviceSize), mReadScratch.data(),
+                sizeof(VkDeviceSize), VK_QUERY_RESULT_64_BIT);
+
+            // Asked again next placement where the answers are simply not there yet.
+            if (read == VK_NOT_READY)
+                break;
+
+            for (std::size_t at = 0; at < count; ++at)
+            {
+                const Index slot = mAsked.at(at).mSlot;
+
+                // A driver that refuses outright leaves its structures as they were built, and so
+                // does one that says a tight copy would be no smaller: the copy would spend a room
+                // and a command to change nothing.
+                const VkDeviceSize tight = read == VK_SUCCESS ? mReadScratch[at] : 0;
+                if (tight == 0 || tight >= mBuiltSize[slot])
+                {
+                    mTightness[slot] = Tightness::Tight;
+                    continue;
+                }
+
+                mTightness[slot] = Tightness::Answered;
+                mTightSize[slot] = tight;
+                mCompactableNow += mBuiltSize[slot];
+                mCompactableTight += tight;
+                mAnswered.push(slot);
+            }
+
+            mAsked.pop(count);
+        }
+
+        mAsked.settle();
     }
 
     const SlotSet& BottomLevelStore::prepareCompaction(Graveyard& graveyard)
@@ -381,64 +458,23 @@ namespace Rtx
         mCompactionCopies.clear();
         mMovedMeshes.clear();
 
-        // **Read once the placement that recorded the questions has certainly run.** The ring waits
-        // for the frame `mSlots` back before it records this one, so a placement one further behind
-        // than the submit that carried the questions has finished on the queue. That is the fence
-        // this would otherwise have to keep, and `WAIT_BIT` in its place would stall the frame a
-        // cell arrives in — the one frame that can least afford it.
-        if (mQueriedAt != sNoPlacement && mPlacements > mQueriedAt + mSlots)
-        {
-            assert(mCompactableCount > 0 && "a question outstanding with no queries in it");
-
-            mCompactedSizes.resize(mCompactableCount);
-            const VkResult read = vkGetQueryPoolResults(mDevice.getHandle(), mCompactable.get(), 0, mCompactableCount,
-                mCompactedSizes.size() * sizeof(VkDeviceSize), mCompactedSizes.data(), sizeof(VkDeviceSize),
-                VK_QUERY_RESULT_64_BIT);
-
-            // Asked again next placement where the answers are simply not there yet. A driver that
-            // refuses outright leaves its structures as they were built, and the next build asks.
-            if (read == VK_NOT_READY)
-                mCompactedSizes.clear();
-            else
-            {
-                mQueriedAt = sNoPlacement;
-                mCompactionAt = 0;
-                if (read != VK_SUCCESS)
-                    mCompactedSizes.clear();
-
-                // Summed where the answers arrive, because this is the only place they are read.
-                // `getCompactableBytes` says what asking a second time would cost.
-                VkDeviceSize tight = 0;
-                for (const VkDeviceSize size : mCompactedSizes)
-                    tight += size;
-
-                mCompactableTight = tight;
-            }
-        }
+        readAnswers();
 
         const DeviceFunctions& functions = mDevice.getFunctions();
 
         VkDeviceSize taken = 0;
-        while (mCompactionAt < mCompactedSizes.size() && taken < sCompactionPerPlacement)
+        while (!mAnswered.empty() && taken < sCompactionPerPlacement)
         {
-            const std::size_t at = mCompactionAt++;
-            const Index slot = mCompactableSlots[at];
-            const VkDeviceSize tight = mCompactedSizes[at];
+            const Index slot = mAnswered.at(0);
+            mAnswered.pop(1);
 
-            // **The slot may have been handed out again since the question was asked.** A cell that
-            // left took its meshes with it, and whatever stands here now is not what this answer is
-            // about — the next build asks about that one.
-            if (mStructures[slot] != mCompactableHandles[at])
+            // **The slot may have been handed out again since it answered.** A cell that left took
+            // its meshes with it, and whatever stands here now is not what this answer is about —
+            // its own question is.
+            if (mTightness[slot] != Tightness::Answered)
                 continue;
 
-            // A structure the driver says is no smaller stays where it was built, and is not asked
-            // about again: the copy would spend a room and a command to change nothing.
-            if (tight == 0 || tight >= mBuiltSize[slot])
-            {
-                mCompacted[slot] = 1;
-                continue;
-            }
-
+            const VkDeviceSize tight = mTightSize[slot];
             const StructureRoom room = mStorage.take(mDevice, tight, sCompactionPerPlacement);
             const VkAccelerationStructureCreateInfoKHR create{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
@@ -469,12 +505,12 @@ namespace Rtx
             // The pair the report prints follows the copy, so what it says is what is left to save
             // rather than what was saved once.
             mCompactableNow -= mBuiltSize[slot];
-            mCompactableNow += tight;
+            mCompactableTight -= tight;
 
             mStructures[slot] = made;
             mRooms[slot] = room;
             mBuiltSize[slot] = tight;
-            mCompacted[slot] = 1;
+            mTightness[slot] = Tightness::Tight;
 
             // Asked before the copy has run, which is what makes the top level buildable in this
             // same command buffer: an address belongs to the structure from the moment it is
@@ -488,6 +524,8 @@ namespace Rtx
             mMovedMeshes.addMakingRoom(slot);
             taken += tight;
         }
+
+        mAnswered.settle();
 
         return mMovedMeshes;
     }
