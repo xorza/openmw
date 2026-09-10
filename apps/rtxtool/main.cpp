@@ -42,6 +42,7 @@
 #include "framerequest.hpp"
 #include "hosted.hpp"
 #include "options.hpp"
+#include "ownconfig.hpp"
 #include "parsefloat.hpp"
 #include "validationchoice.hpp"
 #include "verbs.hpp"
@@ -798,7 +799,10 @@ namespace RtxTool
             for (const Verb& verb : sVerbs)
                 out() << std::format("  {:<8} {}\n", verbName(verb.mVerb), verb.mSummary);
 
-            out() << "\nWith no arguments at all: a window on the ship at Seyda Neen, where the game starts.\n\n"
+            out() << "\nWith no arguments at all: a window on the ship at Seyda Neen, where the game starts.\n"
+                     "The player's configuration is read and never written: what the engine saves on its way\n"
+                     "out -- its settings, its log, its key bindings, its Lua storage -- goes to a directory of\n"
+                     "this tool's own under the cache path.\n\n"
                   << options;
         }
 
@@ -839,6 +843,12 @@ namespace RtxTool
             }
 
             Files::ConfigurationManager config;
+
+            // **Before the chain is walked, because this is the directory the engine writes into.**
+            // `adoptConfigDirectory` says why a hosted run has one of its own; the log below lands
+            // there too.
+            adoptConfigDirectory(variables, ownConfigDirectory(config));
+
             config.processPaths(variables, std::filesystem::current_path());
             config.readConfiguration(variables, options.mDescription);
             Debug::setupLogging(config.getLogPath(), applicationName);

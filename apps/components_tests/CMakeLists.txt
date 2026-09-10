@@ -210,6 +210,7 @@ if (OPENMW_RTX)
         rtxbench/scenedigest.cpp
         rtxtool/benchsuite.cpp
         rtxtool/options.cpp
+        rtxtool/ownconfig.cpp
         rtxtool/validationchoice.cpp
         rtxtool/verify.cpp
         rtxtool/viewpoint.cpp

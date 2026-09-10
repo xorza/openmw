@@ -6,6 +6,8 @@ set(RTXTOOL_FILES
     framerequest.hpp
     options.cpp
     options.hpp
+    ownconfig.cpp
+    ownconfig.hpp
     validationchoice.cpp
     validationchoice.hpp
     verbs.cpp
