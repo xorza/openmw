@@ -21,6 +21,8 @@ set(RTXBENCH_FILES
     contactsheet.hpp
     framehashes.cpp
     framehashes.hpp
+    framerate.cpp
+    framerate.hpp
     frametimes.cpp
     frametimes.hpp
     gpuclock.cpp

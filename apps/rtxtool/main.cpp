@@ -652,7 +652,8 @@ namespace RtxTool
         /// **The game and not a camera of this tool's own.** What a window is for is seeing how
         /// something moves and whether an artefact is a still or a shimmer, and both are questions
         /// about the frame a player gets — so the player is who flies it, with their own controls,
-        /// their own collision and their own console.
+        /// their own collision and their own console — in a body with every stat at 255, a Speed
+        /// of 2000, level 255 and a million gold, and the frame rate on the window's title.
         ///
         /// Collision comes off, because a view file's coordinates are where a camera stands rather
         /// than where a body fits.

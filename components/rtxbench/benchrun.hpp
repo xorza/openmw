@@ -219,7 +219,8 @@ namespace Rtx
         /// **What a window is for.** A stop that pins a static camera at a view's coordinates is
         /// taking a picture; one that hands the body back is a session somebody flies, and a view
         /// file's coordinates are where a camera stands rather than where a body fits — so the
-        /// walls come off with it.
+        /// walls come off with it, and the body is given the stats to fly a world with
+        /// (`MWRender::Session::boostPlayer`).
         bool mFreeCamera = false;
     };
 

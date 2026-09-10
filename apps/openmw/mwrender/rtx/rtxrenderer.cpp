@@ -859,12 +859,12 @@ namespace MWRender
         // in between is in it — update, cull, this — which is what a player feels and what the
         // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-        if (mEnteredOnce && result.has_value())
+        if (mEnteredOnce)
         {
             const double frameMs = Rtx::since(mEntered, now);
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
 
-            if (mSession != nullptr)
+            if (mSession != nullptr && result.has_value())
                 mSession->frame(describeRun(), *result, frameMs,
                     Rtx::FrameSpend{
                         .mFinishMs = finishMs,
@@ -880,6 +880,17 @@ namespace MWRender
                         .mUpdateMs = updateMs,
                     },
                     rebuilt);
+
+            // **Every frame and not the ones the device answered for**, because what this reads is
+            // the wall between two traces and the device's answer is not part of it. Once a
+            // second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
+            // then whether anybody can see it, rather than a copy of that being kept here.
+            if (mRate.add(frameMs) && (SDL_GetWindowFlags(mWindow) & SDL_WINDOW_HIDDEN) == 0)
+            {
+                const auto written = std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
+                *written.out = '\0';
+                SDL_SetWindowTitle(mWindow, mTitle.data());
+            }
         }
 
         mEntered = now;

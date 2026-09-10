@@ -203,6 +203,7 @@ if (OPENMW_RTX)
         rtxbench/benchspec.cpp
         rtxbench/contactsheet.cpp
         rtxbench/framehashes.cpp
+        rtxbench/framerate.cpp
         rtxbench/frametimes.cpp
         rtxbench/gpuclock.cpp
         rtxbench/perfcontrol.cpp

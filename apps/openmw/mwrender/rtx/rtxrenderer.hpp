@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +15,7 @@
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/renderprofile.hpp>
+#include <components/rtxbench/framerate.hpp>
 
 #include "../renderer.hpp"
 #include "framecapture.hpp"
@@ -132,9 +134,6 @@ namespace MWRender
         void suspendDraw() override {}
         void resumeDraw() override {}
 
-        /// No OpenGL objects exist to compile over several frames, and `LoadingScreen` already
-        /// reads null as "there is no such thing here".
-
         /// **A present mode, which is what a swapchain calls this.** Off is mailbox rather than
         /// immediate — the newest frame and no tearing — and adaptive is relaxed FIFO. Costs a
         /// swapchain rebuild where it changes anything, so the settings window is the only caller.
@@ -153,7 +152,8 @@ namespace MWRender
         osg::Timer_t getStartTick() const override { return mStartTick; }
 
         /// The OSG stats overlay is the rasterizer's instrumentation and the rasterizer draws it.
-        /// What this renderer has instead is its own frame times and `MWRender::Session`.
+        /// What this renderer has instead is its own frame times, `MWRender::Session`, and the
+        /// frame rate on the window's title.
         void installStatsOverlay(const VFS::Manager& vfs, bool toFile) override {}
         void reportStats(unsigned frameNumber, std::ostream& stream) const override {}
 
@@ -257,6 +257,16 @@ namespace MWRender
         FrameCapture mCapture;
 
         SDL_Window* mWindow = nullptr;
+
+        /// The last second of frames, which is what the title says.
+        ///
+        /// **The title, because this renderer has no overlay.** The rasterizer's F3 page is
+        /// `osgViewer`'s and draws with it; what a window on this path can show without a frame
+        /// of its own is the one line a compositor draws for it.
+        Rtx::FrameRate mRate;
+
+        /// What the window's title is written from, once a second and never allocated.
+        std::array<char, 96> mTitle{};
 
         /// What the stage was handed. Made here because there is no viewer to make them, and held
         /// because the frame is driven from them.

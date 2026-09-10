@@ -100,6 +100,14 @@ namespace MWRender
         /// so nothing reads the report as a pass.
         void abandon(std::string_view why);
 
+        /// Gives the player every attribute and skill at 255, a Speed of 2000, level 255 and a
+        /// million gold, which is what a body somebody flies around a world wants.
+        ///
+        /// **Through the calls the console's `setspeed`, `setlevel` and `additem` make**, so the
+        /// body stands where a player who typed them would. A session is for looking at the world,
+        /// and a body walking at Morrowind's pace crosses a cell in a minute.
+        void boostPlayer();
+
         /// Puts the camera where the player stands, facing the way they face.
         ///
         /// **What a stop that names no camera of its own falls back to**, and what a free-camera

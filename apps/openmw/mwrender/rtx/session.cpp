@@ -12,8 +12,10 @@
 #include <osg/Vec3d>
 
 #include <components/debug/debuglog.hpp>
+#include <components/esm/attr.hpp>
 #include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
+#include <components/esm3/loadskil.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/skylight.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -26,9 +28,15 @@
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/statemanager.hpp"
 #include "../../mwbase/world.hpp"
+#include "../../mwmechanics/creaturestats.hpp"
+#include "../../mwmechanics/npcstats.hpp"
+#include "../../mwmechanics/stat.hpp"
 #include "../../mwworld/cell.hpp"
 #include "../../mwworld/cellstore.hpp"
+#include "../../mwworld/class.hpp"
+#include "../../mwworld/containerstore.hpp"
 #include "../../mwworld/datetimemanager.hpp"
+#include "../../mwworld/esmstore.hpp"
 #include "../../mwworld/globals.hpp"
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
@@ -57,6 +65,19 @@ namespace MWRender
         /// reading `pos` and `look` in `views.cfg` wants to be able to tell where they point, and a
         /// cell is eight thousand units across.
         constexpr double sLookAhead = 1000.0;
+
+        /// What every attribute and skill of a flown body is set to. Past the hundred the game
+        /// levels toward, so nothing a stat gates is out of reach.
+        constexpr float sBoostedStat = 255.0f;
+
+        /// Speed alone, which is the one attribute a session feels. `Npc::getWalkSpeed` reads it
+        /// as `fMinWalkSpeed` plus a hundredth of the walk range per point, which under vanilla's
+        /// settings is a hundred units a second plus one per point: a walk of 2100, and a run of
+        /// 4.3 times that with Athletics at the figure above.
+        constexpr float sBoostedSpeed = 2000.0f;
+
+        constexpr int sBoostedLevel = 255;
+        constexpr int sBoostedGold = 10'000'000;
     }
 
     std::optional<Rtx::SessionRequest> readSessionSetting()
@@ -232,6 +253,31 @@ namespace MWRender
         camera->setYaw(std::atan2(-along.x(), along.y()), true);
     }
 
+    void Session::boostPlayer()
+    {
+        const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
+        const MWWorld::ESMStore& store = *MWBase::Environment::get().getESMStore();
+        MWMechanics::CreatureStats& creature = player.getClass().getCreatureStats(player);
+        MWMechanics::NpcStats& npc = player.getClass().getNpcStats(player);
+
+        // **The base, with the modifier and the damage cleared**, which is what `setattribute` does
+        // and what leaves a fortify or a drain from the start of the game out of the figure.
+        for (const ESM::Attribute& attribute : store.get<ESM::Attribute>())
+        {
+            MWMechanics::AttributeValue value = creature.getAttribute(attribute.mId);
+            value.setBase(attribute.mId == ESM::Attribute::Speed ? sBoostedSpeed : sBoostedStat, true);
+            creature.setAttribute(attribute.mId, value);
+        }
+
+        for (const ESM::Skill& skill : store.get<ESM::Skill>())
+            npc.getSkill(skill.mId).setBase(sBoostedStat, true);
+
+        creature.setLevel(sBoostedLevel);
+
+        // Weightless, so no amount of it encumbers the body it is given to.
+        player.getClass().getContainerStore(player).add(MWWorld::ContainerStore::sGoldId, sBoostedGold);
+    }
+
     void Session::standWhereThePlayerIs()
     {
         // The reference lives in the cell store rather than in the `Ptr`, which is what the named
@@ -351,6 +397,8 @@ namespace MWRender
             // `World::adjustPosition`, which drops the player onto the ground — so a camera placed
             // from a position read above this stands where nobody ended up.
             standWhereThePlayerIs();
+
+            boostPlayer();
         }
         else if (stop.mStand.mEye.has_value())
         {
