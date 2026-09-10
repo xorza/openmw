@@ -66,9 +66,9 @@ namespace MWRender
         /// Hands the scene to `renderer`, building only what has to be built.
         Rtx::SceneUpload hand(Rtx::SceneSink& renderer, Resource::ImageManager& images);
 
-        /// Whether each hand-over waits for the composites it queued, and each walk for the cells
-        /// the ring lacks. `Rtx::CompositeQueue::setSettled` says why a run would, and what waiting
-        /// costs it.
+        /// Whether each hand-over waits for the composites it collects, and each walk for the one
+        /// cell it adopts. `Rtx::CompositeQueue::setSettled` and `Rtx::CellRing::setSettled` say why
+        /// a run would, and what waiting costs it.
         void setSettled(bool settled)
         {
             mComposites.setSettled(settled);

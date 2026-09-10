@@ -107,11 +107,20 @@ namespace Rtx
         /// The frame the next walk is for, so a frame walked twice adopts one cell and not two.
         void setFrame(std::size_t frame);
 
-        /// Whether a walk waits for every cell of the prepared ring before it places any.
+        /// Whether a walk waits for the cell it is about to adopt.
         ///
         /// **Which frame a cell is adopted on is otherwise the thread's answer**, and a run whose
-        /// pictures are compared with another's cannot have that. `CompositeQueue::setSettled` is
-        /// the same rule for the ground's composites.
+        /// pictures are compared with another's cannot have that. What makes it the schedule's
+        /// answer is the order rather than the wait: one reader takes the cells `ask` sorted and
+        /// hands them back in that order, so the cell a frame adopts is the next of that order
+        /// whether or not the walk had to wait for it.
+        ///
+        /// **One cell a frame either way, which is the rule a settled walk used to break.** Waiting
+        /// for the whole band and then adopting all of it put a region's arrivals on one frame:
+        /// measured on `island-crossing`, `walk ms` read 59.6 ms worst against 5.5 ms with this off,
+        /// and a route that crosses nineteen times paid it nineteen times.
+        ///
+        /// `CompositeQueue::setSettled` is the same rule for the ground's composites.
         void setSettled(bool settled);
 
         /// What the game says of one reference, which the content files cannot: a script has
@@ -261,10 +270,13 @@ namespace Rtx
         /// Hands the supply the cells the prepared ring lacks, nearest first.
         void ask(const osg::Vec2i& eye, int band);
 
-        /// Blocks until every cell the prepared ring lacks has been read. See `setSettled`.
-        void waitForWanted(const osg::Vec2i& eye, int band);
+        /// Blocks until the supply has read a cell this walk can adopt. See `setSettled`.
+        ///
+        /// **Only where the last `ask` named something**, because nothing is coming otherwise and
+        /// the reader would never wake this.
+        void waitForNext();
 
-        /// Adopts what the supply read: one cell, or every cell where the run is settled.
+        /// Adopts the next cell the supply read, which is one cell and one frame's worth.
         void adoptPending();
 
         void adopt(PreparedCell& cell);

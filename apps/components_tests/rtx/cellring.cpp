@@ -225,6 +225,31 @@ namespace Rtx::Testing
                 return stats;
             }
 
+            /// Walks until the ring has adopted every cell the band wants, and answers what those
+            /// walks came to.
+            ///
+            /// **A walk adopts one cell, settled or not**, so a band of `sPreparedCells` is that
+            /// many walks. `CellRing::setSettled` says why the settled rule is the wait and not the
+            /// count.
+            ///
+            /// What a walk added is summed, and what stands is the last walk's: a sum of the
+            /// standing counts would count the whole ring once for every walk it took to build.
+            ExtractionStats fill()
+            {
+                ExtractionStats total;
+                ExtractionStats last;
+                do
+                {
+                    last = walk(mWalked++);
+                    total += last;
+                } while (last.mMeshesAdded > 0);
+
+                total.mDistantStatics = last.mDistantStatics;
+                total.mGroundCells = last.mGroundCells;
+                total.mInstances = last.mInstances;
+                return total;
+            }
+
             std::uint32_t placed() const { return mScene.getTables().mPlacements.getPlacedCount(); }
 
             /// The placement standing the ground of `cell`, which is the one translated to the
@@ -240,6 +265,9 @@ namespace Rtx::Testing
 
                 return std::nullopt;
             }
+
+            /// The frame the next walk is for, so every walk of a test is a frame of its own.
+            std::size_t mWalked = 1;
 
             WorldAround mAround;
 
@@ -284,7 +312,7 @@ namespace Rtx::Testing
 
             start();
 
-            const ExtractionStats first = walk(1);
+            const ExtractionStats first = fill();
             EXPECT_EQ(first.mDistantStatics, 3u)
                 << "two trees and a fern; the active grid's is the game's and the far one is past the reach";
             EXPECT_EQ(first.mGroundCells, sPlacedCells) << "nine by nine cells of ground, the active grid's included";
@@ -355,7 +383,7 @@ namespace Rtx::Testing
             // keeps: what the ring holds is placed, stamped and counted out of buffers it already
             // grew.
             const std::size_t before = Testing::getAllocationCount();
-            const ExtractionStats again = walk(1);
+            const ExtractionStats again = walk(mWalked++);
             const std::size_t spent = Testing::getAllocationCount() - before;
             EXPECT_EQ(spent, 0u) << "a steady walk of the ring reached the heap " << spent << " times";
 
@@ -381,23 +409,26 @@ namespace Rtx::Testing
             // on, on the same row, the two trees inside the grid are the game's, and the tree at
             // the eye's own cell — outside the grid now — is the ring's.
             around(osg::Vec4i(2, -1, 5, 2));
-            walk(4);
+            walk(mWalked++);
             EXPECT_EQ(placed(), 2u + sPlacedCells) << "the fern and the tree at home stand outside the grid";
             EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[far->mMaterial].mFlatten);
             EXPECT_TRUE(mExtractor.retire().empty());
 
-            // The eye leaves for a cell far away: the ring drops what it held, and the sweep after
-            // the walk takes the meshes nothing stands on any more — the two models' and the
-            // ground of every cell that left the band.
+            // The eye leaves for a cell far away. **The band that left goes on the first walk after
+            // the move and the band that arrives comes a cell a walk after it**, so the sweep that
+            // follows that one walk is where the meshes nothing stands on go — the two models' and
+            // the ground of every cell that left.
             around(osg::Vec3f(20.5f * sCellSize, 20.5f * sCellSize, 0.0f), osg::Vec4i(19, 19, 22, 22));
-            walk(5);
-            EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
-            EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "eleven by eleven cells prepared";
+            walk(mWalked++);
 
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 2u + sPreparedCells);
             EXPECT_EQ(went.mMaterials, 2u + sPreparedCells);
             EXPECT_EQ(mRing.find(*mContent.mBark), nullptr) << "no model the ring knows of names it";
+
+            fill();
+            EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
+            EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "eleven by eleven cells prepared";
             EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), sPreparedCells);
         }
 
@@ -421,12 +452,12 @@ namespace Rtx::Testing
             mRing.setMinSize(0.01f);
             start();
 
-            EXPECT_EQ(walk(1).mDistantStatics, 1u) << "the tree clears 204.8 and the fern does not";
+            EXPECT_EQ(fill().mDistantStatics, 1u) << "the tree clears 204.8 and the fern does not";
 
             // Nearer, the fern clears too: at a hundredth of 8192 the threshold is 81.92, and the
             // fern's 28.28 still does not — so the threshold is lowered instead.
             mRing.setMinSize(0.001f);
-            EXPECT_EQ(walk(2).mDistantStatics, 2u) << "at 20.48 both clear";
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 2u) << "at 20.48 both clear";
         }
 
         /// A model the frame lets go of and a delivered cell names again inside the same settled
@@ -451,15 +482,15 @@ namespace Rtx::Testing
             mStorage.mPlaced = { near, far };
             start();
 
-            EXPECT_EQ(walk(1).mDistantStatics, 1u) << "the near tree, on the one mesh the model has";
+            EXPECT_EQ(fill().mDistantStatics, 1u) << "the near tree, on the one mesh the model has";
             const std::size_t meshes = mScene.getTables().mMeshes.getLiveCount();
 
             // The eye leaves for a cell from which the near tree's cell is out of the band and the
-            // far tree's is in it: one walk lets the model go and takes it up again.
+            // far tree's is in it: the walks that follow let the model go and take it up again.
             around(osg::Vec3f(10.5f * sCellSize, 0.5f * sCellSize, 0.0f), osg::Vec4i(9, -1, 12, 2));
-            EXPECT_EQ(walk(2).mDistantStatics, 0u) << "the far tree stands in the active grid now";
+            EXPECT_EQ(fill().mDistantStatics, 0u) << "the far tree stands in the active grid now";
             around(osg::Vec4i(11, -1, 14, 2));
-            EXPECT_EQ(walk(3).mDistantStatics, 1u) << "and outside it, on the model the ring kept";
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 1u) << "and outside it, on the model the ring kept";
 
             // The sweep takes the ground of the band that left — the old band and the new share
             // the eleven cells of one column — and nothing else: the tree's mesh was stamped
@@ -469,8 +500,8 @@ namespace Rtx::Testing
 
             // Two more walks, so the thread's give-backs of what was returned have run against
             // the reader's own contract — which a model given back while lent breaks loudly.
-            walk(4);
-            walk(5);
+            walk(mWalked++);
+            walk(mWalked++);
             EXPECT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 1u + sPlacedCells);
         }
 
@@ -499,6 +530,32 @@ namespace Rtx::Testing
 
             EXPECT_EQ(statics, 1u);
             EXPECT_LE(mRing.getHeldCellCount(), frame) << "one cell a frame, and a frame walked twice adopts once";
+        }
+
+        /// Settled, a walk adopts the one cell an unsettled walk does and waits for it.
+        ///
+        /// **No sleep anywhere here, and that is the whole claim.** The test above has to wait on
+        /// the wall, because an unsettled walk that finds nothing read adopts nothing. A settled
+        /// walk waits for the cell it is about to adopt, so the count after N walks is exactly N.
+        ///
+        /// **And exactly N and never more**, which is the half that used to be wrong: waiting for
+        /// the whole band and adopting all of it put a hundred and twenty-one cells on one frame.
+        TEST_F(RtxCellRingTest, settledAWalkWaitsForItsOneCellAndTakesNoMore)
+        {
+            start();
+
+            for (std::size_t walked = 1; walked <= 20; ++walked)
+            {
+                walk(mWalked++);
+                EXPECT_EQ(mRing.getHeldCellCount(), walked) << "a settled walk adopts one cell and waits for it";
+            }
+
+            // And a frame walked twice adopts once, which is the rule both ways.
+            const std::size_t held = mRing.getHeldCellCount();
+            const std::size_t frame = mWalked++;
+            walk(frame);
+            walk(frame);
+            EXPECT_EQ(mRing.getHeldCellCount(), held + 1);
         }
     }
 }

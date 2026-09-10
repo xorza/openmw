@@ -5,7 +5,9 @@
 #include <cassert>
 #include <charconv>
 #include <exception>
+#include <memory>
 #include <span>
+#include <thread>
 #include <utility>
 
 #include <components/debug/debuglog.hpp>
@@ -18,6 +20,23 @@ namespace Rtx
 {
     namespace
     {
+        /// How many threads flatten stacks.
+        ///
+        /// **Measured, and it is the sum that decides it.** A bake is 38 ms, of which 98.6% is
+        /// summing the layer stack into 512² texels and 1.2% is decoding the levels it sums — so it
+        /// divides across threads. What stops it dividing is that the sum reads far more than it
+        /// computes: on `one-cell-walk` the same 266 bakes cost 9.0 s of thread time on one thread,
+        /// 11.0 s on four and 13.8 s on eight, and the run's worst frame went 288 ms, 221 ms, then
+        /// back up to 247 ms. Four is where the division still pays for the contention.
+        ///
+        /// **A quarter of the machine and never more than four**, so a smaller one keeps the cores
+        /// the frame, the cell reader and the driver are on.
+        std::size_t bakerCount()
+        {
+            const unsigned int cores = std::thread::hardware_concurrency();
+            return std::clamp<std::size_t>(cores / 4, 1, 4);
+        }
+
         /// The key a chunk's composite is found under.
         ///
         /// **The material's own slot, because one material is one chunk.** The extractor keys a
@@ -40,7 +59,7 @@ namespace Rtx
         gather(scene.getTables(), images);
 
         if (mSettled)
-            finish();
+            waitFor(sCompositesPerFrame);
 
         return collect(scene, sCompositesPerFrame);
     }
@@ -74,8 +93,11 @@ namespace Rtx
                     if (one.mAsked.mMaterial != at)
                         return false;
 
+                    // **Filed rather than dropped**, because a sequence that never arrived would
+                    // stop `collect` at it for the rest of the run. It comes back holding nothing,
+                    // which is what `collect` already does with a bake whose chunk has gone.
                     one.reuse();
-                    mSpare.push_back(std::move(one));
+                    file(Baked{ .mRequest = std::move(one) });
                     return true;
                 });
             }
@@ -94,14 +116,15 @@ namespace Rtx
             }
 
             request.mAsked = wanted;
+            request.mSequence = mNextGiven++;
             request.mLayers.assign(layers.begin(), layers.end());
             request.mImages.reserve(layers.size());
             request.mMaskRuns.reserve(layers.size());
 
             for (const MaterialLayer& layer : layers)
             {
-                // Opened here and not on the baker, so the image manager is only ever asked from
-                // the thread that owns it; the baker reads what the reference keeps alive.
+                // Opened here and not on a baker, so the image manager is only ever asked from the
+                // thread that owns it; a baker reads what the reference keeps alive.
                 request.mImages.push_back(openImage(images, scene.mTextures.getPaths()[layer.mDiffuse]));
 
                 request.mMaskRuns.push_back(
@@ -118,16 +141,48 @@ namespace Rtx
                 mPending.push_back(std::move(request));
             }
 
-            mWorker.start([this](std::stop_token stop) { work(stop); });
+            startBakers();
 
             mWake.notify_one();
         }
     }
 
-    void CompositeQueue::finish()
+    void CompositeQueue::waitFor(const std::size_t limit)
     {
         std::unique_lock<std::mutex> lock(mMutex);
-        mBaked.wait(lock, [&] { return mPending.empty() && mBaking == 0; });
+        mBaked.wait(lock, [&] { return getReady(limit) >= limit || (mPending.empty() && mBaking == 0); });
+    }
+
+    std::size_t CompositeQueue::getReady(const std::size_t limit) const
+    {
+        std::size_t run = 0;
+        while (run < limit && run < mDone.size() && mDone[run].mRequest.mSequence == mNextTake + run)
+            ++run;
+
+        return run;
+    }
+
+    void CompositeQueue::file(Baked&& baked)
+    {
+        const std::uint64_t sequence = baked.mRequest.mSequence;
+        const auto after = std::upper_bound(mDone.begin(), mDone.end(), sequence,
+            [](const std::uint64_t one, const Baked& other) { return one < other.mRequest.mSequence; });
+
+        mDone.insert(after, std::move(baked));
+    }
+
+    void CompositeQueue::startBakers()
+    {
+        if (!mBakers.empty())
+            return;
+
+        const std::size_t count = bakerCount();
+        mBakers.reserve(count);
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            Baker& baker = *mBakers.emplace_back(std::make_unique<Baker>());
+            baker.mWorker.start([this, &baker](std::stop_token stop) { work(baker, stop); });
+        }
     }
 
     std::size_t CompositeQueue::collect(SceneDesc& scene, const std::size_t limit)
@@ -135,10 +190,14 @@ namespace Rtx
         mTaken.clear();
         {
             const std::lock_guard<std::mutex> lock(mMutex);
-            while (mTaken.size() < limit && !mDone.empty())
+
+            // **In sequence and never in whatever order the bakers finished**, which is what makes
+            // the frame a composite lands on the schedule's answer. `setSettled` says why.
+            while (mTaken.size() < limit && !mDone.empty() && mDone.front().mRequest.mSequence == mNextTake)
             {
                 mTaken.push_back(std::move(mDone.front()));
                 mDone.pop_front();
+                ++mNextTake;
             }
         }
 
@@ -203,7 +262,7 @@ namespace Rtx
         return found == mFinished.end() ? nullptr : &found->second;
     }
 
-    void CompositeQueue::work(std::stop_token stop)
+    void CompositeQueue::work(Baker& baker, std::stop_token stop)
     {
         std::unique_lock<std::mutex> lock(mMutex);
         while (mWake.wait(lock, stop, [&] { return !mPending.empty(); }))
@@ -216,16 +275,16 @@ namespace Rtx
             ++mBaking;
             lock.unlock();
 
-            Baked baked = bake(std::move(request));
+            Baked baked = baker.bake(std::move(request));
 
             lock.lock();
             --mBaking;
-            mDone.push_back(std::move(baked));
+            file(std::move(baked));
             mBaked.notify_all();
         }
     }
 
-    CompositeQueue::Baked CompositeQueue::bake(Request&& request)
+    CompositeQueue::Baked CompositeQueue::Baker::bake(Request&& request)
     {
         Baked baked{ .mRequest = std::move(request) };
         const Request& asked = baked.mRequest;

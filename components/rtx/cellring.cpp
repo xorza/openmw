@@ -341,41 +341,24 @@ namespace Rtx
         mSupply.ask(mAsking);
     }
 
-    void CellRing::waitForWanted(const osg::Vec2i& eye, const int band)
+    void CellRing::waitForNext()
     {
-        for (;;)
+        // A cell read under the other answer to the statics switch is discarded rather than made
+        // pending, so a wait that found one has not found what it waited for.
+        while (mPending.empty())
         {
-            takeDone();
-
-            bool lacking = false;
-            for (int x = eye.x() - band; x <= eye.x() + band && !lacking; ++x)
-                for (int y = eye.y() - band; y <= eye.y() + band && !lacking; ++y)
-                    lacking = !holds(osg::Vec2i(x, y)) && !pending(osg::Vec2i(x, y));
-
-            if (!lacking)
-                return;
-
             mSupply.waitForOne();
+            takeDone();
         }
     }
 
     void CellRing::adoptPending()
     {
-        if (mPending.empty())
-            return;
-
-        if (mSettled)
-        {
-            for (PreparedCell* cell : mPending)
-                adopt(*cell);
-            mPending.clear();
-            return;
-        }
-
         // **One cell a frame, and one frame walked twice adopts once.** A cell's meshes are copied
         // into the scene and its structures built by the hand-over that follows; two on one frame
-        // would be the batch behind a threshold this renderer never takes.
-        if (mAdoptedFrame == mFrame)
+        // would be the batch behind a threshold this renderer never takes. A settled walk keeps the
+        // rule and waits for its one cell, which is what `setSettled` says.
+        if (mPending.empty() || mAdoptedFrame == mFrame)
             return;
 
         mAdoptedFrame = mFrame;
@@ -727,8 +710,11 @@ namespace Rtx
 
         ask(eye, band);
 
-        if (mSettled)
-            waitForWanted(eye, band);
+        // **Waited for after the ask that names it and never before**, because what the reader is
+        // about to hand back is what that ask asked for. Nothing was asked for where the band is
+        // whole, and then there is nothing to wait for.
+        if (mSettled && mPending.empty() && !mAsking.mCells.empty())
+            waitForNext();
 
         adoptPending();
         place(eye, reach);

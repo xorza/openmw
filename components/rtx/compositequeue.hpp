@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -35,13 +36,18 @@ namespace Rtx
     /// the rest wait a frame each, shading from their stacks as they did while they baked.
     inline constexpr std::size_t sCompositesPerFrame = 2;
 
-    /// Every distant chunk waiting for its ground to be flattened, and the thread that flattens them.
+    /// Every distant chunk waiting for its ground to be flattened, and the threads that flatten them.
     ///
-    /// **The bake happens on no frame at all.** One costs 28.5 ms and a cell boundary wants
-    /// several; sliced sixteen rows a frame it was a millisecond or two on every frame for twenty
-    /// seconds after a load, and the row that finished one was a spike on top of that. A thread of
-    /// this queue's own takes each stack whole, and what the frame does is hand a stack over and
-    /// take the bytes back — a copy of a few hundred floats each way.
+    /// **The bake happens on no frame at all.** One costs 38 ms and a ring fill wants eighty-five;
+    /// sliced sixteen rows a frame it was a millisecond or two on every frame for twenty seconds
+    /// after a load, and the row that finished one was a spike on top of that. Threads of this
+    /// queue's own take each stack whole, and what the frame does is hand a stack over and take the
+    /// bytes back — a copy of a few hundred floats each way.
+    ///
+    /// **Several threads, because one is slower than the ground arrives.** A fill of eighty-five is
+    /// 3.2 s of summing behind a frame that collects two of them, and a queue that deep is one every
+    /// third chunk leaves the world before its ground comes back. What the count is measured against
+    /// is in `compositequeue.cpp`.
     ///
     /// **Nothing is wrong while it waits.** A chunk asks by setting `Material::mFlatten` and its
     /// `mDiffuse` stays unset, which is the branch the shader already takes for every near chunk: it
@@ -70,18 +76,25 @@ namespace Rtx
         /// pictures from the crossing onwards. That is a run that cannot be compared with itself,
         /// which is the same reason `Rtx::FrameOptions::mSinceLast` exists.
         ///
-        /// **The per-frame bound is kept.** Waiting is not collecting: a settled run still takes
-        /// `sCompositesPerFrame` and no more, so the arrival pattern is the one the streaming path
-        /// really has and only the thread's timing is gone. What it costs is a stall at the
-        /// crossing that queued the bakes, which is a trade a measured run can make and a game
-        /// cannot.
+        /// **A frame waits for what it collects, never for what it queued.** `sCompositesPerFrame`
+        /// is what a frame takes, so two is what it waits for and the rest go on baking behind it.
+        /// Draining the queue instead put every bake of a run onto the frame thread and gave the
+        /// bakers nothing to do: measured on `one-cell-walk`, 9.9 s of bake over an 18.6 s run was
+        /// waited for to the millisecond, and one ring fill was a single 3.3 s frame. Waiting for
+        /// the two collected costs 0.14 s over the same run.
+        ///
+        /// **The order is the queue's and not the bakers'.** Several threads finish out of order, so
+        /// `collect` takes by the sequence a stack was handed over in and never by what came back
+        /// first. That is what makes the schedule the answer; the game keeps the same rule, because
+        /// a composite that waits a frame for the one in front of it shades from its stack for one
+        /// more frame and costs nothing else.
         ///
         /// **This is the only thread a settled run waits on, and the terrain is not one.** The quad
         /// tree is the obvious suspect and the wrong one: `Terrain::QuadTreeWorld::collect` resolves
         /// its view and loads every entry it names, in the calling thread.
         void setSettled(bool settled) { mSettled = settled; }
 
-        /// Hands the baker what this walk marked, then moves what is finished into the scene.
+        /// Hands the bakers what this walk marked, then moves what is finished into the scene.
         ///
         /// **Before anything reads what arrived, because a composite coming back is an arrival.** A
         /// composite taken here took a texture slot on the way, so the upload that follows carries
@@ -99,19 +112,27 @@ namespace Rtx
         void releaseFinished() { mFinished.clear(); }
 
     private:
-        /// Hands the baker every chunk the walk wrote that wants flattening and is not already
+        /// Hands the bakers every chunk the walk wrote that wants flattening and is not already
         /// handed over.
         ///
         /// **Off the rows the scene says it wrote**, which is the only place a chunk wanting a
         /// composite can appear; the table itself is never scanned. Everything the bake reads — the
-        /// images, the weights, the transforms — is taken here, so the thread reads nothing the next
+        /// images, the weights, the transforms — is taken here, so no baker reads anything the next
         /// walk can change.
         void gather(const SceneTables& scene, Resource::ImageManager& images);
 
-        /// Waits until nothing handed over is still baking.
-        void finish();
+        /// Waits until `collect` can take `limit`, or until nothing is left to wait for.
+        void waitFor(std::size_t limit);
 
-        /// Moves at most `limit` finished composites into the scene, oldest first.
+        /// How many of the sequences from `mNextTake` have come back, counted no further than
+        /// `limit`. Under `mMutex`.
+        std::size_t getReady(std::size_t limit) const;
+
+        /// Moves at most `limit` finished composites into the scene, in the order they were handed
+        /// over.
+        ///
+        /// **It stops at the first sequence that has not come back**, so one the bakers finished
+        /// early waits for the one in front of it. `setSettled` says why the order is the queue's.
         ///
         /// A composite taken takes a texture slot and goes onto the material that asked. One whose
         /// chunk left the world while it baked is dropped instead.
@@ -145,6 +166,12 @@ namespace Rtx
         {
             Asked mAsked;
 
+            /// Where this sits in the order the frame handed stacks over, which is the order
+            /// `collect` takes them back in. Every sequence handed out reaches `mDone` exactly
+            /// once — a chunk whose slot was taken over while it waited arrives with no composite
+            /// rather than not arriving.
+            std::uint64_t mSequence = 0;
+
             std::vector<MaterialLayer> mLayers;
 
             /// Parallel to `mLayers`, null where the layer's file could not be opened.
@@ -177,25 +204,70 @@ namespace Rtx
             std::optional<TerrainComposite> mComposite;
         };
 
-        /// The baker's loop: one request at a time, until asked to stop.
-        void work(std::stop_token stop);
+        /// One thread and everything only it may touch.
+        ///
+        /// **Held apart per thread rather than guarded**, because a bake writes megabytes of
+        /// working set and a lock around that would put the threads back in single file. The
+        /// shading cache is per thread for the same reason, and the layers a region repeats cost
+        /// each thread the first estimate of them.
+        struct Baker
+        {
+            /// Describes, estimates and flattens one stack, on this baker's thread.
+            ///
+            /// **The baker's and not the queue's**, because everything it reads and writes besides
+            /// the request is below: the four buffers and the cache. The queue owns the channel
+            /// between the threads and nothing of the flattening.
+            Baked bake(Request&& request);
 
-        /// Describes, estimates and flattens one stack. On the baker's thread.
-        Baked bake(Request&& request);
+            /// **This thread's and no other's**, because that is where a stack is described. The
+            /// estimate is node-based, which is what lets the stack span it.
+            ShadingCache mPainted;
 
-        /// Guards `mPending`, `mDone` and `mBaking` — everything the two threads share.
+            /// What `bake` reads a stack into, and what a bake works in.
+            ///
+            /// Held rather than made, for the reason `mSpare` is: a fill bakes dozens of chunks,
+            /// and a working set made per chunk is the same megabytes taken and given back dozens
+            /// of times. `mStackScratch` goes on spanning `mLevelScratch` between chunks, because
+            /// the next bake clears both before it fills either.
+            std::vector<MipLevel> mLevelScratch;
+            std::vector<CompositeLayer> mStackScratch;
+            CompositeScratch mScratch;
+
+            /// **Last, so it is joined before anything above it is destroyed.**
+            Worker mWorker;
+        };
+
+        /// Files `baked` under its sequence, so `mDone` reads in the order the stacks were handed
+        /// over however the bakers finished them. Under `mMutex`.
+        void file(Baked&& baked);
+
+        /// Starts every baker, once. Called by the first chunk that asks, so a world that never
+        /// reaches distant ground never pays for a thread.
+        void startBakers();
+
+        /// A baker's loop: one request at a time, until asked to stop.
+        void work(Baker& baker, std::stop_token stop);
+
+        /// Guards `mPending`, `mDone` and `mBaking` — everything the frame and the bakers share.
         std::mutex mMutex;
 
         /// Woken by a request arriving, or by the stop.
         std::condition_variable_any mWake;
 
-        /// Woken by a bake finishing, which is what `finish` waits for.
+        /// Woken by a bake finishing, which is what `waitFor` waits for.
         std::condition_variable mBaked;
 
-        /// Oldest first, so the baker finishes chunks in the order they arrived.
+        /// Oldest first, so the bakers take chunks in the order they arrived.
         std::deque<Request> mPending;
+
+        /// By sequence and not by when a bake finished. See `file`.
         std::deque<Baked> mDone;
         std::size_t mBaking = 0;
+
+        /// The next sequence to hand out, and the next to collect. **The frame thread's own**: one
+        /// is written by `gather` and the other by `collect`, and no baker reads either.
+        std::uint64_t mNextGiven = 0;
+        std::uint64_t mNextTake = 0;
 
         /// Everything handed over and not yet collected, which is what `gather` checks against.
         std::vector<Asked> mAsked;
@@ -224,26 +296,9 @@ namespace Rtx
 
         std::string mKey;
 
-        /// **The baker's thread and no other**, because that is where a stack is described and the
-        /// cache is not guarded. The estimate is node-based, which is what lets the stack span it.
-        ShadingCache mPainted;
-
-        /// What `bake` reads a stack into, and what a bake works in.
-        ///
-        /// **The baker's thread too, and `bake`'s alone.** Nothing else here reads them, which is
-        /// what lets `mStackScratch` go on spanning `mLevelScratch` between chunks: the next bake
-        /// clears both before it fills either.
-        ///
-        /// Held rather than made, for the reason `mSpare` is: a crossing bakes dozens of chunks, and
-        /// a working set made per chunk is the same megabytes taken and given back dozens of times.
-        std::vector<MipLevel> mLevelScratch;
-        std::vector<CompositeLayer> mStackScratch;
-        CompositeScratch mScratch;
-
-        /// **Last, so it is joined first.** A member declared above it would be destroyed while
-        /// the baker was still reading it; the stop the join begins with is what wakes the wait.
-        /// Started by the first chunk that asks rather than with the queue: a world that never
-        /// reaches distant ground never pays for a thread.
-        Worker mWorker;
+        /// **Last, so the threads are joined first.** A member declared above would be destroyed
+        /// while a baker was still reading it; the stop the join begins with is what wakes the wait.
+        /// Held by pointer so that a baker keeps its address, which its own thread captured.
+        std::vector<std::unique_ptr<Baker>> mBakers;
     };
 }

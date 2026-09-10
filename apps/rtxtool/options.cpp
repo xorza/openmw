@@ -250,21 +250,21 @@ namespace RtxTool
         option(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(2.0f),
             "how many seconds of world to draw and throw away before measuring. This "
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
-            "for its residency as well. Two rather than three: the ramp and the residency are over "
-            "well inside it, and the third second was a fifth of every run's wall time for frames "
-            "nobody reads");
+            "for its residency as well. Two rather than three because the ramp and the residency "
+            "are over well inside it: measured interleaved on a hot card, three seconds ran 20 s "
+            "and two ran 19");
 
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
 
         option(Verbs::Bench, "settled", bpo::value<bool>()->implicit_value(true),
-            "whether each hand-over waits for the distant ground it queued. On unless "
-            "said otherwise, because a settled run is what makes two processes draw one picture "
-            "— and it is also what puts a composite's whole bake on the frame that queued it: "
-            "measured on `island-crossing`, 9.4 ms a frame of a main thread asleep against 0.37 ms "
-            "of hand-over. **--settled=false is what times the streaming path**, and a run under it "
-            "may not be compared with a picture");
+            "whether each hand-over waits for the distant ground it collects, and each walk "
+            "for the one cell it adopts. On unless said otherwise, because a settled run is what "
+            "makes two processes draw one picture — and it is also what puts a bake on the frame "
+            "path: measured on `island-crossing`, the `bake` row reads 28 ms at the p99 against "
+            "0.04 ms with this off. **--settled=false is what times the streaming path**, and a "
+            "run under it may not be compared with a picture");
 
         option(Verbs::Bench, "json", bpo::value<std::string>()->default_value(""),
             "also write the run to this file as one record, for comparing against the "

@@ -38,14 +38,32 @@ namespace MWRender
         /// stamped it rather than named again here — see where this is installed.
         constexpr osg::Node::NodeMask sWorldTraversal = ~static_cast<osg::Node::NodeMask>(
             SceneUtil::Mask_Sky | SceneUtil::Mask_Sun | SceneUtil::Mask_SimpleWater);
-    }
 
-    /// What the world walk may see. `WorldMirror::setShowsPlayer` says why the player is a question.
-    osg::Node::NodeMask worldTraversal(const bool showsPlayer)
-    {
-        const osg::Node::NodeMask player = showsPlayer ? 0 : static_cast<osg::Node::NodeMask>(SceneUtil::Mask_Player);
+        /// What a walk of a loaded model may see.
+        ///
+        /// **The world's mask without the one question the camera answers.** `SceneUtil::Mask_Player`
+        /// is stamped on the player's own node in the world's graph and on nothing a content file
+        /// holds, so it says nothing about a model a cell names.
+        ///
+        /// **Which is why the cell ring is given this and never the world's.** The mask is part of
+        /// the world `Rtx::CellSupply` reads, so one that moves makes `Rtx::CellRing::forget` discard
+        /// every held cell and read the ring from nothing. Measured on `one-cell-walk`, a camera
+        /// settling between first and third person moved the bit twice while the world came up, and
+        /// 121 cells were read three times and 85 grounds flattened three times for it.
+        osg::Node::NodeMask templateTraversal()
+        {
+            return sWorldTraversal & ~NifOsg::Loader::getHiddenNodeMask();
+        }
 
-        return sWorldTraversal & ~(NifOsg::Loader::getHiddenNodeMask() | player);
+        /// What the world walk may see. `WorldMirror::setShowsPlayer` says why the player is a
+        /// question.
+        osg::Node::NodeMask worldTraversal(const bool showsPlayer)
+        {
+            const osg::Node::NodeMask player
+                = showsPlayer ? 0 : static_cast<osg::Node::NodeMask>(SceneUtil::Mask_Player);
+
+            return templateTraversal() & ~player;
+        }
     }
 
     float landReach()
@@ -170,7 +188,7 @@ namespace MWRender
         // same switch the paging read.** With `object paging` off this renderer stands the
         // distance's statics itself, and the harness's `--distant-statics` drives the one setting
         // either way. The ground stands whatever the switch says.
-        mRing.setContent(frame.mTerrain.getStorage(), mContent.get(), mExtractor.getTraversalMask());
+        mRing.setContent(frame.mTerrain.getStorage(), mContent.get(), templateTraversal());
         mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
         mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
         mRing.setFrame(frameNumber);
