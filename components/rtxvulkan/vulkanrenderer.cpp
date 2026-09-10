@@ -152,7 +152,7 @@ namespace Rtx
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
-        , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
+        , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice, mPool)
     {
         // Before the first targets, because what to trace at is its answer and not ours.
@@ -259,44 +259,8 @@ namespace Rtx
         mFrame.resize(render.width, render.height);
 
         // **Two, and interchangeable**, because the frame after this one must not rewrite the image
-        // the present is still blitting out of. They swap roles every present; anything that told
-        // them apart would break the frame they swapped on.
-        const auto makeTarget = [&](const char* name) {
-            return std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, sTargetFormat,
-                // Drawn into as well as written: the tone curve writes it as a storage image and the
-                // GUI rasterises over what that left.
-                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                    | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                name);
-        };
-
-        // Numbered rather than named: which one is being written changes every present, so a name
-        // that said so would be wrong on half the frames it appeared in.
-        mTarget = makeTarget("target 0");
-        mSpare = makeTarget("target 1");
-        mPresented = nullptr;
-
-        // **Black and in `GENERAL` from the moment they exist.** Everything that reads a target
-        // expects that layout, and the GUI is drawn over one whether or not a frame has been traced
-        // into it — a main menu and a loading screen have no world behind them.
-        mPool.submitAndWait([&](VkCommandBuffer commands) {
-            const VkClearColorValue black{ .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };
-            const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-
-            for (const Image* target : { mTarget.get(), mSpare.get() })
-            {
-                target->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT);
-
-                vkCmdClearColorImage(
-                    commands, target->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &whole);
-
-                target->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
-            }
-        });
+        // the present is still blitting out of. `PresentTargets` is what holds that rule.
+        mTargets.resize(mDevice, mPool, mOutputWidth, mOutputHeight);
 
 #ifdef OPENMW_RTX_DLSS
         // Released before the next is built: the feature holds the network's weights for one pair
@@ -816,7 +780,7 @@ namespace Rtx
 
     void VulkanRenderer::drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches)
     {
-        assert(mTarget != nullptr);
+        assert(mTargets.isOpen());
 
         if (vertices.empty() || batches.empty())
             return;
@@ -863,16 +827,16 @@ namespace Rtx
         mPool.begin(gui.mGui.mCommands);
 
         const VkCommandBuffer commands = gui.mGui.mCommands;
-        mTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        mTargets.current().transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
 
-        mGuiPass.record(commands, *mTarget, gui.mGuiVertices.getHandle(), mGuiDraws);
+        mGuiPass.record(commands, mTargets.current(), gui.mGuiVertices.getHandle(), mGuiDraws);
 
         // Back where everything else expects it: the presenter blits out of `GENERAL` and so
         // does a read back.
-        mTarget->transition(commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+        mTargets.current().transition(commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
 
@@ -884,20 +848,11 @@ namespace Rtx
     bool VulkanRenderer::presentFrame()
     {
         assert(mPresenter != nullptr && "presentFrame on a renderer that was given no window");
-        assert(mTarget != nullptr);
+        assert(mTargets.isOpen());
 
-        const bool shown = mPresenter->present(*mTarget);
+        const bool shown = mPresenter->present(mTargets.current());
 
-        // **The next frame writes the other one.** The blit `present` queued reads this image long
-        // after the call returns, and the discard at the top of a frame waits for nothing.
-        mPresented = mTarget.get();
-        mTarget.swap(mSpare);
-
-        // **Here rather than at the first write, which is what makes it free.** Two presents have
-        // gone by since this image was last read, so the fence is signalled and the wait returns at
-        // once; asking at the first write instead would put a frame face to face with the present
-        // before it, and that one can still be waiting on the presentation engine.
-        mPresenter->waitForLastUse(*mTarget);
+        mTargets.presented([this](const Image& next) { mPresenter->waitForLastUse(next); });
 
         return shown;
     }
@@ -1026,7 +981,7 @@ namespace Rtx
         // output is what the interface draws over and the presenter blits, the colour is what the
         // upscaler and the curve read — so the discard is sourced at everything before it on the
         // queue rather than at the top of the pipe, which would wait for nothing.
-        const Image& bytes = *mTarget;
+        const Image& bytes = mTargets.current();
         for (const Image* image : { &mFrame.getColour(), &bytes })
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
@@ -1178,7 +1133,7 @@ namespace Rtx
 
         timer.open(commands, "tone");
         mTone->record(commands, *shown, mExposure.getExposure(), channels.get(Channel::StarsShown), mBloom.getPyramid(),
-            inputs.mTextures, *mTarget,
+            inputs.mTextures, mTargets.current(),
             toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
         timer.close(commands);
 
@@ -1212,12 +1167,10 @@ namespace Rtx
 
     SceneSlot VulkanRenderer::addViewScene()
     {
-        if (!mFreeViewScenes.empty())
+        if (const Index taken = mFreeViewScenes.take(); taken != sNoIndex)
         {
-            const SceneSlot slot = mFreeViewScenes.back();
-            mFreeViewScenes.pop_back();
-            mViewScenes[slot.getViewIndex()] = std::make_unique<ViewScene>();
-            return slot;
+            mViewScenes[taken] = std::make_unique<ViewScene>();
+            return SceneSlot::view(taken);
         }
 
         mViewScenes.push_back(std::make_unique<ViewScene>());
@@ -1236,7 +1189,7 @@ namespace Rtx
         mRing.emptyGraveyards();
 
         mViewScenes[scene.getViewIndex()].reset();
-        mFreeViewScenes.push_back(scene);
+        mFreeViewScenes.free(scene.getViewIndex());
     }
 
     void VulkanRenderer::growViewTargets(std::uint32_t width, std::uint32_t height)
@@ -1244,7 +1197,7 @@ namespace Rtx
         if (!mView.grow(width, height))
             return;
 
-        mViewTarget = std::make_unique<Image>(mDevice, mView.getWidth(), mView.getHeight(), sTargetFormat,
+        mViewTarget = std::make_unique<Image>(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
     }
 
@@ -1381,12 +1334,12 @@ namespace Rtx
 
     void VulkanRenderer::readPixels(std::vector<std::uint8_t>& pixels)
     {
-        assert(mTarget != nullptr);
+        assert(mTargets.isOpen());
 
         // **The frame that was finished, not the one the next will be written into.** A present has
         // already swapped those two; with no window nothing presents, nothing swaps, and the frame
         // just written is still the one `mTarget` names.
-        const Image& frame = mPresented != nullptr ? *mPresented : *mTarget;
+        const Image& frame = mTargets.lastPresented() != nullptr ? *mTargets.lastPresented() : mTargets.current();
         frame.read(mPool, VK_IMAGE_LAYOUT_GENERAL, pixels);
     }
 

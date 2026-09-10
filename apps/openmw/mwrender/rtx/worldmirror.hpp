@@ -124,8 +124,8 @@ namespace MWRender
         Rtx::DistantLights mDistantLights;
 
         /// The cells themselves: their ground off the land records, and their statics as instances
-        /// of their templates. After the extractor and the scene, which it adopts into.
-        Rtx::CellRing mRing{ mExtractor, mScene };
+        /// of their templates. After the scene, which it adopts into.
+        Rtx::CellRing mRing{ mScene };
 
         /// Where the ring's models and images come from: the game's own. Made where the world is
         /// attached, because that is when there is a scene manager.

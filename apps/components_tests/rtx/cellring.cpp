@@ -187,15 +187,34 @@ namespace Rtx::Testing
                         mLand.mWithData.emplace_back(x, y);
 
                 mExtractor.follow(std::array<Residency*, 1>{ &mRing });
-                mRing.setReach(4.0f * sCellSize);
                 mRing.setMinSize(0.0f);
-                mRing.setActiveGrid(osg::Vec4i(-1, -1, 2, 2));
-                mRing.setViewPoint(osg::Vec3f(0.5f * sCellSize, 0.5f * sCellSize, 0.0f));
-                mRing.setOutdoors(true);
                 mRing.setSettled(true);
+
+                mAround.mReach = 4.0f * sCellSize;
+                mAround.mActiveGrid = osg::Vec4i(-1, -1, 2, 2);
+                mAround.mEye = osg::Vec3f(0.5f * sCellSize, 0.5f * sCellSize, 0.0f);
+                mAround.mOutdoors = true;
             }
 
-            void start() { mRing.follow(&mStorage, &mLand, &mContent, ESM::Cell::sDefaultWorldspaceId, ~0u); }
+            void start()
+            {
+                mRing.setContent(&mLand, &mContent, ~0u);
+
+                mAround.mStorage = &mStorage;
+                mAround.mWorldspace = ESM::Cell::sDefaultWorldspaceId;
+                mRing.follow(mAround);
+            }
+
+            /// Says where the eye stands and what the game holds around it, as one value.
+            void around(const osg::Vec3f& eye, const osg::Vec4i& grid)
+            {
+                mAround.mEye = eye;
+                mAround.mActiveGrid = grid;
+                mRing.follow(mAround);
+            }
+
+            /// The same for a grid the game moved without the eye moving with it.
+            void around(const osg::Vec4i& grid) { around(mAround.mEye, grid); }
 
             /// One frame's walk, which is where the ring adopts, places and stamps.
             ExtractionStats walk(std::size_t frame)
@@ -222,6 +241,8 @@ namespace Rtx::Testing
                 return std::nullopt;
             }
 
+            WorldAround mAround;
+
             FewStatics mStorage;
             FakeLand mLand;
             FewContent mContent;
@@ -229,7 +250,7 @@ namespace Rtx::Testing
 
             SceneDesc mScene;
             SceneExtractor mExtractor{ mScene };
-            CellRing mRing{ mExtractor, mScene };
+            CellRing mRing{ mScene };
         };
 
         /// A reference stands where the game would stand its clone, on the mesh every copy shares;
@@ -359,7 +380,7 @@ namespace Rtx::Testing
             // The active grid moves over cell (3, 0): its ground shades from its stack from now
             // on, on the same row, the two trees inside the grid are the game's, and the tree at
             // the eye's own cell — outside the grid now — is the ring's.
-            mRing.setActiveGrid(osg::Vec4i(2, -1, 5, 2));
+            around(osg::Vec4i(2, -1, 5, 2));
             walk(4);
             EXPECT_EQ(placed(), 2u + sPlacedCells) << "the fern and the tree at home stand outside the grid";
             EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[far->mMaterial].mFlatten);
@@ -368,8 +389,7 @@ namespace Rtx::Testing
             // The eye leaves for a cell far away: the ring drops what it held, and the sweep after
             // the walk takes the meshes nothing stands on any more — the two models' and the
             // ground of every cell that left the band.
-            mRing.setViewPoint(osg::Vec3f(20.5f * sCellSize, 20.5f * sCellSize, 0.0f));
-            mRing.setActiveGrid(osg::Vec4i(19, 19, 22, 22));
+            around(osg::Vec3f(20.5f * sCellSize, 20.5f * sCellSize, 0.0f), osg::Vec4i(19, 19, 22, 22));
             walk(5);
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
             EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "eleven by eleven cells prepared";
@@ -436,10 +456,9 @@ namespace Rtx::Testing
 
             // The eye leaves for a cell from which the near tree's cell is out of the band and the
             // far tree's is in it: one walk lets the model go and takes it up again.
-            mRing.setViewPoint(osg::Vec3f(10.5f * sCellSize, 0.5f * sCellSize, 0.0f));
-            mRing.setActiveGrid(osg::Vec4i(9, -1, 12, 2));
+            around(osg::Vec3f(10.5f * sCellSize, 0.5f * sCellSize, 0.0f), osg::Vec4i(9, -1, 12, 2));
             EXPECT_EQ(walk(2).mDistantStatics, 0u) << "the far tree stands in the active grid now";
-            mRing.setActiveGrid(osg::Vec4i(11, -1, 14, 2));
+            around(osg::Vec4i(11, -1, 14, 2));
             EXPECT_EQ(walk(3).mDistantStatics, 1u) << "and outside it, on the model the ring kept";
 
             // The sweep takes the ground of the band that left — the old band and the new share

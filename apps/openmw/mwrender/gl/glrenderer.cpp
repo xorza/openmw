@@ -377,14 +377,14 @@ namespace MWRender
         mStage.getEvents().getCurrentEventState()->setWindowRectangle(
             0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
     }
-    bool GlRenderer::wantsPagedTerrain() const
+    TerrainPlan GlRenderer::getTerrainPlan() const
     {
-        return Settings::terrain().mDistantTerrain;
-    }
-
-    float GlRenderer::getTerrainCompositeMapLevel() const
-    {
-        return static_cast<float>(std::pow(2, Settings::terrain().mCompositeMapLevel.get()));
+        return TerrainPlan{
+            .mPaged = Settings::terrain().mDistantTerrain,
+            .mChunks = true,
+            .mObjectPaging = Settings::terrain().mObjectPaging,
+            .mCompositeMapLevel = static_cast<float>(std::pow(2, Settings::terrain().mCompositeMapLevel.get())),
+        };
     }
 
     float GlRenderer::getTerrainViewDistance(const float cameraDistance, const float fov) const

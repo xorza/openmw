@@ -123,7 +123,7 @@ namespace Rtx
 
         /// The mirror of the subject, or null for a picture of the world — which has no scene of its
         /// own, and traces against the one the frame's own walk built.
-        const SceneDesc* getScene() const { return mScene.get(); }
+        const SceneDesc* getScene() const;
 
         /// Poses the subject, mirrors it and hands it to the renderer, and answers whether the
         /// result has anything in it. Nothing at all, and true, for a picture of the world.
@@ -167,43 +167,68 @@ namespace Rtx
 
         Renderer& mRenderer;
 
-        /// What this is a picture of, where it is not the world. Held because it is walked again
-        /// every time the picture is asked for.
+        /// Everything a picture of its own subject needs, and a picture of the world has none of.
         ///
-        /// **Not const, because a picture is taken by changing it**: the update traversal poses the
-        /// subject and the intersection visitor walks it, and both take a mutable node.
-        osg::ref_ptr<osg::Node> mSubject;
+        /// **One object, because the eleven are made together and are dead together.** They were
+        /// separate members and a null subject stood for all of them — one rule a reader had to
+        /// know rather than a shape that states it. `mSubject` being null is now the whole of what
+        /// "this is a picture of the world" means.
+        struct Subject
+        {
+            /// @param shared where the walk's and the pick's traversal numbers come from, or null to
+            ///        keep a sequence of its own. **Bound here and not by an initialiser**, because
+            ///        the alternative reads `mOwn` off an object that is still being made.
+            /// **Out of line, with the destructor and for its reason.** A constructor unwinds what
+            /// it has already made where its body throws, so it needs the four types below complete
+            /// exactly as a destructor does — and they are forward declared here.
+            explicit Subject(Traversals* shared);
+            ~Subject();
 
-        /// The mirror of it, and the slot the renderer keeps its acceleration structures in. Both
-        /// null and unused for a picture of the world.
-        std::unique_ptr<SceneDesc> mScene;
-        std::unique_ptr<SceneExtractor> mExtractor;
+            Subject(const Subject&) = delete;
+            Subject& operator=(const Subject&) = delete;
 
-        /// **Its own, because the only state one carries between calls is the clock it is given.**
-        /// The camera callback the game hangs on a doll's subtree is what finds the head to look at,
-        /// and it runs in an update traversal — so a picture drawn between frames has to run one.
-        std::unique_ptr<PoseUpdate> mUpdate;
+            /// **Not const, because a picture is taken by changing it**: the update traversal poses
+            /// the subject and the intersection visitor walks it, and both take a mutable node.
+            osg::ref_ptr<osg::Node> mNode;
 
-        /// The cull traversal `pick` poses the subject with, and the clock it reads. Made once,
-        /// because a cull carries a state graph and a render stage; the stamp is a copy of the last
-        /// `rebuildSubject`'s, so a pick poses at the time the picture was taken.
-        std::unique_ptr<PoseCull> mPose;
-        osg::ref_ptr<osg::FrameStamp> mPoseStamp;
+            /// The mirror of it, and the extractor that fills it.
+            std::unique_ptr<SceneDesc> mScene;
+            std::unique_ptr<SceneExtractor> mExtractor;
 
-        /// Where the pick's traversal numbers come from. Used only where the caller named none.
-        Traversals mOwnTraversals;
-        Traversals& mTraversals;
+            /// **Its own, because the only state one carries between calls is the clock it is
+            /// given.** The camera callback the game hangs on a doll's subtree is what finds the
+            /// head to look at, and it runs in an update traversal — so a picture drawn between
+            /// frames has to run one.
+            std::unique_ptr<PoseUpdate> mUpdate;
 
-        /// **A doll takes the same three branches a cell does.** A race-creation slider drag redraws
-        /// the same subject every frame, and this is what makes that a placement rather than an
-        /// acceleration structure and a texture array built from nothing sixty times a second.
-        SceneUploader mUploader;
+            /// The cull traversal `pick` poses the subject with, and the clock it reads. Made once,
+            /// because a cull carries a state graph and a render stage; the stamp is a copy of the
+            /// last `rebuildSubject`'s, so a pick poses at the time the picture was taken.
+            std::unique_ptr<PoseCull> mPose;
+            osg::ref_ptr<osg::FrameStamp> mPoseStamp;
 
-        SceneSlot mViewScene;
+            /// Where the walk's and the pick's traversal numbers come from. `mOwn` is used only
+            /// where the caller named none.
+            Traversals mOwn;
+            Traversals& mTraversals;
 
-        /// The traversal number the subject's update last ran at. What `rebuildSubject` hands the
-        /// update traversal, and what a pick's own cull is dated after.
-        unsigned int mPosedFrame = 0;
+            /// **A doll takes the same three branches a cell does.** A race-creation slider drag
+            /// redraws the same subject every frame, and this is what makes that a placement rather
+            /// than an acceleration structure and a texture array built from nothing sixty times a
+            /// second.
+            SceneUploader mUploader;
+
+            /// The slot the renderer keeps this scene's acceleration structures in.
+            SceneSlot mSlot;
+
+            /// The traversal number the subject's update last ran at. What `rebuildSubject` hands
+            /// the update traversal, and what a pick's own cull is dated after.
+            unsigned int mPosedFrame = 0;
+        };
+
+        /// Null for a picture of the world, which traces against the scene the frame's own walk
+        /// built.
+        std::unique_ptr<Subject> mSubject;
 
         GuiTraceOptions mOptions;
         osg::Matrixf mView;

@@ -20,7 +20,6 @@ set(RTX_FILES
     camera.hpp
     cellreader.cpp
     cellreader.hpp
-    channel.cpp
     channel.hpp
     cloudshell.cpp
     cloudshell.hpp
@@ -144,7 +143,9 @@ set(RTX_FILES
     spares.hpp
     sprite.hpp
     cellring.cpp
+    cellsupply.cpp
     cellring.hpp
+    cellsupply.hpp
     srgb.cpp
     srgb.hpp
     sun.hpp
@@ -155,6 +156,7 @@ set(RTX_FILES
     terraincomposite.cpp
     terraincomposite.hpp
     slot.hpp
+    slotpool.hpp
     slotrows.hpp
     scenetables.cpp
     scenetables.hpp
@@ -169,6 +171,7 @@ set(RTX_FILES
     traversals.hpp
     wavecascade.cpp
     wavecascade.hpp
+    worker.hpp
     wavespectrum.cpp
     wavespectrum.hpp
 )

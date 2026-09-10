@@ -124,6 +124,24 @@ namespace Rtx
 
         void take(osg::Node& node) override { node.accept(*this); }
 
+        MaterialResolver::Resolved adoptMaterial(const MaterialReading& reading) override
+        {
+            return mExtractor.adoptMaterial(reading);
+        }
+
+        Known& adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, const Index material) override
+        {
+            return mExtractor.adoptMesh(drawable, reading, material);
+        }
+
+        Known* findMaterial(const osg::StateSet* const key) override { return mExtractor.findMaterial(key); }
+
+        void keepMesh(Known& held) override { mExtractor.keepMesh(held); }
+        void keepMaterial(Known& held) override { mExtractor.keepMaterial(held); }
+
+        void keepOwnedMesh(const Index mesh) override { mExtractor.keepOwnedMesh(mesh); }
+        void keepOwnedMaterial(const Index material) override { mExtractor.keepOwnedMaterial(material); }
+
     private:
         /// Walks `node` and everything under it, under the identity the caller worked out for it.
         void enter(osg::Node& node, std::size_t identity);
@@ -579,7 +597,7 @@ namespace Rtx
         mOwnedMeshes.clear();
         mOwnedMaterials.clear();
         for (Residency* resident : hidden)
-            resident->collect(*mWalk);
+            stood(resident->collect(*mWalk));
 
         // **After the whole walk, including whatever the residency brought in.** Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
@@ -591,6 +609,21 @@ namespace Rtx
         mPass.mStats = nullptr;
 
         return stats;
+    }
+
+    void SceneExtractor::stood(const ResidencyCount& count)
+    {
+        ExtractionStats& stats = mPass.getStats();
+
+        stats.mInstances += count.mDistantStatics + count.mGroundCells;
+        stats.mDistantStatics += count.mDistantStatics;
+        stats.mGroundCells += count.mGroundCells;
+
+        stats.mMeshesAdded += count.mMeshesAdded;
+        stats.mMaterialsAdded += count.mMaterialsAdded;
+
+        mDisownedMeshes += count.mMeshesDisowned;
+        mDisownedMaterials += count.mMaterialsDisowned;
     }
 
     void SceneExtractor::advance()

@@ -318,7 +318,7 @@ namespace Rtx
                 described = standIn(mLevels);
             }
 
-            described->mIndex = kept.mSlot;
+            described->mSlot = kept.mSlot;
             mDescriptions.push_back(*described);
         }
 

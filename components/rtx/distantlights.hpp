@@ -3,13 +3,9 @@
 #include <vector>
 
 #include <osg/Vec2i>
-#include <osg/Vec3f>
-#include <osg/Vec4i>
 #include <osg/ref_ptr>
 
-#include <components/esm/refid.hpp>
-
-#include "sceneextractor.hpp"
+#include "residency.hpp"
 
 namespace osg
 {
@@ -49,30 +45,16 @@ namespace Rtx
         DistantLights(const DistantLights&) = delete;
         DistantLights& operator=(const DistantLights&) = delete;
 
-        /// What to read, and which worldspace to read of it. Null for a world with no storage, which
+        /// Where the world is now: what to read, which worldspace of it, and where the eye stands.
+        ///
+        /// **Every field of it is read here.** A storage of null is a world with none, which
         /// `collect` answers by doing nothing.
-        void follow(const Terrain::ObjectStorage* storage, ESM::RefId worldspace);
-
-        /// Where the eye is, which decides which cells are near enough to matter.
-        void setViewPoint(const osg::Vec3f& viewPoint) { mViewPoint = viewPoint; }
-
-        /// How far out to read, in units — `distantLandReach`, which is what the ground is built to.
         ///
-        /// **Told rather than asked, so this library needs no settings registry.** Nought reads no
-        /// cell at all, which is what a host that never said leaves behind.
-        void setReach(float units) { mReach = units; }
-
-        /// The cells the game has stood for itself, as `Terrain::World` states them: minimum
-        /// inclusive, maximum exclusive.
-        void setActiveGrid(const osg::Vec4i& grid) { mActiveGrid = grid; }
-
-        /// Whether there is a distant world for these to light.
-        ///
-        /// **False in an interior, where the eye's coordinates belong to another space.** The cells
-        /// the reach would name around it are the exterior cells nearest the origin of a room, which
-        /// stand nothing and mean nothing. What has been read stays read: a door is walked through
-        /// both ways, and the reading is what this class exists to do once.
-        void setOutdoors(bool outdoors) { mOutdoors = outdoors; }
+        /// **`mOutdoors` false is an interior, where the eye's coordinates belong to another
+        /// space.** The cells the reach would name around it are the exterior cells nearest the
+        /// origin of a room, which stand nothing and mean nothing. What has been read stays read: a
+        /// door is walked through both ways, and the reading is what this class exists to do once.
+        void follow(const WorldAround& around) override;
 
         /// Drops what has been read, so the next `collect` builds it again.
         ///
@@ -83,7 +65,7 @@ namespace Rtx
         /// handed to somebody else. Whoever restarts the counter calls this in the same breath.
         void restart();
 
-        void collect(Collector& into) override;
+        ResidencyCount collect(Collector& into) override;
 
     private:
         /// One cell that has been read, and what it stood — null where it stood nothing.
@@ -96,13 +78,8 @@ namespace Rtx
         /// Reads one cell's `LIGH` references and stands a light at each. Null where it holds none.
         osg::ref_ptr<osg::Group> build(const osg::Vec2i& cell) const;
 
-        const Terrain::ObjectStorage* mStorage = nullptr;
-        ESM::RefId mWorldspace;
-
-        osg::Vec3f mViewPoint;
-        osg::Vec4i mActiveGrid;
-        float mReach = 0.0f;
-        bool mOutdoors = true;
+        /// Where the eye is and how much world there is around it, as the last `follow` said.
+        WorldAround mAround;
 
         /// Every cell read so far, sorted by grid position.
         ///

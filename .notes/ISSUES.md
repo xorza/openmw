@@ -8,3 +8,8 @@
   fills the land record's `VCLR` beside the heights and the rasterizer multiplies its ground by
   them; `Rtx::MeshReading` carries no colour and no scene table holds one, so the ground is shaded
   as though every vertex were white.
+
+- `RtxGuiDrawTest.aPictureInsideTheInterfaceLeavesTheFramesExposureAlone` fails intermittently. One
+  run of `components-tests --gtest_filter='Rtx*'` had the frame read back at 18 of 255 where the
+  test expected the 17 it carried before the picture; the same filter passed 604 of 604 on the three
+  runs after it, and the test alone passed five times in a row.

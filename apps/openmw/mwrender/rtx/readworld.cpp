@@ -31,13 +31,13 @@ namespace MWRender
         // interior for its own falloff curve and `mSunPosition` where it points a directional
         // light, and neither is a fact about the room. What the game adds for Night-Eye comes over
         // as itself.
-        const std::optional<Rtx::Daylight> room = world.isOutdoors()
-            ? std::nullopt
-            : std::optional(Rtx::makeRoomLight(ESM::Cell::AMBIstruct{ .mAmbient = world.mRoomAmbient,
-                                                   .mSunlight = world.mRoomSunlight,
-                                                   .mFog = world.mRoomFog,
+        const std::optional<Rtx::Daylight> room = world.mRoom.has_value()
+            ? std::optional(Rtx::makeRoomLight(ESM::Cell::AMBIstruct{ .mAmbient = world.mRoom->mAmbient,
+                                                   .mSunlight = world.mRoom->mSunlight,
+                                                   .mFog = world.mRoom->mFog,
                                                    .mFogDensity = world.mFogDepth },
-                osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())));
+                osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())))
+            : std::nullopt;
 
         // The horizon is the fog and the zenith is the sky's own, which is the pair Morrowind
         // records: one colour for the air, and one for the dome it fades into overhead.

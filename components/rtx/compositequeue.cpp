@@ -118,8 +118,7 @@ namespace Rtx
                 mPending.push_back(std::move(request));
             }
 
-            if (!mWorker.joinable())
-                mWorker = std::jthread([this](std::stop_token stop) { work(stop); });
+            mWorker.start([this](std::stop_token stop) { work(stop); });
 
             mWake.notify_one();
         }

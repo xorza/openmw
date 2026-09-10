@@ -167,7 +167,7 @@ namespace Rtx::Testing
 
             const auto describe = [&](std::uint32_t slot) {
                 return TextureData{
-                    .mIndex = slot,
+                    .mSlot = slot,
                     .mFormat = TextureFormat::Rgba8Unorm,
                     .mWidth = extent,
                     .mHeight = extent,

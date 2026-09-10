@@ -31,6 +31,13 @@ namespace Rtx
     /// pair of string comparisons. Both are keyed for lookup, so naming the same thing twice is the
     /// same slot.
     ///
+    /// **Two arrays and not one, and the empty half is what that costs.** A slot has one name, so
+    /// half of the two together stands nothing: 672 slots on the shoreline route is 21 KiB, all of
+    /// it a `std::string`'s own inline bytes and none of it on the heap. One array would have to be
+    /// `std::string`, because that is what a baked key is — and every reader of a file's name would
+    /// then hold a string this table promises nothing about. `VFS::Path::Normalized` is a type that
+    /// carries the guarantee those readers rely on, and 21 KiB does not buy giving it up.
+    ///
     /// **A slot that is freed keeps its index.** The array element it names is written over wherever
     /// it sits, which is what the arrivals list is for, and nothing downstream is renumbered.
     class TextureTable

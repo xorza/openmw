@@ -10,6 +10,8 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include "run.hpp"
+
 namespace Rtx
 {
     struct PreparedTexture;
@@ -23,10 +25,12 @@ namespace Rtx
         /// The reader's description of it, lent for as long as the cell is held.
         PreparedTexture* mTexture = nullptr;
 
-        /// Into `PreparedGround::mWeights`. A count of nought is a layer covering the whole cell,
-        /// which is what a cell of one ground type is given.
-        std::uint32_t mFirstWeight = 0;
-        std::uint32_t mWeightCount = 0;
+        /// Into `PreparedGround::mWeights`. An empty run is a layer covering the whole cell, which
+        /// is what a cell of one ground type is given.
+        ///
+        /// **A run, so the reader and the scene say a mask the same way.** The `MaterialLayer` this
+        /// becomes already holds one.
+        Run mWeights;
         std::uint16_t mMaskWidth = 0;
         std::uint16_t mMaskHeight = 0;
 

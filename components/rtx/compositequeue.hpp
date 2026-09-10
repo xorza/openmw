@@ -8,7 +8,6 @@
 #include <optional>
 #include <stop_token>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -19,6 +18,7 @@
 #include "scenedesc.hpp"
 #include "shadingcache.hpp"
 #include "terraincomposite.hpp"
+#include "worker.hpp"
 
 namespace Resource
 {
@@ -244,6 +244,6 @@ namespace Rtx
         /// the baker was still reading it; the stop the join begins with is what wakes the wait.
         /// Started by the first chunk that asks rather than with the queue: a world that never
         /// reaches distant ground never pays for a thread.
-        std::jthread mWorker;
+        Worker mWorker;
     };
 }

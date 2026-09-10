@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "namedenum.hpp"
 #include "shaders/gbuffer.h"
 
 namespace Rtx
@@ -39,25 +40,37 @@ namespace Rtx
         return static_cast<std::uint32_t>(channel);
     }
 
-    /// Every channel in binding order, for a walk that wants them all.
-    inline constexpr std::array<Channel, sChannelCount> sEveryChannel{
-        Channel::Direct,
-        Channel::Indirect,
-        Channel::Albedo,
-        Channel::Specular,
-        Channel::Guide,
-        Channel::Motion,
-        Channel::Depth,
-        Channel::ReflectionMotion,
-        Channel::ParticleMask,
-        Channel::BiasMask,
-        Channel::StarsShown,
-        Channel::Transparency,
-        Channel::TransparencyOpacity,
-        Channel::TransparencyMotion,
-    };
+    /// What a capture and a dump call each channel, and the one place they are written.
+    ///
+    /// **One table, because this enum was spelled three times**: here, in a list of every value and
+    /// in a switch that named them. `Rtx::NamedEnum` derives the walk and the printable list from
+    /// the names, so a channel added to the shader cannot reach one of the three and miss another.
+    ///
+    /// In binding order, which is what `values()` then hands a walk that wants them all.
+    inline constexpr NamedEnum<Channel, sChannelCount> sChannels{ { {
+        { Channel::Direct, "g-direct" },
+        { Channel::Indirect, "g-indirect" },
+        { Channel::Albedo, "g-albedo" },
+        { Channel::Specular, "g-specular" },
+        { Channel::Guide, "g-guide" },
+        { Channel::Motion, "g-motion" },
+        { Channel::Depth, "g-depth" },
+        { Channel::ReflectionMotion, "g-reflection-motion" },
+        { Channel::ParticleMask, "g-particle-mask" },
+        { Channel::BiasMask, "g-bias-mask" },
+        { Channel::StarsShown, "g-stars-shown" },
+        { Channel::Transparency, "g-transparency" },
+        { Channel::TransparencyOpacity, "g-transparency-opacity" },
+        { Channel::TransparencyMotion, "g-transparency-motion" },
+    } } };
 
-    std::string_view channelName(Channel channel);
+    /// Every channel in binding order, for a walk that wants them all.
+    inline constexpr std::array<Channel, sChannelCount> sEveryChannel = sChannels.values();
+
+    inline constexpr std::string_view channelName(const Channel channel)
+    {
+        return sChannels.name(channel);
+    }
 
     /// The two images a frame carries that are not channels of the trace's g-buffer.
     ///

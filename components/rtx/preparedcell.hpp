@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,9 @@
 #include <components/esm3/refnum.hpp>
 
 #include "materialresolver.hpp"
+#include "meshreader.hpp"
 #include "preparedground.hpp"
+#include "run.hpp"
 #include "shapefold.hpp"
 
 namespace Rtx
@@ -35,17 +38,18 @@ namespace Rtx
         /// Where the part stands in the template's own space.
         osg::Matrixf mLocal;
 
-        std::uint32_t mFirstVertex = 0;
-        std::uint32_t mVertexCount = 0;
+        /// Where this part's attributes sit in the model's own buffers.
+        ///
+        /// **Runs, and not four pairs of an offset and a count.** `Rtx::Run` says why the two halves
+        /// travel together: a reader that paired one run's offset with another's count would index a
+        /// buffer that exists, by a length that is not its own.
+        Run mVertices;
 
-        /// Nought where the geometry names no normal, and no texture coordinate.
-        std::uint32_t mFirstNormal = 0;
-        std::uint32_t mNormalCount = 0;
-        std::uint32_t mFirstTexCoord = 0;
-        std::uint32_t mTexCoordCount = 0;
+        /// Empty where the geometry names no normal, and no texture coordinate.
+        Run mNormals;
+        Run mTexCoords;
 
-        std::uint32_t mFirstIndex = 0;
-        std::uint32_t mIndexCount = 0;
+        Run mIndices;
 
         FoldedShape mShape;
     };
@@ -87,6 +91,24 @@ namespace Rtx
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
         std::vector<std::uint32_t> mIndices;
+
+        /// What one of its parts comes to, as the frame adopts it.
+        ///
+        /// **Here rather than beside the one caller, because the buffers are this model's.** A part
+        /// holds four runs and this holds what they name, so the pairing is one statement in one
+        /// place — and `MeshReading` is exactly what a reader made and what the frame takes.
+        ///
+        /// The spans are into this model's own storage, and live for as long as it is lent.
+        MeshReading readingOf(const PreparedPart& part) const
+        {
+            return MeshReading{
+                .mPositions = part.mVertices.in(std::span<const osg::Vec3f>(mPositions)),
+                .mNormals = part.mNormals.in(std::span<const osg::Vec3f>(mNormals)),
+                .mTexCoords = part.mTexCoords.in(std::span<const osg::Vec2f>(mTexCoords)),
+                .mIndices = part.mIndices.in(std::span<const std::uint32_t>(mIndices)),
+                .mShape = part.mShape,
+            };
+        }
 
         /// Makes room for the next model, keeping what the buffers grew.
         void reuse()

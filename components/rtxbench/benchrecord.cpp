@@ -131,8 +131,8 @@ namespace Rtx
             out += std::format("  {:.1f}% of primary rays hit\n", place.mHitPercent);
 
         out += describeHeadings();
-        for (std::size_t at = 0; at < sTimingCount; ++at)
-            out += describeTimes(std::format("{} ms", sTimingNames[at]), place.mRows[at]);
+        for (const Timing timing : sTimings.values())
+            out += describeTimes(std::format("{} ms", sTimings.name(timing)), place.mRows[indexOf(timing)]);
 
         // **The device's own account of the same frame, one figure each.** Six distributions would
         // be a wall; what this row answers is "which of them is the expensive one", and the row
@@ -206,8 +206,9 @@ namespace Rtx
                  << R"("crossings": )" << asJson(place.mCrossings)
                  << std::format(R"(, "travelled": {:.4f}, )", place.mTravelled);
 
-            for (std::size_t timing = 0; timing < sTimingCount; ++timing)
-                file << std::format(R"("{}Ms": )", sTimingNames[timing]) << asJson(place.mRows[timing]) << ", ";
+            for (const Timing timing : sTimings.values())
+                file << std::format(R"("{}Ms": )", sTimings.name(timing)) << asJson(place.mRows[indexOf(timing)])
+                     << ", ";
 
             file << R"("gpuMs": {)";
 

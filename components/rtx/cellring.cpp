@@ -4,13 +4,11 @@
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
-#include <mutex>
 #include <span>
 #include <utility>
 
 #include <components/misc/constants.hpp>
 
-#include "cellreader.hpp"
 #include "distantland.hpp"
 #include "materialresolver.hpp"
 #include "meshinstance.hpp"
@@ -48,6 +46,26 @@ namespace Rtx
             }
         };
 
+        /// How far the eye stands from the nearest point of `cell`, in units, by the square's own
+        /// metric — which is the one the paging measured a chunk's reach by.
+        float distanceTo(const osg::Vec2i& cell, const osg::Vec3f& eye)
+        {
+            const float low = static_cast<float>(cell.x()) * sCellSize;
+            const float high = low + sCellSize;
+            const float lowY = static_cast<float>(cell.y()) * sCellSize;
+            const float highY = lowY + sCellSize;
+
+            const float alongX = std::max({ low - eye.x(), eye.x() - high, 0.0f });
+            const float alongY = std::max({ lowY - eye.y(), eye.y() - highY, 0.0f });
+
+            return std::max(alongX, alongY);
+        }
+
+        bool withinBand(const osg::Vec2i& cell, const osg::Vec2i& eye, const int band)
+        {
+            return std::abs(cell.x() - eye.x()) <= band && std::abs(cell.y() - eye.y()) <= band;
+        }
+
         /// The order the held cells are kept in: `osg::Vec2i` orders lexicographically already,
         /// and a cell and a held cell are both asked by it.
         const osg::Vec2i& cellKey(const osg::Vec2i& cell)
@@ -61,78 +79,60 @@ namespace Rtx
             return held.mCell;
         }
 
-        MeshReading readingOf(const PreparedModel& model, const PreparedPart& part)
-        {
-            return MeshReading{
-                .mPositions = std::span(model.mPositions).subspan(part.mFirstVertex, part.mVertexCount),
-                .mNormals = std::span(model.mNormals).subspan(part.mFirstNormal, part.mNormalCount),
-                .mTexCoords = std::span(model.mTexCoords).subspan(part.mFirstTexCoord, part.mTexCoordCount),
-                .mIndices = std::span(model.mIndices).subspan(part.mFirstIndex, part.mIndexCount),
-                .mShape = part.mShape,
-            };
-        }
     }
 
-    CellRing::CellRing(SceneExtractor& extractor, SceneDesc& scene)
-        : mExtractor(extractor)
-        , mScene(scene)
+    CellRing::CellRing(SceneDesc& scene)
+        : mScene(scene)
     {
     }
 
-    CellRing::~CellRing()
+    CellRing::~CellRing() = default;
+
+    void CellRing::setContent(
+        Terrain::Storage* const ground, ContentSource* const content, const osg::Node::NodeMask mask)
     {
-        mWorker.request_stop();
-        mWake.notify_all();
+        mGround = ground;
+        mContent = content;
+        mMask = mask;
     }
 
-    void CellRing::follow(const Terrain::ObjectStorage* const storage, Terrain::Storage* const ground,
-        ContentSource* const content, const ESM::RefId worldspace, const osg::Node::NodeMask mask)
+    void CellRing::follow(const WorldAround& around)
     {
-        if (mStorage == storage && mGround == ground && mContent == content && mWorldspace == worldspace
-            && mMask == mask)
+        mAround = around;
+
+        const CellWorld world{
+            .mStorage = around.mStorage,
+            .mGround = mGround,
+            .mContent = mContent,
+            .mWorldspace = around.mWorldspace,
+            .mMask = mMask,
+        };
+
+        if (mSupply.isReading(world))
             return;
 
-        // **The thread reads the storages and the content without the lock**, which is sound only
-        // because it is stopped and joined here before any is replaced — and before the reader
-        // that holds them goes. Nothing is given back: what the frame held dies with the reader.
-        mWorker.request_stop();
-        mWake.notify_all();
-        mWorker = {};
+        // **Everything held names the reader that is about to go**, so it is let go of before the
+        // supply is pointed anywhere else. Nothing is given back: what the frame held dies with the
+        // reader that lent it.
+        forget();
+        mSupply.follow(world);
+    }
 
+    void CellRing::forget()
+    {
         std::uint32_t grounds = 0;
         for (HeldCell& cell : mCells)
         {
             dropSlots(cell);
-            grounds += cell.mGroundMesh != sNoIndex ? 1 : 0;
+            grounds += cell.mGround.has_value() ? 1 : 0;
         }
-        mExtractor.disownRows(grounds, grounds);
+        mCount.mMeshesDisowned += grounds;
+        mCount.mMaterialsDisowned += grounds;
 
         mCells.clear();
         mModels.clear();
         mTextures.clear();
         mPending.clear();
-        mDone.clear();
-        mWanted.clear();
-        mRequested.clear();
-        mReturnedCells.clear();
-        mReturnedModels.clear();
-        mReturnedTextures.clear();
-        mReturnCellsScratch.clear();
-        mReturnModelsScratch.clear();
-        mReturnTexturesScratch.clear();
-        mReader.reset();
-
-        mStorage = storage;
-        mGround = ground;
-        mContent = content;
-        mWorldspace = worldspace;
-        mMask = mask;
-
-        if (mStorage == nullptr || mGround == nullptr || mContent == nullptr)
-            return;
-
-        mReader = std::make_unique<CellReader>(*mStorage, *mGround, *mContent, mWorldspace, mMask);
-        mWorker = std::jthread([this](std::stop_token stop) { work(stop); });
     }
 
     void CellRing::setStaticsEnabled(const bool enabled)
@@ -140,29 +140,9 @@ namespace Rtx
         mStatics = enabled;
     }
 
-    void CellRing::setReach(const float units)
-    {
-        mReach = units;
-    }
-
     void CellRing::setMinSize(const float minSize)
     {
         mMinSize = minSize;
-    }
-
-    void CellRing::setActiveGrid(const osg::Vec4i& grid)
-    {
-        mActiveGrid = grid;
-    }
-
-    void CellRing::setViewPoint(const osg::Vec3f& viewPoint)
-    {
-        mViewPoint = viewPoint;
-    }
-
-    void CellRing::setOutdoors(const bool outdoors)
-    {
-        mOutdoors = outdoors;
     }
 
     void CellRing::setFrame(const std::size_t frame)
@@ -196,28 +176,10 @@ namespace Rtx
         return at->mTexture;
     }
 
-    float CellRing::distanceTo(const osg::Vec2i& cell, const osg::Vec3f& eye)
-    {
-        const float low = static_cast<float>(cell.x()) * sCellSize;
-        const float high = low + sCellSize;
-        const float lowY = static_cast<float>(cell.y()) * sCellSize;
-        const float highY = lowY + sCellSize;
-
-        const float alongX = std::max({ low - eye.x(), eye.x() - high, 0.0f });
-        const float alongY = std::max({ lowY - eye.y(), eye.y() - highY, 0.0f });
-
-        return std::max(alongX, alongY);
-    }
-
-    bool CellRing::withinBand(const osg::Vec2i& cell, const osg::Vec2i& eye, const int band)
-    {
-        return std::abs(cell.x() - eye.x()) <= band && std::abs(cell.y() - eye.y()) <= band;
-    }
-
     bool CellRing::inActiveGrid(const osg::Vec2i& cell) const
     {
-        return cell.x() >= mActiveGrid.x() && cell.y() >= mActiveGrid.y() && cell.x() < mActiveGrid.z()
-            && cell.y() < mActiveGrid.w();
+        return cell.x() >= mAround.mActiveGrid.x() && cell.y() >= mAround.mActiveGrid.y()
+            && cell.x() < mAround.mActiveGrid.z() && cell.y() < mAround.mActiveGrid.w();
     }
 
     bool CellRing::holds(const osg::Vec2i& cell) const
@@ -239,17 +201,17 @@ namespace Rtx
 
     int CellRing::reachInCells() const
     {
-        return static_cast<int>(std::ceil(mReach / sCellSize));
+        return static_cast<int>(std::ceil(mAround.mReach / sCellSize));
     }
 
-    bool CellRing::wantsFlattening(const HeldCell& cell) const
+    bool CellRing::wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground) const
     {
         // **A stack is flattened outside the active grid, and a single layer is never.** Inside
         // the grid the ground is near enough that the sharpness of a live stack is worth its cost
         // per hit, which is the rule the quad tree reached at about a cell out; a single layer is
         // already a single fetch, and flattening one would only resample a tiling texture into
         // something coarser than its file.
-        return cell.mLayers > 1 && !inActiveGrid(cell.mCell);
+        return ground.mLayers > 1 && !inActiveGrid(cell);
     }
 
     void CellRing::holdTexture(const PreparedTexture& texture)
@@ -334,16 +296,15 @@ namespace Rtx
     void CellRing::giveBackHolds(
         const std::span<PreparedModel* const> models, const std::span<PreparedTexture* const> textures)
     {
-        mReturnModelsScratch.insert(mReturnModelsScratch.end(), models.begin(), models.end());
-        mReturnTexturesScratch.insert(mReturnTexturesScratch.end(), textures.begin(), textures.end());
+        CellReturns& back = mSupply.giveBack();
+        back.mModels.insert(back.mModels.end(), models.begin(), models.end());
+        back.mTextures.insert(back.mTextures.end(), textures.begin(), textures.end());
     }
 
     void CellRing::takeDone()
     {
-        {
-            std::lock_guard<std::mutex> lock(mMutex);
-            mDoneScratch.swap(mDone);
-        }
+        mDoneScratch.clear();
+        mSupply.take(mDoneScratch);
 
         for (PreparedCell* cell : mDoneScratch)
         {
@@ -364,30 +325,20 @@ namespace Rtx
 
     void CellRing::ask(const osg::Vec2i& eye, const int band)
     {
-        mMissingScratch.clear();
+        mAsking.mCells.clear();
+        mAsking.mStatics = mStatics;
+
         for (int x = eye.x() - band; x <= eye.x() + band; ++x)
             for (int y = eye.y() - band; y <= eye.y() + band; ++y)
             {
                 const osg::Vec2i cell(x, y);
                 if (!holds(cell) && !pending(cell))
-                    mMissingScratch.push_back(cell);
+                    mAsking.mCells.push_back(cell);
             }
 
-        std::sort(mMissingScratch.begin(), mMissingScratch.end(), Nearer{ eye });
+        std::sort(mAsking.mCells.begin(), mAsking.mCells.end(), Nearer{ eye });
 
-        if (mMissingScratch == mRequested && mStatics == mRequestedStatics)
-            return;
-
-        mRequested = mMissingScratch;
-        mRequestedStatics = mStatics;
-
-        {
-            std::lock_guard<std::mutex> lock(mMutex);
-            mWanted = mMissingScratch;
-            mWantedStatics = mStatics;
-        }
-
-        mWake.notify_one();
+        mSupply.ask(mAsking);
     }
 
     void CellRing::waitForWanted(const osg::Vec2i& eye, const int band)
@@ -404,8 +355,7 @@ namespace Rtx
             if (!lacking)
                 return;
 
-            std::unique_lock<std::mutex> lock(mMutex);
-            mDoneWake.wait(lock, [&] { return !mDone.empty(); });
+            mSupply.waitForOne();
         }
     }
 
@@ -442,14 +392,14 @@ namespace Rtx
         {
             // **The material before the mesh**, as the walk resolves them: a mesh records the
             // material it arrives wearing.
-            const MaterialResolver::Resolved material = mExtractor.adoptMaterial(part.mMaterial);
-            Known& mesh = mExtractor.adoptMesh(*part.mDrawable, readingOf(model, part), material.mIndex);
+            const MaterialResolver::Resolved material = walk().adoptMaterial(part.mMaterial);
+            Known& mesh = walk().adoptMesh(*part.mDrawable, model.readingOf(part), material.mIndex);
 
             held.mParts.push_back(AdoptedPart{
                 .mMesh = mesh.mIndex,
                 .mMaterial = material.mIndex,
                 .mMeshEntry = &mesh,
-                .mMaterialEntry = material.mKey != nullptr ? mExtractor.findMaterial(material.mKey) : nullptr,
+                .mMaterialEntry = material.mKey != nullptr ? walk().findMaterial(material.mKey) : nullptr,
             });
         }
     }
@@ -460,6 +410,7 @@ namespace Rtx
         if (!ground.mStands)
             return;
 
+        HeldGround& stands = held.mGround.emplace();
         mLayerScratch.clear();
         for (const PreparedLayer& layer : ground.mLayers)
         {
@@ -467,10 +418,9 @@ namespace Rtx
             row.mDiffuse = mScene.addTexture(layer.mTexture->mPath);
             row.mDiffuseTransform = layer.mDiffuseTransform;
 
-            if (layer.mWeightCount > 0)
+            if (!layer.mWeights.empty())
             {
-                row.mMask = mScene.addMask(
-                    std::span<const float>(ground.mWeights).subspan(layer.mFirstWeight, layer.mWeightCount));
+                row.mMask = mScene.addMask(layer.mWeights.in(std::span<const float>(ground.mWeights)));
                 row.mMaskWidth = layer.mMaskWidth;
                 row.mMaskHeight = layer.mMaskHeight;
                 row.mMaskTransform = layer.mMaskTransform;
@@ -478,28 +428,29 @@ namespace Rtx
 
             mLayerScratch.push_back(row);
 
-            held.mGroundTextures.push_back(layer.mTexture);
+            stands.mTextures.push_back(layer.mTexture);
             holdTexture(*layer.mTexture);
         }
 
-        held.mLayers = static_cast<std::uint32_t>(mLayerScratch.size());
-        held.mGroundOrigin = ground.mOrigin;
-        held.mFlattened = wantsFlattening(held);
+        stands.mLayers = static_cast<std::uint32_t>(mLayerScratch.size());
+        stands.mOrigin = ground.mOrigin;
+        stands.mFlattened = wantsFlattening(held.mCell, stands);
 
         // **The material before the mesh**, here too: a mesh records the material it arrives
         // wearing, and a cell's ground wears one for its life.
         Material material;
         material.mKind = MaterialKind::Terrain;
-        material.mFlatten = held.mFlattened;
+        material.mFlatten = stands.mFlattened;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.addLayers(mLayerScratch);
-        held.mGroundMaterial = mScene.addMaterial(material);
+        stands.mMaterial = mScene.addMaterial(material);
 
         // A heightfield is neither a sheet nor closed, and no fold is needed to say so.
-        held.mGroundMesh = mScene.addMesh(ground.mPositions, ground.mNormals, ground.mTexCoords, ground.mIndices,
-            FoldedShape{}, Deform::None, sNoIndex, held.mGroundMaterial);
+        stands.mMesh = mScene.addMesh(ground.mPositions, ground.mNormals, ground.mTexCoords, ground.mIndices,
+            FoldedShape{}, Deform::None, sNoIndex, stands.mMaterial);
 
-        mExtractor.countOwnedRows(1, 1);
+        ++mCount.mMeshesAdded;
+        ++mCount.mMaterialsAdded;
     }
 
     void CellRing::adopt(PreparedCell& cell)
@@ -515,12 +466,11 @@ namespace Rtx
         held.mStatics = cell.mStatics;
         held.mPlacements.clear();
         held.mModels.clear();
-        held.mGroundMesh = sNoIndex;
-        held.mGroundMaterial = sNoIndex;
-        held.mGroundSlot = sNoIndex;
-        held.mLayers = 0;
-        held.mFlattened = false;
-        held.mGroundTextures.clear();
+
+        // **Emptied and kept, not reset**, so the texture list a spare cell grew is room the next
+        // one refills rather than a heap call on the frame a cell lands.
+        if (held.mGround.has_value())
+            held.mGround->reuse();
 
         adoptGround(cell, held);
 
@@ -554,7 +504,7 @@ namespace Rtx
             [](const HeldCell& left, const osg::Vec2i& right) { return cellKey(left) < cellKey(right); });
         mCells.insert(at, std::move(held));
 
-        mReturnCellsScratch.push_back(&cell);
+        mSupply.giveBack().mCells.push_back(&cell);
     }
 
     void CellRing::discard(PreparedCell& cell)
@@ -564,11 +514,12 @@ namespace Rtx
 
         // Every hold the reader counted for the cell goes back with it: the models, and the
         // images its ground names.
+        CellReturns& back = mSupply.giveBack();
         for (const PreparedLayer& layer : cell.mGround.mLayers)
-            mReturnTexturesScratch.push_back(layer.mTexture);
+            back.mTextures.push_back(layer.mTexture);
         giveBackHolds(cell.mModels, {});
 
-        mReturnCellsScratch.push_back(&cell);
+        back.mCells.push_back(&cell);
     }
 
     void CellRing::dropSlots(HeldCell& cell)
@@ -581,10 +532,10 @@ namespace Rtx
                 --mPlaced;
             }
 
-        if (cell.mGroundSlot != sNoIndex)
+        if (cell.mGround.has_value() && cell.mGround->mSlot != sNoIndex)
         {
-            mScene.dropInstance(cell.mGroundSlot);
-            cell.mGroundSlot = sNoIndex;
+            mScene.dropInstance(cell.mGround->mSlot);
+            cell.mGround->mSlot = sNoIndex;
             --mGroundPlaced;
         }
     }
@@ -596,21 +547,26 @@ namespace Rtx
         for (PreparedModel* model : cell.mModels)
             release(*model, true);
 
-        for (PreparedTexture* texture : cell.mGroundTextures)
+        const std::span<PreparedTexture* const> textures = cell.mGround.has_value()
+            ? std::span<PreparedTexture* const>(cell.mGround->mTextures)
+            : std::span<PreparedTexture* const>();
+
+        for (PreparedTexture* texture : textures)
             dropTexture(*texture);
 
-        giveBackHolds(cell.mModels, cell.mGroundTextures);
+        giveBackHolds(cell.mModels, textures);
 
         // The ground's rows are simply not named on this walk, and the sweep after it is told
         // there is something to release.
-        if (cell.mGroundMesh != sNoIndex)
-            mExtractor.disownRows(1, 1);
+        if (cell.mGround.has_value())
+        {
+            ++mCount.mMeshesDisowned;
+            ++mCount.mMaterialsDisowned;
+            cell.mGround->reuse();
+        }
 
         cell.mPlacements.clear();
         cell.mModels.clear();
-        cell.mGroundTextures.clear();
-        cell.mGroundMesh = sNoIndex;
-        cell.mGroundMaterial = sNoIndex;
         mSpareCells.push_back(std::move(cell));
     }
 
@@ -618,25 +574,6 @@ namespace Rtx
     {
         for (HeldCell& cell : mCells)
             dropSlots(cell);
-    }
-
-    void CellRing::publishReturns()
-    {
-        if (mReturnCellsScratch.empty() && mReturnModelsScratch.empty() && mReturnTexturesScratch.empty())
-            return;
-
-        {
-            std::lock_guard<std::mutex> lock(mMutex);
-            mReturnedCells.insert(mReturnedCells.end(), mReturnCellsScratch.begin(), mReturnCellsScratch.end());
-            mReturnedModels.insert(mReturnedModels.end(), mReturnModelsScratch.begin(), mReturnModelsScratch.end());
-            mReturnedTextures.insert(
-                mReturnedTextures.end(), mReturnTexturesScratch.begin(), mReturnTexturesScratch.end());
-        }
-
-        mReturnCellsScratch.clear();
-        mReturnModelsScratch.clear();
-        mReturnTexturesScratch.clear();
-        mWake.notify_one();
     }
 
     void CellRing::place(const osg::Vec2i& eye, const int reach)
@@ -647,33 +584,35 @@ namespace Rtx
 
             // **The ground stands inside the active grid too**: the game builds none for this
             // renderer, so what a cell's land says is stood here wherever the cell is.
-            if (cell.mGroundMesh != sNoIndex)
+            if (cell.mGround.has_value())
             {
-                if (inReach && cell.mGroundSlot == sNoIndex)
+                HeldGround& ground = *cell.mGround;
+
+                if (inReach && ground.mSlot == sNoIndex)
                 {
-                    cell.mGroundSlot = mScene.addInstance(MeshInstance{
-                        .mTransform = osg::Matrixf::translate(cell.mGroundOrigin),
-                        .mMesh = cell.mGroundMesh,
-                        .mMaterial = cell.mGroundMaterial,
+                    ground.mSlot = mScene.addInstance(MeshInstance{
+                        .mTransform = osg::Matrixf::translate(ground.mOrigin),
+                        .mMesh = ground.mMesh,
+                        .mMaterial = ground.mMaterial,
                     });
                     ++mGroundPlaced;
                 }
-                else if (!inReach && cell.mGroundSlot != sNoIndex)
+                else if (!inReach && ground.mSlot != sNoIndex)
                 {
-                    mScene.dropInstance(cell.mGroundSlot);
-                    cell.mGroundSlot = sNoIndex;
+                    mScene.dropInstance(ground.mSlot);
+                    ground.mSlot = sNoIndex;
                     --mGroundPlaced;
                 }
 
                 // A cell crossing the grid's edge shades the other way from now on. The composite
                 // it held goes with the rewrite, and one it now wants is asked for by the row.
-                if (wantsFlattening(cell) != cell.mFlattened)
+                if (wantsFlattening(cell.mCell, ground) != ground.mFlattened)
                 {
-                    Material given = mScene.getTables().mMaterials.getRows()[cell.mGroundMaterial];
-                    given.mFlatten = !cell.mFlattened;
+                    Material given = mScene.getTables().mMaterials.getRows()[ground.mMaterial];
+                    given.mFlatten = !ground.mFlattened;
                     given.mDiffuse = sNoIndex;
-                    mScene.setMaterial(cell.mGroundMaterial, given);
-                    cell.mFlattened = given.mFlatten;
+                    mScene.setMaterial(ground.mMaterial, given);
+                    ground.mFlattened = given.mFlatten;
                 }
             }
 
@@ -681,7 +620,7 @@ namespace Rtx
 
             // The paging's own rule, per reference and per frame: a reference is placed while its
             // scaled radius clears the size threshold at the eye's distance to its cell.
-            const float threshold = shown ? mMinSize * distanceTo(cell.mCell, mViewPoint) : 0.0f;
+            const float threshold = shown ? mMinSize * distanceTo(cell.mCell, mAround.mEye) : 0.0f;
             const float threshold2 = threshold * threshold;
 
             for (Placement& placement : cell.mPlacements)
@@ -713,37 +652,50 @@ namespace Rtx
         for (const HeldModel& held : mModels)
             for (const AdoptedPart& part : held.mParts)
             {
-                mExtractor.keepMesh(*part.mMeshEntry);
+                walk().keepMesh(*part.mMeshEntry);
                 if (part.mMaterialEntry != nullptr)
-                    mExtractor.keepMaterial(*part.mMaterialEntry);
+                    walk().keepMaterial(*part.mMaterialEntry);
             }
 
         for (const HeldCell& cell : mCells)
-            if (cell.mGroundMesh != sNoIndex)
+            if (cell.mGround.has_value())
             {
-                mExtractor.keepOwnedMesh(cell.mGroundMesh);
-                mExtractor.keepOwnedMaterial(cell.mGroundMaterial);
+                walk().keepOwnedMesh(cell.mGround->mMesh);
+                walk().keepOwnedMaterial(cell.mGround->mMaterial);
             }
     }
 
-    void CellRing::collect(Collector&)
+    Collector& CellRing::walk() const
     {
-        if (mReader == nullptr)
-            return;
+        assert(mInto != nullptr && "the ring reached the walk from outside `collect`");
+        return *mInto;
+    }
+
+    ResidencyCount CellRing::collect(Collector& into)
+    {
+        mInto = &into;
+
+        // **Reported whatever else happens**, because a world with no reader is a world this has
+        // just let go of: the rows it owned are gone, and only this says so.
+        mCount.mDistantStatics = 0;
+        mCount.mGroundCells = 0;
+
+        if (!mSupply.hasReader())
+            return report();
 
         takeDone();
 
         // **Indoors the eye's coordinates belong to another space**, so the rings are not moved:
         // what is held stays held for the way back out, and nothing stands.
-        if (!mOutdoors)
+        if (!mAround.mOutdoors)
         {
             dropPlacements();
             stamp();
-            publishReturns();
-            return;
+            mSupply.publish();
+            return report();
         }
 
-        const osg::Vec2i eye = cellOf(mViewPoint);
+        const osg::Vec2i eye = cellOf(mAround.mEye);
         const int reach = reachInCells();
         const int band = reach + sPreparedBand;
 
@@ -781,68 +733,23 @@ namespace Rtx
         adoptPending();
         place(eye, reach);
         stamp();
-        publishReturns();
+        mSupply.publish();
 
-        mExtractor.countDistantStatics(mPlaced);
-        mExtractor.countGround(mGroundPlaced);
+        mCount.mDistantStatics = mPlaced;
+        mCount.mGroundCells = mGroundPlaced;
+
+        return report();
     }
 
-    void CellRing::recycle()
+    ResidencyCount CellRing::report()
     {
-        for (PreparedCell* cell : mReturnedCells)
-            mReader->giveBack(*cell);
-        mReturnedCells.clear();
+        // So that a reach from outside a walk fails where it is rather than counting into one that
+        // has gone.
+        mInto = nullptr;
 
-        for (PreparedTexture* texture : mReturnedTextures)
-            mReader->giveBack(*texture);
-        mReturnedTextures.clear();
-
-        for (PreparedModel* model : mReturnedModels)
-            mReader->giveBack(*model);
-        mReturnedModels.clear();
-    }
-
-    void CellRing::work(std::stop_token stop)
-    {
-        std::unique_lock<std::mutex> lock(mMutex);
-        while (mWake.wait(lock, stop, [&] {
-            return !mWanted.empty() || !mReturnedCells.empty() || !mReturnedModels.empty()
-                || !mReturnedTextures.empty();
-        }))
-        {
-            if (stop.stop_requested())
-                return;
-
-            recycle();
-
-            mRequest.swap(mWanted);
-            mWanted.clear();
-            mRequestStatics = mWantedStatics;
-            lock.unlock();
-
-            for (const osg::Vec2i& cell : mRequest)
-            {
-                if (stop.stop_requested())
-                    break;
-
-                // A newer list replaces this one: the eye has moved and what it lacks has changed.
-                lock.lock();
-                const bool newer = !mWanted.empty();
-                recycle();
-                lock.unlock();
-
-                if (newer)
-                    break;
-
-                PreparedCell& made = mReader->read(cell, mRequestStatics);
-
-                lock.lock();
-                mDone.push_back(&made);
-                lock.unlock();
-                mDoneWake.notify_all();
-            }
-
-            lock.lock();
-        }
+        // **Spent here, because every field of it is told once.** A row disowned outside a walk has
+        // to survive to the next one, and a walk that reported it twice would have the sweep free a
+        // row that was already gone.
+        return std::exchange(mCount, ResidencyCount{});
     }
 }

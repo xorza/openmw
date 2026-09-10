@@ -12,6 +12,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/slotpool.hpp>
 
 #include "bloompass.hpp"
 #include "buffer.hpp"
@@ -29,6 +30,7 @@
 #include "guitextures.hpp"
 #include "instance.hpp"
 #include "placing.hpp"
+#include "presenttargets.hpp"
 #include "setlayout.hpp"
 #include "skinpass.hpp"
 #include "spritebinpass.hpp"
@@ -150,15 +152,15 @@ namespace Rtx
         void takeValidationErrors(std::vector<std::string>& errors) override;
 
     private:
+        /// Widens a channel stored as bytes or as halves on the way out.
+        void readImage(const Image& image, std::vector<float>& values);
+
         /// The scene a slot names — the world's, or a picture's. A slot nothing holds is a caller
         /// bug, so it is asserted rather than reported.
         ///
         /// **The const one does the work.** Casting the other way round takes the constness off an
         /// object that may really have it, which is the one direction of this pair that is not
         /// always sound.
-        /// Widens a channel stored as bytes or as halves on the way out.
-        void readImage(const Image& image, std::vector<float>& values);
-
         const ViewScene& sceneAt(SceneSlot slot) const;
         ViewScene& sceneAt(SceneSlot slot);
 
@@ -208,11 +210,6 @@ namespace Rtx
         /// Makes the picture-inside-the-interface chain at least this big, and the byte image the
         /// interface is handed with it.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
-
-        /// What the finished picture is encoded into, and so what the GUI pass is compiled against.
-        /// Four bytes a pixel and not display-encoded by the hardware: the tone curve has already
-        /// run by the time anything is written here.
-        static constexpr VkFormat sTargetFormat = VK_FORMAT_R8G8B8A8_UNORM;
 
         // Declaration order is destruction order reversed, and everything below the device is built
         // on it.
@@ -283,23 +280,10 @@ namespace Rtx
         std::uint32_t mOutputWidth = 0;
         std::uint32_t mOutputHeight = 0;
 
-        /// The frame as bytes at the output extent, which is what anything outside this reads.
-        ///
-        /// **Two of them, swapped by every present.** A present's blit reads its image long after
-        /// the call that queued it returned — it waits the acquire semaphore, which under FIFO the
-        /// presentation engine signals when it lets that swapchain image go — and the discard a
-        /// frame opens with is sourced at `TOP_OF_PIPE`, which waits for nothing. One image would
-        /// have each frame rewriting what the last is still being read out of, and no barrier can
-        /// order that: a source scope does not reach across a submit.
-        std::unique_ptr<Image> mTarget;
-
-        /// The other one. Which of the two is which changes every present, so neither is special.
-        std::unique_ptr<Image> mSpare;
-
-        /// The one the last present read — which is `mSpare`, since the swap is what put it there —
-        /// or null where nothing has presented at all. Named separately because that null is the
-        /// whole question `readPixels` asks, and a headless run never answers it.
-        const Image* mPresented = nullptr;
+        /// The frame as bytes at the output extent, which is what anything outside this reads: two
+        /// images, swapped by every present, and the one the last present read. `PresentTargets`
+        /// says why there are two.
+        PresentTargets mTargets;
 
         /// The running sum a reference is built out of, and null until a frame asks for one.
         ///
@@ -378,6 +362,12 @@ namespace Rtx
         /// layout that only a scene brings, and the layout every scene brings is the same one.
         std::unique_ptr<TonePass> mTone;
 
+        /// **The interface stays four members here rather than becoming an object.** They are a
+        /// grouping and not an invariant: `GuiTextures` already holds the part with a rule — the
+        /// staging arenas, the lent region, the layout a texture rests in — and what is left beside
+        /// it is a pipeline, a scratch vector and a counter with nothing binding them. An object
+        /// over the four would take the frame ring, the pool, the device and the present target per
+        /// call, which is four dependencies threaded in to move four members out.
         GuiPass mGuiPass;
         GuiTextures mGuiTextures;
 
@@ -386,9 +376,16 @@ namespace Rtx
         std::vector<GuiDraw> mGuiDraws;
 
         /// Scenes belonging to pictures rather than to the world, by slot, and the slots nothing
-        /// holds.
+        /// holds. **`SlotPool` and not a list of its own**, for the reason `GuiTextures` keeps one.
+        ///
+        /// **These and `mView` stay members for the reason the interface above does.** `mView` is a
+        /// `TraceChain` whose sibling is the frame's own, `mViewTarget` is grown with it, and the
+        /// table is addressed by a slot the public interface hands out — so an object over the four
+        /// would need the device, the pool, the ring, the trace pipeline and every pass a picture
+        /// records, reached through one more indirection. `PresentTargets` earned its type by
+        /// holding a rule; this is a grouping.
         std::vector<std::unique_ptr<ViewScene>> mViewScenes;
-        std::vector<SceneSlot> mFreeViewScenes;
+        SlotPool mFreeViewScenes;
 
         /// The picture as bytes, which is what the interface's texture is copied out of. Null
         /// until something asks for a picture, and grown with `mView`.

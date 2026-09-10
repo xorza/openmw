@@ -662,7 +662,7 @@ namespace Rtx::Testing
         {
             mNumbered.assign(textures.begin(), textures.end());
             for (std::size_t at = 0; at < mNumbered.size(); ++at)
-                mNumbered[at].mIndex = static_cast<std::uint32_t>(at);
+                mNumbered[at].mSlot = static_cast<std::uint32_t>(at);
 
             return mNumbered;
         }

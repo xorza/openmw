@@ -80,6 +80,9 @@ namespace Rtx
         };
 
         /// Counts the lights a residency hands over.
+        ///
+        /// **Everything but `take` aborts.** `DistantLights` stands nodes and adopts no row, so a
+        /// call to any of the rest would be this residency doing something it has no business doing.
         struct CountLights : osg::NodeVisitor, Collector
         {
             CountLights()
@@ -88,6 +91,31 @@ namespace Rtx
             }
 
             void take(osg::Node& node) override { node.accept(*this); }
+
+            MaterialResolver::Resolved adoptMaterial(const MaterialReading&) override
+            {
+                ADD_FAILURE() << "the lights adopted a material";
+                return MaterialResolver::Resolved{};
+            }
+
+            Known& adoptMesh(const osg::Drawable&, const MeshReading&, Index) override
+            {
+                ADD_FAILURE() << "the lights adopted a mesh";
+                return mNothing;
+            }
+
+            Known* findMaterial(const osg::StateSet*) override
+            {
+                ADD_FAILURE() << "the lights looked a material up";
+                return nullptr;
+            }
+
+            void keepMesh(Known&) override { ADD_FAILURE() << "the lights kept a mesh"; }
+            void keepMaterial(Known&) override { ADD_FAILURE() << "the lights kept a material"; }
+            void keepOwnedMesh(Index) override { ADD_FAILURE() << "the lights own a mesh"; }
+            void keepOwnedMaterial(Index) override { ADD_FAILURE() << "the lights own a material"; }
+
+            Known mNothing;
 
             void apply(osg::Node& node) override
             {
@@ -105,14 +133,15 @@ namespace Rtx
             const OneLamp storage(flags);
 
             DistantLights lights;
-            lights.follow(&storage, ESM::Cell::sDefaultWorldspaceId);
-            lights.setReach(sCellSize * 6.0f);
-            lights.setOutdoors(true);
 
             // The eye at the origin, and the grid the game stands for itself around it — so the lamp
             // four cells out is one the graph route never had a node for.
-            lights.setViewPoint(osg::Vec3f());
-            lights.setActiveGrid(osg::Vec4i(-1, -1, 2, 2));
+            lights.follow(WorldAround{ .mStorage = &storage,
+                .mWorldspace = ESM::Cell::sDefaultWorldspaceId,
+                .mEye = osg::Vec3f(),
+                .mReach = sCellSize * 6.0f,
+                .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
+                .mOutdoors = true });
 
             CountLights counted;
             lights.collect(counted);
@@ -144,11 +173,12 @@ namespace Rtx
             const OneLamp storage(0);
 
             DistantLights lights;
-            lights.follow(&storage, ESM::Cell::sDefaultWorldspaceId);
-            lights.setReach(sCellSize * 6.0f);
-            lights.setOutdoors(true);
-            lights.setViewPoint(osg::Vec3f());
-            lights.setActiveGrid(osg::Vec4i(-1, -1, 2, 2));
+            lights.follow(WorldAround{ .mStorage = &storage,
+                .mWorldspace = ESM::Cell::sDefaultWorldspaceId,
+                .mEye = osg::Vec3f(),
+                .mReach = sCellSize * 6.0f,
+                .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
+                .mOutdoors = true });
 
             CountLights first;
             lights.collect(first);

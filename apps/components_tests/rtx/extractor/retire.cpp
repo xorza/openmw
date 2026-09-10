@@ -84,18 +84,21 @@ namespace Rtx::Testing
         class OwnedRows : public Residency
         {
         public:
-            OwnedRows(SceneExtractor& extractor, SceneDesc& scene)
-                : mExtractor(extractor)
-                , mScene(scene)
+            explicit OwnedRows(SceneDesc& scene)
+                : mScene(scene)
             {
             }
+
+            void follow(const WorldAround&) override {}
 
             void letGo() { mHolding = false; }
 
             Index getMesh() const { return mMesh; }
 
-            void collect(Collector&) override
+            ResidencyCount collect(Collector& into) override
             {
+                ResidencyCount count;
+
                 if (mMesh == sNoIndex)
                 {
                     const std::array<osg::Vec3f, 3> corners{ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
@@ -105,24 +108,27 @@ namespace Rtx::Testing
                     mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
                     mMesh = mScene.addMesh(corners, {}, {}, triangle, FoldedShape{}, Deform::None, sNoIndex, mMaterial);
                     mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
-                    mExtractor.countOwnedRows(1, 1);
+                    count.mMeshesAdded = 1;
+                    count.mMaterialsAdded = 1;
                 }
 
                 if (mHolding)
                 {
-                    mExtractor.keepOwnedMesh(mMesh);
-                    mExtractor.keepOwnedMaterial(mMaterial);
+                    into.keepOwnedMesh(mMesh);
+                    into.keepOwnedMaterial(mMaterial);
                 }
                 else if (mSlot != sNoIndex)
                 {
                     mScene.dropInstance(mSlot);
                     mSlot = sNoIndex;
-                    mExtractor.disownRows(1, 1);
+                    count.mMeshesDisowned = 1;
+                    count.mMaterialsDisowned = 1;
                 }
+
+                return count;
             }
 
         private:
-            SceneExtractor& mExtractor;
             SceneDesc& mScene;
             Index mMesh = sNoIndex;
             Index mMaterial = sNoIndex;
@@ -136,7 +142,7 @@ namespace Rtx::Testing
         /// disowning, a sweep on a frame where every map stood whole would never run at all.
         TEST_F(RtxSceneExtractorTest, aRowAResidencyOwnsIsKeptWhileNamedAndReleasedWhenDisowned)
         {
-            OwnedRows rows(mExtractor, mScene);
+            OwnedRows rows(mScene);
             Residency* held = &rows;
             mExtractor.follow(std::span<Residency* const>(&held, 1));
 

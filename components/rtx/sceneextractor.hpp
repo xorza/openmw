@@ -4,13 +4,11 @@
 #include <cstdint>
 #include <memory>
 #include <span>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include <osg/Matrixf>
 #include <osg/Node>
-#include <osg/Vec3f>
 
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
@@ -18,6 +16,7 @@
 #include "meshresolver.hpp"
 #include "mirrorpass.hpp"
 #include "nodelibrary.hpp"
+#include "residency.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
 #include "traversals.hpp"
@@ -45,41 +44,6 @@ namespace SceneUtil
 namespace Rtx
 {
     class MirrorTraversal;
-
-    /// What a residency hands its contents to.
-    class Collector
-    {
-    public:
-        virtual ~Collector() = default;
-
-        /// Walks `node` as though the graph had parented it where the residency was asked.
-        virtual void take(osg::Node& node) = 0;
-    };
-
-    /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.
-    ///
-    /// **What this renderer stands for itself, and the content files state.** A walk of the graph
-    /// finds what the game stood: the active cells' objects and actors. The distance is nobody's
-    /// node — `CellRing` stands its ground off the land records and its statics as instances of
-    /// their templates, and `DistantLights` stands the lamps of cells the paging leaves dark, which
-    /// have no node in either renderer because `LIGH` is not a paged type. Each is asked, inside
-    /// the walk, for what it stands; the abstraction is here because the extractor may be handed
-    /// none, which is every scene that is not a world.
-    ///
-    /// **One method, because a host holds each of these as itself and not through this.** What a
-    /// residency has to be told differs by what it stands — the ring wants the eye, the reach, the
-    /// active grid and the size rule, distant lights want three of those — so the setters stay on
-    /// the classes and only the asking is shared. Hoisting the one setter both happen to have
-    /// would leave a host reaching the rest by name anyway, and a reader wondering why the eye
-    /// arrived by a different route than the grid.
-    class Residency
-    {
-    public:
-        virtual ~Residency() = default;
-
-        /// Hands `into` everything held that the graph does not parent.
-        virtual void collect(Collector& into) = 0;
-    };
 
     /// Mirrors an OpenSceneGraph subtree into a `SceneDesc`.
     ///
@@ -244,54 +208,6 @@ namespace Rtx
         /// record, and neither is a lamp something picked up and put down.
         void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime);
 
-        /// What a residency that stands rows rather than nodes calls, inside the walk.
-        ///
-        /// **Through the resolvers and not beside them**, so a mesh the static ring adopts is held
-        /// under the identity the walk finds a clone's mesh under, stamped by the same rule and
-        /// swept by the same sweep. `CellRing` says why the rows were read on another thread.
-        Known& adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material)
-        {
-            return mMeshes.adopt(drawable, reading, material);
-        }
-        MaterialResolver::Resolved adoptMaterial(const MaterialReading& reading) { return mMaterials.adopt(reading); }
-        Known* findMaterial(const osg::StateSet* key) { return mMaterials.find(key); }
-        void keepMesh(Known& held) { mMeshes.stampReused(held); }
-        void keepMaterial(Known& held) { mMaterials.stampReused(held); }
-
-        /// Counts what the cell ring stood this walk, among the instances and on their own.
-        void countDistantStatics(std::uint32_t placed)
-        {
-            mPass.getStats().mInstances += placed;
-            mPass.getStats().mDistantStatics += placed;
-        }
-        void countGround(std::uint32_t placed)
-        {
-            mPass.getStats().mInstances += placed;
-            mPass.getStats().mGroundCells += placed;
-        }
-
-        /// What a residency that owns its rows outright calls, inside the walk.
-        ///
-        /// **For rows nothing in the graph will ever name.** A cell's ground has no drawable and no
-        /// state set, so the identity maps have no key to hold it under and the sweep would release
-        /// it on the first frame; the residency names its rows here on every walk instead, and they
-        /// join the survivors the sweep hands the scene. `disownRows` is the other half: a row let
-        /// go of is simply not named, and this is what tells the sweep to run the release even
-        /// where every map stands whole. `countOwnedRows` is what an arrival on such a row adds to
-        /// the walk's count, as the resolvers count their own.
-        void keepOwnedMesh(Index mesh) { mOwnedMeshes.push_back(mesh); }
-        void keepOwnedMaterial(Index material) { mOwnedMaterials.push_back(material); }
-        void disownRows(std::uint32_t meshes, std::uint32_t materials)
-        {
-            mDisownedMeshes += meshes;
-            mDisownedMaterials += materials;
-        }
-        void countOwnedRows(std::uint32_t meshes, std::uint32_t materials)
-        {
-            mPass.getStats().mMeshesAdded += meshes;
-            mPass.getStats().mMaterialsAdded += materials;
-        }
-
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         ///
         /// `place` is where the drawable stands in the world, which the visitor has accumulated on
@@ -322,6 +238,31 @@ namespace Rtx
         const osg::StateSet* animate(osg::Node& node);
 
     private:
+        /// **What a residency may do inside a walk, and nothing else may.** `Rtx::Collector` is what
+        /// says so: it is the object a residency is handed, `MirrorTraversal` is what implements it,
+        /// and these are what that implementation forwards to. Public, they were eleven calls in
+        /// front of every reader of this class that only mean anything inside one walk.
+        friend class MirrorTraversal;
+
+        Known& adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material)
+        {
+            return mMeshes.adopt(drawable, reading, material);
+        }
+        MaterialResolver::Resolved adoptMaterial(const MaterialReading& reading) { return mMaterials.adopt(reading); }
+        Known* findMaterial(const osg::StateSet* key) { return mMaterials.find(key); }
+        void keepMesh(Known& held) { mMeshes.stampReused(held); }
+        void keepMaterial(Known& held) { mMaterials.stampReused(held); }
+
+        void keepOwnedMesh(Index mesh) { mOwnedMeshes.push_back(mesh); }
+        void keepOwnedMaterial(Index material) { mOwnedMaterials.push_back(material); }
+
+        /// Adds what one residency reported into this walk's own counts, and into the disowned
+        /// tally the next sweep reads.
+        ///
+        /// **A row let go of is simply not named**, and this is what tells the sweep to run the
+        /// release even where every identity map stands whole.
+        void stood(const ResidencyCount& count);
+
         /// Whether a drawable carrying `mask` is the world's water.
         bool isWater(osg::Node::NodeMask mask) const;
 

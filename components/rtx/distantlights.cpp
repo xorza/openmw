@@ -22,16 +22,16 @@ namespace Rtx
 
     DistantLights::~DistantLights() = default;
 
-    void DistantLights::follow(const Terrain::ObjectStorage* storage, ESM::RefId worldspace)
+    void DistantLights::follow(const WorldAround& around)
     {
-        if (mStorage == storage && mWorldspace == worldspace)
-            return;
+        // **What is read is a fact about the world and not about where the eye is**, so only a
+        // change of the content or of the worldspace empties what has been read.
+        const bool changed = mAround.mStorage != around.mStorage || mAround.mWorldspace != around.mWorldspace;
 
-        mStorage = storage;
-        mWorldspace = worldspace;
+        mAround = around;
 
-        // What was read belongs to the world that was being read.
-        restart();
+        if (changed)
+            mCells.clear();
     }
 
     void DistantLights::restart()
@@ -42,13 +42,13 @@ namespace Rtx
     osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell) const
     {
         std::vector<Terrain::PagedCellRef> refs;
-        mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mWorldspace, refs);
+        mAround.mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mAround.mWorldspace, refs);
 
         osg::ref_ptr<osg::Group> group;
 
         for (const Terrain::PagedCellRef& ref : refs)
         {
-            const std::optional<SceneUtil::LightCommon> light = mStorage->getLight(ref.mRefId);
+            const std::optional<SceneUtil::LightCommon> light = mAround.mStorage->getLight(ref.mRefId);
 
             // **A reference naming no record is the content's to answer for**, and the game draws
             // nothing for one either. Nothing is invented here to stand in its place.
@@ -78,13 +78,15 @@ namespace Rtx
         return group;
     }
 
-    void DistantLights::collect(Collector& into)
+    ResidencyCount DistantLights::collect(Collector& into)
     {
-        if (mStorage == nullptr || !mOutdoors)
-            return;
+        // **Nothing to report, ever.** What this stands is lights, which the walk counts as it
+        // places each of them, and it owns no mesh and no material row.
+        if (mAround.mStorage == nullptr || !mAround.mOutdoors)
+            return ResidencyCount{};
 
-        const int reach = static_cast<int>(std::ceil(mReach / Constants::CellSizeInUnits));
-        const osg::Vec2i eye = cellOf(mViewPoint);
+        const int reach = static_cast<int>(std::ceil(mAround.mReach / Constants::CellSizeInUnits));
+        const osg::Vec2i eye = cellOf(mAround.mEye);
 
         for (int x = eye.x() - reach; x <= eye.x() + reach; ++x)
             for (int y = eye.y() - reach; y <= eye.y() + reach; ++y)
@@ -92,7 +94,8 @@ namespace Rtx
                 // **What the game stands for itself is not this class's to stand again.** Inside the
                 // active grid the real object is on the graph with its light on it, and the mirror
                 // has already met it — see the class comment.
-                if (x >= mActiveGrid.x() && y >= mActiveGrid.y() && x < mActiveGrid.z() && y < mActiveGrid.w())
+                if (x >= mAround.mActiveGrid.x() && y >= mAround.mActiveGrid.y() && x < mAround.mActiveGrid.z()
+                    && y < mAround.mActiveGrid.w())
                     continue;
 
                 const osg::Vec2i key(x, y);
@@ -112,5 +115,7 @@ namespace Rtx
                 if (found->mLights != nullptr)
                     into.take(*found->mLights);
             }
+
+        return ResidencyCount{};
     }
 }

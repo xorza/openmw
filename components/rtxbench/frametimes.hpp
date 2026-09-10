@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include <components/rtx/namedenum.hpp>
 #include <components/rtx/renderer.hpp>
 
 namespace Rtx
@@ -94,11 +95,33 @@ namespace Rtx
         Update,
     };
 
-    inline constexpr std::size_t sTimingCount = 12;
-
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it.
-    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "finish", "wait", "walk", "fold",
-        "place", "bake", "textures", "upload", "trace", "present", "update" };
+    ///
+    /// **One table, and the count and the walk are derived from it.** They were three lists of
+    /// twelve kept level by hand, so a row added to the enum reached a report only if somebody
+    /// wrote it out twice more. `Rtx::NamedEnum` says at length why an enum states its spellings
+    /// once.
+    inline constexpr NamedEnum<Timing, 12> sTimings{ { {
+        { Timing::Frame, "frame" },
+        { Timing::Finish, "finish" },
+        { Timing::Wait, "wait" },
+        { Timing::Walk, "walk" },
+        { Timing::Fold, "fold" },
+        { Timing::Place, "place" },
+        { Timing::Bake, "bake" },
+        { Timing::Textures, "textures" },
+        { Timing::Upload, "upload" },
+        { Timing::Trace, "trace" },
+        { Timing::Present, "present" },
+        { Timing::Update, "update" },
+    } } };
+
+    inline constexpr std::size_t sTimingCount = sTimings.mNames.size();
+
+    inline constexpr std::size_t indexOf(const Timing timing)
+    {
+        return static_cast<std::size_t>(timing);
+    }
 
     /// What one measured frame spent on the host, by phase.
     ///
@@ -106,24 +129,20 @@ namespace Rtx
     /// different place, and a signature that named them one by one was six parameters of one type
     /// in a row — which is six chances to hand them over in the wrong order and no way to be caught
     /// at it.
+    ///
+    /// **An array over `Timing` and not ten named members**, because that is what `FrameSamples`
+    /// holds and what it becomes: named, the two shapes were joined by a hand copy of one line per
+    /// figure, so a row added to the enum took three edits before a producer could state it.
+    ///
+    /// `Timing::Frame` and `Timing::Wait` are left at nought here. The first is the whole frame and
+    /// the second is what the device answered for, and each reaches `FrameSamples` by its own route.
     struct FrameSpend
     {
-        double mFinishMs = 0.0;
-        double mWalkMs = 0.0;
-        double mFoldMs = 0.0;
-        double mPlaceMs = 0.0;
-        double mBakeMs = 0.0;
-        double mTexturesMs = 0.0;
-        double mUploadMs = 0.0;
-        double mTraceMs = 0.0;
-        double mPresentMs = 0.0;
-        double mUpdateMs = 0.0;
-    };
+        std::array<double, 12> mMs{};
 
-    inline constexpr std::size_t indexOf(const Timing timing)
-    {
-        return static_cast<std::size_t>(timing);
-    }
+        double& at(const Timing timing) { return mMs[indexOf(timing)]; }
+        double at(const Timing timing) const { return mMs[indexOf(timing)]; }
+    };
 
     /// Every figure a measured frame contributes, gathered over one run.
     ///
@@ -156,19 +175,16 @@ namespace Rtx
         }
 
         /// What one measured frame cost, and the shares of it this fork itself owns.
+        ///
+        /// **A loop over the rows and not a line per figure.** `Timing::Frame` is the caller's and
+        /// `Timing::Wait` arrives on its own schedule, so those two are the only ones named here.
         void add(double frameMs, const FrameSpend& spend)
         {
+            for (const Timing timing : sTimings.values())
+                if (timing != Timing::Frame && timing != Timing::Wait)
+                    at(timing).push_back(spend.at(timing));
+
             at(Timing::Frame).push_back(frameMs);
-            at(Timing::Finish).push_back(spend.mFinishMs);
-            at(Timing::Walk).push_back(spend.mWalkMs);
-            at(Timing::Fold).push_back(spend.mFoldMs);
-            at(Timing::Place).push_back(spend.mPlaceMs);
-            at(Timing::Bake).push_back(spend.mBakeMs);
-            at(Timing::Textures).push_back(spend.mTexturesMs);
-            at(Timing::Upload).push_back(spend.mUploadMs);
-            at(Timing::Trace).push_back(spend.mTraceMs);
-            at(Timing::Present).push_back(spend.mPresentMs);
-            at(Timing::Update).push_back(spend.mUpdateMs);
         }
 
         /// What the device reported for the frame behind, which arrives on its own schedule and on

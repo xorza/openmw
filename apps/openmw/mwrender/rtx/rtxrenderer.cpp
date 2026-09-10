@@ -113,9 +113,6 @@ namespace MWRender
         /// that letting go of a window edge and seeing the picture follow reads as immediate.
         constexpr double sSettleSeconds = 0.1;
 
-        /// How often the trace's running average is reported. Five seconds at sixty frames.
-        constexpr std::uint32_t sReportEvery = 300;
-
         /// Whether an environment variable is set to anything other than nothing or `0`.
         bool askedFor(const char* name)
         {
@@ -322,9 +319,14 @@ namespace MWRender
         MWRender::setWindowIcon(*mWindow, resourceDir);
     }
 
-    bool RtxRenderer::wantsPagedTerrain() const
+    TerrainPlan RtxRenderer::getTerrainPlan() const
     {
-        return true;
+        return TerrainPlan{
+            .mPaged = true,
+            .mChunks = false,
+            .mObjectPaging = false,
+            .mCompositeMapLevel = Terrain::sNoCompositeMap,
+        };
     }
 
     void RtxRenderer::enableReference(const ESM::RefNum refnum, const bool enabled)
@@ -335,11 +337,6 @@ namespace MWRender
     void RtxRenderer::detachWorld()
     {
         mMirror.detach();
-    }
-
-    float RtxRenderer::getTerrainCompositeMapLevel() const
-    {
-        return Terrain::sNoCompositeMap;
     }
 
     float RtxRenderer::getTerrainViewDistance(float, float) const
@@ -575,9 +572,10 @@ namespace MWRender
 
         // Summed and not assigned: a loading screen presents through `renderGui` as often as it
         // likes between two traces, and every one of those is inside the frame the next row is for.
-        mPresentMs += Rtx::since(began, std::chrono::steady_clock::now());
+        const std::chrono::steady_clock::time_point ended = std::chrono::steady_clock::now();
+        mSpan.addPresent(Rtx::since(began, ended));
 
-        leave();
+        mSpan.leave(ended);
     }
 
     void RtxRenderer::renderGui()
@@ -679,7 +677,7 @@ namespace MWRender
         // cells arriving and whatever it waits on to get them. It is the one stretch of the loop
         // nothing else measures, and it is timed rather than profiled because most of it is a
         // thread asleep.
-        const double updateMs = Rtx::since(mLeft, std::chrono::steady_clock::now());
+        const double updateMs = mSpan.sinceLeft(std::chrono::steady_clock::now());
 
         mFrame = when.getFrameNumber();
 
@@ -728,7 +726,7 @@ namespace MWRender
         mMirror.settle();
 
         // After the sweep, because the sweep is this renderer's and not the game's.
-        leave();
+        mSpan.leave(std::chrono::steady_clock::now());
     }
 
     void RtxRenderer::traceWorld(
@@ -875,71 +873,57 @@ namespace MWRender
         // in between is in it — update, cull, this — which is what a player feels and what the
         // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-        if (mEnteredOnce)
+        const std::optional<double> since = mSpan.enter(now);
+        const double presentMs = mSpan.takePresent();
+
+        if (since.has_value())
         {
-            const double frameMs = Rtx::since(mEntered, now);
+            const double frameMs = *since;
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
 
             if (mSession != nullptr && result.has_value())
-                mSession->frame(describeRun(), *result, frameMs,
-                    Rtx::FrameSpend{
-                        .mFinishMs = finishMs,
-                        .mWalkMs = walkMs,
-                        .mFoldMs = found.mFoldMs,
-                        .mPlaceMs = placeMs,
-                        .mBakeMs = handed.mBakeMs,
-                        .mTexturesMs = handed.mTexturesMs,
-                        .mUploadMs = handed.mUploadMs,
-                        .mTraceMs = Rtx::since(tracing, now),
-                        .mPresentMs = mPresentMs,
-                        .mUpdateMs = updateMs,
-                    },
-                    rebuilt);
+            {
+                Rtx::FrameSpend spend;
+                spend.at(Rtx::Timing::Finish) = finishMs;
+                spend.at(Rtx::Timing::Walk) = walkMs;
+                spend.at(Rtx::Timing::Fold) = found.mFoldMs;
+                spend.at(Rtx::Timing::Place) = placeMs;
+                spend.at(Rtx::Timing::Bake) = handed.mBakeMs;
+                spend.at(Rtx::Timing::Textures) = handed.mTexturesMs;
+                spend.at(Rtx::Timing::Upload) = handed.mUploadMs;
+                spend.at(Rtx::Timing::Trace) = Rtx::since(tracing, now);
+                spend.at(Rtx::Timing::Present) = presentMs;
+                spend.at(Rtx::Timing::Update) = updateMs;
+
+                mSession->frame(describeRun(), *result, frameMs, spend, rebuilt);
+            }
 
             // **Every frame and not the ones the device answered for**, because what this reads is
             // the wall between two traces and the device's answer is not part of it. Once a
             // second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
-            if (mRate.add(frameMs) && (SDL_GetWindowFlags(mWindow) & SDL_WINDOW_HIDDEN) == 0)
-            {
-                const auto written = std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
-                *written.out = '\0';
-                SDL_SetWindowTitle(mWindow, mTitle.data());
-            }
+            if (const std::string_view title = mSpeed.addFrame(frameMs);
+                !title.empty() && (SDL_GetWindowFlags(mWindow) & SDL_WINDOW_HIDDEN) == 0)
+                SDL_SetWindowTitle(mWindow, title.data());
         }
-
-        mEntered = now;
-        mEnteredOnce = true;
-
-        // Here and not inside the report above, because this is where one frame's span ends —
-        // including on the first frame, which has no row to carry what it presented.
-        mPresentMs = 0.0;
 
         // **Counted where it is summed**, because `finishFrame` answers nothing until a frame it
         // put in flight comes back. Counting every frame instead divided the total by frames that
         // had contributed nothing to it, so the average read low by a factor nobody could see.
-        if (result.has_value())
-        {
-            mSpentMs += result->mWaitMs;
-            ++mTimed;
-        }
-
-        if (mTimed == sReportEvery)
+        if (result.has_value() && mSpeed.addWait(result->mWaitMs))
         {
             const Rtx::SceneTables scene = mMirror.getScene().getTables();
 
             // **The emitters among it, because they are the half a placement count does not carry.**
             // Sprites are not instances and never enter that number, so a cell whose every flame,
             // brazier and raindrop had stopped read exactly like one whose emitters were running.
-            Log(Debug::Info) << "Ray tracing: waited " << mSpentMs / mTimed
-                             << " ms a frame for the device over the last " << mTimed << ", tracing "
+            Log(Debug::Info) << "Ray tracing: waited " << mSpeed.getWaitMs()
+                             << " ms a frame for the device over the last " << mSpeed.getFrames() << ", tracing "
                              << scene.mPlacements.getPlacedCount() << " instances and " << scene.mEmitters.size()
                              << " emitters holding " << scene.mSprites.size() << " sprites at " << extents.mRenderWidth
                              << "x" << extents.mRenderHeight << ", reconstructed by "
                              << Rtx::denoiserName(reconstruction.mDenoiser) << " to " << extents.mOutputWidth << "x"
                              << extents.mOutputHeight;
-            mSpentMs = 0.0;
-            mTimed = 0;
         }
     }
 }

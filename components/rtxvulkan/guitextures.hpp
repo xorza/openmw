@@ -11,6 +11,7 @@
 
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/slot.hpp>
+#include <components/rtx/slotpool.hpp>
 
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -30,7 +31,8 @@ namespace Rtx
     /// being traced, arriving and leaving as windows open and close.
     ///
     /// **A slot a texture gave back is taken over before the table grows**, so a session of opening
-    /// and closing menus does not walk the table upwards forever.
+    /// and closing menus does not walk the table upwards forever. Which one it takes is
+    /// `Rtx::SlotPool`'s answer, the same one every table of slots in this renderer gives.
     ///
     /// **Nothing here waits on the frame path.** Making a texture and writing one are recorded into
     /// a batch and handed to the pool, to go ahead of whatever submits next — the interface's own
@@ -171,7 +173,10 @@ namespace Rtx
         CommandPool& mPool;
 
         std::vector<std::unique_ptr<Image>> mImages;
-        std::vector<GuiSlot> mFree;
+
+        /// The slots nothing holds. **`SlotPool` and not a list of its own**, because which free
+        /// slot an arrival takes is one rule and this renderer keeps three tables by it.
+        SlotPool mFree;
 
         /// **One more arena than there are frames in flight.**
         ///

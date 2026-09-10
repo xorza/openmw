@@ -28,7 +28,6 @@ namespace Rtx
 
     OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height)
         : mRenderer(renderer)
-        , mTraversals(mOwnTraversals)
         , mWidth(width)
         , mHeight(height)
     {
@@ -40,29 +39,44 @@ namespace Rtx
     OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, osg::Node& subject,
         osg::Node::NodeMask mask, Traversals* traversals)
         : mRenderer(renderer)
-        , mSubject(&subject)
-        , mScene(std::make_unique<SceneDesc>())
-        , mUpdate(std::make_unique<PoseUpdate>())
-        , mPose(std::make_unique<PoseCull>())
-        , mPoseStamp(new osg::FrameStamp)
-        , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
-        , mViewScene(renderer.addViewScene())
         , mWidth(width)
         , mHeight(height)
     {
-        mExtractor = std::make_unique<SceneExtractor>(*mScene, &mTraversals);
-        mExtractor->setTraversalMask(mask);
-        mPose->setFrameStamp(mPoseStamp);
+        mSubject = std::make_unique<Subject>(traversals);
+
+        Subject& held = *mSubject;
+        held.mNode = &subject;
+        held.mScene = std::make_unique<SceneDesc>();
+        held.mUpdate = std::make_unique<PoseUpdate>();
+        held.mPose = std::make_unique<PoseCull>();
+        held.mPoseStamp = new osg::FrameStamp;
+        held.mSlot = renderer.addViewScene();
+
+        held.mExtractor = std::make_unique<SceneExtractor>(*held.mScene, &held.mTraversals);
+        held.mExtractor->setTraversalMask(mask);
+        held.mPose->setFrameStamp(held.mPoseStamp);
 
         mOptions.mWidth = width;
         mOptions.mHeight = height;
-        mOptions.mScene = mViewScene;
+        mOptions.mScene = held.mSlot;
     }
+
+    OffscreenTrace::Subject::Subject(Traversals* const shared)
+        : mTraversals(shared != nullptr ? *shared : mOwn)
+    {
+    }
+
+    OffscreenTrace::Subject::~Subject() = default;
 
     OffscreenTrace::~OffscreenTrace()
     {
         if (mSubject != nullptr)
-            mRenderer.dropViewScene(mViewScene);
+            mRenderer.dropViewScene(mSubject->mSlot);
+    }
+
+    const SceneDesc* OffscreenTrace::getScene() const
+    {
+        return mSubject != nullptr ? mSubject->mScene.get() : nullptr;
     }
 
     void OffscreenTrace::setLight(const SceneUtil::FlatLight& light)
@@ -123,19 +137,20 @@ namespace Rtx
         // **Posed here, because nothing else will.** The camera callback the game hangs on a doll's
         // subtree is what finds the head to look at, and it runs in an update traversal — and a
         // subtree that is in no graph is reached by no traversal but this one.
-        mPosedFrame = static_cast<unsigned int>(posing.getFrameNumber());
+        Subject& subject = *mSubject;
+        subject.mPosedFrame = static_cast<unsigned int>(posing.getFrameNumber());
 
-        mUpdate->reset();
+        subject.mUpdate->reset();
 
         // `osg::NodeVisitor::setFrameStamp` takes a mutable pointer and stores it without writing
         // through it, which is the whole of why this is cast.
-        mUpdate->setFrameStamp(const_cast<osg::FrameStamp*>(&posing));
-        mUpdate->setTraversalNumber(mPosedFrame);
-        mSubject->accept(*mUpdate);
+        subject.mUpdate->setFrameStamp(const_cast<osg::FrameStamp*>(&posing));
+        subject.mUpdate->setTraversalNumber(subject.mPosedFrame);
+        subject.mNode->accept(*subject.mUpdate);
 
         // Kept for `pick`, whose cull reads a clock of its own: the caller's stamp is the caller's
         // to reuse the moment this returns.
-        *mPoseStamp = posing;
+        *subject.mPoseStamp = posing;
 
         // **Re-walked and not rebuilt**, which the identity maps owning their keys is what makes
         // sound. Between one redraw and the next this subject is taken apart —
@@ -148,13 +163,13 @@ namespace Rtx
         // The placements are the one thing a redraw throws away, as the world's frame does: what a
         // walk refills wholesale goes, and the meshes and materials stay because they are what the
         // walk is trying not to read again.
-        mScene->clearPlacement();
+        subject.mScene->clearPlacement();
 
         // **The world's frame and not a redraw count.** The number handed to `extract` picks which
         // of a `SceneUtil::LightSource`'s two buffers to read, which is a property of the frame the
         // world is in. The pose the walk reads is what the update above left in the bones, and it
         // is handed to the device as rows: no cull runs here and no traversal number gates it.
-        mExtractor->extract(*mSubject, osg::Matrixf::identity(), 0, worldFrame);
+        subject.mExtractor->extract(*subject.mNode, osg::Matrixf::identity(), 0, worldFrame);
 
         // **No `advance` between them**, unlike the world's frame: a picture drawn when the subject
         // changes rather than when the frame does has no motion to describe, and `SceneDesc` answers
@@ -163,12 +178,12 @@ namespace Rtx
         //
         // The sweep is what takes the parts that came off. It is sound for the same reason it is
         // sound for the world: this walk is the whole of what this picture is of.
-        mExtractor->retire();
+        subject.mExtractor->retire();
 
         // It consumes the arrivals, so nothing here clears them.
-        mUploader.hand(mRenderer, mViewScene, *mScene, images, nullptr);
+        subject.mUploader.hand(mRenderer, subject.mSlot, *subject.mScene, images, nullptr);
 
-        return mScene->getTables().mPlacements.getPlacedCount() > 0;
+        return subject.mScene->getTables().mPlacements.getPlacedCount() > 0;
     }
 
     void OffscreenTrace::traceInto(const GuiSlot texture)
@@ -181,6 +196,7 @@ namespace Rtx
         if (mSubject == nullptr)
             return false;
 
+        Subject& subject = *mSubject;
         const Shaders::VisibilityConstants camera = describeCamera();
         const osg::Vec3f direction = camera.mCamera.mForward + camera.mCamera.mRight * x - camera.mCamera.mUp * y;
 
@@ -194,10 +210,10 @@ namespace Rtx
         // intersection with whatever the last cull wrote; the picture was traced from a pose the
         // device computed, so without this the click would land on the bind pose. A number from the
         // shared sequence, because both deforming geometries refuse to move for one they have seen.
-        const unsigned int posed = mTraversals.next();
-        mPose->setTraversalNumber(posed);
-        mPoseStamp->setFrameNumber(posed);
-        mSubject->accept(*mPose);
+        const unsigned int posed = subject.mTraversals.next();
+        subject.mPose->setTraversalNumber(posed);
+        subject.mPoseStamp->setFrameNumber(posed);
+        subject.mNode->accept(*subject.mPose);
 
         osgUtil::IntersectionVisitor visitor(intersector);
         visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_ACTIVE_CHILDREN);
@@ -206,7 +222,7 @@ namespace Rtx
         // wrote rather than the one it will be posed into next.
         visitor.setTraversalNumber(posed);
 
-        mSubject->accept(visitor);
+        subject.mNode->accept(visitor);
 
         if (!intersector->containsIntersections())
             return false;

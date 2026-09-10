@@ -76,6 +76,55 @@ namespace MWRender
         unsigned int mObjectsPerFrame = 0;
     };
 
+    /// How the game builds the world's ground for this renderer.
+    ///
+    /// **A policy and not a capability.** The `Capabilities` struct this class once carried held
+    /// answers that were null checks wearing a hat, and asking a renderer for the thing beat asking
+    /// it what it had. These four are not that: each decides what the game *builds*, none of them is
+    /// reachable as a thing to ask for, and a renderer that answered three of them consistently and
+    /// the fourth by accident builds ground nobody draws.
+    ///
+    /// **Fixed for a renderer's life and asked once per worldspace.** `getTerrainViewDistance` is
+    /// deliberately not here: it is a live function of the camera distance and the field of view for
+    /// the renderer that widens by them, and a value asked once could not answer it.
+    struct TerrainPlan
+    {
+        /// Whether the world's ground is paged into a quad tree rather than built a cell at a time.
+        ///
+        /// **Not a preference where rays are what reach it.** `TerrainGrid` makes the cells the
+        /// simulation has loaded and nothing else, so a renderer answering no has no distant land at
+        /// any radius — which is why this is the renderer's answer and not `distant terrain`'s,
+        /// whose default is off and whose business is what a rasterizer can afford to draw.
+        bool mPaged = false;
+
+        /// Whether the game builds the ground's chunks for this renderer at all.
+        ///
+        /// **A renderer that stands the ground itself answers no**, and the world it is given holds
+        /// the storage, the worldspace and the active grid and builds nothing: `Rtx::CellRing` reads
+        /// every cell's heights and blend maps off `Terrain::Storage` on a thread of its own, so a
+        /// quad tree beside it would build chunks nobody draws — on the work thread, and inside
+        /// `Scene::changeCellGrid`'s synchronous wait for them.
+        bool mChunks = true;
+
+        /// Whether the statics of the distance are merged into those chunks by
+        /// `Terrain::ObjectPaging`.
+        ///
+        /// **The setting's answer for a rasterizer, and a renderer's own where it stands the
+        /// distance itself.** The paging exists to turn a thousand draw calls into a few; a ray
+        /// tracer instances a thousand copies of one model for the price of one, and what a merged
+        /// chunk costs it is the fold of the merge on the frame it arrives. `Rtx::CellRing` is that
+        /// renderer's answer, and it reads the same setting as its own switch.
+        bool mObjectPaging = false;
+
+        /// Chunk size, in cells, past which the terrain flattens a chunk's layer stack into one
+        /// composite map — or `Terrain::sNoCompositeMap` for a renderer that will never ask for one.
+        ///
+        /// **A composite map is a render target**, which is a thing a renderer either draws into or
+        /// has no way to make. Asking the terrain to build one for a renderer that cannot is how a
+        /// chunk ends up carrying a texture nothing can open.
+        float mCompositeMapLevel = 0.0f;
+    };
+
     struct RendererSpec
     {
         /// The frame, the eye and the input queue. Made before any renderer and outliving it: the
@@ -130,32 +179,12 @@ namespace MWRender
         /// business and read it; what is bound to it is not theirs to know.
         virtual SDL_Window* getWindow() const = 0;
 
-        /// Whether the world's ground is paged into a quad tree rather than built a cell at a time.
+        /// How the game builds the world's ground for this renderer. `TerrainPlan` says what each
+        /// answer decides, and why the view distance below is not one of them.
         ///
-        /// **Not a preference where rays are what reach it.** `TerrainGrid` makes the cells the
-        /// simulation has loaded and nothing else, so a renderer answering no has no distant land at
-        /// any radius — which is why this is asked of the renderer and not read from `distant
-        /// terrain`, whose default is off and whose business is what a rasterizer can afford to draw.
-        virtual bool wantsPagedTerrain() const = 0;
-
-        /// Whether the game builds the ground's chunks for this renderer at all.
-        ///
-        /// **A renderer that stands the ground itself answers no**, and the world it is given holds
-        /// the storage, the worldspace and the active grid and builds nothing: `Rtx::CellRing` reads
-        /// every cell's heights and blend maps off `Terrain::Storage` on a thread of its own, so a
-        /// quad tree beside it would build chunks nobody draws — on the work thread, and inside
-        /// `Scene::changeCellGrid`'s synchronous wait for them.
-        virtual bool wantsTerrainChunks() const { return true; }
-
-        /// Whether the statics of the distance are merged into the quad tree's chunks by
-        /// `Terrain::ObjectPaging`.
-        ///
-        /// **The setting's answer for a rasterizer, and a renderer's own where it stands the
-        /// distance itself.** The paging exists to turn a thousand draw calls into a few; a ray
-        /// tracer instances a thousand copies of one model for the price of one, and what a merged
-        /// chunk costs it is the fold of the merge on the frame it arrives. `Rtx::CellRing` is
-        /// that renderer's answer, and it reads the same setting as its own switch.
-        virtual bool wantsObjectPaging() const { return Settings::terrain().mObjectPaging; }
+        /// **One question, because it is one policy.** It was four virtual calls with one call site
+        /// between them, and a renderer whose four answers did not agree built ground nobody draws.
+        virtual TerrainPlan getTerrainPlan() const = 0;
 
         /// What the game says of one reference the content files cannot: a script has disabled it,
         /// or enabled it again. For a renderer standing the distance itself; the paging is told by
@@ -165,14 +194,6 @@ namespace MWRender
         /// The world is going. Anything of it a renderer reads from a thread of its own has to be
         /// let go of before it does, and `attachWorld` had no counterpart to say so.
         virtual void detachWorld() {}
-
-        /// Chunk size, in cells, past which the terrain flattens a chunk's layer stack into one
-        /// composite map — or `Terrain::sNoCompositeMap` for a renderer that will never ask for one.
-        ///
-        /// **A composite map is a render target**, which is a thing a renderer either draws into or
-        /// has no way to make. Asking the terrain to build one for a renderer that cannot is how a
-        /// chunk ends up carrying a texture nothing can open.
-        virtual float getTerrainCompositeMapLevel() const = 0;
 
         /// How far from the eye ground is made at all, in units.
         ///

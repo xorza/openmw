@@ -116,13 +116,79 @@ namespace MWRender
 
     /// What a stop gathers, and the few things a whole run does. Out of line so the header names
     /// none of it.
-    struct Session::Held
+    struct Session::StopProgress
     {
+        /// Frames seen since the stop began, warm-up included.
+        std::uint32_t mSeen = 0;
+
+        /// What the measured ones came to outside the distributions: how much of the last one hit
+        /// something, and how long they took between them.
+        double mHitPercent = 0.0;
+        double mWallMs = 0.0;
+
+        /// Where the eye stood when the stop began, which a route flies from.
+        osg::Vec3f mFrom;
+        osg::Vec3f mFromLook;
+
+        /// Where the route has flown to, which is not where the player stands.
+        ///
+        /// **The route's own place, because deriving the next step from the player puts physics in
+        /// it.** `moveObjectBy` moves an actor, and the world then steps that actor: gravity pulls
+        /// it down between one frame and the next, and a step taken from where it landed carries
+        /// the fall forward and compounds it. `island-crossing` asks to be flown six thousand units
+        /// up and was flown at eighty-five to twelve hundred — along the ground and inside it — so
+        /// every number ever taken over it described a view nobody asked for.
+        osg::Vec3f mFlown;
+
+        /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
+        /// Compared as an address and never read, which is all an identity needs.
+        const void* mCell = nullptr;
+
+        /// Which weather the turn is on, and how far into the transition to the next.
+        std::size_t mTurnedTo = 0;
+        float mTurned = 0.0f;
+
         Rtx::FrameSamples mSamples;
         Rtx::GpuBreakdown mGpu;
         Rtx::Crossings mCrossings;
         Rtx::GpuClock mClock;
 
+        /// Puts the route where it starts: where the eye stands, what it faces, and how far it has
+        /// flown, which is nowhere yet.
+        ///
+        /// **One call, because the three are one fact and two callers set them.** A stop that names
+        /// its own eye and one that falls back to the player's both land here, and either could
+        /// have set the first two and left the third at wherever the last stop's route ended.
+        void standAt(const osg::Vec3f& eye, const osg::Vec3f& look)
+        {
+            mFrom = eye;
+            mFromLook = look;
+            mFlown = eye;
+        }
+
+        /// Empties it for the next stop, keeping the room every row grew.
+        ///
+        /// **Cleared and not assigned over**, because `mSamples` is reserved once for the longest
+        /// stop of the run and a bench that allocates where it measures is measuring itself.
+        void restart()
+        {
+            mSeen = 0;
+            mHitPercent = 0.0;
+            mWallMs = 0.0;
+            mCell = nullptr;
+            mTurnedTo = 0;
+            mTurned = 0.0f;
+
+            mSamples.clear();
+            mGpu = Rtx::GpuBreakdown{};
+            mCrossings = Rtx::Crossings{};
+            mClock = Rtx::GpuClock{};
+        }
+    };
+
+    /// What outlives a stop, as against what `StopProgress` holds.
+    struct Session::Held
+    {
         /// perf's control fifo, held for the whole run so every stop brackets its own frames.
         std::unique_ptr<Rtx::PerfControl> mProfiling;
 
@@ -139,6 +205,7 @@ namespace MWRender
         : mRequest(std::move(request))
         , mInto(into)
         , mHeld(std::make_unique<Held>())
+        , mProgress(std::make_unique<StopProgress>())
     {
         mHeld->mProfiling = std::make_unique<Rtx::PerfControl>(mRequest.mPerfControl);
 
@@ -151,7 +218,7 @@ namespace MWRender
 
         // Reserved once at the longest stop's length, so no measured frame grows a vector — a
         // benchmark that stops to reallocate is measuring its own allocator.
-        mHeld->mSamples.reserve(longest);
+        mProgress->mSamples.reserve(longest);
 
         mRecord.reserve(mRequest.mStops.size());
 
@@ -285,9 +352,8 @@ namespace MWRender
         const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
         const ESM::Position& stood = player.getRefData().getPosition();
 
-        mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
-        mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
-        mFlown = mFrom;
+        const osg::Vec3f eye(stood.pos[0], stood.pos[1], stood.pos[2]);
+        mProgress->standAt(eye, eye + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f));
     }
 
     void Session::forgetHistory()
@@ -299,6 +365,10 @@ namespace MWRender
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
         MWBase::World& world = *MWBase::Environment::get().getWorld();
+
+        // **First, because everything below writes into it.** A stop's progress is one object so
+        // that a field added to it is reset here whether or not its author remembered to.
+        mProgress->restart();
 
         // **The player goes first, because the ring is read around them and not around the eye.**
         // A camera placed in a cell nobody stands in is a camera looking at ground the simulation
@@ -379,7 +449,7 @@ namespace MWRender
             world.toggleGodMode();
 
         const MWWorld::Ptr player = world.getPlayerPtr();
-        mCell = player.getCell();
+        mProgress->mCell = player.getCell();
 
         if (stop.mSchedule.mFreeCamera)
         {
@@ -402,10 +472,9 @@ namespace MWRender
         }
         else if (stop.mStand.mEye.has_value())
         {
-            mFrom = *stop.mStand.mEye;
-            mFromLook = stop.mStand.mLook.value_or(mFrom + osg::Vec3f(0.0f, 1.0f, 0.0f));
-            mFlown = mFrom;
-            aimCamera(mFrom, mFromLook);
+            const osg::Vec3f eye = *stop.mStand.mEye;
+            mProgress->standAt(eye, stop.mStand.mLook.value_or(eye + osg::Vec3f(0.0f, 1.0f, 0.0f)));
+            aimCamera(mProgress->mFrom, mProgress->mFromLook);
         }
         else
         {
@@ -419,15 +488,6 @@ namespace MWRender
         // exterior's brightness. The warm-up absorbs the frame it costs.
         forgetHistory();
 
-        mSeen = 0;
-        mTurnedTo = 0;
-        mTurned = 0.0f;
-        mHeld->mSamples.clear();
-        mHeld->mGpu = Rtx::GpuBreakdown{};
-        mHeld->mCrossings = Rtx::Crossings{};
-        mHeld->mClock = Rtx::GpuClock{};
-        mHitPercent = 0.0;
-        mWallMs = 0.0;
         mStarted = true;
 
         Log(Debug::Info) << "Ray tracing session: stop " << (mAt + 1) << " of " << mRequest.mStops.size() << ", "
@@ -457,8 +517,8 @@ namespace MWRender
         // counter-clockwise from east, and horizontal: a route follows the ground the cells are
         // laid out on, and the pitch a save happens to have left would fly it into the sky.
         //
-        // **Measured from `mFlown` and never from the player**, which says why.
-        osg::Vec3f along = route.mTo.has_value() ? *route.mTo - mFlown
+        // **Measured from `mProgress->mFlown` and never from the player**, which says why.
+        osg::Vec3f along = route.mTo.has_value() ? *route.mTo - mProgress->mFlown
                                                  : osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
 
         const float left = along.length();
@@ -477,17 +537,19 @@ namespace MWRender
         // **The height needs no correction of its own.** A route with no destination has a heading
         // flat in z, so it keeps the height it began at. One with a destination takes its height
         // from the line between the two ends, which is what a view states when it names both.
-        mFlown += along * step;
+        mProgress->mFlown += along * step;
 
         // **`moveObjectBy` and not `moveObject`, because the player is an actor.** The actor's
         // position lives in the physics world as well, and a move that writes only the world's
         // copy is written back over it on the next step.
-        world.moveObjectBy(player, mFlown - standing, true);
+        world.moveObjectBy(player, mProgress->mFlown - standing, true);
 
         if (stop.mStand.mEye.has_value())
         {
-            const osg::Vec3f look = route.mLookTo.has_value() ? *route.mLookTo : mFlown + (mFromLook - mFrom);
-            aimCamera(mFlown, look);
+            const osg::Vec3f look = route.mLookTo.has_value()
+                ? *route.mLookTo
+                : mProgress->mFlown + (mProgress->mFromLook - mProgress->mFrom);
+            aimCamera(mProgress->mFlown, look);
         }
     }
 
@@ -497,15 +559,15 @@ namespace MWRender
         if (through.size() < 2)
             return;
 
-        mTurned += 1.0f / sTurnFrames;
-        if (mTurned < 1.0f)
+        mProgress->mTurned += 1.0f / sTurnFrames;
+        if (mProgress->mTurned < 1.0f)
             return;
 
-        mTurned = 0.0f;
-        mTurnedTo = (mTurnedTo + 1) % through.size();
+        mProgress->mTurned = 0.0f;
+        mProgress->mTurnedTo = (mProgress->mTurnedTo + 1) % through.size();
 
         MWBase::World& world = *MWBase::Environment::get().getWorld();
-        const std::optional<std::uint32_t> named = Rtx::weatherIndex(through[mTurnedTo]);
+        const std::optional<std::uint32_t> named = Rtx::weatherIndex(through[mProgress->mTurnedTo]);
         if (named.has_value())
             world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(), *named);
     }
@@ -515,7 +577,7 @@ namespace MWRender
         if (mDone || !mStarted)
             return std::nullopt;
 
-        return mSeen;
+        return mProgress->mSeen;
     }
 
     std::uint32_t Session::getAccumulated() const
@@ -525,13 +587,13 @@ namespace MWRender
 
         const Rtx::Stop& stop = mRequest.mStops[mAt];
         const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
-        if (stop.mSchedule.mAccumulate == 0 || mSeen < warmup)
+        if (stop.mSchedule.mAccumulate == 0 || mProgress->mSeen < warmup)
             return 0;
 
         // **Counted from the first measured frame**, because the warm-up is the world arriving and
         // the card coming off its idle clock. Averaging those in would put a picture of a
         // half-built cell into the reference.
-        return mSeen - warmup + 1;
+        return mProgress->mSeen - warmup + 1;
     }
 
     void Session::beforeFrame()
@@ -562,7 +624,7 @@ namespace MWRender
 
         // **The reset stands until a frame has been counted, and the one `beginStop` issued is not
         // enough.** A stop opens with frames nobody counts: the first trace after the teleport has
-        // no predecessor to be timed against, so `frame` is never reached for it and `mSeen` stays
+        // no predecessor to be timed against, so `frame` is never reached for it and `mProgress->mSeen` stays
         // at nought. The exposure adapts on every one of them all the same, and how many there are
         // is a question about how long the world took to load rather than one the schedule answers
         // — so two runs began counting from two exposures and drew the first thirty frames
@@ -572,13 +634,13 @@ namespace MWRender
         // **Both calls, and neither is the other's spare.** `beginStop` resets because a teleport
         // is a discontinuity and the frames it opens with are drawn on a screen. This resets
         // because those frames are not measured, and a measured run may not depend on them.
-        if (mSeen == 0)
+        if (mProgress->mSeen == 0)
             forgetHistory();
 
         // **The route runs over the measured frames and not the warm-up.** Warming up is the GPU
         // coming off its idle clock; flying during it would start the measurement partway along
         // and leave the first crossing outside the numbers.
-        if (mSeen >= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup())
+        if (mProgress->mSeen >= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup())
         {
             fly();
             turnWeather();
@@ -608,24 +670,24 @@ namespace MWRender
         const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
         const std::uint32_t measured = stop.mSchedule.mSpec.getMeasured();
 
-        if (mSeen == warmup)
+        if (mProgress->mSeen == warmup)
         {
             // **Where the measured frames begin, and again where they end.** One reading is one
             // moment: taken only at the end it is a card already climbing off the load, and it
             // would print a fast clock over frames drawn at a slower one.
-            mHeld->mClock.add(Rtx::readGpuClock());
+            mProgress->mClock.add(Rtx::readGpuClock());
             mHeld->mProfiling->enable();
         }
 
-        ++mSeen;
+        ++mProgress->mSeen;
 
-        if (mSeen <= warmup)
+        if (mProgress->mSeen <= warmup)
             return;
 
-        mHeld->mSamples.add(frameMs, spend);
-        mHeld->mSamples.addWait(result.mWaitMs);
-        mHeld->mGpu.add(result.mGpu);
-        mWallMs += frameMs;
+        mProgress->mSamples.add(frameMs, spend);
+        mProgress->mSamples.addWait(result.mWaitMs);
+        mProgress->mGpu.add(result.mGpu);
+        mProgress->mWallMs += frameMs;
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
         // this is where what it dropped is known. The move pulls the next ring in and that read
@@ -635,18 +697,18 @@ namespace MWRender
         // **The whole frame goes in as the read**, because the game gives no split: the ring
         // arrives on the loading threads, and what a crossing costs here is the frame that dropped.
         if (const void* cell = MWBase::Environment::get().getWorld()->getPlayerPtr().getCell();
-            mCell != nullptr && cell != mCell)
+            mProgress->mCell != nullptr && cell != mProgress->mCell)
         {
-            mHeld->mCrossings.add(rebuilt, frameMs, 0.0);
-            mCell = cell;
+            mProgress->mCrossings.add(rebuilt, frameMs, 0.0);
+            mProgress->mCell = cell;
         }
 
         const Rtx::FrameExtents extents = renderer.getExtents();
         const double traced = static_cast<double>(extents.mRenderWidth) * extents.mRenderHeight;
         if (traced > 0.0)
-            mHitPercent = static_cast<double>(result.mHits) / traced * 100.0;
+            mProgress->mHitPercent = static_cast<double>(result.mHits) / traced * 100.0;
 
-        const std::uint32_t drawn = mSeen - warmup;
+        const std::uint32_t drawn = mProgress->mSeen - warmup;
 
         if (stop.mActions.mHash)
         {
@@ -670,7 +732,7 @@ namespace MWRender
 
         // After the frames and not before them, so the process spawn it costs is outside the run
         // it describes.
-        mHeld->mClock.add(Rtx::readGpuClock());
+        mProgress->mClock.add(Rtx::readGpuClock());
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 
@@ -687,7 +749,7 @@ namespace MWRender
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
-        mHeld->mWriter.write(run, reconstruction, stop.mActions, mHeld->mCrossings, mRecord);
+        mHeld->mWriter.write(run, reconstruction, stop.mActions, mProgress->mCrossings, mRecord);
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;
@@ -695,17 +757,17 @@ namespace MWRender
         place.mNote = stop.mNote;
         place.mHour = MWBase::Environment::get().getWorld()->getTimeStamp().getHour();
         place.mWeather = stop.mSky.mWeather.value_or(std::string());
-        place.mFrames = mHeld->mSamples.size();
-        place.mWallSeconds = mWallMs / 1000.0;
+        place.mFrames = mProgress->mSamples.size();
+        place.mWallSeconds = mProgress->mWallMs / 1000.0;
         for (std::size_t at = 0; at < Rtx::sTimingCount; ++at)
-            place.mRows[at] = Rtx::summarise(mHeld->mSamples.mRows[at]);
-        place.mClock = mHeld->mClock;
-        place.mHitPercent = mHitPercent;
-        place.mCrossings = mHeld->mCrossings;
+            place.mRows[at] = Rtx::summarise(mProgress->mSamples.mRows[at]);
+        place.mClock = mProgress->mClock;
+        place.mHitPercent = mProgress->mHitPercent;
+        place.mCrossings = mProgress->mCrossings;
         place.mScene = renderer.getSceneStats();
         place.mMemory = renderer.getMemoryReport();
 
-        const std::span<const Rtx::GpuZone> zones = mHeld->mGpu.summariseZones();
+        const std::span<const Rtx::GpuZone> zones = mProgress->mGpu.summariseZones();
         place.mGpu.assign(zones.begin(), zones.end());
 
         mRecord.add(std::move(place));

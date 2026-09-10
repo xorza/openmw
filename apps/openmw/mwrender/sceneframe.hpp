@@ -54,6 +54,21 @@ namespace MWRender
         Exterior,
     };
 
+    /// The cell's own `AMBI` record — its ambient, sunlight and fog as three packed colours.
+    ///
+    /// **A room's, and nothing else has one.** Every field of it is meaningless outdoors, which is
+    /// why it is an alternative rather than three numbers a reader has to know not to take. A
+    /// quasi-exterior has none: it has weather, so its light is the weather's.
+    ///
+    /// **`WorldState::mFogDepth` is not part of it**, because both paths read that one: it is a
+    /// weather's blended `Land_Fog_Depth` outdoors and this record's fourth number indoors.
+    struct RoomMood
+    {
+        std::uint32_t mAmbient = 0;
+        std::uint32_t mSunlight = 0;
+        std::uint32_t mFog = 0;
+    };
+
     /// A distance fog, as the game describes one: a colour and the linear ramp it fills.
     struct FogBand
     {
@@ -145,7 +160,7 @@ namespace MWRender
         Sky::SkyRoll mSkyRoll;
 
         /// Includes the night-eye effect, because that is where it has already been added — and, in
-        /// a room, the lift `configureAmbient` gives it. `mRoomAmbient` is the record.
+        /// a room, the lift `configureAmbient` gives it. `mRoom` is the record.
         osg::Vec4f mAmbientColour;
 
         /// Meaningless in an `Interior`, where the weather system stops writing it and it keeps
@@ -181,21 +196,19 @@ namespace MWRender
         /// A weather's blended `Land_Fog_Depth` outdoors, and a cell's `AMBI` density indoors.
         float mFogDepth = 0.0f;
 
-        /// The cell's own `AMBI` record — its ambient, sunlight and fog as three packed colours —
-        /// beside `mFogDepth`, which is the record's fourth number.
+        /// The room the player is standing in, or nothing for anywhere else.
         ///
         /// **The record and not `mAmbientColour`, for a renderer that lights a room itself.**
         /// `configureAmbient` lifts an interior's ambient to `minimum interior brightness` before
         /// the rasterizer's lights see it, which balances a falloff curve of the rasterizer's own,
         /// and turns its sunlight into a directional light at a position of its choosing. A
-        /// renderer that lights the room itself reads these four as the content files state them,
-        /// so a played frame and an offline one stand in one room.
+        /// renderer that lights the room itself reads the record as the content files state it, so
+        /// a played frame and an offline one stand in one room.
         ///
-        /// Meaningless outdoors, where the weather system writes the sky — the same way
-        /// `mSkyColour` is meaningless in a room.
-        std::uint32_t mRoomAmbient = 0;
-        std::uint32_t mRoomSunlight = 0;
-        std::uint32_t mRoomFog = 0;
+        /// **Nothing rather than three stale numbers**, which is what they were: written at every
+        /// cell change and meaningless at all but a fraction of them. `RoomMood` says what the
+        /// fourth number is and why it stays outside.
+        std::optional<RoomMood> mRoom;
 
         /// What `updateAmbient` added to the ambient for the Night-Eye effect, in the file's space:
         /// `mAmbientColour` less the cell's own. Read back rather than restated, so the number is
@@ -213,6 +226,13 @@ namespace MWRender
         /// **The world says -1 there and this does not.** A sentinel inside the range of a field is
         /// the sort of thing a reader has to already know about, and a default of zero would have
         /// said "a transition to Clear, just finished" — which is a sky, and a wrong one.
+        ///
+        /// **The two fields below mean nothing without it and stay outside it all the same.** Both
+        /// are read unconditionally — `mWeatherTransition` by the rasterizer's shader chain and
+        /// `mNextCloudDirection` by `Rtx::describeClouds`, which writes it into the trace's
+        /// constants whether or not the deck it turns is drawn. What they hold with no transition
+        /// running is whatever the weather manager last left, and an alternative cannot answer a
+        /// stale value: folding either one in would change a number that reaches a shader.
         std::optional<int> mNextWeatherId;
 
         /// How far that transition has left to run, which is **one when it begins and zero when it
@@ -250,7 +270,9 @@ namespace MWRender
         /// weather's storm.** The second is unit length only while a weather is arriving:
         /// `WeatherResult` states it during a transition, and otherwise holds zero until the first
         /// one and the last one's answer after that. A renderer that draws one deck reads a zero as
-        /// due north, and a deck at a blend of nothing is not drawn either way.
+        /// due north, and a deck at a blend of nothing is not drawn either way — but the bearing it
+        /// turns into still reaches the trace's constants, which is why it is not inside
+        /// `mNextWeatherId`.
         osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
         osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 

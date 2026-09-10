@@ -160,9 +160,9 @@ namespace Rtx
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)
             {
                 const osg::Image& mask = *mBlendmaps[index];
-                layer.mFirstWeight = static_cast<std::uint32_t>(into.mWeights.size());
+                layer.mWeights.mOffset = static_cast<std::uint32_t>(into.mWeights.size());
                 readMask(mask, into.mWeights);
-                layer.mWeightCount = static_cast<std::uint32_t>(into.mWeights.size()) - layer.mFirstWeight;
+                layer.mWeights.mCount = static_cast<std::uint32_t>(into.mWeights.size()) - layer.mWeights.mOffset;
                 layer.mMaskWidth = static_cast<std::uint16_t>(mask.s());
                 layer.mMaskHeight = static_cast<std::uint16_t>(mask.t());
 

@@ -162,6 +162,17 @@ namespace MWRender
         /// Points the game's camera where the stop asked, and holds it there.
         void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look);
 
+        /// What one stop has come to so far.
+        ///
+        /// **One object, because `beginStop` resets it.** It was nine members of the session and
+        /// four accumulators of `Held`, cleared by a ten-line block that a new field reaches only if
+        /// its author remembers.
+        ///
+        /// **`restart` and not an assignment from a default**, because the samples are reserved once
+        /// for the longest stop of the run: a bench that allocates where it measures is measuring
+        /// its own allocation.
+        struct StopProgress;
+
         Rtx::SessionRequest mRequest;
 
         /// Where the run's answer goes, or null where a settings file asked for the run and nobody
@@ -172,31 +183,6 @@ namespace MWRender
         /// Which stop is running, and whether it has been started.
         std::size_t mAt = 0;
         bool mStarted = false;
-
-        /// Frames seen since the stop began, warm-up included, and what the measured ones came to
-        /// outside the distributions: how much of the last one hit something, and how long they
-        /// took between them.
-        std::uint32_t mSeen = 0;
-        double mHitPercent = 0.0;
-        double mWallMs = 0.0;
-
-        /// Where the eye stood when the stop began, which a route flies from.
-        osg::Vec3f mFrom;
-        osg::Vec3f mFromLook;
-
-        /// Where the route has flown to, which is not where the player stands.
-        ///
-        /// **The route's own place, because deriving the next step from the player puts physics in
-        /// it.** `moveObjectBy` moves an actor, and the world then steps that actor: gravity pulls
-        /// it down between one frame and the next, and a step taken from where it landed carries
-        /// the fall forward and compounds it. `island-crossing` asks to be flown six thousand units
-        /// up and was flown at eighty-five to twelve hundred — along the ground and inside it — so
-        /// every number ever taken over it described a view nobody asked for.
-        osg::Vec3f mFlown;
-
-        /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
-        /// Compared as an address and never read, which is all an identity needs.
-        const void* mCell = nullptr;
 
         /// Where the eye stood, what it faced and what the sky was, on one frame.
         ///
@@ -214,11 +200,10 @@ namespace MWRender
 
         /// The last frame the run drew. Empty until a stop has begun, so a run that reached no
         /// place describes none rather than describing wherever the new game happened to start.
+        ///
+        /// **The run's and not the stop's**, because what it answers is where the run was left —
+        /// which is a question asked after the last stop has closed.
         std::optional<Note> mStood;
-
-        /// Which weather the turn is on, and how far into the transition to the next.
-        std::size_t mTurnedTo = 0;
-        float mTurned = 0.0f;
 
         /// What the run has come to so far: the places, the report and the verdict. Its own type,
         /// because everything with something to say writes into all of it.
@@ -229,7 +214,11 @@ namespace MWRender
         /// Out of line so this header names no container of samples, and reserved once so the run
         /// itself does not allocate — a bench that stutters where it measures is measuring its own
         /// stutter.
+        ///
+        /// **`Held` is what outlives a stop and `mProgress` is what does not**, which is the whole
+        /// of why they are two objects.
         struct Held;
         std::unique_ptr<Held> mHeld;
+        std::unique_ptr<StopProgress> mProgress;
     };
 }

@@ -137,12 +137,12 @@ namespace Rtx
     /// is a copy and never a conversion — and it is the same copy whichever API performs it.
     struct TextureData
     {
-        /// Which row of the backend's texture array this is, which is the index a material holds.
+        /// Which row of the backend's texture array this is, which is the slot a material holds.
         ///
         /// **Carried rather than implied by position.** Arrivals used to be a contiguous tail, so a
         /// backend could append and be right; a slot a departing cell freed is taken over wherever
         /// it sits, so an arrival has to say where it belongs.
-        Index mIndex = 0;
+        Index mSlot = 0;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
         std::uint32_t mWidth = 0;

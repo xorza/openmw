@@ -6,6 +6,7 @@
 #include <exception>
 #include <span>
 #include <utility>
+#include <vector>
 
 #include <osg/Drawable>
 #include <osg/Matrixf>
@@ -26,6 +27,21 @@ namespace Rtx
 {
     namespace
     {
+        /// Appends `values` to `into` and answers the run they landed in.
+        ///
+        /// **One statement, because four parts of it were the same three lines.** A run that named
+        /// where it started and a count taken from another array is exactly what `Rtx::Run` exists
+        /// to stop.
+        template <class T>
+        Run appended(std::vector<T>& into, std::span<const T> values)
+        {
+            const Run run{ .mOffset = static_cast<std::uint32_t>(into.size()),
+                .mCount = static_cast<std::uint32_t>(values.size()) };
+            into.insert(into.end(), values.begin(), values.end());
+
+            return run;
+        }
+
         /// Fills one model from the drawables a template walk hands over.
         class ModelTaker final : public TemplateSink
         {
@@ -57,21 +73,10 @@ namespace Rtx
                 part.mLocal = local;
                 part.mShape = reading.mShape;
 
-                part.mFirstVertex = static_cast<std::uint32_t>(mInto.mPositions.size());
-                part.mVertexCount = static_cast<std::uint32_t>(reading.mPositions.size());
-                mInto.mPositions.insert(mInto.mPositions.end(), reading.mPositions.begin(), reading.mPositions.end());
-
-                part.mFirstNormal = static_cast<std::uint32_t>(mInto.mNormals.size());
-                part.mNormalCount = static_cast<std::uint32_t>(reading.mNormals.size());
-                mInto.mNormals.insert(mInto.mNormals.end(), reading.mNormals.begin(), reading.mNormals.end());
-
-                part.mFirstTexCoord = static_cast<std::uint32_t>(mInto.mTexCoords.size());
-                part.mTexCoordCount = static_cast<std::uint32_t>(reading.mTexCoords.size());
-                mInto.mTexCoords.insert(mInto.mTexCoords.end(), reading.mTexCoords.begin(), reading.mTexCoords.end());
-
-                part.mFirstIndex = static_cast<std::uint32_t>(mInto.mIndices.size());
-                part.mIndexCount = static_cast<std::uint32_t>(reading.mIndices.size());
-                mInto.mIndices.insert(mInto.mIndices.end(), reading.mIndices.begin(), reading.mIndices.end());
+                part.mVertices = appended(mInto.mPositions, reading.mPositions);
+                part.mNormals = appended(mInto.mNormals, reading.mNormals);
+                part.mTexCoords = appended(mInto.mTexCoords, reading.mTexCoords);
+                part.mIndices = appended(mInto.mIndices, reading.mIndices);
 
                 mInto.mParts.push_back(std::move(part));
             }

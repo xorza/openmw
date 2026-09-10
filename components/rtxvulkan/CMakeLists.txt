@@ -213,6 +213,8 @@ set(RTX_VULKAN_FILES
     pipelinelayout.cpp
     pipelinelayout.hpp
     presenter.cpp
+    presenttargets.cpp
+    presenttargets.hpp
     presenter.hpp
     requirements.cpp
     requirements.hpp

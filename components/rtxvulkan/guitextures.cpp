@@ -49,12 +49,10 @@ namespace Rtx
             VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
-        if (!mFree.empty())
+        if (const Index taken = mFree.take(); taken != sNoIndex)
         {
-            const GuiSlot slot = mFree.back();
-            mFree.pop_back();
-            mImages[slot.get()] = std::move(image);
-            return slot;
+            mImages[taken] = std::move(image);
+            return GuiSlot::at(taken);
         }
 
         mImages.push_back(std::move(image));
@@ -190,7 +188,7 @@ namespace Rtx
         // that closes, and a load closes a great many. What was drawn with it is on the queue too,
         // which is why the wait that frees it is a frame's and not this class's — see `startFrame`.
         mRetired.push_back(std::move(mImages[slot.get()]));
-        mFree.push_back(slot);
+        mFree.free(slot.get());
     }
 
     void GuiTextures::read(const GuiSlot slot, std::vector<std::uint8_t>& pixels)

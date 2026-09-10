@@ -52,7 +52,7 @@ namespace Rtx::Testing
             // A slot the table freed is handed out again, so an arrival can land below the end and
             // lengthen nothing at all.
             for (const Rtx::TextureData& one : arrived)
-                countAt(slot) = std::max(countAt(slot), one.mIndex + 1);
+                countAt(slot) = std::max(countAt(slot), one.mSlot + 1);
 
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.
@@ -124,7 +124,7 @@ namespace Rtx::Testing
         {
             mDescribedSlots.clear();
             for (const Rtx::TextureData& texture : described)
-                mDescribedSlots.push_back(texture.mIndex);
+                mDescribedSlots.push_back(texture.mSlot);
         }
 
         void dropViewScene(Rtx::SceneSlot) override {}

@@ -258,7 +258,7 @@ namespace Rtx
             // slot that names nothing is not one.
             const auto check = [&](const SceneTextures& described, const char* which) {
                 ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 }) << which;
-                EXPECT_EQ(described.getDescriptions()[0].mIndex, staying.mTexture) << which;
+                EXPECT_EQ(described.getDescriptions()[0].mSlot, staying.mTexture) << which;
                 EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable") << which;
                 EXPECT_EQ(described.getUnreadable(), 1u) << which;
             };
@@ -290,7 +290,7 @@ namespace Rtx
             SceneTextures described;
             described.describeAll(scene.getTables(), images);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
-            EXPECT_EQ(described.getDescriptions()[0].mIndex, bake);
+            EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
             EXPECT_EQ(described.getUnreadable(), 1u);
         }

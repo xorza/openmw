@@ -109,16 +109,16 @@ namespace Rtx::Testing
             constexpr std::uint32_t side = FakeLand::sMaskSide;
             EXPECT_EQ(grass.mMaskWidth, side);
             EXPECT_EQ(grass.mMaskHeight, side);
-            EXPECT_EQ(grass.mWeightCount, side * side);
-            EXPECT_EQ(rock.mWeightCount, side * side);
-            EXPECT_EQ(rock.mFirstWeight, side * side);
+            EXPECT_EQ(grass.mWeights.mCount, side * side);
+            EXPECT_EQ(rock.mWeights.mCount, side * side);
+            EXPECT_EQ(rock.mWeights.mOffset, side * side);
             ASSERT_EQ(ground.mWeights.size(), 2u * side * side);
 
             // Row 0: grass in the first column, rock in the last, by the byte's own reciprocal.
-            EXPECT_EQ(ground.mWeights[grass.mFirstWeight], 1.0f);
-            EXPECT_EQ(ground.mWeights[grass.mFirstWeight + side - 1], 0.0f);
-            EXPECT_EQ(ground.mWeights[rock.mFirstWeight], 0.0f);
-            EXPECT_EQ(ground.mWeights[rock.mFirstWeight + side - 1], 1.0f);
+            EXPECT_EQ(ground.mWeights[grass.mWeights.mOffset], 1.0f);
+            EXPECT_EQ(ground.mWeights[grass.mWeights.mOffset + side - 1], 0.0f);
+            EXPECT_EQ(ground.mWeights[rock.mWeights.mOffset], 0.0f);
+            EXPECT_EQ(ground.mWeights[rock.mWeights.mOffset + side - 1], 1.0f);
         }
 
         /// A cell with no land record is a plane at the default height on four corners, wearing
@@ -148,7 +148,7 @@ namespace Rtx::Testing
 
             ASSERT_EQ(ground.mLayers.size(), 1u);
             EXPECT_EQ(ground.mLayers[0].mImage->getFileName(), "textures/_land_default.dds");
-            EXPECT_EQ(ground.mLayers[0].mWeightCount, 0u) << "one ground type covers the cell";
+            EXPECT_EQ(ground.mLayers[0].mWeights.mCount, 0u) << "one ground type covers the cell";
             EXPECT_TRUE(ground.mWeights.empty());
         }
 
@@ -222,10 +222,9 @@ namespace Rtx::Testing
             const auto readsAs = [&](const PreparedLayer& layer, const osg::Image& image) {
                 ASSERT_EQ(layer.mMaskWidth, 16u);
                 ASSERT_EQ(layer.mMaskHeight, 16u);
-                ASSERT_EQ(layer.mWeightCount, 256u);
+                ASSERT_EQ(layer.mWeights.mCount, 256u);
 
-                const std::span<const float> weights
-                    = std::span<const float>(ground.mWeights).subspan(layer.mFirstWeight, layer.mWeightCount);
+                const std::span<const float> weights = layer.mWeights.in(std::span<const float>(ground.mWeights));
                 for (int row = 0; row < 16; ++row)
                     for (int column = 0; column < 16; ++column)
                         ASSERT_EQ(weights[static_cast<std::size_t>(row) * 16 + column], image.getColor(column, row).a())
@@ -237,8 +236,8 @@ namespace Rtx::Testing
 
             // And the two ends of the range by hand, which is the one claim `getColor` cannot be
             // asked to make about itself: an empty texel is no weight and a full one is all of it.
-            EXPECT_EQ(ground.mWeights[ground.mLayers[0].mFirstWeight], 0.0f);
-            EXPECT_EQ(ground.mWeights[ground.mLayers[0].mFirstWeight + 255], 1.0f);
+            EXPECT_EQ(ground.mWeights[ground.mLayers[0].mWeights.mOffset], 0.0f);
+            EXPECT_EQ(ground.mWeights[ground.mLayers[0].mWeights.mOffset + 255], 1.0f);
         }
     }
 }

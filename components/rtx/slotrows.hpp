@@ -1,14 +1,13 @@
 #pragma once
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <span>
 #include <vector>
 
 #include "index.hpp"
+#include "slotpool.hpp"
 
 namespace Rtx
 {
@@ -23,13 +22,8 @@ namespace Rtx
     /// acceleration structure and a texture index is what a material points at, so a dropped row
     /// leaves a hole and the next arrival takes it over.
     ///
-    /// **And the hole it takes is the lowest, never the last one freed.** Every row is the same
-    /// size, so any hole would hold the row — but which one it is decides what a run draws.
-    /// `Rtx::Identity` hashes by address, so a sweep retires in whatever order the allocator left
-    /// its map in, and a list taken from the back then hands the same live set different slots in
-    /// two processes. The lowest makes the answer a function of what is standing rather than of the
-    /// order the dead left in. Measured on `one-cell-walk`: the `materials` and `textures` columns
-    /// differed from frame 2 on 89 frames of 90.
+    /// **And the hole it takes is the lowest, never the last one freed.** `SlotPool` is that rule
+    /// and says what it was measured on.
     ///
     /// **What a freed row holds is the table's business and not this one's.** A mesh row keeps the
     /// offsets its last tenant left, because a backend walks every slot and reads a count of
@@ -66,7 +60,8 @@ namespace Rtx
         template <class Grew>
         Index take(const Row& row, Grew grew)
         {
-            if (mFree.empty())
+            const Index index = mFree.take();
+            if (index == sNoIndex)
             {
                 mRows.push_back(row);
                 grew(mRows.size());
@@ -74,7 +69,6 @@ namespace Rtx
                 return static_cast<Index>(mRows.size() - 1);
             }
 
-            const Index index = takeLowest(mFree);
             mRows[index] = row;
 
             return index;
@@ -89,7 +83,7 @@ namespace Rtx
         void free(Index slot)
         {
             assert(slot < mRows.size());
-            giveBack(mFree, slot);
+            mFree.free(slot);
         }
 
         /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
@@ -116,7 +110,7 @@ namespace Rtx
             }
 
             // A slot already free is one nothing may free again.
-            for (const Index index : mFree)
+            for (const Index index : mFree.getSlots())
                 mKept[index] = 1;
 
             return distinct;
@@ -139,7 +133,7 @@ namespace Rtx
                     continue;
 
                 release(index, mRows[index]);
-                giveBack(mFree, index);
+                mFree.free(index);
                 ++freed;
             }
 
@@ -147,32 +141,10 @@ namespace Rtx
         }
 
     private:
-        /// The lowest slot on `free`, taken off it.
-        static Index takeLowest(std::vector<Index>& free)
-        {
-            assert(!free.empty() && "a slot taken from a list with none on it");
-
-            std::pop_heap(free.begin(), free.end(), std::greater<>());
-            const Index index = free.back();
-            free.pop_back();
-
-            return index;
-        }
-
-        /// Puts `index` back, so the next `takeLowest` may answer with it.
-        ///
-        /// **The only way onto the list.** A slot pushed onto it by anything else leaves it no heap,
-        /// and the pop above is then undefined and answers with whatever the top happens to be.
-        static void giveBack(std::vector<Index>& free, const Index index)
-        {
-            free.push_back(index);
-            std::push_heap(free.begin(), free.end(), std::greater<>());
-        }
-
         std::vector<Row> mRows;
 
-        /// A min-heap of the slots nothing stands in.
-        std::vector<Index> mFree;
+        /// The slots nothing stands in.
+        SlotPool mFree;
 
         /// Which slots the last `mark` named, one flag per row.
         ///

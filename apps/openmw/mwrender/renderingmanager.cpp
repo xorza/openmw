@@ -525,13 +525,19 @@ namespace MWRender
 
     void RenderingManager::configureAmbient(const MWWorld::Cell& cell)
     {
-        // **Kept as it was recorded, beside the lift it is about to get.** A renderer that lights a
-        // room itself wants the numbers the content wrote — `WorldState::mRoomAmbient`.
-        mWorld.mRoomAmbient = cell.getMood().mAmbiantColor;
-        mWorld.mRoomSunlight = cell.getMood().mDirectionalColor;
-        mWorld.mRoomFog = cell.getMood().mFogColor;
-
         bool isInterior = !cell.isExterior() && !cell.isQuasiExterior();
+
+        // **Kept as it was recorded, beside the lift it is about to get.** A renderer that lights a
+        // room itself wants the numbers the content wrote — `WorldState::mRoom`.
+        //
+        // **Only where the cell is a room**, which is what makes the alternative worth having: the
+        // record means nothing anywhere else, and the same test decides `Location::Interior`.
+        if (isInterior)
+            mWorld.mRoom = RoomMood{ .mAmbient = cell.getMood().mAmbiantColor,
+                .mSunlight = cell.getMood().mDirectionalColor,
+                .mFog = cell.getMood().mFogColor };
+        else
+            mWorld.mRoom.reset();
         bool needsAdjusting = false;
         needsAdjusting = isInterior && (!Settings::shaders().mClassicFalloff || Settings::shaders().mClusteredLighting);
 
@@ -1454,9 +1460,10 @@ namespace MWRender
 
         const float lodFactor = Settings::terrain().mLodFactor;
         const bool groundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
-        const bool paged = mRenderer.wantsPagedTerrain();
+        const TerrainPlan plan = mRenderer.getTerrainPlan();
+        const bool paged = plan.mPaged;
         const double expiryDelay = Settings::cells().mCacheExpiryDelay;
-        if (!mRenderer.wantsTerrainChunks())
+        if (!plan.mChunks)
         {
             // **A world that builds nothing**, for a renderer that stands the ground itself: the
             // storage, the worldspace and the active grid, which is all such a renderer asks of it.
@@ -1471,14 +1478,14 @@ namespace MWRender
             // tuning knob's: it is a render target, and the ray tracing path initialises no OpenGL.
             // `Terrain::sNoCompositeMap` is what that one answers, so every chunk arrives as its
             // layer stack for that renderer to flatten however it can.
-            const float compMapLevel = mRenderer.getTerrainCompositeMapLevel();
+            const float compMapLevel = plan.mCompositeMapLevel;
             const int vertexLodMod = Settings::terrain().mVertexLodMod;
             const float maxCompGeometrySize = Settings::terrain().mMaxCompositeGeometrySize;
             const bool debugChunks = Settings::terrain().mDebugChunks;
             auto quadTreeWorld = std::make_unique<Terrain::QuadTreeWorld>(mSceneRoot, mRootNode, mResourceSystem,
                 mTerrainStorage.get(), Mask_Terrain, Mask_PreCompile, Mask_Debug, compMapResolution, compMapLevel,
                 lodFactor, vertexLodMod, maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
-            if (mRenderer.wantsObjectPaging())
+            if (plan.mObjectPaging)
             {
                 newChunkMgr.mObjectPaging = std::make_unique<Terrain::ObjectPaging>(mResourceSystem->getSceneManager(),
                     mObjectStorage, worldspace, Mask_Static, Settings::terrain().mObjectPagingActiveGrid);
@@ -1650,7 +1657,7 @@ namespace MWRender
 
     float RenderingManager::getTerrainReach() const
     {
-        if (!mRenderer.wantsPagedTerrain())
+        if (!mRenderer.getTerrainPlan().mPaged)
             return 0.f;
 
         // **Straight ahead, and not the corners of a frustum.** `getTerrainViewDistance` widens the

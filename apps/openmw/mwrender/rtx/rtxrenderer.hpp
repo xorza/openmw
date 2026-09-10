@@ -15,10 +15,10 @@
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/renderprofile.hpp>
-#include <components/rtxbench/framerate.hpp>
 
 #include "../renderer.hpp"
 #include "framecapture.hpp"
+#include "framespan.hpp"
 #include "session.hpp"
 #include "tracedrun.hpp"
 #include "viewhost.hpp"
@@ -84,24 +84,19 @@ namespace MWRender
 
         int getMaxTextureUnits() const override { return mMaxTextureUnits; }
 
-        /// Always. The map reads how far the ground reaches through this, and this renderer's
-        /// ground reaches that far; which world the game builds is `wantsTerrainChunks`'s answer.
-        bool wantsPagedTerrain() const override;
-
-        /// Never: the ground is `Rtx::CellRing`'s, off the land records, and a chunk the game built
-        /// beside it would be one nothing traces.
-        bool wantsTerrainChunks() const override { return false; }
-
-        /// Never: `Rtx::CellRing` stands the distance's statics as instances of their templates,
-        /// and a merged chunk is the fold of the merge on the frame it arrives.
-        bool wantsObjectPaging() const override { return false; }
+        /// Paged always, chunked never, merged never, and no composite map.
+        ///
+        /// **The map reads how far the ground reaches through the paged answer**, and this
+        /// renderer's ground reaches that far; which world the game builds is what `mChunks` says.
+        /// The ground is `Rtx::CellRing`'s, off the land records, so a chunk the game built beside
+        /// it would be one nothing traces, and the distance's statics stand as instances of their
+        /// templates rather than as a merged chunk folded on the frame it arrives. A composite map
+        /// is a render target and this path initialises no OpenGL at all —
+        /// `Rtx::TerrainComposite` bakes the flattened texture on the CPU instead.
+        TerrainPlan getTerrainPlan() const override;
 
         void enableReference(ESM::RefNum refnum, bool enabled) override;
         void detachWorld() override;
-
-        /// Never, because this path initialises no OpenGL at all: a composite map is a render
-        /// target, and `Rtx::TerrainComposite` bakes the flattened texture on the CPU instead.
-        float getTerrainCompositeMapLevel() const override;
 
         /// The distant land radius, which is also what the fog is built to. `cameraDistance` and
         /// `fov` are a frustum's answer and no ray has one.
@@ -244,9 +239,6 @@ namespace MWRender
         /// would mirror a world it then threw away.
         bool drawsWorld() const { return mWorldShown && mWorldToggled; }
 
-        /// Stamps where the frame left this renderer, which is where `Rtx::Timing::Update` starts.
-        void leave() { mLeft = std::chrono::steady_clock::now(); }
-
         /// The world's, for a picture that has to resolve textures of its own. Null until
         /// `attachWorld`.
         Resource::ResourceSystem* mResources = nullptr;
@@ -268,16 +260,6 @@ namespace MWRender
         FrameCapture mCapture;
 
         SDL_Window* mWindow = nullptr;
-
-        /// The last second of frames, which is what the title says.
-        ///
-        /// **The title, because this renderer has no overlay.** The rasterizer's F3 page is
-        /// `osgViewer`'s and draws with it; what a window on this path can show without a frame
-        /// of its own is the one line a compositor draws for it.
-        Rtx::FrameRate mRate;
-
-        /// What the window's title is written from, once a second and never allocated.
-        std::array<char, 96> mTitle{};
 
         /// What the stage was handed. Made here because there is no viewer to make them, and held
         /// because the frame is driven from them.
@@ -309,15 +291,13 @@ namespace MWRender
         Rtx::ExtractionStats mFoundAgain;
         std::uint32_t mUnreadable = 0;
 
-        /// What the CPU stood still for the device, summed over the frames a report came back for
-        /// and printed every `sReportEvery` of them.
+        /// What the CPU stood still for the device, and the frame rate the window's title says.
         ///
         /// **The only instrument on this path.** The harness times a frame by tracing it thirty
         /// times and taking the best; a game cannot, so what it can say is what the last few hundred
         /// frames came to on average — which is the number that matters when the question is whether
         /// this is playable.
-        double mSpentMs = 0.0;
-        std::uint32_t mTimed = 0;
+        SpeedReport mSpeed;
 
         /// The run a launcher installed before the engine started, or null for an ordinary
         /// session. `MWRender::Session` says what one is and why it lives here.
@@ -333,28 +313,8 @@ namespace MWRender
         /// to draw one picture through two differently configured renderers.
         Rtx::RenderProfile mProfile;
 
-        /// When the last frame was handed over, so what `Bench` measures is the whole frame and not
-        /// this renderer's slice of it.
-        std::chrono::steady_clock::time_point mEntered;
-        bool mEnteredOnce = false;
-
-        /// When the frame last left this renderer, so the next one can say what the game spent
-        /// between the two. `Rtx::Timing::Update` says what that row answers and why it is timed
-        /// here rather than read off a profile.
-        ///
-        /// **Stamped after every present and after the sweep**, which is every path out of this
-        /// renderer — so what it measures is the game's own loop and never this renderer's own
-        /// tail. Valid whenever a row is written, because a row is written after a trace and a
-        /// trace is made from a call that ends in one of those stamps.
-        std::chrono::steady_clock::time_point mLeft;
-
-        /// What the presents since the last row cost, summed.
-        ///
-        /// **Summed rather than kept, because a span can hold several.** The frame is measured from
-        /// one trace to the next, so a present belongs to the span after it — and a loading screen
-        /// drives `renderGui` as often as it likes inside one of those. Cleared where the row that
-        /// carries it is written.
-        double mPresentMs = 0.0;
+        /// Where this frame began and ended inside this renderer, and what it presented.
+        FrameSpan mSpan;
 
         /// The frame number the walk and the trace are both stamped with, so what the upscaler
         /// jitters and what the sampler walks are the same sequence the world is counting.

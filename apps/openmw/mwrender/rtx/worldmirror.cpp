@@ -89,8 +89,9 @@ namespace MWRender
     void WorldMirror::detach()
     {
         // **The ring first, because its thread reads the storages the world owns.**
-        mRing.follow(nullptr, nullptr, nullptr, ESM::RefId(), 0);
-        mDistantLights.follow(nullptr, ESM::RefId());
+        mRing.setContent(nullptr, nullptr, 0);
+        mRing.follow(Rtx::WorldAround{});
+        mDistantLights.follow(Rtx::WorldAround{});
 
         mContent.reset();
         mResources = nullptr;
@@ -152,31 +153,34 @@ namespace MWRender
         // **The eye, which decides the rings.** Where it stands is what the reach is measured from.
         const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
 
-        // **The same eye and the world's own grid.** What the game has stood for itself is what
-        // these must not stand again, and `Terrain::World` is where both renderers read that from.
-        mDistantLights.follow(&frame.mObjectStorage, frame.mTerrain.getWorldspace());
-        mDistantLights.setViewPoint(eye);
-        mDistantLights.setReach(landReach());
-        mDistantLights.setActiveGrid(frame.mTerrain.getActiveGrid());
-        mDistantLights.setOutdoors(!frame.mWorld.isInteriorCell());
+        // **The same eye, the same reach and the world's own grid, said once.** What the game has
+        // stood for itself is what neither residency may stand again, and `Terrain::World` is where
+        // both renderers read that from. Told to each of them as one value: they read all six of
+        // these, and a fact stated twice is one that can be stated differently.
+        const Rtx::WorldAround around{
+            .mStorage = &frame.mObjectStorage,
+            .mWorldspace = frame.mTerrain.getWorldspace(),
+            .mEye = eye,
+            .mReach = landReach(),
+            .mActiveGrid = frame.mTerrain.getActiveGrid(),
+            .mOutdoors = !frame.mWorld.isInteriorCell(),
+        };
 
-        // **The same storage the lights are read from, the land the world reads its heights from,
-        // and the same switch the paging read.** With `object paging` off this renderer stands the
+        // **The land the world reads its heights from, the loader the models come out of, and the
+        // same switch the paging read.** With `object paging` off this renderer stands the
         // distance's statics itself, and the harness's `--distant-statics` drives the one setting
         // either way. The ground stands whatever the switch says.
-        mRing.follow(&frame.mObjectStorage, frame.mTerrain.getStorage(), mContent.get(), frame.mTerrain.getWorldspace(),
-            mExtractor.getTraversalMask());
+        mRing.setContent(frame.mTerrain.getStorage(), mContent.get(), mExtractor.getTraversalMask());
         mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
-        mRing.setReach(landReach());
         mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
-        mRing.setActiveGrid(frame.mTerrain.getActiveGrid());
-        mRing.setViewPoint(eye);
-        mRing.setOutdoors(!frame.mWorld.isInteriorCell());
         mRing.setFrame(frameNumber);
 
         // Told once a frame, because what the graph does not hold is the frame's to say. Every
         // world walk asks it from here, and the precipitation walk above cannot: it is a subtree.
         std::array<Rtx::Residency*, 2> hidden{ &mDistantLights, &mRing };
+        for (Rtx::Residency* resident : hidden)
+            resident->follow(around);
+
         mExtractor.follow(hidden);
 
         // One walk over the whole graph, where every path is already distinct.
