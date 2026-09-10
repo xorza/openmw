@@ -720,8 +720,17 @@ namespace Rtx
             dim.mSkyHorizon = bright.mSkyHorizon / 32.0f;
             dim.mSkyZenith = dim.mSkyHorizon;
 
+            // **The step is stated and not taken off the wall**, which is what
+            // `FrameOptions::mSinceLast` is for. A measured exposure adapts by how long the frame
+            // stood for, and left empty that is the interval `renderFrame` reads off a
+            // `steady_clock` — so the leg with a picture between its two frames spends the trace of
+            // that picture adapting further than the leg without one. Both legs then draw the dim
+            // frame at slightly different exposures, and the comparison below fails by the one part
+            // in 255 an eight-bit read-back can hold, on whichever run the machine was busiest.
+            constexpr float sStep = 1.0f / 60.0f;
+
             const auto frame = [&](const Shaders::VisibilityConstants& camera, std::optional<float> exposure) {
-                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = exposure });
+                mRenderer->renderFrame(camera, FrameOptions{ .mSinceLast = sStep, .mExposure = exposure });
                 mRenderer->readPixels(mPixels);
                 return mPixels;
             };

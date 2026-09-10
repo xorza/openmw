@@ -192,6 +192,11 @@ namespace MWRender
         /// perf's control fifo, held for the whole run so every stop brackets its own frames.
         std::unique_ptr<Rtx::PerfControl> mProfiling;
 
+        /// The card, watched across each stop's measured frames. **Held rather than made per stop**,
+        /// because what it owns is a thread: one that is started and stopped by every stop is a
+        /// thread made and joined at every place of a suite.
+        Rtx::ClockWatch mClock;
+
         StopWriter mWriter;
 
         /// What a hashed frame lands in, refilled per measured frame and never freed.
@@ -672,10 +677,11 @@ namespace MWRender
 
         if (mProgress->mSeen == warmup)
         {
-            // **Where the measured frames begin, and again where they end.** One reading is one
-            // moment: taken only at the end it is a card already climbing off the load, and it
-            // would print a fast clock over frames drawn at a slower one.
-            mProgress->mClock.add(Rtx::readGpuClock());
+            // **Sampled through the measured frames and not at their ends.** Two readings bound
+            // nothing: the ends of a place agree to within a couple of per cent while the card
+            // moves a fifth of its clock between them, and a leg that lost its clock then reads
+            // like a leg that lost its speed. `Rtx::ClockWatch` says what the sampling costs.
+            mHeld->mClock.start();
             mHeld->mProfiling->enable();
         }
 
@@ -730,9 +736,9 @@ namespace MWRender
 
         mHeld->mProfiling->disable();
 
-        // After the frames and not before them, so the process spawn it costs is outside the run
-        // it describes.
-        mProgress->mClock.add(Rtx::readGpuClock());
+        // After the frames and not before them, so the last spawn it costs is outside the run it
+        // describes.
+        mProgress->mClock = mHeld->mClock.stop();
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 

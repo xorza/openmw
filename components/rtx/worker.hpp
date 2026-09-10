@@ -35,12 +35,17 @@ namespace Rtx
         /// with — `std::condition_variable_any::wait(lock, stop, pred)` is the form both callers
         /// take. One that waited on a token it was never passed would never be woken, and the join
         /// below would hang.
-        void start(std::function<void(std::stop_token)> work)
+        ///
+        /// @return whether this call is what started it. **Answered rather than silent**, because a
+        /// caller that clears what the last run left has to know it is not clearing a run in
+        /// progress.
+        bool start(std::function<void(std::stop_token)> work)
         {
             if (mThread.joinable())
-                return;
+                return false;
 
             mThread = std::jthread(std::move(work));
+            return true;
         }
 
         /// Stops and joins. Nothing where nothing is running.

@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cstdio>
 #include <format>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "benchspec.hpp"
@@ -116,9 +116,80 @@ namespace Rtx
 
         mLowestMhz = std::min(mLowestMhz, other.mLowestMhz);
         mHighestMhz = std::max(mHighestMhz, other.mHighestMhz);
+        mSumMhz += other.mSumMhz;
+        mReadings += other.mReadings;
         mMemoryMhz = std::max(mMemoryMhz, other.mMemoryMhz);
         mTemperatureC = std::max(mTemperatureC, other.mTemperatureC);
         mThrottleMask |= other.mThrottleMask;
+    }
+
+    GpuClock GpuClock::reading(const std::uint32_t coreMhz, const std::uint32_t memoryMhz,
+        const std::uint32_t temperatureC, const std::uint64_t throttle)
+    {
+        return GpuClock{
+            .mLowestMhz = coreMhz,
+            .mHighestMhz = coreMhz,
+            .mSumMhz = coreMhz,
+            .mReadings = 1,
+            .mMemoryMhz = memoryMhz,
+            .mTemperatureC = temperatureC,
+            .mThrottleMask = throttle,
+            .mRead = true,
+        };
+    }
+
+    ClockWatch::~ClockWatch() = default;
+
+    void ClockWatch::start()
+    {
+        // **Only where this call is what started it.** One of these is held across the places of a
+        // suite, so a watch that kept what it saw would hand the second place the first place's
+        // clock — and one that cleared a run already in progress would throw away the readings that
+        // run had taken.
+        if (!mWorker.start([this](std::stop_token stop) { watch(stop); }))
+            return;
+
+        const std::lock_guard<std::mutex> lock(mMutex);
+        mSeen = GpuClock{};
+    }
+
+    GpuClock ClockWatch::stop()
+    {
+        // **One more before the join**, so the last frames are covered by a reading taken after
+        // them rather than before, and a place short enough that the loop never came round still
+        // answers with two.
+        const GpuClock last = readGpuClock();
+
+        mWorker.stop();
+
+        const std::lock_guard<std::mutex> lock(mMutex);
+        mSeen.add(last);
+
+        return mSeen;
+    }
+
+    void ClockWatch::watch(std::stop_token stop)
+    {
+        // **Four a second.** Every reading forks this process, and a harness with a world loaded is
+        // a large one to fork, so the rate is what the spawn cost was measured under rather than
+        // what the card can be asked for.
+        constexpr std::chrono::milliseconds sPeriod{ 250 };
+
+        for (;;)
+        {
+            // Outside the lock: a spawn takes tens of milliseconds, and holding it for that would
+            // make `stop` wait out a reading it is about to add its own to.
+            const GpuClock now = readGpuClock();
+
+            std::unique_lock<std::mutex> lock(mMutex);
+            mSeen.add(now);
+
+            // **Nothing ever notifies this**, and it is a condition variable so that the stop token
+            // can break the wait: `std::this_thread::sleep_for` would hold the thread for the whole
+            // period and make every join wait one out.
+            if (mWake.wait_for(lock, stop, sPeriod, [&stop] { return stop.stop_requested(); }))
+                return;
+        }
     }
 
     GpuClock readGpuClock()
@@ -133,14 +204,15 @@ namespace Rtx
         if (fields.size() < 4)
             return GpuClock{};
 
-        GpuClock clock;
-        if (!readNumber(fields[0], 10, clock.mLowestMhz) || !readNumber(fields[1], 10, clock.mMemoryMhz)
-            || !readNumber(fields[2], 10, clock.mTemperatureC) || !readNumber(fields[3], 16, clock.mThrottleMask))
+        std::uint32_t core = 0;
+        std::uint32_t memory = 0;
+        std::uint32_t temperature = 0;
+        std::uint64_t throttle = 0;
+        if (!readNumber(fields[0], 10, core) || !readNumber(fields[1], 10, memory)
+            || !readNumber(fields[2], 10, temperature) || !readNumber(fields[3], 16, throttle))
             return GpuClock{};
 
-        clock.mHighestMhz = clock.mLowestMhz;
-        clock.mRead = true;
-        return clock;
+        return GpuClock::reading(core, memory, temperature, throttle);
     }
 
     std::string describeClock(const GpuClock& clock)
@@ -148,13 +220,22 @@ namespace Rtx
         if (!clock.mRead)
             return {};
 
-        const std::string core = clock.mLowestMhz == clock.mHighestMhz
-            ? std::format("{} MHz", clock.mLowestMhz)
-            : std::format("{}–{} MHz", clock.mLowestMhz, clock.mHighestMhz);
+        // **The mean first, because it is the number a frame time is read against**, with the ends
+        // beside it saying whether the card moved while the frames were drawn. How many readings
+        // made them is what tells a range worth reading from two samples that happened to agree.
+        // **The count is printed whether or not the clock moved.** A card that held still over
+        // twenty-nine readings and one asked once say the same number otherwise, and only the first
+        // of them is a reading to hold a frame time against.
+        const std::string spread = clock.mLowestMhz == clock.mHighestMhz
+            ? std::string()
+            : std::format(", {}–{}", clock.mLowestMhz, clock.mHighestMhz);
+
+        const std::string core = std::format("{} MHz core over {} reading{}{}", clock.getMeanMhz(), clock.mReadings,
+            clock.mReadings == 1 ? "" : "s", spread);
 
         const std::string throttle = describeThrottle(clock.mThrottleMask);
 
-        return std::format("  clock {} core, {} MHz memory, {} °C — {}\n", core, clock.mMemoryMhz, clock.mTemperatureC,
+        return std::format("  clock {}, {} MHz memory, {} °C — {}\n", core, clock.mMemoryMhz, clock.mTemperatureC,
             throttle.empty() ? "nothing holding it back" : throttle);
     }
 }

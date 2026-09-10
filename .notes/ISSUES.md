@@ -1,15 +1,12 @@
 # Open issues
 
-- `bench --views=seyda-neen-ship` at `--size=1280x720` spreads from 0.73 to 1.04 ms on the `trace`
-  zone across legs of the same build at a held clock of 2220 MHz, while the guild and Arkngthand
-  repeat to a hundredth. The 1080p legs at the ship spread the same way on every batch of the day.
+- The scene carries no per-vertex colour at all, and the terrain is where it shows. `MeshReader`
+  asks a geometry for its vertices, its normals and texture coordinate zero and never for its colour
+  array, so every model `NifOsg` gave one — `nifloader.cpp:1705` and `1907` — is traced as though
+  every vertex were white. `GroundReader` is worse than not reading it: it holds an
+  `osg::Vec4ubArray`, hands it to `Terrain::Storage::fillVertexBuffers` on every cell, and copies
+  only the positions and the normals into `PreparedGround`. The land record's `VCLR` is read off the
+  disk and dropped on the floor. Carrying it means a fourth attribute the whole way down —
+  `PreparedGround`, `SceneDesc::addMesh`, `MeshTable::writeAttributes`, `SceneBuffers` and
+  `GpuTables`.
 
-- The ray tracer does not read the terrain's vertex colours. `Terrain::Storage::fillVertexBuffers`
-  fills the land record's `VCLR` beside the heights and the rasterizer multiplies its ground by
-  them; `Rtx::MeshReading` carries no colour and no scene table holds one, so the ground is shaded
-  as though every vertex were white.
-
-- `RtxGuiDrawTest.aPictureInsideTheInterfaceLeavesTheFramesExposureAlone` fails intermittently. One
-  run of `components-tests --gtest_filter='Rtx*'` had the frame read back at 18 of 255 where the
-  test expected the 17 it carried before the picture; the same filter passed 604 of 604 on the three
-  runs after it, and the test alone passed five times in a row.
