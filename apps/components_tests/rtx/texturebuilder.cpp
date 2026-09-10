@@ -12,7 +12,6 @@
 #include <osg/Vec3f>
 
 #include <components/resource/imagemanager.hpp>
-#include <components/resource/objectcache.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/mipchain.hpp>
 #include <components/rtx/preparedtexture.hpp>
@@ -24,6 +23,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "allocations.hpp"
+#include "heldimages.hpp"
 
 namespace Rtx
 {
@@ -65,23 +65,6 @@ namespace Rtx
             image->allocateImage(4, 4, 1, format, GL_UNSIGNED_BYTE);
             return image;
         }
-
-        /// An image manager a test can put a decoded image into.
-        ///
-        /// **The cache and not the VFS**, because `getImage` reads it first: an image written in
-        /// here comes back without a file, without a reader plugin, and without the warning image a
-        /// miss caches — which is `GL_RGB`, a format this renderer refuses, so a slot that opened a
-        /// file would be described as unreadable and logged by name.
-        class HeldImages : public Resource::ImageManager
-        {
-        public:
-            using Resource::ImageManager::ImageManager;
-
-            void hold(VFS::Path::NormalizedView path, osg::ref_ptr<osg::Image> image)
-            {
-                mCache->addEntryToObjectCache(std::string(path.value()), image);
-            }
-        };
 
         /// DXT1 arrives under two names and both of them read the alpha bit.
         ///
@@ -190,7 +173,7 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, describingAnArrivalASecondTimeReachesTheHeapNotAtAll)
         {
             VFS::Manager vfs;
-            HeldImages images(&vfs, 0);
+            Testing::HeldImages images(&vfs, 0);
 
             // **Held under the name the image carries**, so the slot, the cache key and the name
             // the description comes back with are one path rather than three.
@@ -320,7 +303,7 @@ namespace Rtx
             std::fill_n(image->data(), image->getTotalSizeInBytes(), static_cast<unsigned char>(128));
 
             VFS::Manager vfs;
-            HeldImages images(&vfs, 0);
+            Testing::HeldImages images(&vfs, 0);
             images.hold(path, image);
 
             Rtx::SceneDesc scene;

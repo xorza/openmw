@@ -36,6 +36,16 @@ namespace Rtx
     /// the rest wait a frame each, shading from their stacks as they did while they baked.
     inline constexpr std::size_t sCompositesPerFrame = 2;
 
+    /// How many frames a stack may take to flatten before a frame waits for it.
+    ///
+    /// **A settled frame waits for the ground it collects, so what it must not collect is ground it
+    /// asked for a moment ago.** A walk adopts one cell a frame and a cell hands over one stack, so
+    /// without this the frame that queues a stack is the frame that waits out its whole bake.
+    ///
+    /// **Sized on the fastest run and not the target one**, because a frame of slack is worth less
+    /// wall time the faster a machine draws — and a fast machine is the one a stall shows on.
+    inline constexpr std::size_t sBakeFrames = 16;
+
     /// Every distant chunk waiting for its ground to be flattened, and the threads that flatten them.
     ///
     /// **The bake happens on no frame at all.** One costs 38 ms and a ring fill wants eighty-five;
@@ -121,18 +131,27 @@ namespace Rtx
         /// walk can change.
         void gather(const SceneTables& scene, Resource::ImageManager& images);
 
-        /// Waits until `collect` can take `limit`, or until nothing is left to wait for.
+        /// Waits until every stack `collect` is due to take has come back.
         void waitFor(std::size_t limit);
+
+        /// How many of the sequences from `mNextTake` are old enough to collect, counted no further
+        /// than `limit`.
+        ///
+        /// **The whole of what a settled frame takes.** It reads the frame count and the hand-over
+        /// frames and nothing a baker touches, so what a frame collects is the schedule's answer
+        /// and the wait is only how the frame is made to agree with it.
+        std::size_t getDue(std::size_t limit) const;
 
         /// How many of the sequences from `mNextTake` have come back, counted no further than
         /// `limit`. Under `mMutex`.
         std::size_t getReady(std::size_t limit) const;
 
-        /// Moves at most `limit` finished composites into the scene, in the order they were handed
-        /// over.
+        /// Moves the composites that are due into the scene, in the order they were handed over,
+        /// and at most `limit` of them.
         ///
-        /// **It stops at the first sequence that has not come back**, so one the bakers finished
-        /// early waits for the one in front of it. `setSettled` says why the order is the queue's.
+        /// **It stops at the first sequence that is not due or has not come back**, so one the
+        /// bakers finished early waits for the one in front of it. `setSettled` says why the order
+        /// is the queue's and `sBakeFrames` why a stack is not due at once.
         ///
         /// A composite taken takes a texture slot and goes onto the material that asked. One whose
         /// chunk left the world while it baked is dropped instead.
@@ -268,6 +287,16 @@ namespace Rtx
         /// is written by `gather` and the other by `collect`, and no baker reads either.
         std::uint64_t mNextGiven = 0;
         std::uint64_t mNextTake = 0;
+
+        /// How many frames have been handed over, which is what a stack's age is measured in.
+        std::size_t mFrame = 0;
+
+        /// The frame each sequence from `mNextTake` was handed over on, oldest first.
+        ///
+        /// **The frame thread's own too**, and one entry a sequence: `gather` appends where it hands
+        /// a stack over and `collect` removes where it takes one back, so the front of this is
+        /// always `mNextTake`'s.
+        std::deque<std::size_t> mQueuedAt;
 
         /// Everything handed over and not yet collected, which is what `gather` checks against.
         std::vector<Asked> mAsked;

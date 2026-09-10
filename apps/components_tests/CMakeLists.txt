@@ -118,6 +118,7 @@ if (OPENMW_RTX)
         rtx/cellring.cpp
         rtx/cloudshell.cpp
         rtx/commands.cpp
+        rtx/compositequeue.cpp
         rtx/computepipeline.cpp
         rtx/decodecolour.cpp
         rtx/device.cpp

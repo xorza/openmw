@@ -56,6 +56,8 @@ namespace Rtx
 
     std::size_t CompositeQueue::advance(SceneDesc& scene, Resource::ImageManager& images)
     {
+        ++mFrame;
+
         gather(scene.getTables(), images);
 
         if (mSettled)
@@ -117,6 +119,7 @@ namespace Rtx
 
             request.mAsked = wanted;
             request.mSequence = mNextGiven++;
+            mQueuedAt.push_back(mFrame);
             request.mLayers.assign(layers.begin(), layers.end());
             request.mImages.reserve(layers.size());
             request.mMaskRuns.reserve(layers.size());
@@ -150,7 +153,19 @@ namespace Rtx
     void CompositeQueue::waitFor(const std::size_t limit)
     {
         std::unique_lock<std::mutex> lock(mMutex);
-        mBaked.wait(lock, [&] { return getReady(limit) >= limit || (mPending.empty() && mBaking == 0); });
+        mBaked.wait(lock, [&] {
+            const std::size_t due = getDue(limit);
+            return getReady(due) >= due;
+        });
+    }
+
+    std::size_t CompositeQueue::getDue(const std::size_t limit) const
+    {
+        std::size_t due = 0;
+        while (due < limit && due < mQueuedAt.size() && mFrame - mQueuedAt[due] >= sBakeFrames)
+            ++due;
+
+        return due;
     }
 
     std::size_t CompositeQueue::getReady(const std::size_t limit) const
@@ -189,14 +204,16 @@ namespace Rtx
     {
         mTaken.clear();
         {
+            const std::size_t due = getDue(limit);
             const std::lock_guard<std::mutex> lock(mMutex);
 
             // **In sequence and never in whatever order the bakers finished**, which is what makes
             // the frame a composite lands on the schedule's answer. `setSettled` says why.
-            while (mTaken.size() < limit && !mDone.empty() && mDone.front().mRequest.mSequence == mNextTake)
+            while (mTaken.size() < due && !mDone.empty() && mDone.front().mRequest.mSequence == mNextTake)
             {
                 mTaken.push_back(std::move(mDone.front()));
                 mDone.pop_front();
+                mQueuedAt.pop_front();
                 ++mNextTake;
             }
         }
