@@ -97,15 +97,20 @@ namespace Rtx
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
             };
 
-            const Index raised
-                = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
-            const Index still = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices);
-            const Index blended
-                = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, twoBones);
-            const Index turned
-                = scene.addMesh(Testing::sUnitQuad, sideways, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
-            const Index lifted
-                = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Morph, lift);
+            const Index raised = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
+                {}, Deform::Rig, oneBone);
+            const Index still = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices });
+            const Index blended = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
+                {}, Deform::Rig, twoBones);
+            const Index turned = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = sideways, .mIndices = Testing::sQuadIndices },
+                {}, Deform::Rig, oneBone);
+            const Index lifted = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
+                {}, Deform::Morph, lift);
 
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 

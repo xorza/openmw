@@ -32,7 +32,8 @@ namespace Rtx::Testing
             const std::array<osg::Vec3f, 4> normals{ leaning, leaning, leaning, leaning };
 
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), normals, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{
+                    .mPositions = sheetAt(4000.0f, 0.0f), .mNormals = normals, .mIndices = sQuadIndices }) });
 
             return scene;
         }
@@ -66,7 +67,7 @@ namespace Rtx::Testing
                 SceneDesc scene = makeWall();
                 if (blocked)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(occluder, {}, {}, sQuadIndices) });
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = occluder, .mIndices = sQuadIndices }) });
 
                 Shaders::VisibilityConstants camera = base;
                 camera.mSunPosition = -direction;
@@ -281,7 +282,8 @@ namespace Rtx::Testing
 
             const auto render = [&](Index diffuse, Index emissiveMap, const osg::Vec3f& emissiveColour) {
                 SceneDesc scene;
-                const Index mesh = scene.addMesh(positions, {}, sQuadUv, sQuadIndices);
+                const Index mesh = scene.addMesh(
+                    MeshArrays{ .mPositions = positions, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                 scene.addTexture(VFS::Path::NormalizedView("white.dds"));
                 scene.addTexture(VFS::Path::NormalizedView("green.dds"));
                 scene.addTexture(VFS::Path::NormalizedView("red.dds"));
@@ -373,7 +375,8 @@ namespace Rtx::Testing
 
             const auto render = [&](Surface::AlphaMode mode, float alphaRef) {
                 SceneDesc scene = makeWall();
-                const Index mesh = scene.addMesh(masked, {}, sQuadUv, sQuadIndices);
+                const Index mesh = scene.addMesh(
+                    MeshArrays{ .mPositions = masked, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                 const Index material = scene.addMaterial(Material{
                     .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("mask.dds")),
                     .mAlphaRef = alphaRef,
@@ -470,7 +473,7 @@ namespace Rtx::Testing
                     scene.addLight(*light);
                 if (blocked)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(occluder, {}, {}, sQuadIndices) });
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = occluder, .mIndices = sQuadIndices }) });
 
                 Shaders::VisibilityConstants camera = base;
                 camera.mSkyHorizon = sky;
@@ -569,7 +572,8 @@ namespace Rtx::Testing
             const auto render = [&](std::span<const osg::Vec3f> normals) {
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sWallQuad, normals, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(
+                        MeshArrays{ .mPositions = sWallQuad, .mNormals = normals, .mIndices = sQuadIndices }) });
                 scene.addLight(lamp);
 
                 std::vector<std::uint8_t> pixels;
@@ -629,7 +633,9 @@ namespace Rtx::Testing
                 }
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices, FoldedShape{ .mSheet = sheet }),
+                    .mMesh = scene.addMesh(
+                        MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices },
+                        FoldedShape{ .mSheet = sheet }),
                     .mMaterial = scene.addMaterial(material) });
 
                 if (lamp)
@@ -712,8 +718,8 @@ namespace Rtx::Testing
                 if (edge.has_value())
                 {
                     const std::array quad = halfPlane(depth, *edge);
-                    scene.addInstance(MeshInstance{
-                        .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(quad, {}, {}, sQuadIndices) });
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = quad, .mIndices = sQuadIndices }) });
                 }
                 return scene;
             }
@@ -891,9 +897,11 @@ namespace Rtx::Testing
             const auto lidAt = [](float lid) {
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(4000.0f, lid), {}, {}, sQuadIndices) });
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, lid), .mIndices = sQuadIndices }) });
 
                 return scene;
             };
@@ -1010,7 +1018,7 @@ namespace Rtx::Testing
                 // Wide enough that every direction off the floor which is on its side meets it, so
                 // the share below is the geometry's and not the sheet's edge.
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(40000.0f, z), {}, {}, sQuadIndices),
+                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, z), .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(glowing) });
 
                 return scene;
@@ -1066,7 +1074,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
             // Three ranges rather than one, and one of them descending, so a test that passed by
             // matching a total or by swapping two channels would not.

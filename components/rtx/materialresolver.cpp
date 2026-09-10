@@ -271,6 +271,7 @@ namespace Rtx
 
         material.mAlphaRef = described->mAlphaRef;
         material.mAlphaMode = described->mAlphaMode;
+        material.mVertexColour = described->mVertexColour;
 
         material.mTwoSided = described->mTwoSided;
         material.mDiffuseColour = described->mDiffuseColour;

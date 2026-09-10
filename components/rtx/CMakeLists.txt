@@ -74,6 +74,7 @@ set(RTX_FILES
     meantexel.hpp
     memoryreport.cpp
     memoryreport.hpp
+    mesharrays.hpp
     meshinstance.hpp
     meshreader.cpp
     meshreader.hpp

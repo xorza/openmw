@@ -4,7 +4,10 @@
 #include <span>
 #include <vector>
 
+#include <osg/Vec3f>
+
 #include <components/rtx/shadingmap.hpp>
+#include <components/surface/vertexcolour.hpp>
 
 #include "fixture.hpp"
 
@@ -101,7 +104,8 @@ namespace Rtx::Testing
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
             SceneDesc scene;
-            const Index mesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index red
                 = scene.addMaterial(Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("red.dds")) });
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = red });
@@ -245,7 +249,8 @@ namespace Rtx::Testing
 
             // The same wall, and it needs texture coordinates that `makeWall` has no use for.
             SceneDesc textured;
-            const Index mesh = textured.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
+            const Index mesh = textured.addMesh(
+                MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index material
                 = textured.addMaterial(Material{ .mDiffuse = textured.addTexture(VFS::Path::NormalizedView("red.dds")),
                     .mEmissive = textured.addTexture(VFS::Path::NormalizedView("green.dds")) });
@@ -332,7 +337,10 @@ namespace Rtx::Testing
             };
 
             const auto addWall = [&](SceneDesc& scene) {
-                const Index mesh = scene.addMesh(sWallQuad, quadNormals, sQuadUv, sQuadIndices);
+                const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                    .mNormals = quadNormals,
+                    .mTexCoords = sQuadUv,
+                    .mIndices = sQuadIndices });
                 const Index material = scene.addMaterial(
                     Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("corners.dds")) });
                 scene.addInstance(
@@ -355,7 +363,7 @@ namespace Rtx::Testing
             for (std::size_t at = 0; at < fillerIndices.size(); ++at)
                 fillerIndices[at] = static_cast<std::uint32_t>(at % 3);
 
-            crossed.addMesh(fillerVertices, {}, {}, fillerIndices);
+            crossed.addMesh(MeshArrays{ .mPositions = fillerVertices, .mIndices = fillerIndices });
             const Index beyond = addWall(crossed);
 
             // Hand-computed: the filler is a whole vertex block, so the wall starts the next one;
@@ -402,7 +410,8 @@ namespace Rtx::Testing
             const TextureData grey = describeGrey(painted);
 
             SceneDesc scene;
-            const Index mesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index material
                 = scene.addMaterial(Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("grey.dds")) });
             scene.addInstance(
@@ -461,7 +470,8 @@ namespace Rtx::Testing
             constexpr float fills = 115.470054f / 400.0f;
 
             SceneDesc scene;
-            const Index mesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index material
                 = scene.addMaterial(Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("grey.dds")) });
             scene.addInstance(MeshInstance{
@@ -486,6 +496,99 @@ namespace Rtx::Testing
                 EXPECT_NEAR(int{ pixels[(std::size_t{ row } * size + x) * 4] }, expected, 1)
                     << "at pixel " << x << ", where the host reads " << factor;
             }
+        }
+
+        /// The vertex colour a hit lands on, and what the content's mode says it replaces.
+        ///
+        /// **The tint replaces the material's own colour rather than multiplying it**, which is
+        /// what `glColorMaterial(GL_AMBIENT_AND_DIFFUSE)` does and what the game's own shader reads
+        /// through `getDiffuseColor`.
+        ///
+        /// The texture is a linear 128, which is 0.50196 and encodes to 188. A quad whose four
+        /// vertices carry one colour interpolates to that colour everywhere, so the arithmetic is
+        /// one multiply a channel: 0.5, 1 and 0.25 of 0.50196 are 0.25098, 0.50196 and 0.12549,
+        /// which encode to 137, 188 and 99.
+        TEST_F(RtxVisibilityTest, aVertexColourTintsTheAlbedoWhereTheContentAsksAndNowhereElse)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = centreValueOf(size);
+            const TextureData grey = describeTexel(sGreyTexel);
+
+            const std::array<osg::Vec3f, 4> tint{ osg::Vec3f(0.5f, 1.0f, 0.25f), osg::Vec3f(0.5f, 1.0f, 0.25f),
+                osg::Vec3f(0.5f, 1.0f, 0.25f), osg::Vec3f(0.5f, 1.0f, 0.25f) };
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mShowAlbedo = 1u;
+            camera.mDelight = 0.0f;
+
+            const auto albedoUnder = [&](Surface::VertexColour mode, std::span<const osg::Vec3f> colours) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{
+                    .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mColours = colours, .mIndices = sQuadIndices });
+                const Index material = scene.addMaterial(Material{
+                    .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("grey.dds")), .mVertexColour = mode });
+                scene.addInstance(
+                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, std::span(&grey, 1), camera, size, pixels), size * size);
+
+                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            };
+
+            const std::array<int, 3> plain{ 188, 188, 188 };
+            EXPECT_EQ(albedoUnder(Surface::VertexColour::None, tint), plain)
+                << "the content said the colours mean nothing";
+            EXPECT_EQ(albedoUnder(Surface::VertexColour::Tint, tint), (std::array<int, 3>{ 137, 188, 99 }));
+            EXPECT_EQ(albedoUnder(Surface::VertexColour::Glow, tint), plain) << "a glow is not a tint";
+
+            // A mesh that brought no colour is white in the shared buffer, so the tint the shader
+            // applies to it is the one that changes nothing.
+            EXPECT_EQ(albedoUnder(Surface::VertexColour::Tint, {}), plain);
+        }
+
+        /// The glow the mode names is the material's own glow said another way.
+        ///
+        /// **Two frames rather than a figure**, because what a glow is worth depends on the
+        /// ambient, the sky and `EMISSIVE_INTENSITY` — and none of that is what this is about. A
+        /// material carrying the colour and a mesh carrying it are the same surface, so the two
+        /// renders are the same frame.
+        TEST_F(RtxVisibilityTest, aVertexGlowIsTheMaterialsOwnEmissiveColourSaidPerVertex)
+        {
+            constexpr std::uint32_t size = 32;
+            const osg::Vec3f glow(0.75f, 0.5f, 0.25f);
+            const TextureData grey = describeTexel(sGreyTexel);
+
+            const std::array<osg::Vec3f, 4> colours{ glow, glow, glow, glow };
+
+            const Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const auto render = [&](Surface::VertexColour mode, const osg::Vec3f& emissive,
+                                    std::vector<std::uint8_t>& pixels) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{
+                    .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mColours = colours, .mIndices = sQuadIndices });
+                const Index material
+                    = scene.addMaterial(Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("grey.dds")),
+                        .mEmissiveColour = emissive,
+                        .mVertexColour = mode });
+                scene.addInstance(
+                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+
+                EXPECT_EQ(countHits(scene, std::span(&grey, 1), camera, size, pixels), size * size);
+            };
+
+            std::vector<std::uint8_t> stated;
+            std::vector<std::uint8_t> perVertex;
+            std::vector<std::uint8_t> unlit;
+            render(Surface::VertexColour::None, glow, stated);
+            render(Surface::VertexColour::Glow, osg::Vec3f(), perVertex);
+            render(Surface::VertexColour::None, osg::Vec3f(), unlit);
+
+            EXPECT_EQ(perVertex, stated) << "the vertex colour stands in for the material's own";
+            EXPECT_NE(perVertex, unlit) << "and a surface that glows is not the surface that does not";
         }
 
         /// The mip chain a ray cone selects from, at a distance chosen so the answer is a whole
@@ -514,7 +617,8 @@ namespace Rtx::Testing
             const std::array positions = cardAt(0.0f);
 
             SceneDesc scene;
-            const Index mesh = scene.addMesh(positions, {}, sQuadUv, sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = positions, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index material
                 = scene.addMaterial(Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("mip.dds")) });
             scene.addInstance(
@@ -593,7 +697,8 @@ namespace Rtx::Testing
             /// @param second the texture slot and diffuse transform of the layer on the right.
             const auto render = [&](Index second, const osg::Vec4f& secondTransform) {
                 SceneDesc scene;
-                const Index mesh = scene.addMesh(positions, {}, sQuadUv, sQuadIndices);
+                const Index mesh = scene.addMesh(
+                    MeshArrays{ .mPositions = positions, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                 scene.addTexture(VFS::Path::NormalizedView("red.dds"));
                 scene.addTexture(VFS::Path::NormalizedView("green.dds"));
                 scene.addTexture(VFS::Path::NormalizedView("strip.dds"));

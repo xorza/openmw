@@ -21,13 +21,15 @@ namespace Rtx
         }
     }
 
-    Index MeshTable::add(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape, Deform deform,
-        Index deformer, Index material)
+    Index MeshTable::add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material)
     {
+        const std::span<const osg::Vec3f> positions = arrays.mPositions;
+        const std::span<const std::uint32_t> indices = arrays.mIndices;
+
         assert(!positions.empty());
-        assert(normals.empty() || normals.size() == positions.size());
-        assert(texCoords.empty() || texCoords.size() == positions.size());
+        assert(arrays.mNormals.empty() || arrays.mNormals.size() == positions.size());
+        assert(arrays.mTexCoords.empty() || arrays.mTexCoords.size() == positions.size());
+        assert(arrays.mColours.empty() || arrays.mColours.size() == positions.size());
         assert(indices.size() % 3 == 0);
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
         assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
@@ -62,7 +64,7 @@ namespace Rtx
 
         mDeformers.stand(range);
 
-        writeAttributes(range, normals, texCoords);
+        writeAttributes(range, arrays);
 
         const Index index = mRows.take(range);
         note(index, SlotNews::Arrived);
@@ -79,28 +81,34 @@ namespace Rtx
         mChanges.note(slot, what);
     }
 
-    void MeshTable::writeAttributes(
-        const MeshRange& range, std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords)
+    void MeshTable::writeAttributes(const MeshRange& range, const MeshArrays& arrays)
     {
-        // **As long as the positions and no longer.** All three arrays are indexed by one vertex
+        // **As long as the positions and no longer.** All four arrays are indexed by one vertex
         // id, and the blocks decide where a run may go rather than how much room is held — so
         // rounding up to a whole block would upload the tail of the last one as well.
         const std::size_t reach = getPositions().size();
         mNormals.resize(reach);
         mTexCoords.resize(reach);
+        mColours.resize(reach);
 
-        // **Zeroed where the mesh brought none**, rather than left holding whatever the slot's last
+        // **Filled where the mesh brought none**, rather than left holding whatever the slot's last
         // tenant had. A reused slot is the only way that could happen and it would light a surface
-        // by somebody else's normals.
-        if (normals.empty())
-            std::fill_n(mNormals.begin() + range.mVertices.mOffset, range.mVertices.mCount, osg::Vec3f());
-        else
-            std::copy(normals.begin(), normals.end(), mNormals.begin() + range.mVertices.mOffset);
+        // by somebody else's normals, or paint it with somebody else's colour.
+        //
+        // What stands for nothing differs by attribute: a zero normal says "use the triangle's
+        // plane" and a white colour says "no tint", because one is read and the other is
+        // multiplied.
+        const auto fill = [&](auto& into, const auto& brought, const auto& nothing) {
+            const auto at = into.begin() + range.mVertices.mOffset;
+            if (brought.empty())
+                std::fill_n(at, range.mVertices.mCount, nothing);
+            else
+                std::copy(brought.begin(), brought.end(), at);
+        };
 
-        if (texCoords.empty())
-            std::fill_n(mTexCoords.begin() + range.mVertices.mOffset, range.mVertices.mCount, osg::Vec2f());
-        else
-            std::copy(texCoords.begin(), texCoords.end(), mTexCoords.begin() + range.mVertices.mOffset);
+        fill(mNormals, arrays.mNormals, osg::Vec3f());
+        fill(mTexCoords, arrays.mTexCoords, osg::Vec2f());
+        fill(mColours, arrays.mColours, osg::Vec3f(1.0f, 1.0f, 1.0f));
     }
 
     void MeshTable::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
@@ -176,7 +184,8 @@ namespace Rtx
     std::size_t MeshTable::getGeometryBytes() const
     {
         return getPositions().size() * sizeof(osg::Vec3f) + mNormals.size() * sizeof(osg::Vec3f)
-            + mTexCoords.size() * sizeof(osg::Vec2f) + getIndices().size() * sizeof(std::uint32_t);
+            + mTexCoords.size() * sizeof(osg::Vec2f) + mColours.size() * sizeof(osg::Vec3f)
+            + getIndices().size() * sizeof(std::uint32_t);
     }
 
     void MeshTable::clearArrivals()

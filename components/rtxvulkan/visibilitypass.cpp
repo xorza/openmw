@@ -41,6 +41,7 @@ namespace Rtx
 
             return at(tables.mNormalBlocks, Shaders::TABLE_ALIGN_BLOCKS)
                 && at(tables.mTexCoordBlocks, Shaders::TABLE_ALIGN_BLOCKS)
+                && at(tables.mColourBlocks, Shaders::TABLE_ALIGN_BLOCKS)
                 && at(tables.mIndexBlocks, Shaders::TABLE_ALIGN_BLOCKS) && at(tables.mMeshes, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mInstances, Shaders::TABLE_ALIGN_ROWS) && at(tables.mMaterials, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mLayers, Shaders::TABLE_ALIGN_LAYERS) && at(tables.mMasks, Shaders::TABLE_ALIGN_ROWS)

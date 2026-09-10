@@ -612,7 +612,17 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     const GpuMaterial material = materialAt(instance.mMaterial);
     surface.mGround = layered && material.mLayerCount > 0u;
-    surface.mEmissiveColour = material.mEmissiveColour;
+
+    // **Fetched for every hit, and selected between without a branch.** A mesh that brought no
+    // colour holds white, so the load answers neutrally rather than needing a case, and the two
+    // weights below are one or nought — the content states which, and `MATERIAL_VERTEX_TINT` says
+    // why the mode does not survive the trip. Over half of Morrowind's shapes and every piece of
+    // ground carry a colour, so a branch would be taken by most of the frame anyway.
+    const vec3 vertexColour = triangleColour(corner, weight);
+    const float tinted = float((material.mFlags & MATERIAL_VERTEX_TINT) != 0u);
+    const float glowing = float((material.mFlags & MATERIAL_VERTEX_GLOW) != 0u);
+
+    surface.mEmissiveColour = mix(material.mEmissiveColour, vertexColour, glowing);
 
     surface.mClosed = (mesh.mShape & MESH_CLOSED) != 0u;
     surface.mTransmission = (mesh.mShape & MESH_SHEET) != 0u && hasMask(material) ? SHEET_TRANSMISSION : 0.0;
@@ -653,7 +663,10 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     {
         albedo = sampleAlbedo(material.mDiffuse, point, cone, surface.mFootprint);
     }
-    surface.mAlbedo = albedo * material.mDiffuseColour;
+    // The vertex colour *replaces* the material's tint where the content asked for it, which is
+    // what `glColorMaterial(GL_AMBIENT_AND_DIFFUSE)` does and what `getDiffuseColor` reads in the
+    // game's own shader. Multiplying the two together would tint a surface twice.
+    surface.mAlbedo = albedo * mix(material.mDiffuseColour, vertexColour, tinted);
 
     // **Fetched again rather than kept from the albedo.** `sampleAlbedo` drops the alpha on purpose,
     // for the reason written over it: it is the hottest sampler in the shader and an out-parameter

@@ -63,7 +63,8 @@ namespace Rtx::Testing
 
                 if (lidded)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(sheetAt(4000.0f, 600.0f), {}, {}, sQuadIndices) });
+                        .mMesh = scene.addMesh(
+                            MeshArrays{ .mPositions = sheetAt(4000.0f, 600.0f), .mIndices = sQuadIndices }) });
 
                 // Over the lid, so the same sheet that takes the sun takes this too.
                 if (source == Source::Lamp)
@@ -140,7 +141,8 @@ namespace Rtx::Testing
                 if (half > 0.0f)
                     for (const float z : { half, -half })
                         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                            .mMesh = scene.addMesh(sheetAt(4000.0f, z), {}, {}, sQuadIndices) });
+                            .mMesh = scene.addMesh(
+                                MeshArrays{ .mPositions = sheetAt(4000.0f, z), .mIndices = sQuadIndices }) });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -reach, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -192,7 +194,8 @@ namespace Rtx::Testing
             const auto through = [&](float height, bool sprited) {
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
                 if (sprited)
                 {

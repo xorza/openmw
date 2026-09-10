@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <string>
 
 #include <osg/Array>
@@ -11,6 +12,7 @@
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 
+#include "decodecolour.hpp"
 #include "error.hpp"
 #include "frameclock.hpp"
 
@@ -86,6 +88,66 @@ namespace Rtx
 
             return static_cast<const osg::Vec2Array*>(array);
         }
+
+        /// A geometry's per-vertex colours, decoded into `scratch` and spanned from it.
+        ///
+        /// Empty where the geometry names none, which `MeshTable::writeAttributes` fills with
+        /// white: nothing about a vertex the content said nothing about, rather than a black one.
+        ///
+        /// **Two array types, because two loaders write it.** `NifOsg` builds a `Vec4Array` of
+        /// floats from a `NiGeometryData` and a `Vec4ubArray` of bytes from a `BSTriShape`, and
+        /// `decodeColour` answers for both. Which of them it is is a fact about the array, so it is
+        /// settled once rather than at every vertex.
+        ///
+        /// **An overall colour is spread across the vertices**, the way `readVertices` spreads an
+        /// overall normal, so that everything past this reads one array of one length.
+        ///
+        /// The alpha is not read. **Three shapes in the whole of vanilla carry one below opaque**
+        /// — ten vertices of `furn_de_table_06.nif` and twenty-seven of `in_de_shack_01.nif`, every
+        /// one of them 0.502 — and reading it would put a fetch and an interpolation on every
+        /// candidate of every shadow ray, which is the hottest loop in the trace.
+        ///
+        /// @param vertices how many the geometry holds. An array of another length is a content
+        ///        file this cannot match up, and it is left out.
+        std::span<const osg::Vec3f> readColours(
+            const osg::Geometry& geometry, const std::size_t vertices, std::vector<osg::Vec3f>& scratch)
+        {
+            const osg::Array* colours = geometry.getColorArray();
+            if (colours == nullptr)
+                return {};
+
+            const bool overall = colours->getBinding() == osg::Array::BIND_OVERALL;
+            const std::size_t named = colours->getNumElements();
+            if (named == 0 || (!overall && named != vertices))
+                return {};
+
+            const auto decodeAll = [&](const auto& array) {
+                if (overall)
+                {
+                    scratch.assign(vertices, decodeColour(array[0]));
+                    return;
+                }
+
+                scratch.clear();
+                scratch.reserve(vertices);
+                for (std::size_t at = 0; at < vertices; ++at)
+                    scratch.push_back(decodeColour(array[at]));
+            };
+
+            switch (colours->getType())
+            {
+                case osg::Array::Vec4ArrayType:
+                    decodeAll(static_cast<const osg::Vec4Array&>(*colours));
+                    break;
+                case osg::Array::Vec4ubArrayType:
+                    decodeAll(static_cast<const osg::Vec4ubArray&>(*colours));
+                    break;
+                default:
+                    return {};
+            }
+
+            return std::span(scratch);
+        }
     }
 
     DrawableRead readDrawable(const osg::Drawable& drawable)
@@ -152,14 +214,18 @@ namespace Rtx
         if (!folded)
             return false;
 
-        into.mPositions = arrays.mPositions;
-        into.mNormals = arrays.mNormals;
-        into.mIndices = mFold.getIndices();
+        into.mArrays.mPositions = arrays.mPositions;
+        into.mArrays.mNormals = arrays.mNormals;
+        into.mArrays.mIndices = mFold.getIndices();
 
-        into.mTexCoords = {};
+        into.mArrays.mTexCoords = {};
         const osg::Vec2Array* texCoords = asVec2Array(geometry.getTexCoordArray(0));
         if (texCoords != nullptr && texCoords->size() == arrays.mPositions.size())
-            into.mTexCoords = std::span(texCoords->asVector());
+            into.mArrays.mTexCoords = std::span(texCoords->asVector());
+
+        // The source geometry's colours even for a morph, whose positions came from its base
+        // target: a morph moves vertices and does not repaint them.
+        into.mArrays.mColours = readColours(geometry, arrays.mPositions.size(), mColourScratch);
 
         return true;
     }

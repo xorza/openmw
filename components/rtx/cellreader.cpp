@@ -73,10 +73,11 @@ namespace Rtx
                 part.mLocal = local;
                 part.mShape = reading.mShape;
 
-                part.mVertices = appended(mInto.mPositions, reading.mPositions);
-                part.mNormals = appended(mInto.mNormals, reading.mNormals);
-                part.mTexCoords = appended(mInto.mTexCoords, reading.mTexCoords);
-                part.mIndices = appended(mInto.mIndices, reading.mIndices);
+                part.mVertices = appended(mInto.mPositions, reading.mArrays.mPositions);
+                part.mNormals = appended(mInto.mNormals, reading.mArrays.mNormals);
+                part.mTexCoords = appended(mInto.mTexCoords, reading.mArrays.mTexCoords);
+                part.mColours = appended(mInto.mColours, reading.mArrays.mColours);
+                part.mIndices = appended(mInto.mIndices, reading.mArrays.mIndices);
 
                 mInto.mParts.push_back(std::move(part));
             }

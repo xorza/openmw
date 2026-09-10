@@ -55,6 +55,18 @@ namespace Rtx::Testing
                 (column / side - 0.5f) * sCellSize, (row / side - 0.5f) * sCellSize, heightAt(column, row));
         }
 
+        /// The colour the storage puts on vertex (`column`, `row`), display-encoded as `VCLR` is.
+        ///
+        /// **Not white, because a white tint is the answer a renderer that dropped it gives.** The
+        /// three channels differ from each other so that a test cannot pass on a decode that
+        /// swapped them.
+        static osg::Vec4ub colourAt(const int column, const int row)
+        {
+            const auto red = static_cast<unsigned char>(64 + column % 8);
+            const auto green = static_cast<unsigned char>(128 + row % 8);
+            return osg::Vec4ub(red, green, 255, 255);
+        }
+
         bool hasData(const ESM::ExteriorCellLocation cell) override
         {
             return std::find(mWithData.begin(), mWithData.end(), osg::Vec2i(cell.mX, cell.mY)) != mWithData.end();
@@ -93,7 +105,7 @@ namespace Rtx::Testing
                     const std::size_t at = static_cast<std::size_t>(column) * sVerts + row;
                     positions[at] = positionAt(column, row);
                     normals[at] = osg::Vec3f(0.0f, 0.0f, 1.0f);
-                    colours[at] = osg::Vec4ub(255, 255, 255, 255);
+                    colours[at] = colourAt(column, row);
                 }
         }
 

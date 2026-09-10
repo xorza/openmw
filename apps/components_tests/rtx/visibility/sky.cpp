@@ -79,7 +79,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -144,7 +144,8 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
 
             // Forty-five degrees up along `+y`, which keeps the camera off its own pole.
             Shaders::VisibilityConstants camera = makeCamera(
@@ -209,7 +210,7 @@ namespace Rtx::Testing
             SceneDesc scene;
             scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
             constexpr std::array<std::uint8_t, 4> solid{ 255, 255, 255, 255 };
             const std::array<TextureData, 1> sheet{ describeTexel(solid) };
@@ -268,7 +269,8 @@ namespace Rtx::Testing
             SceneDesc scene;
             scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const std::array<TextureData, 1> sheet{ describeTexel(white) };
@@ -327,7 +329,8 @@ namespace Rtx::Testing
             SceneDesc scene;
             scene.addTexture(VFS::Path::NormalizedView("white.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, -400.0f), {}, {}, sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -400.0f), .mIndices = sQuadIndices }) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const std::array<TextureData, 1> sheet{ describeTexel(white) };

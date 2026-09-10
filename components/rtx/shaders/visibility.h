@@ -678,7 +678,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
     static_assert(offsetof(VisibilityConstants, mTables) == 992, "GpuTables must land where the padding was");
-    static_assert(sizeof(VisibilityConstants) == 1104, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 1112, "VisibilityConstants must be scalar-packed on every side");
 
 #endif
 

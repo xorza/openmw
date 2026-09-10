@@ -190,7 +190,12 @@ namespace Rtx
 
         // What the scene is made of, written on arrival and read by every frame: one copy, because
         // an arrival waits for the frames in flight before it writes.
+        //
+        // **The colours are one copy as well, where the normals are one per frame in flight.** A
+        // skin recomputes a body's normals every frame and never repaints it, so what a cell wrote
+        // here on arrival is what every frame reads.
         BlockedBuffer mTexCoords{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec2f) };
+        BlockedBuffer mColours{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
 
         /// One row a mesh slot, so a hit can turn its slot into offsets into the tables above.
         /// Rewritten whole whenever a mesh arrives or leaves, which is a few kilobytes.

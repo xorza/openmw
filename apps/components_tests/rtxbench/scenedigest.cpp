@@ -50,7 +50,9 @@ namespace Rtx
             }
 
             return scene.addMesh(
-                positions, normals, texCoords, indices, {}, Rtx::Deform::None, Rtx::sNoIndex, material);
+                MeshArrays{
+                    .mPositions = positions, .mNormals = normals, .mTexCoords = texCoords, .mIndices = indices },
+                {}, Rtx::Deform::None, Rtx::sNoIndex, material);
         }
 
         /// The two boxes under one placement, added in the order given, and one lamp.

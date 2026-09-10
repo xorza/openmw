@@ -58,7 +58,7 @@ namespace Rtx::Testing
         Material water;
         water.mKind = MaterialKind::Water;
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(sheetAt(extent, 0.0f), {}, {}, sQuadIndices),
+            .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(extent, 0.0f), .mIndices = sQuadIndices }),
             .mMaterial = scene.addMaterial(water) });
 
         return scene;
@@ -72,7 +72,7 @@ namespace Rtx::Testing
     {
         SceneDesc scene = makeOpenWater(extent);
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(sheetAt(extent, -depth), {}, {}, sQuadIndices) });
+            .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(extent, -depth), .mIndices = sQuadIndices }) });
 
         return scene;
     }
@@ -123,7 +123,7 @@ namespace Rtx::Testing
     inline SceneDesc makeWall(float scale = 1.0f)
     {
         SceneDesc scene;
-        const Index mesh = scene.addMesh(sWallQuad, {}, {}, sQuadIndices);
+        const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mIndices = sQuadIndices });
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::scale(scale, 1.0f, scale), .mMesh = mesh });
         return scene;
     }
@@ -142,7 +142,7 @@ namespace Rtx::Testing
         });
 
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(quad, {}, {}, sQuadIndices),
+            .mMesh = scene.addMesh(MeshArrays{ .mPositions = quad, .mIndices = sQuadIndices }),
             .mMaterial = glass,
             .mOpacity = fade });
     }

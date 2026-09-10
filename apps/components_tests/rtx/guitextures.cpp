@@ -410,7 +410,8 @@ namespace Rtx
         {
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(Testing::wallAt(200.0f), {}, {}, Testing::sQuadIndices) });
+                .mMesh = scene.addMesh(
+                    MeshArrays{ .mPositions = Testing::wallAt(200.0f), .mIndices = Testing::sQuadIndices }) });
 
             mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
 
@@ -436,7 +437,8 @@ namespace Rtx
         {
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(Testing::sheetAt(extent, 0.0f), {}, {}, Testing::sQuadIndices) });
+                .mMesh = scene.addMesh(
+                    MeshArrays{ .mPositions = Testing::sheetAt(extent, 0.0f), .mIndices = Testing::sQuadIndices }) });
 
             return scene;
         }

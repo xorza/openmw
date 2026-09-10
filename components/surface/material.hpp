@@ -12,6 +12,7 @@
 #include <osg/ref_ptr>
 
 #include "alphamode.hpp"
+#include "vertexcolour.hpp"
 
 namespace osg
 {
@@ -88,6 +89,17 @@ namespace Surface
         std::array<osg::ref_ptr<const osg::Image>, sTextureRoleCount> mTextures;
 
         AlphaMode mAlphaMode = AlphaMode::Opaque;
+
+        /// What the surface's per-vertex colour is for.
+        ///
+        /// **A property of the surface, where the colours are a property of the geometry.** The two
+        /// arrive apart — `NiVertexColorProperty` hangs above the shape and the array is inside its
+        /// data — and a renderer needs both to know whether an array means anything.
+        ///
+        /// **Constant for the material's life.** `NifOsg::AlphaController` and
+        /// `NifOsg::MaterialColorController` rewrite the colours beside this every frame they run
+        /// and neither touches the mode, which is what lets a reader settle it once.
+        VertexColour mVertexColour = VertexColour::None;
 
         /// What `Cutout` cuts at, in the zero-to-one range the content uses rather than the bytes
         /// `NiAlphaProperty` stores. Meaningful whenever the content asked for alpha testing, which

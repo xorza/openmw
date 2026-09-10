@@ -57,7 +57,7 @@ namespace Rtx::Testing
                     material.mKind = kind;
                     scene.addInstance(MeshInstance{
                         .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
                         .mMaterial = scene.addMaterial(material),
                     });
                 };
@@ -89,7 +89,7 @@ namespace Rtx::Testing
                 return [firstPerson](SceneDesc& scene, std::span<const osg::Vec3f> pane) {
                     scene.addInstance(MeshInstance{
                         .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
                         .mFirstPerson = firstPerson,
                     });
                 };
@@ -441,12 +441,12 @@ namespace Rtx::Testing
 
             SceneDesc dry;
             dry.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = dry.addMesh(bed, {}, {}, sQuadIndices),
+                .mMesh = dry.addMesh(MeshArrays{ .mPositions = bed, .mIndices = sQuadIndices }),
                 .mMaterial = dry.addMaterial(black) });
 
             SceneDesc wet = makeOpenWater(extent);
             wet.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = wet.addMesh(bed, {}, {}, sQuadIndices),
+                .mMesh = wet.addMesh(MeshArrays{ .mPositions = bed, .mIndices = sQuadIndices }),
                 .mMaterial = wet.addMaterial(black) });
 
             // Straight down, with the image's up along +x so that a row is a run of x.
@@ -727,7 +727,8 @@ namespace Rtx::Testing
 
             SceneDesc scene = makeOpenWater(4000.0f);
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 200.0f), {}, {}, sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 200.0f), .mIndices = sQuadIndices }) });
 
             const auto look = [&](float across) {
                 Shaders::VisibilityConstants camera = makeCamera(

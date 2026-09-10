@@ -84,8 +84,8 @@ namespace Rtx
         osg::ref_ptr<osg::Vec3Array> mPositions = new osg::Vec3Array;
         osg::ref_ptr<osg::Vec3Array> mNormals = new osg::Vec3Array;
 
-        /// The land's vertex colours, which the storage fills beside the heights and nothing here
-        /// reads: the scene has no channel to carry them yet.
+        /// The land's vertex colours as the storage fills them, display-encoded and one byte a
+        /// channel. Decoded into `PreparedGround::mColours` per cell.
         osg::ref_ptr<osg::Vec4ubArray> mColours = new osg::Vec4ubArray;
         Terrain::Storage::ImageVector mBlendmaps;
         std::vector<Terrain::LayerInfo> mLayerInfos;

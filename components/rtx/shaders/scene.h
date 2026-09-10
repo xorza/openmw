@@ -383,6 +383,20 @@ namespace Rtx::Shaders
     /// square to the surface hides, and the obliquity is the whole of what a thickness adds to it.
     const uint MATERIAL_MEDIUM = 0x01u;
 
+    /// The mesh's per-vertex colour replaces this material's diffuse tint —
+    /// `Surface::VertexColour::Tint`, which is every piece of ground and over half of the models
+    /// the game ships.
+    ///
+    /// **A bit and not a second colour on the row.** The two are exclusive, a mesh that brought no
+    /// colour holds white, and what the shader does with either is one `mix` against a weight of
+    /// nought or one — so a surface that carries neither pays no branch and no extra load.
+    const uint MATERIAL_VERTEX_TINT = 0x02u;
+
+    /// The same colour replaces this material's glow instead — `Surface::VertexColour::Glow`. The
+    /// light mode that goes with it already took the diffuse and the ambient to nought, so such a
+    /// surface is its glow and nothing else.
+    const uint MATERIAL_VERTEX_GLOW = 0x04u;
+
     /// The content doubled every triangle of this mesh for its back — `Rtx::FoldedShape::mSheet`.
     /// With a mask on its material that is a leaf, and `SHEET_TRANSMISSION` says what the light on
     /// its far side is worth to it.
@@ -493,10 +507,11 @@ namespace Rtx::Shaders
     /// gone; the power-capped card's own drift is of the same size.
     struct GpuTables
     {
-        /// The three tables of block addresses, which a global vertex or index id is resolved
+        /// The four tables of block addresses, which a global vertex or index id is resolved
         /// through. The normals are this slot's copy.
         uint64 mNormalBlocks;
         uint64 mTexCoordBlocks;
+        uint64 mColourBlocks;
         uint64 mIndexBlocks;
 
         uint64 mMeshes;
@@ -749,7 +764,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 68, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
-    static_assert(sizeof(GpuTables) == 112, "GpuTables must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 120, "GpuTables must be scalar-packed on every side");
 
 #endif
 

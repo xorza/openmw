@@ -36,7 +36,7 @@ namespace Rtx
         {
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sWallCorners, {}, {}, Testing::sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallCorners, .mIndices = Testing::sQuadIndices }) });
 
             return scene;
         }
@@ -165,7 +165,7 @@ namespace Rtx
             // so without a bracket of their own they are device time the frame's fence carries and
             // no zone accounts for — which is exactly the frame a player feels.
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
-                .mMesh = scene.addMesh(sWallCorners, {}, {}, Testing::sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallCorners, .mIndices = Testing::sQuadIndices }) });
 
             mRenderer->extendScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
             const Drawn arrived = draw(*mRenderer, camera);

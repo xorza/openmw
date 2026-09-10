@@ -59,6 +59,13 @@ namespace Rtx
         std::vector<osg::Vec3f> mPositions;
         std::vector<osg::Vec3f> mNormals;
 
+        /// The land's own per-vertex colour, in linear light — `VCLR`, which the designers painted
+        /// over two thirds of Morrowind's exterior vertices and which tints the ground under
+        /// everything the layers place on it.
+        ///
+        /// White for a cell with no land record, and white wherever the record left 255.
+        std::vector<osg::Vec3f> mColours;
+
         /// The reader's own, shared by every cell of one shape: a grid's corners and its
         /// triangulation are the same for every cell.
         std::span<const osg::Vec2f> mTexCoords;
@@ -75,6 +82,7 @@ namespace Rtx
             mStands = false;
             mPositions.clear();
             mNormals.clear();
+            mColours.clear();
             mTexCoords = {};
             mIndices = {};
             mLayers.clear();

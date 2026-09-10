@@ -64,8 +64,8 @@ namespace Rtx
         template <class Texture, class Layers, class Value>
         void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
         {
-            const auto& [kind, diffuse, normal, emissive, diffuseColour, emissiveColour, alphaRef, alphaMode, twoSided,
-                textureTransform, run, flatten, animated, neverSolid]
+            const auto& [kind, diffuse, normal, emissive, diffuseColour, emissiveColour, alphaRef, alphaMode,
+                vertexColour, twoSided, textureTransform, run, flatten, animated, neverSolid]
                 = material;
 
             texture(diffuse);
@@ -79,6 +79,7 @@ namespace Rtx
             value(emissiveColour);
             value(alphaRef);
             value(alphaMode);
+            value(vertexColour);
             value(twoSided);
             value(textureTransform);
             value(flatten);
@@ -142,11 +143,12 @@ namespace Rtx
             osg::Vec3f mPosition;
             osg::Vec3f mNormal;
             osg::Vec2f mTexCoord;
+            osg::Vec3f mColour;
 
             bool operator<(const Corner& other) const
             {
-                return std::tie(mPosition, mNormal, mTexCoord)
-                    < std::tie(other.mPosition, other.mNormal, other.mTexCoord);
+                return std::tie(mPosition, mNormal, mTexCoord, mColour)
+                    < std::tie(other.mPosition, other.mNormal, other.mTexCoord, other.mColour);
             }
         };
 
@@ -155,6 +157,7 @@ namespace Rtx
             digest.add(corner.mPosition);
             digest.add(corner.mNormal);
             digest.add(corner.mTexCoord);
+            digest.add(corner.mColour);
         }
 
         /// A shape as the multiset of its triangles, each turned to start at its least corner so
@@ -170,7 +173,7 @@ namespace Rtx
                 {
                     const std::size_t vertex = mesh.mVertices.mOffset + indices[at + corner];
                     corners[corner] = Corner{ scene.mMeshes.getPositions()[vertex], scene.mMeshes.getNormals()[vertex],
-                        scene.mMeshes.getTexCoords()[vertex] };
+                        scene.mMeshes.getTexCoords()[vertex], scene.mMeshes.getColours()[vertex] };
                 }
 
                 const std::size_t least

@@ -325,7 +325,8 @@ namespace Rtx::Testing
                 // sees and squarely across every ray the march sends up at the light.
                 if (shaded)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(sheetAt(40000.0f, 1000.0f), {}, {}, sQuadIndices) });
+                        .mMesh = scene.addMesh(
+                            MeshArrays{ .mPositions = sheetAt(40000.0f, 1000.0f), .mIndices = sQuadIndices }) });
 
                 if (lit)
                     scene.addLight(Light{
@@ -431,7 +432,8 @@ namespace Rtx::Testing
                 if (lidded)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(
-                            makeLid(Fixture::sLidHeight, -4000.0f, 4000.0f, 4000.0f), {}, {}, sQuadIndices) });
+                            MeshArrays{ .mPositions = makeLid(Fixture::sLidHeight, -4000.0f, 4000.0f, 4000.0f),
+                                .mIndices = sQuadIndices }) });
 
                 if (lit)
                     scene.addLight(Light{
@@ -507,8 +509,9 @@ namespace Rtx::Testing
             // crosses this height half way to the lamp, so what it covers is every point of the ray
             // short of the lamp's own y and nothing beyond it.
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeLid(Fixture::sLidHeight, -Fixture::sDistance, Fixture::sLamp.y(), 2000.0f),
-                    {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{
+                    .mPositions = makeLid(Fixture::sLidHeight, -Fixture::sDistance, Fixture::sLamp.y(), 2000.0f),
+                    .mIndices = sQuadIndices }) });
 
             scene.addLight(Light{
                 .mPosition = Fixture::sLamp,
@@ -804,7 +807,8 @@ namespace Rtx::Testing
                 // any ray here travels.
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(
+                        MeshArrays{ .mPositions = sheetAt(4000.0f, -200000.0f), .mIndices = sQuadIndices }) });
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels);
@@ -867,7 +871,8 @@ namespace Rtx::Testing
                 // nor in how large it is.
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(40000.0f, lidded ? 500.0f : -500.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(MeshArrays{
+                        .mPositions = sheetAt(40000.0f, lidded ? 500.0f : -500.0f), .mIndices = sQuadIndices }) });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -996,7 +1001,7 @@ namespace Rtx::Testing
                 SceneDesc scene;
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(wallAt(0.0f), {}, {}, sQuadIndices),
+                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(0.0f), .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{
                         .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f),
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
@@ -1078,7 +1083,7 @@ namespace Rtx::Testing
                 SceneDesc scene;
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(wall, {}, {}, sQuadIndices),
+                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{
                         .mDiffuseColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f),
                     }) });
@@ -1087,7 +1092,7 @@ namespace Rtx::Testing
                 // a sixty-degree frame covers 1732 units either side of the axis.
                 const std::array<osg::Vec3f, 4> pane = uprightQuadAt(2400.0f, paneAway - wallAway);
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{
                         .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
@@ -1197,7 +1202,8 @@ namespace Rtx::Testing
                 // shadow ray would shadow what this measures.
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(
+                        MeshArrays{ .mPositions = sheetAt(4000.0f, -200000.0f), .mIndices = sQuadIndices }) });
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels);

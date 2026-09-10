@@ -60,6 +60,23 @@ vec3 triangleNormal(uvec3 corner, vec3 weight)
     return block.at[at.x] * weight.x + block.at[at.y] * weight.y + block.at[at.z] * weight.z;
 }
 
+/// The vertex colour interpolated across the triangle a hit landed on, in linear light.
+///
+/// **White where the mesh brought none, because that is what the table holds.** A colour is a
+/// factor and not a reading: `MeshTable::writeAttributes` fills an absent one with ones, so this
+/// answers neutrally and nothing past it has a case to test.
+///
+/// **Interpolated in light, and not between two stored bytes.** The host decodes each vertex once
+/// — `Rtx::MeshArrays::mColours` — so what a hit reads across a triangle is a blend of
+/// reflectances rather than a blend of the numbers they were written down as.
+vec3 triangleColour(uvec3 corner, vec3 weight)
+{
+    ColourBlock block = colourBlockOf(corner.x);
+    const uvec3 at = corner % VERTEX_BLOCK;
+
+    return block.at[at.x] * weight.x + block.at[at.y] * weight.y + block.at[at.z] * weight.z;
+}
+
 vec2 interpolate(vec2 uv[3], vec3 weight)
 {
     return uv[0] * weight.x + uv[1] * weight.y + uv[2] * weight.z;

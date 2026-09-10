@@ -200,6 +200,13 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     vec2 at[];
 };
 
+// The per-vertex colour, in linear light and white where a mesh brought none — `Rtx::MeshArrays`
+// says why the decode is the host's and not this side's.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer ColourBlock
+{
+    vec3 at[];
+};
+
 layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer IndexBlock
 {
     uint at[];
@@ -225,6 +232,11 @@ NormalBlock normalBlockOf(uint vertex)
 TexCoordBlock texCoordBlockOf(uint vertex)
 {
     return TexCoordBlock(BlockTable(frame.mTables.mTexCoordBlocks).at[vertex / VERTEX_BLOCK]);
+}
+
+ColourBlock colourBlockOf(uint vertex)
+{
+    return ColourBlock(BlockTable(frame.mTables.mColourBlocks).at[vertex / VERTEX_BLOCK]);
 }
 
 IndexBlock indexBlockOf(uint element)

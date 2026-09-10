@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/surface/vertexcolour.hpp>
 
 #include "commands.hpp"
 #include "device.hpp"
@@ -28,6 +30,26 @@ namespace Rtx
         constexpr VkBufferUsageFlags sSpriteListUsage
             = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
+        /// What a material's vertex-colour mode is worth to the shader: one bit, or none.
+        ///
+        /// The mode does not survive the trip, for the reason `GpuMaterial::mAlphaCutoff` gives:
+        /// what the shader does is a `mix` against a weight, and the host is what settles which of
+        /// the two colours the weight picks.
+        std::uint32_t vertexColourFlag(const Surface::VertexColour colour)
+        {
+            switch (colour)
+            {
+                case Surface::VertexColour::Tint:
+                    return Shaders::MATERIAL_VERTEX_TINT;
+                case Surface::VertexColour::Glow:
+                    return Shaders::MATERIAL_VERTEX_GLOW;
+                case Surface::VertexColour::None:
+                    break;
+            }
+
+            return 0u;
+        }
+
         Shaders::GpuMaterial toGpu(const Material& material)
         {
             // Zero where the material has no texture to read a mask out of, so that the shader's
@@ -47,7 +69,8 @@ namespace Rtx
                 = osg::Vec3f(material.mDiffuseColour.r(), material.mDiffuseColour.g(), material.mDiffuseColour.b()),
                 .mEmissiveColour = material.mEmissiveColour,
                 .mTextureTransform = material.mTextureTransform,
-                .mFlags = material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u,
+                .mFlags
+                = (material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u) | vertexColourFlag(material.mVertexColour),
             };
         }
 
@@ -128,6 +151,7 @@ namespace Rtx
         assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the tables");
 
         mTexCoords.open(device, sTableUsage, "uvs");
+        mColours.open(device, sTableUsage, "vertex colours");
         mInstanceTable.open(device, slots, sTableUsage, "instance rows");
         mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
@@ -184,6 +208,7 @@ namespace Rtx
         // so filling these when the mesh arrives is a load's cost and every frame after it pays for
         // what actually moved.
         mTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.mMeshes.getTexCoords().size()));
+        mColours.reserve(batch, static_cast<std::uint32_t>(scene.mMeshes.getColours().size()));
         mNormalTable.reserve(batch, static_cast<std::uint32_t>(scene.mMeshes.getNormals().size()));
 
         for (const Index mesh : meshes)
@@ -197,6 +222,7 @@ namespace Rtx
                 mNormalTable.at(FrameSlot{ slot }).writeAt(batch, range.mVertices.mOffset, normals);
 
             mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.mMeshes.getTexCoords()));
+            mColours.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.mMeshes.getColours()));
         }
 
         // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
@@ -477,6 +503,7 @@ namespace Rtx
 
         into.mNormalBlocks = mNormalTable.at(slot).getTableAddress();
         into.mTexCoordBlocks = mTexCoords.getTableAddress();
+        into.mColourBlocks = mColours.getTableAddress();
         into.mMeshes = mMeshes.getDeviceAddress();
         into.mInstances = mInstanceTable.getDeviceAddress(slot);
         into.mMaterials = mMaterialTable.getDeviceAddress(slot);
@@ -499,7 +526,7 @@ namespace Rtx
     {
         // The indices are not counted here: they belong to the acceleration structure, which reports
         // its own size.
-        VkDeviceSize total = mTexCoords.getBytes() + mMeshes.getSize() + mInstanceTable.getBytes()
+        VkDeviceSize total = mTexCoords.getBytes() + mColours.getBytes() + mMeshes.getSize() + mInstanceTable.getBytes()
             + mMaterialTable.getBytes() + mNormalTable.getBytes();
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
             total += mTables[slot].getBytes();

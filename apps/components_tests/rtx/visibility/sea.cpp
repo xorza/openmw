@@ -151,8 +151,8 @@ namespace Rtx::Testing
             const auto shaft = [&](const std::optional<std::array<osg::Vec3f, 4>>& lid) {
                 SceneDesc scene = makeOpenWater(4000.0f);
                 if (lid.has_value())
-                    scene.addInstance(MeshInstance{
-                        .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(*lid, {}, {}, sQuadIndices) });
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = *lid, .mIndices = sQuadIndices }) });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye + 10.0f), 60.0f, size, size, 10000.0f);
@@ -810,7 +810,8 @@ namespace Rtx::Testing
             const auto coneOver = [&](const SeaState& sea) {
                 SceneDesc scene = makeOpenWater(4000.0f);
 
-                const Index bed = scene.addMesh(sheetAt(500.0f, -depth), {}, sQuadUv, sQuadIndices);
+                const Index bed = scene.addMesh(MeshArrays{
+                    .mPositions = sheetAt(500.0f, -depth), .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                 const Index glow = scene.addMaterial(
                     Material{ .mEmissive = scene.addTexture(VFS::Path::NormalizedView("ladder.dds")) });
                 scene.addInstance(

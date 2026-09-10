@@ -46,7 +46,8 @@ namespace Rtx
             const std::uint32_t indices[3] = { 0, 1, 2 };
 
             Model made;
-            made.mMesh = scene.addMesh(positions, normals, uvs, indices);
+            made.mMesh = scene.addMesh(
+                MeshArrays{ .mPositions = positions, .mNormals = normals, .mTexCoords = uvs, .mIndices = indices });
             made.mTexture = scene.addTexture(texture);
 
             Rtx::Material material;

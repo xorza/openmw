@@ -7,11 +7,13 @@
 #include <osg/Image>
 #include <osg/PrimitiveSet>
 #include <osg/Vec3f>
+#include <osg/Vec4ub>
 #include <osg/ref_ptr>
 
 #include <components/esm/util.hpp>
 
 #include "contentsource.hpp"
+#include "decodecolour.hpp"
 
 namespace Rtx
 {
@@ -115,6 +117,14 @@ namespace Rtx
             into.mNormals.assign(mNormals->begin(), mNormals->end());
             into.mTexCoords = mGridCorners;
             into.mIndices = mGridIndices;
+
+            // **Decoded here, because a hit interpolates between two of these.** The land stores a
+            // byte a channel and the trace works in light, and the two orders do not agree: a
+            // vertex at 116 beside one at 255 meets at 201 in light and at 186 in bytes. The alpha
+            // the storage writes is 255 at every vertex, because `VCLR` holds three channels.
+            into.mColours.reserve(mColours->size());
+            for (const osg::Vec4ub& colour : *mColours)
+                into.mColours.push_back(decodeColour(colour));
         }
         else
         {
@@ -132,6 +142,9 @@ namespace Rtx
             {
                 into.mPositions.emplace_back((corner.x() - 0.5f) * mCellSize, (corner.y() - 0.5f) * mCellSize, height);
                 into.mNormals.emplace_back(0.0f, 0.0f, 1.0f);
+
+                // A cell with no record carries no `VCLR`, and white is what tints nothing.
+                into.mColours.emplace_back(1.0f, 1.0f, 1.0f);
             }
 
             into.mTexCoords = mQuadCorners;

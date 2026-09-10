@@ -117,10 +117,9 @@ namespace Rtx
         if (reading.mShape.mSheet)
             ++stats.mSheets;
 
-        const Index deformer = addDeformer(read, reading.mPositions.size());
+        const Index deformer = addDeformer(read, reading.mArrays.mPositions.size());
 
-        const Index mesh = mScene.addMesh(reading.mPositions, reading.mNormals, reading.mTexCoords, reading.mIndices,
-            reading.mShape, read.mDeform, deformer, material);
+        const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, read.mDeform, deformer, material);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 
@@ -151,8 +150,7 @@ namespace Rtx
         if (reading.mShape.mSheet)
             ++stats.mSheets;
 
-        const Index mesh = mScene.addMesh(reading.mPositions, reading.mNormals, reading.mTexCoords, reading.mIndices,
-            reading.mShape, Deform::None, sNoIndex, material);
+        const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex, material);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 

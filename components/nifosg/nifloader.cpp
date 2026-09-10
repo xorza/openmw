@@ -228,6 +228,29 @@ namespace
         const osg::Image* mImage;
     };
 
+    /// What a resolved colour mode means to a renderer that has one albedo and no specular lobe.
+    ///
+    /// The three modes a NIF can state map one for one. The other three are `SceneUtil::Material`'s
+    /// alone — nothing here writes them — and ambient or diffuse on its own still tints the one
+    /// albedo, while a specular the renderer has not got is nothing.
+    Surface::VertexColour vertexColourOf(SceneUtil::VertexColorModes mode)
+    {
+        switch (mode)
+        {
+            case SceneUtil::VertexColorModes::Emission:
+                return Surface::VertexColour::Glow;
+            case SceneUtil::VertexColorModes::AmbientAndDiffuse:
+            case SceneUtil::VertexColorModes::Ambient:
+            case SceneUtil::VertexColorModes::Diffuse:
+                return Surface::VertexColour::Tint;
+            case SceneUtil::VertexColorModes::None:
+            case SceneUtil::VertexColorModes::Specular:
+                break;
+        }
+
+        return Surface::VertexColour::None;
+    }
+
     // Collect all properties affecting the given drawable that should be handled on drawable basis rather than on the
     // node hierarchy above it.
     void collectDrawableProperties(
@@ -3046,6 +3069,7 @@ namespace NifOsg
             surface.mSpecularColour = osg::Vec3f(specular.x(), specular.y(), specular.z());
             surface.mGlossiness = mat->getShininess();
             surface.mEmissiveMult = mat->getEmissiveMultiplier();
+            surface.mVertexColour = vertexColourOf(mat->getVertexColorMode());
 
             Surface::setMaterial(*node->getOrCreateStateSet(), surface);
 

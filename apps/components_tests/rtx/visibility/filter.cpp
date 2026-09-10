@@ -29,7 +29,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -100,7 +100,8 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(40000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
             // A degree and a half above the floor: the horizon sits near the top of the frame and
             // the ground runs from a few hundred units away to eight thousand, so the distance
@@ -252,9 +253,9 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
-            scene.addInstance(MeshInstance{
-                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(wall, {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }) });
 
             // The floor fills the bottom of the frame and the wall the top, with the crease running
             // straight across the middle of it.
@@ -402,7 +403,8 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(sheetAt(40000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -518,8 +520,9 @@ namespace Rtx::Testing
                 }
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{
-                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(positions, normals, {}, indices) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = positions, .mNormals = normals, .mIndices = indices }) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -2600.0f, 2600.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);

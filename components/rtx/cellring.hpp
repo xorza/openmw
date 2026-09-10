@@ -270,11 +270,19 @@ namespace Rtx
         /// Hands the supply the cells the prepared ring lacks, nearest first.
         void ask(const osg::Vec2i& eye, int band);
 
+        /// Gives back every pending cell the ring must not adopt: one outside the band, and one it
+        /// already holds.
+        ///
+        /// **Run after every `takeDone` and not once a walk.** A cell the reader hands over during
+        /// the wait has been through neither the band nor the held test, and `adoptPending` asks
+        /// neither.
+        void sift(const osg::Vec2i& eye, int band);
+
         /// Blocks until the supply has read a cell this walk can adopt. See `setSettled`.
         ///
         /// **Only where the last `ask` named something**, because nothing is coming otherwise and
         /// the reader would never wake this.
-        void waitForNext();
+        void waitForNext(const osg::Vec2i& eye, int band);
 
         /// Adopts the next cell the supply read, which is one cell and one frame's worth.
         void adoptPending();

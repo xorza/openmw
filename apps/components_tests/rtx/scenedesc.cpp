@@ -88,8 +88,10 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Index first = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            const Index second = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index first
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index second
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             EXPECT_EQ(first, 0u);
             EXPECT_EQ(second, 1u);
@@ -110,7 +112,8 @@ namespace Rtx
 
             // Added first and read after: the table grows under a span taken in the same expression.
             const Index sheet
-                = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, FoldedShape{ .mSheet = true });
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
+                    FoldedShape{ .mSheet = true });
             EXPECT_TRUE(scene.getTables().mMeshes.getRows()[sheet].mShape.mSheet);
         }
 
@@ -127,8 +130,9 @@ namespace Rtx
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
             };
 
-            scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            const Index withNormals = scene.addMesh(Testing::sUnitQuad, sNormals, {}, Testing::sQuadIndices);
+            scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index withNormals = scene.addMesh(MeshArrays{
+                .mPositions = Testing::sUnitQuad, .mNormals = sNormals, .mIndices = Testing::sQuadIndices });
 
             const Rtx::MeshTable& meshes = scene.getTables().mMeshes;
             ASSERT_EQ(meshes.getNormals().size(), meshes.getPositions().size());
@@ -192,14 +196,17 @@ namespace Rtx
         TEST(RtxSceneDescTest, theCountsAreWhatTheBuffersHold)
         {
             SceneDesc scene;
-            scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             EXPECT_EQ(scene.getTables().mMeshes.getTriangleCount(), 4u);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[0].getTriangleCount(), 2u);
 
-            // 8 positions and 8 normals at 12 bytes, 8 texture coordinates at 8, 12 indices at 4.
-            EXPECT_EQ(scene.getTables().mMeshes.getGeometryBytes(), 8u * 12u + 8u * 12u + 8u * 8u + 12u * 4u);
+            // 8 positions, 8 normals and 8 colours at 12 bytes, 8 texture coordinates at 8, and 12
+            // indices at 4. The mesh brought neither normal, coordinate nor colour and the buffers
+            // hold one apiece regardless — `MeshTable::writeAttributes` says why.
+            EXPECT_EQ(
+                scene.getTables().mMeshes.getGeometryBytes(), 8u * 12u + 8u * 12u + 8u * 8u + 8u * 12u + 12u * 4u);
         }
 
         /// The cutoff a material is traced against, and which materials get traced against one.
@@ -357,7 +364,10 @@ namespace Rtx
         private:
             Index addQuad(Deform deform, Index deformer)
             {
-                return mScene.addMesh(Testing::sUnitQuad, upward(), {}, Testing::sQuadIndices, {}, deform, deformer);
+                return mScene.addMesh(
+                    MeshArrays{
+                        .mPositions = Testing::sUnitQuad, .mNormals = upward(), .mIndices = Testing::sQuadIndices },
+                    {}, deform, deformer);
             }
         };
 
@@ -499,7 +509,8 @@ namespace Rtx
             ASSERT_EQ(second, 1u);
 
             const auto addSkin = [&](const Index rig) {
-                return scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::Rig, rig);
+                return scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
+                    {}, Deform::Rig, rig);
             };
 
             // The mesh on the second rig is the lower mesh slot, which is what makes the sweep free
@@ -533,8 +544,8 @@ namespace Rtx
             SceneDesc scene;
 
             const auto quad = [&](const Index material) {
-                return scene.addMesh(
-                    Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::None, sNoIndex, material);
+                return scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
+                    {}, Deform::None, sNoIndex, material);
             };
 
             const std::array meshes{ quad(sNoIndex), quad(sNoIndex), quad(sNoIndex) };
@@ -598,7 +609,8 @@ namespace Rtx
             EXPECT_EQ(sorted(scene.getTables().mDeformers.getArrivedMorphs()), (std::vector<Index>{ morph }));
 
             const Index face
-                = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::Morph, morph);
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    Deform::Morph, morph);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[face].mDeform, Deform::Morph);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].mUses, 1u);
             EXPECT_EQ(scene.getTables().mDeformers.getWeights().size(), 2u);
@@ -631,19 +643,22 @@ namespace Rtx
         TEST(RtxSceneDescTest, aMeshCarriesWhetherItDeformsAndWhatItArrivedWearing)
         {
             SceneDesc scene;
-            const Index still = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index still
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[still].mDeform, Deform::None);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[still].mMaterial, sNoIndex);
 
-            const Index rig = scene.addMesh(
-                Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::Rig, Testing::addOneBoneRig(scene, 4));
+            const Index rig
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    Deform::Rig, Testing::addOneBoneRig(scene, 4));
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[rig].mDeform, Deform::Rig);
 
             // The material a mesh arrives wearing is kept as it was handed over, and a slot given
             // back forgets it with the rest of what stood there.
             const Index worn = scene.addMaterial(Material{});
             const Index dressed
-                = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::None, sNoIndex, worn);
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    Deform::None, sNoIndex, worn);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[dressed].mMaterial, worn);
 
             const std::array<Index, 2> keptMeshes{ still, rig };
@@ -663,7 +678,8 @@ namespace Rtx
         TEST(RtxSceneDescTest, aRowIsReportedWhenAPlacementIsPlacedMovedFadedDroppedOrReclassed)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index glass = scene.addMaterial(Material{
                 .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
                 .mAlphaMode = Surface::AlphaMode::Blend,
@@ -744,7 +760,8 @@ namespace Rtx
         {
             const auto takeAfterDropping = [](const Index first, const Index second) {
                 SceneDesc scene;
-                const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+                const Index mesh
+                    = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
                 for (Index at = 0; at < 5; ++at)
                     EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), at) << "a fresh table appends";
@@ -903,9 +920,10 @@ namespace Rtx
         {
             SceneDesc scene;
             const std::array quads{ quadAt(0.0f), quadAt(2.0f) };
-            const Index first = scene.addMesh(quads[0], {}, {}, Testing::sQuadIndices);
-            const Index middle = scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices);
-            const Index last = scene.addMesh(quads[1], {}, {}, Testing::sQuadIndices);
+            const Index first = scene.addMesh(MeshArrays{ .mPositions = quads[0], .mIndices = Testing::sQuadIndices });
+            const Index middle
+                = scene.addMesh(MeshArrays{ .mPositions = triangleAt(5.0f), .mIndices = Testing::sTriangleIndices });
+            const Index last = scene.addMesh(MeshArrays{ .mPositions = quads[1], .mIndices = Testing::sQuadIndices });
 
             ASSERT_EQ(scene.getTables().mMeshes.getPositions().size(), 11u);
             ASSERT_EQ(scene.getTables().mMeshes.getIndices().size(), 15u);
@@ -940,7 +958,8 @@ namespace Rtx
 
             // A triangle fits the hole exactly and takes it back, at the index and the offset the
             // old one had.
-            const Index moved = scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices);
+            const Index moved
+                = scene.addMesh(MeshArrays{ .mPositions = triangleAt(5.0f), .mIndices = Testing::sTriangleIndices });
             EXPECT_EQ(moved, middle);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[moved].mVertices.mOffset, 4u);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[moved].mVertices.mCount, 3u);
@@ -971,7 +990,8 @@ namespace Rtx
         TEST(RtxSceneDescTest, aMeshArrivingIsToldFromATextureArrivingAndAReusedSlotIsAnArrival)
         {
             SceneDesc scene;
-            const Index slot = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index slot
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             const std::uint64_t meshes = scene.getTables().mMeshes.getRevision();
             const std::uint64_t structure = scene.getTables().getStructureRevision();
@@ -988,7 +1008,9 @@ namespace Rtx
             EXPECT_EQ(scene.getTables().mMeshes.getRevision(), meshes)
                 << "a cell leaving asked for the structures to be built again";
 
-            EXPECT_EQ(scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices), slot);
+            EXPECT_EQ(
+                scene.addMesh(MeshArrays{ .mPositions = triangleAt(5.0f), .mIndices = Testing::sTriangleIndices }),
+                slot);
             EXPECT_EQ(scene.getTables().mMeshes.getRows().size(), 1u)
                 << "the table grew, so a size test would have caught this anyway";
             EXPECT_GT(scene.getTables().mMeshes.getRevision(), meshes) << "a slot taken over went unnoticed";
@@ -1022,9 +1044,11 @@ namespace Rtx
                     bigIndices.push_back(index + static_cast<std::uint32_t>(copy) * 4u);
             }
 
-            const Index roomy = scene.addMesh(big, {}, {}, bigIndices);
-            const Index snug = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            const Index kept = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index roomy = scene.addMesh(MeshArrays{ .mPositions = big, .mIndices = bigIndices });
+            const Index snug
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index kept
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             ASSERT_EQ(scene.getTables().mMeshes.getRows()[roomy].mVertices.mOffset, 0u);
             ASSERT_EQ(scene.getTables().mMeshes.getRows()[snug].mVertices.mOffset, 8u);
@@ -1041,12 +1065,13 @@ namespace Rtx
             ASSERT_EQ(vertices, 16u);
 
             // The quad takes the front of the merged hole and leaves eight vertices behind it.
-            const Index quad = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index quad
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[quad].mVertices.mOffset, 0u);
 
             // **Which is what the eight-vertex mesh then fits into.** Unmerged, the two holes were
             // eight and four and the four had just been spent, so this would have appended.
-            const Index again = scene.addMesh(big, {}, {}, bigIndices);
+            const Index again = scene.addMesh(MeshArrays{ .mPositions = big, .mIndices = bigIndices });
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[again].mVertices.mOffset, 4u);
             EXPECT_EQ(scene.getTables().mMeshes.getPositions().size(), vertices)
                 << "a mesh that fitted a hole appended anyway";
@@ -1057,7 +1082,7 @@ namespace Rtx
             EXPECT_EQ(again, snug);
 
             // Nothing fits now, so this one goes on the end.
-            EXPECT_EQ(scene.addMesh(big, {}, {}, bigIndices), 3u);
+            EXPECT_EQ(scene.addMesh(MeshArrays{ .mPositions = big, .mIndices = bigIndices }), 3u);
             EXPECT_GT(scene.getTables().mMeshes.getPositions().size(), vertices);
         }
 
@@ -1067,6 +1092,11 @@ namespace Rtx
         /// given zeroes on a fresh slot because the buffer was grown for it; on a reused one the
         /// room already holds whatever the last tenant put there, and a surface lit by somebody
         /// else's normals looks lit rather than looking broken.
+        ///
+        /// **What stands for nothing is not the same in every buffer.** A zero normal says "use
+        /// the triangle's plane" and a white colour says "no tint", because a hit reads the first
+        /// and multiplies by the second — so a slot given a black colour would go dark rather than
+        /// untinted.
         TEST(RtxSceneDescTest, aReusedSlotDoesNotInheritTheAttributesOfWhatStoodInIt)
         {
             SceneDesc scene;
@@ -1076,16 +1106,26 @@ namespace Rtx
                 osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f) };
             const std::array<osg::Vec2f, 4> uvs{ osg::Vec2f(0.5f, 0.5f), osg::Vec2f(0.5f, 0.5f), osg::Vec2f(0.5f, 0.5f),
                 osg::Vec2f(0.5f, 0.5f) };
+            const std::array<osg::Vec3f, 4> colours{ osg::Vec3f(0.25f, 0.0f, 0.0f), osg::Vec3f(0.25f, 0.0f, 0.0f),
+                osg::Vec3f(0.25f, 0.0f, 0.0f), osg::Vec3f(0.25f, 0.0f, 0.0f) };
 
-            const Index slot = scene.addMesh(Testing::sUnitQuad, normals, uvs, Testing::sQuadIndices);
+            const Index slot = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad,
+                .mNormals = normals,
+                .mTexCoords = uvs,
+                .mColours = colours,
+                .mIndices = Testing::sQuadIndices });
             ASSERT_EQ(meshes.getNormals()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f(1.0f, 0.0f, 0.0f));
+            ASSERT_EQ(meshes.getColours()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f(0.25f, 0.0f, 0.0f));
 
             ASSERT_TRUE(scene.release({}, {}));
-            EXPECT_EQ(scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices), slot);
+            EXPECT_EQ(
+                scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }), slot);
 
             EXPECT_EQ(meshes.getNormals()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f())
                 << "the slot kept the last tenant's normals";
             EXPECT_EQ(meshes.getTexCoords()[0], osg::Vec2f());
+            EXPECT_EQ(meshes.getColours()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f(1.0f, 1.0f, 1.0f))
+                << "the slot kept the last tenant's tint";
         }
 
         /// A material frees its slot, and the layer run and masks behind it come back too.
@@ -1242,7 +1282,8 @@ namespace Rtx
         TEST(RtxSceneDescTest, aMaterialChangingIsNotAStructureChanging)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index first = scene.addMaterial(Material{});
 
             const std::uint64_t structure = scene.getTables().getStructureRevision();
@@ -1353,7 +1394,8 @@ namespace Rtx
         TEST(RtxSceneDescTest, releasingDoesNothingWhenNothingWent)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index material = scene.addMaterial(Material{});
             scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
@@ -1390,8 +1432,9 @@ namespace Rtx
         TEST(RtxSceneDescTest, aSweepLeavesTheListsTheWalkFilled)
         {
             SceneDesc scene;
-            const Index kept = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index kept
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             scene.addLight(Light{ .mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f),
                 .mIntensity = osg::Vec3f(4.0f, 5.0f, 6.0f),
@@ -1425,7 +1468,8 @@ namespace Rtx
         TEST(RtxSceneDescTest, aTextureGoesWithTheLastMaterialThatNamesIt)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index shared = scene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
             const Index lone = scene.addTexture(VFS::Path::NormalizedView("textures/tx_sand.dds"));
 
@@ -1535,7 +1579,8 @@ namespace Rtx
         TEST(RtxSceneDescTest, aHeldTextureGoesWhenTheHoldDoesAndNotBefore)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index material = scene.addMaterial(Material{});
             const Index sprite = scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
             scene.holdTexture(sprite);
@@ -1581,16 +1626,16 @@ namespace Rtx
             const auto vertices = [&](std::size_t count) { return std::span(room).first(count); };
 
             SceneDesc scene;
-            const Index first = scene.addMesh(vertices(200000), {}, {}, triangle);
+            const Index first = scene.addMesh(MeshArrays{ .mPositions = vertices(200000), .mIndices = triangle });
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[first].mVertices.mOffset, 0u);
 
-            const Index second = scene.addMesh(vertices(100000), {}, {}, triangle);
+            const Index second = scene.addMesh(MeshArrays{ .mPositions = vertices(100000), .mIndices = triangle });
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[second].mVertices.mOffset, SceneDesc::sVertexBlock)
                 << "a run was laid across a block boundary";
             EXPECT_EQ(scene.getTables().mMeshes.getPositions().size(), std::size_t{ 362144 });
 
             // And the 62,144 the second one stepped over is a hole like any other.
-            const Index third = scene.addMesh(vertices(60000), {}, {}, triangle);
+            const Index third = scene.addMesh(MeshArrays{ .mPositions = vertices(60000), .mIndices = triangle });
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[third].mVertices.mOffset, 200000u)
                 << "the tail of a block was not reused";
             EXPECT_EQ(scene.getTables().mMeshes.getPositions().size(), std::size_t{ 362144 })
@@ -1618,10 +1663,11 @@ namespace Rtx
             const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
             SceneDesc scene;
-            EXPECT_THROW(scene.addMesh(tooMany, {}, {}, triangle), Error);
+            EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }), Error);
 
             // And exactly a block is not too many, so the refusal is a boundary and not a ban.
-            EXPECT_NO_THROW(scene.addMesh(std::span(tooMany).first(SceneDesc::sVertexBlock), {}, {}, triangle));
+            EXPECT_NO_THROW(scene.addMesh(
+                MeshArrays{ .mPositions = std::span(tooMany).first(SceneDesc::sVertexBlock), .mIndices = triangle }));
         }
 
         /// A camera is placed from what stands in a region, and the sea is not among it.
@@ -1635,7 +1681,8 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Index quad = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index quad
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
             const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
 
@@ -1658,7 +1705,8 @@ namespace Rtx
             // **And the region clips.** A chunk straddling the edge contributes where it overlaps
             // rather than dragging the answer out by its whole width, which is what keeps a view of
             // one cell from framing the four cells of ground that reach into it.
-            const Index wide = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index wide
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::scale(100.0f, 1.0f, 1.0f), .mMesh = wide, .mMaterial = ground });
 
@@ -1685,8 +1733,9 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Index quad = scene.addMesh(
-                Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::Rig, Testing::addOneBoneRig(scene, 4));
+            const Index quad
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    Deform::Rig, Testing::addOneBoneRig(scene, 4));
             const Index material = scene.addMaterial(Material{});
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });

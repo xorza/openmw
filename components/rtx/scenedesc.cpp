@@ -8,14 +8,12 @@
 
 namespace Rtx
 {
-    Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape, Deform deform,
-        Index deformer, Index material)
+    Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material)
     {
         assert(
             (material == sNoIndex || material < mMaterialTable.size()) && "a mesh wearing a material the scene lacks");
 
-        return mMeshTable.add(positions, normals, texCoords, indices, shape, deform, deformer, material);
+        return mMeshTable.add(arrays, shape, deform, deformer, material);
     }
 
     Index SceneDesc::addRig(

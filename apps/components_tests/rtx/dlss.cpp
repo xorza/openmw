@@ -358,7 +358,8 @@ namespace Rtx
             // so every pixel is the same surface and nothing in the picture is background.
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
 
             // **One camera for both, and it is built for the render extent**, because that is what
             // both renderers trace at — the upscaler only changes what happens after.
@@ -420,7 +421,8 @@ namespace Rtx
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
             upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
 
             const auto drawTwice = [&] {
@@ -474,7 +476,8 @@ namespace Rtx
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
             upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
 
             const auto drawAndRead = [&] {
@@ -577,7 +580,8 @@ namespace Rtx
             const auto layerMotionAtCentre = [&](const osg::Vec3f& moved, std::vector<float>& frameMotion) {
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+                    .mMesh = scene.addMesh(
+                        MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
 
                 const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
 

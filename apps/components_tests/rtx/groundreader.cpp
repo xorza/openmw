@@ -71,10 +71,21 @@ namespace Rtx::Testing
             ASSERT_EQ(ground.mPositions.size(), verts * verts);
             ASSERT_EQ(ground.mNormals.size(), verts * verts);
             ASSERT_EQ(ground.mTexCoords.size(), verts * verts);
+            ASSERT_EQ(ground.mColours.size(), verts * verts);
 
             // Column 64, row 0: the eastern edge at the southern corner, by hand.
             EXPECT_EQ(ground.mPositions[64 * verts], osg::Vec3f(4096.0f, -4096.0f, 8.0f * 64));
             EXPECT_EQ(ground.mPositions[64 * verts], FakeLand::positionAt(64, 0));
+
+            // **The land's `VCLR`, decoded to light and in the storage's own vertex order.** The
+            // same vertex carries 64, 128 and 255, which the sRGB curve takes to 0.05126946,
+            // 0.21586050 and one — a colour a renderer that dropped the array would answer white
+            // for, and one whose channels differ so that a decode that swapped them would show.
+            EXPECT_EQ(FakeLand::colourAt(64, 0), osg::Vec4ub(64, 128, 255, 255));
+            const osg::Vec3f& corner = ground.mColours[64 * verts];
+            EXPECT_FLOAT_EQ(corner.x(), 0.05126946f);
+            EXPECT_FLOAT_EQ(corner.y(), 0.21586050f);
+            EXPECT_FLOAT_EQ(corner.z(), 1.0f);
 
             // **The game's own index buffer and the game's own corners**, from the class that
             // builds them for the rasterizer's chunks.
@@ -142,6 +153,11 @@ namespace Rtx::Testing
                 EXPECT_EQ(std::abs(corner.x()), 0.5f * FakeLand::sCellSize);
                 EXPECT_EQ(std::abs(corner.y()), 0.5f * FakeLand::sCellSize);
             }
+
+            // A cell with no record has no `VCLR` either, and white is what tints nothing.
+            ASSERT_EQ(ground.mColours.size(), 4u);
+            for (const osg::Vec3f& colour : ground.mColours)
+                EXPECT_EQ(colour, osg::Vec3f(1.0f, 1.0f, 1.0f));
 
             Terrain::BufferCache buffers;
             expectSameTriangles(ground.mIndices, *buffers.getIndexBuffer(2, 0));

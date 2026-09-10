@@ -40,14 +40,15 @@ namespace Rtx
 
         /// Where this part's attributes sit in the model's own buffers.
         ///
-        /// **Runs, and not four pairs of an offset and a count.** `Rtx::Run` says why the two halves
+        /// **Runs, and not five pairs of an offset and a count.** `Rtx::Run` says why the two halves
         /// travel together: a reader that paired one run's offset with another's count would index a
         /// buffer that exists, by a length that is not its own.
         Run mVertices;
 
-        /// Empty where the geometry names no normal, and no texture coordinate.
+        /// Empty where the geometry names no normal, no texture coordinate and no colour.
         Run mNormals;
         Run mTexCoords;
+        Run mColours;
 
         Run mIndices;
 
@@ -90,22 +91,26 @@ namespace Rtx
         std::vector<osg::Vec3f> mPositions;
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
+        std::vector<osg::Vec3f> mColours;
         std::vector<std::uint32_t> mIndices;
 
         /// What one of its parts comes to, as the frame adopts it.
         ///
         /// **Here rather than beside the one caller, because the buffers are this model's.** A part
-        /// holds four runs and this holds what they name, so the pairing is one statement in one
+        /// holds five runs and this holds what they name, so the pairing is one statement in one
         /// place — and `MeshReading` is exactly what a reader made and what the frame takes.
         ///
         /// The spans are into this model's own storage, and live for as long as it is lent.
         MeshReading readingOf(const PreparedPart& part) const
         {
             return MeshReading{
-                .mPositions = part.mVertices.in(std::span<const osg::Vec3f>(mPositions)),
-                .mNormals = part.mNormals.in(std::span<const osg::Vec3f>(mNormals)),
-                .mTexCoords = part.mTexCoords.in(std::span<const osg::Vec2f>(mTexCoords)),
-                .mIndices = part.mIndices.in(std::span<const std::uint32_t>(mIndices)),
+                .mArrays = {
+                    .mPositions = part.mVertices.in(std::span<const osg::Vec3f>(mPositions)),
+                    .mNormals = part.mNormals.in(std::span<const osg::Vec3f>(mNormals)),
+                    .mTexCoords = part.mTexCoords.in(std::span<const osg::Vec2f>(mTexCoords)),
+                    .mColours = part.mColours.in(std::span<const osg::Vec3f>(mColours)),
+                    .mIndices = part.mIndices.in(std::span<const std::uint32_t>(mIndices)),
+                },
                 .mShape = part.mShape,
             };
         }
@@ -122,6 +127,7 @@ namespace Rtx
             mPositions.clear();
             mNormals.clear();
             mTexCoords.clear();
+            mColours.clear();
             mIndices.clear();
         }
     };

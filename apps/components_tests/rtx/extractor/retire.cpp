@@ -106,7 +106,8 @@ namespace Rtx::Testing
                     const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
                     mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
-                    mMesh = mScene.addMesh(corners, {}, {}, triangle, FoldedShape{}, Deform::None, sNoIndex, mMaterial);
+                    mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle }, FoldedShape{},
+                        Deform::None, sNoIndex, mMaterial);
                     mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
                     count.mMeshesAdded = 1;
                     count.mMaterialsAdded = 1;

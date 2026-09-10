@@ -11,6 +11,7 @@
 
 #include "deformertable.hpp"
 #include "index.hpp"
+#include "mesharrays.hpp"
 #include "meshrange.hpp"
 #include "runbuffer.hpp"
 #include "shaders/scene.h"
@@ -34,8 +35,8 @@ namespace Rtx
     class MeshTable
     {
     public:
-        /// How many vertices one block of the position, normal and texture-coordinate buffers
-        /// holds, and how many indices one block of the index buffer does.
+        /// How many vertices one block of the vertex attribute buffers holds, and how many indices
+        /// one block of the index buffer does.
         ///
         /// **The shaders' own numbers**, because a run this places against a block is resolved back
         /// to that block by a shader dividing by the same figure. `Shaders::VERTEX_BLOCK` says at
@@ -58,9 +59,7 @@ namespace Rtx
         /// Throws where the mesh is longer than a block. **Named rather than asserted**, because a
         /// vertex count comes out of a content file and a run that straddled a block would be
         /// written across two device allocations that are not next to each other.
-        Index add(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape,
-            Deform deform, Index deformer, Index material);
+        Index add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material);
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the
         /// frame, once.
@@ -75,6 +74,7 @@ namespace Rtx
         std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
+        std::span<const osg::Vec3f> getColours() const { return mColours; }
         std::span<const std::uint32_t> getIndices() const { return mIndices.getAll(); }
         std::span<const MeshRange> getRows() const { return mRows.getRows(); }
 
@@ -99,10 +99,9 @@ namespace Rtx
 
     private:
         /// Makes the attribute buffers as long as the positions are and writes `range`'s run of
-        /// each. Zero-fills one the mesh did not bring, because a reused slot still holds its last
-        /// tenant's.
-        void writeAttributes(
-            const MeshRange& range, std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords);
+        /// each. Fills one the mesh did not bring with what stands for nothing there, because a
+        /// reused slot still holds its last tenant's.
+        void writeAttributes(const MeshRange& range, const MeshArrays& arrays);
 
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void note(Index slot, SlotNews what);
@@ -115,15 +114,20 @@ namespace Rtx
         /// slot is one row of a table, but the geometry behind it is as long as the model. A list
         /// of slots cannot give a variable length back.
         ///
-        /// **One buffer holds the run and two follow it.** The position, normal and
-        /// texture-coordinate arrays are parallel and a vertex id indexes all three, so the two
-        /// below are as long as the positions are and are never asked an allocator's question —
-        /// `writeAttributes` is where that rule lives.
+        /// **One buffer holds the run and three follow it.** The position, normal,
+        /// texture-coordinate and colour arrays are parallel and a vertex id indexes all four, so
+        /// the three below are as long as the positions are and are never asked an allocator's
+        /// question — `writeAttributes` is where that rule lives.
         RunBuffer<osg::Vec3f> mPositions{ sVertexBlock };
         RunBuffer<std::uint32_t> mIndices{ sIndexBlock };
 
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
+
+        /// The per-vertex colour, in linear light. **White where a mesh brought none**, so that a
+        /// hit multiplies by it whatever the content said and no shader branches on whether there
+        /// is one. `MeshArrays::mColours` says why it is linear here.
+        std::vector<osg::Vec3f> mColours;
 
         /// Every mesh row, and the slots nothing stands in.
         ///

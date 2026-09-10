@@ -6,6 +6,7 @@
 #include <osg/Vec4f>
 
 #include <components/surface/alphamode.hpp>
+#include <components/surface/vertexcolour.hpp>
 
 #include "index.hpp"
 #include "run.hpp"
@@ -50,6 +51,15 @@ namespace Rtx
         float mAlphaRef = 0.0f;
 
         Surface::AlphaMode mAlphaMode = Surface::AlphaMode::Opaque;
+
+        /// What this surface's per-vertex colour is for — the tint that replaces `mDiffuseColour`,
+        /// the glow that replaces `mEmissiveColour`, or nothing.
+        ///
+        /// **On the material and not on the mesh, because that is where the content states it.**
+        /// A `NiVertexColorProperty` hangs above a shape and the colours are inside its data, and
+        /// two shapes sharing one state set share the mode. What a mesh carries is the colours
+        /// themselves, white where it brought none.
+        Surface::VertexColour mVertexColour = Surface::VertexColour::None;
 
         /// Sheet geometry lit and hit from both faces. Morrowind leans on this heavily and a ray
         /// tracer has to be told, because back-face culling is not free the way a rasterizer's is.

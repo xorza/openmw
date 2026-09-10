@@ -47,7 +47,8 @@ namespace Rtx
         TEST(RtxInstanceRecordTest, rowsKeptAcrossFramesAreTheRowsBuiltFromNothing)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/leaf.dds")),

@@ -8,9 +8,11 @@
 #include <utility>
 
 #include <components/misc/constants.hpp>
+#include <components/surface/vertexcolour.hpp>
 
 #include "distantland.hpp"
 #include "materialresolver.hpp"
+#include "mesharrays.hpp"
 #include "meshinstance.hpp"
 #include "meshrange.hpp"
 #include "meshreader.hpp"
@@ -314,7 +316,13 @@ namespace Rtx
 
             // **The switch is a setting the game can move while it runs**, and a cell the thread
             // read under the other answer is read again rather than stood as it was.
-            if (cell->mStatics != mStatics)
+            //
+            // **And a cell already in the list is given straight back.** `ask` skips what is held
+            // and what is pending, but a cell the reader is part-way through is neither — so a
+            // list that replaces the one it was working through names that cell again, and the
+            // reader hands over two copies of it. `sift` is what turns away the other cell this
+            // must not adopt.
+            if (cell->mStatics != mStatics || pending(cell->mCell))
                 discard(*cell);
             else
                 mPending.push_back(cell);
@@ -341,14 +349,35 @@ namespace Rtx
         mSupply.ask(mAsking);
     }
 
-    void CellRing::waitForNext()
+    void CellRing::sift(const osg::Vec2i& eye, const int band)
+    {
+        for (auto cell = mPending.begin(); cell != mPending.end();)
+        {
+            if (withinBand((*cell)->mCell, eye, band) && !holds((*cell)->mCell))
+            {
+                ++cell;
+                continue;
+            }
+
+            discard(**cell);
+            cell = mPending.erase(cell);
+        }
+    }
+
+    void CellRing::waitForNext(const osg::Vec2i& eye, const int band)
     {
         // A cell read under the other answer to the statics switch is discarded rather than made
         // pending, so a wait that found one has not found what it waited for.
+        //
+        // **And a cell of the band that left is not one either.** The reader is part-way through
+        // the list the eye's last place asked for, so the first thing it hands over after a move is
+        // usually a cell nothing wants any more — and this used to be adopted, held for one walk
+        // and dropped, which is a mesh built and freed for a cell that never stood.
         while (mPending.empty())
         {
             mSupply.waitForOne();
             takeDone();
+            sift(eye, band);
         }
     }
 
@@ -424,12 +453,21 @@ namespace Rtx
         Material material;
         material.mKind = MaterialKind::Terrain;
         material.mFlatten = stands.mFlattened;
+
+        // **Stated here, because the ground is nobody's node.** Every other material reads its
+        // mode off a state set `NifOsg` described, and this one is stood off the land records —
+        // where `Terrain::ChunkManager` states the same thing for the rasterizer's chunks.
+        material.mVertexColour = Surface::VertexColour::Tint;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.addLayers(mLayerScratch);
         stands.mMaterial = mScene.addMaterial(material);
 
         // A heightfield is neither a sheet nor closed, and no fold is needed to say so.
-        stands.mMesh = mScene.addMesh(ground.mPositions, ground.mNormals, ground.mTexCoords, ground.mIndices,
+        stands.mMesh = mScene.addMesh(MeshArrays{ .mPositions = ground.mPositions,
+                                          .mNormals = ground.mNormals,
+                                          .mTexCoords = ground.mTexCoords,
+                                          .mColours = ground.mColours,
+                                          .mIndices = ground.mIndices },
             FoldedShape{}, Deform::None, sNoIndex, stands.mMaterial);
 
         ++mCount.mMeshesAdded;
@@ -696,17 +734,7 @@ namespace Rtx
             cell = mCells.erase(cell);
         }
 
-        for (auto cell = mPending.begin(); cell != mPending.end();)
-        {
-            if (withinBand((*cell)->mCell, eye, band) && !holds((*cell)->mCell))
-            {
-                ++cell;
-                continue;
-            }
-
-            discard(**cell);
-            cell = mPending.erase(cell);
-        }
+        sift(eye, band);
 
         ask(eye, band);
 
@@ -714,7 +742,7 @@ namespace Rtx
         // about to hand back is what that ask asked for. Nothing was asked for where the band is
         // whole, and then there is nothing to wait for.
         if (mSettled && mPending.empty() && !mAsking.mCells.empty())
-            waitForNext();
+            waitForNext(eye, band);
 
         adoptPending();
         place(eye, reach);

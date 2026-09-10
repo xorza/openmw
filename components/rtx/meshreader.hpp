@@ -1,13 +1,12 @@
 #pragma once
 
-#include <cstdint>
 #include <span>
 #include <vector>
 
-#include <osg/Vec2f>
 #include <osg/Vec3f>
 
 #include "geometryfold.hpp"
+#include "mesharrays.hpp"
 #include "meshrange.hpp"
 #include "shapefold.hpp"
 
@@ -61,16 +60,9 @@ namespace Rtx
     /// keeps a reading past either copies it.
     struct MeshReading
     {
-        std::span<const osg::Vec3f> mPositions;
-
-        /// Empty where the geometry names no normal.
-        std::span<const osg::Vec3f> mNormals;
-
-        /// Empty where the geometry carries none, or one of another length.
-        std::span<const osg::Vec2f> mTexCoords;
-
-        /// The triangles the fold kept.
-        std::span<const std::uint32_t> mIndices;
+        /// The vertices, and the triangles the fold kept. An attribute the geometry carries none
+        /// of — or one of another length — comes back empty.
+        MeshArrays mArrays;
 
         FoldedShape mShape;
 
@@ -103,5 +95,10 @@ namespace Rtx
 
         /// Where an overall normal is spread across a drawable's vertices.
         std::vector<osg::Vec3f> mFlatNormalScratch;
+
+        /// Where a drawable's colours are decoded to. **Always scratch**, where the other
+        /// attributes are usually the geometry's own arrays: what the file holds is display-encoded
+        /// bytes and what a hit interpolates is linear light, so there is nothing to point at.
+        std::vector<osg::Vec3f> mColourScratch;
     };
 }

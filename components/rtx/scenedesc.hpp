@@ -9,7 +9,6 @@
 
 #include <osg/BoundingBox>
 #include <osg/Matrixf>
-#include <osg/Vec2f>
 #include <osg/Vec3f>
 
 #include <components/vfs/pathutil.hpp>
@@ -19,6 +18,7 @@
 #include "light.hpp"
 #include "material.hpp"
 #include "materialtable.hpp"
+#include "mesharrays.hpp"
 #include "meshinstance.hpp"
 #include "meshrange.hpp"
 #include "meshtable.hpp"
@@ -67,9 +67,10 @@ namespace Rtx
 
         /// Copies the vertex data into the shared buffers and returns the new mesh's index.
         ///
-        /// `normals` and `texCoords` may be empty; when they are not they must match `positions` in
-        /// length, and `indices` must be a whole number of triangles addressing only those vertices.
-        /// All three are contracts on the caller, so they are asserted rather than reported.
+        /// Every attribute but `MeshArrays::mPositions` may be empty; when one is not it must match
+        /// the positions in length, and `MeshArrays::mIndices` must be a whole number of triangles
+        /// addressing only those vertices. All of that is a contract on the caller, so it is
+        /// asserted rather than reported.
         ///
         /// Throws where the mesh is longer than a block. **Named rather than asserted**, because a
         /// vertex count comes out of a content file and a run that straddled a block would be
@@ -82,9 +83,8 @@ namespace Rtx
         /// pose is computed from, which stay in the shared buffers for as long as the mesh does.
         /// `material` is `MeshRange::mMaterial`, the caller's finding likewise, and must be a
         /// material the scene holds or `sNoIndex`.
-        Index addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape = {},
-            Deform deform = Deform::None, Index deformer = sNoIndex, Index material = sNoIndex);
+        Index addMesh(const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None,
+            Index deformer = sNoIndex, Index material = sNoIndex);
 
         /// Copies a skin's runs and influences into the shared tables and returns the rig's index.
         ///
