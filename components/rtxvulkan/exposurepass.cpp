@@ -31,7 +31,9 @@ namespace Rtx
               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mExposure(Buffer::deviceLocal(
               device, sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
+        , mPicture(Buffer::hostWritten(device, sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
     {
+        mPicture.writable<float>(0, 1).front() = 1.0f;
     }
 
     void ExposurePass::beforeWrite(VkCommandBuffer commands) const

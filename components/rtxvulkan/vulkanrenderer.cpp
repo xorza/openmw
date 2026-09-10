@@ -1327,13 +1327,14 @@ namespace Rtx
 
             // **One, and measured off nothing.** A picture inside the interface is looked at beside
             // the widgets around it, and an exposure that drifted with what the doll was wearing
-            // would make the same armour a different brightness in two windows.
-            mExposure.recordFixed(commands, 1.0f);
-            // **No lens on a picture inside the interface.** A map tile is a diagram and a doll is
-            // looked at beside the widgets around it, and neither is a frame the pyramid was built
-            // over — `TonePass::record` reads a null one as no veil.
-            mTone->record(commands, mView.getColour(), mExposure.getExposure(), channels.get(Channel::StarsShown),
-                nullptr, inputs.mTextures, *mViewTarget,
+            // would make the same armour a different brightness in two windows. Out of a buffer of
+            // its own, for what `ExposurePass::getPictureExposure` says writing it over the frame's
+            // cost.
+            //
+            // **And no lens.** A map tile is a diagram, neither it nor a doll is a frame the pyramid
+            // was built over, and `TonePass::record` reads a null one as no veil.
+            mTone->record(commands, mView.getColour(), mExposure.getPictureExposure(),
+                channels.get(Channel::StarsShown), nullptr, inputs.mTextures, *mViewTarget,
                 toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
 
             mViewTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -681,6 +682,72 @@ namespace Rtx
 
             EXPECT_NE(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 })) << "where the picture covers";
             EXPECT_EQ(at(0, 0), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 })) << "where it does not";
+        }
+
+        /// A picture inside the interface leaves the frame's own exposure where it found it.
+        ///
+        /// **The eye carries between frames and a picture has none.** A picture is mapped at one and
+        /// is traced between two world frames, and writing that one into the frame's buffer was what
+        /// the next frame read back as the brightness it had adapted to —
+        /// `ExposurePass::getPictureExposure` says what every arriving local-map tile then cost.
+        ///
+        /// **The claim is exact.** Both legs draw one camera over one scene from one reset, so the
+        /// frame after the picture is the frame after no picture, byte for byte. The third leg is
+        /// what says the comparison could have failed at all: the same frame at an exposure of one
+        /// is a different picture, and one is what a picture writes.
+        TEST_F(RtxGuiDrawTest, aPictureInsideTheInterfaceLeavesTheFramesExposureAlone)
+        {
+            constexpr std::uint32_t extent = 16;
+
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f).getTables(), {}, SeaState{});
+
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
+            mHeld.push_back(texture);
+
+            Shaders::VisibilityConstants picture = makeMapCamera(extent);
+            picture.mTransparentBackground = 1;
+
+            // Level, two hundred units over a sheet fifty across, so the frame is sky alone and the
+            // sky is the one thing the two cameras below differ in. Far enough apart that the
+            // exposure the first leaves behind is nowhere near the one a picture writes.
+            Shaders::VisibilityConstants bright = makeCamera(
+                osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 1000.0f, 200.0f), 60.0f, sExtent, sExtent, 100000.0f);
+            bright.mSkyHorizon = osg::Vec3f(0.8f, 0.8f, 0.8f);
+            bright.mSkyZenith = bright.mSkyHorizon;
+            bright.mAmbientFromSky = 1.0f;
+
+            Shaders::VisibilityConstants dim = bright;
+            dim.mSkyHorizon = bright.mSkyHorizon / 32.0f;
+            dim.mSkyZenith = dim.mSkyHorizon;
+
+            const auto frame = [&](const Shaders::VisibilityConstants& camera, std::optional<float> exposure) {
+                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = exposure });
+                mRenderer->readPixels(mPixels);
+                return mPixels;
+            };
+
+            // One reset, one bright frame the eye takes outright, then one dim frame it has barely
+            // moved for — so what the dim frame looks like is what the bright frame's exposure made
+            // of it, which is exactly what a picture between the two must not change.
+            const auto dimFrameAfterBright = [&](bool withPicture) {
+                mRenderer->resetHistory();
+                frame(bright, std::nullopt);
+                if (withPicture)
+                    mRenderer->traceGuiTexture(
+                        texture, picture, GuiTraceOptions{ .mWidth = extent, .mHeight = extent });
+
+                return frame(dim, std::nullopt);
+            };
+
+            const std::vector<std::uint8_t> carried = dimFrameAfterBright(false);
+            const std::vector<std::uint8_t> afterPicture = dimFrameAfterBright(true);
+
+            mRenderer->resetHistory();
+            frame(bright, std::nullopt);
+            const std::vector<std::uint8_t> atOne = frame(dim, 1.0f);
+
+            ASSERT_NE(carried, atOne) << "the carried exposure and one draw the same picture here";
+            EXPECT_EQ(afterPicture, carried) << "the picture took the frame's exposure with it";
         }
 
         /// Nothing to draw is not an error and does not touch the frame.

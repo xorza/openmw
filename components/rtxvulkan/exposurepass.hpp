@@ -24,6 +24,10 @@ namespace Rtx
     /// **It measures the image the curve is about to map**, which is the upscaled one wherever
     /// something upscales — see `histogram.comp` for what measuring the other one costs. Both are
     /// bound from one source and dispatched over one extent so the two cannot come apart.
+    ///
+    /// **Two buffers, because two things are mapped and only one of them has a past.** The frame's
+    /// carries the eye from frame to frame; a picture inside the interface is mapped at one and is
+    /// traced between two frames. `getPictureExposure` says what one buffer for both cost.
     class ExposurePass
     {
     public:
@@ -47,16 +51,26 @@ namespace Rtx
         ///        any frame the renderer was told has no past. The measurement is taken outright.
         void record(VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset, float bias) const;
 
-        /// Writes `value` there instead, measuring nothing.
+        /// Holds the frame's exposure at `value` instead, measuring nothing.
         ///
-        /// **The same buffer either way**, so the curve never learns which it got. A fixed exposure
-        /// is what a pixel test and a converged reference are built at: a measured one makes every
-        /// expected value depend on the whole frame's histogram, which is not a number anybody can
-        /// hand-compute.
+        /// **The frame's buffer either way**, so the curve never learns which it got. A fixed
+        /// exposure is what a pixel test and a converged reference are built at: a measured one
+        /// makes every expected value depend on the whole frame's histogram, which is not a number
+        /// anybody can hand-compute.
         void recordFixed(VkCommandBuffer commands, float value) const;
 
         /// One float, written by whichever of the two calls above ran.
         VkBuffer getExposure() const { return mExposure.getHandle(); }
+
+        /// One float holding one, which is what a picture inside the interface is mapped at.
+        ///
+        /// **Its own buffer, because a picture is traced between two frames and the frame's buffer
+        /// is where the eye stands.** Written into that one, a picture's one was what the next
+        /// frame's reduction read back as the brightness it had adapted to — so every local-map tile
+        /// a cell arrived with threw the adaptation away and started it again from one. Measured
+        /// over `island-crossing`: the frame's mean brightness stepped by a tenth to a fifth at
+        /// every cell boundary and drifted back between them.
+        VkBuffer getPictureExposure() const { return mPicture.getHandle(); }
 
     private:
         /// Orders the previous frame's reads against the writes about to replace them.
@@ -72,6 +86,10 @@ namespace Rtx
         /// would race with the workgroups already accumulating into it.
         Buffer mHistogram;
 
+        /// The frame's, which every measurement reads before it writes.
         Buffer mExposure;
+
+        /// Host memory written once and never again, so a picture costs no write and no barrier.
+        Buffer mPicture;
     };
 }
