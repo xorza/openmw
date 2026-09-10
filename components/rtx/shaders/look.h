@@ -565,8 +565,8 @@ namespace Rtx::Shaders
     /// How many cells of the light grid one ray may walk before it gives up.
     ///
     /// **A budget and not a limit anything reaches.** A froxel's ray is one slice long, and the grid
-    /// starts at a cell of one terrain tile, so a ray crosses a handful of cells at most. What this
-    /// stops is a fine grid under a long ray turning the walk back into the march it replaced.
+    /// starts at a cell of a quarter tile, so a ray crosses a dozen cells at most. What this stops
+    /// is a fine grid under a long ray turning the walk back into the march it replaced.
     const uint FOG_CELLS_ALONG = 32u;
 
     /// What is left of a ray at the world's edge, once the second element of the air has had it.

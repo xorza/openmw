@@ -17,12 +17,18 @@ namespace
     constexpr std::size_t sMaxCells = 65536;
     constexpr std::size_t sMaxEntries = 262144;
 
-    /// The side a grid starts at, in world units — one terrain tile.
+    /// The side a grid starts at, in world units — a quarter of a terrain tile.
     ///
-    /// A cell this size holds a lamp or two of Morrowind's, whose reaches run to a few hundred
-    /// units, so it is the scale at which the list is short and the grid is small. Everything else
-    /// is reached by doubling.
-    constexpr float sFirstCell = 1024.0f;
+    /// **About half a lamp's reach, because the list is what a point pays for.** A lamp is binned
+    /// into every cell its reach touches, so a cell of side `c` lists every lamp within `reach + c`
+    /// of it along each axis: a box of `(2 reach + 2 c)^3` around the sphere of `4/3 pi reach^3`
+    /// that can light a point in it. Morrowind's reaches run 256 to 640 units once `makeLight` has
+    /// stretched them. At one tile a point in the Guild of Mages weighed twenty-one lamps for the
+    /// one or two that reached it, and at a quarter tile it weighs twelve; at an eighth the entries
+    /// grow eightfold for one lamp fewer. An exterior overruns the cell budget at this size and
+    /// doubles back to a tile, which is where its lists were short already — a mean of two lamps a
+    /// cell at Seyda Neen.
+    constexpr float sFirstCell = 256.0f;
 
     /// The cells a sphere of `reach` about `centre` touches, as a half-open box of cell coordinates.
     struct CellBox

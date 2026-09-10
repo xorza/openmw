@@ -39,37 +39,37 @@ namespace Rtx
         /// lamp binned only where it stands would go dark one cell away and leave a seam.
         ///
         /// Two lamps of reach 100 four thousand units apart put the grid's corner at -100 and its
-        /// far edge at 4196, which is 4.2 cells of 1024 and so five of them. Each lamp spans 200
-        /// units at one end, and the three cells between them hold nothing.
+        /// far edge at 4196, which is 16.8 cells of 256 and so seventeen of them. Each lamp spans
+        /// 200 units at one end, and the fifteen cells between them hold nothing.
         TEST(RtxLightGridTest, aLampIsBinnedIntoEveryCellItsReachTouchesAndNoOthers)
         {
             const std::array lights{ lampAt(0.0f, 100.0f), lampAt(4096.0f, 100.0f) };
             const LightGrid grid(lights);
 
             EXPECT_EQ(grid.getOrigin(), osg::Vec3f(-100.0f, -100.0f, -100.0f));
-            EXPECT_EQ(grid.getSize(), osg::Vec3ui(5u, 1u, 1u));
-            EXPECT_FLOAT_EQ(grid.getInverseCell(), 1.0f / 1024.0f);
+            EXPECT_EQ(grid.getSize(), osg::Vec3ui(17u, 1u, 1u));
+            EXPECT_FLOAT_EQ(grid.getInverseCell(), 1.0f / 256.0f);
 
             EXPECT_EQ(lampsIn(grid, 0, 0, 0), std::vector<std::uint32_t>{ 0u });
-            EXPECT_TRUE(lampsIn(grid, 1, 0, 0).empty()) << "the air between them";
-            EXPECT_TRUE(lampsIn(grid, 2, 0, 0).empty());
-            EXPECT_TRUE(lampsIn(grid, 3, 0, 0).empty());
-            EXPECT_EQ(lampsIn(grid, 4, 0, 0), std::vector<std::uint32_t>{ 1u });
+            for (std::uint32_t x = 1; x < 16; ++x)
+                EXPECT_TRUE(lampsIn(grid, x, 0, 0).empty()) << "the air between them, at cell " << x;
+            EXPECT_EQ(lampsIn(grid, 16, 0, 0), std::vector<std::uint32_t>{ 1u });
 
             // A prefix sum with a trailing sentinel: the first run starts where the head ends, the
             // starts never go backwards, and the last one is where the list ends, so the last cell
             // needs no special case. Read as the device reads it, whole.
             const std::span<const std::uint32_t> list = grid.getList().getWhole();
-            ASSERT_EQ(list.size(), 6u + 2u) << "one start per cell and one more, then the two entries";
-            EXPECT_EQ(list[0], 6u);
-            EXPECT_TRUE(std::is_sorted(list.begin(), list.begin() + 6));
-            EXPECT_EQ(list[5], list.size());
+            ASSERT_EQ(list.size(), 18u + 2u) << "one start per cell and one more, then the two entries";
+            EXPECT_EQ(list[0], 18u);
+            EXPECT_TRUE(std::is_sorted(list.begin(), list.begin() + 18));
+            EXPECT_EQ(list[17], list.size());
         }
 
         /// Every lamp that reaches a cell is in it, in the order they were given.
         TEST(RtxLightGridTest, aCellHoldsEveryLampThatReachesIt)
         {
-            const std::array lights{ lampAt(0.0f, 300.0f), lampAt(200.0f, 300.0f) };
+            // Reaches of 60 about 0 and 100 span -60 to 160, which is inside one cell of 256.
+            const std::array lights{ lampAt(0.0f, 60.0f), lampAt(100.0f, 60.0f) };
             const LightGrid grid(lights);
 
             ASSERT_EQ(grid.getSize(), osg::Vec3ui(1u, 1u, 1u)) << "one cell holds both reaches";
@@ -99,8 +99,8 @@ namespace Rtx
         /// count while the grid is still small, because each lands in every cell it touches.
         TEST(RtxLightGridTest, theCellDoublesUntilBothBudgetsFit)
         {
-            // Seventy million units apart is 68,360 cells of 1024 along x and 34,180 of 2048, so the
-            // cell count alone forces one doubling.
+            // Seventy million units apart is 273,438 cells of 256 along x, 68,360 of 1024 and 34,180
+            // of 2048, so the cell count alone forces three doublings.
             const std::array wideLights{ lampAt(0.0f, 1.0f), lampAt(70.0e6f, 1.0f) };
             const LightGrid wide(wideLights);
 
@@ -109,9 +109,10 @@ namespace Rtx
 
             // And five lamps sharing one reach of 20,480 units, which is the case only the entry
             // budget catches. **The grid is a volume, so the cell budget is reached far sooner than
-            // a plane would suggest** — 40 cells an axis is 64,000 of them, just inside the 65,536
-            // allowed. Five lamps each covering all of that is 320,000 entries against 262,144, so
-            // it doubles to 20 an axis: 8,000 cells and 40,000 entries.
+            // a plane would suggest** — the cell doubles to 1024 before 40 cells an axis is 64,000
+            // of them, just inside the 65,536 allowed. Five lamps each covering all of that is
+            // 320,000 entries against 262,144, so it doubles once more to 20 an axis: 8,000 cells
+            // and 40,000 entries.
             std::array<Light, 5> greedy{};
             for (Light& light : greedy)
                 light.mReach = 20480.0f;
@@ -131,31 +132,32 @@ namespace Rtx
         /// clamped at one end and not the other.
         ///
         /// The grid, by hand. A reaches x[-512, 512] and B x[3584, 4608], both y and z [-512, 512];
-        /// C reaches x[0, 4096] and y and z [-2048, 2048]. So the corner is (-512, -2048, -2048) and
-        /// the far edge is (4608, 2048, 2048): an extent of 5120 by 4096 by 4096, which is 5 cells
-        /// by 4 by 4 of 1024. Eighty cells and ninety-two entries, both inside the first cell size's
-        /// budgets, so nothing doubles.
+        /// C reaches x[-512, 4608] and y and z [-2560, 2560]. So the corner is (-512, -2560, -2560)
+        /// and the far edge is (4608, 2560, 2560): an extent of 5120 on every axis, which is 20 cells
+        /// of 256 each way. Eight thousand cells and 8,225 entries, both inside the first cell
+        /// size's budgets, so nothing doubles.
         TEST(RtxLightGridTest, lampsSpanningOneCellSeveralAndTheWholeGridAreEachBinnedRight)
         {
-            const std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f), lampAt(2048.0f, 2048.0f) };
+            const std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f), lampAt(2048.0f, 2560.0f) };
             const LightGrid grid(lights);
 
-            ASSERT_EQ(grid.getOrigin(), osg::Vec3f(-512.0f, -2048.0f, -2048.0f));
-            ASSERT_EQ(grid.getSize(), osg::Vec3ui(5u, 4u, 4u));
-            EXPECT_FLOAT_EQ(grid.getInverseCell(), 1.0f / 1024.0f);
+            ASSERT_EQ(grid.getOrigin(), osg::Vec3f(-512.0f, -2560.0f, -2560.0f));
+            ASSERT_EQ(grid.getSize(), osg::Vec3ui(20u, 20u, 20u));
+            EXPECT_FLOAT_EQ(grid.getInverseCell(), 1.0f / 256.0f);
 
-            // A spans x cells [0, 2) and y and z cells [1, 3), which is eight cells. B spans x cell
-            // 4 alone — its box reaches 5 and the grid is five across, so the clamp is what keeps it
-            // inside — and the same four in y and z. C covers all eighty.
-            EXPECT_EQ(grid.getList().getEntryCount(), 8u + 4u + 80u);
+            // A spans x cells [0, 5) and y and z cells [8, 13), which is 125 cells. B spans x cells
+            // [16, 20) — its box reaches 21 and the grid is twenty across, so the clamp is what keeps
+            // it inside — and the same five in y and z, which is 100. C covers all eight thousand.
+            EXPECT_EQ(grid.getList().getEntryCount(), 125u + 100u + 8000u);
 
-            EXPECT_EQ(lampsIn(grid, 0, 1, 1), (std::vector<std::uint32_t>{ 0u, 2u }))
+            EXPECT_EQ(lampsIn(grid, 0, 8, 8), (std::vector<std::uint32_t>{ 0u, 2u }))
                 << "the near lamp and the wide one";
-            EXPECT_EQ(lampsIn(grid, 1, 2, 2), (std::vector<std::uint32_t>{ 0u, 2u })) << "the far corner of A's box";
-            EXPECT_EQ(lampsIn(grid, 4, 1, 1), (std::vector<std::uint32_t>{ 1u, 2u })) << "the clamped edge cell";
-            EXPECT_EQ(lampsIn(grid, 2, 2, 2), std::vector<std::uint32_t>{ 2u }) << "the air between the two small ones";
-            EXPECT_EQ(lampsIn(grid, 0, 0, 0), std::vector<std::uint32_t>{ 2u }) << "below A, which reaches only to y 1";
-            EXPECT_EQ(lampsIn(grid, 3, 3, 3), std::vector<std::uint32_t>{ 2u });
+            EXPECT_EQ(lampsIn(grid, 4, 12, 12), (std::vector<std::uint32_t>{ 0u, 2u })) << "the far corner of A's box";
+            EXPECT_EQ(lampsIn(grid, 19, 10, 10), (std::vector<std::uint32_t>{ 1u, 2u })) << "the clamped edge cell";
+            EXPECT_EQ(lampsIn(grid, 10, 10, 10), std::vector<std::uint32_t>{ 2u })
+                << "the air between the two small ones";
+            EXPECT_EQ(lampsIn(grid, 0, 0, 0), std::vector<std::uint32_t>{ 2u }) << "below A, which reaches only to y 8";
+            EXPECT_EQ(lampsIn(grid, 19, 19, 19), std::vector<std::uint32_t>{ 2u });
         }
 
         /// A rebind of the same lamps goes nowhere near the allocator.
@@ -165,7 +167,7 @@ namespace Rtx
         /// on every frame that moved.
         TEST(RtxLightGridTest, rebindingTheSameLampsDoesNotTouchTheHeap)
         {
-            const std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f), lampAt(2048.0f, 2048.0f) };
+            const std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f), lampAt(2048.0f, 2560.0f) };
 
             LightGrid grid;
             grid.rebuild(lights);
@@ -176,7 +178,7 @@ namespace Rtx
             const std::size_t spent = Testing::getAllocationCount() - before;
 
             EXPECT_EQ(spent, 0u) << spent << " allocations to bin the lamps a frame already held";
-            EXPECT_EQ(grid.getList().getEntryCount(), 8u + 4u + 80u) << "and it binned them all the same";
+            EXPECT_EQ(grid.getList().getEntryCount(), 125u + 100u + 8000u) << "and it binned them all the same";
         }
 
         /// A lamp that only flickered is not binned again, and one that moved is.
@@ -206,7 +208,7 @@ namespace Rtx
             EXPECT_EQ(lampsIn(grid, 0, 0, 0), first) << "a lamp that only changed colour moved the grid";
 
             // And a lamp that reaches further is a lamp the grid has to be made for again: 512 over
-            // a cell of 1024 spans two cells across, and 2048 spans five.
+            // a cell of 256 spans five cells across, and 2048 spans seventeen.
             const std::size_t reachedTwo = grid.getList().getEntryCount();
             lights[0].mReach = 2048.0f;
             grid.rebuild(lights);

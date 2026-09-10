@@ -188,25 +188,6 @@ float falloffAlong(float perpendicular, float from, float to, float reach, float
     return (above - below) / reach;
 }
 
-/// Where a lamp stands from a point: unit toward it, and how far.
-///
-/// **Asked once and answered the same way for a weight and for a ray**, so the direction a shadow
-/// ray takes is the direction the lamp was weighed along. No reach test, because a caller that
-/// moved its origin after weighing — the air does — still has to aim at the lamp it held.
-struct LampRay
-{
-    vec3 mTowards;
-    float mDistance;
-};
-
-LampRay lampRayAt(GpuLight lamp, vec3 position)
-{
-    const vec3 offset = lamp.mPosition - position;
-    const float distance = length(offset);
-
-    return LampRay(distance > 0.0 ? offset / distance : vec3(0.0), distance);
-}
-
 /// One lamp as it arrives at a point.
 ///
 /// **The reach test and the falloff, which is the whole of what a lamp is at a distance.** Two
@@ -227,16 +208,23 @@ struct Lamp
 
 Lamp lampAt(GpuLight lamp, vec3 position)
 {
-    const LampRay ray = lampRayAt(lamp, position);
+    const vec3 offset = lamp.mPosition - position;
+    const float squared = dot(offset, offset);
 
     // **An early-out and not a rule**: the window in `falloff` is already exactly zero at and beyond
     // the reach, so this changes no pixel. What it saves is the shadow ray, which is the expensive
     // half of a light and the only reason the test is worth making at all. Zero distance is the
     // other half of it — a lamp standing exactly on the point has no direction to be lit from.
-    if (ray.mDistance >= lamp.mReach || ray.mDistance <= 0.0)
+    //
+    // **On the square, before the root and the divide**, because most of a cell's list fails here:
+    // a cell lists every lamp whose reach touches it, and at a point that is several lamps for each
+    // one that reaches.
+    if (squared >= lamp.mReach * lamp.mReach || squared <= 0.0)
         return Lamp(vec3(0.0), lamp.mIntensity, 0.0);
 
-    return Lamp(ray.mTowards, lamp.mIntensity, falloff(ray.mDistance, lamp.mReach, lamp.mSourceRadius));
+    const float distance = sqrt(squared);
+
+    return Lamp(offset / distance, lamp.mIntensity, falloff(distance, lamp.mReach, lamp.mSourceRadius));
 }
 
 /// One lamp held out of all the ones that could reach a point, and what it stands for.
@@ -387,16 +375,20 @@ float lampVisible(Reservoir kept, vec2 draw)
     if (!(kept.mWeight > 0.0))
         return 1.0;
 
+    // Aimed from where the ray leaves and not from where the lamp was weighed, with no reach test:
+    // a caller that moved its origin after weighing — the air does — still aims at the lamp it held.
     const GpuLight lamp = lightAt(kept.mLamp);
-    const LampRay ray = lampRayAt(lamp, kept.mFrom);
-    if (!(ray.mDistance > 0.0))
+    const vec3 offset = lamp.mPosition - kept.mFrom;
+    const float distance = length(offset);
+    if (!(distance > 0.0))
         return 1.0;
 
-    const vec3 towards = coneDirection(ray.mTowards, min(lamp.mSourceRadius / ray.mDistance, 1.0), draw);
+    const vec3 axis = offset / distance;
+    const vec3 towards = coneDirection(axis, min(lamp.mSourceRadius / distance, 1.0), draw);
 
     // How far along this direction the source stands beside it, which is where the ray is closest to
     // the lamp and so where the clearance has to be measured from.
-    const float along = ray.mDistance * dot(towards, ray.mTowards);
+    const float along = distance * dot(towards, axis);
 
     return lightThrough(kept.mFrom, towards, along - max(lamp.mClearance, SHADOW_BIAS));
 }

@@ -436,14 +436,70 @@ which read less than its own shafts and cannot, so one of that pair is a bad leg
 - **Shadow rays are a third to a half**, and they are cheap only where they are short. The guild's
   cost a fifth; the shore's, which run to `mFar` through foliage, nearly half.
 - **The lamp walk is a cost of its own where there are lamps.** At the guild removing the lamps
-  saves 0.43 ms and removing every shadow ray saves 0.25, so the walk of the cell's list — up to
-  256 lamps weighed at the eye's hit and again at the bounce's — is worth more there than the one
-  ray it buys. That is the one item this finding adds that nothing in the tree had named.
+  saves 0.43 ms and removing every shadow ray saves 0.25, which read as the walk of the cell's list
+  being worth more there than the one ray it buys. Finding 7 priced the two apart, and the ray is
+  the larger half; what the walk was is the four-times-too-long list, which is fixed there.
 - **The shafts are a quarter of Vivec's trace and a fifth of the shore's**, after the halving to
   four steps. Each step is a shadow ray, and the march runs on both of a water pixel's rays.
 - **The sky's rays are a tenth to a sixth out of doors**, the cutout's reads a tenth where there are
   cutouts, and everything else — the layer stack, the sprites, the fog read, the emissive fetch,
   the peel — is at or under a twentieth apiece.
+
+## Finding 7 — a lamp's rays are the larger half of its cost, and the list was four times too long
+
+Taken at `c58a3842f0`, in two interiors, with the same binary and two shader builds — one with the
+lamp's shadow ray answering one without tracing, one with `weighLamps` returning at once — against a
+build whose grid starts at a quarter tile and a shader build that rejects a candidate on the square
+of its distance. `bench --seconds=20`, the `trace` zone, interleaved.
+
+**What the grid held.** A lamp is binned into every cell its reach touches, and Morrowind's reaches
+run 256 to 640 units once `makeLight` has stretched them, so a cell of one tile listed lamps that
+stood up to a tile and a half away. The Guild of Mages' thirty lamps made lists of twenty-one at the
+longest and eight on average; at a quarter tile they are twelve and three and a half, and at an
+eighth eleven and under three for five times the entries. Arkngthand's twenty-seven went from
+fifteen and five to thirteen and three. An exterior overruns the cell budget below one tile and stays
+there, where its lists already averaged under two.
+
+**What a lamp costs, at 1920x1080**, on the two rounds taken before this document's own builds
+spoiled the rest — see the note on the power budget below:
+
+| | guild, of 1.37 | arkngthand, of 1.53 |
+|---|---:|---:|
+| the lamp rays, both depths | 0.27 (20 %) | 0.33 (22 %) |
+| the walk of the list, both depths | 0.18 (13 %) | 0.10 (7 %) |
+| taken off by the quarter-tile cell | 0.06 | 0.00 |
+| taken off by the cell and the reject together | 0.09 | 0.02 |
+
+So the ray is the larger half of a lamp everywhere, and the walk was worth cutting only where the
+list was long. What is left of the walk at the guild is a tenth of a millisecond over twelve
+candidates, twice a pixel.
+
+**At `--size=1280x720`**, 853×480 traced, where the card sits under its power cap and the clock holds, the same change reads
+0.49 against 0.51 to 0.52 at the guild over four rounds apiece, and 0.55 to 0.56 against 0.56 to 0.57
+at Arkngthand — a twentieth and a sixtieth, which is what the 1080p rounds said.
+
+**The lamp rays are what they are.** Two a pixel in a room — one at the eye's hit and one at the
+bounce's — each short, each stopped at the fitting's clearance, and each incoherent with its
+neighbour's because the reservoir draws per pixel; the acceleration structure already commits solids
+in hardware and asks the shader only about cutouts. Nothing unbiased was found that makes them
+fewer.
+
+**And the bounce, priced for a half rate**, at `--size=1280x720` at the guild, base 0.51 to 0.52: a per-pixel
+checkerboard reads 0.43, an eight-pixel tile 0.43 to 0.44, a thirty-two-pixel tile 0.37, and the
+bounce with its hit's material resolve replaced by a constant 0.48. So half the bounces cost a sixth
+of the trace per lane and over a quarter per large tile — the warp keeps running for the lanes that
+kept theirs, `INDIRECT_LIGHT_RATE` says why — and the whole resolve at the hit is a fourteenth. A
+half-resolution bounce pass would land between the two tile figures less what its upsample costs,
+and it is a decision about the picture: the same trade `INDIRECT_LIGHT_RATE` made for the bounce's
+lights out of doors and refused for them in a room.
+
+**The laptop's power budget is shared, and a build on the CPU moves the GPU's legs.** Rounds three
+to five of the 1080p batch were taken while shaders were being compiled beside them, and the guild's
+base moved from 1.37 to 1.58 and the no-lamps build from 0.92 to 1.33. At 1920x1080 the card draws
+its 150 W cap and the clock walks 200 MHz within a leg; at `--size=1280x720` it draws 124 W, the
+clock holds within 15 MHz, and an interior repeats to a hundredth of a millisecond. So an A/B on this box is
+taken at 720p, with nothing else running, and the ship's legs still spread 0.73 to 1.04 there for a
+reason nobody has found.
 
 ## What the tools can and cannot say
 
@@ -479,13 +535,15 @@ Pricing them apart is a build per pass and a `shot` each.
 
 ## What to do next, in order
 
-1. **Make the lamp walk cheaper where the list is long.** Finding 6: a third of the guild's trace is
-   weighing up to 256 candidates twice a pixel, for one ray. A cell that holds many lamps wants a
-   cheaper draw than a walk — a per-cell alias table built by `Rtx::LightGrid`, or a stratified
-   subset of the list — with the reservoir's own rule unchanged.
-2. **Then the bounce**, which is 37 to 61 per cent of the trace. Its hit's lights are half of it and
-   are already rated at a half; the other half is its traversal and resolve, which is where a
-   half-resolution bounce or a cheaper resolve at the bounce would land.
+1. **The bounce, and it is a decision about the picture before it is code.** Finding 7 prices it: a
+   half rate is worth a sixth of an interior's trace per lane and over a quarter per large tile, and
+   the resolve at its hit a fourteenth. The unbiased road is a rate, drawn and divided as
+   `INDIRECT_LIGHT_RATE` is, and the same argument that kept the bounce's lights whole in a room
+   holds for the bounce itself; a half-resolution pass is the other road and costs a G-buffer, an
+   upsample and the indirect term's resolution.
+2. **The lamp rays**, a fifth of an interior's trace, two a pixel and incoherent by construction.
+   Nothing unbiased was found; what would make them coherent — a draw shared across a tile — is
+   structured noise handed to the filter.
 3. **Leave the upscaler alone unless the picture changes.** It is the largest cost in every frame and
    it is a fixed function of the extent — the only knob on it is which extent to trace, and the
    target already names one that fits.
@@ -509,3 +567,7 @@ done
 
 Warm the card with one thrown-away `bench` first. The clock and the temperature are printed beside
 every result, and a leg whose clock differs from its neighbour's is the leg to repeat.
+
+An A/B between two builds is taken at `--size=1280x720`, where this card stays under its power cap
+and an interior repeats to a hundredth of a millisecond, with nothing compiling beside it — Finding 7
+says what either costs. A number for the target is still taken at 1920x1080.
