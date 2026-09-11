@@ -26,14 +26,18 @@ namespace RtxTool
     /// Which layers a run wants, from the three switches that can ask for them.
     ///
     /// **An explicit `--validation=false` turns off what was only on by default.** The two finer
-    /// switches each imply the layers, and both default on outside a Release build — so refusing
-    /// the layers while leaving those defaults standing turned nothing off at all, and anyone who
-    /// followed the tool's own advice about timing a frame measured one under instrumentation.
+    /// switches each imply the layers, and synchronization validation defaults on outside a Release
+    /// build — so refusing the layers while leaving that default standing turned nothing off at
+    /// all, and anyone who followed the tool's own advice about timing a frame measured one under
+    /// instrumentation.
     ///
     /// A switch asked for outright still wins: `--validation=false --sync-validation` is a
     /// contradiction, and the more specific half of it is the half that meant something.
     ///
-    /// @param windowed a window under GPU-assisted validation loses the device, so a window does
-    ///        not take that one by default. Asking for it outright still turns it on.
-    Rtx::ValidationOptions chooseValidation(CommandSwitch layers, CommandSwitch sync, CommandSwitch gpu, bool windowed);
+    /// **GPU-assisted validation is never a default**, which is the one asymmetry here and is the
+    /// layer's own instruction: it asks at `vkCreateInstance` not to be run beside the core checks.
+    /// Left on by the build it did both — a window lost the device at `vkWaitForFences` on three
+    /// runs of four, and a headless run aborted inside the layer's own thread. So it is asked for
+    /// by name or it is off, and the caller has nothing to decide.
+    Rtx::ValidationOptions chooseValidation(CommandSwitch layers, CommandSwitch sync, CommandSwitch gpu);
 }

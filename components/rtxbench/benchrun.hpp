@@ -186,8 +186,12 @@ namespace Rtx
     {
         /// Where the eye ends and what it looks at there. Both left out flies forwards along
         /// whatever the stop was left facing, which is what a savegame's own heading gives.
-        std::optional<osg::Vec3f> mTo;
-        std::optional<osg::Vec3f> mLookTo;
+        ///
+        /// **Empty by their own initializer rather than by omission**, because a designated
+        /// initializer that skips a field carrying none reads to GCC as an accidentally short
+        /// aggregate — and `MWRender::readSessionSetting` builds one of these from `mSpeed` alone.
+        std::optional<osg::Vec3f> mTo = std::nullopt;
+        std::optional<osg::Vec3f> mLookTo = std::nullopt;
 
         /// World units a second. A Morrowind exterior cell is 8,192 across, so this times the
         /// stop's length is roughly how many boundaries get crossed.

@@ -13,18 +13,27 @@ namespace RtxTool
         constexpr CommandSwitch sAsked{ .mValue = true, .mGiven = true };
         constexpr CommandSwitch sRefused{ .mValue = false, .mGiven = true };
 
-        /// Left alone, a development build validates everything a headless run can.
-        TEST(RtxValidationChoiceTest, theDefaultsLoadEveryLayerAWindowCanCarry)
-        {
-            const Rtx::ValidationOptions headless = chooseValidation(sDefaultOn, sDefaultOn, sDefaultOn, false);
-            EXPECT_TRUE(headless.mEnabled);
-            EXPECT_TRUE(headless.mSynchronization);
-            EXPECT_TRUE(headless.mGpuAssisted);
+        /// What a switch with no build default looks like, which `--gpu-validation` always is and
+        /// every switch is in a Release build.
+        constexpr CommandSwitch sQuiet{ .mValue = false, .mGiven = false };
 
-            // A window is the one place the GPU-assisted layer cannot be left on, and only where it
-            // was not asked for by name.
-            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sDefaultOn, true).mGpuAssisted);
-            EXPECT_TRUE(chooseValidation(sDefaultOn, sDefaultOn, sAsked, true).mGpuAssisted);
+        /// Left alone, a development build loads the layers and the synchronization checks.
+        ///
+        /// **And never the GPU-assisted one**, which the layer itself asks not to be run beside the
+        /// core checks: `--gpu-validation` has no build default to carry it, so nothing but the name
+        /// turns it on. `chooseValidation`'s own header says what the pairing cost.
+        TEST(RtxValidationChoiceTest, theGpuAssistedLayerArrivesByNameAndNoOtherWay)
+        {
+            const Rtx::ValidationOptions defaults = chooseValidation(sDefaultOn, sDefaultOn, sQuiet);
+            EXPECT_TRUE(defaults.mEnabled);
+            EXPECT_TRUE(defaults.mSynchronization);
+            EXPECT_FALSE(defaults.mGpuAssisted);
+
+            EXPECT_TRUE(chooseValidation(sDefaultOn, sDefaultOn, sAsked).mGpuAssisted) << "asking did not turn it on";
+
+            // **And not from a default either**, which is what reading this one by name buys: a
+            // build that started handing one out could not pair the two again by accident.
+            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sDefaultOn).mGpuAssisted);
         }
 
         /// The bug this rule was written for: refusing the layers has to turn them off.
@@ -34,7 +43,7 @@ namespace RtxTool
         /// timing a frame to pass exactly that.
         TEST(RtxValidationChoiceTest, refusingTheLayersTurnsOffWhatWasOnlyOnByDefault)
         {
-            const Rtx::ValidationOptions off = chooseValidation(sRefused, sDefaultOn, sDefaultOn, false);
+            const Rtx::ValidationOptions off = chooseValidation(sRefused, sDefaultOn, sQuiet);
             EXPECT_FALSE(off.mEnabled);
             EXPECT_FALSE(off.mSynchronization);
             EXPECT_FALSE(off.mGpuAssisted);
@@ -44,12 +53,12 @@ namespace RtxTool
         /// winning rather than the later one.
         TEST(RtxValidationChoiceTest, aSwitchAskedForByNameSurvivesARefusalOfTheRest)
         {
-            const Rtx::ValidationOptions sync = chooseValidation(sRefused, sAsked, sDefaultOn, false);
+            const Rtx::ValidationOptions sync = chooseValidation(sRefused, sAsked, sQuiet);
             EXPECT_TRUE(sync.mSynchronization);
             EXPECT_FALSE(sync.mGpuAssisted) << "still only on by default, and still refused";
             EXPECT_TRUE(sync.mEnabled) << "synchronization validation implies the layer that carries it";
 
-            const Rtx::ValidationOptions gpu = chooseValidation(sRefused, sDefaultOn, sAsked, false);
+            const Rtx::ValidationOptions gpu = chooseValidation(sRefused, sDefaultOn, sAsked);
             EXPECT_TRUE(gpu.mGpuAssisted);
             EXPECT_FALSE(gpu.mSynchronization);
             EXPECT_TRUE(gpu.mEnabled);
@@ -64,12 +73,10 @@ namespace RtxTool
         /// rather than a field of the request, so a caller has to have one in hand.
         TEST(RtxValidationChoiceTest, aReleaseBuildStaysQuietUntilSomethingIsAskedFor)
         {
-            constexpr CommandSwitch quiet{ .mValue = false, .mGiven = false };
-
-            EXPECT_FALSE(chooseValidation(quiet, quiet, quiet, false).mEnabled);
-            EXPECT_TRUE(chooseValidation(sAsked, quiet, quiet, false).mEnabled);
-            EXPECT_TRUE(chooseValidation(quiet, sAsked, quiet, false).mEnabled);
-            EXPECT_TRUE(chooseValidation(quiet, quiet, sAsked, false).mEnabled);
+            EXPECT_FALSE(chooseValidation(sQuiet, sQuiet, sQuiet).mEnabled);
+            EXPECT_TRUE(chooseValidation(sAsked, sQuiet, sQuiet).mEnabled);
+            EXPECT_TRUE(chooseValidation(sQuiet, sAsked, sQuiet).mEnabled);
+            EXPECT_TRUE(chooseValidation(sQuiet, sQuiet, sAsked).mEnabled);
         }
 
         /// A run that named a layer demands it; a build that switched one on does not.
@@ -80,20 +87,18 @@ namespace RtxTool
         /// starts. `Rtx::ValidationOptions::mDemanded` is what tells the two apart.
         TEST(RtxValidationChoiceTest, onlyASwitchNamedOnTheCommandLineDemandsTheLayers)
         {
-            constexpr CommandSwitch quiet{ .mValue = false, .mGiven = false };
-
-            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sDefaultOn, false).mDemanded)
+            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sQuiet).mDemanded)
                 << "a build default demanded the layers";
-            EXPECT_FALSE(chooseValidation(sRefused, quiet, quiet, false).mDemanded)
+            EXPECT_FALSE(chooseValidation(sRefused, sQuiet, sQuiet).mDemanded)
                 << "turning the layers down demanded them";
 
-            EXPECT_TRUE(chooseValidation(sAsked, quiet, quiet, false).mDemanded);
-            EXPECT_TRUE(chooseValidation(quiet, sAsked, quiet, false).mDemanded);
-            EXPECT_TRUE(chooseValidation(quiet, quiet, sAsked, false).mDemanded);
+            EXPECT_TRUE(chooseValidation(sAsked, sQuiet, sQuiet).mDemanded);
+            EXPECT_TRUE(chooseValidation(sQuiet, sAsked, sQuiet).mDemanded);
+            EXPECT_TRUE(chooseValidation(sQuiet, sQuiet, sAsked).mDemanded);
 
             // A demand for the finer layer stands even against a refusal of the coarser one, which
             // is the same rule `mEnabled` follows above.
-            EXPECT_TRUE(chooseValidation(sRefused, sAsked, quiet, false).mDemanded);
+            EXPECT_TRUE(chooseValidation(sRefused, sAsked, sQuiet).mDemanded);
         }
     }
 }

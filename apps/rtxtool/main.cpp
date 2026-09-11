@@ -70,10 +70,7 @@ namespace RtxTool
         /// Shared because `info` and every other command have to agree: a device that reported its
         /// limits under one set of layers and traced under another would be describing something
         /// nobody ran.
-        ///
-        /// @param windowed whether this run opens a window, which is the one place GPU-assisted
-        ///        validation cannot be left on.
-        Rtx::ValidationOptions validationFrom(const bpo::variables_map& variables, bool windowed)
+        Rtx::ValidationOptions validationFrom(const bpo::variables_map& variables)
         {
             // Whether a switch was set matters as much as what it says, so both come across.
             const auto asSwitch = [&](const char* name) {
@@ -81,7 +78,7 @@ namespace RtxTool
             };
 
             return RtxTool::chooseValidation(
-                asSwitch("validation"), asSwitch("sync-validation"), asSwitch("gpu-validation"), windowed);
+                asSwitch("validation"), asSwitch("sync-validation"), asSwitch("gpu-validation"));
         }
 
         /// Reports go to the unprefixed stream.
@@ -132,12 +129,12 @@ namespace RtxTool
         /// instrumentation is worse than no run at all: it produces a number, and the number is
         /// wrong. GPU-assisted validation instruments every shader besides, so a picture drawn under
         /// one is not the picture the next run will be compared against.
-        Rtx::ValidationOptions validationForMeasuring(const bpo::variables_map& variables, bool windowed)
+        Rtx::ValidationOptions validationForMeasuring(const bpo::variables_map& variables)
         {
             const bool asked = !variables["validation"].defaulted() || !variables["sync-validation"].defaulted()
                 || !variables["gpu-validation"].defaulted();
 
-            return asked ? validationFrom(variables, windowed) : Rtx::ValidationOptions{};
+            return asked ? validationFrom(variables) : Rtx::ValidationOptions{};
         }
 
         /// What `--hour` named, or nothing where it was left at its default. `placeFrom` is the rule
@@ -316,7 +313,7 @@ namespace RtxTool
         {
             Rtx::SessionRequest request;
             request.mStops.push_back(std::move(stop));
-            request.mValidation = validationFrom(command.mVariables, false);
+            request.mValidation = validationFrom(command.mVariables);
 
             return runHosted(command.mVariables, command.mConfig, command.mResources, frameFrom(command).mProfile,
                 std::move(request));
@@ -479,7 +476,7 @@ namespace RtxTool
 
         int commandInfo(const Command& command)
         {
-            const Rtx::ValidationOptions validation = validationFrom(command.mVariables, false);
+            const Rtx::ValidationOptions validation = validationFrom(command.mVariables);
 
             return runInfo(command, validation);
         }
@@ -575,7 +572,7 @@ namespace RtxTool
                 request.mStops.push_back(stop);
             }
 
-            request.mValidation = validationForMeasuring(variables, false);
+            request.mValidation = validationForMeasuring(variables);
 
             if (const int status
                 = runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
@@ -617,7 +614,7 @@ namespace RtxTool
             request.mAgainst = variables["against"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
             request.mHeadless = !variables["window"].as<bool>();
-            request.mValidation = validationForMeasuring(variables, !request.mHeadless);
+            request.mValidation = validationForMeasuring(variables);
 
             // **Asked whether it was written and not what it defaults to**, because nothing is the
             // answer that leaves the frame clock deciding — which is what every other verb gets.
@@ -684,7 +681,7 @@ namespace RtxTool
             request.mStops.push_back(std::move(staged.mStop));
             request.mHeadless = false;
             request.mQuitAtEnd = frames > 0;
-            request.mValidation = validationFrom(variables, true);
+            request.mValidation = validationFrom(variables);
 
             return runHosted(variables, command.mConfig, command.mResources, frameFrom(command).mProfile,
                 std::move(request), &staged.mSpot);
@@ -763,7 +760,7 @@ namespace RtxTool
             }
 
             request.mSuite = suite;
-            request.mValidation = validationFrom(variables, false);
+            request.mValidation = validationFrom(variables);
 
             return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
         }

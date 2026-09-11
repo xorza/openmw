@@ -132,11 +132,11 @@ namespace RtxTool
         option(Verbs::Every, "sync-validation",
             bpo::value<bool>()->default_value(validationByDefault)->implicit_value(true),
             "add synchronization validation, which catches missing barriers (implies --validation)");
-        option(Verbs::Every, "gpu-validation",
-            bpo::value<bool>()->default_value(validationByDefault)->implicit_value(true),
+        option(Verbs::Every, "gpu-validation", bpo::value<bool>()->default_value(false)->implicit_value(true),
             "add GPU-assisted validation, which instruments shaders and catches what a ray query "
-            "does with its own arguments (implies --validation). Costs about half the frame rate, "
-            "and is left off by `view` unless asked for: a window under it loses the device");
+            "does with its own arguments (implies --validation). Off unless asked for, whatever the "
+            "build: it costs about half the frame rate, and the layer itself asks not to be run "
+            "beside the core checks");
 
         option(sPlaces, "cell", bpo::value<std::string>()->default_value(""),
             "cell to read, addressed the way Morrowind does: a pair of integers is an exterior, "

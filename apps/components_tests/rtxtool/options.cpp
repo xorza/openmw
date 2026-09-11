@@ -7,6 +7,7 @@
 
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
 
 #include <apps/rtxtool/options.hpp>
 #include <apps/rtxtool/verbs.hpp>
@@ -22,6 +23,37 @@ namespace RtxTool
         bpo::parsed_options parse(const ToolOptions& options, const std::vector<std::string>& line)
         {
             return bpo::command_line_parser(line).options(options.mDescription).run();
+        }
+
+        /// What a switch comes to when nobody names it, which is what `validationByDefault` decides
+        /// for two of the three layer switches and for neither of the other one.
+        bool defaultOf(const bool validationByDefault, const char* const name)
+        {
+            const ToolOptions options = makeOptions(validationByDefault);
+
+            bpo::variables_map variables;
+            bpo::store(parse(options, {}), variables);
+            bpo::notify(variables);
+
+            return variables[name].as<bool>();
+        }
+
+        /// GPU-assisted validation is the one layer switch a build never turns on.
+        ///
+        /// **The layer asks not to be run beside the core checks**, and a build that ran both took
+        /// the process down — `RtxTool::chooseValidation` says what that cost. Nothing downstream
+        /// can hold this rule: the chooser is handed whatever the description defaulted to, so the
+        /// default is where it has to be stated and where it has to be checked.
+        TEST(RtxToolOptionsTest, onlyTheGpuAssistedLayerIsNeverOnByDefault)
+        {
+            EXPECT_TRUE(defaultOf(true, "validation"));
+            EXPECT_TRUE(defaultOf(true, "sync-validation"));
+            EXPECT_FALSE(defaultOf(true, "gpu-validation")) << "a development build paired it with the core checks";
+
+            // A release build asks for nothing at all, which is the rule the other two follow.
+            EXPECT_FALSE(defaultOf(false, "validation"));
+            EXPECT_FALSE(defaultOf(false, "sync-validation"));
+            EXPECT_FALSE(defaultOf(false, "gpu-validation"));
         }
 
         /// The bug: an option belonging to one command, given to another, went nowhere.

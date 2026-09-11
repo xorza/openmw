@@ -199,12 +199,13 @@ namespace MWRender
         // two hosts of one renderer must not disagree about the layers. What they answer is the
         // fault a core-clean run still ends in: a device lost with an address and nothing else.
         //
-        // **A window under the GPU-assisted layer loses the device on its own**, which is why the
-        // two are separate switches: `vkWaitForFences` comes back `VK_ERROR_DEVICE_LOST` on three
-        // runs of four, somewhere inside a minute, with nothing wrong in the frame —
-        // `RtxTool::chooseValidation` measured it and leaves the layer off over a window for the
-        // same reason. So `OPENMW_RTX_SYNC_VALIDATION` is the one to reach for in the game, and
-        // `OPENMW_RTX_GPU_VALIDATION` is there for a session willing to tell the two losses apart.
+        // **The GPU-assisted layer takes the process down on its own**, which is why the two are
+        // separate switches: over a window `vkWaitForFences` comes back `VK_ERROR_DEVICE_LOST` on
+        // three runs of four, somewhere inside a minute, with nothing wrong in the frame, and
+        // headless it has aborted inside the layer's own thread. `RtxTool::chooseValidation` gives
+        // it no default at all for the same reason. So `OPENMW_RTX_SYNC_VALIDATION` is the one to
+        // reach for in the game, and `OPENMW_RTX_GPU_VALIDATION` is there for a session willing to
+        // tell the losses apart.
         options.mValidation.mSynchronization
             = options.mValidation.mSynchronization || askedFor("OPENMW_RTX_SYNC_VALIDATION");
         options.mValidation.mGpuAssisted = options.mValidation.mGpuAssisted || askedFor("OPENMW_RTX_GPU_VALIDATION");

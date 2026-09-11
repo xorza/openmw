@@ -29,6 +29,9 @@ namespace MWRender
     /// asked for rather than passed down through it. A ray tracer answers the same request with
     /// rays, and none of those words mean anything to it.
     ///
+    /// **Every field but the reference carries its own initializer.** A caller that names some of
+    /// them and sets the rest afterwards — which `StopWriter` does, and is the readable way to fill
+    /// a nested one — reads to GCC as an accidentally short aggregate otherwise.
     struct OffscreenViewSpec
     {
         /// The subtree to draw. Every `redraw()` updates it and then draws it, so an update
@@ -54,14 +57,14 @@ namespace MWRender
         /// holds, this field notwithstanding.
         unsigned int mMask = ~0u;
 
-        SceneUtil::Framing mFraming;
+        SceneUtil::Framing mFraming{};
 
         /// Behind everything, and seen through whatever the picture does not cover: the GUI
         /// composites the result rather than filling a widget with it.
-        osg::Vec4f mClearColour;
+        osg::Vec4f mClearColour{};
 
         /// The only light there is, pointing towards where it comes from.
-        SceneUtil::FlatLight mSun;
+        SceneUtil::FlatLight mSun{};
 
         /// Whether `mScene` is a piece of the world or a group the game assembled for this picture
         /// alone. The world arrives already lit, already placed relative to the eye and already
