@@ -1,6 +1,7 @@
 #include "benchrun.hpp"
 
 #include <array>
+#include <cassert>
 #include <string_view>
 #include <utility>
 
@@ -23,6 +24,7 @@ namespace Rtx
             std::pair{ Check::GroundStands, std::string_view("ground-stands") },
             std::pair{ Check::LightsNotDoubled, std::string_view("lights-not-doubled") },
             std::pair{ Check::TexturesReadable, std::string_view("textures-readable") },
+            std::pair{ Check::CameraStands, std::string_view("camera-stands") },
             std::pair{ Check::CrossingsAppend, std::string_view("crossings-append") },
         } };
 
@@ -37,5 +39,15 @@ namespace Rtx
     std::span<const Check> everyCheck()
     {
         return sEvery;
+    }
+
+    osg::Vec3f Stand::getLook() const
+    {
+        assert(mEye.has_value());
+
+        if (!mLook.has_value() || (*mLook - *mEye).length2() <= 0.0f)
+            return *mEye + osg::Vec3f(0.0f, 1.0f, 0.0f);
+
+        return *mLook;
     }
 }

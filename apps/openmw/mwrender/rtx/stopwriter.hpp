@@ -10,6 +10,7 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
+#include "checks.hpp"
 #include "tracedrun.hpp"
 
 namespace Rtx
@@ -41,9 +42,9 @@ namespace MWRender
         ///
         /// @param reconstruction what put that frame back together, which decides what channels it
         ///        has. `Rtx::hasFrameImage` is where that rule lives.
-        /// @param crossings what the stop's route came to, which only a check reads.
+        /// @param facts what the stop asked for and came to, which only a check reads.
         void write(const TracedRun& run, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
-            const Rtx::Crossings& crossings, Rtx::RunRecord& record);
+            const StopFacts& facts, Rtx::RunRecord& record);
 
     private:
         /// The frame a writer reads, what put it together, and where it says its answer.
@@ -96,7 +97,7 @@ namespace MWRender
             const Writing& into, OffscreenView& view, int width, int height, const std::filesystem::path& file);
 
         /// Asks every check the stop named, and reports each one's answer.
-        void runChecks(const Writing& into, std::span<const Rtx::Check> checks, const Rtx::Crossings& crossings);
+        void runChecks(const Writing& into, std::span<const Rtx::Check> checks, const StopFacts& facts);
 
         /// What a read back lands in, refilled per stop and never freed.
         std::vector<std::uint8_t> mPixels;

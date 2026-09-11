@@ -164,7 +164,26 @@ namespace MWRender
         /// Moves the sky one frame along the stop's list of weathers.
         void turnWeather();
 
-        /// Points the game's camera where the stop asked, and holds it there.
+        /// Puts the camera where the stop stands this frame, and points it where the stop asked.
+        ///
+        /// **Every frame, because the aim does not hold on its own.** `omw/camera/camera.lua` keeps
+        /// out of `Mode::Static` in its `onFrame` and not in its `onActive`, which forces
+        /// `MODE.ThirdPerson` outright — and a stop begins with a teleport, which reactivates the
+        /// player and runs it. Aimed once, every standing view drew its first frame from the camera
+        /// it named and every frame after that from a third-person camera 192 units behind the body
+        /// at nought pitch and nought yaw — which is the frame `shot` writes and the frames `bench`
+        /// measures. `Rtx::Check::CameraStands` is what says it still holds.
+        ///
+        /// **A standing stop and a heading route are one case.** A route moves `mFlown` and a
+        /// standing stop leaves it where the stop began, so carrying the stop's own heading forward
+        /// from `mFlown` is the aim for both. A route that names a destination is the one that aims
+        /// at a point instead of along a heading.
+        ///
+        /// Nothing at all where the stop named no camera, or where a free-camera stop gave it to
+        /// the player.
+        void aim();
+
+        /// Points the game's camera along `look` from `eye`, for as long as nothing else moves it.
         void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look);
 
         /// What one stop has come to so far.

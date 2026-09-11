@@ -704,6 +704,13 @@ namespace RtxTool
                 case Rtx::Check::CrossingsAppend:
                     return stop.mSchedule.mRoute.has_value();
 
+                // **Asked of a stop that stands still.** A route leaves the camera wherever it
+                // flew to and `Stand` names only where it set off from, so the two legitimately
+                // differ by the whole length of the route.
+                case Rtx::Check::CameraStands:
+                    return stop.mStand.mEye.has_value() && !stop.mSchedule.mFreeCamera
+                        && !stop.mSchedule.mRoute.has_value();
+
                 case Rtx::Check::WalkTwice:
                 case Rtx::Check::SurfacesDescribed:
                 case Rtx::Check::LightsPlaced:

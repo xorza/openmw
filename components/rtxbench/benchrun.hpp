@@ -79,6 +79,18 @@ namespace Rtx
         /// **A canary, and it should be nought.** A texture the uploader could not read is drawn
         /// grey, which reads as a material fault rather than as a missing file.
         TexturesReadable,
+
+        /// The frame was drawn from the camera the stop asked for.
+        ///
+        /// **Nothing else in a run says which camera it measured.** Every figure and every picture
+        /// is of whatever the camera turned out to be, so a camera something else moved is a whole
+        /// run measured somewhere nobody asked about — with a hit fraction and a frame time that
+        /// look perfectly reasonable. It has happened, and `MWRender::Session::aim` says how.
+        ///
+        /// Answered yes by a stop that named no camera, by a free-camera stop that gave it to the
+        /// player, and by a routed one — the first two asked for none, and the third leaves the
+        /// camera wherever the route flew it while `Stand` names only where it set off from.
+        CameraStands,
     };
 
     /// What a check is called on a command line and in a report.
@@ -137,6 +149,19 @@ namespace Rtx
         /// session wants.
         std::optional<osg::Vec3f> mEye;
         std::optional<osg::Vec3f> mLook;
+
+        /// The point the eye faces: what `mLook` names, or due north where it names nothing and
+        /// where it names the eye itself.
+        ///
+        /// **One answer, because two things read it.** `MWRender::Session` aims the camera at it
+        /// and `Rtx::Check::CameraStands` asserts the camera reached it, and a default spelled in
+        /// both would let the check go on agreeing with a rule the session had stopped following.
+        ///
+        /// **A look at the eye is no look at all**, because a direction of no length aims nothing:
+        /// `Camera::setYaw` would be handed an `atan2(0, 0)` and the check an `acos` of a NaN.
+        ///
+        /// Only for a stand that names an eye, which is the only kind that names a camera.
+        osg::Vec3f getLook() const;
     };
 
     /// What the sky does at a stop.

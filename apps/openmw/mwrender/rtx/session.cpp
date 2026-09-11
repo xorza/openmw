@@ -44,6 +44,7 @@
 
 #include "../camera.hpp"
 #include "../renderingmanager.hpp"
+#include "checks.hpp"
 #include "rtxrenderer.hpp"
 #include "stopwriter.hpp"
 
@@ -312,8 +313,8 @@ namespace MWRender
         along.normalize();
 
         // **A static camera and not the player's own.** Nothing tracks the body, nothing rotates
-        // to its facing and nothing casts a ray to keep the eye out of a wall — which is what a
-        // view file's coordinates mean, and what the built-in camera script leaves alone.
+        // to its facing and nothing casts a ray to keep the eye out of a wall, which is what a view
+        // file's coordinates mean. It does not hold on its own, for the reason `Session::aim` gives.
         camera->setMode(Camera::Mode::Static);
         camera->setStaticPosition(osg::Vec3d(eye));
 
@@ -477,9 +478,11 @@ namespace MWRender
         }
         else if (stop.mStand.mEye.has_value())
         {
-            const osg::Vec3f eye = *stop.mStand.mEye;
-            mProgress->standAt(eye, stop.mStand.mLook.value_or(eye + osg::Vec3f(0.0f, 1.0f, 0.0f)));
-            aimCamera(mProgress->mFrom, mProgress->mFromLook);
+            mProgress->standAt(*stop.mStand.mEye, stop.mStand.getLook());
+
+            // **Here as well as every frame**, because a frame drawn between this and the first
+            // `aim` would be drawn from wherever the last stop left the camera.
+            aim();
         }
         else
         {
@@ -548,14 +551,20 @@ namespace MWRender
         // position lives in the physics world as well, and a move that writes only the world's
         // copy is written back over it on the next step.
         world.moveObjectBy(player, mProgress->mFlown - standing, true);
+    }
 
-        if (stop.mStand.mEye.has_value())
-        {
-            const osg::Vec3f look = route.mLookTo.has_value()
-                ? *route.mLookTo
-                : mProgress->mFlown + (mProgress->mFromLook - mProgress->mFrom);
-            aimCamera(mProgress->mFlown, look);
-        }
+    void Session::aim()
+    {
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
+        if (stop.mSchedule.mFreeCamera || !stop.mStand.mEye.has_value())
+            return;
+
+        const std::optional<Rtx::Route>& route = stop.mSchedule.mRoute;
+        const osg::Vec3f look = route.has_value() && route->mLookTo.has_value()
+            ? *route->mLookTo
+            : mProgress->mFlown + (mProgress->mFromLook - mProgress->mFrom);
+
+        aimCamera(mProgress->mFlown, look);
     }
 
     void Session::turnWeather()
@@ -650,6 +659,11 @@ namespace MWRender
             fly();
             turnWeather();
         }
+
+        // **After the route has stepped and on every frame, warm-up included.** `Session::aim`
+        // says why once is not enough; the warm-up frames stand at the route's start, which is
+        // where `mFlown` still is.
+        aim();
 
         // **After the schedule has moved, because the note is of the frame about to be drawn.** The
         // route flies the eye and the turn crosses the sky above it, both between this call and the
@@ -755,7 +769,8 @@ namespace MWRender
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
-        mHeld->mWriter.write(run, reconstruction, stop.mActions, mProgress->mCrossings, mRecord);
+        mHeld->mWriter.write(run, reconstruction, stop.mActions,
+            StopFacts{ .mCrossings = mProgress->mCrossings, .mStand = stop.mStand }, mRecord);
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;

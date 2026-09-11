@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <osg/BoundingBox>
+#include <osg/Math>
 #include <osg/Vec3f>
 
 #include <components/misc/constants.hpp>
@@ -22,6 +23,8 @@
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
 
+#include "../camera.hpp"
+#include "../renderingmanager.hpp"
 #include "worldmirror.hpp"
 
 namespace MWRender
@@ -38,7 +41,7 @@ namespace MWRender
             = static_cast<float>(Constants::CellSizeInUnits) * (2 * Constants::CellGridRadius + 1);
     }
 
-    bool checkHolds(const TracedRun& run, const Rtx::Check check, const Rtx::Crossings& crossings, std::string& found)
+    bool checkHolds(const TracedRun& run, const Rtx::Check check, const StopFacts& facts, std::string& found)
     {
         const Rtx::SceneTables scene = run.mScene.getTables();
         const Rtx::ExtractionStats& stats = run.mWalked;
@@ -133,8 +136,45 @@ namespace MWRender
                 return run.mUnreadableTextures == 0;
 
             case Rtx::Check::CrossingsAppend:
+            {
+                const Rtx::Crossings& crossings = facts.mCrossings;
                 found = std::format("{} crossings, {} of them rebuilds", crossings.mCount, crossings.mRebuilds);
                 return crossings.mCount > 0 && crossings.mRebuilds < crossings.mCount;
+            }
+
+            case Rtx::Check::CameraStands:
+            {
+                // **Answered rather than compared, where the stop named no camera.** Measuring the
+                // camera against itself is a yes nothing could fail, which reads in the report
+                // exactly like a camera that held.
+                const Rtx::Stand& stand = facts.mStand;
+                if (!stand.mEye.has_value())
+                {
+                    found = "the stop named no camera of its own";
+                    return true;
+                }
+
+                // **The game's camera and not the note the session took**, which is read off the
+                // same object: a check against that would agree with itself however far either had
+                // drifted from what the stop asked for.
+                const Camera& camera = *MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
+                const osg::Vec3f eye(camera.getPosition());
+                const osg::Vec3f forward = camera.getOrient() * osg::Vec3f(0.0f, 1.0f, 0.0f);
+
+                osg::Vec3f asked = stand.getLook() - *stand.mEye;
+                asked.normalize();
+
+                // A tenth of a unit and a tenth of a degree: the eye is set from the view file
+                // outright, and the aim goes out through a pitch and a yaw and comes back through a
+                // quaternion, so what survives is float rounding rather than a tolerance on a
+                // measurement.
+                const float slipped = (eye - *stand.mEye).length();
+                const float turned = osg::RadiansToDegrees(std::acos(std::clamp(forward * asked, -1.0f, 1.0f)));
+
+                found
+                    = std::format("the eye stands {:.2f} units and {:.2f}° from what the stop asked", slipped, turned);
+                return slipped < 0.1f && turned < 0.1f;
+            }
         }
 
         return false;

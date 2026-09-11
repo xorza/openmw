@@ -74,7 +74,7 @@ namespace MWRender
     }
 
     void StopWriter::write(const TracedRun& run, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
-        const Rtx::Crossings& crossings, Rtx::RunRecord& record)
+        const StopFacts& facts, Rtx::RunRecord& record)
     {
         const Writing into{ run, reconstruction, record };
 
@@ -103,7 +103,7 @@ namespace MWRender
             reportFound(into, actions.mFind);
 
         if (!actions.mChecks.empty())
-            runChecks(into, actions.mChecks, crossings);
+            runChecks(into, actions.mChecks, facts);
     }
 
     void StopWriter::writeCapture(const Writing& into, const std::filesystem::path& file)
@@ -439,13 +439,12 @@ namespace MWRender
         into.mRecord.note(std::format("{} placements wear a texture matching \"{}\"\n", met, needle));
     }
 
-    void StopWriter::runChecks(
-        const Writing& into, const std::span<const Rtx::Check> checks, const Rtx::Crossings& crossings)
+    void StopWriter::runChecks(const Writing& into, const std::span<const Rtx::Check> checks, const StopFacts& facts)
     {
         for (const Rtx::Check check : checks)
         {
             std::string found;
-            const bool held = checkHolds(into.mRun, check, crossings, found);
+            const bool held = checkHolds(into.mRun, check, facts, found);
 
             into.mRecord.checked(held);
             into.mRecord.note(std::format("  {:<20} {:<4} {}\n", checkName(check), held ? "ok" : "FAIL", found));

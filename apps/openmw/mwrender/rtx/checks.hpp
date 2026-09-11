@@ -8,10 +8,24 @@
 
 namespace MWRender
 {
-
-    /// Whether one check holds of what `owner` was handed and what it drew, with what it found in
-    /// `found` either way.
+    /// What a stop asked for and what it came to, beside the frame it drew.
     ///
-    /// @param crossings what the stop's route came to, which only that check reads.
-    bool checkHolds(const TracedRun& run, Rtx::Check check, const Rtx::Crossings& crossings, std::string& found);
+    /// **Named for the reason `TracedRun` is.** Each of these is read by one claim and by nothing
+    /// else, and each arrived as a parameter of its own through `StopWriter::write` and
+    /// `StopWriter::runChecks` — neither of which reads either. A second was one parameter; a third
+    /// would have been another.
+    ///
+    /// Borrowed and valid for one stop.
+    struct StopFacts
+    {
+        /// What the stop's route came to, which only `CrossingsAppend` reads.
+        const Rtx::Crossings& mCrossings;
+
+        /// What the stop asked its camera to be, which only `CameraStands` reads.
+        const Rtx::Stand& mStand;
+    };
+
+    /// Whether one check holds of what `run` was handed and what it drew, with what it found in
+    /// `found` either way.
+    bool checkHolds(const TracedRun& run, Rtx::Check check, const StopFacts& facts, std::string& found);
 }
