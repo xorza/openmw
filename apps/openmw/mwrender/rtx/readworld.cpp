@@ -84,12 +84,19 @@ namespace MWRender
         // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
         // in one air.
         //
-        // **A quasi-exterior takes a room's air under an outdoor sky**, and this is the one place
-        // that can tell one: `WorldReading::mFogFromSky` says what turns on it.
-        const bool fogFromSky = world.isOutdoors() && !world.isInteriorCell();
-        const Rtx::Fog air = room.has_value() ? room->mFog
-            : fogFromSky                      ? Rtx::exteriorFog(haze, world.mFogDepth, world.mBaseWindSpeed, landReach)
-                                              : Rtx::roomFog(haze, world.mFogDepth);
+        // **A quasi-exterior stands in the weather's air, because that is the air the game gives
+        // it.** The weather system is run for one, so what arrives here is already a weather's
+        // blended `Land_Fog_Depth` and fog colour rather than anything of the cell's — the
+        // Construction Set greys the whole `AMBI` record out for a cell that behaves like an
+        // exterior, so there is nothing of a room's to read. Handed to `roomFog` all the same, the
+        // even unbanked medium it builds has no layer for a ray to climb out of: it closed over the
+        // sky, and the sun with it.
+        //
+        // **The two open-air builders read the same four numbers**, and differ only in the ring
+        // they close over, so the cell picks between the builders rather than between two calls.
+        const auto openAir = world.mLocation == Location::Exterior ? &Rtx::exteriorFog : &Rtx::quasiExteriorFog;
+        const Rtx::Fog air
+            = room.has_value() ? room->mFog : openAir(haze, world.mFogDepth, world.mBaseWindSpeed, landReach);
 
         // **Before the frame rather than into it, because the deck is lit by them.** A cloud layer
         // takes the moons' light like anything else under a night sky, and `Rtx::deckLight` is
@@ -119,7 +126,6 @@ namespace MWRender
                 .mFog = air,
             },
             .mOutdoors = world.isOutdoors(),
-            .mFogFromSky = fogFromSky,
             .mGlare = world.mSunGlare,
             .mStarRoll = world.mSkyRoll.mStars,
             .mCloudRoll = world.mSkyRoll.mClouds,

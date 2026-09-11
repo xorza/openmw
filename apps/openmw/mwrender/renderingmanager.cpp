@@ -894,6 +894,13 @@ namespace MWRender
             : simulation.isCellQuasiExterior()            ? Location::QuasiExterior
                                                           : Location::Interior;
 
+        // **Cleared beside the line that decides it, because nothing else ever would.**
+        // `configureAmbient` is the only writer and `MWWorld::Scene` calls it for a room and for
+        // nothing at all otherwise, so the record a player walked in under was still standing after
+        // they walked out: Balmora at noon was lit by the tomb behind them, with no sun in it.
+        if (described.mLocation != Location::Interior)
+            described.mRoom.reset();
+
         described.mUnderwater = underwater;
         described.mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) };
         described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };

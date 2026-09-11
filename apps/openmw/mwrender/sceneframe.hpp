@@ -41,12 +41,14 @@ namespace MWRender
 
     /// What kind of place the player is standing in, as the cell record says.
     ///
-    /// **Three and not two, because the two consumers split the middle one differently.** A
+    /// **Three and not two, because its readers split the middle one three ways.** A
     /// quasi-exterior — Vivec's cantons, the Ministry of Truth — is an interior cell that draws a
     /// sky and has weather. The `isInterior` uniform counts it as inside, because that is what the
-    /// cell is; the shader chain's exterior mask counts it as outside, because that is what it
-    /// looks like. A single boolean could only have been right for one of them, and reading either
-    /// off whether a dome happens to be drawn is a third answer again.
+    /// cell is. The shader chain's exterior mask counts it as outside, because that is what it
+    /// looks like. And `MWRender::readWorld` counts it as neither: it stands in a weather's air
+    /// with no ring of cut ground under it, so it takes a builder of its own. A single boolean
+    /// could only ever have been right for one of the three, and reading any of them off whether a
+    /// dome happens to be drawn is a fourth answer again.
     enum class Location
     {
         Interior,
@@ -208,6 +210,11 @@ namespace MWRender
         /// **Nothing rather than three stale numbers**, which is what they were: written at every
         /// cell change and meaningless at all but a fraction of them. `RoomMood` says what the
         /// fourth number is and why it stays outside.
+        ///
+        /// **Written when a room is entered and cleared beside `mLocation`**, because those are not
+        /// the same event: `configureAmbient` is the only writer and `MWWorld::Scene` calls it for
+        /// a room and for nothing else, so nothing at all wrote this when the player stepped back
+        /// out. `RenderingManager::describeWorld` is where it is made to hold.
         std::optional<RoomMood> mRoom;
 
         /// What `updateAmbient` added to the ambient for the Night-Eye effect, in the file's space:

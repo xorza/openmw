@@ -5,7 +5,11 @@
 
 namespace TestingOpenMW
 {
-    /// Every fallback key this binary's tests read, planted once before any of them runs.
+    /// Every fallback key this fork's tests read, planted once before any of them runs.
+    ///
+    /// **Read by both test binaries.** `openmw-tests` stands on it too, because `MWRender::readWorld`
+    /// asks the sky about an hour and the sky refuses one before it has been told when the day
+    /// starts.
     ///
     /// **`Fallback::Map::init` keeps whichever value arrives first**, so a key two tests both wanted
     /// used to belong to whichever ran first — and a test that planted only what its own assertions

@@ -44,6 +44,14 @@ namespace Rtx
         };
     }
 
+    Fog quasiExteriorFog(const osg::Vec3f& colour, float depth, float wind, float reach)
+    {
+        Fog air = exteriorFog(colour, depth, wind, reach);
+        air.mEdge = 0.0f;
+
+        return air;
+    }
+
     Fog roomFog(const osg::Vec3f& colour, float depth)
     {
         return Fog{

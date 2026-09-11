@@ -167,7 +167,8 @@ namespace Rtx
             EXPECT_GT(fogLift(1.9f, 0.0f), fogLift(0.8f, 0.3f)) << "depth beats wind, which is why both are read";
         }
 
-        /// The open air is measured over the same reach it closes at, and a room closes at nothing.
+        /// The open air is measured over the same reach it closes at, and a cell that is built
+        /// whole closes at nothing.
         ///
         /// **Two elements out of one number, which is why one function builds both.** How thick the
         /// air is and where it becomes opaque are the same question about how much world there is,
@@ -202,7 +203,8 @@ namespace Rtx
             EXPECT_EQ(near.mWind, 0.0f);
 
             // The wind it was read with rides along, for the frame to point along the deck's bearing.
-            EXPECT_EQ(exteriorFog(haze, 0.69f, 0.3f, 4.0f * cell).mWind, 0.3f);
+            const Fog open = exteriorFog(haze, 0.69f, 0.3f, 4.0f * cell);
+            EXPECT_EQ(open.mWind, 0.3f);
 
             // A room is none of that: a fixed reach, still air, and no ring of cut ground to close
             // over however much world stands outside its walls.
@@ -211,6 +213,20 @@ namespace Rtx
             EXPECT_EQ(room.mEdge, 0.0f);
             EXPECT_EQ(room.mUniform, 1.0f);
             EXPECT_NEAR(room.mExtinction, fogExtinction(0.75f, sInteriorFogReach), 1e-10f);
+
+            // **A quasi-exterior parts from the open air in the edge alone**, which is the one
+            // element of the two that is about this renderer rather than about the weather:
+            // Mournhold's every wall is built, so there is no ring of cut ground to close over.
+            // Everything a weather decides it keeps, and `roomFog` was what it used to be read as —
+            // an even unbanked medium, which closes over a sky.
+            const Fog quasi = quasiExteriorFog(haze, 0.69f, 0.3f, 4.0f * cell);
+            EXPECT_EQ(quasi.mEdge, 0.0f);
+            EXPECT_NE(quasi.mEdge, open.mEdge) << "the one field that parts them, and it did not";
+            EXPECT_EQ(quasi.mColour, open.mColour);
+            EXPECT_EQ(quasi.mExtinction, open.mExtinction);
+            EXPECT_EQ(quasi.mUniform, open.mUniform) << "banked as any other weather is";
+            EXPECT_EQ(quasi.mLift, open.mLift) << "and standing as high";
+            EXPECT_EQ(quasi.mWind, open.mWind);
         }
     }
 }

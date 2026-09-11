@@ -76,7 +76,7 @@ namespace Rtx
             = reading.mOutdoors ? skyBudget(day.mSkyHorizon, day.mSkyZenith, stars.mGlow, light.mAmbient) : SkyBudget{};
 
         Fog air = day.mFog;
-        if (reading.mFogFromSky)
+        if (reading.mOutdoors)
             air.mColour = fogColour(budget.mMean, air.mColour);
 
         constants.mSunPosition = light.mSun.mPosition;

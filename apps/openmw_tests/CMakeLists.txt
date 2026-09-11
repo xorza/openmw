@@ -14,6 +14,7 @@ file(GLOB UNITTEST_SRC_FILES
 
     mwdialogue/testkeywordsearch.cpp
 
+    mwrender/readworld.cpp
     mwrender/stage.cpp
     mwrender/worldmirror.cpp
 

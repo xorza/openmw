@@ -153,6 +153,16 @@ namespace Rtx
     ///        bit of the ground beyond it.
     Fog exteriorFog(const osg::Vec3f& colour, float depth, float wind, float reach);
 
+    /// The same air over a cell that is built whole: a quasi-exterior.
+    ///
+    /// **Weather over it and no ring under it.** Vivec's cantons and Mournhold are interior cells
+    /// the engine runs the weather system for — `World::updateWeather` passes
+    /// `isCellExterior() || isCellQuasiExterior()` — so the depth and the colour handed here are a
+    /// weather's `Land_Fog_Depth` and fog colour, measured over the same reach as any other
+    /// weather's. What such a cell does not have is a ring of cut ground, because every wall of it
+    /// is built, so the edge element closes over nothing and is not there.
+    Fog quasiExteriorFog(const osg::Vec3f& colour, float depth, float wind, float reach);
+
     /// A room's air, from the colour and the fog depth it is at.
     ///
     /// **Measured over a constant and closing over nothing.** A cellar's walls are all built, so

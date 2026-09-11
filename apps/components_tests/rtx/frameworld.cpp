@@ -98,7 +98,6 @@ namespace Rtx
                     .mFog = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f },
                 },
                 .mOutdoors = true,
-                .mFogFromSky = true,
                 .mGlare = 1.0f,
                 .mStarRoll = 0.125f,
                 .mCloudRoll = 0.25f,
@@ -239,7 +238,6 @@ namespace Rtx
             // were drawn rather than nowhere.
             WorldReading still = read;
             still.mOutdoors = false;
-            still.mFogFromSky = false;
             Shaders::VisibilityConstants becalmed{};
             describeWorld(still, becalmed);
             EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
@@ -371,7 +369,6 @@ namespace Rtx
         {
             WorldReading room = reading();
             room.mOutdoors = false;
-            room.mFogFromSky = false;
 
             // A moon a caller left behind: full in the sky, painted, and lighting.
             room.mMoons[0] = MoonPlacement{ .mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f),
@@ -426,46 +423,39 @@ namespace Rtx
 
             WorldReading room = open;
             room.mOutdoors = false;
-            room.mFogFromSky = false;
             room.mDaylight.mLight.mExposureBias = 0.625f;
 
             Shaders::VisibilityConstants inside{};
             EXPECT_FLOAT_EQ(describeWorld(room, inside), 0.625f) << "the flag reached a number that is not its";
         }
 
-        /// An exterior's air is the record's hue under the dome's own mean, and a quasi-exterior's
-        /// is the record as it stands.
+        /// Air under a dome is lit by it, and air with no dome over it keeps the colour it was
+        /// given.
         ///
-        /// **Two readings that differ in one flag and must not come out alike.** A quasi-exterior is
-        /// outdoors — it has weather, a deck and stars — and its fog is written in the cell rather
-        /// than in the weather, so mixing the dome into it would state a colour the content never
-        /// wrote.
-        TEST(RtxFrameWorldTest, onlyAnAirLitByTheDomeTakesItsColourFromIt)
+        /// **One flag decides it, where there were two.** A quasi-exterior used to carry a second
+        /// saying its air was a cell's, and its air is a weather's: the Construction Set greys the
+        /// whole `AMBI` record out for a cell that behaves like an exterior. So the dome lights a
+        /// canton's air exactly as it lights any other weather's, and the two readings a flag can
+        /// still tell apart are the open air and a room's. `RtxReadWorldTest` is where a
+        /// quasi-exterior's own air is asserted.
+        TEST(RtxFrameWorldTest, airUnderADomeIsLitByIt)
         {
             const WorldReading open = reading();
 
-            WorldReading quasi = open;
-            quasi.mFogFromSky = false;
+            WorldReading room = open;
+            room.mOutdoors = false;
 
             Shaders::VisibilityConstants outside{};
             Shaders::VisibilityConstants inside{};
             describeWorld(open, outside);
-            describeWorld(quasi, inside);
+            describeWorld(room, inside);
 
             EXPECT_NE(outside.mFogColour, inside.mFogColour) << "one flag, and it decided nothing";
-
-            EXPECT_EQ(inside.mFogColour, open.mDaylight.mFog.mColour);
 
             const SkyBudget budget = skyBudget(open.mDaylight.mSkyHorizon, open.mDaylight.mSkyZenith,
                 describeStars(open.mDaylight.mStarFade, open.mGlare, open.mStarRoll, open.mSky).mGlow,
                 open.mDaylight.mLight.mAmbient);
             EXPECT_EQ(outside.mFogColour, fogColour(budget.mMean, open.mDaylight.mFog.mColour));
-
-            // And both are outdoors, which is what makes them the same case but for the air.
-            EXPECT_EQ(outside.mAmbientFromSky, 1.0f);
-            EXPECT_EQ(inside.mAmbientFromSky, 1.0f);
-            EXPECT_NE(inside.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
-            EXPECT_NE(inside.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
         }
 
         /// The deck is lit by the dome the stars are counted into, which is the order this exists

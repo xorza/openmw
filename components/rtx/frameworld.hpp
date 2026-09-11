@@ -90,16 +90,13 @@ namespace Rtx
         Daylight mDaylight;
 
         /// Whether there is a sky over this cell at all. Nothing under `false` draws a deck, a star,
-        /// a patch or a moon, and nothing measures a sky budget it has no sky for.
-        bool mOutdoors = false;
-
-        /// Whether the air takes its colour from the dome it stands in.
+        /// a patch or a moon, nothing measures a sky budget it has no sky for, and nothing lights
+        /// its air by a dome it stands under none of.
         ///
-        /// **Not the same question as `mOutdoors`, and a quasi-exterior is where they part.** Such a
-        /// cell has weather over it and a room's air in it: Morrowind records its fog in the cell
-        /// rather than in the weather, so the dome's mean must not be mixed into a colour the
-        /// content already stated.
-        bool mFogFromSky = false;
+        /// **True of a quasi-exterior, which is the whole of what one is.** Vivec's cantons and
+        /// Mournhold are interior cells the engine runs the weather system for, so every one of
+        /// those is decided for them exactly as it is out of doors.
+        bool mOutdoors = false;
 
         /// The weather's `Glare_View`, which is what keeps the stars in under an overcast.
         float mGlare = 1.0f;
