@@ -1639,7 +1639,7 @@ namespace MWRender
                     mRenderer.suspendDraw();
                     mResourceSystem->getSceneManager()->getShaderManager().setGlobalDefines(defines);
                     mRenderer.resumeDraw();
-                    mAppliedShadowDefines = shadowDefines;
+                    mAppliedShadowDefines = std::move(shadowDefines);
                 }
             }
             else if (it->first == "Post Processing" && it->second == "enabled"
