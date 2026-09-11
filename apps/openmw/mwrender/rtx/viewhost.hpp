@@ -6,13 +6,11 @@
 namespace osg
 {
     class FrameStamp;
-    class Group;
 }
 
 namespace Resource
 {
     class ImageManager;
-    class ResourceSystem;
 }
 
 namespace Rtx
@@ -43,10 +41,9 @@ namespace MWRender
 
     /// The few live links a traced view keeps to the renderer that made it.
     ///
-    /// **An interface and not the renderer.** `TracedView` held `RtxRenderer&` and read nine things
-    /// off it, which is most of why that class had a public surface at all — and a view is the one
-    /// thing here that genuinely needs a link back, because it is drawn on a frame later than the
-    /// one that asked for it.
+    /// **An interface and not the renderer**, because a view is the one thing that needs a link
+    /// back — it is drawn on a frame later than the one that asked for it — and these five calls
+    /// are the whole of what it needs.
     class ViewHost
     {
     public:
@@ -64,13 +61,6 @@ namespace MWRender
 
         /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
         virtual std::optional<PoseMoment> describePose() = 0;
-
-        /// The world's resources, or null before there is a world. Where a picture of its own
-        /// subject reads its textures from.
-        virtual Resource::ResourceSystem* getResources() = 0;
-
-        /// Whatever is topmost, or null. For a picture of the world that has to be told what to draw.
-        virtual osg::Group* getSceneRoot() = 0;
 
         /// Draws `view` on the next frame that has a world in it.
         virtual void deferRedraw(TracedView& view) = 0;

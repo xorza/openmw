@@ -117,10 +117,9 @@ namespace Rtx
 
         /// What each channel is made of, at its own binding.
         ///
-        /// **One table, because the constructor used to say it in a member list of fourteen and the
-        /// binding was decided by the order somebody happened to write them in.** Placed by name
-        /// here, so a channel added to `Rtx::Channel` and forgotten here is a compile error in the
-        /// switch rather than an image bound at the wrong number.
+        /// **One table, placed by name**, so the binding is not decided by the order a member list
+        /// happens to be written in, and a channel added to `Rtx::Channel` and forgotten here is a
+        /// compile error in the switch rather than an image bound at the wrong number.
         const ChannelFormat& formatOf(const Channel channel)
         {
             static constexpr auto sFormats = [] {
@@ -234,9 +233,11 @@ namespace Rtx
         // texel apiece rides in the same command as the channels beside them.
         Barriers barriers(commands);
         for (const Image& image : mChannels)
-            barriers.add(image.describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+            barriers.add(
+                image.describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                             VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
+                    ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT }));
 
         barriers.flush();
     }
@@ -252,10 +253,11 @@ namespace Rtx
         // for and why a visibility scope of storage reads alone leaves its reads uncovered.
         Barriers barriers(commands);
         for (const Image& image : mChannels)
-            barriers.add(image.describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+            barriers.add(image.describeTransition(
+                ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
+                ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
 
         barriers.flush();
     }

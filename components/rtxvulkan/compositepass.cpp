@@ -7,6 +7,7 @@
 #include "dispatch.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {
@@ -43,10 +44,7 @@ namespace Rtx
         // descriptor set rather than from the branch, so two frames' composites read to it as two
         // unordered writes. One barrier on one texel is cheaper than a check nobody can leave on.
         if (sum == nullptr)
-            mNoSum.transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            mNoSum.transition(commands, Use::sComputeWrite, Use::sComputeReadWrite);
 
         const std::array<VkDescriptorImageInfo, 5> images{
             VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Direct).getView(), VK_IMAGE_LAYOUT_GENERAL },

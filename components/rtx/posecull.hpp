@@ -2,11 +2,11 @@
 
 #include <osg/Transform>
 #include <osg/Viewport>
-#include <osgParticle/ParticleProcessor>
-#include <osgParticle/ParticleSystemUpdater>
 #include <osgUtil/CullVisitor>
 #include <osgUtil/RenderStage>
 #include <osgUtil/StateGraph>
+
+#include "nodekind.hpp"
 
 namespace Rtx
 {
@@ -67,11 +67,14 @@ namespace Rtx
         /// this renderer, so posing keeps its hands off them.
         void apply(osg::Node& node) override
         {
-            if (dynamic_cast<osgParticle::ParticleProcessor*>(&node) != nullptr
-                || dynamic_cast<osgParticle::ParticleSystemUpdater*>(&node) != nullptr)
+            const NodeKind kind = mKinds.of(node);
+            if (kind == NodeKind::ParticleProcessor || kind == NodeKind::ParticleUpdater)
                 return;
 
             osgUtil::CullVisitor::apply(node);
         }
+
+    private:
+        NodeKinds mKinds;
     };
 }

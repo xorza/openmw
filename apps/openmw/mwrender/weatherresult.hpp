@@ -14,10 +14,7 @@ namespace MWRender
     ///
     /// **Here rather than beside the dome that reads it.** These are the weather's own numbers —
     /// colours, speeds, the textures it names — computed by `MWWorld::WeatherManager` and handed
-    /// down. They lived in `gl/skyutil.hpp` next to their one consumer, which made every file that
-    /// wanted to describe the weather include a header full of `osgParticle` shooters and state-set
-    /// updaters, and made the world's weather system name a renderer.
-
+    /// down, so the world's weather system names no renderer.
     struct WeatherResult
     {
         std::string mCloudTexture;
@@ -57,13 +54,8 @@ namespace MWRender
         ESM::RefId mRainLoopSoundID;
         float mAmbientSoundVolume;
 
-        /// Everything that falls, and it is handed to `Weather::Precipitation` unchanged.
-        ///
-        /// **One struct rather than a dozen fields copied out of one and into another.** These used
-        /// to be spelled out here, spelled out again in `MWWorld::Weather`, copied across four times
-        /// inside the weather manager and converted once more on the way to the particles — and the
-        /// wind was reaching the drops through a rule only one of those copies knew about, so the
-        /// same weather leaned eight times harder in the game than in a shot of it.
+        /// Everything that falls, handed to `Weather::Precipitation` unchanged: one struct, so the
+        /// rule that turns a base wind into a gust is applied in one place.
         ::Weather::Downpour mDownpour;
 
         osg::Vec3f mStormDirection;

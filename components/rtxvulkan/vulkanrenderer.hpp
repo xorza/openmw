@@ -92,9 +92,8 @@ namespace Rtx
             /// Which of those `updateInstanceRecords` wrote this placement, cleared and refilled.
             ///
             /// **One list, read by both halves of a placement.** The acceleration structure's rows
-            /// and the shading table's rows are derived from the same records, and each used to work
-            /// out for itself which had changed. Two answers to one question is one of them being
-            /// wrong, which is what put terrain a frame behind.
+            /// and the shading table's rows are derived from the same records; two answers to which
+            /// changed is one of them being wrong, and terrain a frame behind.
             std::vector<Index> mChangedRecords;
 
             /// Which revision of the mesh table the structures were built from, so `extendScene` can
@@ -106,7 +105,6 @@ namespace Rtx
 
             /// Which scene's tables this was built from and at what revision of the whole
             /// structure, which is what `describeHeld` answers and an uploader appends against.
-            const MeshTable* mBuiltFrom = nullptr;
             std::uint64_t mBuiltStructure = 0;
         };
 
@@ -171,9 +169,8 @@ namespace Rtx
 
         /// What the trace reads a scene through, for whichever copy `slot` names.
         ///
-        /// **Ten fields, and a frame and a picture inside the interface each used to name them.**
-        /// The two differ in the copy they read and in the fog volume they march, and in nothing
-        /// else — so a field added for one of them reached the other only if somebody remembered.
+        /// **One description for a frame and for a picture inside the interface.** The two differ
+        /// in the copy they read and in the fog volume they march, and in nothing else.
         VisibilityInputs describeInputs(const ViewScene& held, FrameSlot slot, const FogVolume* volume) const;
 
         /// The frame's camera as its trace will sample it: what the caller wrote, plus every field
@@ -432,7 +429,4 @@ namespace Rtx
 
 #endif
     };
-
-    /// Builds a Vulkan renderer, or nothing where this machine has no driver that qualifies.
-    std::unique_ptr<Renderer> createVulkanRenderer(const RendererOptions& options, std::string& reason);
 }

@@ -16,7 +16,7 @@ namespace MWRender
         /// where the player stands traced a boot thirteen units from the eye.
         TEST(RtxWorldMirrorTest, thePlayerIsWalkedOnlyForACameraThatIsTheirEye)
         {
-            WorldMirror mirror;
+            WorldMirror mirror(MirrorSettings{});
 
             const osg::Node::NodeMask playing = mirror.getExtractor().getTraversalMask();
             EXPECT_NE(playing & SceneUtil::Mask_Player, 0u) << "a game somebody is playing draws them";

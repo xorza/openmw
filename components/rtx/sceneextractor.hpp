@@ -15,7 +15,7 @@
 #include "materialresolver.hpp"
 #include "meshresolver.hpp"
 #include "mirrorpass.hpp"
-#include "nodelibrary.hpp"
+#include "nodekind.hpp"
 #include "residency.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
@@ -51,7 +51,7 @@ namespace Rtx
     /// another reference, in a later frame — resolves to the mesh already uploaded rather than to a
     /// copy of it. That is what makes an incremental mirror possible instead of a rebuild per frame,
     /// and it is why this is an object rather than a function.
-    class SceneExtractor
+    class SceneExtractor : public SceneAdopter
     {
     public:
         /// @param traversals where this walk's traversal numbers come from. **Shared by everything
@@ -239,18 +239,17 @@ namespace Rtx
 
     private:
         /// **What a residency may do inside a walk, and nothing else may.** `Rtx::SceneAdopter` is
-        /// what says so: it is the object a residency is handed, `MirrorTraversal` is what implements
-        /// it, and these are what that implementation forwards to. Public, they were eleven calls in
-        /// front of every reader of this class that only mean anything inside one walk.
-        friend class MirrorTraversal;
-
-        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material)
+        /// the object a residency is handed, and it is implemented here privately: reachable through
+        /// that interface, and not five calls in front of every reader of this class that only mean
+        /// anything inside one walk.
+        void take(osg::Node& node) override;
+        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material) override
         {
             return mMeshes.adopt(drawable, reading, material);
         }
-        Index adoptMaterial(const MaterialReading& reading) { return mMaterials.adopt(reading); }
-        void releaseMesh(const osg::Drawable& drawable) { mMeshes.release(drawable); }
-        void releaseMaterial(const osg::StateSet* key) { mMaterials.release(key); }
+        Index adoptMaterial(const MaterialReading& reading) override { return mMaterials.adopt(reading); }
+        void releaseMesh(const osg::Drawable& drawable) override { mMeshes.release(drawable); }
+        void releaseMaterial(const osg::StateSet* key) override { mMaterials.release(key); }
 
         /// Whether a drawable carrying `mask` is the world's water.
         bool isWater(osg::Node::NodeMask mask) const;
@@ -263,17 +262,13 @@ namespace Rtx
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
             std::size_t frame, std::span<Residency* const> hidden);
 
-        /// The whole of what `addDrawable` does.
-        void mirrorDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
-            const osg::Matrixf& place, bool firstPerson);
-
         SceneDesc& mScene;
 
-        /// Which library each class of *drawable* and of *geometry* this side of the walk meets
-        /// belongs to. A member because the answers are a fact about the classes in the world rather
-        /// than about one frame, and a set apart from `MirrorTraversal`'s: a drawable is dispatched
-        /// to its own `apply` and never reaches the one that asks about a node.
-        NodeLibrary mLibrary;
+        /// What kind each class of *drawable* this side of the walk meets is. A member because the
+        /// answers are a fact about the classes in the world rather than about one frame, and a set
+        /// apart from `MirrorTraversal`'s: a drawable is dispatched to its own `apply` and never
+        /// reaches the one that asks about a node.
+        NodeKinds mKinds;
 
         /// The walk itself, made once rather than per call.
         ///

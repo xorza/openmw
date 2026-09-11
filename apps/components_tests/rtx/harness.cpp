@@ -85,7 +85,15 @@ namespace Rtx::Testing
         std::unique_ptr<Renderer> buildRenderer(bool validation, std::string& reason)
         {
             // Every test resizes to what it needs; one texel is only what the first target costs.
-            return createRenderer(describeRenderer(1, 1, validation), reason);
+            try
+            {
+                return createRenderer(describeRenderer(1, 1, validation));
+            }
+            catch (const Unsupported& obstacle)
+            {
+                reason = obstacle.what();
+                return nullptr;
+            }
         }
 
         Renderer* cachedRenderer(bool validation, std::string& reason)

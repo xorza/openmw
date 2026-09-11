@@ -14,16 +14,11 @@
 #include <string_view>
 #include <vector>
 
-#include <osg/Group>
 #include <osg/Image>
-#include <osg/Matrixf>
 #include <osg/Vec3f>
-#include <osg/Vec4f>
 
-#include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
 #include <components/files/conversion.hpp>
-#include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/imageformat.hpp>
@@ -43,37 +38,28 @@
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
 #include <components/rtxbench/scenedigest.hpp>
-#include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/values.hpp>
 #include <components/surface/alphamode.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../../mwbase/environment.hpp"
+#include "../../mwbase/windowmanager.hpp"
 #include "../../mwbase/world.hpp"
+#include "../../mwworld/cell.hpp"
+#include "../../mwworld/cellstore.hpp"
 #include "../../mwworld/esmstore.hpp"
 #include "../../mwworld/manualref.hpp"
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
 
 #include "../characterpreview.hpp"
+#include "../localmap.hpp"
 #include "../offscreenview.hpp"
 #include "../renderer.hpp"
 #include "checks.hpp"
-#include "viewhost.hpp"
 
 namespace MWRender
 {
-    namespace
-    {
-        /// How wide a map tile is written. The game's own resolution, because the size is not what
-        /// the picture is for.
-        constexpr int sMapTileSide = 512;
-
-        /// Where the tile's eye stands and how far it sees, both far enough to clear any cell.
-        constexpr float sMapEyeHeight = 50000.0f;
-        constexpr float sMapFar = 150000.0f;
-    }
-
     void StopWriter::write(const FrameContext& context, const FrameReport& report, const Rtx::Actions& actions,
         const StopFacts& facts, Rtx::RunRecord& record)
     {
@@ -97,8 +83,8 @@ namespace MWRender
         if (!actions.mMapTile.empty())
             writeMapTile(into, actions.mMapTile);
 
-        if (!actions.mDoll.empty())
-            writeDoll(into, actions.mDoll, actions.mDollOut);
+        if (actions.mDoll.has_value())
+            writeDoll(into, actions.mDoll->mWho, actions.mDoll->mFile);
 
         if (!actions.mFind.empty())
             reportFound(into, actions.mFind);
@@ -109,7 +95,7 @@ namespace MWRender
 
     void StopWriter::writeCapture(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mContext.mHost.getBackend();
+        Rtx::Renderer& renderer = into.mContext.mBackend;
         const Rtx::FrameExtents extents = renderer.getExtents();
 
         renderer.readPixels(mPixels);
@@ -142,7 +128,7 @@ namespace MWRender
             return;
         }
 
-        Rtx::Renderer& renderer = into.mContext.mHost.getBackend();
+        Rtx::Renderer& renderer = into.mContext.mBackend;
 
         std::vector<float> bounce;
         renderer.readFrameImage(Rtx::FrameImage::Accumulated, bounce);
@@ -177,7 +163,7 @@ namespace MWRender
 
     void StopWriter::writeDump(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mContext.mHost.getBackend();
+        Rtx::Renderer& renderer = into.mContext.mBackend;
 
         std::vector<float> radiance;
         renderer.readFrameImage(Rtx::FrameImage::Composite, radiance);
@@ -295,7 +281,7 @@ namespace MWRender
 
     void StopWriter::writeSheet(const Writing& into, const std::filesystem::path& sheet)
     {
-        Resource::ResourceSystem* resources = into.mContext.mHost.getResources();
+        Resource::ResourceSystem* resources = into.mContext.mResources;
         if (resources == nullptr)
             return;
 
@@ -323,8 +309,7 @@ namespace MWRender
             drawn.mCount, static_cast<float>(Settings::rtx().mDelight)));
     }
 
-    void StopWriter::writeView(
-        const Writing& into, OffscreenView& view, const int width, const int height, const std::filesystem::path& file)
+    void StopWriter::writeView(const Writing& into, OffscreenView& view, const std::filesystem::path& file)
     {
         view.keepCopy();
         view.redraw();
@@ -337,12 +322,19 @@ namespace MWRender
             return;
         }
 
+        writeImage(into, *drawn, file);
+    }
+
+    void StopWriter::writeImage(const Writing& into, const osg::Image& drawn, const std::filesystem::path& file)
+    {
+        const int width = drawn.s();
+        const int height = drawn.t();
         const auto stride = static_cast<std::size_t>(width) * 4;
         mPixels.resize(stride * static_cast<std::size_t>(height));
 
         for (int row = 0; row < height; ++row)
             std::memcpy(
-                mPixels.data() + stride * static_cast<std::size_t>(row), drawn->data(0, height - 1 - row), stride);
+                mPixels.data() + stride * static_cast<std::size_t>(row), drawn.data(0, height - 1 - row), stride);
 
         Rtx::writePng(file, static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height), mPixels);
         into.mRecord.note(std::format("wrote {} {}x{}\n", Files::pathToUnicodeString(file), width, height));
@@ -350,32 +342,22 @@ namespace MWRender
 
     void StopWriter::writeMapTile(const Writing& into, const std::filesystem::path& file)
     {
-        osg::Group* root = into.mContext.mHost.getSceneRoot();
-        if (root == nullptr)
-            return;
-
+        // **The game's own tile, and not a picture framed here to look like one.** The local map
+        // drew the cell the player stands in when they entered it, at the resolution and over the
+        // depth range the settings gave it; what a stop writes is that picture.
+        LocalMap* map = MWBase::Environment::get().getWindowManager()->getLocalMap();
         const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
-        const osg::Vec3f stood = player.getRefData().getPosition().asVec3();
+        const MWWorld::Cell& cell = *player.getCell()->getCell();
 
-        // **The framing `MWRender::LocalMap` uses, because this is the same picture.** One cell
-        // across, straight down, under a flat light that makes no shadows: a chart is read for what
-        // is where, and the game's compass draws exactly this every frame a player walks.
-        OffscreenViewSpec spec{ *root };
-        spec.mWidth = sMapTileSide;
-        spec.mHeight = sMapTileSide;
-        spec.mFraming.mProjection = SceneUtil::Orthographic{ .mWidth = static_cast<float>(Constants::CellSizeInUnits),
-            .mHeight = static_cast<float>(Constants::CellSizeInUnits) };
-        spec.mFraming.mNear = SceneUtil::sMapNear;
-        spec.mFraming.mFar = sMapFar;
-        spec.mClearColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
-        spec.mSun = SceneUtil::mapLight();
-        spec.mFromWorld = true;
+        const osg::Image* drawn = map != nullptr ? map->getMapImage(cell.getGridX(), cell.getGridY()) : nullptr;
+        if (drawn == nullptr)
+        {
+            into.mRecord.note("no map tile is drawn for the cell the stop stands in\n");
+            into.mRecord.fail();
+            return;
+        }
 
-        const std::unique_ptr<OffscreenView> view = into.mContext.mViews.createOffscreenView(spec);
-        view->setView(osg::Matrixf::lookAt(osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight),
-            osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight - 1.0f), osg::Vec3f(0.0f, 1.0f, 0.0f)));
-
-        writeView(into, *view, spec.mWidth, spec.mHeight, file);
+        writeImage(into, *drawn, file);
     }
 
     void StopWriter::writeDoll(const Writing& into, const std::string& who, const std::filesystem::path& file)
@@ -398,13 +380,18 @@ namespace MWRender
             return;
         }
 
-        InventoryPreview preview(into.mContext.mViews, into.mContext.mHost.getResources(), subject);
-        preview.rebuild();
+        {
+            InventoryPreview preview(into.mContext.mViews, into.mContext.mResources, subject);
+            preview.rebuild();
 
-        // **Through the view and not through the texture the GUI draws from**, which is the one
-        // route that carries the row order: `OffscreenView::getTexture` is Y-up and a PNG is not, so
-        // a writer reading the texture had to remember a convention and this one did not.
-        writeView(into, preview.getView(), preview.getTextureWidth(), preview.getTextureHeight(), file);
+            // **Through the view and not through the texture the GUI draws from**, which is the one
+            // route that carries the row order: `OffscreenView::getTexture` is Y-up and a PNG is not,
+            // so a writer reading the texture had to remember a convention and this one did not.
+            writeView(into, preview.getView(), file);
+        }
+
+        // The subject was a prop for one picture; the stops after this one stand in a cell without it.
+        world.deleteObject(subject);
     }
 
     void StopWriter::reportFound(const Writing& into, const std::string& needle)

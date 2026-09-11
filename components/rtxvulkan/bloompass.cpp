@@ -58,9 +58,7 @@ namespace Rtx
 
     void BloomPass::handOver(VkCommandBuffer commands, const Image& level) const
     {
-        level.transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        level.transition(commands, Use::sComputeWrite, Use::sComputeSample);
     }
 
     void BloomPass::run(VkCommandBuffer commands, const ComputePipeline& pipeline, const Image& source,
@@ -103,9 +101,10 @@ namespace Rtx
         // last one left.
         Barriers opened(commands);
         for (const std::unique_ptr<Image>& level : mLevels)
-            opened.add(level->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+            opened.add(
+                level->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
+                    Use::sComputeWrite));
 
         opened.flush();
 
@@ -125,10 +124,7 @@ namespace Rtx
 
             // The finer level is about to be read as well as written, and what it holds is its own
             // halving from the loop above — a write after a read after a write, all in one stage.
-            finer.transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            finer.transition(commands, Use::sComputeWrite, Use::sComputeReadWrite);
 
             run(commands, mSpreadPipeline, *mLevels[level], finer, Shaders::BLOOM_SCATTER);
             handOver(commands, finer);

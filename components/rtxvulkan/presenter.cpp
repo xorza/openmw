@@ -9,6 +9,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 #include "result.hpp"
 #include "swapchain.hpp"
 
@@ -265,9 +266,7 @@ namespace Rtx
         };
         checkVk(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer");
 
-        frame.transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_BLIT_BIT,
-            VK_ACCESS_2_TRANSFER_READ_BIT);
+        frame.transition(commands, Use::sAnyGeneralWrite, Use::sBlitRead);
 
         const VkImage presented = mSwapchain->getImage(index);
 
@@ -313,9 +312,7 @@ namespace Rtx
         vkCmdPipelineBarrier2(commands, &dependency);
 
         // Back where the next frame's passes expect to find it.
-        frame.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            VK_ACCESS_2_MEMORY_WRITE_BIT);
+        frame.transition(commands, Use::sBlitRead, Use::sAnyGeneralWrite);
 
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
@@ -357,19 +354,19 @@ namespace Rtx
 
     void Presenter::rememberUse(VkImage image, VkFence fence)
     {
-        for (ImageUse& use : mLastUse)
+        for (LastUse& use : mLastUse)
             if (use.mImage == image)
             {
                 use.mFence = fence;
                 return;
             }
 
-        mLastUse.push_back(ImageUse{ .mImage = image, .mFence = fence });
+        mLastUse.push_back(LastUse{ .mImage = image, .mFence = fence });
     }
 
     void Presenter::waitForLastUse(const Image& frame)
     {
-        for (const ImageUse& use : mLastUse)
+        for (const LastUse& use : mLastUse)
             if (use.mImage == frame.getHandle())
             {
                 // The fence may have been reset and signalled again by a later present of another

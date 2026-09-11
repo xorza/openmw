@@ -45,7 +45,7 @@ namespace Rtx::Testing
 
             MeshReader reader;
             MeshReading reading;
-            ASSERT_TRUE(reader.read(readDrawable(*quad), reading));
+            ASSERT_TRUE(reader.read(readDrawable(*quad, NodeKinds{}.of(*quad)), reading));
 
             EXPECT_EQ(reading.mArrays.mPositions.size(), 4u);
             EXPECT_EQ(reading.mArrays.mIndices.size(), 6u) << "two triangles, none of them the other's reverse";
@@ -60,7 +60,7 @@ namespace Rtx::Testing
 
             // A drawable with no triangles mirrors nothing, and says so rather than reading zero.
             osg::ref_ptr<osg::Geometry> empty = new osg::Geometry;
-            EXPECT_FALSE(reader.read(readDrawable(*empty), reading));
+            EXPECT_FALSE(reader.read(readDrawable(*empty, NodeKinds{}.of(*empty)), reading));
         }
 
         /// The colours are decoded on the way in, whichever of the two arrays the loader built.
@@ -84,7 +84,7 @@ namespace Rtx::Testing
                 asFloats->push_back(osg::Vec4f(64.0f / 255.0f, 128.0f / 255.0f, 1.0f, 1.0f));
             floats->setColorArray(asFloats, osg::Array::BIND_PER_VERTEX);
 
-            ASSERT_TRUE(reader.read(readDrawable(*floats), reading));
+            ASSERT_TRUE(reader.read(readDrawable(*floats, NodeKinds{}.of(*floats)), reading));
             ASSERT_EQ(reading.mArrays.mColours.size(), 4u);
             for (const osg::Vec3f& colour : reading.mArrays.mColours)
             {
@@ -100,7 +100,7 @@ namespace Rtx::Testing
                 asBytes->push_back(osg::Vec4ub(64, 128, 255, 255));
             bytes->setColorArray(asBytes, osg::Array::BIND_PER_VERTEX);
 
-            ASSERT_TRUE(reader.read(readDrawable(*bytes), reading));
+            ASSERT_TRUE(reader.read(readDrawable(*bytes, NodeKinds{}.of(*bytes)), reading));
             ASSERT_EQ(reading.mArrays.mColours.size(), 4u);
             for (const osg::Vec3f& colour : reading.mArrays.mColours)
             {
@@ -116,7 +116,7 @@ namespace Rtx::Testing
             one->push_back(osg::Vec4f(1.0f, 128.0f / 255.0f, 0.0f, 1.0f));
             overall->setColorArray(one, osg::Array::BIND_OVERALL);
 
-            ASSERT_TRUE(reader.read(readDrawable(*overall), reading));
+            ASSERT_TRUE(reader.read(readDrawable(*overall, NodeKinds{}.of(*overall)), reading));
             ASSERT_EQ(reading.mArrays.mColours.size(), 4u);
             for (const osg::Vec3f& colour : reading.mArrays.mColours)
             {
@@ -133,7 +133,7 @@ namespace Rtx::Testing
             two->push_back(osg::Vec4f(0.0f, 1.0f, 0.0f, 1.0f));
             mismatched->setColorArray(two, osg::Array::BIND_PER_VERTEX);
 
-            ASSERT_TRUE(reader.read(readDrawable(*mismatched), reading));
+            ASSERT_TRUE(reader.read(readDrawable(*mismatched, NodeKinds{}.of(*mismatched)), reading));
             EXPECT_TRUE(reading.mArrays.mColours.empty());
         }
 
@@ -145,7 +145,7 @@ namespace Rtx::Testing
 
             MeshReader reader;
             MeshReading reading;
-            ASSERT_TRUE(reader.read(readDrawable(*quad), reading));
+            ASSERT_TRUE(reader.read(readDrawable(*quad, NodeKinds{}.of(*quad)), reading));
 
             Resolving adopted;
             const Index mesh = adopted.mResolver.adopt(*quad, reading, sNoIndex);
@@ -153,7 +153,7 @@ namespace Rtx::Testing
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u);
 
             Resolving resolved;
-            EXPECT_EQ(resolved.mResolver.resolve(*quad, readDrawable(*quad), sNoIndex), 0u);
+            EXPECT_EQ(resolved.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad)), sNoIndex), 0u);
 
             const SceneTables left = adopted.mScene.getTables();
             const SceneTables right = resolved.mScene.getTables();
@@ -166,7 +166,7 @@ namespace Rtx::Testing
                 std::vector(right.mMeshes.getIndices().begin(), right.mMeshes.getIndices().end()));
 
             // The walk meeting the drawable after the ring adopted it finds the ring's mesh.
-            EXPECT_EQ(adopted.mResolver.resolve(*quad, readDrawable(*quad), sNoIndex), 0u);
+            EXPECT_EQ(adopted.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad)), sNoIndex), 0u);
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u) << "resolved to the mesh already held";
             EXPECT_EQ(adopted.mStats.mMeshesReused, 1u);
 

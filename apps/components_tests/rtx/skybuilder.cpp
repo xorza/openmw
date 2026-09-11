@@ -46,8 +46,13 @@ namespace Rtx
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](float blend) {
-                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, sLight, north,
-                    north, 0.0f, textures);
+                return describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                                          .mNext = Rtx::Shaders::WEATHER_RAIN,
+                                          .mBlend = blend,
+                                          .mDirection = north,
+                                          .mNextDirection = north,
+                                          .mScroll = 0.0f },
+                    sLight, textures);
             };
 
             EXPECT_EQ(deck(std::numeric_limits<float>::quiet_NaN()).mBlend, 0.0f) << "a NaN is no crossing";
@@ -80,8 +85,14 @@ namespace Rtx
                 << "and an index past the ten is not a lookup";
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
-            const Rtx::Shaders::CloudDeck none = describeClouds(Rtx::Shaders::WEATHER_ASHSTORM,
-                Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, sLight, north, north, 0.0f, textures);
+            const Rtx::Shaders::CloudDeck none
+                = describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_ASHSTORM,
+                                     .mNext = Rtx::Shaders::WEATHER_ASHSTORM,
+                                     .mBlend = 0.0f,
+                                     .mDirection = north,
+                                     .mNextDirection = north,
+                                     .mScroll = 0.0f },
+                    sLight, textures);
 
             EXPECT_EQ(none.mOpacity, 0.0f) << "nothing to draw, said the way an interior says it";
             EXPECT_EQ(none.mTexture, Rtx::Shaders::NO_TEXTURE);
@@ -90,8 +101,13 @@ namespace Rtx
             // weather names.
             SkyContent unhung = textures;
             unhung.mShell = Rtx::CloudShell{};
-            EXPECT_EQ(describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, north,
-                          north, 0.0f, unhung)
+            EXPECT_EQ(describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                                         .mNext = Rtx::Shaders::WEATHER_CLEAR,
+                                         .mBlend = 0.0f,
+                                         .mDirection = north,
+                                         .mNextDirection = north,
+                                         .mScroll = 0.0f },
+                          sLight, unhung)
                           .mOpacity,
                 0.0f);
         }
@@ -160,8 +176,14 @@ namespace Rtx
             textures.mShell = sShell;
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
-            const Rtx::Shaders::CloudDeck deck = describeClouds(
-                Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, north, north, 0.0f, textures);
+            const Rtx::Shaders::CloudDeck deck
+                = describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                                     .mNext = Rtx::Shaders::WEATHER_CLEAR,
+                                     .mBlend = 0.0f,
+                                     .mDirection = north,
+                                     .mNextDirection = north,
+                                     .mScroll = 0.0f },
+                    sLight, textures);
 
             EXPECT_EQ(deck.mCurvature, sShell.mCurvature);
             EXPECT_EQ(deck.mRings, sShell.mRings);
@@ -192,8 +214,14 @@ namespace Rtx
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const osg::Vec3f east(1.0f, 0.0f, 0.0f);
 
-            const Rtx::Shaders::CloudDeck deck = describeClouds(
-                Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, 0.5f, sLight, north, east, 0.0f, textures);
+            const Rtx::Shaders::CloudDeck deck
+                = describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                                     .mNext = Rtx::Shaders::WEATHER_RAIN,
+                                     .mBlend = 0.5f,
+                                     .mDirection = north,
+                                     .mNextDirection = east,
+                                     .mScroll = 0.0f },
+                    sLight, textures);
 
             EXPECT_EQ(deck.mBearing, osg::Vec2f(1.0f, 0.0f)) << "due north is no turn at all";
             EXPECT_EQ(deck.mNextBearing, osg::Vec2f(0.0f, 1.0f)) << "and due east is a quarter of one";
@@ -201,8 +229,14 @@ namespace Rtx
             // **A direction nobody stated is zero, and a bearing of zero collapses the whole sheet
             // onto one texel.** `WeatherResult` names the weather ahead's storm only while one is
             // arriving, and leaves the field where the last transition left it otherwise.
-            const Rtx::Shaders::CloudDeck settled = describeClouds(Rtx::Shaders::WEATHER_CLEAR,
-                Rtx::Shaders::WEATHER_RAIN, 0.5f, sLight, north, osg::Vec3f(), 0.0f, textures);
+            const Rtx::Shaders::CloudDeck settled
+                = describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                                     .mNext = Rtx::Shaders::WEATHER_RAIN,
+                                     .mBlend = 0.5f,
+                                     .mDirection = north,
+                                     .mNextDirection = osg::Vec3f(),
+                                     .mScroll = 0.0f },
+                    sLight, textures);
 
             EXPECT_EQ(settled.mNextBearing, osg::Vec2f(1.0f, 0.0f)) << "which reads as due north";
         }
@@ -225,7 +259,13 @@ namespace Rtx
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](std::uint32_t next, float blend) {
-                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, next, blend, sLight, north, north, 0.0f, textures);
+                return describeClouds(Rtx::CloudCrossing{ .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                                          .mNext = next,
+                                          .mBlend = blend,
+                                          .mDirection = north,
+                                          .mNextDirection = north,
+                                          .mScroll = 0.0f },
+                    sLight, textures);
             };
 
             EXPECT_EQ(deck(Rtx::Shaders::WEATHER_RAIN, 0.0f).mMean, 0.4f);

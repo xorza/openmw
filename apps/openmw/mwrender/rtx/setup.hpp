@@ -7,15 +7,10 @@
 
 namespace MWRender
 {
-    /// What a harness run asks of the ray tracer, where a harness started this process.
-    ///
-    /// **Carried through `RendererSpec` rather than through a global.** A file-static held the
-    /// request and a raw pointer to the caller's result, written by `runHosted` and taken out by
-    /// the renderer's constructor — a mailbox that made the ownership of a live object impossible
-    /// to read off either side. The profile came across worse: it was written into the settings
-    /// registry a field at a time and read back out of it.
-    ///
-    /// `GlRenderer` ignores this, which is why it hangs off the spec rather than sitting in it.
+    /// What a harness run asks of the ray tracer, where a harness started this process. Carried
+    /// through `RendererSpec`, so who owns the request and the result is readable off the
+    /// signature; `GlRenderer` ignores it, which is why it hangs off the spec rather than sitting
+    /// in it.
     struct RtxSetup
     {
         /// Nothing where the harness turned no knob, which is a run at whatever the settings say.

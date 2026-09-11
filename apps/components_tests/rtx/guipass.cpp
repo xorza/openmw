@@ -16,6 +16,7 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/guipass.hpp>
 #include <components/rtxvulkan/image.hpp>
+#include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/texture.hpp>
 #include <components/rtxvulkan/validation.hpp>
@@ -74,8 +75,8 @@ namespace Rtx
                 upload.flush();
 
                 getPool().submitAndWait([&](VkCommandBuffer commands) {
-                    target.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_PIPELINE_STAGE_2_NONE, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+                    target.transition(
+                        commands, ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_NONE, 0 }, Use::sClearWrite);
 
                     const VkClearColorValue clear{ .float32 = { sBackground[0] / 255.0f, sBackground[1] / 255.0f,
                                                        sBackground[2] / 255.0f, sBackground[3] / 255.0f } };
@@ -83,10 +84,7 @@ namespace Rtx
                     vkCmdClearColorImage(
                         commands, target.getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &whole);
 
-                    target.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                        VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                        VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+                    target.transition(commands, Use::sClearWrite, Use::sColourAttachment);
 
                     mPass->record(commands, target, buffer.getHandle(), draws);
                 });

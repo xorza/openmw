@@ -52,6 +52,30 @@ namespace Surface
             EXPECT_EQ(getMaterial(*state), nullptr);
         }
 
+        /// The holder sits at slot nought whatever else the container held first, and describing
+        /// turned off makes both accessors answer nothing — which is what the rasterizer's
+        /// controllers get for the description they never asked for.
+        TEST(SurfaceMaterialTest, theHolderIsFirstAndDescribingOffHidesIt)
+        {
+            osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
+            state->getOrCreateUserDataContainer()->addUserObject(new osg::Texture2D);
+            state->getOrCreateUserDataContainer()->addUserObject(new osg::Texture2D);
+
+            Material material;
+            material.mAlphaRef = 0.5f;
+            setMaterial(*state, material);
+
+            ASSERT_NE(getMaterial(*state), nullptr);
+            EXPECT_FLOAT_EQ(getMaterial(*state)->mAlphaRef, 0.5f);
+            EXPECT_EQ(state->getUserDataContainer()->getNumUserObjects(), 3u);
+
+            describeSurfaces(false);
+            EXPECT_EQ(getMaterial(*state), nullptr);
+            EXPECT_EQ(getWritableMaterial(*state), nullptr);
+            describeSurfaces(true);
+            EXPECT_NE(getWritableMaterial(*state), nullptr);
+        }
+
         TEST(SurfaceMaterialTest, whatIsSetIsWhatIsRead)
         {
             osg::ref_ptr<osg::Image> texture = new osg::Image;

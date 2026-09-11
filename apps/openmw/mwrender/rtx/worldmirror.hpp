@@ -29,12 +29,18 @@ namespace MWRender
 {
     struct SceneFrame;
 
-    /// How much world this renderer builds, in units.
+    /// What the mirror reads once, at construction: the two knobs the paging read for the distance's
+    /// statics, which this renderer stands itself, and how far out the world is built.
     ///
-    /// **One reading for the game, because `components/rtx` holds no settings registry.** The
-    /// ground, the air and the distant lights are all measured over the same number, and a host that
-    /// answered the question twice could build ground to one reach and air to another.
-    float landReach();
+    /// **Read once, because a frame reads what it was handed.** The reach is one number for the
+    /// ground, the air, the distant lights and the checks; a host that asked the registry per frame
+    /// could answer it differently in each. Changing any of the three needs a restart.
+    struct MirrorSettings
+    {
+        bool mStatics = true;
+        float mMinSize = 0.0f;
+        float mReach = 0.0f;
+    };
 
     /// The engine's scene graph mirrored into what a ray can meet.
     ///
@@ -49,7 +55,7 @@ namespace MWRender
     class WorldMirror
     {
     public:
-        WorldMirror();
+        explicit WorldMirror(const MirrorSettings& settings);
 
         /// The resource system the sky's own meshes are loaded through, and the cell ring's models
         /// and images with them. Told once, where the world is attached.
@@ -78,6 +84,10 @@ namespace MWRender
 
         /// What the game says of one reference, on its way to the ring.
         Rtx::CellRing& getRing() { return mRing; }
+
+        /// How much world this renderer builds, in units: the ground, the air and the distant
+        /// lights are all measured over it.
+        float getReach() const { return mReach; }
 
         /// Whether the world walk includes the player's own model. True for a game somebody is
         /// playing.
@@ -147,5 +157,7 @@ namespace MWRender
 
         /// Where the world's clock stood on the last frame, so the emitters are given the gap.
         double mLastSimulationTime = 0.0;
+
+        float mReach;
     };
 }

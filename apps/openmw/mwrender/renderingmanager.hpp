@@ -6,7 +6,6 @@
 #include "renderinginterface.hpp"
 #include "rendermode.hpp"
 #include "sceneframe.hpp"
-
 #include "weatherresult.hpp"
 
 #include <components/settings/settings.hpp>
@@ -95,7 +94,6 @@ namespace Weather
 
 namespace MWRender
 {
-
     class IntersectionVisitorWithIgnoreList;
 
     class EffectManager;
@@ -435,12 +433,10 @@ namespace MWRender
         bool mUpdateProjectionMatrix = false;
         bool mNight = false;
 
-        /// The last direction `MWWorld::WeatherManager` aimed its storm particles.
-        ///
-        /// **Kept because the precipitation is driven from `update` and the weather is not.** The
-        /// weather system computes it once a frame against the player's position and hands it
-        /// straight on; the value is `Weather::defaultStormDirection` until it first does.
-        osg::Vec3f mStormParticleDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+        /// The last direction `MWWorld::WeatherManager` aimed its storm particles, kept because the
+        /// precipitation is driven from `renderFrame` and the weather is not: the weather system
+        /// computes it once a frame against the player's position and hands it straight on.
+        osg::Vec3f mStormParticleDirection = Weather::defaultStormDirection();
 
         osg::Vec2f mProjectionOffset;
         const MWWorld::GroundcoverStore& mGroundCoverStore;

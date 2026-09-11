@@ -527,17 +527,16 @@ namespace MWRender
     {
         bool isInterior = !cell.isExterior() && !cell.isQuasiExterior();
 
-        // **Kept as it was recorded, beside the lift it is about to get.** A renderer that lights a
-        // room itself wants the numbers the content wrote — `WorldState::mRoom`.
-        //
-        // **Only where the cell is a room**, which is what makes the alternative worth having: the
-        // record means nothing anywhere else, and the same test decides `Location::Interior`.
+        // Kept as recorded, beside the lift it is about to get: a renderer that lights a room itself
+        // wants the numbers the content wrote. `describeWorld` masks it by the location.
         if (isInterior)
-            mWorld.mRoom = RoomMood{ .mAmbient = cell.getMood().mAmbiantColor,
+            mWorld.mRoom = ESM::Cell::AMBIstruct{
+                .mAmbient = cell.getMood().mAmbiantColor,
                 .mSunlight = cell.getMood().mDirectionalColor,
-                .mFog = cell.getMood().mFogColor };
-        else
-            mWorld.mRoom.reset();
+                .mFog = cell.getMood().mFogColor,
+                .mFogDensity = cell.getMood().mFogDensity,
+            };
+
         bool needsAdjusting = false;
         needsAdjusting = isInterior && (!Settings::shaders().mClassicFalloff || Settings::shaders().mClusteredLighting);
 
@@ -894,10 +893,9 @@ namespace MWRender
             : simulation.isCellQuasiExterior()            ? Location::QuasiExterior
                                                           : Location::Interior;
 
-        // **Cleared beside the line that decides it, because nothing else ever would.**
-        // `configureAmbient` is the only writer and `MWWorld::Scene` calls it for a room and for
-        // nothing at all otherwise, so the record a player walked in under was still standing after
-        // they walked out: Balmora at noon was lit by the tomb behind them, with no sun in it.
+        // The one place the record is masked: `configureAmbient` writes it for a room and nothing
+        // writes it for anywhere else, so the record a player walked in under is still standing
+        // after they walked out.
         if (described.mLocation != Location::Interior)
             described.mRoom.reset();
 
@@ -919,8 +917,7 @@ namespace MWRender
         // **The whole of driving the weather, in one call and from the one place that holds all
         // three answers.** Whether the eye is submerged is the water's, which way a storm blows
         // arrived from the weather system, and the eye is the one this frame is drawn from — no
-        // other object has more than one of them, which is why this used to be four calls across
-        // two classes and why the harness reproduced only half of them.
+        // other object has more than one of them.
         //
         // **Here and not in `update`, because the eye is not known there.** `Camera::updateCamera`
         // writes the view matrix from the update traversal, which runs between the two; upstream's
@@ -1664,18 +1661,7 @@ namespace MWRender
 
     float RenderingManager::getTerrainReach() const
     {
-        if (!mRenderer.getTerrainPlan().mPaged)
-            return 0.f;
-
-        // **Straight ahead, and not the corners of a frustum.** `getTerrainViewDistance` widens the
-        // rasterizer's answer by the field of view, because its fog is not radial and the corners
-        // reach further than the middle — which is about where ground has to be *built* and not
-        // about how much world there is. A zero angle is the width this question actually has.
-        //
-        // **The setting rather than `mViewDistance`**, which is the same number until a Lua script
-        // sets its own. The map upstream draws is the size the setting says, and this has to leave
-        // the rasterizer's map exactly that size.
-        return mRenderer.getTerrainViewDistance(Settings::camera().mViewingDistance, 0.0f);
+        return mRenderer.getGroundReach();
     }
 
     void RenderingManager::setViewDistance(float distance, bool delay)

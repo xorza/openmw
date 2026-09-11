@@ -98,8 +98,8 @@ set(RTX_FILES
     moonbuilder.cpp
     moonbuilder.hpp
     namedenum.hpp
-    nodelibrary.cpp
-    nodelibrary.hpp
+    nodekind.cpp
+    nodekind.hpp
     nightsky.cpp
     nightsky.hpp
     offscreentrace.cpp
@@ -123,6 +123,7 @@ set(RTX_FILES
     reconstruction.hpp
     renderer.hpp
     renderprofile.hpp
+    reuse.hpp
     run.hpp
     runallocator.cpp
     runallocator.hpp

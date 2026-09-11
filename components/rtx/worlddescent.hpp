@@ -5,7 +5,7 @@
 #include <osg/Sequence>
 #include <osg/Switch>
 
-#include "nodelibrary.hpp"
+#include "nodekind.hpp"
 
 namespace Rtx
 {
@@ -35,7 +35,7 @@ namespace Rtx
     ///        flipbook's clock here, because that clock lives in a traversal this renderer does not
     ///        run; a template's clock is nobody's to run, so that walk passes one that does nothing.
     template <class StepSequence>
-    void descendInWorld(osg::Node& node, osg::NodeVisitor& visitor, StepSequence stepSequence)
+    void descendInWorld(osg::Node& node, const NodeKind kind, osg::NodeVisitor& visitor, StepSequence stepSequence)
     {
         if (osg::Switch* branches = node.asSwitch())
         {
@@ -46,10 +46,7 @@ namespace Rtx
             return;
         }
 
-        // Cast the group and not the node: these walks reach far more drawables than groups, and
-        // only a group can be a sequence. And the class and not the library, because the library
-        // here is `osg` — every plain group in a cell.
-        if (auto* frames = isExactly(node, "Sequence") ? dynamic_cast<osg::Sequence*>(node.asGroup()) : nullptr)
+        if (auto* frames = as<osg::Sequence>(kind, NodeKind::Sequence, node))
         {
             stepSequence(*frames);
 

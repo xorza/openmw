@@ -8,6 +8,7 @@
 #include <osg/Node>
 #include <osg/NodeVisitor>
 
+#include "nodekind.hpp"
 #include "shading.hpp"
 
 namespace osg
@@ -67,6 +68,8 @@ namespace Rtx
         void pushShading(const osg::StateSet& stateSet);
 
         TemplateSink* mInto = nullptr;
+
+        NodeKinds mKinds;
 
         /// The local-to-template of the node being visited. Accumulated in the width
         /// `computeLocalToWorldMatrix` works in, and narrowed where a drawable is handed over, as

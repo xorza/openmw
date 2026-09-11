@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <span>
 #include <utility>
+#include <vector>
 
 #include "distantland.hpp"
 
@@ -56,6 +58,7 @@ namespace Rtx
         // reader that lent it.
         forget();
         mSupply.follow(around.mWorld);
+        mAskStale = true;
     }
 
     void CellRing::forget()
@@ -73,6 +76,7 @@ namespace Rtx
 
     void CellRing::setStaticsEnabled(const bool enabled)
     {
+        mAskStale = mAskStale || enabled != mStatics;
         mStatics = enabled;
     }
 
@@ -133,6 +137,7 @@ namespace Rtx
                 discard(*cell);
             else
                 mHanded.push_back(cell);
+            mAskStale = true;
         }
 
         mDoneScratch.clear();
@@ -140,6 +145,12 @@ namespace Rtx
 
     void CellRing::ask(const osg::Vec2i& eye, const int band)
     {
+        // Rebuilt only when what it depends on moved: the eye's cell, what is held, what is handed,
+        // or the statics switch. Otherwise it is the list the supply already has.
+        if (!mAskStale)
+            return;
+        mAskStale = false;
+
         mAsking.mCells.clear();
         mAsking.mStatics = mStatics;
 
@@ -158,17 +169,15 @@ namespace Rtx
 
     void CellRing::sift(const osg::Vec2i& eye, const int band)
     {
-        for (auto cell = mHanded.begin(); cell != mHanded.end();)
-        {
-            if (withinCells((*cell)->mCell, eye, band) && !holds((*cell)->mCell))
-            {
-                ++cell;
-                continue;
-            }
+        const std::size_t before = mHanded.size();
+        std::erase_if(mHanded, [&](PreparedCell* cell) {
+            if (withinCells(cell->mCell, eye, band) && !holds(cell->mCell))
+                return false;
 
-            discard(**cell);
-            cell = mHanded.erase(cell);
-        }
+            discard(*cell);
+            return true;
+        });
+        mAskStale = mAskStale || mHanded.size() != before;
     }
 
     void CellRing::waitForNext(const osg::Vec2i& eye, const int band)
@@ -178,8 +187,8 @@ namespace Rtx
         //
         // **And a cell of the band that left is not one either.** The reader is part-way through
         // the list the eye's last place asked for, so the first thing it hands over after a move is
-        // usually a cell nothing wants any more — and this used to be adopted, held for one walk
-        // and dropped, which is a mesh built and freed for a cell that never stood.
+        // usually a cell nothing wants any more; adopting it would build and free a mesh for a
+        // cell that never stood.
         while (mHanded.empty())
         {
             // **Given up on where the reader has gone**, which is a reader that threw. Waiting on
@@ -206,11 +215,13 @@ namespace Rtx
         mAdoptedFrame = mFrame;
         adopt(*mHanded.front(), into, stats);
         mHanded.erase(mHanded.begin());
+        mAskStale = true;
     }
 
     void CellRing::adopt(PreparedCell& cell, SceneAdopter& into, ExtractionStats& stats)
     {
         HeldCell held = mSpareCells.take();
+        held.mDropped = false;
         held.mCell = cell.mCell;
         held.mStatics = cell.mStatics;
         held.mPlacements.clear();
@@ -328,18 +339,30 @@ namespace Rtx
         const int reach = reachInCells();
         const int band = reach + sPreparedBand;
 
+        if (mLastEye != eye)
+        {
+            mLastEye = eye;
+            mAskStale = true;
+        }
+
         // A cell held with the statics the other way is dropped whole and read again, for the
         // reason `takeDone` gives.
-        for (auto cell = mCells.begin(); cell != mCells.end();)
+        // Dropped in place and compacted once: an erase per cell shifts the tail per cell, and a
+        // worldspace change drops many in one frame.
+        bool dropped = false;
+        for (HeldCell& cell : mCells)
         {
-            if (withinCells(cell->mCell, eye, band) && cell->mStatics == mStatics)
-            {
-                ++cell;
+            if (withinCells(cell.mCell, eye, band) && cell.mStatics == mStatics)
                 continue;
-            }
 
-            dropCell(*cell);
-            cell = mCells.erase(cell);
+            dropCell(cell);
+            cell.mDropped = true;
+            dropped = true;
+        }
+        if (dropped)
+        {
+            mCells.eraseIf([](const HeldCell& cell) { return cell.mDropped; });
+            mAskStale = true;
         }
 
         sift(eye, band);

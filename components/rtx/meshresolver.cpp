@@ -151,10 +151,8 @@ namespace Rtx
                 ++stats.mSheets;
 
             const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex, material);
-            mMeshes.add(&drawable, Known{ .mIndex = mesh });
+            known = mMeshes.add(&drawable, Known{ .mIndex = mesh });
             ++stats.mMeshesAdded;
-
-            known = mMeshes.find(&drawable);
         }
 
         mMeshes.hold(known);

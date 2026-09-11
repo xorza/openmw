@@ -150,12 +150,12 @@ namespace Rtx
         }
     }
 
-    DrawableRead readDrawable(const osg::Drawable& drawable)
+    DrawableRead readDrawable(const osg::Drawable& drawable, const NodeKind kind)
     {
         if (const osg::Geometry* geometry = drawable.asGeometry())
             return DrawableRead{ .mGeometry = geometry };
 
-        if (const auto* rig = dynamic_cast<const SceneUtil::RigGeometry*>(&drawable))
+        if (const auto* rig = as<const SceneUtil::RigGeometry>(kind, NodeKind::RigGeometry, drawable))
         {
             const bool skinned = rig->getInfluenceData() != nullptr && !rig->getBones().empty();
             return DrawableRead{ .mGeometry = rig->getSourceGeometry().get(),
@@ -163,7 +163,7 @@ namespace Rtx
                 .mRig = rig };
         }
 
-        if (const auto* morph = dynamic_cast<const SceneUtil::MorphGeometry*>(&drawable))
+        if (const auto* morph = as<const SceneUtil::MorphGeometry>(kind, NodeKind::MorphGeometry, drawable))
         {
             const bool moving = morph->getMorphTargetList().size() > 1;
             return DrawableRead{ .mGeometry = morph->getSourceGeometry().get(),

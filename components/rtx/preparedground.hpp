@@ -10,6 +10,7 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include "reuse.hpp"
 #include "run.hpp"
 
 namespace Rtx
@@ -79,14 +80,8 @@ namespace Rtx
         /// Makes room for the next cell, keeping what the buffers grew.
         void reuse()
         {
-            mStands = false;
-            mPositions.clear();
-            mNormals.clear();
-            mColours.clear();
-            mTexCoords = {};
-            mIndices = {};
-            mLayers.clear();
-            mWeights.clear();
+            reuseKeeping(*this, &PreparedGround::mPositions, &PreparedGround::mNormals, &PreparedGround::mColours,
+                &PreparedGround::mLayers, &PreparedGround::mWeights);
         }
     };
 }

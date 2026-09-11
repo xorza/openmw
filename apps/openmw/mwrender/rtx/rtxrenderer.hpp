@@ -36,11 +36,6 @@ namespace osg
     class Stats;
 }
 
-namespace osgGA
-{
-    class EventQueue;
-}
-
 namespace Rtx
 {
     class PoseUpdate;
@@ -99,6 +94,7 @@ namespace MWRender
         /// The distant land radius, which is also what the fog is built to. `cameraDistance` and
         /// `fov` are a frustum's answer and no ray has one.
         float getTerrainViewDistance(float cameraDistance, float fov) const override;
+        float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
@@ -127,6 +123,8 @@ namespace MWRender
         /// first load.
         MyGUI::ITexture& freezeFrame() override;
 
+        /// The interface over whatever was last traced, and the frame onto the screen. Every frame
+        /// this renderer draws ends here, with a world in it or not.
         void renderGui() override;
 
         void capture(osg::Image& image, int width, int height) override;
@@ -150,8 +148,6 @@ namespace MWRender
         Rtx::Renderer& getBackend() override { return *mRenderer; }
         bool hasScene() const override { return mHasScene; }
         std::optional<PoseMoment> describePose() override;
-        Resource::ResourceSystem* getResources() override { return mResources; }
-        osg::Group* getSceneRoot() override;
         void deferRedraw(TracedView& view) override;
         void forgetView(TracedView& view) override;
 
@@ -213,13 +209,6 @@ namespace MWRender
 
         /// Draws whatever asked before there was a world to draw it against.
         void drawDeferredViews();
-
-        /// The interface over whatever was last traced, and the frame onto the screen.
-        ///
-        /// **Both halves, because every frame this renderer draws ends with both.** A frame with a
-        /// world and a frame that is the interface alone reach the screen the same way, so
-        /// `renderGui` is one caller of this rather than the place it happens.
-        void presentWithGui();
 
         Stage& mStage;
 

@@ -57,6 +57,11 @@ namespace MWWorld
     class Ptr;
 }
 
+namespace MWRender
+{
+    class LocalMap;
+}
+
 namespace MWGui
 {
     class Layout;
@@ -161,6 +166,9 @@ namespace MWBase
         virtual MWGui::TradeWindow* getTradeWindow() = 0;
         virtual MWGui::HUD* getHud() = 0;
         virtual MWGui::PostProcessorHud* getPostProcessorHud() = 0;
+
+        /// The map of the cells around the player, or null before the GUI has made one.
+        virtual MWRender::LocalMap* getLocalMap() = 0;
         virtual std::vector<MWGui::WindowBase*> getGuiModeWindows(MWGui::GuiMode mode) = 0;
 
         /// Make the player use an item, while updating GUI state accordingly

@@ -137,6 +137,26 @@ namespace Rtx
     ///        and needs no test of its own.
     DeckLight deckLight(const Sun& sun, const osg::Vec3f& skyMean, std::span<const MoonPlacement, 2> moons);
 
+    /// Which weather's deck is over the eye, which one is arriving, and how the two sheets stand.
+    struct CloudCrossing
+    {
+        std::uint32_t mWeather = Shaders::WEATHER_CLEAR;
+        std::uint32_t mNext = Shaders::WEATHER_CLEAR;
+
+        /// How far the deck has crossed from this weather's sheet to the next one's.
+        float mBlend = 0.0f;
+
+        /// Where each weather drives what it carries, which is what its sheet is turned by. The
+        /// engine turns each of its two cloud meshes by its own weather's storm; a direction nobody
+        /// stated reads as due north rather than as a sheet with no size.
+        osg::Vec3f mDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+        osg::Vec3f mNextDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+
+        /// `Sky::SkyRoll::mClouds`, which both sheets share: the engine sets one texture matrix on
+        /// both of its cloud updaters.
+        float mScroll = 0.0f;
+    };
+
     /// The cloud deck, in the units the shader takes.
     ///
     /// **One conversion, wherever the numbers came from.** The weather system reports what it
@@ -145,14 +165,7 @@ namespace Rtx
     ///
     /// @param light what the deck radiates, out of `deckLight` — worked out on the host rather than
     ///        in the shader because it is one answer for the whole frame.
-    /// @param storm where this weather drives what it carries, which is what its sheet is turned by.
-    /// @param nextStorm the same for the weather ahead, because the engine turns each of its two
-    ///        cloud meshes by its own weather's storm. A settled sky has no sheet ahead to turn, and
-    ///        a direction nobody stated reads as due north rather than as a sheet with no size.
-    /// @param scroll `Sky::SkyRoll::mClouds`, which both sheets share — the engine sets one texture
-    ///        matrix on both of its cloud updaters.
-    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const DeckLight& light,
-        const osg::Vec3f& storm, const osg::Vec3f& nextStorm, float scroll, const SkyContent& textures);
+    Shaders::CloudDeck describeClouds(const CloudCrossing& clouds, const DeckLight& light, const SkyContent& textures);
 
     /// The star field, in the units the shader takes.
     ///

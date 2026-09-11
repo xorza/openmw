@@ -90,10 +90,7 @@ namespace Rtx
         // `AccumulatePass::record` made of it, which named a compute write as what would come next.
         Barriers handed(commands);
         for (const Image* written : { &blended, &moments })
-            handed.add(written->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+            handed.add(written->describeTransition(Use::sComputeWrite, Use::sComputeReadOrSample));
 
         handed.flush();
 
@@ -116,9 +113,10 @@ namespace Rtx
         // than at the top of the pipe, which would wait for nothing. A picture's caller has drained
         // the queue before it records, so the wider scope costs it nothing and is the one both use.
         for (const Image* image : { static_cast<const Image*>(mColour.get()), what.mTarget })
-            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            image->transition(commands,
+                ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
+                Use::sComputeWrite);
 
         // Before the trace and outside its zone, because the sea is a function of the clock and of
         // nothing the camera does — one synthesis serves every ray. None where there is no water:
@@ -164,9 +162,7 @@ namespace Rtx
 
         // Whatever comes next reads what the composite just wrote. The frame's scope is the wider of
         // the two — an upscaler, a lens and a curve against a picture's one curve — and covers both.
-        mColour->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
+        mColour->transition(commands, Use::sComputeWrite, Use::sAnyGeneralRead);
 
         return *mColour;
     }

@@ -25,12 +25,10 @@ namespace MWRender
 {
     /// The frame, the eye and the input queue — where the game reads them, whatever draws.
     ///
-    /// **`osgViewer::Viewer` was two things and thirteen classes wanted the smaller one.** It
-    /// bundles the frame stamp, the master camera and the event queue — none of which touches
-    /// OpenGL — with a graphics context, a threading model and a draw dispatcher. Everything from
-    /// the GUI to the input wrapper had to import `osgViewer` to reach the first half, and that is a
-    /// good part of why the renderer looked unswappable. `Stage` is the first half, named;
-    /// `MWRender::Renderer` is the second.
+    /// **The half of `osgViewer::Viewer` that touches no OpenGL.** The viewer bundles the frame
+    /// stamp, the master camera and the event queue with a graphics context, a threading model and
+    /// a draw dispatcher; the game wants the first three and nothing that reaches them should have
+    /// to name the rest. `Stage` is that half, and `MWRender::Renderer` is the other.
     ///
     /// **Filled in by the renderer rather than filled in for it.** Every renderer needs a camera, a
     /// frame stamp, an input queue and somewhere to count things, and one built on `osgViewer` gets
@@ -39,9 +37,8 @@ namespace MWRender
     /// objects it drives the frame from and the stage remembers them, which costs a renderer that
     /// owns its own surface one constructor call and costs this one nothing at all.
     ///
-    /// **The update visitor is not among them, and that is deliberate.** It is the one thing here a
-    /// renderer *drives* rather than holds, and while it was reachable `WindowManager` used it to
-    /// blank a traversal the renderer owned. What that was asking is now `Renderer::showWorld`.
+    /// **The update visitor is not among them.** It is the one thing here a renderer *drives* rather
+    /// than holds; what a caller would want it for — blanking a traversal — is `Renderer::showWorld`.
     class Stage
     {
     public:
@@ -52,7 +49,8 @@ namespace MWRender
         Stage& operator=(const Stage&) = delete;
 
         /// Called once, by the renderer being constructed, before anything above it exists.
-        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue& events, osg::Stats& stats);
+        /// `events` is null for a renderer with no scene-graph handlers to feed.
+        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats);
 
         /// View, projection, viewport and cull mask. Whether there is a graphics context behind it
         /// is the renderer's business, and under one that owns its own surface there is none.
@@ -61,8 +59,9 @@ namespace MWRender
         /// Frame number, simulation time and reference time, advanced once per frame.
         osg::FrameStamp& getFrameStamp() const;
 
-        /// Where SDL puts what it read, and where the scene graph's own handlers read it from.
-        osgGA::EventQueue& getEvents() const;
+        /// Where SDL puts what it read, and where the scene graph's own handlers read it from, or
+        /// null under a renderer that adopted none.
+        osgGA::EventQueue* getEvents() const { return mEvents.get(); }
 
         /// Per-frame counters, keyed by frame number. Every subsystem reports into this one.
         osg::Stats& getStats() const;

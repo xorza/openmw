@@ -1,7 +1,5 @@
 #include "material.hpp"
 
-#include <string>
-
 #include <osg/StateSet>
 #include <osg/Texture>
 
@@ -23,52 +21,15 @@ namespace Surface
             "envMap",
         };
 
-        /// The user-data slot the material lives in. A name rather than the single `setUserData`
-        /// pointer, which belongs to whoever else wants it.
-        constexpr std::string_view sUserObjectName = "SurfaceMaterial";
-
-        /// No such object in this container.
-        constexpr unsigned int sNowhere = ~0u;
-
-        /// Where the material sits in `container`, or `sNowhere`.
-        ///
-        /// **Scanned here rather than asked for by name, and not because it is faster.**
-        /// `osg::UserDataContainer::getUserObject` takes a `std::string`, so looking a material up
-        /// by name builds one — once per state set in force, per drawable, per frame, which on an
-        /// exterior is tens of thousands of times. Measured, that costs nothing: the walk is 2.0 ms
-        /// a frame either way, because the name is fifteen characters and a `std::string` holds
-        /// fifteen without reaching for the allocator.
-        ///
-        /// **Fifteen is exactly the limit**, so the name is one character from putting an
-        /// allocation on the frame path with nothing to say it had. The loop below is the one that
-        /// call would make anyway, over a container that almost always holds this and nothing
-        /// else, and it cannot be pushed over that edge by renaming a string.
-        unsigned int findMaterial(const osg::UserDataContainer& container)
-        {
-            const unsigned int count = container.getNumUserObjects();
-            for (unsigned int at = 0; at < count; ++at)
-            {
-                const osg::Object* object = container.getUserObject(at);
-                if (object != nullptr && object->getName() == sUserObjectName)
-                    return at;
-            }
-
-            return sNowhere;
-        }
-
         /// The material as something `osg::UserDataContainer` will hold.
         class Holder : public osg::Object
         {
         public:
-            /// The name is what `getMaterial` searches the container by, so it is set here rather
-            /// than in the constructor that takes a material: `META_Object` needs a default one too,
-            /// and a nameless holder is one nothing can find again.
-            Holder() { setName(std::string(sUserObjectName)); }
+            Holder() = default;
 
             explicit Holder(const Material& material)
-                : Holder()
+                : mMaterial(material)
             {
-                mMaterial = material;
             }
 
             Holder(const Holder& other, const osg::CopyOp& copyOp)
@@ -81,6 +42,25 @@ namespace Surface
 
             Material mMaterial;
         };
+
+        const Holder sPrototype;
+
+        /// `META_Object` answers both names with one string literal per class, so a holder is told
+        /// from anything else in the container by two pointer compares. `setMaterial` puts it at
+        /// slot nought, so nothing after it is looked at: the lookup runs per state set in force,
+        /// per drawable, per frame.
+        const Holder* holderIn(const osg::UserDataContainer& container)
+        {
+            if (container.getNumUserObjects() == 0)
+                return nullptr;
+
+            const osg::Object* first = container.getUserObject(0);
+            if (first == nullptr || first->libraryName() != sPrototype.libraryName()
+                || first->className() != sPrototype.className())
+                return nullptr;
+
+            return static_cast<const Holder*>(first);
+        }
     }
 
     void Material::setTexture(TextureRole role, const osg::Texture* texture)
@@ -125,33 +105,45 @@ namespace Surface
             return;
         }
 
-        stateSet.getOrCreateUserDataContainer()->addUserObject(new Holder(material));
+        // At slot nought, which `holderIn` reads and nothing else. Whatever stood there moves to
+        // the end: the container has no insert, and nothing reads a state set's user objects by
+        // position but this.
+        osg::UserDataContainer& container = *stateSet.getOrCreateUserDataContainer();
+        if (container.getNumUserObjects() == 0)
+        {
+            container.addUserObject(new Holder(material));
+            return;
+        }
+
+        const osg::ref_ptr<osg::Object> displaced = container.getUserObject(0);
+        container.setUserObject(0, new Holder(material));
+        container.addUserObject(displaced);
     }
 
     const Material* getMaterial(const osg::StateSet& stateSet)
     {
-        const osg::UserDataContainer* container = stateSet.getUserDataContainer();
+        const osg::UserDataContainer* container = sDescribing ? stateSet.getUserDataContainer() : nullptr;
         if (container == nullptr)
             return nullptr;
 
-        const unsigned int at = findMaterial(*container);
-        if (at == sNowhere)
-            return nullptr;
-
-        return &static_cast<const Holder*>(container->getUserObject(at))->mMaterial;
+        const Holder* holder = holderIn(*container);
+        return holder != nullptr ? &holder->mMaterial : nullptr;
     }
 
     Material* getWritableMaterial(osg::StateSet& stateSet)
     {
-        osg::UserDataContainer* container = stateSet.getUserDataContainer();
-        if (container == nullptr)
+        // The rasterizer runs the same controllers and has nothing to write into: what it would
+        // find here is what `setMaterial` never made.
+        if (!sDescribing)
             return nullptr;
 
-        // **A shallow copy shares the container itself, not a copy of it.** `osg::Object`'s copy
-        // constructor takes the pointer, so a `SceneUtil::StateSetUpdater`'s scratch — which is a
-        // shallow copy of the node's state set — writes straight into the node's own user data
-        // unless it is given a container of its own first. Shallow, because the objects in it are
-        // read-only values every copy is happy to share.
+        osg::UserDataContainer* container = stateSet.getUserDataContainer();
+        if (container == nullptr || holderIn(*container) == nullptr)
+            return nullptr;
+
+        // A shallow-copied state set shares the container, and the container shares the holder;
+        // each is duplicated where something else can still see it, so the write reaches this
+        // state set and no other.
         if (container->referenceCount() > 1)
         {
             osg::ref_ptr<osg::UserDataContainer> mine
@@ -160,18 +152,11 @@ namespace Surface
             container = mine;
         }
 
-        const unsigned int at = findMaterial(*container);
-        if (at == sNowhere)
-            return nullptr;
-
-        Holder* holder = static_cast<Holder*>(container->getUserObject(at));
-
-        // And the holder outlives the split: two containers now point at the one description, so it
-        // is duplicated before it is written to. Once, because the copy is then the only holder.
+        Holder* holder = static_cast<Holder*>(container->getUserObject(0));
         if (holder->referenceCount() > 1)
         {
             osg::ref_ptr<Holder> mine = new Holder(holder->mMaterial);
-            container->setUserObject(at, mine);
+            container->setUserObject(0, mine);
             holder = mine;
         }
 

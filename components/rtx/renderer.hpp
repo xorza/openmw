@@ -29,7 +29,6 @@ struct SDL_Window;
 
 namespace Rtx
 {
-    class MeshTable;
     struct SceneTables;
 
     /// Developer instrumentation. Nobody enables any of this in a run they care about the frame rate
@@ -70,11 +69,10 @@ namespace Rtx
     /// that counts allocations builds its own device without them. So a Release build never has
     /// them, and `openmw-rtxtool --validation=false` turns them off in any other for a measurement.
     ///
-    /// **The build decides this and nothing else does.** It was a `[RTX] validation` setting, which
-    /// put a developer's diagnostic in a player's configuration file and let the build that numbers
-    /// are quoted from load the layers by leaving a line behind — which is exactly what happened, so
-    /// every in-game figure taken under it was measured through them. The build type is the one
-    /// thing that already says whether this run is being developed or being measured.
+    /// **The build decides this and nothing else does.** A setting would put a developer's
+    /// diagnostic in a player's configuration file and let the build that numbers are quoted from
+    /// load the layers by leaving a line behind. The build type is the one thing that already says
+    /// whether this run is being developed or being measured.
     ///
     /// One answer for both hosts, out of `openmw-rtx`'s own `PUBLIC` definition: the game and the
     /// harness disagreeing about when the layers load is two renderers to debug.
@@ -215,19 +213,13 @@ namespace Rtx
         SceneSlot mScene = SceneSlot::world();
     };
 
-    /// What a backend built one of its scenes from, as it says so itself.
-    ///
-    /// **The backend's answer and not the uploader's memo.** The uploader used to keep the
-    /// renderer, the scene, the slot, the texture count and the revision it last handed over, and
-    /// ask the backend its count to compare — whether a backend still holds this scene was answered
-    /// on both sides of the seam, with nothing holding the two in step. The backend is the one that
-    /// holds, so the backend says: which scene's tables, at which revision, and how long its
-    /// texture table is.
+    /// What a backend holds in one of its slots, as it says so itself: whether anything, at which
+    /// structure revision, and how long its texture table is. A slot and a scene are one to one, so
+    /// nothing here has to name which scene.
     struct SceneHeld
     {
-        /// The mesh table the scene was built from, which is what identifies a `SceneDesc` for as
-        /// long as it lives, or null where this slot holds nothing.
-        const MeshTable* mScene = nullptr;
+        /// Whether `setScene` has ever filled this slot.
+        bool mBuilt = false;
 
         /// `SceneTables::getStructureRevision` as it stood at the last `setScene` or `extendScene`.
         std::uint64_t mStructureRevision = 0;
@@ -841,10 +833,8 @@ namespace Rtx
     /// without this, opening the window was the one place that did.
     std::uint32_t surfaceWindowFlag();
 
-    /// Builds a renderer, or nothing where this machine cannot run the backend asked for.
-    ///
-    /// **Null and a reason rather than a throw.** Bring-up failure is the one failure a caller always
-    /// wants to act on — a harness skips its GPU tests, the game keeps its rasterizer — and it is the
-    /// case that would otherwise oblige this fork to keep exceptions.
-    std::unique_ptr<Renderer> createRenderer(const RendererOptions& options, std::string& reason);
+    /// Builds a renderer. Throws `Unsupported` naming what this machine lacks — no loader, no driver,
+    /// no device that qualifies, no DLSS where one was asked for — and `Error` where this code broke
+    /// a contract of its own; a caller that skips on the first must not skip on the second.
+    std::unique_ptr<Renderer> createRenderer(const RendererOptions& options);
 }

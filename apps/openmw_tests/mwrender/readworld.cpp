@@ -89,7 +89,9 @@ namespace MWRender
         TEST(RtxReadWorldTest, aRoomIsLitByItsOwnRecordAndHasNoSun)
         {
             WorldState cellar = standingIn(Location::Interior);
-            cellar.mRoom = RoomMood{ .mAmbient = 0x00201818u, .mSunlight = 0x00403028u, .mFog = 0x00151510u };
+            cellar.mRoom = ESM::Cell::AMBIstruct{
+                .mAmbient = 0x00201818u, .mSunlight = 0x00403028u, .mFog = 0x00151510u, .mFogDensity = cellar.mFogDepth
+            };
 
             const Rtx::WorldReading room = readFrom(cellar);
 

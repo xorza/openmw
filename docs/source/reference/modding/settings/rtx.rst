@@ -34,6 +34,10 @@ Every setting here is read once, at startup.
    different question for a renderer that culls: at 7168 units against a cell of 8192 it barely
    leaves the active grid.
 
+   Read once at start, together with :code:`object paging` and :code:`object paging min size` from
+   the terrain section, which decide whether and how the distance's statics stand. Changing any of
+   the three takes effect on the next start.
+
 .. omw-setting::
    :title: upscale
    :type: string

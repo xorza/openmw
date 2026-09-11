@@ -9,12 +9,11 @@
 
 #include "mwgui/debugwindow.hpp"
 
-#include <osg/Notify>
-
 #include "engine.hpp"
 #include "options.hpp"
 
 #include <boost/program_options/variables_map.hpp>
+#include <osg/Notify>
 
 #if defined(_WIN32)
 #include <components/misc/windows.hpp>

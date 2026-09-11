@@ -56,9 +56,8 @@ namespace MWRender
         ///
         /// **The stop's own count and not the game's frame number.** What the bounce sampler and
         /// the upscaler's jitter are walked by has to be the same sequence on every run, and a
-        /// game's frame number carries every frame a loading screen happened to draw — measured,
-        /// two runs of one binary then sat at different points in the Halton sequence and 47% of
-        /// the frame differed by up to 38 of 255, however long the warm-up.
+        /// game's frame number carries every frame a loading screen happened to draw, so two runs
+        /// of one binary sit at different points in the Halton sequence however long the warm-up.
         ///
         /// **`apps/rtxtool/repeatable.sh` is where it shows**, and as a count rather than as a red
         /// run: what this walks reaches the picture and not the scene columns, and that gate reports
@@ -162,15 +161,10 @@ namespace MWRender
         /// Points the game's camera along `look` from `eye`, for as long as nothing else moves it.
         void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look);
 
-        /// What one stop has come to so far.
-        ///
-        /// **One object, because `beginStop` resets it.** It was nine members of the session and
-        /// four accumulators of `Held`, cleared by a ten-line block that a new field reaches only if
-        /// its author remembers.
-        ///
-        /// **`restart` and not an assignment from a default**, because the samples are reserved once
-        /// for the longest stop of the run: a bench that allocates where it measures is measuring
-        /// its own allocation.
+        /// What one stop has come to so far. One object, because `beginStop` resets it whole; and
+        /// `restart` rather than an assignment from a default, because the samples are reserved
+        /// once for the longest stop of the run and a bench that allocates where it measures is
+        /// measuring its own allocation.
         struct StopProgress;
 
         Rtx::SessionRequest mRequest;

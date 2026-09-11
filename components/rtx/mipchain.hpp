@@ -40,6 +40,9 @@ namespace Rtx
         /// worth keeps the room the last chain grew. Whatever was here is gone, buffers apart.
         void build(const TextureData& described);
 
+        /// Empties the chain and keeps the room its texture grew.
+        void reuse() { mTexture.reuse(); }
+
         /// Whether there was nothing to build, which is the ordinary case.
         bool isEmpty() const { return mTexture.isEmpty(); }
 

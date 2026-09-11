@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -101,10 +102,9 @@ namespace Rtx
         /// hands them back in that order, so the cell a frame adopts is the next of that order
         /// whether or not the walk had to wait for it.
         ///
-        /// **One cell a frame either way, which is the rule a settled walk used to break.** Waiting
-        /// for the whole band and then adopting all of it put a region's arrivals on one frame:
-        /// measured on `island-crossing`, `walk ms` read 59.6 ms worst against 5.5 ms with this off,
-        /// and a route that crosses nineteen times paid it nineteen times.
+        /// **One cell a frame either way.** Waiting for the whole band and then adopting all of it
+        /// would put a region's arrivals on one frame — about ten frames' worth of walk on the
+        /// island route — and a route that crosses nineteen times would pay it nineteen times.
         ///
         /// `CompositeQueue::setSettled` is the same rule for the ground's composites.
         void setSettled(bool settled);
@@ -197,6 +197,12 @@ namespace Rtx
 
         bool mStatics = true;
         bool mSettled = false;
+
+        /// Whether the request list has to be rebuilt: the eye's cell, the held and handed sets or
+        /// the statics switch changed since it was. `ask` rebuilds the whole band, and nothing else
+        /// on the frame path is proportional to the band.
+        bool mAskStale = true;
+        std::optional<osg::Vec2i> mLastEye;
 
         std::size_t mFrame = 0;
 

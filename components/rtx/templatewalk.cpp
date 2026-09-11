@@ -79,6 +79,6 @@ namespace Rtx
     /// this replaces showed of it too.
     void TemplateWalk::descend(osg::Node& node)
     {
-        descendInWorld(node, *this, [](osg::Sequence&) {});
+        descendInWorld(node, mKinds.of(node), *this, [](osg::Sequence&) {});
     }
 }

@@ -19,6 +19,7 @@
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/image.hpp>
+#include <components/rtxvulkan/imageuse.hpp>
 
 #include "harness.hpp"
 
@@ -130,9 +131,7 @@ namespace Rtx
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 for (const Image* image : { &surface, &curvature })
-                    image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                    image->transition(commands, Use::sUndefined, Use::sComputeWrite);
 
                 const std::array<VkWriteDescriptorSet, 3> forms{ buffer(0, whole[0]), buffer(1, whole[1]),
                     buffer(2, whole[2]) };

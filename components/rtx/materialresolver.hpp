@@ -138,6 +138,15 @@ namespace Rtx
         /// own walk where the epoch reached all of it.
         void retireHolds();
 
+        /// Reserves the identity maps once, so no frame rehashes them. `SceneExtractor` states the
+        /// budgets.
+        void reserve(std::size_t materials, std::size_t textures, std::size_t animated)
+        {
+            mMaterials.reserve(materials);
+            mTextureOf.reserve(textures);
+            mAnimated.reserve(animated);
+        }
+
     private:
         /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
         Material readMaterial(std::span<const Shading> shading);
@@ -156,7 +165,8 @@ namespace Rtx
         Index reuse(const osg::StateSet* key);
 
         /// Adds `material` under `key`, counted as an arrival.
-        Index adopt(const osg::StateSet* key, const Material& material);
+        using Entry = Identity<const osg::StateSet>::Entry;
+        Entry adopt(const osg::StateSet* key, const Material& material);
 
         /// The scene's slot for one image, held for as long as this names it.
         Index takeTexture(const osg::Image* image);
@@ -184,6 +194,11 @@ namespace Rtx
         struct Animated : Known
         {
             osg::ref_ptr<osg::StateSet> mStateSet;
+
+            /// The controller found on the node's callback chains, or null where there was none,
+            /// and what the chains looked like when it was found.
+            SceneUtil::StateSetUpdater* mUpdater = nullptr;
+            std::uintptr_t mChains = 0;
         };
 
         SceneDesc& mScene;

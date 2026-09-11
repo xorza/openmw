@@ -123,32 +123,27 @@ namespace Rtx
         device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mView.get()), name);
     }
 
-    void Image::transition(VkCommandBuffer commands, VkImageLayout from, VkImageLayout to,
-        VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
-        VkAccessFlags2 dstAccess) const
+    void Image::transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const
     {
-        transitionLevels(commands, 0, mMipLevels, from, to, srcStage, srcAccess, dstStage, dstAccess);
+        transitionLevels(commands, 0, mMipLevels, from, to);
     }
 
-    VkImageMemoryBarrier2 Image::describeTransition(VkImageLayout from, VkImageLayout to,
-        VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
-        VkAccessFlags2 dstAccess) const
+    VkImageMemoryBarrier2 Image::describeTransition(const ImageUse& from, const ImageUse& to) const
     {
-        return describeLevels(0, mMipLevels, from, to, srcStage, srcAccess, dstStage, dstAccess);
+        return describeLevels(0, mMipLevels, from, to);
     }
 
-    VkImageMemoryBarrier2 Image::describeLevels(std::uint32_t base, std::uint32_t count, VkImageLayout from,
-        VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
-        VkAccessFlags2 dstAccess) const
+    VkImageMemoryBarrier2 Image::describeLevels(
+        std::uint32_t base, std::uint32_t count, const ImageUse& from, const ImageUse& to) const
     {
         return VkImageMemoryBarrier2{
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = srcStage,
-            .srcAccessMask = srcAccess,
-            .dstStageMask = dstStage,
-            .dstAccessMask = dstAccess,
-            .oldLayout = from,
-            .newLayout = to,
+            .srcStageMask = from.mStage,
+            .srcAccessMask = from.mAccess,
+            .dstStageMask = to.mStage,
+            .dstAccessMask = to.mAccess,
+            .oldLayout = from.mLayout,
+            .newLayout = to.mLayout,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = mHandle.get(),
@@ -179,12 +174,10 @@ namespace Rtx
         mCount = 0;
     }
 
-    void Image::transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, VkImageLayout from,
-        VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
-        VkAccessFlags2 dstAccess) const
+    void Image::transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count,
+        const ImageUse& from, const ImageUse& to) const
     {
-        const VkImageMemoryBarrier2 barrier
-            = describeLevels(base, count, from, to, srcStage, srcAccess, dstStage, dstAccess);
+        const VkImageMemoryBarrier2 barrier = describeLevels(base, count, from, to);
 
         const VkDependencyInfo dependency{
             .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
@@ -205,11 +198,9 @@ namespace Rtx
 
         // The written level becomes the first source; the rest hold whatever the last frame left,
         // which every blit below overwrites whole.
-        transitionLevels(commands, 0, 1, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_BLIT_BIT,
-            VK_ACCESS_2_TRANSFER_READ_BIT);
-        transitionLevels(commands, 1, mMipLevels - 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_2_BLIT_BIT, 0, VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        transitionLevels(commands, 0, 1, Use::sComputeWrite, Use::sBlitRead);
+        transitionLevels(commands, 1, mMipLevels - 1,
+            ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_BLIT_BIT, 0 }, Use::sBlitWrite);
 
         std::uint32_t width = mWidth;
         std::uint32_t height = mHeight;
@@ -233,9 +224,7 @@ namespace Rtx
 
             // What was just written is the next blit's source, which is the whole of the ordering:
             // every level is written once and read once, by the step after it.
-            transitionLevels(commands, level, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+            transitionLevels(commands, level, 1, Use::sBlitWrite, Use::sBlitRead);
 
             width = halfWidth;
             height = halfHeight;
@@ -243,10 +232,10 @@ namespace Rtx
 
         // Both stages, because the wave tiles are what has a chain: the fog volume samples them as
         // a dispatch and the trace as a launch.
-        transitionLevels(commands, 0, mMipLevels, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        transitionLevels(commands, 0, mMipLevels, Use::sBlitRead,
+            ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT });
     }
 
     void Image::read(
@@ -262,8 +251,8 @@ namespace Rtx
         const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
         pool.submitAndWait([&](VkCommandBuffer commands) {
-            transition(commands, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+            transition(commands, ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT },
+                Use::sCopyRead);
 
             const VkBufferImageCopy region{
                 .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },
@@ -277,9 +266,9 @@ namespace Rtx
             // **Back where it was found.** Reading an image is not a change to it, and a caller that
             // has to know a read moved it is one that will forget: the GUI's own table is sampled
             // straight after the global map takes a copy of a tile out of it.
-            transition(commands, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layout, VK_PIPELINE_STAGE_2_COPY_BIT,
-                VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+            transition(commands, Use::sCopyRead,
+                ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT });
         });
 
         pixels.resize(bytes);
@@ -297,8 +286,8 @@ namespace Rtx
         const VkAccessFlags2 read = usage == VK_IMAGE_USAGE_STORAGE_BIT ? VK_ACCESS_2_SHADER_STORAGE_READ_BIT
                                                                         : VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
         pool.submitAndWait([&](VkCommandBuffer commands) {
-            made.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, read);
+            made.transition(commands, Use::sUndefined,
+                ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, read });
         });
 
         return made;

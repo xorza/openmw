@@ -97,6 +97,15 @@ namespace Rtx
         /// always the two comparisons and nothing else.
         void retireDeformers();
 
+        /// Reserves the identity maps once, so no frame rehashes them. `SceneExtractor` states the
+        /// budgets.
+        void reserve(std::size_t meshes, std::size_t deformers)
+        {
+            mMeshes.reserve(meshes);
+            mRigs.reserve(deformers);
+            mMorphs.reserve(deformers);
+        }
+
     private:
         /// The scene's rig for a skin, added the first time the skin is met. Shared by every copy of
         /// the drawable, because the skin is.

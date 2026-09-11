@@ -18,6 +18,7 @@
 #include "materialresolver.hpp"
 #include "meshreader.hpp"
 #include "preparedground.hpp"
+#include "reuse.hpp"
 #include "run.hpp"
 #include "shapefold.hpp"
 
@@ -118,17 +119,9 @@ namespace Rtx
         /// Makes room for the next model, keeping what the buffers grew.
         void reuse()
         {
-            mPath.clear();
-            mTemplate = nullptr;
-            mRadius = 0.0f;
-            mLent = 0;
-            mParts.clear();
-            mTextures.clear();
-            mPositions.clear();
-            mNormals.clear();
-            mTexCoords.clear();
-            mColours.clear();
-            mIndices.clear();
+            reuseKeeping(*this, &PreparedModel::mPath, &PreparedModel::mParts, &PreparedModel::mTextures,
+                &PreparedModel::mPositions, &PreparedModel::mNormals, &PreparedModel::mTexCoords,
+                &PreparedModel::mColours, &PreparedModel::mIndices);
         }
     };
 
@@ -167,12 +160,6 @@ namespace Rtx
 
         std::vector<PreparedRef> mRefs;
 
-        void reuse()
-        {
-            mStatics = false;
-            mGround.reuse();
-            mModels.clear();
-            mRefs.clear();
-        }
+        void reuse() { reuseKeeping(*this, &PreparedCell::mGround, &PreparedCell::mModels, &PreparedCell::mRefs); }
     };
 }

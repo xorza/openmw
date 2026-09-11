@@ -11,6 +11,7 @@
 #include <components/esm3/refnum.hpp>
 
 #include "index.hpp"
+#include "reuse.hpp"
 
 namespace Rtx
 {
@@ -58,15 +59,7 @@ namespace Rtx
         std::vector<PreparedTexture*> mTextures;
 
         /// Empties it for the next cell, keeping the room the texture list grew.
-        void reuse()
-        {
-            mMesh = sNoIndex;
-            mMaterial = sNoIndex;
-            mSlot = sNoIndex;
-            mLayers = 0;
-            mFlattened = false;
-            mTextures.clear();
-        }
+        void reuse() { reuseKeeping(*this, &HeldGround::mTextures); }
     };
 
     /// A cell the frame has adopted. Its vectors are kept when it is dropped, so a cell that arrives
@@ -78,6 +71,10 @@ namespace Rtx
         /// Whether its references were read, so a cell read under the other setting is dropped and
         /// read again.
         bool mStatics = false;
+
+        /// Marked by the ring's sweep and compacted after it, so a frame that drops many cells
+        /// shifts the table once.
+        bool mDropped = false;
 
         std::vector<Placement> mPlacements;
         std::vector<PreparedModel*> mModels;

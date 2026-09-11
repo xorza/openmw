@@ -19,10 +19,9 @@ namespace Rtx
 {
     /// One thing a run asserts about what the renderer was handed or what it drew.
     ///
-    /// **A claim against the running game, where these used to be tests against a world of the
-    /// harness's own.** That world read its cells by hand, dressed its people by rules of its own
-    /// and derived its sky from the content files, so a claim proved there was a claim about a
-    /// world nobody plays. What is here is the same claim asked of the world a player stands in.
+    /// **A claim against the running game, and not against a world of the harness's own.** A staged
+    /// world reads its cells by hand, dresses its people by rules of its own and derives its sky
+    /// from the content files, so a claim proved there is a claim about a world nobody plays.
     enum class Check
     {
         /// A second walk over the same graph adds no mesh and no material.
@@ -170,11 +169,10 @@ namespace Rtx
     /// inside the reach of: `Rtx` names `Sky::TimeOfDaySettings` and `Sky::SkyRoll`, and a type
     /// called `Sky` here would take the lookup from every one of them.
     ///
-    /// **Asked of the game's own weather system rather than derived.** The harness used to work
-    /// out a sun, an air and a set of moons from the content files at an hour it was told, which is
-    /// a second answer to a question `MWWorld::WeatherManager` already answers — and the two
-    /// disagreed about a transition, about a quasi-exterior's air, and about which weathers a
-    /// region ever sees.
+    /// **Asked of the game's own weather system rather than derived.** A sun, an air and a set of
+    /// moons worked out from the content files at an hour is a second answer to a question
+    /// `MWWorld::WeatherManager` already answers, and the two disagree about a transition, about a
+    /// quasi-exterior's air, and about which weathers a region ever sees.
     struct StopSky
     {
         std::optional<float> mHour;
@@ -296,13 +294,17 @@ namespace Rtx
         /// frames one.
         std::filesystem::path mMapTile;
 
-        /// Whose inventory doll to write, and where. Empty for a stop that draws none.
+        /// Whose inventory doll to write, and where, for a stop that draws one.
         ///
         /// **A picture of a subject and not of the world**, which is the half a frame never
         /// exercises: the body is assembled and dressed by `MWRender::NpcAnimation`, mirrored into
         /// a scene of its own and traced against it.
-        std::string mDoll;
-        std::filesystem::path mDollOut;
+        struct Doll
+        {
+            std::string mWho;
+            std::filesystem::path mFile;
+        };
+        std::optional<Doll> mDoll;
 
         /// A word to look for among the textures the world around this place is wearing.
         ///

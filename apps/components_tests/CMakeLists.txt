@@ -153,7 +153,7 @@ if (OPENMW_RTX)
         rtx/mipchain.cpp
         rtx/monitor.cpp
         rtx/moonbuilder.cpp
-        rtx/nodelibrary.cpp
+        rtx/nodekind.cpp
         rtx/offscreentrace.cpp
         rtx/ownedby.cpp
         rtx/parallel.cpp

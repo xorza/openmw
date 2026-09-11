@@ -27,16 +27,12 @@ namespace Rtx
 
             for (const Image* target : { mTarget.get(), mSpare.get() })
             {
-                target->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT);
+                target->transition(commands, Use::sUndefined, Use::sClearWrite);
 
                 vkCmdClearColorImage(
                     commands, target->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &whole);
 
-                target->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+                target->transition(commands, Use::sClearWrite, Use::sAnyGeneral);
             }
         });
     }

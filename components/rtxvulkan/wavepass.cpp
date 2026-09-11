@@ -187,9 +187,10 @@ namespace Rtx
             // still be blitting it, so the discard waits for everything ahead of it on the queue.
             Barriers opened(commands);
             for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
-                opened.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+                opened.add(
+                    image->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                                  VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
+                        Use::sComputeWrite));
 
             opened.flush();
 

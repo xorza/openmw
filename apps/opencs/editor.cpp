@@ -37,7 +37,6 @@
 #include <components/toutf8/toutf8.hpp>
 
 #include "view/doc/viewmanager.hpp"
-#include "view/render/mask.hpp"
 
 CS::Editor::Editor(int argc, char** argv)
     : mConfigVariables(readConfiguration())
@@ -59,9 +58,7 @@ CS::Editor::Editor(int argc, char** argv)
         mDataDirs = config.first;
     }
 
-    // **Markers are what an editor is for**, and `Mask_Hidden` is this application's own answer to
-    // what a hidden node carries: nothing, because nothing here animates one visible again.
-    NifOsg::Loader::configure({ .mHiddenNodeMask = CSVRender::Mask_Hidden, .mShowMarkers = true });
+    NifOsg::Loader::configure({ .mShowMarkers = true });
 
     mDocumentManager.setFileData(config.first, config.second);
 

@@ -110,6 +110,12 @@ namespace Rtx
         /// Drops the row at `at` and answers what follows it, for a sweep that walks them all.
         iterator erase(const_iterator at) { return mRows.erase(at); }
 
+        template <class Gone>
+        void eraseIf(Gone gone)
+        {
+            std::erase_if(mRows, gone);
+        }
+
         void clear() { mRows.clear(); }
 
         std::size_t size() const { return mRows.size(); }

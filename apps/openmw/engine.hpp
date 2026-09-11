@@ -216,10 +216,6 @@ namespace OMW
 
         /// What a harness run asks of the ray tracer, or null. The caller's own, and it has to
         /// outlive `go`.
-        ///
-        /// **Handed over here rather than through a global.** A file-static used to carry the
-        /// request and a raw pointer to the caller's result from the harness into the renderer's
-        /// constructor, which is a live object owned across a mailbox.
         void setRtxSetup(const MWRender::RtxSetup* setup) { mRtxSetup = setup; }
 
         /// Initialise and enter main loop.

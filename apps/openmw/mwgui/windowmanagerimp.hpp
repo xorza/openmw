@@ -80,6 +80,7 @@ namespace SceneUtil
 
 namespace MWRender
 {
+    class LocalMap;
     class Renderer;
     class Stage;
 }
@@ -189,6 +190,7 @@ namespace MWGui
         MWGui::TradeWindow* getTradeWindow() override;
         MWGui::HUD* getHud() override;
         MWGui::PostProcessorHud* getPostProcessorHud() override;
+        MWRender::LocalMap* getLocalMap() override { return mLocalMapRender.get(); }
         std::vector<MWGui::WindowBase*> getGuiModeWindows(GuiMode mode) override;
 
         /// Make the player use an item, while updating GUI state accordingly

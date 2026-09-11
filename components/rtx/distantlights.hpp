@@ -5,6 +5,8 @@
 #include <osg/Vec2i>
 #include <osg/ref_ptr>
 
+#include <components/terrain/objectstorage.hpp>
+
 #include "residency.hpp"
 
 namespace osg
@@ -76,7 +78,7 @@ namespace Rtx
         };
 
         /// Reads one cell's `LIGH` references and stands a light at each. Null where it holds none.
-        osg::ref_ptr<osg::Group> build(const osg::Vec2i& cell) const;
+        osg::ref_ptr<osg::Group> build(const osg::Vec2i& cell);
 
         /// Where the eye is and how much world there is around it, as the last `follow` said.
         WorldAround mAround;
@@ -102,5 +104,9 @@ namespace Rtx
         /// **Emptied by `follow` and by `restart`, and by nothing else**: the first is a world that
         /// changed, the second a scene that began again under the same world.
         std::vector<ReadCell> mCells;
+
+        /// Refilled per cell built. A cell arrives while the game runs, so its read allocates no more
+        /// freely than a frame does.
+        std::vector<Terrain::PagedCellRef> mRefScratch;
     };
 }

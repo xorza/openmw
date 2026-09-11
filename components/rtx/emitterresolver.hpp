@@ -58,6 +58,10 @@ namespace Rtx
         /// Lets go of the textures of every system this epoch did not meet.
         void retire();
 
+        /// Reserves the identity map once, so no frame rehashes it. `SceneExtractor` states the
+        /// budget.
+        void reserve(std::size_t emitters) { mHeld.reserve(emitters); }
+
     private:
         /// An emitter the walk met, waiting for the walk to finish before its particles are read.
         struct Pending

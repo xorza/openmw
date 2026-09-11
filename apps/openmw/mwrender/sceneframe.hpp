@@ -4,14 +4,15 @@
 #include <cstdint>
 #include <optional>
 
-#include "weatherresult.hpp"
-
 #include <osg/Matrixf>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/esm3/loadcell.hpp>
 #include <components/sky/moonmodel.hpp>
 #include <components/sky/skyroll.hpp>
+
+#include "weatherresult.hpp"
 
 namespace osg
 {
@@ -54,21 +55,6 @@ namespace MWRender
         Interior,
         QuasiExterior,
         Exterior,
-    };
-
-    /// The cell's own `AMBI` record — its ambient, sunlight and fog as three packed colours.
-    ///
-    /// **A room's, and nothing else has one.** Every field of it is meaningless outdoors, which is
-    /// why it is an alternative rather than three numbers a reader has to know not to take. A
-    /// quasi-exterior has none: it has weather, so its light is the weather's.
-    ///
-    /// **`WorldState::mFogDepth` is not part of it**, because both paths read that one: it is a
-    /// weather's blended `Land_Fog_Depth` outdoors and this record's fourth number indoors.
-    struct RoomMood
-    {
-        std::uint32_t mAmbient = 0;
-        std::uint32_t mSunlight = 0;
-        std::uint32_t mFog = 0;
     };
 
     /// A distance fog, as the game describes one: a colour and the linear ramp it fills.
@@ -198,24 +184,19 @@ namespace MWRender
         /// A weather's blended `Land_Fog_Depth` outdoors, and a cell's `AMBI` density indoors.
         float mFogDepth = 0.0f;
 
-        /// The room the player is standing in, or nothing for anywhere else.
+        /// The `AMBI` record of the room the player is standing in, or nothing anywhere else.
         ///
         /// **The record and not `mAmbientColour`, for a renderer that lights a room itself.**
         /// `configureAmbient` lifts an interior's ambient to `minimum interior brightness` before
         /// the rasterizer's lights see it, which balances a falloff curve of the rasterizer's own,
         /// and turns its sunlight into a directional light at a position of its choosing. A
-        /// renderer that lights the room itself reads the record as the content files state it, so
-        /// a played frame and an offline one stand in one room.
+        /// renderer that lights the room itself reads what the content files state.
         ///
-        /// **Nothing rather than three stale numbers**, which is what they were: written at every
-        /// cell change and meaningless at all but a fraction of them. `RoomMood` says what the
-        /// fourth number is and why it stays outside.
-        ///
-        /// **Written when a room is entered and cleared beside `mLocation`**, because those are not
-        /// the same event: `configureAmbient` is the only writer and `MWWorld::Scene` calls it for
-        /// a room and for nothing else, so nothing at all wrote this when the player stepped back
-        /// out. `RenderingManager::describeWorld` is where it is made to hold.
-        std::optional<RoomMood> mRoom;
+        /// **Written by `configureAmbient` when a room is entered and masked by `mLocation` in
+        /// `describeWorld`**, because nothing writes it when the player steps back out: the game
+        /// configures a room's ambient and nothing else's. A quasi-exterior has none — it has
+        /// weather, so its light is the weather's. `mFogDensity` repeats `mFogDepth` indoors.
+        std::optional<ESM::Cell::AMBIstruct> mRoom;
 
         /// What `updateAmbient` added to the ambient for the Night-Eye effect, in the file's space:
         /// `mAmbientColour` less the cell's own. Read back rather than restated, so the number is
@@ -243,8 +224,8 @@ namespace MWRender
         std::optional<int> mNextWeatherId;
 
         /// How far that transition has left to run, which is **one when it begins and zero when it
-        /// ends**: `WeatherManager` counts it down, and its own mix is `1 - this`
-        /// (`apps/openmw/mwworld/weather.cpp:1261`). Meaningless without `mNextWeatherId`.
+        /// ends**: `WeatherManager` counts it down, and its own mix is `1 - this`. Meaningless
+        /// without `mNextWeatherId`.
         float mWeatherTransition = 0.0f;
 
         /// How hard the wind blows, as the game's own dial rather than a physical one. What the
@@ -299,17 +280,10 @@ namespace MWRender
         bool isOutdoors() const { return mLocation != Location::Interior; }
     };
 
-    /// What there is to draw, and what the world is doing while it is drawn.
-    ///
-    /// **Handed down rather than reached up for.** A renderer that pulled the world would have to
-    /// know `RenderingManager`, which sits above it; a renderer given one frame's worth of world
-    /// knows only what a frame is. Where there is no world — the main menu, a loading screen, a
-    /// video — there is no frame either, and `Renderer::renderGui` is what gets called instead.
     /// Where the frame is seen from, and how far it can see.
     ///
-    /// **Not a fact about the world**, which is why it left `WorldState`: a near plane and a field
-    /// of view are the eye's, and the same world is drawn through several of them — the frame's, a
-    /// map tile's, an inventory doll's.
+    /// **Not a fact about the world**: a near plane and a field of view are the eye's, and the same
+    /// world is drawn through several of them — the frame's, a map tile's, an inventory doll's.
     struct EyeState
     {
         float mNearClip = 0.0f;
@@ -321,6 +295,12 @@ namespace MWRender
         float mFieldOfView = 0.0f;
     };
 
+    /// What there is to draw, and what the world is doing while it is drawn.
+    ///
+    /// **Handed down rather than reached up for.** A renderer that pulled the world would have to
+    /// know `RenderingManager`, which sits above it; a renderer given one frame's worth of world
+    /// knows only what a frame is. Where there is no world — the main menu, a loading screen, a
+    /// video — there is no frame either, and `Renderer::renderGui` is what gets called instead.
     struct SceneFrame
     {
         /// The whole world, from the top. Not the cull's results: rays go everywhere, so anything a
@@ -343,8 +323,8 @@ namespace MWRender
         /// The world's terrain, for its storage, its worldspace and the active grid.
         ///
         /// **Not for its chunks.** A renderer that stands the ground itself is given a world that
-        /// builds none — `Renderer::wantsTerrainChunks` — and reads every cell off the storage
-        /// this carries.
+        /// builds none — `TerrainPlan::mChunks` — and reads every cell off the storage this
+        /// carries.
         Terrain::World& mTerrain;
 
         /// What the content files say stands where, which the paging above reads and a renderer that

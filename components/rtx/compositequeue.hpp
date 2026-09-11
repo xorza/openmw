@@ -8,6 +8,7 @@
 #include <stop_token>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <osg/Image>
@@ -16,6 +17,7 @@
 #include "monitor.hpp"
 #include "ownedby.hpp"
 #include "recycled.hpp"
+#include "reuse.hpp"
 #include "run.hpp"
 #include "scenedesc.hpp"
 #include "shadingcache.hpp"
@@ -118,6 +120,10 @@ namespace Rtx
         /// The finished composite in `slot`, or null where nothing here baked one.
         const TerrainComposite* find(Index slot) const;
 
+        /// How many layers or stacks the bakers could not read since the last call, which the
+        /// hand-over adds to the frame's unreadable textures.
+        std::uint32_t takeUnreadable() { return std::exchange(mUnreadable, 0u); }
+
         /// Lets go of everything `collect` took. **After the upload and not before**: what is held
         /// between those two calls is the only copy of the bytes a backend has to read.
         void releaseFinished() { mFinished.clear(); }
@@ -209,10 +215,7 @@ namespace Rtx
             /// that has already been baked and collected.
             void reuse()
             {
-                mLayers.clear();
-                mImages.clear();
-                mMasks.clear();
-                mMaskRuns.clear();
+                reuseKeeping(*this, &Request::mLayers, &Request::mImages, &Request::mMasks, &Request::mMaskRuns);
             }
         };
 
@@ -222,6 +225,11 @@ namespace Rtx
         {
             Request mRequest;
             std::optional<TerrainComposite> mComposite;
+
+            /// Layers whose image could not be described, and a whole stack that failed to bake:
+            /// each is a texture the world stated and the picture lacks, counted where the other
+            /// unreadable textures are.
+            std::uint32_t mUnreadable = 0;
         };
 
         /// One thread and everything only it may touch.
@@ -302,6 +310,8 @@ namespace Rtx
 
         /// Collected this frame, by the slot they were given. Emptied by `releaseFinished`.
         std::unordered_map<Index, TerrainComposite> mFinished;
+
+        std::uint32_t mUnreadable = 0;
 
         /// Refilled per collect rather than built afresh: the frame a composite lands on is not
         /// one to spend an allocation on.

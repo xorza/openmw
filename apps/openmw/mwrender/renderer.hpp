@@ -78,11 +78,9 @@ namespace MWRender
 
     /// How the game builds the world's ground for this renderer.
     ///
-    /// **A policy and not a capability.** The `Capabilities` struct this class once carried held
-    /// answers that were null checks wearing a hat, and asking a renderer for the thing beat asking
-    /// it what it had. These four are not that: each decides what the game *builds*, none of them is
-    /// reachable as a thing to ask for, and a renderer that answered three of them consistently and
-    /// the fourth by accident builds ground nobody draws.
+    /// **A policy and not a capability.** Each of these decides what the game *builds*, and a
+    /// renderer that answered three of them consistently and the fourth by accident builds ground
+    /// nobody draws — which is why they are one struct and not four questions.
     ///
     /// **Fixed for a renderer's life and asked once per worldspace.** `getTerrainViewDistance` is
     /// deliberately not here: it is a live function of the camera distance and the field of view for
@@ -157,9 +155,8 @@ namespace MWRender
     /// here is what the game asks for, and none of it is called more than a few times a frame.
     ///
     /// **A pure virtual is a question both renderers answer. A question only the rasterizer can
-    /// answer has a default here**, and the ray tracer does not override it: what it would say is
-    /// nothing, and five overrides saying nothing were five places a reader had to check to learn
-    /// that the question was the rasterizer's.
+    /// answer has a default here**, and the ray tracer does not override it: an override saying
+    /// nothing is a place a reader has to check to learn that the question was the rasterizer's.
     class Renderer
     {
     public:
@@ -172,13 +169,6 @@ namespace MWRender
         /// units out of this, and content that wants one more than there are has to be told rather
         /// than find out at link time.
         ///
-        /// **The only thing a renderer is asked what it has, and it is a number.** There was a
-        /// `Capabilities` struct here and every other field in it turned out to be a null check
-        /// wearing a hat: `getPostProcessor()` returning nothing says the same as a
-        /// `mPostProcessing` that is false, and says it without putting the shape of one renderer's
-        /// insides in the caller. Asking a renderer for the thing is a better question than asking
-        /// it what it has — except where the answer is not a thing.
-        ///
         /// **A GL fact, so the default is the one number a renderer with no GL context can give**:
         /// `Surface::sAssumedTextureUnits`, which is what the content was described against.
         virtual int getMaxTextureUnits() const;
@@ -189,9 +179,6 @@ namespace MWRender
 
         /// How the game builds the world's ground for this renderer. `TerrainPlan` says what each
         /// answer decides, and why the view distance below is not one of them.
-        ///
-        /// **One question, because it is one policy.** It was four virtual calls with one call site
-        /// between them, and a renderer whose four answers did not agree built ground nobody draws.
         virtual TerrainPlan getTerrainPlan() const = 0;
 
         /// What the game says of one reference the content files cannot: a script has disabled it,
@@ -210,6 +197,11 @@ namespace MWRender
         /// `cameraDistance` is widened by `fov`; what is traced needs to know how much world exists,
         /// which is a property of the structure rays are cast against and of no camera at all.
         virtual float getTerrainViewDistance(float cameraDistance, float fov) const = 0;
+
+        /// How far from the eye ground is *built*, in units, straight ahead and not to a frustum's
+        /// corner: what the local map is a map of. Nought where the ground reaches no further than
+        /// the cells the simulation has loaded.
+        virtual float getGroundReach() const = 0;
 
         /// The world exists; build whatever goes between it and the screen.
         ///
@@ -359,11 +351,9 @@ namespace MWRender
 
         /// Compiles arriving resources over several frames instead of stalling on first use. Null
         /// where `OPENMW_DONT_PRECOMPILE` asked for none, which is why this one is a pointer.
-        /// **A budget and not a compile operation.** The loading screen used to read the operation
-        /// off the renderer three times — once to save what it held, once to widen it, once to put
-        /// it back — which is an OpenGL object in the interface's hands and a null the ray tracer
-        /// answered with. What the screen actually asks for is "spend more while I am up", and that
-        /// is a number.
+        /// **A budget and not a compile operation**, because that operation is an OpenGL object and
+        /// the interface would otherwise hold one and the ray tracer answer with null. What the
+        /// screen actually asks for is "spend more while I am up", and that is a number.
         ///
         /// Nothing restores whatever the renderer chose for itself. A renderer with nothing to
         /// prepare ignores both.

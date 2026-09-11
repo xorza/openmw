@@ -34,10 +34,6 @@ namespace Rtx
 
         const DeviceProperties& getProperties() const { return *mProperties; }
 
-        /// What this renderer decided from those properties. `DeviceProfile` says why the two are
-        /// different things.
-        const DeviceProfile& getProfile() const { return mProfile; }
-
         /// Queue family with graphics and compute, which on the target hardware is also the one
         /// that can present. A separate transfer queue is an M12 question.
         std::uint32_t getQueueFamily() const { return mProfile.mQueueFamily; }

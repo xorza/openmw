@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -45,6 +46,20 @@ namespace Rtx
 
             return nullptr;
         }
+
+        /// What hangs on `node`'s two chains, as one number: a callback added, removed or swapped
+        /// anywhere on either changes it. Pointer arithmetic down chains of one or two, against the
+        /// casts `findUpdater` takes.
+        std::uintptr_t chainSignature(const osg::Node& node)
+        {
+            std::uintptr_t signature = 0;
+            for (const osg::Callback* chain : { node.getCullCallback(), node.getUpdateCallback() })
+                for (const osg::Callback* callback = chain; callback != nullptr;
+                     callback = callback->getNestedCallback())
+                    signature = (signature * 31u) ^ reinterpret_cast<std::uintptr_t>(callback);
+
+            return signature;
+        }
     }
 
     const osg::StateSet* MaterialResolver::animate(osg::Node& node, osg::NodeVisitor* visitor)
@@ -54,12 +69,24 @@ namespace Rtx
         if (node.getCullCallback() == nullptr && node.getUpdateCallback() == nullptr)
             return nullptr;
 
-        SceneUtil::StateSetUpdater* updater = findUpdater(node);
+        // **The casts are taken when the chains change, not per frame.** The entry remembers what it
+        // found and what the chains looked like when it found it; a controller swapped, appended or
+        // removed under the walk changes the signature, and a node whose chains carry no updater
+        // keeps a null one.
+        const auto [entry, arrived] = mAnimated.reach(&node);
+        Animated& held = entry->second;
+        const std::uintptr_t chains = chainSignature(node);
+        if (arrived || chains != held.mChains)
+        {
+            held.mChains = chains;
+            held.mUpdater = findUpdater(node);
+        }
+
+        SceneUtil::StateSetUpdater* updater = held.mUpdater;
         if (updater == nullptr)
             return nullptr;
 
-        const auto [entry, arrived] = mAnimated.reach(&node);
-        if (arrived)
+        if (held.mStateSet == nullptr)
         {
             // **A copy of what the node already wears, and a shallow one.** `applyCull` starts from
             // an empty state set and lets the rasterizer's state stack supply everything it does
@@ -72,13 +99,12 @@ namespace Rtx
             // empty one behind on a node that had none, and the walk above would then push it over
             // the material a parent was contributing.
             const osg::StateSet* base = node.getStateSet();
-            entry->second.mStateSet
-                = base != nullptr ? new osg::StateSet(*base, osg::CopyOp::SHALLOW_COPY) : new osg::StateSet;
-            updater->setDefaults(entry->second.mStateSet);
+            held.mStateSet = base != nullptr ? new osg::StateSet(*base, osg::CopyOp::SHALLOW_COPY) : new osg::StateSet;
+            updater->setDefaults(held.mStateSet);
         }
 
-        updater->apply(entry->second.mStateSet, visitor);
-        return entry->second.mStateSet;
+        updater->apply(held.mStateSet, visitor);
+        return held.mStateSet;
     }
 
     Index MaterialResolver::reuse(const osg::StateSet* const key)
@@ -93,13 +119,12 @@ namespace Rtx
         return known->second.mIndex;
     }
 
-    Index MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
+    MaterialResolver::Entry MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
     {
         const Index index = mScene.addMaterial(material);
-        mMaterials.add(key, Known{ .mIndex = index });
         ++mPass.getStats().mMaterialsAdded;
 
-        return index;
+        return mMaterials.add(key, Known{ .mIndex = index });
     }
 
     MaterialResolver::Resolved MaterialResolver::resolveWater()
@@ -121,7 +146,7 @@ namespace Rtx
         if (const Index held = reuse(sSea); held != sNoIndex)
             return Resolved{ .mIndex = held, .mKey = sSea };
 
-        return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water }), .mKey = sSea };
+        return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water })->second.mIndex, .mKey = sSea };
     }
 
     MaterialReading MaterialResolver::read(std::span<const Shading> shading, AlphaScratch& scratch)
@@ -157,10 +182,7 @@ namespace Rtx
             mMaterials.stamp(known);
         }
         else
-        {
-            adopt(reading.mKey, describe(reading.mDescribed, false, reading.mDiffuseSolid));
-            known = mMaterials.find(reading.mKey);
-        }
+            known = adopt(reading.mKey, describe(reading.mDescribed, false, reading.mDiffuseSolid));
 
         mMaterials.hold(known);
         return known->second.mIndex;
@@ -198,7 +220,7 @@ namespace Rtx
             return Resolved{ .mIndex = held, .mKey = own.mStateSet };
         }
 
-        return Resolved{ .mIndex = adopt(own.mStateSet, readMaterial(shading)), .mKey = own.mStateSet };
+        return Resolved{ .mIndex = adopt(own.mStateSet, readMaterial(shading))->second.mIndex, .mKey = own.mStateSet };
     }
 
     Index MaterialResolver::takeTexture(const osg::Image* image)

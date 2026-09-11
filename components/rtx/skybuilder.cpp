@@ -141,9 +141,14 @@ namespace Rtx
         return DeckLight{ .mLit = fromSky + direct, .mShadowed = fromSky };
     }
 
-    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const DeckLight& light,
-        const osg::Vec3f& storm, const osg::Vec3f& nextStorm, float scroll, const SkyContent& textures)
+    Shaders::CloudDeck describeClouds(const CloudCrossing& clouds, const DeckLight& light, const SkyContent& textures)
     {
+        const std::uint32_t weather = clouds.mWeather;
+        const std::uint32_t next = clouds.mNext;
+        const float blend = clouds.mBlend;
+        const osg::Vec3f& storm = clouds.mDirection;
+        const osg::Vec3f& nextStorm = clouds.mNextDirection;
+        const float scroll = clouds.mScroll;
         const std::uint32_t slot = textures.cloudsOf(weather);
 
         // **Written so a NaN lands on nought, which `std::clamp` does not do.** The blend comes off a

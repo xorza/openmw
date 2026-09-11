@@ -15,6 +15,7 @@
 #include "alphaimage.hpp"
 #include "groundreader.hpp"
 #include "meshreader.hpp"
+#include "nodekind.hpp"
 #include "preparedcell.hpp"
 #include "preparedtexture.hpp"
 #include "sortedrows.hpp"
@@ -93,6 +94,9 @@ namespace Rtx
         GroundReader mGround;
         TemplateWalk mWalk;
         MeshReader mMeshes;
+
+        /// This thread's own classifier: `NodeKinds` is written on a miss.
+        NodeKinds mKinds;
         AlphaScratch mAlpha;
 
         // Refilled per cell, per model and per image.

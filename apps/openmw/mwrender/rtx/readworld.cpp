@@ -32,11 +32,8 @@ namespace MWRender
         // light, and neither is a fact about the room. What the game adds for Night-Eye comes over
         // as itself.
         const std::optional<Rtx::Daylight> room = world.mRoom.has_value()
-            ? std::optional(Rtx::makeRoomLight(ESM::Cell::AMBIstruct{ .mAmbient = world.mRoom->mAmbient,
-                                                   .mSunlight = world.mRoom->mSunlight,
-                                                   .mFog = world.mRoom->mFog,
-                                                   .mFogDensity = world.mFogDepth },
-                osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())))
+            ? std::optional(Rtx::makeRoomLight(
+                *world.mRoom, osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())))
             : std::nullopt;
 
         // The horizon is the fog and the zenith is the sky's own, which is the pair Morrowind
@@ -128,18 +125,19 @@ namespace MWRender
             .mOutdoors = world.isOutdoors(),
             .mGlare = world.mSunGlare,
             .mStarRoll = world.mSkyRoll.mStars,
-            .mCloudRoll = world.mSkyRoll.mClouds,
             .mSky = sky,
             .mMoons = moons,
-            .mWeather = weatherId,
-
-            // **The current weather twice where nothing is arriving**, since the deck crosses
-            // unconditionally: naming it on both sides at a blend of nothing is what lets it.
-            .mNextWeather = world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
-                                                             : weatherId,
-            .mCloudBlend = world.mCloudBlend,
-            .mCloudDirection = world.mCloudDirection,
-            .mNextCloudDirection = world.mNextCloudDirection,
+            .mClouds = Rtx::CloudCrossing{
+                .mWeather = weatherId,
+                // The current weather twice where nothing is arriving, since the deck crosses
+                // unconditionally: naming it on both sides at a blend of nothing is what lets it.
+                .mNext = world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
+                                                          : weatherId,
+                .mBlend = world.mCloudBlend,
+                .mDirection = world.mCloudDirection,
+                .mNextDirection = world.mNextCloudDirection,
+                .mScroll = world.mSkyRoll.mClouds,
+            },
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
             // answer "how deep is this point" with never.

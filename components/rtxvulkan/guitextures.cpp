@@ -8,6 +8,7 @@
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {
@@ -38,16 +39,13 @@ namespace Rtx
         // memory held — and the pass never has to ask whether a texture is ready.
         const VkCommandBuffer commands = mBatch.getCommands();
 
-        image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        image->transition(commands, Use::sUndefined, Use::sClearWrite);
 
         const VkClearColorValue clear{};
         const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         vkCmdClearColorImage(commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &whole);
 
-        image->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        image->transition(commands, Use::sClearWrite, Use::sFragmentSample);
 
         if (const Index taken = mFree.take(); taken != sNoIndex)
         {
@@ -97,9 +95,7 @@ namespace Rtx
         const Image& image = *mImages[slot.get()];
         const VkCommandBuffer commands = mBatch.getCommands();
 
-        image.transition(commands, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
-            VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        image.transition(commands, Use::sFragmentSample, Use::sCopyWrite);
 
         const VkBufferImageCopy copy{
             .bufferOffset = mLentAt,
@@ -110,9 +106,7 @@ namespace Rtx
         vkCmdCopyBufferToImage(
             commands, mStaging[mArena].getHandle(), image.getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 
-        image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        image.transition(commands, Use::sCopyWrite, Use::sFragmentSample);
     }
 
     void GuiTextures::write(const GuiSlot slot, const GuiRegion& region, std::span<const std::uint8_t> rgba)

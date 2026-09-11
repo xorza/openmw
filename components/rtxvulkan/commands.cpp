@@ -10,6 +10,7 @@
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -312,16 +313,15 @@ namespace Rtx
 
         const VkCommandBuffer commands = batch.getCommands();
 
-        image.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        image.transition(commands, Use::sUndefined, Use::sCopyWrite);
 
         vkCmdCopyBufferToImage(commands, staged.mBuffer, image.getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             static_cast<std::uint32_t>(regions.size()), regions.data());
 
-        image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        image.transition(commands, Use::sCopyWrite,
+            ImageUse{ VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT });
     }
     void orderStagedWrites(Batch& batch)
     {

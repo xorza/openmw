@@ -8,7 +8,6 @@
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtx/distantland.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/sceneutil/vismask.hpp>
@@ -66,14 +65,12 @@ namespace MWRender
         }
     }
 
-    float landReach()
-    {
-        return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
-    }
-
-    WorldMirror::WorldMirror()
+    WorldMirror::WorldMirror(const MirrorSettings& settings)
         : mExtractor(mScene, &mTraversals)
+        , mReach(settings.mReach)
     {
+        mRing.setStaticsEnabled(settings.mStatics);
+        mRing.setMinSize(settings.mMinSize);
         // **The sky is not mirrored.** It is the one subtree the engine rebuilds every frame —
         // state sets and all — so walking it churns the identity maps, and a sweep that drops four
         // materials a frame bumps the revision and makes every frame a full rebuild. Nothing is
@@ -188,16 +185,11 @@ namespace MWRender
                 .mMask = templateTraversal(),
             },
             .mEye = eye,
-            .mReach = landReach(),
+            .mReach = mReach,
             .mActiveGrid = frame.mTerrain.getActiveGrid(),
             .mOutdoors = !frame.mWorld.isInteriorCell(),
         };
 
-        // **The same switch the paging read.** With `object paging` off this renderer stands the
-        // distance's statics itself, and the harness's `--distant-statics` drives the one setting
-        // either way. The ground stands whatever the switch says.
-        mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
-        mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
         mRing.setFrame(frameNumber);
 
         // Told once a frame, because what the graph does not hold is the frame's to say. Every
@@ -214,8 +206,13 @@ namespace MWRender
 
     Rtx::SceneUpload WorldMirror::hand(Rtx::SceneSink& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend)
     {
-        return mUploader.hand(
-            renderer, Rtx::SceneSlot::world(), mScene, images, &mComposites, Rtx::SeaState{}, &mRing, &spend);
+        return mUploader.hand(renderer,
+            Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(),
+                .mScene = mScene,
+                .mImages = images,
+                .mComposites = &mComposites,
+                .mReadings = &mRing,
+                .mSpend = &spend });
     }
 
     void WorldMirror::settle()

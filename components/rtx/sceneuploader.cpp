@@ -25,22 +25,28 @@ namespace Rtx
         }
     }
 
-    SceneUpload SceneUploader::hand(SceneSink& renderer, const SceneSlot slot, SceneDesc& scene,
-        Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea,
-        const TextureReadings* const readings, FrameSpend* const spend)
+    SceneUpload SceneUploader::hand(SceneSink& renderer, const Handing& handing)
     {
+        const SceneSlot slot = handing.mSlot;
+        SceneDesc& scene = handing.mScene;
+        Resource::ImageManager& images = handing.mImages;
+        CompositeQueue* const composites = handing.mComposites;
+        const SeaState& sea = handing.mSea;
+        const TextureReadings* const readings = handing.mReadings;
+        FrameSpend* const spend = handing.mSpend;
+
         // Timed into a row nobody reads where the caller handed none, so the three stretches below
         // are written once each rather than guarded three times.
         FrameSpend unread;
         FrameSpend& timed = spend != nullptr ? *spend : unread;
 
-        // **Whether what the backend holds in this slot is this scene, and appending is only
-        // allowed onto that.** `bench` runs several places through one renderer, a scene of its own
-        // for each; an uploader that appended onto whatever the slot held would begin the second
-        // place's descriptions past the end of its own table — a hundreds-long overrun of a table
-        // that is hundreds long, and it read as a `std::bad_alloc` from somewhere else entirely.
+        // **Whether the backend holds this scene in this slot, and appending is only allowed onto
+        // that.** An uploader is one scene's — the world's or one picture's subject's — so what it
+        // asks is whether it has handed this scene over before and whether the backend still holds
+        // the result. Appending onto a slot something else filled would begin the descriptions
+        // past the end of this scene's own table.
         const SceneHeld held = renderer.describeHeld(slot);
-        const bool mine = held.mScene == &scene.getTables().mMeshes;
+        const bool mine = mBuilt && held.mBuilt;
 
         // **Here rather than where a walk ends, because a scene can be walked more than once.** The
         // game walks its precipitation beside its world, and a light met by the second walk would be
@@ -56,6 +62,7 @@ namespace Rtx
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 
         const std::size_t baked = composites != nullptr ? composites->advance(scene, images) : 0;
+        done.mUnreadable = composites != nullptr ? composites->takeUnreadable() : 0;
 
         const std::chrono::steady_clock::time_point gathered = std::chrono::steady_clock::now();
         timed.at(Timing::Bake) = since(began, gathered);
@@ -114,11 +121,12 @@ namespace Rtx
             timed.at(Timing::Textures) = since(gathered, described);
 
             done.mDescribed = mTextures.getDescriptions().size();
-            done.mUnreadable = mTextures.getUnreadable();
+            done.mUnreadable += mTextures.getUnreadable();
 
             if (!mine)
             {
                 renderer.setScene(slot, tables, mTextures.getDescriptions(), sea);
+                mBuilt = true;
                 done.mKind = SceneUpload::Kind::Rebuilt;
             }
             else

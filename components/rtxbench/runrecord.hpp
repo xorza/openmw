@@ -61,9 +61,7 @@ namespace Rtx
         FrameHashes& getHashes() { return mHashes; }
         void readReference(const std::filesystem::path& path) { mReference = FrameHashes::read(path); }
 
-        std::span<const BenchPlace> getPlaces() const { return mPlaces; }
         const std::string& getReport() const { return mReport; }
-        int getExitStatus() const { return mExitStatus; }
 
         /// Closes the run: the total under the places, the check tally, the hashes and the record.
         ///

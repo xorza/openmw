@@ -15,6 +15,7 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/image.hpp>
+#include <components/rtxvulkan/imageuse.hpp>
 
 #include "harness.hpp"
 
@@ -46,9 +47,7 @@ namespace Rtx
             staging.writeAt(0, pixels);
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
-                image.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT);
+                image.transition(commands, Use::sUndefined, Use::sCopyWrite);
 
                 const VkBufferImageCopy region{
                     .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
@@ -57,9 +56,7 @@ namespace Rtx
                 vkCmdCopyBufferToImage(
                     commands, staging.getHandle(), image.getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-                image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                image.transition(commands, Use::sCopyWrite, Use::sComputeSample);
             });
         }
 

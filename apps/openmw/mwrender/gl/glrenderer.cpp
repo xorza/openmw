@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <cmath>
-#include <fstream>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -12,12 +11,9 @@
 #include <osg/Camera>
 #include <osg/DisplaySettings>
 #include <osg/GraphicsContext>
-#include <osg/Image>
 #include <osg/Stats>
 #include <osg/Texture2D>
-
-#include <osgDB/ReaderWriter>
-#include <osgDB/Registry>
+#include <osg/Version>
 
 #include <osgGA/EventQueue>
 
@@ -29,7 +25,6 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/debug/gldebug.hpp>
-#include <components/l10n/manager.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguiplatform/myguirendermanager.hpp>
 #include <components/myguiplatform/myguitexture.hpp>
@@ -42,7 +37,6 @@
 #include <components/sceneutil/util.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/workqueue.hpp>
-#include <components/sdlutil/imagetosurface.hpp>
 #include <components/sdlutil/sdlgraphicswindow.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
@@ -50,19 +44,14 @@
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/windowmanager.hpp"
-
 #include "../../profile.hpp"
-
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
+#include "../screenshotwriter.hpp"
 #include "../stage.hpp"
 #include "../windowsetup.hpp"
-
 #include "gloffscreenview.hpp"
-
-#include "../screenshotwriter.hpp"
 #include "postprocessor.hpp"
-
 #include "screenshotmanager.hpp"
 
 namespace
@@ -153,7 +142,7 @@ namespace MWRender
         // event visitors to the frame stamp at construction, and substituting objects underneath
         // without substituting those references is a bug that shows up frames later.
         mStage.adopt(
-            *mViewer->getCamera(), *mViewer->getFrameStamp(), *mViewer->getEventQueue(), *mViewer->getViewerStats());
+            *mViewer->getCamera(), *mViewer->getFrameStamp(), mViewer->getEventQueue(), *mViewer->getViewerStats());
 
         createWindow(spec.mResourceDir);
 
@@ -374,9 +363,10 @@ namespace MWRender
             exts.glRenderbufferStorageMultisampleCoverageNV = nullptr;
 #endif
 
-        mStage.getEvents().getCurrentEventState()->setWindowRectangle(
+        mStage.getEvents()->getCurrentEventState()->setWindowRectangle(
             0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
     }
+
     TerrainPlan GlRenderer::getTerrainPlan() const
     {
         return TerrainPlan{
@@ -393,6 +383,13 @@ namespace MWRender
         // disappear. Limit FOV here just for sure, otherwise viewing distance can be too high.
         const float distanceMult = std::cos(osg::DegreesToRadians(std::min(fov, 140.f)) / 2.f);
         return cameraDistance * (distanceMult ? 1.f / distanceMult : 1.f);
+    }
+
+    float GlRenderer::getGroundReach() const
+    {
+        // The setting rather than the world's live distance, which is the same number until a Lua
+        // script sets its own: the map upstream draws is the size the setting says.
+        return Settings::terrain().mDistantTerrain ? Settings::camera().mViewingDistance : 0.f;
     }
 
     void GlRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)

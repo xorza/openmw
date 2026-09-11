@@ -27,7 +27,7 @@
 #include <components/terrain/terraindrawable.hpp>
 
 #include "lightbuilder.hpp"
-#include "nodelibrary.hpp"
+#include "nodekind.hpp"
 #include "worlddescent.hpp"
 
 namespace Rtx
@@ -65,6 +65,14 @@ namespace Rtx
         /// **Folded on the way down rather than taken at the leaf**, which is the argument `mHere`
         /// makes for the matrix: the prefix every sibling under a node shares is worked out once as
         /// the walk enters that node, against a depth's worth per drawable.
+        constexpr std::size_t sPlacementBudget = 65536;
+        constexpr std::size_t sMeshBudget = 16384;
+        constexpr std::size_t sMaterialBudget = 16384;
+        constexpr std::size_t sTextureBudget = 8192;
+        constexpr std::size_t sDeformerBudget = 2048;
+        constexpr std::size_t sAnimatedBudget = 4096;
+        constexpr std::size_t sEmitterBudget = 2048;
+
         std::size_t identityWith(std::size_t key, const std::size_t part)
         {
             return (key ^ part) * 0x100000001b3ull;
@@ -101,7 +109,7 @@ namespace Rtx
     };
 
     /// Walks the graph and hands every geometry it meets to the extractor.
-    class MirrorTraversal : public osg::NodeVisitor, public SceneAdopter
+    class MirrorTraversal : public osg::NodeVisitor
     {
     public:
         explicit MirrorTraversal(SceneExtractor& extractor);
@@ -122,18 +130,6 @@ namespace Rtx
         void apply(osg::Transform& node) override;
         void apply(osg::Drawable& drawable) override;
 
-        void take(osg::Node& node) override { node.accept(*this); }
-
-        Index adoptMaterial(const MaterialReading& reading) override { return mExtractor.adoptMaterial(reading); }
-
-        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, const Index material) override
-        {
-            return mExtractor.adoptMesh(drawable, reading, material);
-        }
-
-        void releaseMesh(const osg::Drawable& drawable) override { mExtractor.releaseMesh(drawable); }
-        void releaseMaterial(const osg::StateSet* const key) override { mExtractor.releaseMaterial(key); }
-
     private:
         /// Walks `node` and everything under it, under the identity the caller worked out for it.
         void enter(osg::Node& node, std::size_t identity);
@@ -142,7 +138,7 @@ namespace Rtx
         void enterTransform(osg::Transform& node, std::size_t identity);
 
         /// Descends into the children of `node` that are in the world. See below.
-        void descend(osg::Node& node);
+        void descend(osg::Node& node, NodeKind kind);
 
         /// Puts `stateSet` at the near end of the chain, with the fade resolved through it.
         void pushShading(const osg::StateSet& stateSet, bool animated);
@@ -150,7 +146,7 @@ namespace Rtx
         /// Runs one node of an `osgParticle` simulation, if that is what this node is. See below.
         ///
         /// @param from the node's library, which `apply` has already asked for.
-        bool stepParticles(osg::Node& node, Library from);
+        bool stepParticles(osg::Node& node, NodeKind kind);
 
         /// Where the node being visited stands in the world.
         ///
@@ -161,11 +157,11 @@ namespace Rtx
 
         SceneExtractor& mExtractor;
 
-        /// Which library each class of *node* this walk meets belongs to. **A member for the reason
-        /// the walk is**: the answers are a fact about the classes in the world, not about one
-        /// frame. A drawable never reaches `apply(osg::Node&)`, so `SceneExtractor`'s own gate holds
-        /// a different set of classes rather than a copy of this one.
-        NodeLibrary mLibrary;
+        /// What kind each class of *node* this walk meets is. A member because the answers are a
+        /// fact about the classes in the world rather than about one frame; a drawable is dispatched
+        /// to its own `apply` and never reaches the one that asks about a node, so `SceneExtractor`
+        /// holds a classifier of its own for those.
+        NodeKinds mKinds;
 
         /// The clock every controller under this walk reads. Its simulation time is the world's;
         /// its frame number is the walk's own, for the reason `begin` gives.
@@ -258,45 +254,33 @@ namespace Rtx
 
     void MirrorTraversal::enter(osg::Node& node, const std::size_t identity)
     {
-        // **Asked once and handed on.** Three of the questions below are about this node's library,
-        // and `libraryName` is a virtual call apiece.
-        const Library from = mLibrary.of(node);
+        const NodeKind kind = mKinds.of(node);
 
         if (mStepOnly)
         {
-            if (!stepParticles(node, from))
-                descend(node);
+            if (!stepParticles(node, kind))
+                descend(node, kind);
             return;
         }
 
-        // **The two node types this looks at rather than through**, split on `asGroup` so that
-        // neither pays for the other's cast: a light is an `osg::Node` and a skeleton is an
-        // `osg::Group`, so one question answers which of the two a node could be.
-        if (osg::Group* group = node.asGroup())
+        // **Told it was reached, because nothing else here will tell it.** A semi-active skeleton —
+        // which is every actor but the player — skips its update traversal, and so stops moving its
+        // bones, once three traversals have passed with nothing reaching it. Under a renderer that
+        // culls, the cull is what keeps saying so; here this walk is.
+        //
+        // **The frame and not this walk's own number.** What compares against it is the update
+        // traversal, whose number is the frame's; a pose number is a different sequence that only
+        // agrees with it by accident — after a savegame load it was twelve behind, which froze every
+        // actor in the pose they arrived in.
+        if (auto* skeleton = as<SceneUtil::Skeleton>(kind, NodeKind::Skeleton, node))
         {
-            // **Told it was reached, because nothing else here will tell it.** A semi-active
-            // skeleton — which is every actor but the player — skips its update traversal, and so
-            // stops moving its bones, once three traversals have passed with nothing reaching it.
-            // Under a renderer that culls, the cull is what keeps saying so. This walk is what
-            // reaches an actor here, so this walk is what says so.
-            //
-            // **The frame and not this walk's own number.** What compares against it is the update
-            // traversal, whose number is the frame's; a pose number is a different sequence that
-            // only agrees with it by accident. It agreed on the ship at a new game, where the first
-            // walk happens on the first frame, and was twelve behind after a savegame load — where
-            // the loading screen's frames are updates with no walk between them — which froze every
-            // actor in the world and left them sliding about in the pose they arrived in.
-            //
-            // **Gated on the library before the cast**, here and below: both classes are
-            // `SceneUtil`'s, and a node from `osg` or `NifOsg` is nearly every node in a cell.
-            if (auto* skeleton = castFrom<SceneUtil::Skeleton>(from, Library::SceneUtil, *group))
-                skeleton->markReached(static_cast<unsigned int>(mFrame));
+            skeleton->markReached(static_cast<unsigned int>(mFrame));
         }
-        else if (auto* source = castFrom<SceneUtil::LightSource>(from, Library::SceneUtil, node))
+        else if (auto* source = as<SceneUtil::LightSource>(kind, NodeKind::LightSource, node))
         {
             mExtractor.addLight(*source, placed(), mStamp->getSimulationTime());
         }
-        else if (stepParticles(node, from))
+        else if (stepParticles(node, kind))
         {
             // Neither of the two is a drawable or has a child, so there is no state set below them
             // to carry and nothing under them to reach.
@@ -318,7 +302,7 @@ namespace Rtx
         const unsigned int arms = mExtractor.isFirstPerson(node.getNodeMask()) ? 1u : 0u;
         mFirstPerson += arms;
 
-        descend(node);
+        descend(node, kind);
 
         mFirstPerson -= arms;
         mPathHash = above;
@@ -342,9 +326,9 @@ namespace Rtx
     /// between one frame stamp and the last one that reached it — so a system that comes back on
     /// after an hour is handed the hour in one step. That is what the rasterizer's cull does with the
     /// same graph, and it is a property of `osgParticle`'s clock rather than of this walk.
-    void MirrorTraversal::descend(osg::Node& node)
+    void MirrorTraversal::descend(osg::Node& node, const NodeKind kind)
     {
-        descendInWorld(node, *this, [this](osg::Sequence& frames) { frames.traverse(mSequenceClock); });
+        descendInWorld(node, kind, *this, [this](osg::Sequence& frames) { frames.traverse(mSequenceClock); });
     }
 
     /// Runs one node of an `osgParticle` simulation, and says whether that is what this node was.
@@ -369,19 +353,14 @@ namespace Rtx
     ///
     /// This walk and not a cull of its own, for the same reason it is here at all: a processor reads
     /// its world transform off the visitor's node path, and this is the walk standing on one.
-    bool MirrorTraversal::stepParticles(osg::Node& node, Library from)
+    bool MirrorTraversal::stepParticles(osg::Node& node, const NodeKind kind)
     {
-        // The two libraries a processor or an updater can come from: `osgParticle`'s own, and
-        // `NifOsg::Emitter` over them. A node from anywhere else fails both casts below.
-        if (from != Library::OsgParticle && from != Library::NifOsg)
-            return false;
-
-        if (auto* processor = dynamic_cast<osgParticle::ParticleProcessor*>(&node))
+        if (auto* processor = as<osgParticle::ParticleProcessor>(kind, NodeKind::ParticleProcessor, node))
         {
             if (osgParticle::ParticleSystem* system = processor->getParticleSystem())
                 keepRunning(*system);
         }
-        else if (auto* updater = dynamic_cast<osgParticle::ParticleSystemUpdater*>(&node))
+        else if (auto* updater = as<osgParticle::ParticleSystemUpdater>(kind, NodeKind::ParticleUpdater, node))
         {
             for (unsigned int at = 0; at < updater->getNumParticleSystems(); ++at)
                 keepRunning(*updater->getParticleSystem(at));
@@ -498,6 +477,14 @@ namespace Rtx
         , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
         , mTraversalMask(~NifOsg::Loader::getHiddenNodeMask())
     {
+        // **Reserved once, so no frame rehashes a map.** A cell's drawables arriving grow every
+        // identity map on that frame, and an `unordered_map` that grows past its buckets rehashes
+        // on the insert that did it. Budgets past what a Morrowind exterior reaches at four cells
+        // of distance, and a few hundred kilobytes of buckets apiece.
+        mPlacements.reserve(sPlacementBudget);
+        mMeshes.reserve(sMeshBudget, sDeformerBudget);
+        mMaterials.reserve(sMaterialBudget, sTextureBudget, sAnimatedBudget);
+        mEmitters.reserve(sEmitterBudget);
     }
 
     SceneExtractor::~SceneExtractor() = default;
@@ -550,7 +537,7 @@ namespace Rtx
         // frame as everything else — the same epoch, the same stats, the same sweep — and a second
         // `begin` would date it apart from the rest.
         for (Residency* resident : hidden)
-            resident->collect(*mWalk, stats);
+            resident->collect(*this, stats);
 
         // **After the whole walk, including whatever the residency brought in.** Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
@@ -562,6 +549,11 @@ namespace Rtx
         mPass.mStats = nullptr;
 
         return stats;
+    }
+
+    void SceneExtractor::take(osg::Node& node)
+    {
+        node.accept(*mWalk);
     }
 
     void SceneExtractor::advance()
@@ -666,34 +658,19 @@ namespace Rtx
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, const std::size_t who,
         const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
     {
-        mirrorDrawable(drawable, who, shading, place, firstPerson);
-    }
-
-    void SceneExtractor::mirrorDrawable(const osg::Drawable& drawable, const std::size_t who,
-        const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
-    {
         ExtractionStats& stats = mPass.getStats();
 
         // Asked before the geometry, because a particle system is an `osg::Drawable` with no
         // triangles in it at all: its sprites *are* the drawing, and they leave here as a run of
         // discs rather than as a mesh anything could build a structure over.
-        //
-        // **Gated on the library before the cast**, which is what every other cast down this walk
-        // does and for the reason `apply(osg::Node&)` states: a cell's drawables are `osg`'s, and
-        // those are ruled out by a compare where a failed `dynamic_cast` walks the class hierarchy
-        // to say the same thing. The two libraries are the ones a system can come from —
-        // `osgParticle`'s own, and `NifOsg::ParticleSystem` over it — which is the pair
-        // `stepParticles` already names — which is why the gate is spelled here rather than
-        // reached for: `castFrom` names one library and this rules out all but two.
-        const Library from = mLibrary.of(drawable);
-        const bool couldEmit = from == Library::OsgParticle || from == Library::NifOsg;
-        if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
+        const NodeKind kind = mKinds.of(drawable);
+        if (const auto* particles = as<const osgParticle::ParticleSystem>(kind, NodeKind::ParticleSystem, drawable))
         {
             mEmitters.add(*particles, shading, place);
             return;
         }
 
-        const DrawableRead read = readDrawable(drawable);
+        const DrawableRead read = readDrawable(drawable, kind);
         if (read.mGeometry == nullptr)
         {
             ++stats.mSkippedUnknown;

@@ -100,10 +100,12 @@ namespace Rtx
                 .mOutdoors = true,
                 .mGlare = 1.0f,
                 .mStarRoll = 0.125f,
-                .mCloudRoll = 0.25f,
                 .mSky = skyWithSheets(),
-                .mWeather = Rtx::Shaders::WEATHER_CLEAR,
-                .mNextWeather = Rtx::Shaders::WEATHER_CLEAR,
+                .mClouds = Rtx::CloudCrossing{
+                    .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                    .mNext = Rtx::Shaders::WEATHER_CLEAR,
+                    .mScroll = 0.25f,
+                },
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
                 .mRainOnWater = 0.35f,
@@ -123,9 +125,9 @@ namespace Rtx
             read.mDaylight.mFog.mLift = 2.75f;
             read.mDaylight.mFog.mWind = 0.45f;
             read.mDaylight.mFog.mEdge = 24576.0f;
-            read.mCloudDirection = osg::Vec3f(0.6f, 0.8f, 0.0f);
-            read.mNextCloudDirection = osg::Vec3f(0.96f, 0.28f, 0.0f);
-            read.mCloudBlend = 0.25f;
+            read.mClouds.mDirection = osg::Vec3f(0.6f, 0.8f, 0.0f);
+            read.mClouds.mNextDirection = osg::Vec3f(0.96f, 0.28f, 0.0f);
+            read.mClouds.mBlend = 0.25f;
 
             read.mMoons[0] = MoonPlacement{
                 .mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f),
@@ -261,9 +263,9 @@ namespace Rtx
             EXPECT_EQ(constants.mStars.mTexture, stars.mTexture);
             EXPECT_EQ(constants.mStars.mGlow, stars.mGlow);
 
-            EXPECT_EQ(constants.mClouds.mBlend, read.mCloudBlend);
-            EXPECT_EQ(constants.mClouds.mTexture, read.mSky.cloudsOf(read.mWeather));
-            EXPECT_EQ(constants.mClouds.mScroll, read.mCloudRoll);
+            EXPECT_EQ(constants.mClouds.mBlend, read.mClouds.mBlend);
+            EXPECT_EQ(constants.mClouds.mTexture, read.mSky.cloudsOf(read.mClouds.mWeather));
+            EXPECT_EQ(constants.mClouds.mScroll, read.mClouds.mScroll);
             EXPECT_EQ(constants.mClouds.mCurvature, read.mSky.mShell.mCurvature);
             EXPECT_EQ(constants.mClouds.mRings, read.mSky.mShell.mRings);
             EXPECT_FLOAT_EQ(constants.mClouds.mNextBearing.x(), 0.28f);

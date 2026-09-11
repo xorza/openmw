@@ -173,16 +173,12 @@ namespace Rtx
             for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,
                      &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth, &mColumnMoons })
             {
-                image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT);
+                image->transition(commands, Use::sUndefined, Use::sClearWrite);
 
                 vkCmdClearColorImage(
                     commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &nothing, 1, &whole);
 
-                image->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                image->transition(commands, Use::sClearWrite, Use::sComputeWrite);
             }
         });
     }
@@ -199,17 +195,16 @@ namespace Rtx
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mAir, &mAirSunward, &mSlice,
                  &mSliceSunward, &mColumnDepth, &mColumnMoons })
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+            barriers.add(
+                image->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                              VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
+                    Use::sComputeWrite));
 
         // **From `GENERAL` and not from undefined**, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand
         // this frame a volume of nothing to average against.
         for (const Image* image : { &mScatter[1 - written], &mSunward[1 - written] })
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+            barriers.add(image->describeTransition(Use::sAnyGeneral, Use::sComputeSample));
 
         barriers.flush();
     }
@@ -218,9 +213,7 @@ namespace Rtx
     {
         Barriers barriers(commands);
         for (const Image* image : { &mColumnDepth, &mColumnMoons })
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT));
+            barriers.add(image->describeTransition(Use::sComputeWrite, Use::sComputeRead));
 
         barriers.flush();
     }
@@ -236,10 +229,10 @@ namespace Rtx
         // two of these at a point: `puffLight` says which and why.
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+            barriers.add(image->describeTransition(Use::sComputeWrite,
+                ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                    VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
 
         barriers.flush();
     }
@@ -248,17 +241,17 @@ namespace Rtx
     {
         Barriers barriers(commands);
         for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+            barriers.add(image->describeTransition(Use::sComputeWrite,
+                ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                    VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
 
         // The column depth the trace reads beside them, which `depthTaken` ordered only against the
         // two compute passes between.
-        barriers.add(mColumnDepth.describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_STORAGE_READ_BIT));
+        barriers.add(mColumnDepth.describeTransition(Use::sComputeWrite,
+            ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT }));
 
         barriers.flush();
     }

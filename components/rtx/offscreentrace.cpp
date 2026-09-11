@@ -182,7 +182,8 @@ namespace Rtx
         subject.mExtractor->retire();
 
         // It consumes the arrivals, so nothing here clears them.
-        subject.mUploader.hand(mRenderer, subject.mSlot, *subject.mScene, images, nullptr);
+        subject.mUploader.hand(
+            mRenderer, SceneUploader::Handing{ .mSlot = subject.mSlot, .mScene = *subject.mScene, .mImages = images });
 
         return subject.mScene->getTables().mPlacements.getPlacedCount() > 0;
     }

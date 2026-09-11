@@ -71,6 +71,7 @@ namespace MWRender
 
         TerrainPlan getTerrainPlan() const override;
         float getTerrainViewDistance(float cameraDistance, float fov) const override;
+        float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;

@@ -16,6 +16,7 @@
 #include "framehistory.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 #include "memory.hpp"
 #include "physicaldevice.hpp"
 #include "pipelinecache.hpp"
@@ -316,10 +317,8 @@ namespace Rtx
         try
         {
             // **An answer rather than a runtime**, which is why reporting on a device cannot disturb
-            // one. This used to build a `Dlss` of its own to ask with and let it go again; NGX keeps
-            // one runtime per process and its shutdown is unconditional, so that second one ended
-            // this renderer's the moment it left scope — and what that looked like was the upscaler
-            // refusing a frame a cell load later with `FAIL_NotInitialized`, pointing at nothing.
+            // one: NGX keeps one runtime per process and its shutdown is unconditional, so a `Dlss`
+            // built to ask with and let go would end this renderer's the moment it left scope.
             const DlssSupport support = Dlss::probe(mDevice, mInstance.getHandle());
             report += support.mAvailable ? "available\n" : "unavailable, " + support.mObstacle + "\n";
         }
@@ -450,8 +449,8 @@ namespace Rtx
         makeInstanceRecords(scene, held.mRecords);
 
         // **One submit for the whole cell.** Every structure, every table and every texture is
-        // recorded into this and the queue is asked once, at the flush below; each of them used to
-        // be its own round trip, and Balmora's are 367 of them.
+        // recorded into this and the queue is asked once, at the flush below; a round trip apiece
+        // would be hundreds for a town.
         Batch setup(mPool);
 
         // The world is traced by two frames at once and so keeps two copies of what a frame writes;
@@ -499,7 +498,6 @@ namespace Rtx
             held.mBuffers->getNormals(), nullptr);
         held.mAcceleration->build(setup, scene, held.mRecords, graveyard);
         held.mBuiltMeshes = scene.mMeshes.getRevision();
-        held.mBuiltFrom = &scene.mMeshes;
         held.mBuiltStructure = scene.getStructureRevision();
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
@@ -516,9 +514,8 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
-        // **An arrival does not wait for the frames in flight.** It used to drain the ring, on the
-        // grounds that what arrives is written into every copy of the geometry and the tables. What
-        // it is really written into is room no frame in flight holds: a block is only ever appended
+        // **An arrival does not wait for the frames in flight.** What arrives is written into every
+        // copy of the geometry and the tables, but into room no frame in flight holds: a block is only ever appended
         // to, `growTo` buries the buffer a growth displaced so an address already handed out stays
         // good, and a run an arrival fills is one no placed instance names. The writes ride the
         // placement's submit behind the frame before them, and end in the barrier
@@ -567,9 +564,8 @@ namespace Rtx
         // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits
         // what was recorded here in the same call as the refit and the top level, ahead of them,
         // and the barrier every upload and build ends in is what orders them — a build reads
-        // structures the deferred half wrote as it would inside one command buffer. A composite
-        // landing used to be a submit, a fence and a wait of its own on the frame it landed in, and
-        // this is that round trip removed.
+        // structures the deferred half wrote as it would inside one command buffer, so a composite
+        // landing costs no submit, fence or wait of its own.
         setup.defer();
 
         held.mBuiltStructure = scene.getStructureRevision();
@@ -589,7 +585,7 @@ namespace Rtx
     {
         const ViewScene& held = sceneAt(slot);
         return SceneHeld{
-            .mScene = held.mBuiltFrom,
+            .mBuilt = held.mAcceleration != nullptr,
             .mStructureRevision = held.mBuiltStructure,
             .mTextureCount = held.mTextures == nullptr ? 0 : held.mTextures->getCount(),
         };
@@ -652,11 +648,10 @@ namespace Rtx
         // frame's report.
         //
         // **Deferred and not submitted here**, so the trace that follows carries both. A doll pays
-        // this pair on every equipment change and on every mouse move of a race preview's drag, and
-        // it used to be two round trips through the driver where the trace was already paying one.
-        // What orders the two is the barrier `place` ends in, which is what orders a deferred
-        // arrival against the world's placement in the same way. A placement with no trace after it
-        // rides whichever submit comes next, and `GuiTextures::finish` drains what is left.
+        // this pair on every equipment change and on every mouse move of a race preview's drag,
+        // and the trace is already paying one round trip through the driver. What orders the two is the barrier `place`
+        // ends in, which is what orders a deferred arrival against the world's placement in the same way. A placement
+        // with no trace after it rides whichever submit comes next, and `GuiTextures::finish` drains what is left.
         if (!slot.isWorld())
         {
             Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
@@ -864,18 +859,16 @@ namespace Rtx
         mPool.begin(gui.mGui.mCommands);
 
         const VkCommandBuffer commands = gui.mGui.mCommands;
-        mTargets.current().transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+        mTargets.current().transition(commands, Use::sComputeWrite, Use::sColourAttachment);
 
         mGuiPass.record(commands, mTargets.current(), gui.mGuiVertices.getHandle(), mGuiDraws);
 
         // Back where everything else expects it: the presenter blits out of `GENERAL` and so
         // does a read back.
-        mTargets.current().transition(commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
+        mTargets.current().transition(commands,
+            ImageUse{ VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT },
+            Use::sAnyGeneralRead);
 
         mPool.submit(commands, gui.mGui.mFence.get(), gui.mGui.mGraveyard);
         gui.mGui.mPending = true;
@@ -980,19 +973,20 @@ namespace Rtx
         assert(!upscaling() || (mUpscaler != nullptr && mUpscaled != nullptr));
 
         if (upscaling())
-            mUpscaled->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT);
+            mUpscaled->transition(commands,
+                ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
+                Use::sAnyGeneralWrite);
 #endif
 
         // The first write needs no contents and nothing to wait on; every one after reads what
         // the last left, which the queue orders and does not make visible.
         if (mSum != nullptr)
-            mSum->transition(commands, fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
-                VK_IMAGE_LAYOUT_GENERAL,
-                fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            mSum->transition(commands,
+                ImageUse{ fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
+                    fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
+                Use::sComputeReadWrite);
 
         // **What the bin inside the recording writes may still be being traced.**
         // `Renderer::renderFrame` promises a frame that needs no placement before it, and two of
@@ -1059,10 +1053,7 @@ namespace Rtx
             // bloom samples what it left**, rather than loading it — `BloomPass` binds the frame as
             // a combined image sampler — so a visibility scope of storage reads alone would leave
             // that read uncovered.
-            mUpscaled->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+            mUpscaled->transition(commands, Use::sAnyGeneralWrite, Use::sComputeReadOrSample);
 
             timer.close(commands);
             shown = mUpscaled.get();
@@ -1238,9 +1229,7 @@ namespace Rtx
                 channels.get(Channel::StarsShown), nullptr, inputs.mTextures, *mViewTarget,
                 toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
 
-            mViewTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+            mViewTarget->transition(commands, Use::sComputeWrite, Use::sCopyRead);
 
             // **Borrowed rather than transitioned.** Where a GUI texture rests between writes is
             // `GuiTextures`' to say, and a caller that said it here had to keep a barrier's scope in
@@ -1260,8 +1249,9 @@ namespace Rtx
                     vkCmdClearColorImage(commands, into.getHandle(), layout, &clear, 1, &whole);
 
                     // Both are transfer writes to the same image and nothing orders two of those.
-                    into.transition(commands, layout, layout, VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                        VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+                    into.transition(commands,
+                        ImageUse{ layout, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT },
+                        ImageUse{ layout, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT });
                 }
 
                 const VkImageCopy region{
@@ -1378,25 +1368,5 @@ namespace Rtx
             return;
 
         log->takeErrorsOnThisThread(errors);
-    }
-
-    std::unique_ptr<Renderer> createVulkanRenderer(const RendererOptions& options, std::string& reason)
-    {
-        // **Where a machine that cannot run this backend stops, and nothing else.** No loader, no
-        // driver, a device that does not qualify, no DLSS: every caller wants those as an answer
-        // rather than as an unwind, and `Unsupported` is what says a failure is one of them.
-        //
-        // **A contract is let out.** `Error` on its own means this code broke one — a format with no
-        // recorded texel size, a shader the build did not write — and the harness turned every one
-        // of those into a skip, so a GPU suite could report success after it ran nothing.
-        try
-        {
-            return std::make_unique<VulkanRenderer>(options);
-        }
-        catch (const Unsupported& obstacle)
-        {
-            reason = obstacle.what();
-            return nullptr;
-        }
     }
 }

@@ -1,7 +1,5 @@
 #include "rtxrenderer.hpp"
 
-#include "setup.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -24,7 +22,6 @@
 #include <osg/Node>
 #include <osg/Stats>
 #include <osg/Timer>
-#include <osgGA/EventQueue>
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadcell.hpp>
@@ -32,6 +29,7 @@
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/camera.hpp>
+#include <components/rtx/distantland.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
@@ -63,6 +61,7 @@
 #include "../windowsetup.hpp"
 #include "readworld.hpp"
 #include "session.hpp"
+#include "setup.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
@@ -102,9 +101,9 @@ namespace MWRender
         ///
         /// **Because rebuilding costs about as long as this waits.** A new extent releases every
         /// target, allocates them again and uploads Ray Reconstruction's weights for the pair of
-        /// resolutions it is now between — measured at a tenth of a second apiece over sixty
-        /// rebuilds. A window dragged across a screen passes through hundreds of extents, and
-        /// following each of them would draw the drag at ten frames a second.
+        /// resolutions it is now between — about a tenth of a second. A window dragged across a
+        /// screen passes through hundreds of extents, and following each of them would draw the
+        /// drag at ten frames a second.
         ///
         /// So a gesture is followed once it stops. Until then the surface keeps the extent it has,
         /// and what the compositor shows is that picture scaled — which is what a window being
@@ -128,13 +127,17 @@ namespace MWRender
         , mCapture(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
+        , mMirror(MirrorSettings{
+              .mStatics = Settings::terrain().mObjectPaging,
+              .mMinSize = Settings::terrain().mObjectPagingMinSize,
+              .mReach = Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance),
+          })
     {
         // **Made here and handed straight over, because the stage is where they live.** Every
         // renderer needs the four and one built on `osgViewer` gets them already wired together, so
         // the one that owns its own surface builds them and the stage holds them for both.
         const osg::ref_ptr<osg::Camera> camera = new osg::Camera;
         const osg::ref_ptr<osg::FrameStamp> frameStamp = new osg::FrameStamp;
-        const osg::ref_ptr<osgGA::EventQueue> events = new osgGA::EventQueue;
         const osg::ref_ptr<osg::Stats> stats = new osg::Stats("Viewer");
 
         frameStamp->setFrameNumber(0);
@@ -142,7 +145,9 @@ namespace MWRender
         frameStamp->setSimulationTime(0.0);
         mUpdateVisitor->setFrameStamp(frameStamp);
 
-        mStage.adopt(*camera, *frameStamp, *events, *stats);
+        // No event queue: what SDL would put in one is the function keys, which upstream reads with
+        // `osgViewer` handlers this renderer does not have.
+        mStage.adopt(*camera, *frameStamp, nullptr, *stats);
 
         // **Read before anything is built, because it decides how the window opens and what the
         // trace counts.** A harness hands a whole run over in the spec; a played binary can only
@@ -235,10 +240,7 @@ namespace MWRender
         if (Settings::groundcover().mEnabled)
             throw std::runtime_error("groundcover is on, and the ray tracing renderer builds no quad tree to carry it");
 
-        std::string reason;
-        mRenderer = Rtx::createRenderer(options, reason);
-        if (mRenderer == nullptr)
-            throw std::runtime_error("no ray tracing renderer: " + reason);
+        mRenderer = Rtx::createRenderer(options);
 
         Log(Debug::Info) << "Ray tracing on " << mRenderer->describeDevice();
 
@@ -256,9 +258,8 @@ namespace MWRender
         // **The clock everything in the frame is measured by**, and the last thing that would
         // otherwise run on the wall. The eye adapts in real time and the upscaler tunes itself
         // against how fast a motion vector was travelled, so a played session leaves this empty and
-        // each reader times what it is about. A measured run cannot: two runs of one build then
-        // adapt by different amounts and draw different pictures — measured, 48% of the frame moved
-        // by up to 29 of 255 between two runs of one binary.
+        // each reader times what it is about. A measured run cannot: two runs of one build would
+        // adapt by different amounts and draw different pictures.
         if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
             mClock = Rtx::FrameClock(step);
 
@@ -336,7 +337,12 @@ namespace MWRender
 
     float RtxRenderer::getTerrainViewDistance(float, float) const
     {
-        return landReach();
+        return mMirror.getReach();
+    }
+
+    float RtxRenderer::getGroundReach() const
+    {
+        return mMirror.getReach();
     }
 
     void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
@@ -393,12 +399,8 @@ namespace MWRender
 
     void RtxRenderer::eventTraversal()
     {
-        // **Drained and dropped.** What SDL puts in here is the function keys, which upstream reads
-        // with `osgViewer` handlers this renderer does not have; everything the game itself acts on
-        // came through `SDLUtil::InputWrapper` and MyGUI long before this. Leaving the queue to grow
-        // is the only way to get this wrong.
-        osgGA::EventQueue::Events events;
-        mStage.getEvents().takeEvents(events);
+        // Nothing to traverse: the stage adopted no queue, and everything the game acts on came
+        // through `SDLUtil::InputWrapper` and MyGUI before this.
     }
 
     void RtxRenderer::tickSchedule()
@@ -416,8 +418,7 @@ namespace MWRender
         //
         // **The frame's own step, and not MyGUI's timer.** That timer is a wall clock read in whole
         // milliseconds, and a hit's red overlay faded by it — so two runs of one build drew the
-        // overlay at different strengths on the same frame. Measured on `one-cell-walk`: 13 of 360
-        // frames differed, and none do now.
+        // overlay at different strengths on the same frame.
         if (MyGUIRtx::RenderManager* gui = MyGUIRtx::RenderManager::getInstancePtr())
             gui->update(static_cast<float>(mClock.getStep()));
 
@@ -490,12 +491,14 @@ namespace MWRender
 
     FrameContext RtxRenderer::describeContext()
     {
-        return FrameContext{ .mHost = *this, .mViews = *this, .mScene = mMirror.getScene() };
-    }
-
-    osg::Group* RtxRenderer::getSceneRoot()
-    {
-        return mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr;
+        return FrameContext{
+            .mBackend = *mRenderer,
+            .mViews = *this,
+            .mResources = mResources,
+            .mSceneRoot = mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr,
+            .mScene = mMirror.getScene(),
+            .mReach = mMirror.getReach(),
+        };
     }
 
     std::optional<PoseMoment> RtxRenderer::describePose()
@@ -548,7 +551,7 @@ namespace MWRender
     /// surface, and a window that stops answering is one the compositor eventually says so about.
     /// What the GUI goes over is then the last frame traced, or black where nothing has been — a
     /// main menu, or the moment before the first cell finishes loading.
-    void RtxRenderer::presentWithGui()
+    void RtxRenderer::renderGui()
     {
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 
@@ -567,11 +570,6 @@ namespace MWRender
         mSpan.addPresent(Rtx::since(began, ended));
 
         mSpan.leave(ended);
-    }
-
-    void RtxRenderer::renderGui()
-    {
-        presentWithGui();
     }
 
     void RtxRenderer::capture(osg::Image& image, int width, int height)
@@ -688,7 +686,7 @@ namespace MWRender
         // being handed the loading screen in one step.
         if (!drawsWorld())
         {
-            presentWithGui();
+            renderGui();
             return;
         }
 
@@ -713,7 +711,7 @@ namespace MWRender
 
         traceWorld(frame, report);
 
-        presentWithGui();
+        renderGui();
 
         // **After the frame and not before the walk**, and on the frames the trace refused as well:
         // the walk still ran, so its epoch is still the one the next walk has to be measured
@@ -832,8 +830,8 @@ namespace MWRender
 
     void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report)
     {
-        const Rtx::WorldReading read = readWorld(frame.mWorld, mMirror.getSky(), mMirror.getMoonFaces(), landReach(),
-            static_cast<float>(frame.mWhen.getSimulationTime()));
+        const Rtx::WorldReading read = readWorld(frame.mWorld, mMirror.getSky(), mMirror.getMoonFaces(),
+            mMirror.getReach(), static_cast<float>(frame.mWhen.getSimulationTime()));
 
         const float exposureBias = Rtx::describeWorld(read, constants);
 

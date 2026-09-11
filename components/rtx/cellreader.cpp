@@ -46,10 +46,11 @@ namespace Rtx
         class ModelTaker final : public TemplateSink
         {
         public:
-            ModelTaker(PreparedModel& into, MeshReader& meshes, AlphaScratch& alpha)
+            ModelTaker(PreparedModel& into, MeshReader& meshes, AlphaScratch& alpha, const NodeKinds& kinds)
                 : mInto(into)
                 , mMeshes(meshes)
                 , mAlpha(alpha)
+                , mKinds(kinds)
             {
             }
 
@@ -59,7 +60,7 @@ namespace Rtx
                 // A particle system is a drawable with no triangles, and the paging left those out
                 // of a chunk too; a rig or a morph is read as its source, which is the bind pose,
                 // and stands still — as it did in a chunk.
-                const DrawableRead read = readDrawable(drawable);
+                const DrawableRead read = readDrawable(drawable, mKinds.of(drawable));
                 if (read.mGeometry == nullptr)
                     return;
 
@@ -86,6 +87,7 @@ namespace Rtx
             PreparedModel& mInto;
             MeshReader& mMeshes;
             AlphaScratch& mAlpha;
+            const NodeKinds& mKinds;
         };
 
         /// The reference's own space to the world's, composed as `SceneUtil::PositionAttitudeTransform`
@@ -186,7 +188,7 @@ namespace Rtx
         // for every template the game hands out, so this is a read.
         model.mRadius = node->getBound().radius();
 
-        ModelTaker taker(model, mMeshes, mAlpha);
+        ModelTaker taker(model, mMeshes, mAlpha, mKinds);
         mWalk.walk(*node, mMask, taker);
 
         for (const PreparedPart& part : model.mParts)

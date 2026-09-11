@@ -20,11 +20,9 @@ namespace Rtx
     /// What a reader of a scene is handed: the five tables, and the three lists that belong to no
     /// table.
     ///
-    /// **A view and not the scene.** `SceneDesc` used to re-export every table one method at a
-    /// time — forty-one forwarders, so a field added to a table reached a backend only if somebody
-    /// wrote a forwarder for it too. Handing the tables over says the same thing once, and it says
-    /// something the forwarders could not: a reader cannot move an instance or free a texture,
-    /// because it never had the scene.
+    /// **A view and not the scene.** Handing the tables over says once what a forwarder per field
+    /// would say many times, and it says something forwarders could not: a reader cannot move an
+    /// instance or free a texture, because it never had the scene.
     ///
     /// Borrowed, and valid for as long as the scene it came from is. Cheap to make and meant to be
     /// made per call rather than held.

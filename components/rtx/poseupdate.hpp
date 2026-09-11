@@ -4,7 +4,7 @@
 
 #include <components/sceneutil/lightmanager.hpp>
 
-#include "nodelibrary.hpp"
+#include "nodekind.hpp"
 
 namespace Rtx
 {
@@ -28,15 +28,13 @@ namespace Rtx
     public:
         void apply(osg::Node& node) override
         {
-            if (mLibrary.of(node) == Library::SceneUtil && dynamic_cast<SceneUtil::LightSource*>(&node) != nullptr)
+            if (mKinds.of(node) == NodeKind::LightSource)
                 return;
 
             osgUtil::UpdateVisitor::apply(node);
         }
 
     private:
-        /// Which library each class this traversal meets belongs to. A member because the visitor
-        /// is: whoever runs an update holds one of these for as long as it does.
-        NodeLibrary mLibrary;
+        NodeKinds mKinds;
     };
 }

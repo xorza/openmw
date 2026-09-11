@@ -206,6 +206,7 @@ set(RTX_VULKAN_FILES
     guitextures.hpp
     image.cpp
     image.hpp
+    imageuse.hpp
     instance.cpp
     instance.hpp
     memory.cpp

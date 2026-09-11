@@ -40,10 +40,11 @@ namespace Rtx
         mCells.clear();
     }
 
-    osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell) const
+    osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell)
     {
-        std::vector<Terrain::PagedCellRef> refs;
-        mAround.mWorld.mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mAround.mWorld.mWorldspace, refs);
+        mRefScratch.clear();
+        mAround.mWorld.mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mAround.mWorld.mWorldspace, mRefScratch);
+        const std::vector<Terrain::PagedCellRef>& refs = mRefScratch;
 
         osg::ref_ptr<osg::Group> group;
 

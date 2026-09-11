@@ -136,9 +136,8 @@ namespace MWRender
         /// **The route's own place, because deriving the next step from the player puts physics in
         /// it.** `moveObjectBy` moves an actor, and the world then steps that actor: gravity pulls
         /// it down between one frame and the next, and a step taken from where it landed carries
-        /// the fall forward and compounds it. `island-crossing` asks to be flown six thousand units
-        /// up and was flown at eighty-five to twelve hundred — along the ground and inside it — so
-        /// every number ever taken over it described a view nobody asked for.
+        /// the fall forward and compounds it: a route flown six thousand units up ends along the
+        /// ground and inside it.
         osg::Vec3f mFlown;
 
         /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
@@ -661,7 +660,7 @@ namespace MWRender
 
     void Session::frame(const FrameContext& context, const FrameReport& report)
     {
-        Rtx::Renderer& renderer = context.mHost.getBackend();
+        Rtx::Renderer& renderer = context.mBackend;
         const double frameMs = report.mFrameMs;
 
         if (mDone || !mStarted)
@@ -728,7 +727,7 @@ namespace MWRender
     void Session::endStop(const FrameContext& context, const FrameReport& report)
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
-        Rtx::Renderer& renderer = context.mHost.getBackend();
+        Rtx::Renderer& renderer = context.mBackend;
 
         mHeld->mProfiling->disable();
 

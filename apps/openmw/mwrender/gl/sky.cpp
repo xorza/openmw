@@ -82,7 +82,6 @@ namespace MWRender
         , mNextClouds()
         , mCloudBlendFactor(0.f)
         , mStarsOpacity(0.f)
-        , mWindSpeed(0.f)
         , mBaseWindSpeed(0.f)
         , mEnabled(true)
         , mSunglareEnabled(true)

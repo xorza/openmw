@@ -8,6 +8,7 @@
 #include "geometryfold.hpp"
 #include "mesharrays.hpp"
 #include "meshrange.hpp"
+#include "nodekind.hpp"
 #include "shapefold.hpp"
 
 namespace osg
@@ -48,7 +49,7 @@ namespace Rtx
     /// with none has nothing to be posed against; the rasterizer draws that rig in its bind pose,
     /// and so does this. A morph with no target past its base has nothing to move either, and is a
     /// static mesh whose positions are the base.
-    DrawableRead readDrawable(const osg::Drawable& drawable);
+    DrawableRead readDrawable(const osg::Drawable& drawable, NodeKind kind);
 
     /// A morph's base target, which `MorphGeometry::cull` reads its positions from.
     std::span<const osg::Vec3f> morphBase(const SceneUtil::MorphGeometry& morph);

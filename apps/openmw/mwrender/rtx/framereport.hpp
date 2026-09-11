@@ -13,10 +13,19 @@ namespace Rtx
     class SceneDesc;
 }
 
+namespace osg
+{
+    class Group;
+}
+
+namespace Resource
+{
+    class ResourceSystem;
+}
+
 namespace MWRender
 {
     class Renderer;
-    class ViewHost;
 
     /// What a frame's walk found, and what a second walk over the same graph added where a run
     /// asked for one.
@@ -58,21 +67,26 @@ namespace MWRender
         std::uint32_t mUnreadableTextures = 0;
     };
 
-    /// What a measured stop may reach beyond the frame's own report: the host of the views, the
-    /// seam a picture inside the interface is made through, and the scene the last walk handed over.
-    ///
-    /// Borrowed and valid for one stop: everything here is the renderer's own.
+    /// What a measured stop may reach beyond the frame's own report. Borrowed and valid for one stop:
+    /// everything here is the renderer's own.
     struct FrameContext
     {
-        /// The backend, the resources and the scene root, through the interface a traced view
-        /// already reaches them by.
-        ViewHost& mHost;
+        Rtx::Renderer& mBackend;
 
         /// The seam a picture inside the interface is made through — `createOffscreenView`, and
         /// the inventory doll's preview, which takes one of these of its own.
         Renderer& mViews;
 
+        /// The world's, or null before there is a world.
+        Resource::ResourceSystem* mResources = nullptr;
+
+        /// Whatever is topmost, or null.
+        osg::Group* mSceneRoot = nullptr;
+
         /// The scene the last walk handed over.
         const Rtx::SceneDesc& mScene;
+
+        /// How much world the mirror builds, in units.
+        float mReach = 0.0f;
     };
 }

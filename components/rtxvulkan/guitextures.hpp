@@ -17,6 +17,7 @@
 #include "commands.hpp"
 #include "frameslots.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {
@@ -134,15 +135,11 @@ namespace Rtx
 
             const Image& image = *mImages[slot.get()];
 
-            image.transition(commands, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+            image.transition(commands, Use::sFragmentSample, Use::sTransferWrite);
 
             record(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-            image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+            image.transition(commands, Use::sTransferWrite, Use::sFragmentSample);
         }
 
         /// The whole texture in main memory, four bytes a pixel. Costs a transfer off the device.
@@ -182,8 +179,8 @@ namespace Rtx
         ///
         /// A run of an arena is being read for as long as the submit that carried it is. The batch
         /// is handed over rather than waited for, so the bytes a copy reads are still needed after
-        /// the call that filled them returns — and rewinding there, which a wait used to make safe,
-        /// would put the next write on top of a copy that has not run.
+        /// the call that filled them returns — and rewinding there would put the next write on top
+        /// of a copy that has not run.
         ///
         /// **Three and not two, and the extra one is the whole of why this is stated.** What is
         /// written between two interface frames is carried by the *later* one's submit, and that

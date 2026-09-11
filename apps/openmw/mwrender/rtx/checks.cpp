@@ -25,7 +25,6 @@
 
 #include "../camera.hpp"
 #include "../renderingmanager.hpp"
-#include "worldmirror.hpp"
 
 namespace MWRender
 {
@@ -91,7 +90,7 @@ namespace MWRender
                 // a backdrop out and clips what it meets, which is exactly the ground this is about.
                 const osg::Vec3f eye
                     = MWBase::Environment::get().getWorld()->getPlayerPtr().getRefData().getPosition().asVec3();
-                const float reach = landReach();
+                const float reach = context.mReach;
                 const float sky = std::numeric_limits<float>::max();
                 const osg::BoundingBoxf region(
                     eye.x() - reach, eye.y() - reach, -sky, eye.x() + reach, eye.y() + reach, sky);
@@ -111,7 +110,7 @@ namespace MWRender
                 // for this renderer, so a cell short is a hole the player can walk on.
                 const bool outdoors = MWBase::Environment::get().getWorld()->isCellExterior();
                 const int reach
-                    = static_cast<int>(std::ceil(landReach() / static_cast<float>(Constants::CellSizeInUnits)));
+                    = static_cast<int>(std::ceil(context.mReach / static_cast<float>(Constants::CellSizeInUnits)));
                 const auto expected = static_cast<std::uint32_t>((2 * reach + 1) * (2 * reach + 1));
 
                 found = std::format(

@@ -75,9 +75,8 @@ namespace Rtx
         ///
         /// **Split from `rebuild` because a caller has work to do between the two.** A rebuild
         /// resets the command pool, so whatever is staged in it has to be submitted and waited for
-        /// first — and that drain costs more than the rebuild it guards. `VulkanRenderer::resize`
-        /// used to pay it on every settled frame: measured on the island route, 2.70 ms a frame of
-        /// the host and up to 27 on the frames a ring arrived.
+        /// first — and that drain costs more than the rebuild it guards: paid on every settled
+        /// frame it is milliseconds of host time, and tens on a frame a ring arrives.
         ///
         /// **Not const, because a surface nobody can see is answered by remembering it.** A hidden
         /// window takes no swapchain, so the staleness is what carries the rebuild to the frame the
@@ -166,12 +165,12 @@ namespace Rtx
 
         /// Which present a frame image was last read by. One entry per image the renderer alternates
         /// between, so a linear scan is the whole lookup.
-        struct ImageUse
+        struct LastUse
         {
             VkImage mImage = VK_NULL_HANDLE;
             VkFence mFence = VK_NULL_HANDLE;
         };
-        std::vector<ImageUse> mLastUse;
+        std::vector<LastUse> mLastUse;
 
         /// Whether the surface stopped matching the window since the last rebuild.
         ///

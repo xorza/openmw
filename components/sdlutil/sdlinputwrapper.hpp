@@ -25,8 +25,9 @@ namespace SDLUtil
         /// @param camera the master camera, for the graphics context to resize with the window.
         ///        Whether there is one behind it is the renderer's business.
         /// @param events where the scene graph's own handlers read from, so the function keys and
-        ///        the window size reach them as well as the game.
-        InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue& events, bool grab);
+        ///        the window size reach them as well as the game — or null under a renderer that has
+        ///        no such handlers, which then receives nothing to drop.
+        InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue* events, bool grab);
         ~InputWrapper();
 
         void setMouseEventCallback(MouseListener* listen) { mMouseListener = listen; }
@@ -58,7 +59,7 @@ namespace SDLUtil
 
         SDL_Window* mSDLWindow;
         osg::Camera& mCamera;
-        osgGA::EventQueue& mEvents;
+        osgGA::EventQueue* mEvents;
 
         MouseListener* mMouseListener;
         SensorListener* mSensorListener;

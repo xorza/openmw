@@ -105,14 +105,12 @@ namespace Rtx
 
         // Nothing has written the scratch yet this frame, so the first level may discard it. Every
         // level after reads what the one before wrote, which is what the barriers below order.
-        mScratch->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        mScratch->transition(commands,
+            ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads }, Use::sComputeWrite);
 
-        // **One assignment and not eight.** These used to be copied a field at a time out of the
-        // frame's own description, which is how the filter's rays and the trace's could have come to
-        // differ; they are one struct now, this pass is handed only that struct, and the shader
-        // rebuilds the rays with the trace's own `rayAt`.
+        // **One assignment and not eight**, so the filter's rays and the trace's cannot come to
+        // differ: this pass is handed the one struct, and the shader rebuilds the rays with the
+        // trace's own `rayAt`.
         Shaders::AtrousConstants level{
             .mCamera = camera,
             .mStep = 1,
@@ -138,9 +136,11 @@ namespace Rtx
                 // read, which needs the stages named and nothing made visible.
                 Barriers between(commands);
                 for (const Image* image : { source, target })
-                    between.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | sReads,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | sReads));
+                    between.add(image->describeTransition(
+                        ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | sReads },
+                        ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | sReads }));
 
                 between.flush();
             }
@@ -172,9 +172,8 @@ namespace Rtx
         // composite dispatch that reads this result ran beside the dispatch still writing it. Two
         // runs of one doll wrote different bytes over a thousand of its pixels, by a level or two
         // apiece, which is what a compute read that overtook part of a compute write looks like.
-        source->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads);
+        source->transition(commands, Use::sComputeWrite,
+            ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads });
 
         // One swap past the last dispatch, so this is what that dispatch wrote.
         return *source;

@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstring>
 #include <optional>
-#include <variant>
 
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>

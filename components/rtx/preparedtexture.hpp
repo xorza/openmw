@@ -9,6 +9,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "mipchain.hpp"
+#include "reuse.hpp"
 #include "shadingmap.hpp"
 
 namespace Rtx
@@ -47,12 +48,6 @@ namespace Rtx
         std::uint32_t mLent = 0;
 
         /// Makes room for the next image. The chain keeps its bytes.
-        void reuse()
-        {
-            mImage = nullptr;
-            mPath.clear();
-            mReadable = false;
-            mLent = 0;
-        }
+        void reuse() { reuseKeeping(*this, &PreparedTexture::mPath, &PreparedTexture::mChain); }
     };
 }

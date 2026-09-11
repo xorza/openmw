@@ -10,7 +10,7 @@
 namespace SDLUtil
 {
 
-    InputWrapper::InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue& events, bool grab)
+    InputWrapper::InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue* events, bool grab)
         : mSDLWindow(window)
         , mCamera(camera)
         , mEvents(events)
@@ -55,7 +55,8 @@ namespace SDLUtil
 
     void InputWrapper::capture(bool windowEventsOnly)
     {
-        mEvents.frame(0.f);
+        if (mEvents != nullptr)
+            mEvents->frame(0.f);
 
         SDL_PumpEvents();
 
@@ -121,9 +122,10 @@ namespace SDLUtil
                 case SDL_KEYDOWN:
                     mKeyboardListener->keyPressed(evt.key);
 
-                    if (!isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1 && evt.key.keysym.sym <= SDLK_F12)
+                    if (mEvents != nullptr && !isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1
+                        && evt.key.keysym.sym <= SDLK_F12)
                     {
-                        mEvents.keyPress(osgGA::GUIEventAdapter::KEY_F1 + (evt.key.keysym.sym - SDLK_F1));
+                        mEvents->keyPress(osgGA::GUIEventAdapter::KEY_F1 + (evt.key.keysym.sym - SDLK_F1));
                     }
 
                     break;
@@ -132,9 +134,9 @@ namespace SDLUtil
                     {
                         mKeyboardListener->keyReleased(evt.key);
 
-                        if (!isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1
+                        if (mEvents != nullptr && !isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1
                             && evt.key.keysym.sym <= SDLK_F12)
-                            mEvents.keyRelease(osgGA::GUIEventAdapter::KEY_F1 + (evt.key.keysym.sym - SDLK_F1));
+                            mEvents->keyRelease(osgGA::GUIEventAdapter::KEY_F1 + (evt.key.keysym.sym - SDLK_F1));
                     }
 
                     break;
@@ -272,7 +274,8 @@ namespace SDLUtil
                 if (osg::GraphicsContext* context = mCamera.getGraphicsContext())
                     context->resized(x, y, w, h);
 
-                mEvents.windowResize(x, y, w, h);
+                if (mEvents != nullptr)
+                    mEvents->windowResize(x, y, w, h);
 
                 if (mWindowListener)
                     mWindowListener->windowResized(w, h);

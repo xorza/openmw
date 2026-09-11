@@ -77,9 +77,6 @@ namespace Rtx
     /// belonging to whatever the scene put there. Only its radius of nothing kept it off the screen.
     Shaders::SkyPatch noPatch();
 
-    /// Six of those, which is the whole sky a world with none has.
-    std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> noPatches();
-
     /// What a frame's sky, air and water are, as far as neither host can work it out for the other.
     ///
     /// **A `Daylight` and the handful of things a `Daylight` does not carry.** How a host reaches
@@ -103,7 +100,6 @@ namespace Rtx
 
         /// How far the star sphere has turned and the deck has scrolled — `Sky::SkyRoll`'s two.
         float mStarRoll = 0.0f;
-        float mCloudRoll = 0.0f;
 
         /// Where the sky's own sheets sit in the scene's texture table.
         SkyContent mSky;
@@ -112,15 +108,8 @@ namespace Rtx
         /// the angles come from the weather system, and nothing here can work them out.
         std::array<MoonPlacement, 2> mMoons;
 
-        std::uint32_t mWeather = Shaders::WEATHER_CLEAR;
-        std::uint32_t mNextWeather = Shaders::WEATHER_CLEAR;
-
-        /// How far the *deck* has crossed, which is not how far the weather has.
-        float mCloudBlend = 0.0f;
-
-        /// Which way each weather's sheet is turned, on the same terms as `mMoons`.
-        osg::Vec3f mCloudDirection;
-        osg::Vec3f mNextCloudDirection;
+        /// Which weather is over the eye and which is arriving, and how the two decks stand.
+        CloudCrossing mClouds;
 
         float mWaterLevel = -std::numeric_limits<float>::infinity();
         float mSeconds = 0.0f;

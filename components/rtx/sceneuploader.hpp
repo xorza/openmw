@@ -88,11 +88,26 @@ namespace Rtx
         ///        inside the backend**, because what the three have in common is that they are the
         ///        hand-over, and a backend that timed itself would be answering a question about the
         ///        host's frame.
-        SceneUpload hand(SceneSink& renderer, SceneSlot slot, SceneDesc& scene, Resource::ImageManager& images,
-            CompositeQueue* composites, const SeaState& sea = SeaState{}, const TextureReadings* readings = nullptr,
-            FrameSpend* spend = nullptr);
+        /// What one hand-over is of. The three pointers are what a caller may not have: the world
+        /// has composites and readings and is timed, a picture's subject has neither and is not.
+        struct Handing
+        {
+            SceneSlot mSlot;
+            SceneDesc& mScene;
+            Resource::ImageManager& mImages;
+            CompositeQueue* mComposites = nullptr;
+            SeaState mSea{};
+            const TextureReadings* mReadings = nullptr;
+            FrameSpend* mSpend = nullptr;
+        };
+
+        SceneUpload hand(SceneSink& renderer, const Handing& handing);
 
     private:
+        /// Whether this uploader has ever built its scene into a backend. With the backend's own
+        /// answer, what decides between building and appending.
+        bool mBuilt = false;
+
         /// What an arrival is described into, and the storage the descriptions point at.
         ///
         /// **Held, so an arrival frame does not pay for the buffers.** Every vector inside settles

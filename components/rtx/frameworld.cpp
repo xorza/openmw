@@ -55,14 +55,6 @@ namespace Rtx
         return none;
     }
 
-    std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> noPatches()
-    {
-        std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> patches;
-        patches.fill(noPatch());
-
-        return patches;
-    }
-
     float describeWorld(const WorldReading& reading, Shaders::VisibilityConstants& constants)
     {
         const Daylight& day = reading.mDaylight;
@@ -103,9 +95,8 @@ namespace Rtx
 
         if (reading.mOutdoors)
         {
-            constants.mClouds = describeClouds(reading.mWeather, reading.mNextWeather, reading.mCloudBlend,
-                deckLight(light.mSunAloft, budget.mMean, reading.mMoons), reading.mCloudDirection,
-                reading.mNextCloudDirection, reading.mCloudRoll, reading.mSky);
+            constants.mClouds = describeClouds(
+                reading.mClouds, deckLight(light.mSunAloft, budget.mMean, reading.mMoons), reading.mSky);
 
             describePatches(reading.mStarRoll, reading.mSky, constants.mSkyPatches);
 

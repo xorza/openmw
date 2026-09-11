@@ -219,6 +219,7 @@ namespace Rtx
         {
             const Request& request = baked.mRequest;
             const Asked& asked = request.mAsked;
+            mUnreadable += baked.mUnreadable;
 
             // Exactly the entry this was asked as, and not whatever stands under the material now:
             // a slot taken over while this baked has an entry of its own, and that one is waiting
@@ -296,9 +297,8 @@ namespace Rtx
         Baked baked{ .mRequest = std::move(request) };
         const Request& asked = baked.mRequest;
 
-        // **Reserved before anything points into it.** Every description below spans `mLevelScratch`, so
-        // a reallocation part way through would leave the bake reading where the earlier layers
-        // used to be.
+        // Reserved before anything points into it: every description below spans `mLevelScratch`,
+        // so a reallocation part way through would leave the earlier layers' spans dangling.
         std::size_t count = 0;
         for (const osg::ref_ptr<const osg::Image>& image : asked.mImages)
             count += image != nullptr ? image->getNumMipmapLevels() : 0;
@@ -323,7 +323,8 @@ namespace Rtx
             catch (const Error&)
             {
                 // A file in a format this renderer does not upload is a layer with nothing to
-                // flatten, and the shader shades the chunk without it either way.
+                // flatten; the shader shades the chunk without it, and the frame counts it.
+                ++baked.mUnreadable;
                 continue;
             }
 
@@ -355,6 +356,7 @@ namespace Rtx
             // Nothing may leave a thread, and a chunk that could not be flattened is a chunk that
             // shades from its stack — a cost per hit, not a picture lost.
             Log(Debug::Error) << "a terrain composite could not be baked: " << error.what();
+            ++baked.mUnreadable;
         }
 
         return baked;

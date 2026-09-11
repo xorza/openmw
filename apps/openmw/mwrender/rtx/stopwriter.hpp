@@ -12,6 +12,11 @@
 #include "checks.hpp"
 #include "framereport.hpp"
 
+namespace osg
+{
+    class Image;
+}
+
 namespace Rtx
 {
     class RunRecord;
@@ -92,8 +97,10 @@ namespace MWRender
         /// **A picture inside the interface is written bottom row first**, which is what
         /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for. A
         /// file wants the other order, so the rows are turned over on the way out.
-        void writeView(
-            const Writing& into, OffscreenView& view, int width, int height, const std::filesystem::path& file);
+        void writeView(const Writing& into, OffscreenView& view, const std::filesystem::path& file);
+
+        /// Writes a picture that is already in main memory, bottom row first, as a PNG.
+        void writeImage(const Writing& into, const osg::Image& drawn, const std::filesystem::path& file);
 
         /// Asks every check the stop named, and reports each one's answer.
         void runChecks(const Writing& into, std::span<const Rtx::Check> checks, const StopFacts& facts);

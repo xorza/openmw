@@ -228,8 +228,9 @@ namespace MWRender
 
     const osg::Image* LocalMap::getMapImage(int x, int y)
     {
-        SegmentMap::iterator found = mExteriorSegments.find(std::make_pair(x, y));
-        if (found == mExteriorSegments.end() || !found->second.mView)
+        auto& segments(mInterior ? mInteriorSegments : mExteriorSegments);
+        SegmentMap::iterator found = segments.find(std::make_pair(x, y));
+        if (found == segments.end() || !found->second.mView)
             return nullptr;
 
         MapSegment& segment = found->second;

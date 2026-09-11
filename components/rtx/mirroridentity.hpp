@@ -46,9 +46,8 @@ namespace Rtx
     ///
     /// **The holds are the other keeper.** A residency stands rows the walk never meets — a
     /// distant cell's models — under the same entries the walk would find a clone's mesh under, so
-    /// that a mesh both stand is one mesh. It used to keep them by stamping every held entry on
-    /// every walk, through a callback chain four objects long; a count on the entry says the same
-    /// thing once, when the hold is taken, and the sweep keeps what is held whatever its stamp.
+    /// that a mesh both stand is one mesh. A count on the entry, taken with the hold, is what the
+    /// sweep keeps by whatever the stamp says.
     struct Known
     {
         Index mIndex = sNoIndex;
@@ -97,6 +96,10 @@ namespace Rtx
         }
 
         Entry end() { return mKnown.end(); }
+
+        /// Room for `count` entries before the table rehashes. A rehash on the frame a cell arrives
+        /// is what this is called once to prevent.
+        void reserve(std::size_t count) { mKnown.reserve(count); }
 
         /// The entry for `key`, or `end()`. **Unstamped**: `stamp` is what says the walk met it.
         template <class Key>
@@ -152,18 +155,20 @@ namespace Rtx
                 mAbandoned = true;
         }
 
-        /// Adds what the walk has just resolved, stamped. `key` must not already be held.
+        /// Adds what the walk has just resolved, stamped, and hands the entry back. `key` must not
+        /// already be held.
         template <class Key, class Held>
-        void add(const Key& key, Held held)
+        Entry add(const Key& key, Held held)
         {
             freshen();
             held.mEpoch = mPass.mEpoch;
             held.mHolds = 0;
 
-            [[maybe_unused]] const bool arrived = mKnown.emplace(key, std::move(held)).second;
+            const auto [entry, arrived] = mKnown.emplace(key, std::move(held));
             assert(arrived && "an identity the map already held, added again");
 
             ++mReached;
+            return entry;
         }
 
         /// The entry for `key`, stamped, made where the map holds none.

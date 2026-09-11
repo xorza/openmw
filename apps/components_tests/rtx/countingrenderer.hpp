@@ -39,7 +39,7 @@ namespace Rtx::Testing
             // What the backend does: the array is made again and ends where the scene's table
             // does, whatever it held before.
             countAt(slot) = static_cast<std::uint32_t>(scene.mTextures.getPaths().size());
-            heldAt(slot) = { &scene.mMeshes, scene.getStructureRevision() };
+            heldAt(slot) = { true, scene.getStructureRevision() };
         }
 
         void extendScene(Rtx::SceneSlot slot, const Rtx::SceneTables& scene, std::span<const Rtx::TextureData> arrived,
@@ -71,7 +71,7 @@ namespace Rtx::Testing
         {
             const Built& built = heldAt(slot);
             return Rtx::SceneHeld{
-                .mScene = built.mScene, .mStructureRevision = built.mRevision, .mTextureCount = countAt(slot)
+                .mBuilt = built.mBuilt, .mStructureRevision = built.mRevision, .mTextureCount = countAt(slot)
             };
         }
 
@@ -118,7 +118,7 @@ namespace Rtx::Testing
         /// What a slot was built from, which is what says whether an uploader may append.
         struct Built
         {
-            const Rtx::MeshTable* mScene = nullptr;
+            bool mBuilt = false;
             std::uint64_t mRevision = 0;
         };
 

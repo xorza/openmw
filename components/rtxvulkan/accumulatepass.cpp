@@ -79,25 +79,25 @@ namespace Rtx
 
         const VkImageLayout held = mFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
         for (const Image* image : { mColour[previous].get(), mSurface[previous].get(), mMoments[previous].get() })
-            barriers.add(image->describeTransition(held, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT));
+            barriers.add(image->describeTransition(
+                ImageUse{ held, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
+                Use::sComputeRead));
 
         for (const Image* image : { mColour[mCurrent].get(), mSurface[mCurrent].get(), mMoments[mCurrent].get() })
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+            barriers.add(image->describeTransition(
+                ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
+                Use::sComputeWrite));
 
         // **Waiting on both of the cascade's accesses and not only its read.** Two frames are in
         // flight over one blend image, and the levels of the cascade write it as well as read it —
         // so a frame arriving here has to wait for the previous frame's odd levels to finish
         // writing, which a dependency naming the read alone would not order.
-        barriers.add(mBlended->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
-                | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+        barriers.add(
+            mBlended->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+                                                 | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
+                Use::sComputeWrite));
 
         barriers.flush();
 

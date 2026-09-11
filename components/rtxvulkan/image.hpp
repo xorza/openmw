@@ -9,6 +9,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "imageuse.hpp"
 #include "memory.hpp"
 #include "owned.hpp"
 
@@ -22,8 +23,7 @@ namespace Rtx
     {
     public:
         /// @param name what a capture and a validation message call this image and its view.
-        ///        Required, and not because every image deserves prose: they all used to be called
-        ///        "target", so a report naming one said nothing about which it was.
+        ///        Required, so a report naming one says which it was.
         /// @param mipLevels how many halvings the image holds, including the full one. Levels
         ///        past the first hold nothing until `buildMips` fills them, and one is an image
         ///        with no chain at all.
@@ -37,9 +37,7 @@ namespace Rtx
         Image& operator=(const Image&) = delete;
 
         /// **Movable, because the channels of a g-buffer are built by a loop over a table rather
-        /// than by a member list.** `Owned` is what makes the moves defaultable: the three handles
-        /// below used to need a destructor written by hand, and that destructor is what made this
-        /// type immovable.
+        /// than by a member list.** `Owned` is what makes the moves defaultable.
         Image(Image&&) noexcept = default;
         Image& operator=(Image&&) noexcept = default;
 
@@ -70,17 +68,12 @@ namespace Rtx
         /// error, no validation message, just a black frame with nothing pointing at the cause.
         VkImageUsageFlags getUsage() const { return mUsage; }
 
-        /// How many bytes one texel of this image's format occupies.
-        std::uint32_t getTexelBytes() const { return mTexelBytes; }
-
         /// Moves every level of the image to `layout`, recording into `commands`.
         /// The same dependency as `transition`, for a caller collecting a run of them into one
         /// command. Every level, as `transition` is.
-        VkImageMemoryBarrier2 describeTransition(VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 srcStage,
-            VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess) const;
+        VkImageMemoryBarrier2 describeTransition(const ImageUse& from, const ImageUse& to) const;
 
-        void transition(VkCommandBuffer commands, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 srcStage,
-            VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess) const;
+        void transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const;
 
         /// Fills every level below the first by halving the one above it, in `VK_FILTER_LINEAR`.
         ///
@@ -94,7 +87,7 @@ namespace Rtx
         /// sampled read. Needs `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` and `VK_IMAGE_USAGE_TRANSFER_DST_BIT`.
         void buildMips(VkCommandBuffer commands) const;
 
-        /// Copies one level to host memory, `getTexelBytes()` per pixel, tightly packed, row by row.
+        /// Copies one level to host memory, one texel's bytes per pixel, tightly packed, row by row.
         ///
         /// **Left in the layout it was handed**, because reading an image is not a change to it and
         /// a caller that had to know a read moved it is one that would forget.
@@ -111,9 +104,8 @@ namespace Rtx
 
     private:
         /// The same barrier `transition` records, over `count` levels from `base`.
-        void transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, VkImageLayout from,
-            VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
-            VkAccessFlags2 dstAccess) const;
+        void transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, const ImageUse& from,
+            const ImageUse& to) const;
 
         const Device* mDevice = nullptr;
         Owned<VkImage, vkDestroyImage> mHandle;
@@ -126,9 +118,8 @@ namespace Rtx
         VkFormat mFormat = VK_FORMAT_UNDEFINED;
         /// `describeTransition`'s own answer over a run of levels, which is what `transitionLevels`
         /// emits. One statement of the barrier, because the two differ only in the range.
-        VkImageMemoryBarrier2 describeLevels(std::uint32_t base, std::uint32_t count, VkImageLayout from,
-            VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
-            VkAccessFlags2 dstAccess) const;
+        VkImageMemoryBarrier2 describeLevels(
+            std::uint32_t base, std::uint32_t count, const ImageUse& from, const ImageUse& to) const;
 
         VkImageUsageFlags mUsage = 0;
         std::uint32_t mMipLevels = 1;

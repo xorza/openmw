@@ -1,10 +1,10 @@
 #include <cstdint>
 #include <memory>
-#include <string>
-
-#include <components/rtx/renderer.hpp>
 
 #include <SDL_video.h>
+
+#include <components/rtx/error.hpp>
+#include <components/rtx/renderer.hpp>
 
 #ifdef OPENMW_RTX_VULKAN
 #include <components/rtxvulkan/vulkanrenderer.hpp>
@@ -21,16 +21,14 @@ namespace Rtx
 #endif
     }
 
-    std::unique_ptr<Renderer> createRenderer([[maybe_unused]] const RendererOptions& options, std::string& reason)
+    std::unique_ptr<Renderer> createRenderer([[maybe_unused]] const RendererOptions& options)
     {
-        // **This layer stands although one backend is left.** The core declares `createRenderer`
-        // and cannot link a backend without a cycle, so somebody has to hold the answer — and every
-        // consumer wants a renderer rather than a choice.
+        // This layer stands although one backend is left: the core declares `createRenderer` and
+        // cannot link a backend without a cycle, so somebody has to hold the answer.
 #ifdef OPENMW_RTX_VULKAN
-        return createVulkanRenderer(options, reason);
+        return std::make_unique<VulkanRenderer>(options);
 #else
-        reason = "this build has no ray tracing backend";
-        return nullptr;
+        throw Unsupported("this build has no ray tracing backend");
 #endif
     }
 }

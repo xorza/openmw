@@ -28,6 +28,7 @@
 #include <components/misc/constants.hpp>
 #include <components/platform/platform.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -225,24 +226,23 @@ namespace RtxTool
             // **And the cache is the one every other command fills**, since compiling those
             // pipelines is most of what this verb waits for. A run that named no cache compiled
             // them from source, kept nothing, and left the next `shot` to compile them again.
-            std::string reason;
-            const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-                Rtx::RendererOptions{
+            try
+            {
+                const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(Rtx::RendererOptions{
                     .mShaderDirectory = command.mResources / "rtx" / "shaders",
                     .mCacheDirectory = command.mConfig.getCachePath(),
                     .mWidth = 1,
                     .mHeight = 1,
                     .mValidation = validation,
-                },
-                reason);
-            if (renderer == nullptr)
+                });
+                out() << renderer->describeDevice();
+                return 0;
+            }
+            catch (const Rtx::Unsupported& obstacle)
             {
-                out() << reason << '\n';
+                out() << obstacle.what() << '\n';
                 return 1;
             }
-
-            out() << renderer->describeDevice();
-            return 0;
         }
 
         /// Where someone starts when they have said nothing about where: the ship at Seyda Neen,
@@ -510,8 +510,8 @@ namespace RtxTool
             }
 
             return runOnePlace(command, [&](Rtx::Actions& actions) {
-                actions.mDoll = people.front();
-                actions.mDollOut = variables["out"].as<std::string>();
+                actions.mDoll
+                    = Rtx::Actions::Doll{ .mWho = people.front(), .mFile = variables["out"].as<std::string>() };
             });
         }
 
@@ -695,8 +695,7 @@ namespace RtxTool
         /// only the view says whether there is one.
         ///
         /// **Every check named, and no `default`**, so one added to `Rtx::Check` stops the
-        /// build here and has to say which kind it is. It was a chain of `check != X || condition`
-        /// beside the loop, which grows a clause per check and answers nothing when it is wrong.
+        /// build here and has to say which kind it is.
         bool canAsk(const Rtx::Check check, const Rtx::Stop& stop)
         {
             switch (check)

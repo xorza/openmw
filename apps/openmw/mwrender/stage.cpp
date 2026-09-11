@@ -17,11 +17,11 @@ namespace MWRender
 
     Stage::~Stage() = default;
 
-    void Stage::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue& events, osg::Stats& stats)
+    void Stage::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats)
     {
         mCamera = &camera;
         mFrameStamp = &frameStamp;
-        mEvents = &events;
+        mEvents = events;
         mStats = &stats;
     }
 
@@ -35,12 +35,6 @@ namespace MWRender
     {
         assert(mFrameStamp != nullptr && "the frame stamp is the renderer's to adopt, and nothing has yet");
         return *mFrameStamp;
-    }
-
-    osgGA::EventQueue& Stage::getEvents() const
-    {
-        assert(mEvents != nullptr && "the event queue is the renderer's to adopt, and nothing has yet");
-        return *mEvents;
     }
 
     osg::Stats& Stage::getStats() const
