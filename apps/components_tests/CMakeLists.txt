@@ -139,6 +139,7 @@ if (OPENMW_RTX)
         rtx/groundreader.cpp
         rtx/gputimer.cpp
         rtx/guipass.cpp
+        rtx/guiquad.hpp
         rtx/guitextures.cpp
         rtx/harness.cpp
         rtx/harness.hpp

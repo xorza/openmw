@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -159,6 +160,31 @@ namespace Rtx
             return noise;
         }
 
+        /// How many points the two tests below measure over.
+        ///
+        /// The band's own variance is about an eighth, so a random draw of this many would carry a
+        /// standard error of 0.0004 — and a Halton sequence carries less.
+        constexpr std::uint32_t sHaltonCount = 1000000;
+
+        /// What the field comes to at each of those points, taken once for the whole file.
+        ///
+        /// **The same million, for the same reason `baked` is one bake.** Two tests below read this
+        /// sequence — one about the band cut over the field, one about the field's own spread — and
+        /// both the bake and the sequence are deterministic, so a second walk is a fifth of a second
+        /// spent on an answer already known.
+        const std::vector<float>& shapes()
+        {
+            static const std::vector<float> taken = [] {
+                std::vector<float> values(sHaltonCount);
+                for (std::uint32_t index = 1; index <= sHaltonCount; ++index)
+                    values[index - 1] = shapeAt(baked(), haltonAt(index));
+
+                return values;
+            }();
+
+            return taken;
+        }
+
         /// Every level a march may read presents the same field to a sampler, and that is what one
         /// coverage band needs.
         ///
@@ -302,19 +328,11 @@ namespace Rtx
         /// tile.
         TEST(RtxFogNoiseTest, theCoverageBandLeavesTheShareTheDensityIsDividedBy)
         {
-            const FogNoise& noise = baked();
-
-            // A million points through a box forty tiles on a side. The band's own variance is about
-            // an eighth, so a random draw of this many would carry a standard error of 0.0004 and a
-            // Halton sequence carries less.
-            constexpr std::uint32_t count = 1000000;
-
             double total = 0.0;
-            for (std::uint32_t index = 1; index <= count; ++index)
-                total
-                    += double{ smoothstep(Shaders::FOG_CLEARING, Shaders::FOG_SOLID, shapeAt(noise, haltonAt(index))) };
+            for (const float shape : shapes())
+                total += double{ smoothstep(Shaders::FOG_CLEARING, Shaders::FOG_SOLID, shape) };
 
-            const double coverage = total / static_cast<double>(count);
+            const double coverage = total / static_cast<double>(sHaltonCount);
 
             EXPECT_NEAR(coverage, double{ Shaders::FOG_COVERAGE }, 0.002) << "the band's own mean";
         }
@@ -364,21 +382,17 @@ namespace Rtx
         /// silently, and only where more than one scale contributes.
         TEST(RtxFogNoiseTest, theStackOfScalesHasTheSpreadOneScaleHas)
         {
-            const FogNoise& noise = baked();
-
-            constexpr std::uint32_t count = 1000000;
-
             double total = 0.0;
             double squares = 0.0;
-            for (std::uint32_t index = 1; index <= count; ++index)
+            for (const float shape : shapes())
             {
-                const double shape = double{ shapeAt(noise, haltonAt(index)) };
-                total += shape;
-                squares += shape * shape;
+                total += double{ shape };
+                squares += double{ shape } * double{ shape };
             }
 
-            const double mean = total / static_cast<double>(count);
-            const double spread = std::sqrt(squares / static_cast<double>(count) - mean * mean);
+            const auto count = static_cast<double>(sHaltonCount);
+            const double mean = total / count;
+            const double spread = std::sqrt(squares / count - mean * mean);
 
             EXPECT_NEAR(mean, 0.5, 0.002);
             EXPECT_NEAR(spread, double{ Shaders::FOG_FIELD_SPREAD }, 0.004);

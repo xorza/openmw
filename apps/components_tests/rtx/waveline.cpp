@@ -75,20 +75,7 @@ namespace Rtx
                     vkCmdPushConstants(
                         commands, pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
                     vkCmdDispatch(commands, sCount, 1, 1);
-
-                    const VkMemoryBarrier2 between{
-                        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_HOST_BIT,
-                        .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_HOST_READ_BIT,
-                    };
-                    const VkDependencyInfo dependency{
-                        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                        .memoryBarrierCount = 1,
-                        .pMemoryBarriers = &between,
-                    };
-                    vkCmdPipelineBarrier2(commands, &dependency);
+                    Testing::orderStorageWrites(commands);
                 }
             });
 

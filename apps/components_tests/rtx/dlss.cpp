@@ -308,16 +308,66 @@ namespace Rtx
         /// of its suite.
         struct RtxUpscaledFrameTest : Testing::RendererTest
         {
-            /// A renderer of the test's own that upscales to `width` by `height`, or null with the
-            /// reason in `reason`. Beside `mRenderer` and not instead of it, for the two seconds
-            /// `Testing::getRenderer` says a second one costs.
-            static std::unique_ptr<Renderer> makeUpscaling(
-                std::uint32_t width, std::uint32_t height, std::string& reason)
+            /// **One upscaling renderer for the suite, beside `mRenderer` and not instead of it.**
+            /// `Testing::getRenderer` gives the numbers a second renderer costs, and this one pays
+            /// them once: measured here, four tests each standing up their own were 6.9 seconds of
+            /// an 18-second suite. Every `resize`, `setUpscale`, `setScene` and `renderFrame` after
+            /// the build costs single milliseconds, and the third test below is the proof that a
+            /// mode and an extent can both be changed on a renderer that is already running.
+            ///
+            /// **The suite and not the binary**, which is the scope `sNgx` above keeps for the same
+            /// reason: NGX allows one runtime per process, so this renderer has to be down before
+            /// that one comes up and the other way about.
+            static void SetUpTestSuite()
             {
-                RendererOptions options = Testing::describeRenderer(width, height);
+                RendererOptions options = Testing::describeRenderer(sBuiltWidth, sBuiltHeight);
                 options.mUpscale = Upscale::Performance;
-                return createRenderer(options, reason);
+                sUpscaling = createRenderer(options, sObstacle);
             }
+
+            static void TearDownTestSuite() { sUpscaling.reset(); }
+
+            void SetUp() override
+            {
+                Testing::RendererTest::SetUp();
+
+                if (sUpscaling != nullptr)
+                    forgetErrors(*sUpscaling);
+            }
+
+            void TearDown() override
+            {
+                if (sUpscaling != nullptr)
+                    reportErrors(*sUpscaling, "validation error from the upscaling renderer");
+
+                Testing::RendererTest::TearDown();
+            }
+
+            /// The suite's renderer, upscaling to `width` by `height` from `Upscale::Performance`
+            /// and with no history behind it — so a test reads its own frames rather than what the
+            /// test before it left. Null where this machine cannot upscale, with the reason in
+            /// `reason`.
+            static Renderer* upscalingAt(std::uint32_t width, std::uint32_t height, std::string& reason)
+            {
+                reason = sObstacle;
+                if (sUpscaling == nullptr)
+                    return nullptr;
+
+                // The mode first: it decides the render extent the resize is then asked to derive.
+                sUpscaling->setUpscale(Upscale::Performance);
+                sUpscaling->resize(width, height);
+                sUpscaling->resetHistory();
+
+                return sUpscaling.get();
+            }
+
+            /// What it is built for, and the extent two of the tests below then ask for — `resize`
+            /// returns at once where nothing changed, so those two pay for no second feature.
+            static constexpr std::uint32_t sBuiltWidth = 1280;
+            static constexpr std::uint32_t sBuiltHeight = 720;
+
+            static inline std::unique_ptr<Renderer> sUpscaling;
+            static inline std::string sObstacle;
         };
 
         /// The whole frame through the renderer, against the same frame with nothing upscaling it.
@@ -343,7 +393,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, anUpscaledFrameIsTheSameFrameLarger)
         {
             std::string reason;
-            const std::unique_ptr<Renderer> upscaling = makeUpscaling(1281, 721, reason);
+            Renderer* const upscaling = upscalingAt(1281, 721, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -400,11 +450,6 @@ namespace Rtx
                 EXPECT_NEAR(now, was, was * 0.05)
                     << "channel " << channel << " came out of the upscaler at a different exposure";
             }
-
-            std::vector<std::string> errors;
-            upscaling->takeValidationErrors(errors);
-            for (const std::string& error : errors)
-                ADD_FAILURE() << "validation error from the upscaled frame: " << error;
         }
 
         /// A frame after a resize is upscaled at the extent the resize asked for.
@@ -415,7 +460,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, aFrameAfterAResizeIsUpscaledAtTheExtentTheResizeAskedFor)
         {
             std::string reason;
-            const std::unique_ptr<Renderer> upscaling = makeUpscaling(1280, 720, reason);
+            Renderer* const upscaling = upscalingAt(1280, 720, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -455,11 +500,6 @@ namespace Rtx
             std::vector<std::uint8_t> pixels;
             upscaling->readPixels(pixels);
             EXPECT_EQ(pixels.size(), std::size_t{ second.mOutputWidth } * second.mOutputHeight * 4);
-
-            std::vector<std::string> errors;
-            upscaling->takeValidationErrors(errors);
-            for (const std::string& error : errors)
-                ADD_FAILURE() << "validation error from the frame after the resize: " << error;
         }
 
         /// The mode can be changed while the renderer is running, in either direction.
@@ -470,7 +510,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, theUpscaleModeCanBeChangedWhileTheRendererRuns)
         {
             std::string reason;
-            const std::unique_ptr<Renderer> upscaling = makeUpscaling(1280, 720, reason);
+            Renderer* const upscaling = upscalingAt(1280, 720, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -530,11 +570,6 @@ namespace Rtx
             EXPECT_EQ(sUpscaleMenu.back(), Upscale::Dlaa);
             EXPECT_EQ(upscaling->getExtents().mRenderWidth, upscaling->getExtents().mOutputWidth)
                 << "the last mode a menu offers traces every pixel it shows";
-
-            std::vector<std::string> errors;
-            upscaling->takeValidationErrors(errors);
-            for (const std::string& error : errors)
-                ADD_FAILURE() << "validation error after the mode changed: " << error;
         }
 
         /// A sprite carries its own travel into the layer whatever share of a pixel it took.
@@ -554,7 +589,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, aSpriteCarriesItsOwnMotionIntoTheLayerItIsTheWholeOf)
         {
             std::string reason;
-            const std::unique_ptr<Renderer> upscaling = makeUpscaling(721, 721, reason);
+            Renderer* const upscaling = upscalingAt(721, 721, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 

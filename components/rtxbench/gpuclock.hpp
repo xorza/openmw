@@ -104,6 +104,13 @@ namespace Rtx
         /// Stops sampling and answers everything it saw, this call's own last reading included.
         GpuClock stop();
 
+        /// How many readings the run now open has taken, which `stop` then adds its own to.
+        ///
+        /// **The number a caller waits on rather than a clock it guesses at.** A reading forks a
+        /// process, so how long a loop turn takes is the machine's to say — and a sleep chosen for
+        /// the slowest box this might run on is a wait every other box pays.
+        std::uint32_t getReadings();
+
     private:
         /// The lock over `mSeen`, and nothing else: there is no channel here, because a sampler
         /// hands nothing over until it is stopped.

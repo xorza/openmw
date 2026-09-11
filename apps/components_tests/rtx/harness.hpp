@@ -1,9 +1,13 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -147,6 +151,12 @@ namespace Rtx::Testing
     /// **One shape for the skip.** The suite had two: a fixture in some files and the same four
     /// lines written out in every test of the others. Which one a file used said nothing about the
     /// file, and a test that has to remember to ask for the reason is a test that can forget to.
+    ///
+    /// **The validation errors are drained before the test and reported after it**, the way
+    /// `RendererTest` does and for the same reason. Three of the twenty-one fixtures over this base
+    /// wrote that pair out for themselves and the other eighteen did not: a hazard the layers caught
+    /// went onto a list nothing ever read. Draining first is how the slate is cleared — whatever a
+    /// previous test left behind is not this one's to report.
     class DeviceTest : public ::testing::Test
     {
     protected:
@@ -156,6 +166,8 @@ namespace Rtx::Testing
 
         void SetUp() override;
 
+        void TearDown() override;
+
         Device& getDevice() const { return *mHarness->mDevice; }
 
         /// A pool on that device, opened on the first ask and closed with the test.
@@ -164,8 +176,11 @@ namespace Rtx::Testing
         Harness* mHarness = nullptr;
 
     private:
+        void takeRaised();
+
         const bool mValidation;
         std::unique_ptr<CommandPool> mPool;
+        std::vector<std::string> mRaised;
     };
 
     /// The base of a test that renders.
@@ -181,11 +196,44 @@ namespace Rtx::Testing
 
         void TearDown() override;
 
+        /// Drops whatever `renderer` is holding, so a test starts with nothing against it.
+        ///
+        /// **For a fixture with a renderer of its own**, which a renderer that upscales has to be:
+        /// each one owns its instance and so its own log, and `mRenderer` is already done here.
+        void forgetErrors(Renderer& renderer) { renderer.takeValidationErrors(mErrors); }
+
+        /// Reports what `renderer` raised since `forgetErrors`, each failure headed by `what`.
+        void reportErrors(Renderer& renderer, std::string_view what);
+
         Renderer* mRenderer = nullptr;
 
     private:
         std::vector<std::string> mErrors;
     };
+
+    /// Orders one compute pass over a storage buffer against the next, and against a host read of
+    /// what the last of them left.
+    ///
+    /// **Written as well as read, for the reason `WavePass::order` gives.** A transform that runs in
+    /// place reads its buffer and writes it back, so what follows a pass is a write after a write as
+    /// much as a read after one, and a dependency naming only the read leaves the two writes
+    /// unordered. Three tests had written this barrier out for themselves and two of them named only
+    /// the read — which is what a suite that never reported a validation error will hide.
+    void orderStorageWrites(VkCommandBuffer commands);
+
+    /// The four bytes at a pixel of an RGBA8 image `width` texels across, row zero at the top.
+    ///
+    /// **Beside `readHalves` because both are the read-back side**, and the two GUI test files each
+    /// wrapped this arithmetic for themselves. Named for what it reads rather than for a texel:
+    /// `terraincomposite.cpp` has a `texelOf` that indexes a `TextureData` by mip level and answers
+    /// one packed integer.
+    inline std::array<std::uint8_t, 4> rgbaAt(
+        std::span<const std::uint8_t> pixels, std::uint32_t width, std::uint32_t x, std::uint32_t y)
+    {
+        const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4;
+
+        return { pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3] };
+    }
 
     /// Every channel of one level of a half-float image, decoded, row major.
     ///

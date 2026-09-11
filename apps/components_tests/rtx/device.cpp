@@ -1,5 +1,4 @@
 #include <filesystem>
-#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,29 +19,9 @@ namespace Rtx
 {
     namespace
     {
-        class RtxDeviceTest : public Testing::DeviceTest
-        {
-        protected:
-            void SetUp() override
-            {
-                Testing::DeviceTest::SetUp();
-                if (mHarness == nullptr)
-                    return;
-
-                mHarness->mInstance->getValidationLog()->clear();
-            }
-
-            void TearDown() override
-            {
-                if (mHarness == nullptr)
-                    return;
-
-                std::vector<std::string> raised;
-                mHarness->mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
-                for (const std::string& message : raised)
-                    ADD_FAILURE() << "validation error: " << message;
-            }
-        };
+        /// Nothing of its own — a name, because `TEST_F` takes one identifier and prints it as the
+        /// suite these tests are reported under.
+        using RtxDeviceTest = Testing::DeviceTest;
 
         /// Object names are what make a capture readable, and a capture is most wanted on a run that
         /// is not carrying the layers — so the two are enabled independently. Needs its own instance:

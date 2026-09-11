@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string_view>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -13,6 +14,7 @@
 #include <components/rtx/error.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
+#include <components/rtxvulkan/validation.hpp>
 
 namespace Rtx::Testing
 {
@@ -231,6 +233,30 @@ namespace Rtx::Testing
         mHarness = mValidation ? getHarness(reason) : getUnvalidatedHarness(reason);
         if (mHarness == nullptr)
             GTEST_SKIP() << reason;
+
+        // **Taken and then dropped**, because `takeErrorsOnThisThread` appends where a renderer's
+        // own `takeValidationErrors` clears first: the log has to be emptied even though nothing
+        // reads what comes off it here.
+        takeRaised();
+        mRaised.clear();
+    }
+
+    void DeviceTest::TearDown()
+    {
+        if (mHarness == nullptr)
+            return;
+
+        takeRaised();
+        for (const std::string& error : mRaised)
+            ADD_FAILURE() << "validation error: " << error;
+    }
+
+    void DeviceTest::takeRaised()
+    {
+        // Nothing at all where the layers are not loaded, which is the unvalidated device
+        // `getUnvalidatedHarness` says why there is.
+        if (ValidationLog* log = mHarness->mInstance->getValidationLog(); log != nullptr)
+            log->takeErrorsOnThisThread(mRaised);
     }
 
     CommandPool& DeviceTest::getPool()
@@ -248,7 +274,7 @@ namespace Rtx::Testing
         if (mRenderer == nullptr)
             GTEST_SKIP() << reason;
 
-        mRenderer->takeValidationErrors(mErrors);
+        forgetErrors(*mRenderer);
     }
 
     void RendererTest::TearDown()
@@ -256,9 +282,32 @@ namespace Rtx::Testing
         if (mRenderer == nullptr)
             return;
 
-        mRenderer->takeValidationErrors(mErrors);
+        reportErrors(*mRenderer, "validation error");
+    }
+
+    void RendererTest::reportErrors(Renderer& renderer, std::string_view what)
+    {
+        renderer.takeValidationErrors(mErrors);
         for (const std::string& error : mErrors)
-            ADD_FAILURE() << "validation error: " << error;
+            ADD_FAILURE() << what << ": " << error;
+    }
+
+    void orderStorageWrites(VkCommandBuffer commands)
+    {
+        const VkMemoryBarrier2 between{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_HOST_BIT,
+            .dstAccessMask
+            = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_HOST_READ_BIT,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &between,
+        };
+        vkCmdPipelineBarrier2(commands, &dependency);
     }
 
     std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level)

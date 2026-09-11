@@ -19,6 +19,10 @@ namespace Rtx
 {
     namespace
     {
+        /// Nothing of its own — a name, because `TEST_F` takes one identifier and prints it as the
+        /// suite this test is reported under.
+        using RtxComputePipelineTest = Testing::DeviceTest;
+
         /// A pipeline whose shader cannot be opened gives back everything it had already made.
         ///
         /// **The failure comes third.** The set layout and the pipeline layout are live by the time
@@ -27,22 +31,17 @@ namespace Rtx
         /// the device closing with the layers watching and saying nothing: a live child is what
         /// `vkDestroyDevice` reports.
         ///
-        /// Its own device, and closed inside the test, because the suite's is closed after the last
+        /// A device of its own, closed inside the test, because the suite's is closed after the last
         /// test has run and could not be asked.
-        TEST(RtxComputePipelineTest, aMissingShaderLeavesNothingBehindOnTheDevice)
+        ///
+        /// **On the suite's instance, and with no pipeline cache.** A second instance loads the
+        /// layers again for an answer this already has, and a cache is a quarter of a gigabyte read
+        /// and written for a test whose one pipeline never compiles.
+        TEST_F(RtxComputePipelineTest, aMissingShaderLeavesNothingBehindOnTheDevice)
         {
-            if (const std::string obstacle = Testing::findInstanceObstacle(); !obstacle.empty())
-                GTEST_SKIP() << obstacle;
-
-            InstanceOptions options;
-            options.mValidation = true;
-            // The throw below is the point of the test, and a leak report is what is being read
-            // rather than what should end the run.
-            options.mPolicy = ValidationPolicy::Log;
-
-            const Instance instance(options);
-            auto device = std::make_unique<Device>(
-                instance, PhysicalDevice::select(instance.getHandle()), Testing::getPipelineCacheSpec());
+            const Instance& instance = *mHarness->mInstance;
+            auto device
+                = std::make_unique<Device>(instance, PhysicalDevice::select(instance.getHandle()), PipelineCacheSpec{});
 
             ValidationLog* log = instance.getValidationLog();
             ASSERT_NE(log, nullptr) << "the layers are what this test reads its answer from";

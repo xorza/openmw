@@ -163,6 +163,11 @@ namespace Rtx
         mMonitor.under([&] { mSeen = GpuClock{}; });
     }
 
+    std::uint32_t ClockWatch::getReadings()
+    {
+        return mMonitor.under([this] { return mSeen.mReadings; });
+    }
+
     GpuClock ClockWatch::stop()
     {
         // **One more before the join**, so the last frames are covered by a reading taken after

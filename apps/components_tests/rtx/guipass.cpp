@@ -20,7 +20,9 @@
 #include <components/rtxvulkan/texture.hpp>
 #include <components/rtxvulkan/validation.hpp>
 
+#include "guiquad.hpp"
 #include "harness.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
@@ -34,50 +36,6 @@ namespace Rtx
 
         constexpr std::array<std::uint8_t, 4> sWhiteTexel{ 255, 255, 255, 255 };
 
-        /// A packed vertex colour, in the order MyGUI writes one: red in the low byte.
-        constexpr std::uint32_t packColour(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha)
-        {
-            return static_cast<std::uint32_t>(red) | (static_cast<std::uint32_t>(green) << 8)
-                | (static_cast<std::uint32_t>(blue) << 16) | (static_cast<std::uint32_t>(alpha) << 24);
-        }
-
-        /// Two triangles of a rectangle in clip space, with texture coordinates over the whole of it.
-        ///
-        /// Given MyGUI's orientation rather than Vulkan's: `top` is the coordinate nearer +1,
-        /// because MyGUI computes its vertices for a clip space with +Y up.
-        std::array<GuiVertex, 6> makeQuad(float left, float top, float right, float bottom, std::uint32_t colour)
-        {
-            const GuiVertex topLeft{ left, top, 0.0f, colour, 0.0f, 0.0f };
-            const GuiVertex topRight{ right, top, 0.0f, colour, 1.0f, 0.0f };
-            const GuiVertex bottomLeft{ left, bottom, 0.0f, colour, 0.0f, 1.0f };
-            const GuiVertex bottomRight{ right, bottom, 0.0f, colour, 1.0f, 1.0f };
-
-            return { topLeft, bottomLeft, bottomRight, topLeft, bottomRight, topRight };
-        }
-
-        /// A texture of exactly these texels: uncompressed and not display-encoded, so what comes
-        /// back out is what went in.
-        struct FlatTexture
-        {
-            std::vector<std::uint8_t> mBytes;
-            std::array<MipLevel, 1> mLevels{};
-            TextureData mData;
-
-            FlatTexture(std::uint32_t extent, std::span<const std::uint8_t> texels)
-                : mBytes(texels.begin(), texels.end())
-            {
-                mLevels[0] = MipLevel{ 0, extent, extent };
-                mData = TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = extent,
-                    .mHeight = extent,
-                    .mBytes = std::as_bytes(std::span(mBytes)),
-                    .mLevels = mLevels,
-                    .mName = "gui test texture",
-                };
-            }
-        };
-
         class RtxGuiPassTest : public Testing::DeviceTest
         {
         protected:
@@ -87,22 +45,16 @@ namespace Rtx
                 if (mHarness == nullptr)
                     return;
 
-                mHarness->mInstance->getValidationLog()->clear();
-
                 mPass = std::make_unique<GuiPass>(getDevice(), Testing::getShaderDirectory(), VK_FORMAT_R8G8B8A8_UNORM);
             }
 
+            /// The pass before the base reads the layers, so what its teardown does is this test's
+            /// to report rather than the next one's to have cleared.
             void TearDown() override
             {
-                if (mHarness == nullptr)
-                    return;
-
                 mPass.reset();
 
-                std::vector<std::string> raised;
-                mHarness->mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
-                for (const std::string& message : raised)
-                    ADD_FAILURE() << "validation error: " << message;
+                Testing::DeviceTest::TearDown();
             }
 
             /// Clears a target to `sBackground`, records `draws` over it, and hands back the pixels.
@@ -143,12 +95,10 @@ namespace Rtx
                 ASSERT_EQ(pixels.size(), std::size_t{ sExtent } * sExtent * 4);
             }
 
-            /// The four bytes at a pixel, row zero at the top.
             static std::array<std::uint8_t, 4> at(
-                const std::vector<std::uint8_t>& pixels, std::uint32_t x, std::uint32_t y)
+                std::span<const std::uint8_t> pixels, std::uint32_t x, std::uint32_t y)
             {
-                const std::size_t offset = (static_cast<std::size_t>(y) * sExtent + x) * 4;
-                return { pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3] };
+                return Testing::rgbaAt(pixels, sExtent, x, y);
             }
 
             /// A texture on the device, waited for. The renderer records these into a batch it
@@ -173,10 +123,10 @@ namespace Rtx
         /// own triangles.
         TEST_F(RtxGuiPassTest, aHalfTransparentQuadBlendsOverWhatWasAlreadyThere)
         {
-            const FlatTexture white(1, sWhiteTexel);
-            const Texture texture = makeTexture(white.mData, "white");
+            const Texture texture = makeTexture(Testing::describeTexel(sWhiteTexel), "white");
 
-            const std::array<GuiVertex, 6> quad = makeQuad(-1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 128));
+            const std::array<GuiVertex, 6> quad
+                = Testing::makeGuiQuad(-1.0f, 1.0f, 0.0f, -1.0f, Testing::packColour(255, 0, 0, 128));
             const std::array<GuiDraw, 1> draws{ GuiDraw{ texture.getView(), 0, quad.size() } };
 
             std::vector<std::uint8_t> pixels;
@@ -198,12 +148,12 @@ namespace Rtx
         /// shader drops the z, and a quad at minus one, at plus two and at nought are one quad.
         TEST_F(RtxGuiPassTest, aQuadIsDrawnAtAnyDepth)
         {
-            const FlatTexture white(1, sWhiteTexel);
-            const Texture texture = makeTexture(white.mData, "white");
+            const Texture texture = makeTexture(Testing::describeTexel(sWhiteTexel), "white");
 
             for (const float depth : { -1.0f, 2.0f, 0.0f })
             {
-                std::array<GuiVertex, 6> quad = makeQuad(-1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 255));
+                std::array<GuiVertex, 6> quad
+                    = Testing::makeGuiQuad(-1.0f, 1.0f, 0.0f, -1.0f, Testing::packColour(255, 0, 0, 255));
                 for (GuiVertex& vertex : quad)
                     vertex.mZ = depth;
 
@@ -247,11 +197,13 @@ namespace Rtx
                 255,
                 255,
             };
-            const FlatTexture corners(2, sCorners);
+            Testing::TestTexture corners;
+            Testing::paintFlat(corners, 2, sCorners, "corners");
             const Texture texture = makeTexture(corners.mData, "corners");
 
             // The whole frame, opaque white so the texture passes through the multiply unchanged.
-            const std::array<GuiVertex, 6> quad = makeQuad(-1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            const std::array<GuiVertex, 6> quad
+                = Testing::makeGuiQuad(-1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
             const std::array<GuiDraw, 1> draws{ GuiDraw{ texture.getView(), 0, quad.size() } };
 
             std::vector<std::uint8_t> pixels;
@@ -274,13 +226,13 @@ namespace Rtx
         TEST_F(RtxGuiPassTest, eachBatchIsDrawnWithItsOwnTexture)
         {
             constexpr std::array<std::uint8_t, 4> sGreenTexel{ 0, 255, 0, 255 };
-            const FlatTexture white(1, sWhiteTexel);
-            const FlatTexture green(1, sGreenTexel);
-            const Texture whiteTexture = makeTexture(white.mData, "white");
-            const Texture greenTexture = makeTexture(green.mData, "green");
+            const Texture whiteTexture = makeTexture(Testing::describeTexel(sWhiteTexel), "white");
+            const Texture greenTexture = makeTexture(Testing::describeTexel(sGreenTexel), "green");
 
-            const std::array<GuiVertex, 6> left = makeQuad(-1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 255));
-            const std::array<GuiVertex, 6> right = makeQuad(0.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            const std::array<GuiVertex, 6> left
+                = Testing::makeGuiQuad(-1.0f, 1.0f, 0.0f, -1.0f, Testing::packColour(255, 0, 0, 255));
+            const std::array<GuiVertex, 6> right
+                = Testing::makeGuiQuad(0.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
 
             std::array<GuiVertex, 12> vertices{};
             std::copy(left.begin(), left.end(), vertices.begin());
@@ -311,11 +263,12 @@ namespace Rtx
         /// the whole difference between a hit flash reading as light and reading as a tint.
         TEST_F(RtxGuiPassTest, anAdditiveBatchAddsToTheFrameWhereAnOverOneReplacesIt)
         {
-            const FlatTexture white(1, sWhiteTexel);
-            const Texture texture = makeTexture(white.mData, "white");
+            const Texture texture = makeTexture(Testing::describeTexel(sWhiteTexel), "white");
 
-            const std::array<GuiVertex, 6> left = makeQuad(-1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 128));
-            const std::array<GuiVertex, 6> right = makeQuad(0.0f, 1.0f, 1.0f, -1.0f, packColour(255, 0, 0, 128));
+            const std::array<GuiVertex, 6> left
+                = Testing::makeGuiQuad(-1.0f, 1.0f, 0.0f, -1.0f, Testing::packColour(255, 0, 0, 128));
+            const std::array<GuiVertex, 6> right
+                = Testing::makeGuiQuad(0.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 0, 0, 128));
 
             std::array<GuiVertex, 12> vertices{};
             std::copy(left.begin(), left.end(), vertices.begin());
@@ -340,7 +293,8 @@ namespace Rtx
         /// Nothing to draw records nothing at all, rather than an empty render pass over the frame.
         TEST_F(RtxGuiPassTest, aFrameWithNoBatchesLeavesTheTargetAlone)
         {
-            const std::array<GuiVertex, 6> quad = makeQuad(-1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 0, 0, 255));
+            const std::array<GuiVertex, 6> quad
+                = Testing::makeGuiQuad(-1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 0, 0, 255));
 
             std::vector<std::uint8_t> pixels;
             ASSERT_NO_FATAL_FAILURE(drawAndRead(quad, {}, pixels));

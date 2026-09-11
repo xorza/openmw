@@ -15,6 +15,7 @@
 #include <components/rtx/scenedesc.hpp>
 
 #include "geometry.hpp"
+#include "guiquad.hpp"
 #include "harness.hpp"
 
 namespace Rtx
@@ -24,24 +25,6 @@ namespace Rtx
         constexpr std::uint32_t sExtent = 8;
 
         constexpr std::array<std::uint8_t, 4> sWhite{ 255, 255, 255, 255 };
-
-        constexpr std::uint32_t packColour(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha)
-        {
-            return static_cast<std::uint32_t>(red) | (static_cast<std::uint32_t>(green) << 8)
-                | (static_cast<std::uint32_t>(blue) << 16) | (static_cast<std::uint32_t>(alpha) << 24);
-        }
-
-        /// Two triangles of a rectangle in clip space, given MyGUI's orientation: `top` is the
-        /// coordinate nearer +1.
-        std::array<GuiVertex, 6> makeQuad(float left, float top, float right, float bottom, std::uint32_t colour)
-        {
-            const GuiVertex topLeft{ left, top, 0.0f, colour, 0.0f, 0.0f };
-            const GuiVertex topRight{ right, top, 0.0f, colour, 1.0f, 0.0f };
-            const GuiVertex bottomLeft{ left, bottom, 0.0f, colour, 0.0f, 1.0f };
-            const GuiVertex bottomRight{ right, bottom, 0.0f, colour, 1.0f, 1.0f };
-
-            return { topLeft, bottomLeft, bottomRight, topLeft, bottomRight, topRight };
-        }
 
         /// The GUI as the renderer offers it: a table of textures and one call that draws with them.
         ///
@@ -83,7 +66,7 @@ namespace Rtx
 
             void drawQuad(GuiSlot texture, float left, float top, float right, float bottom, std::uint32_t colour)
             {
-                const std::array<GuiVertex, 6> quad = makeQuad(left, top, right, bottom, colour);
+                const std::array<GuiVertex, 6> quad = Testing::makeGuiQuad(left, top, right, bottom, colour);
                 const std::array<GuiBatch, 1> batches{ GuiBatch{ texture, 0, quad.size() } };
                 mRenderer->drawGui(quad, batches);
             }
@@ -95,8 +78,7 @@ namespace Rtx
                 mRenderer->readGuiTexture(texture, mPixels);
                 EXPECT_EQ(mPixels.size(), std::size_t{ extent } * extent * 4);
 
-                const std::size_t offset = (static_cast<std::size_t>(y) * extent + x) * 4;
-                return { mPixels[offset], mPixels[offset + 1], mPixels[offset + 2], mPixels[offset + 3] };
+                return Testing::rgbaAt(mPixels, extent, x, y);
             }
 
             /// The four bytes at a pixel of the presented frame, row zero at the top.
@@ -105,8 +87,7 @@ namespace Rtx
                 mRenderer->readPixels(mPixels);
                 EXPECT_EQ(mPixels.size(), std::size_t{ sExtent } * sExtent * 4);
 
-                const std::size_t offset = (static_cast<std::size_t>(y) * sExtent + x) * 4;
-                return { mPixels[offset], mPixels[offset + 1], mPixels[offset + 2], mPixels[offset + 3] };
+                return Testing::rgbaAt(mPixels, sExtent, x, y);
             }
 
             std::vector<GuiSlot> mHeld;
@@ -120,7 +101,7 @@ namespace Rtx
             // an integer, but 200 × 1 and 100 × 1 are.
             const GuiSlot texture = makeTexel({ 200, 100, 50, 255 });
 
-            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
 
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 200, 100, 50, 255 }));
         }
@@ -134,8 +115,8 @@ namespace Rtx
         {
             const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
 
-            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
-            drawQuad(white, -1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 128));
+            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(0, 0, 255, 255));
+            drawQuad(white, -1.0f, 1.0f, 0.0f, -1.0f, Testing::packColour(255, 0, 0, 128));
 
             // Exact: an alpha of 128/255 contributes 255 × 128/255 = 128 and leaves
             // 255 × 127/255 = 127 of what was there.
@@ -149,13 +130,13 @@ namespace Rtx
         {
             const GuiSlot texture = makeTexel({ 255, 0, 0, 255 });
 
-            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 255, 0, 0, 255 })) << "as written";
 
             constexpr std::array<std::uint8_t, 4> sGreen{ 0, 255, 0, 255 };
             mRenderer->writeGuiTexture(texture, GuiRegion{ 0, 0, 1, 1 }, sGreen);
 
-            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 255, 0, 255 })) << "as rewritten";
         }
 
@@ -234,10 +215,10 @@ namespace Rtx
             mHeld.push_back(texture);
 
             const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
-            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
+            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(0, 0, 255, 255));
 
             // Nothing times anything is nothing: transparent black leaves the blue underneath.
-            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
 
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 }));
         }
@@ -363,7 +344,7 @@ namespace Rtx
                 if (frame >= warmed)
                     lent[frame - warmed] = into.data();
 
-                drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+                drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
             }
 
             for (std::uint32_t frame = 0; frame + 1 < measured; ++frame)
@@ -426,7 +407,7 @@ namespace Rtx
             mRenderer->renderFrame(camera, FrameOptions{});
 
             const GuiSlot texture = makeTexel({ 17, 34, 51, 255 });
-            drawQuad(texture, -1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 255, 255, 255));
+            drawQuad(texture, -1.0f, 1.0f, 0.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
 
             EXPECT_EQ(at(1, 4), (std::array<std::uint8_t, 4>{ 17, 34, 51, 255 })) << "where the GUI drew";
             EXPECT_EQ(at(sExtent - 2, 4), traced) << "where it did not";
@@ -679,8 +660,8 @@ namespace Rtx
             // sheet, which is opaque and covers the blue; the corner samples where the trace stopped,
             // which is transparent and leaves it.
             const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
-            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
-            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(0, 0, 255, 255));
+            drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
 
             EXPECT_NE(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 })) << "where the picture covers";
             EXPECT_EQ(at(0, 0), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 })) << "where it does not";
@@ -765,7 +746,7 @@ namespace Rtx
         TEST_F(RtxGuiDrawTest, anEmptyGuiLeavesTheFrameAlone)
         {
             const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
-            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(17, 34, 51, 255));
+            drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(17, 34, 51, 255));
 
             mRenderer->drawGui({}, {});
 
@@ -787,15 +768,15 @@ namespace Rtx
             mRenderer->writeGuiTexture(closing, GuiRegion{ 0, 0, 1, 1 }, sWhite);
 
             // Two draws, neither waited for, which is both slots of the ring in flight at once.
-            drawQuad(closing, -1.0f, 1.0f, 0.0f, 0.0f, packColour(255, 0, 0, 255));
-            drawQuad(closing, 0.0f, 0.0f, 1.0f, -1.0f, packColour(0, 255, 0, 255));
+            drawQuad(closing, -1.0f, 1.0f, 0.0f, 0.0f, Testing::packColour(255, 0, 0, 255));
+            drawQuad(closing, 0.0f, 0.0f, 1.0f, -1.0f, Testing::packColour(0, 255, 0, 255));
 
             // The window closes, and the next one opens: making a texture and drawing with it is
             // what used to submit, wait for its own batch alone, and destroy the one above.
             mRenderer->dropGuiTexture(closing);
 
             const GuiSlot opening = makeTexel(sWhite);
-            drawQuad(opening, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
+            drawQuad(opening, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(0, 0, 255, 255));
 
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 }));
         }

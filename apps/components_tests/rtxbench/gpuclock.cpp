@@ -146,9 +146,16 @@ namespace Rtx
             ClockWatch watch;
             watch.start();
 
-            // Longer than the watch's own period, so the loop comes round at least once inside it
-            // and the count can only be the sampling rather than the two ends.
-            std::this_thread::sleep_for(std::chrono::milliseconds(700));
+            // **Waited for and not slept out.** What the claim needs is one turn of the watch's own
+            // loop, and every reading forks a process — so how long that takes is the machine's to
+            // say, and a sleep is either longer than this box needed or shorter than a busy one
+            // takes. Two from the loop, and `stop` below adds the third that carries the count past
+            // the two ends.
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            while (watch.getReadings() < 2 && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            ASSERT_GE(watch.getReadings(), 2u) << "the watch's loop never came round";
 
             // **A second start is nothing at all, forgetting included.** One of these is held across
             // the places of a suite, so a start that cleared a run in progress would throw away

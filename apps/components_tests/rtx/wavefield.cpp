@@ -128,19 +128,6 @@ namespace Rtx
             const VkDescriptorImageInfo images[]{ { VK_NULL_HANDLE, surface.getView(), VK_IMAGE_LAYOUT_GENERAL },
                 { VK_NULL_HANDLE, curvature.getView(), VK_IMAGE_LAYOUT_GENERAL } };
 
-            const VkMemoryBarrier2 between{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            };
-            const VkDependencyInfo dependency{
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .memoryBarrierCount = 1,
-                .pMemoryBarriers = &between,
-            };
-
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 for (const Image* image : { &surface, &curvature })
                     image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
@@ -157,7 +144,7 @@ namespace Rtx
                 vkCmdPushConstants(
                     commands, forming.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(shaped), &shaped);
                 vkCmdDispatch(commands, (sCount + 7) / 8, (sCount + 7) / 8, 1);
-                vkCmdPipelineBarrier2(commands, &dependency);
+                Testing::orderStorageWrites(commands);
 
                 const std::array<VkWriteDescriptorSet, 1> lines{ buffer(0, whole[2]) };
                 vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, line.getHandle());
@@ -176,7 +163,7 @@ namespace Rtx
                         vkCmdPushConstants(
                             commands, line.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(along), &along);
                         vkCmdDispatch(commands, sCount, 1, 1);
-                        vkCmdPipelineBarrier2(commands, &dependency);
+                        Testing::orderStorageWrites(commands);
                     }
 
                 const std::array<VkWriteDescriptorSet, 3> composes{ buffer(0, whole[2]), stored(1, images[0]),

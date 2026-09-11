@@ -61,4 +61,17 @@ namespace Rtx::Testing
             };
         }
     };
+
+    /// A texture of exactly these texels at `extent` square: one level, uncompressed and not
+    /// display-encoded, so what comes back out is what went in.
+    ///
+    /// The multi-texel counterpart of `describeTexel`, over the storage `TestTexture` holds for a
+    /// description that spans rather than owns.
+    inline void paintFlat(
+        TestTexture& texture, std::uint32_t extent, std::span<const std::uint8_t> texels, std::string_view name)
+    {
+        texture.mBytes.assign(texels.begin(), texels.end());
+        texture.mLevels.assign(1, MipLevel{ 0, extent, extent });
+        texture.describe(extent, extent, name);
+    }
 }

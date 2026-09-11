@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/owned.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/pipelinecache.hpp>
 #include <components/rtxvulkan/requirements.hpp>
@@ -24,17 +25,27 @@ namespace Rtx
         struct RtxPipelineCacheTest : Testing::DeviceTest
         {
             /// The blob the driver would save, which every leg below is built from.
+            ///
+            /// **From a cache with nothing compiled into it, rather than the suite's device's.**
+            /// Every leg reads the header and the size and nothing between them, while the suite's
+            /// device holds what the renderer compiled — a quarter of a gigabyte here, copied per
+            /// leg and four times over inside one of them. And a size the legs cannot afford to
+            /// depend on: `sMostBytes` is 256 MiB, so a live cache past that would make the leg
+            /// which grows a blob to one byte more write off the end of its own buffer.
             std::vector<std::uint8_t> deviceBlob()
             {
-                const Device& device = getDevice();
+                const VkDevice device = getDevice().getHandle();
+                const VkPipelineCacheCreateInfo nothing{ .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
+
+                VkPipelineCache made = VK_NULL_HANDLE;
+                EXPECT_EQ(vkCreatePipelineCache(device, &nothing, nullptr, &made), VK_SUCCESS);
+                const Owned<VkPipelineCache, vkDestroyPipelineCache> empty(device, made);
 
                 std::size_t bytes = 0;
-                EXPECT_EQ(
-                    vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, nullptr), VK_SUCCESS);
+                EXPECT_EQ(vkGetPipelineCacheData(device, empty.get(), &bytes, nullptr), VK_SUCCESS);
 
                 std::vector<std::uint8_t> blob(bytes);
-                EXPECT_EQ(vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, blob.data()),
-                    VK_SUCCESS);
+                EXPECT_EQ(vkGetPipelineCacheData(device, empty.get(), &bytes, blob.data()), VK_SUCCESS);
 
                 return blob;
             }
