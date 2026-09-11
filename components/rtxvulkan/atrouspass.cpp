@@ -36,6 +36,29 @@ namespace Rtx
         /// leave the other frame's access uncovered.
         constexpr VkAccessFlags2 sReads = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
+        /// **Three ways of feeding this pass the same taps more cheaply, and all three measured
+        /// nothing.** Written down because each looks obviously right on paper.
+        ///
+        /// *A shared-memory tile, and Dolp's permutation to make every level fit one.* Run at one
+        /// level through five the pass costs 0.39, 0.81, 1.16, 1.66 and 2.09 ms — flat in the
+        /// stride. At step one an 8x8 group's 1600 taps cover 144 distinct texels and every one is
+        /// an L1 hit; at step sixteen nothing is reused at all. They cost the same, so there is no
+        /// locality for a tile to recover and no reason for the permutation that exists to make
+        /// one possible.
+        ///
+        /// *One geometry channel instead of the guide and the depth.* Built in full — a channel,
+        /// a gate, the trace's store, both denoiser passes — and over four interleaved pairs it
+        /// read 2.10 ms against the pair's 2.05 at the guild and 1.42 against 1.42 at Seyda Neen's
+        /// shore, for 33 MiB and a fork in `GBuffer`'s gate. Reverted.
+        ///
+        /// *Packing that channel to eight bytes.* Worse again: the octahedral decode's `normalize`
+        /// costs 0.13 ms over the 125 taps, which is more than one fewer fetch is worth.
+        ///
+        /// What the pass does spend is work rather than a data path: removing both `exp` takes it
+        /// to 1.31 ms and removing the guide tap to 1.63, where removing `pow(dot, 128)` takes it
+        /// nowhere at all. **A profiler is what the next attempt should start from**, and `ncu` is
+        /// not installed on this box.
+
         /// How sharply a tap's normal has to agree with the centre's, and how far off its plane it
         /// may sit.
         ///
