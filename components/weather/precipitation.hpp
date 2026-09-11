@@ -135,12 +135,12 @@ namespace Weather
         /// The drops are placed about the origin of what carries them and every step of this eye is
         /// taken back out of them again — `WrapAroundOperator` — so a box stood here travels
         /// nowhere in the world, and a box stood anywhere else travels by the difference.
-        const osg::Vec3f& getEye() const { return mEye; }
+        const osg::Vec3f& getEye() const { return mWhere.mEye; }
 
         /// Whether the eye is under the water, which is what holds the drops where they are. Asked
         /// of what was told, so the renderer holding them still and the renderer not drawing them
         /// read one answer.
-        bool isUnderwater() const { return mUnderwater; }
+        bool isUnderwater() const { return mWhere.mUnderwater; }
 
         /// Bumped whenever what is under `getNode` is torn down and built again.
         ///
@@ -178,9 +178,9 @@ namespace Weather
         Resource::SceneManager& mSceneManager;
         osg::Node::NodeMask mMask;
 
-        /// Read by the wrap operator every step, so it is a member the operators hold by reference
-        /// rather than a value they were built with.
-        osg::Vec3f mEye;
+        /// What `update` last said, held whole. The eye inside it is read by the wrap operators
+        /// every step, by reference to this member rather than as a value they were built with.
+        Conditions mWhere;
 
         osg::ref_ptr<osg::Group> mNode;
 
@@ -203,10 +203,6 @@ namespace Weather
 
         bool mRainRipplesEnabled;
         bool mSnowRipplesEnabled;
-
-        osg::Vec3f mStormDirection = defaultStormDirection();
-
-        bool mUnderwater = false;
 
         unsigned int mRevision = 0;
     };

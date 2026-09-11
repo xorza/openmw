@@ -188,8 +188,8 @@ namespace Rtx
              << '\n'
              << std::format(R"(  "render": [{}, {}],)", header.mExtents.mRenderWidth, header.mExtents.mRenderHeight)
              << '\n'
-             << std::format(R"(  "upscale": "{}",)", upscaleName(header.mUpscale)) << '\n'
-             << std::format(R"(  "preset": "{}",)", presetName(header.mPreset)) << '\n'
+             << std::format(R"(  "upscale": "{}",)", upscaleName(header.mUpscaling.mMode)) << '\n'
+             << std::format(R"(  "preset": "{}",)", presetName(header.mUpscaling.mPreset)) << '\n'
              << std::format(R"(  "frames": {}, "warmup": {}, "validation": {},)", header.mMeasured, header.mWarmup,
                     header.mValidating)
              << '\n'

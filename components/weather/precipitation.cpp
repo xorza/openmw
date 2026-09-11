@@ -276,7 +276,6 @@ namespace Weather
         , mMask(mask)
         , mRainRipplesEnabled(Fallback::Map::getBool("Weather_Rain_Ripples"))
         , mSnowRipplesEnabled(Fallback::Map::getBool("Weather_Snow_Ripples"))
-        , mStormDirection(defaultStormDirection())
     {
         mNode = new osg::Group;
         mNode->setName("Precipitation");
@@ -364,7 +363,7 @@ namespace Weather
         updater->addParticleSystem(mRainParticleSystem);
 
         osg::ref_ptr<osgParticle::ModularProgram> program = new osgParticle::ModularProgram;
-        program->addOperator(new WrapAroundOperator(mEye, rainRange));
+        program->addOperator(new WrapAroundOperator(mWhere.mEye, rainRange));
         program->addOperator(new WeatherAlphaOperator(mDownpour.mPrecipitationAlpha, true));
         program->setParticleSystem(mRainParticleSystem);
         mRainNode->addChild(program);
@@ -511,7 +510,7 @@ namespace Weather
 
             osg::ref_ptr<osgParticle::ModularProgram> program = new osgParticle::ModularProgram;
             if (occluded)
-                program->addOperator(new WrapAroundOperator(mEye, sEffectWrapRange));
+                program->addOperator(new WrapAroundOperator(mWhere.mEye, sEffectWrapRange));
             program->addOperator(new WeatherAlphaOperator(mDownpour.mPrecipitationAlpha, false));
             program->setParticleSystem(ps);
 
@@ -538,23 +537,21 @@ namespace Weather
 
     void Precipitation::update(const Conditions& where)
     {
-        mEye = where.mEye;
-        mUnderwater = where.mUnderwater;
-        mStormDirection = where.mStormDirection;
+        mWhere = where;
 
         // Held where they are rather than hidden: what stops being *drawn* is the renderer's to
         // decide, and it is the renderer that said so in the first place.
         if (mRainParticleSystem)
-            mRainParticleSystem->setFrozen(mUnderwater);
+            mRainParticleSystem->setFrozen(mWhere.mUnderwater);
 
         if (!mDownpour.mIsStorm || !mParticleNode)
             return;
 
         osg::Quat quat;
-        quat.makeRotate(defaultStormDirection(), mStormDirection);
+        quat.makeRotate(defaultStormDirection(), mWhere.mStormDirection);
         // Morrowind deliberately rotates the blizzard mesh, so so should we.
         if (mCurrentParticleEffect == Settings::models().mWeatherblizzard.get())
-            quat.makeRotate(osg::Vec3f(-1, 0, 0), mStormDirection);
+            quat.makeRotate(osg::Vec3f(-1, 0, 0), mWhere.mStormDirection);
 
         mParticleNode->setAttitude(quat);
     }

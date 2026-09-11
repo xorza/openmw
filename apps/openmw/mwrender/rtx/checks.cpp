@@ -45,13 +45,19 @@ namespace MWRender
         const StopFacts& facts, std::string& found)
     {
         const Rtx::SceneTables scene = context.mScene.getTables();
-        const Rtx::ExtractionStats& stats = report.mWalked;
+        const Rtx::ExtractionStats& stats = report.mWalked.mFound;
 
         switch (check)
         {
             case Rtx::Check::WalkTwice:
             {
-                const Rtx::ExtractionStats& again = report.mWalkedAgain;
+                if (!report.mWalked.mAgain.has_value())
+                {
+                    found = "no second walk was made";
+                    return false;
+                }
+
+                const Rtx::ExtractionStats& again = *report.mWalked.mAgain;
                 found = std::format("{} meshes and {} materials added by the second walk, {} drawables resolved",
                     again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused);
                 return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0;

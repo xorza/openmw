@@ -89,7 +89,7 @@ namespace MWRender
             writeDump(into, actions.mDump);
 
         if (actions.mDigest)
-            reportScene(into, actions.mWalkTwice);
+            reportScene(into);
 
         if (!actions.mSheet.empty())
             writeSheet(into, actions.mSheet);
@@ -193,10 +193,10 @@ namespace MWRender
         }
     }
 
-    void StopWriter::reportScene(const Writing& into, const bool walkedTwice)
+    void StopWriter::reportScene(const Writing& into)
     {
         const Rtx::SceneTables scene = into.mContext.mScene.getTables();
-        const Rtx::ExtractionStats& stats = into.mReport.mWalked;
+        const Rtx::ExtractionStats& stats = into.mReport.mWalked.mFound;
 
         into.mRecord.note(
             std::format("\nplaced\n"
@@ -215,9 +215,9 @@ namespace MWRender
                 scene.mMeshes.getTriangleCount(), scene.mMeshes.getGeometryBytes() / 1024,
                 Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
-        for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
+        for (std::size_t at = 0; at < stats.mFormats.mMet.size(); ++at)
         {
-            const Rtx::FormatCount& count = stats.mTextureFormats[at];
+            const Rtx::FormatCount& count = stats.mFormats.mMet[at];
             const auto format = static_cast<Rtx::ImageFormat>(at);
 
             if (count.mMipped > 0)
@@ -226,7 +226,7 @@ namespace MWRender
                 into.mRecord.note(
                     std::format("  {} x {}, one level\n", count.mMet - count.mMipped, Rtx::nameOf(format)));
             if (count.mMet > 0 && format == Rtx::ImageFormat::Unnamed)
-                into.mRecord.note(std::format("    which was pixel format {}\n", stats.mUnnamedFormat));
+                into.mRecord.note(std::format("    which was pixel format {}\n", stats.mFormats.mUnnamed));
         }
 
         // Which materials traversal will have to stop and ask about, which of those asked for it
@@ -281,9 +281,9 @@ namespace MWRender
                 stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces,
                 stats.mSpritelessEmitters, stats.mWornOtherwise, sheets));
 
-        if (walkedTwice)
+        if (into.mReport.mWalked.mAgain.has_value())
         {
-            const Rtx::ExtractionStats& again = into.mReport.mWalkedAgain;
+            const Rtx::ExtractionStats& again = *into.mReport.mWalked.mAgain;
             into.mRecord.note(
                 std::format("\nsecond pass over the same graph\n"
                             "  new meshes:           {} (should be 0)\n"

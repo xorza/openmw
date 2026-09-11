@@ -701,14 +701,15 @@ namespace MWRender
         // harness times the same stretch, which is what lets the two rows be read against each
         // other.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
-        mFound = mMirror.mirror(frame, mFrame);
+        mWalked.mFound = mMirror.mirror(frame, mFrame);
         report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
-        report.mSpend.at(Rtx::Timing::Fold) = mFound.mFoldMs;
+        report.mSpend.at(Rtx::Timing::Fold) = mWalked.mFound.mFoldMs;
 
         // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
         // because a second whole-graph walk is the largest cost a frame has.
+        mWalked.mAgain.reset();
         if (mSession != nullptr && mSession->wantsSecondWalk())
-            mFoundAgain = mMirror.mirror(frame, mFrame);
+            mWalked.mAgain = mMirror.mirror(frame, mFrame);
 
         traceWorld(frame, report);
 
@@ -779,9 +780,10 @@ namespace MWRender
 
         if (report.mRebuilt)
             Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getTables().mMeshes.getRows().size()
-                             << " meshes into " << mFound.mInstances << " instances with " << mFound.mLights
-                             << " lights, " << mFound.mDeformed << " of them deforming, and skipped "
-                             << mFound.mSkippedUnknown << " it cannot read";
+                             << " meshes into " << mWalked.mFound.mInstances << " instances with "
+                             << mWalked.mFound.mLights << " lights, " << mWalked.mFound.mDeformed
+                             << " of them deforming, and skipped " << mWalked.mFound.mSkippedUnknown
+                             << " it cannot read";
 
         mUnreadable += handed.mUnreadable;
 
@@ -889,8 +891,7 @@ namespace MWRender
         if (since.has_value())
         {
             report.mFrameMs = *since;
-            report.mWalked = mFound;
-            report.mWalkedAgain = mFoundAgain;
+            report.mWalked = mWalked;
             report.mUnreadableTextures = mUnreadable;
 
             if (mSession != nullptr && report.mResult.has_value())

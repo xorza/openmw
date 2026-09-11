@@ -55,10 +55,10 @@ namespace Rtx::Testing
 
             const ExtractionStats stats = walk(*root);
 
-            const FormatCount& blocks = stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc1)];
+            const FormatCount& blocks = stats.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc1)];
             EXPECT_EQ(blocks.mMet, 2u);
             EXPECT_EQ(blocks.mMipped, 1u) << "one of the two brought a chain";
-            EXPECT_EQ(stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Unnamed)].mMet, 0u);
+            EXPECT_EQ(stats.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Unnamed)].mMet, 0u);
         }
 
         /// Every count of a walk, each a different number, so a sum short of one is short by an
@@ -80,11 +80,12 @@ namespace Rtx::Testing
             stats.mUndescribedSurfaces = from + 12;
             stats.mSkippedEmpty = from + 13;
             stats.mLights = from + 14;
-            stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)]
+            stats.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc3)]
                 = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
             stats.mUnskinned = from + 17;
             stats.mGroundCells = from + 18;
             stats.mSpritelessEmitters = from + 19;
+            stats.mWornOtherwise = from + 20;
             return stats;
         }
 
@@ -115,11 +116,12 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mUnskinned, 134u);
             EXPECT_EQ(sum.mGroundCells, 136u);
             EXPECT_EQ(sum.mSpritelessEmitters, 138u);
+            EXPECT_EQ(sum.mWornOtherwise, 140u);
 
-            const FormatCount& blocks = sum.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)];
+            const FormatCount& blocks = sum.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc3)];
             EXPECT_EQ(blocks.mMet, 130u);
             EXPECT_EQ(blocks.mMipped, 132u);
-            EXPECT_EQ(sum.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc1)].mMet, 0u);
+            EXPECT_EQ(sum.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc1)].mMet, 0u);
         }
 
         /// The format an unnamed count stood for survives the sum, since a report that says how many
@@ -127,14 +129,14 @@ namespace Rtx::Testing
         TEST_F(RtxSceneExtractorTest, theUnnamedFormatSurvivesASumWithAWalkThatMetNone)
         {
             ExtractionStats met;
-            met.mUnnamedFormat = GL_ALPHA;
+            met.mFormats.mUnnamed = GL_ALPHA;
 
             ExtractionStats sum;
             sum += met;
-            EXPECT_EQ(sum.mUnnamedFormat, GL_ALPHA);
+            EXPECT_EQ(sum.mFormats.mUnnamed, GL_ALPHA);
 
             sum += ExtractionStats{};
-            EXPECT_EQ(sum.mUnnamedFormat, GL_ALPHA) << "a walk that met none says nothing about it";
+            EXPECT_EQ(sum.mFormats.mUnnamed, GL_ALPHA) << "a walk that met none says nothing about it";
         }
     }
 }

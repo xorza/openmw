@@ -15,6 +15,7 @@
 #include "frameimage.hpp"
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
+#include "sun.hpp"
 #include "traversals.hpp"
 
 namespace osg
@@ -246,8 +247,7 @@ namespace Rtx
 
         /// Where the light stands, unit — which is what the trace takes, and so already the sense
         /// `setLight` states it in.
-        osg::Vec3f mSunPosition;
-        osg::Vec3f mSunIrradiance;
+        Sun mSun;
         osg::Vec3f mAmbient;
 
         bool mTransparent = false;

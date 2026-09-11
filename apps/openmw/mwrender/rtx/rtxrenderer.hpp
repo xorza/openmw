@@ -286,10 +286,9 @@ namespace MWRender
         /// puts it on the device.
         WorldMirror mMirror;
 
-        /// What the last walk found, and what a second walk over the same graph added. Kept because
-        /// a report is written at the end of a stop and the walks are over by then.
-        Rtx::ExtractionStats mFound;
-        Rtx::ExtractionStats mFoundAgain;
+        /// What the last walk found, and what a second walk added. Kept because a report is written
+        /// at the end of a stop and the walks are over by then.
+        WalkReport mWalked;
         std::uint32_t mUnreadable = 0;
 
         /// What the CPU stood still for the device, and the frame rate the window's title says.

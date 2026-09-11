@@ -1,7 +1,10 @@
 #include "timeofday.hpp"
 
+#include <array>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include <components/fallback/fallback.hpp>
 
@@ -20,31 +23,21 @@ namespace Sky
         {
             return x * (1 - factor) + y * factor;
         }
+
+        /// The content's own spelling of each quantity, in enumerator order. **Sized by the count**,
+        /// so an enumerator added without a name does not compile.
+        constexpr std::array<std::string_view, sDayPhaseCount> sPhaseNames{ "Sky", "Ambient", "Fog", "Sun", "Stars" };
     }
 
     std::string_view nameOf(const DayPhaseOf of)
     {
-        switch (of)
-        {
-            case DayPhaseOf::Sky:
-                return "Sky";
-            case DayPhaseOf::Ambient:
-                return "Ambient";
-            case DayPhaseOf::Fog:
-                return "Fog";
-            case DayPhaseOf::Sun:
-                return "Sun";
-            case DayPhaseOf::Stars:
-                return "Stars";
-        }
-
-        throw std::logic_error("a quantity outside the five the content records");
+        return sPhaseNames[static_cast<std::size_t>(of)];
     }
 
     std::optional<DayPhaseOf> dayPhaseOf(const std::string_view name)
     {
-        for (std::size_t at = 0; at < sDayPhaseCount; ++at)
-            if (nameOf(static_cast<DayPhaseOf>(at)) == name)
+        for (std::size_t at = 0; at < sPhaseNames.size(); ++at)
+            if (sPhaseNames[at] == name)
                 return static_cast<DayPhaseOf>(at);
 
         return std::nullopt;

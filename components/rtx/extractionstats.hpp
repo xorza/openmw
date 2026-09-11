@@ -19,6 +19,33 @@ namespace Rtx
         std::uint32_t mMipped = 0;
     };
 
+    /// What the textures a walk reached for turned out to be, one entry per `ImageFormat`.
+    ///
+    /// Kept because the answer decides how they are uploaded, and guessing it from what the content
+    /// files ought to contain is how a renderer ends up with a path nothing takes.
+    ///
+    /// **Counted by enumerator and named at the end.** A walk meets every texture of every material
+    /// it reads, and animated ones again on each frame; naming one where it is met builds a
+    /// `std::string` on the frame path to key a map by.
+    ///
+    /// **Its own struct, because its sum is not the counters' sum.** The counts add per format, and
+    /// the unnamed format is the last one seen rather than a total.
+    struct FormatCensus
+    {
+        std::array<FormatCount, sImageFormatCount> mMet{};
+
+        /// The pixel format the `Unnamed` count last stood for, or zero.
+        ///
+        /// The number is the whole of what makes that count worth printing: a format nothing names
+        /// is a canary, and the reader's next step is to look this one up.
+        std::uint32_t mUnnamed = 0;
+
+        /// Counts `image` under its format, and its mips beside it.
+        void count(const osg::Image& image);
+
+        FormatCensus& operator+=(const FormatCensus& other);
+    };
+
     /// What one extraction pass did.
     ///
     /// The reused counts are the interesting half: a mirror that adds nothing on a second pass over
@@ -103,21 +130,7 @@ namespace Rtx
         /// leaves a reader unable to tell which of the three had happened.
         std::uint32_t mSpritelessEmitters = 0;
 
-        /// What the textures a scene reached for turned out to be, one entry per `ImageFormat`.
-        ///
-        /// Kept because the answer decides how they are uploaded, and guessing it from what the
-        /// content files ought to contain is how a renderer ends up with a path nothing takes.
-        ///
-        /// **Counted by enumerator and named at the end.** A walk meets every texture of every
-        /// material it reads, and animated ones again on each frame; naming one where it is met
-        /// builds a `std::string` on the frame path to key a map by.
-        std::array<FormatCount, sImageFormatCount> mTextureFormats{};
-
-        /// The pixel format the `Unnamed` count last stood for, or zero.
-        ///
-        /// The number is the whole of what makes that count worth printing: a format nothing names
-        /// is a canary, and the reader's next step is to look this one up.
-        std::uint32_t mUnnamedFormat = 0;
+        FormatCensus mFormats;
 
         /// Geometry with no vertices or no triangles. Morrowind ships some.
         std::uint32_t mSkippedEmpty = 0;
@@ -153,6 +166,4 @@ namespace Rtx
         bool empty() const { return mMeshes == 0 && mMaterials == 0; }
     };
 
-    /// Counts `image` under its format, and its mips beside it.
-    void countFormat(const osg::Image& image, ExtractionStats& stats);
 }

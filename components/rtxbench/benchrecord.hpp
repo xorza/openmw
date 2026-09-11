@@ -122,8 +122,11 @@ namespace Rtx
         std::string mSuite;
 
         FrameExtents mExtents;
-        Upscale mUpscale = Upscale::Off;
-        Preset mPreset = Preset::D;
+
+        /// What upscaled the run's frames, as `Reconstruction` reports it: the mode and the network,
+        /// or `Off` and `Default` where nothing did. **Read off a frame and not off the renderer**,
+        /// which answers the mode alone.
+        Upscaling mUpscaling{ .mMode = Upscale::Off, .mPreset = Preset::Default };
 
         std::uint32_t mMeasured = 0;
         std::uint32_t mWarmup = 0;

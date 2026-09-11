@@ -100,12 +100,10 @@ namespace Rtx
         VkDeviceSize wanted = 0;
         VkDeviceSize scratchTotal = 0;
 
-        // **Sized together and every entry at nought**, which is what a mesh with no triangles is
-        // left at: nothing describes it, nothing builds it, and the gate below reads that nought.
-        mBuildSizes.clear();
-        mBuildSizes.resize(meshes.size());
-        mBuildScratchOffsets.clear();
-        mBuildScratchOffsets.resize(meshes.size());
+        // **Every row at nought**, which is what a mesh with no triangles is left at: nothing
+        // describes it, nothing builds it, and the gate below reads that nought.
+        mBuilding.clear();
+        mBuilding.resize(meshes.size());
 
         // **A static mesh's vertices are a build input and nothing else, so they go with the
         // submit.** A hit reads its triangle's vertices back out of the structure through position
@@ -113,9 +111,6 @@ namespace Rtx
         // Held in a table for the life of the cell they were the whole scene's vertices standing
         // for one read apiece — a quarter of what a world reserved. A mesh that deforms is not
         // here: it is built over the pose in the poses, which is its own destination every frame.
-        mArrivedAt.clear();
-        mArrivedAt.resize(meshes.size());
-
         VkDeviceSize arrivedBytes = 0;
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -123,7 +118,7 @@ namespace Rtx
             if (mesh.mDeform != Deform::None || mesh.mVertices.empty())
                 continue;
 
-            mArrivedAt[at] = arrivedBytes;
+            mBuilding[at].mArrivedAt = arrivedBytes;
             arrivedBytes += VkDeviceSize{ mesh.mVertices.mCount } * sizeof(osg::Vec3f);
         }
 
@@ -143,7 +138,8 @@ namespace Rtx
             if (range.mDeform != Deform::None || range.mVertices.empty())
                 continue;
 
-            stageInto(batch, mDevice, arrived, mArrivedAt[at], std::as_bytes(scene.mMeshes.getMeshPositions(mesh)));
+            stageInto(
+                batch, mDevice, arrived, mBuilding[at].mArrivedAt, std::as_bytes(scene.mMeshes.getMeshPositions(mesh)));
         }
 
         batch.keep(std::move(arrived));
@@ -176,7 +172,7 @@ namespace Rtx
             VkDeviceAddress vertices = 0;
             if (!mesh.mVertices.empty())
                 vertices = mesh.mDeform != Deform::None ? poses.addressOf(mesh.mBindOffset)
-                                                        : arrivedAddress + mArrivedAt[at];
+                                                        : arrivedAddress + mBuilding[at].mArrivedAt;
 
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
@@ -233,10 +229,10 @@ namespace Rtx
             functions.mGetAccelerationStructureBuildSizes(mDevice.getHandle(),
                 VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mBuild.mBuilds[at], &triangles, &sizes);
 
-            mBuildSizes[at] = sizes.accelerationStructureSize;
+            mBuilding[at].mSize = sizes.accelerationStructureSize;
             wanted = alignUp(wanted + sizes.accelerationStructureSize, StructureStorage::sAlignment);
 
-            mBuildScratchOffsets[at] = scratchTotal;
+            mBuilding[at].mScratchOffset = scratchTotal;
             scratchTotal = alignUp(scratchTotal + sizes.buildScratchSize, scratchAlignment);
 
             // Kept so a refit of this one mesh does not have to ask the driver its size again. The
@@ -257,24 +253,24 @@ namespace Rtx
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
-            if (mBuildSizes[at] == 0)
+            if (mBuilding[at].mSize == 0)
                 continue;
 
             const Index slot = meshes[at];
-            mRooms[slot] = mStorage.take(mDevice, mBuildSizes[at], wanted);
+            mRooms[slot] = mStorage.take(mDevice, mBuilding[at].mSize, wanted);
 
             const VkAccelerationStructureCreateInfoKHR create{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
                 .buffer = mStorage.getBuffer(mRooms[slot]),
                 .offset = mStorage.getOffset(mRooms[slot]),
-                .size = mBuildSizes[at],
+                .size = mBuilding[at].mSize,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
             };
             checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &mStructures[slot]),
                 "vkCreateAccelerationStructureKHR");
 
             mBuild.mBuilds[at].dstAccelerationStructure = mStructures[slot];
-            mBuild.mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuildScratchOffsets[at];
+            mBuild.mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuilding[at].mScratchOffset;
 
             // **Asked once each, here, and never again.** A handle lasts until the mesh is released
             // and its address with it, so the alternative is the same question per instance per
@@ -288,7 +284,7 @@ namespace Rtx
 
             // Kept per slot so the figure compaction is judged against covers the whole scene rather
             // than the meshes this call happened to build.
-            mCompaction[slot].mBuiltSize = mBuildSizes[at];
+            mCompaction[slot].mBuiltSize = mBuilding[at].mSize;
 
             // **Built loose whatever stood in the slot before**, and a mesh that refits keeps its
             // slack: a refit writes back into it.

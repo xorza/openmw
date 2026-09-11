@@ -82,11 +82,11 @@ namespace Rtx
 
     void OffscreenTrace::setLight(const SceneUtil::FlatLight& light)
     {
-        mSunPosition = light.mDirection;
-        if (mSunPosition.length2() > 0.f)
-            mSunPosition.normalize();
+        mSun.mPosition = light.mDirection;
+        if (mSun.mPosition.length2() > 0.f)
+            mSun.mPosition.normalize();
 
-        mSunIrradiance = irradianceOf(light.mDiffuse);
+        mSun.mIrradiance = irradianceOf(light.mDiffuse);
         mAmbient = irradianceOf(light.mAmbient);
     }
 
@@ -121,8 +121,8 @@ namespace Rtx
         if (mRowOrder == RowOrder::BottomFirst)
             camera.mCamera.mUp = -camera.mCamera.mUp;
 
-        camera.mSunPosition = mSunPosition;
-        camera.mSunIrradiance = mSunIrradiance;
+        camera.mSunPosition = mSun.mPosition;
+        camera.mSunIrradiance = mSun.mIrradiance;
         camera.mAmbient = mAmbient;
         camera.mTransparentBackground = mTransparent ? 1 : 0;
 

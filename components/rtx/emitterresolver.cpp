@@ -208,7 +208,7 @@ namespace Rtx
         if (mSpriteScratch.empty())
             return;
 
-        countFormat(*pending.mSprite, stats);
+        stats.mFormats.count(*pending.mSprite);
 
         mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mLight, width, pending.mLighting);
 

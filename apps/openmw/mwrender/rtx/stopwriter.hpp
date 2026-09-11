@@ -73,7 +73,7 @@ namespace MWRender
         void writeDump(const Writing& into, const std::filesystem::path& file);
 
         /// What the renderer was handed, as `scene` reports it.
-        void reportScene(const Writing& into, bool walkedTwice);
+        void reportScene(const Writing& into);
 
         /// Every texture the scene holds, vanilla beside de-lit, as one sheet.
         void writeSheet(const Writing& into, const std::filesystem::path& sheet);

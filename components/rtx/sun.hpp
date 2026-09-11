@@ -10,8 +10,10 @@ namespace Rtx
     /// shadow ray runs to the end of the world rather than to an emitter.
     ///
     /// **One sun, where the game keeps five dials for one**, and the one thing to know here is that
-    /// nothing may fill these fields itself: `makeSkylight` builds every one of them and its
-    /// header says what goes wrong when they are set apart.
+    /// nothing may fill these fields itself: `makeSkylight` builds every one of them for the world
+    /// and its header says what goes wrong when they are set apart. The one other builder is
+    /// `OffscreenTrace::setLight`, for a picture inside the interface lit by a flat light with no
+    /// hour behind it — where the irradiance is the light's and nought where the light is.
     ///
     /// **Its own header because a scene has no sun in it.** `SceneDesc` holds no such member: a sun
     /// is what the frame's *world* is doing, which is `Skylight` and `describeWorld`. Kept in

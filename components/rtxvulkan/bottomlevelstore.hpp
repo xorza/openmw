@@ -211,15 +211,20 @@ namespace Rtx
         /// What one run of `build` describes.
         StructureBuildBatch mBuild;
 
-        /// How big each mesh's structure comes out, and where in the one scratch buffer they share
-        /// its build takes its working room. Beside each other because both are filled in the same
-        /// pass and read in the next.
-        std::vector<VkDeviceSize> mBuildSizes;
-        std::vector<VkDeviceSize> mBuildScratchOffsets;
+        /// One mesh of the run `build` was handed: how big its structure comes out, where in the one
+        /// scratch buffer they share its build takes its working room, and where its vertices sit in
+        /// the buffer `build` stages them into. All three are filled in one pass and read in the
+        /// next, so they are one row. The staging offset means nothing for a mesh that deforms,
+        /// which is built from its pose.
+        struct BuildRow
+        {
+            VkDeviceSize mSize = 0;
+            VkDeviceSize mScratchOffset = 0;
+            VkDeviceSize mArrivedAt = 0;
+        };
 
-        /// Where each arriving static mesh's vertices sit in the buffer `build` stages them into, in
-        /// bytes. Meaningless for a mesh that deforms, which is built from its pose.
-        std::vector<VkDeviceSize> mArrivedAt;
+        /// Refilled per `build`, one row per mesh handed in, in that order.
+        std::vector<BuildRow> mBuilding;
 
         /// The builds actually recorded, which is `mBuild.mBuilds` without the meshes that came out
         /// at nought bytes — a mesh with no triangles is described by nobody and built by nobody.

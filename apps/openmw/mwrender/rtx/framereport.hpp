@@ -18,6 +18,18 @@ namespace MWRender
     class Renderer;
     class ViewHost;
 
+    /// What a frame's walk found, and what a second walk over the same graph added where a run
+    /// asked for one.
+    ///
+    /// **The second half is optional, because a walk that did not happen has no count.** Two
+    /// members with the second default-constructed read as a walk that resolved nothing, which is
+    /// the answer a check for "the second walk adds nothing" cannot tell from a pass.
+    struct WalkReport
+    {
+        Rtx::ExtractionStats mFound;
+        std::optional<Rtx::ExtractionStats> mAgain;
+    };
+
     /// What one traced frame came to, handed to whoever measures it: what it spent, what the device
     /// answered for the frame behind, what put the picture back together, and what the walk found.
     struct FrameReport
@@ -40,9 +52,7 @@ namespace MWRender
         /// What put this frame back together.
         Rtx::Reconstruction mReconstruction;
 
-        /// What this frame's walk found, and what a second walk over the same graph added.
-        Rtx::ExtractionStats mWalked;
-        Rtx::ExtractionStats mWalkedAgain;
+        WalkReport mWalked;
 
         /// How many textures the renderer has failed to read since it was built, and drew grey.
         std::uint32_t mUnreadableTextures = 0;

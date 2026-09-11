@@ -741,11 +741,12 @@ namespace MWRender
         if (mRecord.empty())
         {
             // **Taken at the first stop, because every stop of a run is traced by one renderer.**
-            // What the record's header states is the configuration the whole run stood under, and
-            // asking the renderer is the only way to know what the upscaler settled on.
+            // What the record's header states is the configuration the whole run stood under. The
+            // upscaling is the frame's own answer — the pair the renderer resolved this frame — and
+            // not the renderer's mode alone.
             Rtx::BenchHeader& header = mRecord.getHeader();
             header.mExtents = extents;
-            header.mUpscale = renderer.getUpscale();
+            header.mUpscaling = report.mReconstruction.mUpscaling;
             header.mValidating = renderer.isValidating();
             header.mMeasured = stop.mSchedule.mSpec.getMeasured();
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
