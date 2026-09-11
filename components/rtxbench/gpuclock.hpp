@@ -1,11 +1,9 @@
 #pragma once
 
-#include <condition_variable>
 #include <cstdint>
-#include <mutex>
-#include <stop_token>
 #include <string>
 
+#include <components/rtx/monitor.hpp>
 #include <components/rtx/worker.hpp>
 
 namespace Rtx
@@ -107,15 +105,14 @@ namespace Rtx
         GpuClock stop();
 
     private:
-        void watch(std::stop_token stop);
-
-        std::mutex mMutex;
-        std::condition_variable_any mWake;
+        /// The lock over `mSeen`, and nothing else: there is no channel here, because a sampler
+        /// hands nothing over until it is stopped.
+        Monitor mMonitor;
 
         /// What every reading so far came to, under the lock.
         GpuClock mSeen;
 
-        /// **Last, so it is joined before anything it writes into is destroyed.**
+        /// **Last, for the reason `Worker` gives.**
         Worker mWorker;
     };
 

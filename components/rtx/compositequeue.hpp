@@ -1,11 +1,9 @@
 #pragma once
 
-#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -15,6 +13,8 @@
 #include <osg/Image>
 #include <osg/ref_ptr>
 
+#include "monitor.hpp"
+#include "ownedby.hpp"
 #include "run.hpp"
 #include "scenedesc.hpp"
 #include "shadingcache.hpp"
@@ -143,7 +143,7 @@ namespace Rtx
         std::size_t getDue(std::size_t limit) const;
 
         /// How many of the sequences from `mNextTake` have come back, counted no further than
-        /// `limit`. Under `mMutex`.
+        /// `limit`. Under the monitor's lock.
         std::size_t getReady(std::size_t limit) const;
 
         /// Moves the composites that are due into the scene, in the order they were handed over,
@@ -252,39 +252,38 @@ namespace Rtx
             std::vector<CompositeLayer> mStackScratch;
             CompositeScratch mScratch;
 
-            /// **Last, so it is joined before anything above it is destroyed.**
+            /// **Last, for the reason `Worker` gives.**
             Worker mWorker;
         };
 
         /// Files `baked` under its sequence, so `mDone` reads in the order the stacks were handed
-        /// over however the bakers finished them. Under `mMutex`.
+        /// over however the bakers finished them. Under the monitor's lock.
         void file(Baked&& baked);
 
         /// Starts every baker, once. Called by the first chunk that asks, so a world that never
         /// reaches distant ground never pays for a thread.
         void startBakers();
 
-        /// A baker's loop: one request at a time, until asked to stop.
+        /// A baker's loop: one request at a time, until asked to stop. `Monitor::serve` is the
+        /// loop, and this is what it takes and what it does.
         void work(Baker& baker, std::stop_token stop);
 
-        /// Guards `mPending`, `mDone` and `mBaking` — everything the frame and the bakers share.
-        std::mutex mMutex;
-
-        /// Woken by a request arriving, or by the stop.
-        std::condition_variable_any mWake;
-
-        /// Woken by a bake finishing, which is what `waitFor` waits for.
-        std::condition_variable mBaked;
+        /// The lock between the frame and the bakers, and the two waits across it. It guards
+        /// `mPending` and `mDone` and nothing else.
+        Monitor mMonitor;
 
         /// Oldest first, so the bakers take chunks in the order they arrived.
         std::deque<Request> mPending;
 
         /// By sequence and not by when a bake finished. See `file`.
         std::deque<Baked> mDone;
-        std::size_t mBaking = 0;
 
-        /// The next sequence to hand out, and the next to collect. **The frame thread's own**: one
-        /// is written by `gather` and the other by `collect`, and no baker reads either.
+        /// Which thread everything below belongs to. **The frame's**, and `advance` asks it: what
+        /// it reaches is every call that writes any of them.
+        OwnedBy mOnFrame;
+
+        /// The next sequence to hand out, and the next to collect. One is written by `gather` and
+        /// the other by `collect`, and no baker reads either.
         std::uint64_t mNextGiven = 0;
         std::uint64_t mNextTake = 0;
 
@@ -293,9 +292,8 @@ namespace Rtx
 
         /// The frame each sequence from `mNextTake` was handed over on, oldest first.
         ///
-        /// **The frame thread's own too**, and one entry a sequence: `gather` appends where it hands
-        /// a stack over and `collect` removes where it takes one back, so the front of this is
-        /// always `mNextTake`'s.
+        /// One entry a sequence: `gather` appends where it hands a stack over and `collect` removes
+        /// where it takes one back, so the front of this is always `mNextTake`'s.
         std::deque<std::size_t> mQueuedAt;
 
         /// Everything handed over and not yet collected, which is what `gather` checks against.
@@ -315,8 +313,7 @@ namespace Rtx
         /// ground comes back — a route across the island paying for every one of them twice over.
         /// What comes back here keeps the room it grew.
         ///
-        /// The game thread's own, at both ends: `gather` takes from it and `collect` returns to it,
-        /// and the baker sees neither.
+        /// `gather` takes from it and `collect` returns to it, and the baker sees neither.
         ///
         /// **Everything here has been through `reuse`**, which is what putting one back means — so
         /// one taken off is empty and holds no image, and `gather` fills it without clearing it
@@ -325,9 +322,8 @@ namespace Rtx
 
         std::string mKey;
 
-        /// **Last, so the threads are joined first.** A member declared above would be destroyed
-        /// while a baker was still reading it; the stop the join begins with is what wakes the wait.
-        /// Held by pointer so that a baker keeps its address, which its own thread captured.
+        /// **Last, for the reason `Worker` gives.** Held by pointer so that a baker keeps its
+        /// address, which its own thread captured.
         std::vector<std::unique_ptr<Baker>> mBakers;
     };
 }

@@ -40,6 +40,8 @@ namespace Rtx
 
     void CellSupply::follow(const CellWorld& world)
     {
+        mOnFrame.check();
+
         // **The thread reads the storages and the content without the lock**, which is sound only
         // because it is stopped and joined here before any is replaced — and before the reader that
         // holds them goes. Nothing is given back: what the frame held dies with the reader.
@@ -65,43 +67,41 @@ namespace Rtx
 
     void CellSupply::ask(const CellRequest& request)
     {
+        mOnFrame.check();
+
         if (mReader == nullptr || request == mRequested)
             return;
 
         mRequested = request;
 
-        {
-            const std::lock_guard<std::mutex> lock(mMutex);
-            mWanted = request;
-        }
-
-        mWake.notify_one();
+        mMonitor.give([&] { mWanted = request; });
     }
 
     void CellSupply::take(std::vector<PreparedCell*>& into)
     {
-        const std::lock_guard<std::mutex> lock(mMutex);
-        into.insert(into.end(), mDone.begin(), mDone.end());
-        mDone.clear();
+        // **Asked here, because this is the one call every frame makes.** A reader that threw is a
+        // world that cannot be read, and the frame learns it where it would have taken a cell.
+        mMonitor.rethrowFailure();
+
+        mMonitor.under([&] {
+            into.insert(into.end(), mDone.begin(), mDone.end());
+            mDone.clear();
+        });
     }
 
-    void CellSupply::waitForOne()
+    bool CellSupply::waitForOne()
     {
-        std::unique_lock<std::mutex> lock(mMutex);
-        mDoneWake.wait(lock, [&] { return !mDone.empty(); });
+        return mMonitor.await([&] { return !mDone.empty(); });
     }
 
     void CellSupply::publish()
     {
+        mOnFrame.check();
+
         if (mReturning.empty())
             return;
 
-        {
-            const std::lock_guard<std::mutex> lock(mMutex);
-            mReturned.take(mReturning);
-        }
-
-        mWake.notify_one();
+        mMonitor.give([&] { mReturned.take(mReturning); });
     }
 
     void CellSupply::recycle()
@@ -121,40 +121,34 @@ namespace Rtx
 
     void CellSupply::work(std::stop_token stop)
     {
-        std::unique_lock<std::mutex> lock(mMutex);
-        while (mWake.wait(lock, stop, [&] { return !mWanted.empty() || !mReturned.empty(); }))
+        mMonitor.serve(
+            stop, [&] { return !mWanted.empty() || !mReturned.empty(); },
+            [&] {
+                recycle();
+                mReading.take(mWanted);
+            },
+            [&](std::stop_token turn) { read(turn); });
+    }
+
+    void CellSupply::read(std::stop_token stop)
+    {
+        for (const osg::Vec2i& cell : mReading.mCells)
         {
             if (stop.stop_requested())
                 return;
 
-            recycle();
-
-            mReading.take(mWanted);
-            lock.unlock();
-
-            for (const osg::Vec2i& cell : mReading.mCells)
-            {
-                if (stop.stop_requested())
-                    break;
-
-                // A newer list replaces this one: the eye has moved and what it lacks has changed.
-                lock.lock();
-                const bool newer = !mWanted.empty();
+            // A newer list replaces this one: the eye has moved and what it lacks has changed.
+            const bool newer = mMonitor.under([&] {
                 recycle();
-                lock.unlock();
+                return !mWanted.empty();
+            });
 
-                if (newer)
-                    break;
+            if (newer)
+                return;
 
-                PreparedCell& made = mReader->read(cell, mReading.mStatics);
+            PreparedCell& made = mReader->read(cell, mReading.mStatics);
 
-                lock.lock();
-                mDone.push_back(&made);
-                lock.unlock();
-                mDoneWake.notify_all();
-            }
-
-            lock.lock();
+            mMonitor.hand([&] { mDone.push_back(&made); });
         }
     }
 }

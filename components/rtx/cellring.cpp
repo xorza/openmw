@@ -375,7 +375,13 @@ namespace Rtx
         // and dropped, which is a mesh built and freed for a cell that never stood.
         while (mPending.empty())
         {
-            mSupply.waitForOne();
+            // **Given up on where the reader has gone**, which is a reader that threw. Waiting on
+            // one that can hand nothing over used to be a wait with no end, and a wait that
+            // answered at once with no cell would be a spin instead. The walk adopts nothing this
+            // frame and `CellSupply::take` is where the failure is reported.
+            if (!mSupply.waitForOne())
+                return;
+
             takeDone();
             sift(eye, band);
         }

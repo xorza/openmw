@@ -56,6 +56,8 @@ namespace Rtx
 
     std::size_t CompositeQueue::advance(SceneDesc& scene, Resource::ImageManager& images)
     {
+        mOnFrame.check();
+
         ++mFrame;
 
         gather(scene.getTables(), images);
@@ -90,17 +92,18 @@ namespace Rtx
             {
                 mAsked.erase(asked);
 
-                const std::lock_guard<std::mutex> lock(mMutex);
-                std::erase_if(mPending, [&](Request& one) {
-                    if (one.mAsked.mMaterial != at)
-                        return false;
+                mMonitor.under([&] {
+                    std::erase_if(mPending, [&](Request& one) {
+                        if (one.mAsked.mMaterial != at)
+                            return false;
 
-                    // **Filed rather than dropped**, because a sequence that never arrived would
-                    // stop `collect` at it for the rest of the run. It comes back holding nothing,
-                    // which is what `collect` already does with a bake whose chunk has gone.
-                    one.reuse();
-                    file(Baked{ .mRequest = std::move(one) });
-                    return true;
+                        // **Filed rather than dropped**, because a sequence that never arrived would
+                        // stop `collect` at it for the rest of the run. It comes back holding nothing,
+                        // which is what `collect` already does with a bake whose chunk has gone.
+                        one.reuse();
+                        file(Baked{ .mRequest = std::move(one) });
+                        return true;
+                    });
                 });
             }
 
@@ -139,21 +142,17 @@ namespace Rtx
 
             mAsked.push_back(wanted);
 
-            {
-                const std::lock_guard<std::mutex> lock(mMutex);
-                mPending.push_back(std::move(request));
-            }
-
             startBakers();
 
-            mWake.notify_one();
+            mMonitor.give([&] { mPending.push_back(std::move(request)); });
         }
     }
 
     void CompositeQueue::waitFor(const std::size_t limit)
     {
-        std::unique_lock<std::mutex> lock(mMutex);
-        mBaked.wait(lock, [&] {
+        // **A monitor that answered false is one every baker has left**, and `collect` asks
+        // `rethrowFailure` for the reason on the line after this.
+        mMonitor.await([&] {
             const std::size_t due = getDue(limit);
             return getReady(due) >= due;
         });
@@ -202,11 +201,14 @@ namespace Rtx
 
     std::size_t CompositeQueue::collect(SceneDesc& scene, const std::size_t limit)
     {
-        mTaken.clear();
-        {
-            const std::size_t due = getDue(limit);
-            const std::lock_guard<std::mutex> lock(mMutex);
+        // **Asked before anything is taken.** A baker that threw left the queue closed, and a
+        // frame that read what came back before it before it asked would report a short collect
+        // rather than the failure under it.
+        mMonitor.rethrowFailure();
 
+        mTaken.clear();
+        const std::size_t due = getDue(limit);
+        mMonitor.under([&] {
             // **In sequence and never in whatever order the bakers finished**, which is what makes
             // the frame a composite lands on the schedule's answer. `setSettled` says why.
             while (mTaken.size() < due && !mDone.empty() && mDone.front().mRequest.mSequence == mNextTake)
@@ -216,7 +218,7 @@ namespace Rtx
                 mQueuedAt.pop_front();
                 ++mNextTake;
             }
-        }
+        });
 
         std::size_t finished = 0;
         for (Baked& baked : mTaken)
@@ -281,24 +283,18 @@ namespace Rtx
 
     void CompositeQueue::work(Baker& baker, std::stop_token stop)
     {
-        std::unique_lock<std::mutex> lock(mMutex);
-        while (mWake.wait(lock, stop, [&] { return !mPending.empty(); }))
-        {
-            if (stop.stop_requested())
-                return;
+        Request request;
 
-            Request request = std::move(mPending.front());
-            mPending.pop_front();
-            ++mBaking;
-            lock.unlock();
-
-            Baked baked = baker.bake(std::move(request));
-
-            lock.lock();
-            --mBaking;
-            file(std::move(baked));
-            mBaked.notify_all();
-        }
+        mMonitor.serve(
+            stop, [&] { return !mPending.empty(); },
+            [&] {
+                request = std::move(mPending.front());
+                mPending.pop_front();
+            },
+            [&](std::stop_token) {
+                Baked baked = baker.bake(std::move(request));
+                mMonitor.hand([&] { file(std::move(baked)); });
+            });
     }
 
     CompositeQueue::Baked CompositeQueue::Baker::bake(Request&& request)

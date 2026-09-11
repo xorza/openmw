@@ -1,19 +1,16 @@
 #include "visibilitypass.hpp"
 
-#include <algorithm>
 #include <array>
-#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <exception>
-#include <mutex>
 #include <span>
 #include <thread>
 #include <vector>
 
 #include <components/rtx/bluenoise.hpp>
 #include <components/rtx/lightgrid.hpp>
+#include <components/rtx/parallel.hpp>
 #include <components/rtx/shaders/bindings.h>
 
 #include "buffer.hpp"
@@ -202,71 +199,40 @@ namespace Rtx
                     wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
                 }
 
-        std::atomic<std::size_t> next{ 0 };
-        std::mutex kept;
-        std::exception_ptr failed;
-
         const std::thread::id caller = std::this_thread::get_id();
 
-        const auto compile = [&] {
-            // **So that a worker's validation error reaches whoever asked for these pipelines.** The
-            // layers report on the thread that made the call, and the log files by thread because the
-            // test binary runs tests in parallel against one of them — an error left filed under a
-            // worker is one nobody ever collects.
-            const AdoptedThread adopted(caller);
+        // **So that a hand's validation error reaches whoever asked for these pipelines.** The
+        // layers report on the thread that made the call, and the log files by thread because the
+        // test binary runs tests in parallel against one of them — an error left filed under a
+        // hand is one nobody ever collects.
+        runInParallel(
+            wanted.size(), [caller] { return AdoptedThread(caller); },
+            [&](const std::size_t at) {
+                const VisibilityVariant variant = wanted[at].mVariant;
+                const bool volume = wanted[at].mVolume;
 
-            for (std::size_t at = next++; at < wanted.size(); at = next++)
-            {
-                try
-                {
-                    const VisibilityVariant variant = wanted[at].mVariant;
-                    const bool volume = wanted[at].mVolume;
+                // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The
+                // volume traces no primary ray, so it counts none whatever the build asked for;
+                // every other constant it takes is the tuple's own.
+                const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, volume ? 0u : mCountCrossings };
 
-                    // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
-                    // The volume traces no primary ray, so it counts none whatever the build asked
-                    // for; every other constant it takes is the tuple's own.
-                    const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
-                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, volume ? 0u : mCountCrossings };
-
-                    if (volume)
-                        mScatterPipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
-                            laterSets(textureLayout), mScatterModule, variant.describe("fog scatter"), specialization);
-                    else
-                        mPipelines[variant.index()]
-                            = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
-                                TraceShaders{
-                                    .mRaygen = mRaygenModule,
-                                    .mMiss = mMissModules,
-                                    .mHit = mHitModules,
-                                    .mHitRecordsPerShader = Shaders::HIT_RECORD_LAYERS,
-                                    .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
-                                    .mAnyHit = mAnyHitModule,
-                                },
-                                variant.describe("visibility"), specialization);
-                }
-                catch (...)
-                {
-                    // **The first failure and not the last**, so the message names what actually
-                    // went wrong rather than whichever thread finished after it.
-                    const std::lock_guard<std::mutex> hold(kept);
-                    if (failed == nullptr)
-                        failed = std::current_exception();
-                }
-            }
-        };
-
-        const std::size_t hands
-            = std::max<std::size_t>(1, std::min<std::size_t>(std::thread::hardware_concurrency(), wanted.size()));
-
-        {
-            std::vector<std::jthread> compiling;
-            compiling.reserve(hands);
-            for (std::size_t hand = 0; hand < hands; ++hand)
-                compiling.emplace_back(compile);
-        }
-
-        if (failed != nullptr)
-            std::rethrow_exception(failed);
+                if (volume)
+                    mScatterPipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
+                        laterSets(textureLayout), mScatterModule, variant.describe("fog scatter"), specialization);
+                else
+                    mPipelines[variant.index()]
+                        = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+                            TraceShaders{
+                                .mRaygen = mRaygenModule,
+                                .mMiss = mMissModules,
+                                .mHit = mHitModules,
+                                .mHitRecordsPerShader = Shaders::HIT_RECORD_LAYERS,
+                                .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
+                                .mAnyHit = mAnyHitModule,
+                            },
+                            variant.describe("visibility"), specialization);
+            });
     }
 
     const TracePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant) const

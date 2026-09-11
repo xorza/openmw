@@ -87,6 +87,7 @@ set(RTX_FILES
     mipchain.hpp
     mirroridentity.hpp
     mirrorpass.hpp
+    monitor.hpp
     moonbuilder.cpp
     moonbuilder.hpp
     namedenum.hpp
@@ -96,8 +97,10 @@ set(RTX_FILES
     nightsky.hpp
     offscreentrace.cpp
     offscreentrace.hpp
+    ownedby.hpp
     ownedtexture.cpp
     ownedtexture.hpp
+    parallel.hpp
     placementtable.cpp
     placementtable.hpp
     pool.hpp

@@ -142,15 +142,25 @@ namespace Rtx
 
     void ClockWatch::start()
     {
+        // **Four a second.** Every reading forks this process, and a harness with a world loaded is
+        // a large one to fork, so the rate is what the spawn cost was measured under rather than
+        // what the card can be asked for.
+        constexpr std::chrono::milliseconds sPeriod{ 250 };
+
         // **Only where this call is what started it.** One of these is held across the places of a
         // suite, so a watch that kept what it saw would hand the second place the first place's
         // clock — and one that cleared a run already in progress would throw away the readings that
         // run had taken.
-        if (!mWorker.start([this](std::stop_token stop) { watch(stop); }))
+        //
+        // The reading is taken outside the lock: a spawn takes tens of milliseconds, and holding it
+        // for that would make `stop` wait out a reading it is about to add its own to.
+        if (!mWorker.repeat(sPeriod, [this] {
+                const GpuClock now = readGpuClock();
+                mMonitor.under([&] { mSeen.add(now); });
+            }))
             return;
 
-        const std::lock_guard<std::mutex> lock(mMutex);
-        mSeen = GpuClock{};
+        mMonitor.under([&] { mSeen = GpuClock{}; });
     }
 
     GpuClock ClockWatch::stop()
@@ -162,34 +172,10 @@ namespace Rtx
 
         mWorker.stop();
 
-        const std::lock_guard<std::mutex> lock(mMutex);
-        mSeen.add(last);
-
-        return mSeen;
-    }
-
-    void ClockWatch::watch(std::stop_token stop)
-    {
-        // **Four a second.** Every reading forks this process, and a harness with a world loaded is
-        // a large one to fork, so the rate is what the spawn cost was measured under rather than
-        // what the card can be asked for.
-        constexpr std::chrono::milliseconds sPeriod{ 250 };
-
-        for (;;)
-        {
-            // Outside the lock: a spawn takes tens of milliseconds, and holding it for that would
-            // make `stop` wait out a reading it is about to add its own to.
-            const GpuClock now = readGpuClock();
-
-            std::unique_lock<std::mutex> lock(mMutex);
-            mSeen.add(now);
-
-            // **Nothing ever notifies this**, and it is a condition variable so that the stop token
-            // can break the wait: `std::this_thread::sleep_for` would hold the thread for the whole
-            // period and make every join wait one out.
-            if (mWake.wait_for(lock, stop, sPeriod, [&stop] { return stop.stop_requested(); }))
-                return;
-        }
+        return mMonitor.under([&] {
+            mSeen.add(last);
+            return mSeen;
+        });
     }
 
     GpuClock readGpuClock()

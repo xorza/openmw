@@ -1,8 +1,6 @@
 #pragma once
 
-#include <condition_variable>
 #include <memory>
-#include <mutex>
 #include <stop_token>
 #include <vector>
 
@@ -11,6 +9,8 @@
 
 #include <components/esm/refid.hpp>
 
+#include "monitor.hpp"
+#include "ownedby.hpp"
 #include "worker.hpp"
 
 namespace Terrain
@@ -147,29 +147,46 @@ namespace Rtx
         ///
         /// **For a settled run**, which cannot have which frame a cell lands on be the thread's
         /// answer. `CellRing::setSettled` says what that buys and what it costs.
-        void waitForOne();
+        ///
+        /// **False where the reader has gone**, which is a reader that threw. A caller that looped
+        /// on this would otherwise wait for ever on a thread that had nothing left to hand over.
+        bool waitForOne();
 
         /// Where a caller puts what it has finished with. Handed over by `publish`.
-        CellReturns& giveBack() { return mReturning; }
+        CellReturns& giveBack()
+        {
+            mOnFrame.check();
+            return mReturning;
+        }
 
         /// Hands the thread everything `giveBack` collected. Nothing where there is none.
         void publish();
 
     private:
+        /// The reader's loop: a list at a time, until asked to stop. `Monitor::serve` is the loop,
+        /// and this is what it takes and what it does.
         void work(std::stop_token stop);
+
+        /// Reads the list `work` took, a cell at a time, and stops at the first sign of a newer
+        /// one. On the thread, outside the lock but for what it hands over.
+        void read(std::stop_token stop);
 
         /// Gives the reader what the frame gave back. On the thread, under the lock.
         void recycle();
 
         CellWorld mWorld;
 
+        /// Which thread the two below belong to. **The frame's**, and `mOnFrame.check()` is what
+        /// says so at each of the calls that touch them.
+        OwnedBy mOnFrame;
+
         /// The frame's side: the last ask handed over, and what it is collecting to hand back.
         CellRequest mRequested;
         CellReturns mReturning;
 
-        std::mutex mMutex;
-        std::condition_variable_any mWake;
-        std::condition_variable mDoneWake;
+        /// The lock between the frame and the reader, and the two waits across it. It guards the
+        /// three below and nothing else.
+        Monitor mMonitor;
 
         /// What the thread is to read next, written whole under the lock and taken whole by the
         /// thread. A newer request replaces an older one it has not finished.
@@ -187,7 +204,7 @@ namespace Rtx
         /// Owned here and used by the thread alone while it runs.
         std::unique_ptr<CellReader> mReader;
 
-        /// **Last, so it is joined before anything it touches is destroyed.**
+        /// **Last, for the reason `Worker` gives.**
         Worker mWorker;
     };
 }
