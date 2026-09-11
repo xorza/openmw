@@ -9,6 +9,7 @@
 
 #include "computepipeline.hpp"
 #include "image.hpp"
+#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -33,7 +34,6 @@ namespace Rtx
         /// @param pool where the stand-in bound in place of a pyramid is put into its layout, once.
         TonePass(const Device& device, CommandPool& pool, VkDescriptorSetLayout textureLayout,
             const std::filesystem::path& shaderDirectory);
-        ~TonePass();
 
         TonePass(const TonePass&) = delete;
         TonePass& operator=(const TonePass&) = delete;
@@ -59,15 +59,12 @@ namespace Rtx
             const Image* bloom, VkDescriptorSet textures, const Image& target, Shaders::ToneConstants constants) const;
 
     private:
-        const Device& mDevice;
         ComputePipeline mPipeline;
 
         /// Linear and clamped, which is what the tent the pyramid is spread with is counted in.
-        VkSampler mSampler = VK_NULL_HANDLE;
+        Sampler mSampler;
 
-        /// What binding four holds where there is no pyramid. **A descriptor a shader declares has
-        /// to be bound whether or not the branch that reads it runs**, and one texel is the whole
-        /// cost of saying so — `CompositePass::mNoSum` is the same field for the same reason.
+        /// What binding four holds where there is no pyramid. `makeStandIn` says why.
         Image mNoBloom;
     };
 }

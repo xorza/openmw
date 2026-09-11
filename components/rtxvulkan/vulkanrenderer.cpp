@@ -3,7 +3,6 @@
 #include <bit>
 #include <cassert>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <string>
@@ -14,6 +13,7 @@
 #include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
+#include "framehistory.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
 #include "memory.hpp"
@@ -26,6 +26,7 @@
 #include "scenebuffers.hpp"
 #include "skintables.hpp"
 #include "texture.hpp"
+#include "tracerecording.hpp"
 #include "visibilitypass.hpp"
 
 #ifdef OPENMW_RTX_DLSS
@@ -82,18 +83,6 @@ namespace Rtx
                 return {};
 
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-        }
-
-        /// Whether the frame has a sea to synthesise.
-        ///
-        /// **The shader's own test**, so the two cannot disagree: a cell with no water carries a
-        /// level of minus infinity, every "how deep" comes out never positive, and nothing samples
-        /// the wave tiles — which is what makes not building them for that frame free. Every
-        /// interior is such a frame, and the synthesis was a fifth of a millisecond of device time
-        /// in each of them.
-        bool hasSea(const Shaders::VisibilityConstants& frame)
-        {
-            return !std::isinf(frame.mWaterLevel);
         }
 
         /// The display pass's own description of the frame.
@@ -375,6 +364,36 @@ namespace Rtx
             .mFogVolume = volume,
             .mWater = held.mAcceleration->getInstanceCounts().mWater > 0,
         };
+    }
+
+    Shaders::VisibilityConstants VulkanRenderer::sampleCamera(
+        const Shaders::VisibilityConstants& camera, const Reconstruction& reconstruction) const
+    {
+        Shaders::VisibilityConstants sampled = camera;
+
+        // Where in the pixel this frame samples. Filled here rather than by the caller because the
+        // sequence belongs to the frame index, which is the renderer's to walk.
+        if (reconstruction.mJitter)
+            sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
+
+        // **Only Ray Reconstruction reads the transparency layer**, so only a frame it is about to
+        // upscale hands its sprites over. Every other trace in this renderer composites them itself.
+        sampled.mLayerCompositedAfter = upscaling() ? 1 : 0;
+
+        // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
+        // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
+        // at from.
+        sampled.mMediumInFrame = mWorld.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
+
+        // **The one subtraction of two world points, and it happens here.** Two camera positions a
+        // step apart subtract exactly in a float; the same difference taken on the device, between
+        // coordinates six figures long, would be rounding.
+        sampled.mCameraMotion = camera.mOrigin - mPreviousCamera.mOrigin;
+        sampled.mPreviousForward = mPreviousCamera.mCamera.mForward;
+        sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
+        sampled.mPreviousUp = mPreviousCamera.mCamera.mUp;
+
+        return sampled;
     }
 
     void VulkanRenderer::setScene(
@@ -790,7 +809,7 @@ namespace Rtx
         FrameRecord& gui = mRing.slotOf(mGuiFrame);
         if (gui.mGui.mPending)
         {
-            awaitVk(mDevice, gui.mGui.mFence, "the interface drawn two frames ago");
+            awaitVk(mDevice, gui.mGui.mFence.get(), "the interface drawn two frames ago");
             gui.mGui.mPending = false;
             gui.mGui.mGraveyard.clear();
         }
@@ -840,7 +859,7 @@ namespace Rtx
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
 
-        mPool.submit(commands, gui.mGui.mFence, gui.mGui.mGraveyard);
+        mPool.submit(commands, gui.mGui.mFence.get(), gui.mGui.mGraveyard);
         gui.mGui.mPending = true;
         ++mGuiFrame;
     }
@@ -917,29 +936,7 @@ namespace Rtx
             ReconstructionRequest{ .mFilter = options.mFilter, .mJitter = options.mJitter, .mPreset = mPreset });
         frame.mReconstruction = reconstruction;
 
-        // The camera as the caller wrote it, plus where in the pixel this frame samples. Filled
-        // here rather than by the caller because the sequence belongs to the frame index, which is
-        // the renderer's to walk.
-        Shaders::VisibilityConstants sampled = camera;
-        if (reconstruction.mJitter)
-            sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
-
-        // **Only Ray Reconstruction reads the transparency layer**, so only a frame it is about to
-        // upscale hands its sprites over. Every other trace in this renderer composites them itself.
-        sampled.mLayerCompositedAfter = upscaling() ? 1 : 0;
-
-        // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
-        // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
-        // at from.
-        sampled.mMediumInFrame = mWorld.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
-
-        // **The one subtraction of two world points, and it happens here.** Two camera positions a
-        // step apart subtract exactly in a float; the same difference taken on the device, between
-        // coordinates six figures long, would be rounding.
-        sampled.mCameraMotion = camera.mOrigin - mPreviousCamera.mOrigin;
-        sampled.mPreviousForward = mPreviousCamera.mCamera.mForward;
-        sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
-        sampled.mPreviousUp = mPreviousCamera.mCamera.mUp;
+        const Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);
 
         const VisibilityInputs inputs = describeInputs(mWorld, mWorldSlot, &mFrame.getFogVolume());
 
@@ -954,38 +951,11 @@ namespace Rtx
         // caught the rest: walking through a door left the previous camera intact and a reprojection
         // fetched one room onto another. The stale flags are the other half, and they are the signal
         // the renderer was already being sent.
-        const bool basisLost = mPreviousCamera.mCamera.mForward.length2() <= 0.0f;
-
-        // **The trace's, which is the fog volume's**, and what zeroes the basis in the block it is
-        // handed. The volume is the only thing the trace reprojects, and the motion vectors the same
-        // basis produces are read by a denoiser that is told its own answer separately.
-        const bool airLost = mAirStale || basisLost;
-
-        // Both denoisers ask this one, so it is answered once.
-        const bool historyLost = mDenoiserStale || basisLost;
-
-        // **Spent by the frame that answers it, not by the frame that ends.** Only a reconstruction
-        // carrying a past reads `historyLost`, and a frame with neither denoiser carries none — so
-        // the signal has to survive such a frame. Cleared at the end regardless, a `resetHistory`
-        // before an unfiltered frame would be dropped rather than deferred to the frame that can
-        // act on it. Recorded where it is read rather than derived a second time from the switches
-        // below, which is what would go quietly wrong when one of them moved.
-        bool historyAnswered = false;
+        FrameHistory history(mPreviousCamera.mCamera.mForward.length2() <= 0.0f, mAirStale, mDenoiserStale);
 
         GpuTimer& timer = frame.mTimer;
         const VkCommandBuffer commands = frame.mWorld.mCommands;
         mPool.begin(commands);
-
-        // All written whole before anything reads them, so none needs its contents carried over
-        // from the last frame. **But the last frame may still be reading them** — the tone's
-        // output is what the interface draws over and the presenter blits, the colour is what the
-        // upscaler and the curve read — so the discard is sourced at everything before it on the
-        // queue rather than at the top of the pipe, which would wait for nothing.
-        const Image& bytes = mTargets.current();
-        for (const Image* image : { &mFrame.getColour(), &bytes })
-            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 #ifdef OPENMW_RTX_DLSS
         // `createTargets` makes the pass and its image together and releases them together, so
@@ -1007,68 +977,42 @@ namespace Rtx
                 fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
-        // Before the trace and outside its zone, because the sea is a function of the clock and
-        // of nothing the camera does — one synthesis serves every ray of the frame. None where
-        // the frame has no water: `WavePass::record` says where the tiles are left.
-        if (hasSea(sampled))
-        {
-            timer.open(commands, "waves");
-            mWaves.record(commands, sampled.mTime);
-            timer.close(commands);
-        }
-
-        // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
-        // Binned on the device, into the copy this frame traces — which the frame before last is
-        // done with — and ahead of the trace that reads them, in its own zone.
-        // **What the bin below writes may still be being traced.** `Renderer::renderFrame` promises
-        // a frame that needs no placement before it, and two of those in a row bin into the copy the
-        // one placement handed out — over the sprites the first is reading, and over the report it
-        // is still writing. `placeScene` waits the same way before it writes the other copy; on the
-        // ordinary path of a placement per frame this has already been waited and costs a compare.
+        // **What the bin inside the recording writes may still be being traced.**
+        // `Renderer::renderFrame` promises a frame that needs no placement before it, and two of
+        // those in a row bin into the copy the one placement handed out — over the sprites the first
+        // is reading, and over the report it is still writing. `placeScene` waits the same way
+        // before it writes the other copy; on the ordinary path of a placement per frame this has
+        // already been waited and costs a compare.
         if (mReadBy[mWorldSlot.get()] != sNeverRead)
             mRing.finishThrough(mReadBy[mWorldSlot.get()]);
 
-        mWorld.mBuffers->binSprites(mSpriteShade, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
-            Placing{
-                .mCommands = commands,
-                .mSlot = mWorldSlot,
-                .mTimer = &timer,
-                .mGraveyard = frame.mWorld.mGraveyard,
-            });
+        // **Ray Reconstruction is itself the denoiser**, and handing it a frame the wavelet already
+        // blurred is asking it to recover what was thrown away — which is why `resolve` never
+        // answers with both.
+        const bool filtering = reconstruction.filtered();
 
         const GBuffer& channels = mFrame.getChannels();
 
-        channels.begin(commands);
-        mPass->record(commands, inputs, channels, frame.mHitCount, sampled, airLost, &timer);
-        channels.handOver(commands);
-
-        // Where the bounce ended up: the filter's last level, or the channel the trace wrote
-        // when nothing filtered it. **Ray Reconstruction is itself the denoiser**, and handing
-        // it a frame the wavelet already blurred is asking it to recover what was thrown away —
-        // which is why `resolve` never answers with both.
-        const bool filtering = reconstruction.filtered();
-        const Image* indirect = &channels.get(Channel::Indirect);
-        if (filtering)
-        {
-            indirect = &mFrame.recordDenoise(commands, sampled.mCamera, sampled.mFar, historyLost, &timer);
-            historyAnswered = true;
-        }
-
-        timer.open(commands, "composite");
-        mComposite.record(commands, channels, *indirect, mSum.get(), mFrame.getColour(),
-            Shaders::CompositeConstants{
-                .mWidth = mFrame.getWidth(),
-                .mHeight = mFrame.getHeight(),
+        const Image* shown = &mFrame.record(commands,
+            TraceRecording{
+                .mVisibility = mPass.get(),
+                .mComposite = &mComposite,
+                .mSpriteBin = &mSpriteBin,
+                .mSpriteShade = &mSpriteShade,
+                .mInputs = inputs,
+                .mBuffers = mWorld.mBuffers.get(),
+                .mGraveyard = &frame.mWorld.mGraveyard,
+                .mAsked = camera,
+                .mSampled = sampled,
+                .mCounts = &frame.mHitCount,
+                .mTarget = &mTargets.current(),
+                .mSum = mSum.get(),
                 .mAccumulate = options.mAccumulate,
+                .mAirLost = history.airLost(),
+                .mHistoryLost = history.answer(filtering),
+                .mFilter = filtering,
+                .mTimer = &timer,
             });
-        timer.close(commands);
-
-        // Whatever comes next reads what the composite just wrote.
-        mFrame.getColour().transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
-
-        const Image* shown = &mFrame.getColour();
 
 #ifdef OPENMW_RTX_DLSS
         if (upscaling())
@@ -1091,9 +1035,8 @@ namespace Rtx
                     .mOutput = *mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
-                    .mReset = historyLost,
+                    .mReset = history.answer(),
                 });
-            historyAnswered = true;
 
             // What NGX recorded is its own; nothing here knows which stages it used. **And the
             // bloom samples what it left**, rather than loading it — `BloomPass` binds the frame as
@@ -1126,8 +1069,7 @@ namespace Rtx
         {
             // **The third thing that reads a lost history**, and the only one that reads it on
             // every frame: the eye has no past to adapt from either.
-            mExposure.record(commands, *shown, 0.001f * sinceLastMs, historyLost, options.mExposureBias);
-            historyAnswered = true;
+            mExposure.record(commands, *shown, 0.001f * sinceLastMs, history.answer(), options.mExposureBias);
         }
         timer.close(commands);
 
@@ -1159,7 +1101,7 @@ namespace Rtx
         // as long as the player stayed indoors.
         mAirStale = false;
 
-        if (historyAnswered)
+        if (history.wasAnswered())
             mDenoiserStale = false;
 
         return reconstruction;
@@ -1236,47 +1178,36 @@ namespace Rtx
 
         // **The scene's own, filled here rather than by the caller.** A doll and a map tile are
         // handed constants that describe a camera, and whether the scene behind that camera holds a
-        // cloud is this renderer's to answer. Copied because the caller's block is theirs.
-        Shaders::VisibilityConstants shown = camera;
-        shown.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
+        // cloud is this renderer's to answer. It is the only one of `sampleCamera`'s fields a
+        // picture wants: nothing jitters one, nothing upscales one, and there is no frame before it
+        // to reproject against. Copied because the caller's block is theirs.
+        Shaders::VisibilityConstants sampled = camera;
+        sampled.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
         // picture drawn between two of them would overwrite both. The buffer is still bound because
         // the shader writes it whatever anyone does with the number, and it is the frame's, which
         // `renderFrame` zeroes before it counts.
         mPool.submitAndWait([&](VkCommandBuffer commands) {
-            const Image& bytes = *mViewTarget;
-            for (const Image* image : { &mView.getColour(), &bytes })
-                image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-
-            if (hasSea(camera))
-                mWaves.record(commands, camera.mTime);
-
-            traced.mBuffers->binSprites(mSpriteShade, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
-                Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mWorld.mGraveyard });
-
             const GBuffer& channels = mView.getChannels();
 
-            channels.begin(commands);
-            mPass->record(commands, inputs, channels, mRing.recording().mHitCount, shown, true, nullptr);
-            channels.handOver(commands);
-
-            // A doll and a map tile are one frame with no frame before them, so the accumulator is
-            // a pass-through that says so: no history, and the largest variance there is, which is
-            // what tells the cascade to filter as widely as it can.
-            const Image& indirect = mView.recordDenoise(commands, camera.mCamera, camera.mFar, true, nullptr);
-
-            mComposite.record(commands, channels, indirect, nullptr, mView.getColour(),
-                Shaders::CompositeConstants{
-                    .mWidth = options.mWidth,
-                    .mHeight = options.mHeight,
+            // A doll and a map tile are one frame with no frame before them, so every history says
+            // so: the accumulator becomes a pass-through handing on the largest variance there is,
+            // which is what tells the cascade to filter as widely as it can.
+            mView.record(commands,
+                TraceRecording{
+                    .mVisibility = mPass.get(),
+                    .mComposite = &mComposite,
+                    .mSpriteBin = &mSpriteBin,
+                    .mSpriteShade = &mSpriteShade,
+                    .mInputs = inputs,
+                    .mBuffers = traced.mBuffers.get(),
+                    .mGraveyard = &mRing.recording().mWorld.mGraveyard,
+                    .mAsked = camera,
+                    .mSampled = sampled,
+                    .mCounts = &mRing.recording().mHitCount,
+                    .mTarget = mViewTarget.get(),
                 });
-
-            mView.getColour().transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
             // **One, and measured off nothing.** A picture inside the interface is looked at beside
             // the widgets around it, and an exposure that drifted with what the doll was wearing

@@ -7,6 +7,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "graphicspipeline.hpp"
+#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -44,7 +45,6 @@ namespace Rtx
         /// @param targetFormat the format of the image this will draw over. Fixed at construction
         ///        because a pipeline is compiled against it; a resize does not change it.
         GuiPass(const Device& device, const std::filesystem::path& shaderDirectory, VkFormat targetFormat);
-        ~GuiPass();
 
         GuiPass(const GuiPass&) = delete;
         GuiPass& operator=(const GuiPass&) = delete;
@@ -59,14 +59,14 @@ namespace Rtx
             VkCommandBuffer commands, const Image& target, VkBuffer vertices, std::span<const GuiDraw> draws) const;
 
     private:
-        const Device& mDevice;
-
         /// **Two, because a blend mode is baked into a pipeline.** The alternative is
         /// `VK_EXT_extended_dynamic_state3`, which is a device feature to require and a driver
         /// path to trust for something that is two objects compiled once at startup.
         GraphicsPipeline mOver;
         GraphicsPipeline mAdditive;
 
-        VkSampler mSampler = VK_NULL_HANDLE;
+        /// Clamped, because a widget's atlas entry runs to the edge of what it was given and
+        /// wrapping would fetch the glyph next to it.
+        Sampler mSampler;
     };
 }

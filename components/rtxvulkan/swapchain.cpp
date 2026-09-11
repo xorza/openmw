@@ -118,11 +118,6 @@ namespace Rtx
         Log(Debug::Info) << "Swapchain: " << mImages.size() << " images, " << nameOf(mPresentMode);
     }
 
-    Swapchain::~Swapchain()
-    {
-        destroy();
-    }
-
     void Swapchain::create(VkExtent2D extent)
     {
         VkSurfaceCapabilitiesKHR capabilities{};
@@ -180,20 +175,20 @@ namespace Rtx
             .presentMode = mPresentMode,
             .clipped = VK_TRUE,
         };
-        checkVk(vkCreateSwapchainKHR(mDevice.getHandle(), &create, nullptr, &mHandle), "vkCreateSwapchainKHR");
+        checkVk(vkCreateSwapchainKHR(mDevice.getHandle(), &create, nullptr, mHandle.put(mDevice.getHandle())),
+            "vkCreateSwapchainKHR");
 
         std::uint32_t count = 0;
-        checkVk(vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle, &count, nullptr), "vkGetSwapchainImagesKHR");
-        mImages.resize(count);
         checkVk(
-            vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle, &count, mImages.data()), "vkGetSwapchainImagesKHR");
+            vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle.get(), &count, nullptr), "vkGetSwapchainImagesKHR");
+        mImages.resize(count);
+        checkVk(vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle.get(), &count, mImages.data()),
+            "vkGetSwapchainImagesKHR");
     }
 
     void Swapchain::destroy()
     {
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroySwapchainKHR(mDevice.getHandle(), mHandle, nullptr);
-        mHandle = VK_NULL_HANDLE;
+        mHandle.reset();
         mImages.clear();
     }
 
@@ -230,7 +225,7 @@ namespace Rtx
         // sit in: a compositor that stops handing images back is indistinguishable from one that is
         // merely slow, and forever is not an answer a frame loop can act on.
         const VkResult result
-            = vkAcquireNextImageKHR(mDevice.getHandle(), mHandle, sPatience, ready, VK_NULL_HANDLE, &index);
+            = vkAcquireNextImageKHR(mDevice.getHandle(), mHandle.get(), sPatience, ready, VK_NULL_HANDLE, &index);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             return false;
@@ -254,13 +249,14 @@ namespace Rtx
             .pFences = &presented,
         };
 
+        const VkSwapchainKHR presenting = mHandle.get();
         const VkPresentInfoKHR present{
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .pNext = presented != VK_NULL_HANDLE ? &signalled : nullptr,
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &finished,
             .swapchainCount = 1,
-            .pSwapchains = &mHandle,
+            .pSwapchains = &presenting,
             .pImageIndices = &index,
         };
 

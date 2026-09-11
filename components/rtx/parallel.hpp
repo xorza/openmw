@@ -6,7 +6,6 @@
 #include <exception>
 #include <mutex>
 #include <thread>
-#include <utility>
 #include <vector>
 
 namespace Rtx
@@ -27,6 +26,12 @@ namespace Rtx
     /// threw stops that turn and not the run, because a caller that asked for a batch wants to know
     /// about the batch.
     ///
+    /// **Each hand gets its own copy of both callables**, which is the contract the standard's own
+    /// parallel algorithms keep and what lets a caller pass a body with state of its own. One
+    /// object invoked from every thread at once is a data race the compiler has nothing to say
+    /// about: today's callers all pass lambdas whose `operator()` is const, and the next one need
+    /// not.
+    ///
     /// @param equip what each hand holds for as long as it runs, built on that hand's own thread
     ///        and destroyed there. The Vulkan backend files a validation message under the thread
     ///        that asked for the work this way — the layers report on the calling thread, and a
@@ -41,32 +46,30 @@ namespace Rtx
         std::mutex kept;
         std::exception_ptr failed;
 
-        const auto hand = [&] {
-            // Held for the hand's whole run and read by nothing: what it is for is its life.
-            [[maybe_unused]] const auto held = equip();
-
-            for (std::size_t at = next++; at < count; at = next++)
-            {
-                try
-                {
-                    body(at);
-                }
-                catch (...)
-                {
-                    const std::lock_guard<std::mutex> hold(kept);
-                    if (failed == nullptr)
-                        failed = std::current_exception();
-                }
-            }
-        };
-
         {
             const auto hands = std::clamp<std::size_t>(std::thread::hardware_concurrency(), 1, count);
 
             std::vector<std::jthread> running;
             running.reserve(hands);
             for (std::size_t at = 0; at < hands; ++at)
-                running.emplace_back(hand);
+                running.emplace_back([&next, &kept, &failed, count, equip, body]() mutable {
+                    // Held for the hand's whole run and read by nothing: what it is for is its life.
+                    [[maybe_unused]] const auto held = equip();
+
+                    for (std::size_t index = next++; index < count; index = next++)
+                    {
+                        try
+                        {
+                            body(index);
+                        }
+                        catch (...)
+                        {
+                            const std::lock_guard<std::mutex> hold(kept);
+                            if (failed == nullptr)
+                                failed = std::current_exception();
+                        }
+                    }
+                });
         }
 
         if (failed != nullptr)

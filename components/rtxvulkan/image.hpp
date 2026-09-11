@@ -135,6 +135,20 @@ namespace Rtx
         std::uint32_t mTexelBytes = 0;
     };
 
+    /// A one-texel image for a binding a shader declares and a branch never reads.
+    ///
+    /// **A descriptor has to point somewhere.** A caller that bound the real thing regardless would
+    /// carry a full-size image for a binding nothing looks at — sixteen bytes a pixel is 133 MiB at
+    /// 4K. Laid out here once and then never moved again, because a bound image has to be in the
+    /// layout its descriptor names whether the shader reads it or not.
+    ///
+    /// **What it is laid out for follows from `usage`**, because a storage image is read as one
+    /// access and a sampled image as the other, and no caller has ever wanted the pair to disagree.
+    ///
+    /// Submits and waits, so it belongs to a pass's construction rather than to a frame.
+    Image makeStandIn(
+        const Device& device, CommandPool& pool, VkFormat format, VkImageUsageFlags usage, std::string_view name);
+
     /// A run of image dependencies emitted as one command.
     ///
     /// **One `vkCmdPipelineBarrier2` for a handover, not one per image.** The G-buffer's fourteen

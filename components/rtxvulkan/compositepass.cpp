@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstdint>
 
-#include "commands.hpp"
 #include "dispatch.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
@@ -21,15 +20,8 @@ namespace Rtx
     CompositePass::CompositePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
         : mPipeline(device, sBindings, sizeof(Shaders::CompositeConstants), {}, shaderDirectory / "composite.comp.spv",
             "composite")
-        , mNoSum(device, 1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-sum")
+        , mNoSum(makeStandIn(device, pool, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-sum"))
     {
-        // A bound storage image has to be in the layout its descriptor names whether the shader
-        // reads it or not, so the one texel is laid out here and never leaves `GENERAL` again.
-        pool.submitAndWait([this](VkCommandBuffer commands) {
-            mNoSum.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-        });
     }
 
     void CompositePass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& indirect, const Image* sum,

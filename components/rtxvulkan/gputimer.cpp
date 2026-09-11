@@ -51,17 +51,12 @@ namespace Rtx
             .pipelineStatistics = 0,
         };
 
-        checkVk(vkCreateQueryPool(device.getHandle(), &info, nullptr, &mHandle), "vkCreateQueryPool");
-        device.setName(VK_OBJECT_TYPE_QUERY_POOL, reinterpret_cast<std::uint64_t>(mHandle), "frame timestamps");
+        checkVk(vkCreateQueryPool(device.getHandle(), &info, nullptr, mHandle.put(device.getHandle())),
+            "vkCreateQueryPool");
+        device.setName(VK_OBJECT_TYPE_QUERY_POOL, reinterpret_cast<std::uint64_t>(mHandle.get()), "frame timestamps");
 
         mZones.reserve(sMaxZones);
         mSpans.reserve(sMaxZones);
-    }
-
-    GpuTimer::~GpuTimer()
-    {
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyQueryPool(mDevice.getHandle(), mHandle, nullptr);
     }
 
     void GpuTimer::beginFrame()
@@ -90,8 +85,8 @@ namespace Rtx
         // **Reset here rather than once per command buffer.** The zones of one frame are spread over
         // three submits and this class is not told where the boundaries are; resetting the pair
         // about to be written, in the buffer about to write it, is correct wherever it lands.
-        vkCmdResetQueryPool(commands, mHandle, first, 2);
-        vkCmdWriteTimestamp2(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle, first);
+        vkCmdResetQueryPool(commands, mHandle.get(), first, 2);
+        vkCmdWriteTimestamp2(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle.get(), first);
 
         mZones.push_back(Zone{ .mName = name, .mFirstQuery = first });
     }
@@ -103,7 +98,8 @@ namespace Rtx
         if (!mSupported || mOpen == mZones.size())
             return;
 
-        vkCmdWriteTimestamp2(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle, mZones[mOpen].mFirstQuery + 1);
+        vkCmdWriteTimestamp2(
+            commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle.get(), mZones[mOpen].mFirstQuery + 1);
         ++mOpen;
     }
 
@@ -120,8 +116,8 @@ namespace Rtx
         // Waiting rather than polling for availability: every submit these were written into has
         // already been fenced, so the results are there and the flag costs nothing.
         checkVk(mDevice,
-            vkGetQueryPoolResults(mDevice.getHandle(), mHandle, 0, count, count * sizeof(std::uint64_t), ticks.data(),
-                sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+            vkGetQueryPoolResults(mDevice.getHandle(), mHandle.get(), 0, count, count * sizeof(std::uint64_t),
+                ticks.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
             "vkGetQueryPoolResults");
 
         mSpans.clear();

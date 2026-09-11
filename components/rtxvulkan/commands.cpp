@@ -22,25 +22,18 @@ namespace Rtx
             .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
             .queueFamilyIndex = device.getQueueFamily(),
         };
-        checkVk(vkCreateCommandPool(device.getHandle(), &create, nullptr, &mHandle), "vkCreateCommandPool");
+        checkVk(vkCreateCommandPool(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())),
+            "vkCreateCommandPool");
 
         const VkFenceCreateInfo fence{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-        checkVk(vkCreateFence(device.getHandle(), &fence, nullptr, &mFence), "vkCreateFence");
-    }
-
-    CommandPool::~CommandPool()
-    {
-        if (mFence != VK_NULL_HANDLE)
-            vkDestroyFence(mDevice.getHandle(), mFence, nullptr);
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyCommandPool(mDevice.getHandle(), mHandle, nullptr);
+        checkVk(vkCreateFence(device.getHandle(), &fence, nullptr, mFence.put(device.getHandle())), "vkCreateFence");
     }
 
     void CommandPool::reset()
     {
         assert(mDeferred.empty() && "a batch deferred to a submit that never came");
 
-        checkVk(vkResetCommandPool(mDevice.getHandle(), mHandle, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT),
+        checkVk(vkResetCommandPool(mDevice.getHandle(), mHandle.get(), VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT),
             "vkResetCommandPool");
     }
 
@@ -118,14 +111,14 @@ namespace Rtx
     {
         if (!commands.empty())
             vkFreeCommandBuffers(
-                mDevice.getHandle(), mHandle, static_cast<std::uint32_t>(commands.size()), commands.data());
+                mDevice.getHandle(), mHandle.get(), static_cast<std::uint32_t>(commands.size()), commands.data());
     }
 
     std::vector<VkCommandBuffer> CommandPool::allocate(std::uint32_t count)
     {
         const VkCommandBufferAllocateInfo allocate{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = mHandle,
+            .commandPool = mHandle.get(),
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = count,
         };
@@ -148,7 +141,7 @@ namespace Rtx
     {
         const VkCommandBufferAllocateInfo allocate{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = mHandle,
+            .commandPool = mHandle.get(),
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = 1,
         };
@@ -163,8 +156,8 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        submitWithDeferred(commands, mFence);
-        awaitVk(mDevice, mFence, "a one-off submit");
+        submitWithDeferred(commands, mFence.get());
+        awaitVk(mDevice, mFence.get(), "a one-off submit");
 
         // The copies have run, so this is where a deferred batch's staging stops being read, and
         // where every buffer that carried one can go back to the pool.

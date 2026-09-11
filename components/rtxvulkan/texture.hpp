@@ -11,6 +11,8 @@
 #include <components/rtx/texturedata.hpp>
 
 #include "image.hpp"
+#include "owned.hpp"
+#include "sampler.hpp"
 #include "setlayout.hpp"
 
 namespace Rtx
@@ -112,7 +114,6 @@ namespace Rtx
         /// one.
         TextureArray(const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures,
             Graveyard& graveyard);
-        ~TextureArray();
 
         /// Writes each of `arrived` into the slot it names, leaving every other texture alone.
         ///
@@ -180,9 +181,9 @@ namespace Rtx
         /// reason `drop` gives.
         std::vector<Texture> mTextures;
 
-        VkSampler mSampler = VK_NULL_HANDLE;
+        Sampler mSampler;
         SetLayout mLayout;
-        VkDescriptorPool mPool = VK_NULL_HANDLE;
+        Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
         VkDescriptorSet mSet = VK_NULL_HANDLE;
     };
 }

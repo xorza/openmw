@@ -284,4 +284,22 @@ namespace Rtx
         pixels.resize(bytes);
         std::memcpy(pixels.data(), staging.map(), bytes);
     }
+
+    Image makeStandIn(const Device& device, CommandPool& pool, const VkFormat format, const VkImageUsageFlags usage,
+        const std::string_view name)
+    {
+        assert((usage == VK_IMAGE_USAGE_STORAGE_BIT || usage == VK_IMAGE_USAGE_SAMPLED_BIT)
+            && "a stand-in is read one way or the other, never both");
+
+        Image made(device, 1, 1, format, usage, name);
+
+        const VkAccessFlags2 read = usage == VK_IMAGE_USAGE_STORAGE_BIT ? VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                                                        : VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+        pool.submitAndWait([&](VkCommandBuffer commands) {
+            made.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, read);
+        });
+
+        return made;
+    }
 }

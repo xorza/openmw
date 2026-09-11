@@ -8,6 +8,8 @@
 
 #include <components/sdlutil/vsyncmode.hpp>
 
+#include "owned.hpp"
+
 struct SDL_Window;
 
 namespace Rtx
@@ -116,7 +118,7 @@ namespace Rtx
         /// What an acquire signals and the blit behind it waits.
         struct Acquisition
         {
-            VkSemaphore mSemaphore = VK_NULL_HANDLE;
+            Owned<VkSemaphore, vkDestroySemaphore> mSemaphore;
 
             /// Signalled once the blit that took this slot has run. Null until something takes it.
             VkFence mBlit = VK_NULL_HANDLE;
@@ -140,11 +142,11 @@ namespace Rtx
         /// Signalled by the blit and waited by the present. **Per swapchain image and not one**: a
         /// present may still be reading the semaphore a frame signalled, and there is no fence that
         /// says when it stopped.
-        std::vector<VkSemaphore> mRendered;
+        std::vector<Owned<VkSemaphore, vkDestroySemaphore>> mRendered;
 
         /// What the last blit onto each image signalled, so one is not written again while its
         /// present is still outstanding.
-        std::vector<VkFence> mPresenting;
+        std::vector<Owned<VkFence, vkDestroyFence>> mPresenting;
 
         /// What the presentation engine signals when it has finished with each image, where the
         /// device offers `VK_KHR_swapchain_maintenance1`. Empty where it does not.
@@ -158,7 +160,7 @@ namespace Rtx
         /// of these safe: the specification states that a request the presentation engine rejects
         /// with `VK_ERROR_OUT_OF_DATE_KHR` leaves its queue operations enqueued, so the signal still
         /// happens. A stale swapchain is the ordinary way a window is resized.
-        std::vector<VkFence> mPresented;
+        std::vector<Owned<VkFence, vkDestroyFence>> mPresented;
 
         std::vector<VkCommandBuffer> mCommands;
 

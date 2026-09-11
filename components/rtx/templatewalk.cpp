@@ -5,10 +5,9 @@
 #include <osg/Drawable>
 #include <osg/Sequence>
 #include <osg/StateSet>
-#include <osg/Switch>
 #include <osg/Transform>
 
-#include "nodelibrary.hpp"
+#include "worlddescent.hpp"
 
 namespace Rtx
 {
@@ -74,30 +73,12 @@ namespace Rtx
         mShading.resize(held);
     }
 
+    /// **The frame the sequence stands on, and no step.** The frame's walk runs a flipbook's clock
+    /// and then walks the frame it settled on; a template's clock is nobody's to run, so what a
+    /// distant fire shows is the frame its file was authored to open on — which is what the paging
+    /// this replaces showed of it too.
     void TemplateWalk::descend(osg::Node& node)
     {
-        if (osg::Switch* branches = node.asSwitch())
-        {
-            for (unsigned int at = 0; at < branches->getNumChildren(); ++at)
-                if (branches->getValue(at))
-                    branches->getChild(at)->accept(*this);
-
-            return;
-        }
-
-        // **The frame the sequence stands on, and no step.** The frame's walk runs a flipbook's
-        // clock and then walks the frame it settled on; a template's clock is nobody's to run, so
-        // what a distant fire shows is the frame its file was authored to open on — which is what
-        // the paging this replaces showed of it too.
-        if (auto* frames = isExactly(node, "Sequence") ? dynamic_cast<osg::Sequence*>(node.asGroup()) : nullptr)
-        {
-            const int shown = frames->getValue();
-            if (shown >= 0 && shown < static_cast<int>(frames->getNumChildren()))
-                frames->getChild(shown)->accept(*this);
-
-            return;
-        }
-
-        traverse(node);
+        descendInWorld(node, *this, [](osg::Sequence&) {});
     }
 }

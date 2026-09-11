@@ -21,6 +21,7 @@
 #include "preparedcell.hpp"
 #include "preparedtexture.hpp"
 #include "residency.hpp"
+#include "sortedrows.hpp"
 #include "texturebuilder.hpp"
 
 namespace Terrain
@@ -248,6 +249,25 @@ namespace Rtx
             std::uint32_t mHolders = 0;
         };
 
+        /// What each of the three tables is ordered by, stated once each so that no search can
+        /// disagree with the insertion it is looking for.
+        struct CellAt
+        {
+            /// `osg::Vec2i` orders lexicographically already, which is the order a walk over the
+            /// held cells wants: the same walk on every machine.
+            const osg::Vec2i& operator()(const HeldCell& held) const { return held.mCell; }
+        };
+
+        struct ModelAt
+        {
+            const PreparedModel* operator()(const HeldModel& held) const { return held.mModel; }
+        };
+
+        struct TextureAt
+        {
+            const osg::Image* operator()(const HeldTexture& held) const { return held.mImage; }
+        };
+
         bool inActiveGrid(const osg::Vec2i& cell) const;
         bool holds(const osg::Vec2i& cell) const;
         bool pending(const osg::Vec2i& cell) const;
@@ -372,17 +392,18 @@ namespace Rtx
         /// The frame a cell was last adopted on, so a frame walked twice adopts once.
         std::size_t mAdoptedFrame = ~std::size_t{ 0 };
 
-        /// Sorted by cell, so a walk over them is the same walk on every machine — which is what
-        /// makes the slot a placement takes a fact about the world.
-        std::vector<HeldCell> mCells;
+        /// The three tables the ring is asked about, each in the order its own `*At` states.
+        ///
+        /// **Kept when an entry goes**, which is what the spares beside two of them are for: a cell
+        /// and a model each own vectors, and a row taken back out is room the next one refills
+        /// rather than a heap call on the frame a cell lands.
+        SortedRows<HeldCell, osg::Vec2i, CellAt> mCells;
         std::vector<HeldCell> mSpareCells;
 
-        /// Sorted by the model's address, and kept when an entry goes, for the reason the cells are.
-        std::vector<HeldModel> mModels;
+        SortedRows<HeldModel, const PreparedModel*, ModelAt> mModels;
         std::vector<HeldModel> mSpareModels;
 
-        /// Sorted by the image's address.
-        std::vector<HeldTexture> mTextures;
+        SortedRows<HeldTexture, const osg::Image*, TextureAt> mTextures;
 
         /// What the thread read and the frame has not adopted yet, in the order it arrived.
         std::vector<PreparedCell*> mPending;

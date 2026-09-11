@@ -67,8 +67,7 @@ namespace Rtx
 
     FogVolume::FogVolume(
         const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
-        : mDevice(device)
-        , mColumns(columnsFor(width))
+        : mColumns(columnsFor(width))
         , mRows(columnsFor(height))
         , mScatter{ Image(device, mColumns, mRows, sFormat, sUsage, "fog scatter 0", 1, Shaders::FOG_VOLUME_SLICES),
             Image(device, mColumns, mRows, sFormat, sUsage, "fog scatter 1", 1, Shaders::FOG_VOLUME_SLICES) }
@@ -86,138 +85,107 @@ namespace Rtx
         , mColumnSources(device, mColumns, mRows, FOG_SOURCES_FORMAT,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column sources", 1,
               Shaders::SKY_SOURCES)
+        , mSampler(Sampler::forTarget(device, "fog volume"))
     {
-        try
+        const auto sets = static_cast<std::uint32_t>(mSets.size());
+        const std::array<VkDescriptorPoolSize, 2> sizes{
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sSampled * sets },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (sBindings - sSampled) * sets },
+        };
+        const VkDescriptorPoolCreateInfo describePool{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .maxSets = sets,
+            .poolSizeCount = static_cast<std::uint32_t>(sizes.size()),
+            .pPoolSizes = sizes.data(),
+        };
+        checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, mPool.put(device.getHandle())),
+            "vkCreateDescriptorPool");
+
+        const std::array<VkDescriptorSetLayout, 2> shapes{ layout.getHandle(), layout.getHandle() };
+        const VkDescriptorSetAllocateInfo allocate{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = mPool.get(),
+            .descriptorSetCount = static_cast<std::uint32_t>(shapes.size()),
+            .pSetLayouts = shapes.data(),
+        };
+        checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, mSets.data()), "vkAllocateDescriptorSets");
+
+        // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
+        // `BloomPass` gives: these are written as storage images and read as sampled ones a
+        // dispatch apart, and `GENERAL` is the one layout both accesses are legal from.
+        for (std::size_t parity = 0; parity < mSets.size(); ++parity)
         {
-            const VkSamplerCreateInfo describeSampler{
-                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                .magFilter = VK_FILTER_LINEAR,
-                .minFilter = VK_FILTER_LINEAR,
-                .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            };
-            checkVk(vkCreateSampler(mDevice.getHandle(), &describeSampler, nullptr, &mSampler), "vkCreateSampler");
+            const std::size_t written = parity;
+            const std::size_t history = 1 - parity;
 
-            const auto sets = static_cast<std::uint32_t>(mSets.size());
-            const std::array<VkDescriptorPoolSize, 2> sizes{
-                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sSampled * sets },
-                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (sBindings - sSampled) * sets },
-            };
-            const VkDescriptorPoolCreateInfo describePool{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                .maxSets = sets,
-                .poolSizeCount = static_cast<std::uint32_t>(sizes.size()),
-                .pPoolSizes = sizes.data(),
-            };
-            checkVk(
-                vkCreateDescriptorPool(mDevice.getHandle(), &describePool, nullptr, &mPool), "vkCreateDescriptorPool");
+            std::array<const Image*, sBindings> named{};
+            named[Shaders::BIND_FOG_WAS_SCATTER] = &mScatter[history];
+            named[Shaders::BIND_FOG_WAS_SUNWARD] = &mSunward[history];
+            named[Shaders::BIND_FOG_SCATTER] = &mScatter[written];
+            named[Shaders::BIND_FOG_SUNWARD] = &mSunward[written];
+            named[Shaders::BIND_FOG_LAMPS] = &mLamps;
+            named[Shaders::BIND_FOG_AIR] = &mAir;
+            named[Shaders::BIND_FOG_AIR_SUNWARD] = &mAirSunward;
+            named[Shaders::BIND_FOG_SLICE] = &mSlice;
+            named[Shaders::BIND_FOG_SLICE_SUNWARD] = &mSliceSunward;
+            named[Shaders::BIND_FOG_SCATTER_TARGET] = &mScatter[written];
+            named[Shaders::BIND_FOG_SUNWARD_TARGET] = &mSunward[written];
+            named[Shaders::BIND_FOG_LAMPS_TARGET] = &mLamps;
+            named[Shaders::BIND_FOG_AIR_TARGET] = &mAir;
+            named[Shaders::BIND_FOG_AIR_SUNWARD_TARGET] = &mAirSunward;
+            named[Shaders::BIND_FOG_SLICE_TARGET] = &mSlice;
+            named[Shaders::BIND_FOG_SLICE_SUNWARD_TARGET] = &mSliceSunward;
+            named[Shaders::BIND_FOG_COLUMN_DEPTH] = &mColumnDepth;
+            named[Shaders::BIND_FOG_COLUMN_SOURCES] = &mColumnSources;
 
-            const std::array<VkDescriptorSetLayout, 2> shapes{ layout.getHandle(), layout.getHandle() };
-            const VkDescriptorSetAllocateInfo allocate{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = mPool,
-                .descriptorSetCount = static_cast<std::uint32_t>(shapes.size()),
-                .pSetLayouts = shapes.data(),
-            };
-            checkVk(vkAllocateDescriptorSets(mDevice.getHandle(), &allocate, mSets.data()), "vkAllocateDescriptorSets");
-
-            // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
-            // `BloomPass` gives: these are written as storage images and read as sampled ones a
-            // dispatch apart, and `GENERAL` is the one layout both accesses are legal from.
-            for (std::size_t parity = 0; parity < mSets.size(); ++parity)
+            std::array<VkDescriptorImageInfo, sBindings> views{};
+            std::array<VkWriteDescriptorSet, sBindings> writes{};
+            for (std::uint32_t binding = 0; binding < sBindings; ++binding)
             {
-                const std::size_t written = parity;
-                const std::size_t history = 1 - parity;
-
-                std::array<const Image*, sBindings> named{};
-                named[Shaders::BIND_FOG_WAS_SCATTER] = &mScatter[history];
-                named[Shaders::BIND_FOG_WAS_SUNWARD] = &mSunward[history];
-                named[Shaders::BIND_FOG_SCATTER] = &mScatter[written];
-                named[Shaders::BIND_FOG_SUNWARD] = &mSunward[written];
-                named[Shaders::BIND_FOG_LAMPS] = &mLamps;
-                named[Shaders::BIND_FOG_AIR] = &mAir;
-                named[Shaders::BIND_FOG_AIR_SUNWARD] = &mAirSunward;
-                named[Shaders::BIND_FOG_SLICE] = &mSlice;
-                named[Shaders::BIND_FOG_SLICE_SUNWARD] = &mSliceSunward;
-                named[Shaders::BIND_FOG_SCATTER_TARGET] = &mScatter[written];
-                named[Shaders::BIND_FOG_SUNWARD_TARGET] = &mSunward[written];
-                named[Shaders::BIND_FOG_LAMPS_TARGET] = &mLamps;
-                named[Shaders::BIND_FOG_AIR_TARGET] = &mAir;
-                named[Shaders::BIND_FOG_AIR_SUNWARD_TARGET] = &mAirSunward;
-                named[Shaders::BIND_FOG_SLICE_TARGET] = &mSlice;
-                named[Shaders::BIND_FOG_SLICE_SUNWARD_TARGET] = &mSliceSunward;
-                named[Shaders::BIND_FOG_COLUMN_DEPTH] = &mColumnDepth;
-                named[Shaders::BIND_FOG_COLUMN_SOURCES] = &mColumnSources;
-
-                std::array<VkDescriptorImageInfo, sBindings> views{};
-                std::array<VkWriteDescriptorSet, sBindings> writes{};
-                for (std::uint32_t binding = 0; binding < sBindings; ++binding)
-                {
-                    views[binding] = VkDescriptorImageInfo{ sampledAt(binding) ? mSampler : VK_NULL_HANDLE,
-                        sampledAt(binding) ? named[binding]->getView() : named[binding]->getStorageView(),
-                        VK_IMAGE_LAYOUT_GENERAL };
-                    writes[binding] = VkWriteDescriptorSet{
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = mSets[parity],
-                        .dstBinding = binding,
-                        .descriptorCount = 1,
-                        .descriptorType = sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-                                                             : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                        .pImageInfo = &views[binding],
-                    };
-                }
-
-                vkUpdateDescriptorSets(mDevice.getHandle(), sBindings, writes.data(), 0, nullptr);
+                views[binding] = VkDescriptorImageInfo{ sampledAt(binding) ? mSampler.get() : VK_NULL_HANDLE,
+                    sampledAt(binding) ? named[binding]->getView() : named[binding]->getStorageView(),
+                    VK_IMAGE_LAYOUT_GENERAL };
+                writes[binding] = VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = mSets[parity],
+                    .dstBinding = binding,
+                    .descriptorCount = 1,
+                    .descriptorType
+                    = sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                    .pImageInfo = &views[binding],
+                };
             }
 
-            // **Emptied and in `GENERAL` from the moment they exist**, which `createTargets` says of
-            // the frame's own targets for the same reason. `begin` does not discard the point pair,
-            // so the first frame after this reads a history nothing has written — and what an image
-            // holds when it is made is whatever was last in that memory. That read was safe only
-            // while every resource had a `vkAllocateMemory` of its own and the driver handed back
-            // zeroed pages. Over a suballocator's range it is a departed image's bits instead, and
-            // what the frame draws is then a radiance nothing accounts for. Nothing scattered is the
-            // one history a first frame can reproject.
-            pool.submitAndWait([&](VkCommandBuffer commands) {
-                constexpr VkClearColorValue nothing{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
-                constexpr VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-
-                for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,
-                         &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth, &mColumnSources })
-                {
-                    image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                        VK_ACCESS_2_TRANSFER_WRITE_BIT);
-
-                    vkCmdClearColorImage(
-                        commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &nothing, 1, &whole);
-
-                    image->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                        VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-                }
-            });
+            vkUpdateDescriptorSets(device.getHandle(), sBindings, writes.data(), 0, nullptr);
         }
-        catch (...)
-        {
-            destroy();
-            throw;
-        }
-    }
 
-    FogVolume::~FogVolume()
-    {
-        destroy();
-    }
+        // **Emptied and in `GENERAL` from the moment they exist**, which `createTargets` says of
+        // the frame's own targets for the same reason. `begin` does not discard the point pair,
+        // so the first frame after this reads a history nothing has written — and what an image
+        // holds when it is made is whatever was last in that memory. That read was safe only
+        // while every resource had a `vkAllocateMemory` of its own and the driver handed back
+        // zeroed pages. Over a suballocator's range it is a departed image's bits instead, and
+        // what the frame draws is then a radiance nothing accounts for. Nothing scattered is the
+        // one history a first frame can reproject.
+        pool.submitAndWait([&](VkCommandBuffer commands) {
+            constexpr VkClearColorValue nothing{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
+            constexpr VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
-    void FogVolume::destroy()
-    {
-        if (mPool != VK_NULL_HANDLE)
-            vkDestroyDescriptorPool(mDevice.getHandle(), mPool, nullptr);
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
+            for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,
+                     &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth, &mColumnSources })
+            {
+                image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                    VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+                vkCmdClearColorImage(
+                    commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &nothing, 1, &whole);
+
+                image->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            }
+        });
     }
 
     void FogVolume::begin(VkCommandBuffer commands, std::uint64_t frame) const

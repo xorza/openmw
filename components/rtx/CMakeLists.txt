@@ -162,6 +162,7 @@ set(RTX_FILES
     slot.hpp
     slotpool.hpp
     slotrows.hpp
+    sortedrows.hpp
     scenetables.cpp
     scenetables.hpp
     texelreader.cpp
@@ -176,6 +177,7 @@ set(RTX_FILES
     wavecascade.cpp
     wavecascade.hpp
     worker.hpp
+    worlddescent.hpp
     wavespectrum.cpp
     wavespectrum.hpp
 )

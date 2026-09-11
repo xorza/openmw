@@ -68,19 +68,6 @@ namespace Rtx
             return std::abs(cell.x() - eye.x()) <= band && std::abs(cell.y() - eye.y()) <= band;
         }
 
-        /// The order the held cells are kept in: `osg::Vec2i` orders lexicographically already,
-        /// and a cell and a held cell are both asked by it.
-        const osg::Vec2i& cellKey(const osg::Vec2i& cell)
-        {
-            return cell;
-        }
-
-        template <class Held>
-        const osg::Vec2i& cellKey(const Held& held)
-        {
-            return held.mCell;
-        }
-
     }
 
     CellRing::CellRing(SceneDesc& scene)
@@ -170,12 +157,8 @@ namespace Rtx
 
     const PreparedTexture* CellRing::find(const osg::Image& image) const
     {
-        const auto at = std::lower_bound(mTextures.begin(), mTextures.end(), &image,
-            [](const HeldTexture& held, const osg::Image* wanted) { return held.mImage < wanted; });
-        if (at == mTextures.end() || at->mImage != &image)
-            return nullptr;
-
-        return at->mTexture;
+        const HeldTexture* const held = mTextures.find(&image);
+        return held != nullptr ? held->mTexture : nullptr;
     }
 
     bool CellRing::inActiveGrid(const osg::Vec2i& cell) const
@@ -186,8 +169,7 @@ namespace Rtx
 
     bool CellRing::holds(const osg::Vec2i& cell) const
     {
-        return std::binary_search(mCells.begin(), mCells.end(), cell,
-            [](const auto& left, const auto& right) { return cellKey(left) < cellKey(right); });
+        return mCells.contains(cell);
     }
 
     bool CellRing::pending(const osg::Vec2i& cell) const
@@ -219,67 +201,65 @@ namespace Rtx
     void CellRing::holdTexture(const PreparedTexture& texture)
     {
         const osg::Image* const image = texture.mImage.get();
-        const auto at = std::lower_bound(mTextures.begin(), mTextures.end(), image,
-            [](const HeldTexture& held, const osg::Image* wanted) { return held.mImage < wanted; });
-        if (at != mTextures.end() && at->mImage == image)
-            ++at->mHolders;
-        else
-            mTextures.insert(at, HeldTexture{ .mImage = image, .mTexture = &texture, .mHolders = 1 });
+        HeldTexture& held = mTextures.findOrInsert(
+            image, [&] { return HeldTexture{ .mImage = image, .mTexture = &texture, .mHolders = 0 }; });
+
+        ++held.mHolders;
     }
 
     void CellRing::dropTexture(const PreparedTexture& texture)
     {
         const osg::Image* const image = texture.mImage.get();
-        const auto at = std::lower_bound(mTextures.begin(), mTextures.end(), image,
-            [](const HeldTexture& held, const osg::Image* wanted) { return held.mImage < wanted; });
-        assert(at != mTextures.end() && at->mImage == image && "a reading dropped that was never held");
+        HeldTexture* const held = mTextures.find(image);
+        assert(held != nullptr && "a reading dropped that was never held");
 
-        if (--at->mHolders == 0)
-            mTextures.erase(at);
+        if (--held->mHolders == 0)
+            mTextures.erase(image);
     }
 
     CellRing::HeldModel& CellRing::know(PreparedModel& model)
     {
-        const auto at = std::lower_bound(mModels.begin(), mModels.end(), &model,
-            [](const HeldModel& held, const PreparedModel* wanted) { return held.mModel < wanted; });
-        if (at != mModels.end() && at->mModel == &model)
-            return *at;
+        bool made = false;
+        HeldModel& known = mModels.findOrInsert(&model, [&] {
+            made = true;
 
-        HeldModel known;
-        if (!mSpareModels.empty())
-        {
-            known = std::move(mSpareModels.back());
-            mSpareModels.pop_back();
-        }
+            HeldModel taking;
+            if (!mSpareModels.empty())
+            {
+                taking = std::move(mSpareModels.back());
+                mSpareModels.pop_back();
+            }
 
-        known.mModel = &model;
-        known.mParts.clear();
-        known.mHeld = 0;
-        known.mPending = 0;
+            taking.mModel = &model;
+            taking.mParts.clear();
+            taking.mHeld = 0;
+            taking.mPending = 0;
+            return taking;
+        });
 
-        // The images the model names, for `find`: counted per model that names them.
-        for (const PreparedTexture* texture : model.mTextures)
-            holdTexture(*texture);
+        // The images the model names, for `find`: counted per model that names them, so only the
+        // first to know it counts.
+        if (made)
+            for (const PreparedTexture* texture : model.mTextures)
+                holdTexture(*texture);
 
-        return *mModels.insert(at, std::move(known));
+        return known;
     }
 
     CellRing::HeldModel& CellRing::knownOf(const PreparedModel& model)
     {
-        const auto at = std::lower_bound(mModels.begin(), mModels.end(), &model,
-            [](const HeldModel& held, const PreparedModel* wanted) { return held.mModel < wanted; });
-        assert(at != mModels.end() && at->mModel == &model && "a model the frame was never told of");
+        HeldModel* const known = mModels.find(&model);
+        assert(known != nullptr && "a model the frame was never told of");
 
-        return *at;
+        return *known;
     }
 
     void CellRing::release(PreparedModel& model, const bool wasHeld)
     {
-        const auto at = std::lower_bound(mModels.begin(), mModels.end(), &model,
-            [](const HeldModel& held, const PreparedModel* wanted) { return held.mModel < wanted; });
-        assert(at != mModels.end() && at->mModel == &model && "a model released that the frame never knew of");
+        HeldModel* const found = mModels.find(&model);
+        assert(found != nullptr && "a model released that the frame never knew of");
 
-        HeldModel& known = *at;
+        HeldModel& known = *found;
         if (wasHeld)
             --known.mHeld;
         else
@@ -291,8 +271,7 @@ namespace Rtx
         for (const PreparedTexture* texture : model.mTextures)
             dropTexture(*texture);
 
-        mSpareModels.push_back(std::move(known));
-        mModels.erase(at);
+        mSpareModels.push_back(mModels.take(&model));
     }
 
     void CellRing::giveBackHolds(
@@ -527,9 +506,7 @@ namespace Rtx
                 });
         }
 
-        const auto at = std::lower_bound(mCells.begin(), mCells.end(), held.mCell,
-            [](const HeldCell& left, const osg::Vec2i& right) { return cellKey(left) < cellKey(right); });
-        mCells.insert(at, std::move(held));
+        mCells.insert(std::move(held));
 
         mSupply.giveBack().mCells.push_back(&cell);
     }

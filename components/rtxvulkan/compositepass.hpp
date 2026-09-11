@@ -47,12 +47,8 @@ namespace Rtx
     private:
         ComputePipeline mPipeline;
 
-        /// What the sum's binding points at when nothing is being summed.
-        ///
-        /// **A descriptor has to point somewhere and this one is never read.** The shader touches
-        /// the sum only inside `if (mAccumulate > 0u)`, so a caller that never averages would
-        /// otherwise carry a full-size float image for a binding nothing looks at — sixteen bytes a
-        /// pixel, which is 133 MiB at 4K. One texel does the same job.
+        /// What the sum's binding points at when nothing is being summed. The shader touches the
+        /// sum only inside `if (mAccumulate > 0u)`, and `makeStandIn` says the rest.
         Image mNoSum;
     };
 }

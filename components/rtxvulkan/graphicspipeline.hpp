@@ -7,6 +7,9 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "owned.hpp"
+#include "pipelinelayout.hpp"
+
 namespace Rtx
 {
     class Device;
@@ -57,13 +60,9 @@ namespace Rtx
         std::string_view mName;
     };
 
-    /// A graphics pipeline, the descriptor set layout it is addressed through, and the pipeline
-    /// layout that ties the two together.
+    /// A graphics pipeline and the layout it is addressed through.
     ///
-    /// **The three are one object because they fail as one**, for the reason `ComputePipeline`
-    /// gives: a constructor that throws gets no destructor, so whatever the earlier handles took has
-    /// to be given back before the failure leaves. As a member, that unwind is written once here
-    /// rather than in every pass.
+    /// **The two are one object because they fail as one**, for the reason `ComputePipeline` gives.
     ///
     /// **The first thing in this backend that is not compute.** Everything that makes the picture is
     /// dispatched — the trace, the denoiser, exposure, the curve, the composite. This exists because
@@ -73,22 +72,17 @@ namespace Rtx
     {
     public:
         GraphicsPipeline(const Device& device, const GraphicsPipelineOptions& options);
-        ~GraphicsPipeline();
 
         GraphicsPipeline(const GraphicsPipeline&) = delete;
         GraphicsPipeline& operator=(const GraphicsPipeline&) = delete;
 
-        VkPipeline getHandle() const { return mHandle; }
+        VkPipeline getHandle() const { return mHandle.get(); }
 
         /// What descriptors are pushed against and push constants are written through.
-        VkPipelineLayout getLayout() const { return mLayout; }
+        VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
 
     private:
-        void destroy();
-
-        const Device& mDevice;
-        VkDescriptorSetLayout mSetLayout = VK_NULL_HANDLE;
-        VkPipelineLayout mLayout = VK_NULL_HANDLE;
-        VkPipeline mHandle = VK_NULL_HANDLE;
+        PipelineLayout mLayout;
+        Owned<VkPipeline, vkDestroyPipeline> mHandle;
     };
 }

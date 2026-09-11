@@ -8,16 +8,14 @@
 #include <components/rtx/shaders/scene.h>
 
 #include "commands.hpp"
-#include "device.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
     FogTile::FogTile(const Device& device, CommandPool& pool)
-        : mDevice(device)
-        , mField(device, Shaders::FOG_FIELD_SIZE, Shaders::FOG_FIELD_SIZE, VK_FORMAT_R8G8_UNORM,
-              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "fog field", Shaders::FOG_FIELD_LEVELS,
-              Shaders::FOG_FIELD_SIZE)
+        : mField(device, Shaders::FOG_FIELD_SIZE, Shaders::FOG_FIELD_SIZE, VK_FORMAT_R8G8_UNORM,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "fog field", Shaders::FOG_FIELD_LEVELS,
+            Shaders::FOG_FIELD_SIZE)
+        , mSampler(Sampler::forContent(device, "fog field"))
     {
         const FogNoise noise = bakeFogNoise();
 
@@ -38,26 +36,5 @@ namespace Rtx
         Batch batch(pool);
         uploadImage(device, batch, mField, std::as_bytes(std::span(noise.mBytes)), regions);
         batch.flush();
-
-        // After the image, for the reason `WavePass` gives: a member that throws while being
-        // constructed leaves the ones already built to their own destructors, and a handle made in
-        // this body would have none.
-        const VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .maxLod = VK_LOD_CLAMP_NONE,
-        };
-        checkVk(vkCreateSampler(device.getHandle(), &sampler, nullptr, &mSampler), "vkCreateSampler");
-    }
-
-    FogTile::~FogTile()
-    {
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 }

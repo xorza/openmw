@@ -171,6 +171,16 @@ namespace Rtx
         /// else — so a field added for one of them reached the other only if somebody remembered.
         VisibilityInputs describeInputs(const ViewScene& held, FrameSlot slot, const FogVolume* volume) const;
 
+        /// The frame's camera as its trace will sample it: what the caller wrote, plus every field
+        /// only the renderer can fill.
+        ///
+        /// **One place a sampled camera is made.** `TraceRecording::mSampled` is documented as
+        /// arriving already sampled, and a caller filling it field by field is a place for one of
+        /// them to go missing from. A picture inside the interface fills the one it wants, and says
+        /// so where it does.
+        Shaders::VisibilityConstants sampleCamera(
+            const Shaders::VisibilityConstants& camera, const Reconstruction& reconstruction) const;
+
         /// Everything a placement of `held` is, recorded and written where `placing` says. True
         /// where anything was recorded, which is what says whether its command buffer is worth
         /// submitting.

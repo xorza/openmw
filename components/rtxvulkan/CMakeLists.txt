@@ -183,6 +183,7 @@ set(RTX_VULKAN_FILES
     fogtile.hpp
     fogvolume.cpp
     fogvolume.hpp
+    framehistory.hpp
     framering.cpp
     framering.hpp
     frameslots.hpp
@@ -220,6 +221,8 @@ set(RTX_VULKAN_FILES
     requirements.hpp
     result.cpp
     result.hpp
+    sampler.cpp
+    sampler.hpp
     sceneacceleration.cpp
     sceneacceleration.hpp
     scenebuffers.cpp
@@ -250,6 +253,7 @@ set(RTX_VULKAN_FILES
     tonepass.hpp
     tracechain.cpp
     tracechain.hpp
+    tracerecording.hpp
     tracepipeline.cpp
     tracepipeline.hpp
     validation.cpp

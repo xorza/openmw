@@ -6,6 +6,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "owned.hpp"
+#include "setlayout.hpp"
 
 namespace Rtx
 {
@@ -14,10 +15,11 @@ namespace Rtx
     /// A pass's own descriptor set layout and the pipeline layout that names it and the sets bound
     /// after it.
     ///
-    /// **One statement of it, because a compute pipeline and a trace pipeline are addressed the same
-    /// way.** The two differ in how a shader is compiled and how work is launched, and in nothing
-    /// about how descriptors reach it — `VisibilityPass` hands both the same bindings and the same
-    /// three later sets. Written twice, the two would drift the moment a flag changed.
+    /// **One statement of it, because every pipeline in this renderer is addressed the same way.**
+    /// A compute pipeline, a trace pipeline and a graphics pipeline differ in how a shader is
+    /// compiled and how work is launched, and in nothing about how descriptors reach it —
+    /// `VisibilityPass` hands the first two the same bindings and the same three later sets. Written
+    /// out per pipeline, the copies drift the moment a flag changes.
     ///
     /// Set zero is always a push descriptor set: nothing in this renderer wants a descriptor pool on
     /// the frame path.
@@ -42,7 +44,7 @@ namespace Rtx
         VkPipelineLayout getHandle() const { return mHandle.get(); }
 
     private:
-        Owned<VkDescriptorSetLayout, vkDestroyDescriptorSetLayout> mSetLayout;
+        SetLayout mSetLayout;
         Owned<VkPipelineLayout, vkDestroyPipelineLayout> mHandle;
     };
 }

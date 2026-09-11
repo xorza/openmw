@@ -39,20 +39,10 @@ namespace Rtx
             frame.mPlaceCommands.push_back(commands[3 * slot]);
             frame.mWorld.mCommands = commands[3 * slot + 1];
             frame.mGui.mCommands = commands[3 * slot + 2];
-            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mWorld.mFence), "vkCreateFence");
-            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mGui.mFence), "vkCreateFence");
-        }
-    }
-
-    FrameRing::~FrameRing()
-    {
-        // **Whatever the frames are still holding goes first.** A room is a pointer into a scene's
-        // structure storage, and the renderer empties the graveyards before it takes its scenes
-        // apart; this is the fences the slots themselves own.
-        for (FrameRecord& frame : mSlots)
-        {
-            vkDestroyFence(mDevice.getHandle(), frame.mWorld.mFence, nullptr);
-            vkDestroyFence(mDevice.getHandle(), frame.mGui.mFence, nullptr);
+            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, frame.mWorld.mFence.put(mDevice.getHandle())),
+                "vkCreateFence");
+            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, frame.mGui.mFence.put(mDevice.getHandle())),
+                "vkCreateFence");
         }
     }
 
@@ -90,7 +80,7 @@ namespace Rtx
 
     void FrameRing::submit(FrameRecord& frame)
     {
-        mPool.submit(frame.mWorld.mCommands, frame.mWorld.mFence, frame.mWorld.mGraveyard);
+        mPool.submit(frame.mWorld.mCommands, frame.mWorld.mFence.get(), frame.mWorld.mGraveyard);
 
         frame.mBegun = false;
         frame.mWorld.mPending = true;
@@ -105,7 +95,7 @@ namespace Rtx
         assert(frame.mWorld.mPending && "a frame in flight that was never submitted");
 
         const auto start = std::chrono::steady_clock::now();
-        awaitVk(mDevice, frame.mWorld.mFence, "a frame");
+        awaitVk(mDevice, frame.mWorld.mFence.get(), "a frame");
         const double waited = since(start, std::chrono::steady_clock::now());
 
         frame.mWorld.mPending = false;

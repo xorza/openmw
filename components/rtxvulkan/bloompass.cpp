@@ -9,7 +9,6 @@
 
 #include "device.hpp"
 #include "dispatch.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
@@ -29,27 +28,8 @@ namespace Rtx
               "bloom halve")
         , mSpreadPipeline(device, sBindings, sizeof(Shaders::BloomConstants), {}, shaderDirectory / "bloomup.comp.spv",
               "bloom spread")
+        , mSampler(Sampler::forTarget(device, "bloom"))
     {
-        // After the pipelines, not before: a member that throws while being constructed leaves the
-        // ones already built to their own destructors, and a handle made in this body would have
-        // none. Nothing after this can throw.
-        const VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-        };
-        checkVk(vkCreateSampler(mDevice.getHandle(), &sampler, nullptr, &mSampler), "vkCreateSampler");
-    }
-
-    BloomPass::~BloomPass()
-    {
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 
     void BloomPass::resize(std::uint32_t width, std::uint32_t height)
@@ -90,7 +70,7 @@ namespace Rtx
         // a storage image and read as a sampled one within a few dispatches of each other, and the
         // layout this renderer keeps everything in is one both accesses are legal from.
         const std::array<VkDescriptorImageInfo, 2> images{
-            VkDescriptorImageInfo{ mSampler, source.getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ mSampler.get(), source.getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, target.getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
 

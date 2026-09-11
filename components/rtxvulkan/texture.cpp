@@ -109,7 +109,7 @@ namespace Rtx
         /// A descriptor set and the pool it was taken from, which is what frees it.
         struct SetPool
         {
-            VkDescriptorPool mPool = VK_NULL_HANDLE;
+            Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
             VkDescriptorSet mSet = VK_NULL_HANDLE;
         };
 
@@ -127,12 +127,13 @@ namespace Rtx
                 .poolSizeCount = 1,
                 .pPoolSizes = &size,
             };
-            checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, &set.mPool),
+            checkVk(
+                vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, set.mPool.put(device.getHandle())),
                 "vkCreateDescriptorPool");
 
             const VkDescriptorSetAllocateInfo allocate{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = set.mPool,
+                .descriptorPool = set.mPool.get(),
                 .descriptorSetCount = 1,
                 .pSetLayouts = &layout,
             };
@@ -191,34 +192,19 @@ namespace Rtx
     TextureArray::TextureArray(const Device& device, Batch& batch, std::uint32_t slots,
         std::span<const TextureData> textures, Graveyard& graveyard)
         : mDevice(device)
+        , mSampler(Sampler::forContent(device, "textures"))
         , mLayout(makeLayout(device))
     {
         if (slots > sMaxTextures)
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "
                 + std::to_string(sMaxTextures) + " this array holds");
 
-        const VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            // Morrowind's textures tile, and a great many of them rely on it.
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            // Off, and not an oversight: every fetch names its own level, and anisotropic filtering
-            // only applies to the implicit and gradient forms. A cone is isotropic by construction.
-            .anisotropyEnable = VK_FALSE,
-            .maxLod = VK_LOD_CLAMP_NONE,
-        };
-        checkVk(vkCreateSampler(device.getHandle(), &sampler, nullptr, &mSampler), "vkCreateSampler");
-
         // **Allocated at the maximum the layout declares, not at what this scene brought.** Sizing
         // the set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `extend` then only ever writes the range that is new.
-        const SetPool own = allocateSet(device, mLayout.getHandle());
-        mPool = own.mPool;
+        SetPool own = allocateSet(device, mLayout.getHandle());
+        mPool = std::move(own.mPool);
         mSet = own.mSet;
 
         // **Sized to the table before anything is written into it**, so a description lands in the
@@ -311,7 +297,7 @@ namespace Rtx
         std::vector<VkWriteDescriptorSet>& writes) const
     {
         images.push_back(VkDescriptorImageInfo{
-            .sampler = mSampler,
+            .sampler = mSampler.get(),
             .imageView = view,
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         });
@@ -324,14 +310,6 @@ namespace Rtx
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .pImageInfo = &images.back(),
         });
-    }
-
-    TextureArray::~TextureArray()
-    {
-        if (mPool != VK_NULL_HANDLE)
-            vkDestroyDescriptorPool(mDevice.getHandle(), mPool, nullptr);
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 
     TexturesHeld TextureArray::getHeld() const

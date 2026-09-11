@@ -6,9 +6,7 @@
 
 #include <components/rtx/renderer.hpp>
 
-#include "device.hpp"
 #include "image.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
@@ -51,33 +49,10 @@ namespace Rtx
     }
 
     GuiPass::GuiPass(const Device& device, const std::filesystem::path& shaderDirectory, VkFormat targetFormat)
-        : mDevice(device)
-        , mOver(device, describePipeline(shaderDirectory, targetFormat, Blend::Over))
+        : mOver(device, describePipeline(shaderDirectory, targetFormat, Blend::Over))
         , mAdditive(device, describePipeline(shaderDirectory, targetFormat, Blend::Additive))
+        , mSampler(Sampler::forTarget(device, "gui"))
     {
-        // After the pipelines, not before: a member that throws while being constructed leaves the
-        // ones already built to their own destructors, and a handle made in this body would have
-        // none. Nothing after this can throw.
-        const VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-            // Clamped, because a widget's atlas entry runs to the edge of what it was given and
-            // wrapping would fetch the glyph next to it.
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .maxLod = VK_LOD_CLAMP_NONE,
-            .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-        };
-        checkVk(vkCreateSampler(mDevice.getHandle(), &sampler, nullptr, &mSampler), "vkCreateSampler");
-    }
-
-    GuiPass::~GuiPass()
-    {
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 
     void GuiPass::record(
@@ -135,7 +110,8 @@ namespace Rtx
                 bound = &pipeline;
             }
 
-            const VkDescriptorImageInfo texture{ mSampler, draw.mTexture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            const VkDescriptorImageInfo texture{ mSampler.get(), draw.mTexture,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             const VkWriteDescriptorSet write{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstBinding = 0,

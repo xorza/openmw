@@ -15,6 +15,7 @@
 #include "frameslots.hpp"
 #include "gputimer.hpp"
 #include "graveyard.hpp"
+#include "owned.hpp"
 
 namespace Rtx
 {
@@ -52,7 +53,7 @@ namespace Rtx
         }
 
         VkCommandBuffer mCommands = VK_NULL_HANDLE;
-        VkFence mFence = VK_NULL_HANDLE;
+        Owned<VkFence, vkDestroyFence> mFence;
 
         /// Submitted with its fence and not yet waited for.
         bool mPending = false;
@@ -120,7 +121,6 @@ namespace Rtx
         ///        back. Borrowed from the renderer, which decides both once and compiles its
         ///        pipeline against the same answers.
         FrameRing(const Device& device, CommandPool& pool, bool countHits, bool countCrossings);
-        ~FrameRing();
 
         FrameRing(const FrameRing&) = delete;
         FrameRing& operator=(const FrameRing&) = delete;

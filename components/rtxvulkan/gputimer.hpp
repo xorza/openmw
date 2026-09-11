@@ -10,6 +10,8 @@
 
 #include <components/rtx/renderer.hpp>
 
+#include "owned.hpp"
+
 namespace Rtx
 {
     class Device;
@@ -36,7 +38,6 @@ namespace Rtx
         static constexpr std::uint32_t sMaxZones = 24;
 
         explicit GpuTimer(const Device& device);
-        ~GpuTimer();
 
         GpuTimer(const GpuTimer&) = delete;
         GpuTimer& operator=(const GpuTimer&) = delete;
@@ -64,7 +65,7 @@ namespace Rtx
 
     private:
         const Device& mDevice;
-        VkQueryPool mHandle = VK_NULL_HANDLE;
+        Owned<VkQueryPool, vkDestroyQueryPool> mHandle;
 
         /// Nanoseconds a tick of the device's clock is worth, and how many of its bits count.
         double mPeriod = 1.0;

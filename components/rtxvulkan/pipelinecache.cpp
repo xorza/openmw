@@ -211,23 +211,22 @@ namespace Rtx
             .pInitialData = mLoaded.empty() ? nullptr : mLoaded.data(),
         };
 
-        if (vkCreatePipelineCache(device, &describe, nullptr, &mHandle) != VK_SUCCESS)
+        if (vkCreatePipelineCache(device, &describe, nullptr, mHandle.put(device)) != VK_SUCCESS)
         {
             Log(Debug::Warning) << "Rtx: no pipeline cache; every shader will be compiled from source";
-            mHandle = VK_NULL_HANDLE;
+            mHandle.reset();
         }
     }
 
     PipelineCache::~PipelineCache()
     {
-        if (mHandle == VK_NULL_HANDLE)
+        if (mHandle.get() == VK_NULL_HANDLE)
             return;
 
-        // A destructor, so nothing here may throw: allocating the blob can, and a cache that failed
-        // to save is not worth taking the process down over. `tearDown` is where that rule lives.
+        // **The one destructor here that is not about a handle.** A destructor, so nothing in it may
+        // throw: allocating the blob can, and a cache that failed to save is not worth taking the
+        // process down over. `tearDown` is where that rule lives.
         tearDown("the pipeline cache was not saved", [&] { write(); });
-
-        vkDestroyPipelineCache(mDevice, mHandle, nullptr);
     }
 
     void PipelineCache::sweep() const
@@ -277,11 +276,11 @@ namespace Rtx
             return;
 
         std::size_t bytes = 0;
-        if (vkGetPipelineCacheData(mDevice, mHandle, &bytes, nullptr) != VK_SUCCESS || bytes == 0)
+        if (vkGetPipelineCacheData(mDevice, mHandle.get(), &bytes, nullptr) != VK_SUCCESS || bytes == 0)
             return;
 
         std::vector<std::uint8_t> data(bytes);
-        if (vkGetPipelineCacheData(mDevice, mHandle, &bytes, data.data()) != VK_SUCCESS)
+        if (vkGetPipelineCacheData(mDevice, mHandle.get(), &bytes, data.data()) != VK_SUCCESS)
             return;
 
         // A run that compiled nothing new has nothing to say, and a great many runs are that: every

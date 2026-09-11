@@ -14,6 +14,11 @@ namespace Rtx
     /// exchange in its move leaked whatever the source still held. A member that empties itself is
     /// what lets those classes default their moves and say nothing at all.
     ///
+    /// **`CI/check_rtx_handles.sh` is what makes the next class adopt it**, because saying so here
+    /// did not: a class that spelled the call itself cost a destructor and a `const Device&` member
+    /// that existed only so that destructor could reach the device, and nothing asked. The script
+    /// names the calls this shape cannot take, and why each cannot.
+    ///
     /// @tparam Destroy the function that ends it, which every one of these spells the same way.
     template <class Handle, auto Destroy>
     class Owned

@@ -7,6 +7,8 @@
 #include <vulkan/vulkan_core.h>
 
 #include "image.hpp"
+#include "owned.hpp"
+#include "sampler.hpp"
 #include "setlayout.hpp"
 
 namespace Rtx
@@ -75,7 +77,6 @@ namespace Rtx
         /// The set every fog volume is addressed through, made once and outliving all of them, for
         /// the reason `GBuffer::describeLayout` gives.
         static SetLayout describeLayout(const Device& device);
-        ~FogVolume();
 
         FogVolume(const FogVolume&) = delete;
         FogVolume& operator=(const FogVolume&) = delete;
@@ -119,10 +120,6 @@ namespace Rtx
         /// Which of the point pair a frame writes, the other being what it reads as history. The
         /// set at that index is the one wired that way round, so the two cannot drift apart.
         static std::size_t writtenAt(std::uint64_t frame) { return frame & 1; }
-
-        void destroy();
-
-        const Device& mDevice;
 
         std::uint32_t mColumns = 0;
         std::uint32_t mRows = 0;
@@ -194,9 +191,9 @@ namespace Rtx
         /// Linear on all three axes and clamped on all three: a column at the edge of the screen has
         /// no neighbour outside it, and the nearest and furthest slices are the whole of what a ray
         /// shorter or longer than the grid can be charged for.
-        VkSampler mSampler = VK_NULL_HANDLE;
+        Sampler mSampler;
 
-        VkDescriptorPool mPool = VK_NULL_HANDLE;
+        Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
         std::array<VkDescriptorSet, 2> mSets{};
     };
 }

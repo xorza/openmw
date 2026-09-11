@@ -16,22 +16,22 @@ namespace Rtx
 {
     namespace
     {
-        VkSemaphore makeSemaphore(VkDevice device)
+        Owned<VkSemaphore, vkDestroySemaphore> makeSemaphore(VkDevice device)
         {
             const VkSemaphoreCreateInfo create{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-            VkSemaphore semaphore = VK_NULL_HANDLE;
-            checkVk(vkCreateSemaphore(device, &create, nullptr, &semaphore), "vkCreateSemaphore");
+            Owned<VkSemaphore, vkDestroySemaphore> semaphore;
+            checkVk(vkCreateSemaphore(device, &create, nullptr, semaphore.put(device)), "vkCreateSemaphore");
             return semaphore;
         }
 
-        VkFence makeSignalledFence(VkDevice device)
+        Owned<VkFence, vkDestroyFence> makeSignalledFence(VkDevice device)
         {
             const VkFenceCreateInfo create{
                 .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
                 .flags = VK_FENCE_CREATE_SIGNALED_BIT,
             };
-            VkFence fence = VK_NULL_HANDLE;
-            checkVk(vkCreateFence(device, &create, nullptr, &fence), "vkCreateFence");
+            Owned<VkFence, vkDestroyFence> fence;
+            checkVk(vkCreateFence(device, &create, nullptr, fence.put(device)), "vkCreateFence");
             return fence;
         }
 
@@ -106,26 +106,15 @@ namespace Rtx
 
     void Presenter::releaseImageSync()
     {
-        for (const Acquisition& acquisition : mAcquiring)
-            vkDestroySemaphore(mDevice.getHandle(), acquisition.mSemaphore, nullptr);
-        mAcquiring.clear();
-
-        for (const VkSemaphore semaphore : mRendered)
-            vkDestroySemaphore(mDevice.getHandle(), semaphore, nullptr);
-        mRendered.clear();
-
         // **Waited before the semaphores they guard go.** A present holds its wait semaphore until
-        // the presentation engine is done, and only this says when that is: the device-idle above
-        // proves the queue is empty and nothing more.
-        for (const VkFence fence : mPresented)
-        {
-            awaitVk(mDevice, fence, "the presentation engine letting go of an image");
-            vkDestroyFence(mDevice.getHandle(), fence, nullptr);
-        }
-        mPresented.clear();
+        // the presentation engine is done, and only these say when that is: the device-idle the
+        // caller owes proves the queue is empty and nothing more.
+        for (const Owned<VkFence, vkDestroyFence>& fence : mPresented)
+            awaitVk(mDevice, fence.get(), "the presentation engine letting go of an image");
 
-        for (const VkFence fence : mPresenting)
-            vkDestroyFence(mDevice.getHandle(), fence, nullptr);
+        mAcquiring.clear();
+        mRendered.clear();
+        mPresented.clear();
         mPresenting.clear();
     }
 
@@ -157,23 +146,23 @@ namespace Rtx
         // left to wait it: a suboptimal acquire hands back both an image and a signal, and it is the
         // present after it that reports the swapchain stale. Destroying the semaphore is what clears
         // that signal, and `releaseImageSync` above is where it happens.
-        mAcquiring.assign(images, Acquisition{});
+        mAcquiring.resize(images);
         for (Acquisition& acquisition : mAcquiring)
             acquisition.mSemaphore = makeSemaphore(mDevice.getHandle());
         mAcquisition = 0;
 
-        mRendered.assign(images, VK_NULL_HANDLE);
-        for (VkSemaphore& semaphore : mRendered)
+        mRendered.resize(images);
+        for (Owned<VkSemaphore, vkDestroySemaphore>& semaphore : mRendered)
             semaphore = makeSemaphore(mDevice.getHandle());
 
-        mPresenting.assign(images, VK_NULL_HANDLE);
-        for (VkFence& fence : mPresenting)
+        mPresenting.resize(images);
+        for (Owned<VkFence, vkDestroyFence>& fence : mPresenting)
             fence = makeSignalledFence(mDevice.getHandle());
 
         if (mDevice.hasPresentFences())
         {
-            mPresented.assign(images, VK_NULL_HANDLE);
-            for (VkFence& fence : mPresented)
+            mPresented.resize(images);
+            for (Owned<VkFence, vkDestroyFence>& fence : mPresented)
                 fence = makeSignalledFence(mDevice.getHandle());
         }
 
@@ -245,7 +234,7 @@ namespace Rtx
         acquisition.mBlit = VK_NULL_HANDLE;
 
         std::uint32_t index = 0;
-        if (!mSwapchain->acquire(acquisition.mSemaphore, index))
+        if (!mSwapchain->acquire(acquisition.mSemaphore.get(), index))
         {
             mStale = true;
             return false;
@@ -255,16 +244,18 @@ namespace Rtx
         // the moment a newer one replaces it, so an image can come back round before the present
         // that queued it has consumed its semaphore — the case a count of frames in flight does not
         // cover, because it counts frames rather than images.
-        awaitVk(mDevice, mPresenting[index], "the present that last used this image");
-        checkVk(vkResetFences(mDevice.getHandle(), 1, &mPresenting[index]), "vkResetFences");
+        const VkFence blitted = mPresenting[index].get();
+        awaitVk(mDevice, blitted, "the present that last used this image");
+        checkVk(vkResetFences(mDevice.getHandle(), 1, &blitted), "vkResetFences");
 
         // And the present itself, which is a different moment: the blit's fence says the queue has
         // run the copy, and this says the compositor has let go of what it copied into. Without it
         // the semaphore below is signalled again while a present still waits on it.
         if (!mPresented.empty())
         {
-            awaitVk(mDevice, mPresented[index], "the presentation engine letting go of this image");
-            checkVk(vkResetFences(mDevice.getHandle(), 1, &mPresented[index]), "vkResetFences");
+            const VkFence presented = mPresented[index].get();
+            awaitVk(mDevice, presented, "the presentation engine letting go of this image");
+            checkVk(vkResetFences(mDevice.getHandle(), 1, &presented), "vkResetFences");
         }
 
         const VkCommandBuffer commands = mCommands[index];
@@ -330,12 +321,12 @@ namespace Rtx
 
         const VkSemaphoreSubmitInfo wait{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = acquisition.mSemaphore,
+            .semaphore = acquisition.mSemaphore.get(),
             .stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
         };
         const VkSemaphoreSubmitInfo signal{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = mRendered[index],
+            .semaphore = mRendered[index].get(),
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
         const VkCommandBufferSubmitInfo buffer{
@@ -351,12 +342,13 @@ namespace Rtx
             .signalSemaphoreInfoCount = 1,
             .pSignalSemaphoreInfos = &signal,
         };
-        checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mPresenting[index]), "vkQueueSubmit2");
+        checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, blitted), "vkQueueSubmit2");
 
-        acquisition.mBlit = mPresenting[index];
-        rememberUse(frame.getHandle(), mPresenting[index]);
+        acquisition.mBlit = blitted;
+        rememberUse(frame.getHandle(), blitted);
 
-        if (mSwapchain->present(mRendered[index], index, mPresented.empty() ? VK_NULL_HANDLE : mPresented[index]))
+        if (mSwapchain->present(
+                mRendered[index].get(), index, mPresented.empty() ? VK_NULL_HANDLE : mPresented[index].get()))
             return true;
 
         mStale = true;

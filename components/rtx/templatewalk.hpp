@@ -60,8 +60,7 @@ namespace Rtx
         void apply(osg::Drawable& drawable) override;
 
     private:
-        /// Descends into the children of `node` that are in the world: `MirrorTraversal::descend`'s
-        /// three answers, less the step it takes.
+        /// Descends into the children of `node` that are in the world, running no clock on the way.
         void descend(osg::Node& node);
 
         /// Puts `stateSet` at the near end of the chain, with the fade resolved through it.

@@ -22,10 +22,18 @@ namespace Rtx
     /// then hand them to `makeSkylight` rather than assembling a sun themselves.
     struct SkyReading
     {
-        /// Where the disc stands, unit. `Sky::sunAt`.
+        /// Where the disc stands, unit — `Sky::SunPlacement::mPosition`, by whatever route this
+        /// host reached it.
+        ///
+        /// **The two fields and not the placement they name.** `Sky::SunPlacement` carries two more
+        /// that its own header calls the rasterizer's — a light direction that is not `-mPosition`,
+        /// and a night switch that is not `mShare == 0` — and neither host has one to give: the game
+        /// reads the weather system's dials back and the harness reads content files. Holding the
+        /// struct would leave those two at nothing for a reader to trust.
         osg::Vec3f mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
-        /// How much of the sun is over the horizon. `Sky::sunShareAt`.
+        /// How much of the sun is over the horizon — `Sky::SunPlacement::mShare`, which is where
+        /// the rule that this alone answers "is there a sun" is argued.
         float mSunShare = 0.0f;
 
         /// How much of it a layer standing above the ground still has — `sunShareAloft`.

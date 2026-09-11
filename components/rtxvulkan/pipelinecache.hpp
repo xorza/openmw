@@ -8,6 +8,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "owned.hpp"
+
 namespace Rtx
 {
     /// Where a pipeline cache is kept, and what it is keyed on.
@@ -53,7 +55,7 @@ namespace Rtx
 
         /// Null when the cache could not be created, which every `vkCreate*Pipelines` accepts as
         /// "no cache" — so a caller passes this without asking whether it worked.
-        VkPipelineCache getHandle() const { return mHandle; }
+        VkPipelineCache getHandle() const { return mHandle.get(); }
 
         /// The most a blob may hold before a run throws it away and starts one again.
         ///
@@ -104,7 +106,7 @@ namespace Rtx
         void sweep() const;
 
         VkDevice mDevice = VK_NULL_HANDLE;
-        VkPipelineCache mHandle = VK_NULL_HANDLE;
+        Owned<VkPipelineCache, vkDestroyPipelineCache> mHandle;
         std::filesystem::path mPath;
 
         /// What was loaded, kept so that a run which compiled nothing new rewrites nothing.

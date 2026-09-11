@@ -16,6 +16,7 @@
 #include "buffer.hpp"
 #include "computepipeline.hpp"
 #include "image.hpp"
+#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -46,7 +47,6 @@ namespace Rtx
         /// @param pool used by `describe`, which is not on the frame path. Held, because a sea state
         ///        can arrive at any time.
         WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
-        ~WavePass();
 
         WavePass(const WavePass&) = delete;
         WavePass& operator=(const WavePass&) = delete;
@@ -68,7 +68,7 @@ namespace Rtx
 
         /// Linear, mipmapped and wrapping — a tile lays the same water down every `getExtent` units,
         /// and a tap that clamped would smear the last texel of one across the whole sea.
-        VkSampler getSampler() const { return mSampler; }
+        VkSampler getSampler() const { return mSampler.get(); }
 
         /// The two slopes, their own second moment, and the elevation squared.
         const Image& getSurface(std::size_t cascade) const { return *mTiles[cascade].mSurface; }
@@ -121,7 +121,7 @@ namespace Rtx
         ComputePipeline mLinePipeline;
         ComputePipeline mComposePipeline;
 
-        VkSampler mSampler = VK_NULL_HANDLE;
+        Sampler mSampler;
 
         std::array<Tile, Shaders::WAVE_CASCADES> mTiles;
 

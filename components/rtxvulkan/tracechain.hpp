@@ -22,13 +22,14 @@ namespace Rtx
     class Device;
     class GpuTimer;
     class SetLayout;
+    struct TraceRecording;
 
     /// Everything one camera's trace writes, at one extent.
     ///
     /// **One chain, however many cameras have one.** A colour image, a `GBuffer`, a `FogVolume`, an
     /// accumulator and a filter are sized together and recorded together, so a second camera that
-    /// spelled the five out again would be a second place for the barrier `recordDenoise` states to
-    /// go missing from.
+    /// spelled them out again would be a second place for a barrier to go missing from. `record` is
+    /// the other half of that: the sequence is written here rather than once per camera.
     ///
     /// What differs between two of these is what the caller hands in: the extent, what may be done
     /// with the composite's image afterwards, and whether the chain is sized exactly or grown to
@@ -95,6 +96,22 @@ namespace Rtx
         /// that.
         const Image& getBlended() const { return mAccumulate.getBlended(); }
 
+        /// Records one camera's whole trace, from the discards it opens with to the barrier after
+        /// the composite.
+        ///
+        /// **One statement of the chain, because there are two cameras and one chain.** The frame
+        /// and the pictures inside the interface each spelled the sequence out, and a barrier is
+        /// exactly the kind of step that goes missing from the second copy.
+        ///
+        /// **What the caller keeps is what a frame has and a picture has not** — the frame ring, the
+        /// upscaler, the lens, the measured exposure and the display curve. `TraceRecording` is
+        /// everything the sequence itself needs, and every field of it is per-call.
+        ///
+        /// @return the composite's output, which is `getColour()` — answered so that a caller reads
+        ///         what this wrote rather than reaching for the image and hoping it is the one.
+        const Image& record(VkCommandBuffer commands, const TraceRecording& what);
+
+    private:
         /// The bounce resolved: the temporal mean, and then the cascade over it.
         ///
         /// **The barrier between them is the reason this is one call.** Two compute dispatches are
@@ -105,7 +122,6 @@ namespace Rtx
         const Image& recordDenoise(
             VkCommandBuffer commands, const Shaders::Camera& camera, float far, bool historyLost, GpuTimer* timer);
 
-    private:
         const Device& mDevice;
         CommandPool& mPool;
 

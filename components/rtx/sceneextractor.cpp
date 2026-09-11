@@ -13,7 +13,6 @@
 #include <osg/Geometry>
 #include <osg/NodeVisitor>
 #include <osg/Sequence>
-#include <osg/Switch>
 #include <osgParticle/Particle>
 #include <osgParticle/ParticleProcessor>
 #include <osgParticle/ParticleSystem>
@@ -29,6 +28,7 @@
 
 #include "lightbuilder.hpp"
 #include "nodelibrary.hpp"
+#include "worlddescent.hpp"
 
 namespace Rtx
 {
@@ -333,27 +333,14 @@ namespace Rtx
         mShading.resize(held);
     }
 
-    /// Descends into the children of `node` that are in the world.
+    /// Descends into the children of `node` that are in the world, and runs a flipbook's clock on
+    /// the way past. `descendInWorld` is the rule; this is the step it leaves to its caller.
     ///
-    /// **Three node types in this tree choose among their children, and they get three answers.**
-    /// A switch is honoured. A sequence is honoured *and stepped*. An LOD is not honoured at all,
-    /// because a ray is owed the finest child a node has rather than the one a distance test picked
-    /// for an eye. That is the whole of the decision, and it is why the walk stays in
-    /// `TRAVERSE_ALL_CHILDREN`: the one mode that would answer the first two also answers the third,
-    /// and it answers it wrongly.
-    ///
-    /// **`osg::Switch`**: its `traverse` visits every child under `TRAVERSE_ALL_CHILDREN`, so a
-    /// branch that is switched off is mirrored anyway. `MWRender`'s `DayNightCallback` leaves the
-    /// night lamp traced at noon and the day mesh traced at midnight, both at once, and a harvested
-    /// plant is traced through the unharvested one it replaced. This is geometry and not only light.
-    ///
-    /// **`osg::Sequence`**: `NifOsg` builds one for every `NiFltAnimationNode`, which is Morrowind's
-    /// flipbook — a fire, a forge, a lava flow. Under `TRAVERSE_ALL_CHILDREN` every frame of it is
-    /// traced at once and in the same place, and its clock never moves. Stepping it here is the same
-    /// statement `stepParticles` makes below: the clock lives in a traversal this renderer does not
-    /// run, so this walk is what has to run it. `SequenceClock` is what makes the claim that clock
-    /// wants, and then the frame it settled on is walked by the mirror itself — measured, because
-    /// handing `Sequence::traverse` only the traversal mode leaves its frame at -1 and shows nothing.
+    /// **The clock lives in a traversal this renderer does not run**, which is the same statement
+    /// `stepParticles` makes below, so this walk is what has to run it. `SequenceClock` makes the
+    /// claim that clock wants, and then the frame it settled on is walked by the mirror itself —
+    /// measured, because handing `Sequence::traverse` only the traversal mode leaves its frame at -1
+    /// and shows nothing.
     ///
     /// **Unlike a particle step, a sequence step may be taken twice.** `Sequence` reads the frame
     /// stamp's simulation time outright, so two calls at the same time settle on the same frame —
@@ -365,30 +352,7 @@ namespace Rtx
     /// same graph, and it is a property of `osgParticle`'s clock rather than of this walk.
     void MirrorTraversal::descend(osg::Node& node)
     {
-        if (osg::Switch* branches = node.asSwitch())
-        {
-            for (unsigned int at = 0; at < branches->getNumChildren(); ++at)
-                if (branches->getValue(at))
-                    branches->getChild(at)->accept(*this);
-
-            return;
-        }
-
-        // Cast the group and not the node: this walk reaches far more drawables than groups, and
-        // only a group can be a sequence. And the class and not the library, because the library
-        // here is `osg` — every plain group in a cell.
-        if (auto* frames = isExactly(node, "Sequence") ? dynamic_cast<osg::Sequence*>(node.asGroup()) : nullptr)
-        {
-            frames->traverse(mSequenceClock);
-
-            const int shown = frames->getValue();
-            if (shown >= 0 && shown < static_cast<int>(frames->getNumChildren()))
-                frames->getChild(shown)->accept(*this);
-
-            return;
-        }
-
-        traverse(node);
+        descendInWorld(node, *this, [this](osg::Sequence& frames) { frames.traverse(mSequenceClock); });
     }
 
     /// Runs one node of an `osgParticle` simulation, and says whether that is what this node was.

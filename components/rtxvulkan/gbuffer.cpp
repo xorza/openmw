@@ -151,7 +151,6 @@ namespace Rtx
     }
 
     GBuffer::GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
-        : mDevice(device)
     {
         mChannels.reserve(sChannelCount);
         for (const Channel channel : sEveryChannel)
@@ -160,62 +159,42 @@ namespace Rtx
             mChannels.emplace_back(device, width, height, described.mFormat, described.mUsage, channelName(channel));
         }
 
-        try
+        const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannelCount };
+        const VkDescriptorPoolCreateInfo describePool{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .maxSets = 1,
+            .poolSizeCount = 1,
+            .pPoolSizes = &size,
+        };
+        checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, mPool.put(device.getHandle())),
+            "vkCreateDescriptorPool");
+
+        const VkDescriptorSetLayout named = layout.getHandle();
+        const VkDescriptorSetAllocateInfo allocate{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = mPool.get(),
+            .descriptorSetCount = 1,
+            .pSetLayouts = &named,
+        };
+        checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
+
+        std::array<VkDescriptorImageInfo, sChannelCount> views{};
+        std::array<VkWriteDescriptorSet, sChannelCount> writes{};
+        for (std::uint32_t channel = 0; channel < sChannelCount; ++channel)
         {
-            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannelCount };
-            const VkDescriptorPoolCreateInfo describePool{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                .maxSets = 1,
-                .poolSizeCount = 1,
-                .pPoolSizes = &size,
+            views[channel]
+                = VkDescriptorImageInfo{ VK_NULL_HANDLE, mChannels[channel].getView(), VK_IMAGE_LAYOUT_GENERAL };
+            writes[channel] = VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = mSet,
+                .dstBinding = channel,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                .pImageInfo = &views[channel],
             };
-            checkVk(
-                vkCreateDescriptorPool(mDevice.getHandle(), &describePool, nullptr, &mPool), "vkCreateDescriptorPool");
-
-            const VkDescriptorSetLayout named = layout.getHandle();
-            const VkDescriptorSetAllocateInfo allocate{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = mPool,
-                .descriptorSetCount = 1,
-                .pSetLayouts = &named,
-            };
-            checkVk(vkAllocateDescriptorSets(mDevice.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
-
-            std::array<VkDescriptorImageInfo, sChannelCount> views{};
-            std::array<VkWriteDescriptorSet, sChannelCount> writes{};
-            for (std::uint32_t channel = 0; channel < sChannelCount; ++channel)
-            {
-                views[channel]
-                    = VkDescriptorImageInfo{ VK_NULL_HANDLE, mChannels[channel].getView(), VK_IMAGE_LAYOUT_GENERAL };
-                writes[channel] = VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = mSet,
-                    .dstBinding = channel,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                    .pImageInfo = &views[channel],
-                };
-            }
-
-            vkUpdateDescriptorSets(mDevice.getHandle(), sChannelCount, writes.data(), 0, nullptr);
         }
-        catch (...)
-        {
-            destroy();
-            throw;
-        }
-    }
 
-    GBuffer::~GBuffer()
-    {
-        destroy();
-    }
-
-    void GBuffer::destroy()
-    {
-        // The set goes with the pool it came out of, which is what one pool per buffer is for.
-        if (mPool != VK_NULL_HANDLE)
-            vkDestroyDescriptorPool(mDevice.getHandle(), mPool, nullptr);
+        vkUpdateDescriptorSets(device.getHandle(), sChannelCount, writes.data(), 0, nullptr);
     }
 
     void GBuffer::begin(VkCommandBuffer commands) const

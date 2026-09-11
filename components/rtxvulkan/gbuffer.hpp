@@ -10,6 +10,7 @@
 #include <components/rtx/shaders/gbuffer.h>
 
 #include "image.hpp"
+#include "owned.hpp"
 #include "setlayout.hpp"
 
 namespace Rtx
@@ -43,7 +44,6 @@ namespace Rtx
         /// **Separate from the buffer because a pipeline layout names every set it will ever be
         /// handed**, and the trace's pipelines are built before any camera has a size.
         static SetLayout describeLayout(const Device& device);
-        ~GBuffer();
 
         GBuffer(const GBuffer&) = delete;
         GBuffer& operator=(const GBuffer&) = delete;
@@ -67,17 +67,14 @@ namespace Rtx
         void handOver(VkCommandBuffer commands) const;
 
     private:
-        void destroy();
-
-        const Device& mDevice;
-
         /// **An array and not fourteen members.** Each of them used to be named three times — once
         /// as a member, once as an accessor, and once in a hand-written table mapping the binding
         /// back to it — and a channel added to `channel.hpp` without the third reached its pass as
         /// a null.
         std::vector<Image> mChannels;
 
-        VkDescriptorPool mPool = VK_NULL_HANDLE;
+        /// The set goes with the pool it came out of, which is what one pool per buffer is for.
+        Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
         VkDescriptorSet mSet = VK_NULL_HANDLE;
     };
 }

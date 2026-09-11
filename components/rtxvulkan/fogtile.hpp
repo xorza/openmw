@@ -3,6 +3,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "image.hpp"
+#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -22,7 +23,6 @@ namespace Rtx
     public:
         /// @param pool submits the one upload and waits for it. Not on the frame path.
         FogTile(const Device& device, CommandPool& pool);
-        ~FogTile();
 
         FogTile(const FogTile&) = delete;
         FogTile& operator=(const FogTile&) = delete;
@@ -32,11 +32,10 @@ namespace Rtx
 
         /// Linear, mipmapped and wrapping on all three axes — the field is laid down every tile, and
         /// a tap that clamped would smear the last texel of one across the whole landscape.
-        VkSampler getSampler() const { return mSampler; }
+        VkSampler getSampler() const { return mSampler.get(); }
 
     private:
-        const Device& mDevice;
         Image mField;
-        VkSampler mSampler = VK_NULL_HANDLE;
+        Sampler mSampler;
     };
 }

@@ -20,19 +20,17 @@ namespace Rtx
     struct Sun
     {
         /// Where the sun stands, unit — and so `-mPosition` is where its light travels.
-        ///
-        /// **Meaningful even where `mIrradiance` is nothing**, because a moon's crescent points at
-        /// where the sun would be. Where it *is* and whether it is there are two questions, and this
-        /// answers only the first.
+        /// `Sky::SunPlacement::mPosition` is what this is read from and says why it is kept through
+        /// a night that has no sun in it.
         osg::Vec3f mPosition{ 0.0f, 0.0f, 1.0f };
 
         /// Irradiance on a surface square to it, linear.
         ///
-        /// **Zero exactly when there is no sun**, which is the invariant the whole type exists for:
-        /// an interior, a night, and either end of the day once the disc has gone into the horizon.
-        /// Everything the sun does is gated on this one test, so a sun cannot shadow without being
-        /// drawn or be drawn without lighting — which is what a second field saying whether the
-        /// disc is up allowed, for as long as there was one.
+        /// **Zero exactly when there is no sun**, which is the invariant the whole type exists for,
+        /// and `Sky::SunPlacement::mShare` is where that invariant is argued: this is the same
+        /// question one layer down, so what is nothing there is nothing here. Everything the sun
+        /// does is gated on this one test, so a sun cannot shadow without being drawn or be drawn
+        /// without lighting.
         osg::Vec3f mIrradiance;
 
         /// What the disc is painted with, linear — **not the hue of `mIrradiance`.** The colour a

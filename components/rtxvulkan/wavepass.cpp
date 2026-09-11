@@ -18,7 +18,6 @@
 #include "device.hpp"
 #include "dispatch.hpp"
 #include "graveyard.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
@@ -65,22 +64,8 @@ namespace Rtx
               shaderDirectory / "waveline.comp.spv", "wave line")
         , mComposePipeline(device, sComposeBindings, sizeof(Shaders::WaveComposeConstants), {},
               shaderDirectory / "wavecompose.comp.spv", "wave compose")
+        , mSampler(Sampler::forContent(device, "wave"))
     {
-        // After the pipelines, for the reason `BloomPass` gives: a member that throws while being
-        // constructed leaves the ones already built to their own destructors, and a handle made in
-        // this body would have none.
-        const VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .maxLod = VK_LOD_CLAMP_NONE,
-        };
-        checkVk(vkCreateSampler(mDevice.getHandle(), &sampler, nullptr, &mSampler), "vkCreateSampler");
-
         constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
             | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
@@ -110,12 +95,6 @@ namespace Rtx
         // naming it as `GENERAL` is an error whether or not a ray ever samples it. Synthesising
         // once here is what moves them, and leaves a sea rather than nothing in them.
         mPool.submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
-    }
-
-    WavePass::~WavePass()
-    {
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 
     void WavePass::describe(const SeaState& sea, Graveyard& graveyard)

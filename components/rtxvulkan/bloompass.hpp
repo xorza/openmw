@@ -10,6 +10,7 @@
 
 #include "computepipeline.hpp"
 #include "image.hpp"
+#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -38,7 +39,6 @@ namespace Rtx
     {
     public:
         BloomPass(const Device& device, const std::filesystem::path& shaderDirectory);
-        ~BloomPass();
 
         BloomPass(const BloomPass&) = delete;
         BloomPass& operator=(const BloomPass&) = delete;
@@ -82,7 +82,7 @@ namespace Rtx
         /// Linear and clamped, which is what both kernels are counted in: every tap sits on a texel
         /// corner so one fetch reads four texels, and a tap that ran off the edge would otherwise
         /// wrap the far side of the frame into the near one's glow.
-        VkSampler mSampler = VK_NULL_HANDLE;
+        Sampler mSampler;
 
         /// Finest first, each half the one before it. Empty until `resize`.
         std::vector<std::unique_ptr<Image>> mLevels;

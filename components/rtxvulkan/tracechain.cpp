@@ -2,11 +2,37 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 
+#include <components/rtx/channel.hpp>
+#include <components/rtx/shaders/composite.h>
+
+#include "compositepass.hpp"
 #include "gputimer.hpp"
+#include "placing.hpp"
+#include "scenebuffers.hpp"
+#include "spritebinpass.hpp"
+#include "spriteshadepass.hpp"
+#include "tracerecording.hpp"
+#include "wavepass.hpp"
 
 namespace Rtx
 {
+    namespace
+    {
+        /// Whether this camera has a sea to synthesise.
+        ///
+        /// **The shader's own test**, so the two cannot disagree: a cell with no water carries a
+        /// level of minus infinity, every "how deep" comes out never positive, and nothing samples
+        /// the wave tiles — which is what makes not building them for that trace free. Every
+        /// interior is such a frame, and the synthesis was a fifth of a millisecond of device time
+        /// in each of them.
+        bool hasSea(const Shaders::VisibilityConstants& camera)
+        {
+            return !std::isinf(camera.mWaterLevel);
+        }
+    }
+
     TraceChain::TraceChain(const Device& device, CommandPool& pool, const SetLayout& channels, const SetLayout& fog,
         const std::filesystem::path& shaders, const VkImageUsageFlags colourUsage, const std::string_view colourName)
         : mDevice(device)
@@ -72,5 +98,71 @@ namespace Rtx
         closeZone(timer, commands);
 
         return indirect;
+    }
+
+    const Image& TraceChain::record(const VkCommandBuffer commands, const TraceRecording& what)
+    {
+        assert(isBuilt() && "a trace into a chain that has no extent");
+
+        // Both written whole before anything reads them, so neither needs its contents carried over
+        // from the last time. **But the last frame may still be reading them** — the curve's output
+        // is what the interface draws over and the presenter blits, the colour is what an upscaler
+        // and the curve read — so the discard is sourced at everything before it on the queue rather
+        // than at the top of the pipe, which would wait for nothing. A picture's caller has drained
+        // the queue before it records, so the wider scope costs it nothing and is the one both use.
+        for (const Image* image : { static_cast<const Image*>(mColour.get()), what.mTarget })
+            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+        // Before the trace and outside its zone, because the sea is a function of the clock and of
+        // nothing the camera does — one synthesis serves every ray. None where there is no water:
+        // `WavePass::record` says where the tiles are left.
+        if (hasSea(what.mSampled))
+        {
+            openZone(what.mTimer, commands, "waves");
+            what.mInputs.mWaves->record(commands, what.mSampled.mTime);
+            closeZone(what.mTimer, commands);
+        }
+
+        // **The sprite tiles are screen space, so they belong to the camera and not to the scene.**
+        // Binned on the device, into the copy this trace is about to read, and ahead of that trace.
+        what.mBuffers->binSprites(*what.mSpriteShade, *what.mSpriteBin, what.mAsked.mOrigin, what.mAsked.mCamera,
+            what.mAsked.mSunPosition,
+            Placing{
+                .mCommands = commands,
+                .mSlot = what.mInputs.mSlot,
+                .mTimer = what.mTimer,
+                .mGraveyard = *what.mGraveyard,
+            });
+
+        mChannels->begin(commands);
+        what.mVisibility->record(
+            commands, what.mInputs, *mChannels, *what.mCounts, what.mSampled, what.mAirLost, what.mTimer);
+        mChannels->handOver(commands);
+
+        // Where the bounce ended up: the filter's last level, or the channel the trace wrote where
+        // nothing filtered it.
+        const Image* indirect = &mChannels->get(Channel::Indirect);
+        if (what.mFilter)
+            indirect
+                = &recordDenoise(commands, what.mSampled.mCamera, what.mSampled.mFar, what.mHistoryLost, what.mTimer);
+
+        openZone(what.mTimer, commands, "composite");
+        what.mComposite->record(commands, *mChannels, *indirect, what.mSum, *mColour,
+            Shaders::CompositeConstants{
+                .mWidth = what.mSampled.mCamera.mWidth,
+                .mHeight = what.mSampled.mCamera.mHeight,
+                .mAccumulate = what.mAccumulate,
+            });
+        closeZone(what.mTimer, commands);
+
+        // Whatever comes next reads what the composite just wrote. The frame's scope is the wider of
+        // the two — an upscaler, a lens and a curve against a picture's one curve — and covers both.
+        mColour->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
+
+        return *mColour;
     }
 }

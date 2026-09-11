@@ -8,11 +8,8 @@
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtx/shaders/look.h>
 
-#include "commands.hpp"
-#include "device.hpp"
 #include "dispatch.hpp"
 #include "image.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
@@ -31,39 +28,11 @@ namespace Rtx
 
     TonePass::TonePass(const Device& device, CommandPool& pool, VkDescriptorSetLayout textureLayout,
         const std::filesystem::path& shaderDirectory)
-        : mDevice(device)
-        , mPipeline(device, sBindings, sizeof(Shaders::ToneConstants), std::span(&textureLayout, 1),
-              shaderDirectory / "tone.comp.spv", "tone")
-        , mNoBloom(device, 1, 1, BLOOM_LEVEL, VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom")
+        : mPipeline(device, sBindings, sizeof(Shaders::ToneConstants), std::span(&textureLayout, 1),
+            shaderDirectory / "tone.comp.spv", "tone")
+        , mSampler(Sampler::forTarget(device, "tone"))
+        , mNoBloom(makeStandIn(device, pool, BLOOM_LEVEL, VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom"))
     {
-        // After the members, not before: a member that throws while being constructed leaves the
-        // ones already built to their own destructors, and a handle made in this body would have
-        // none. Nothing after this can throw.
-        const VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
-        };
-        checkVk(vkCreateSampler(mDevice.getHandle(), &sampler, nullptr, &mSampler), "vkCreateSampler");
-
-        // A bound image has to be in the layout its descriptor names whether the shader reads it or
-        // not, so the one texel is laid out once and then left alone forever.
-        pool.submitAndWait([this](VkCommandBuffer commands) {
-            mNoBloom.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-        });
-    }
-
-    TonePass::~TonePass()
-    {
-        if (mSampler != VK_NULL_HANDLE)
-            vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 
     void TonePass::record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
@@ -85,7 +54,7 @@ namespace Rtx
             VkDescriptorImageInfo{ VK_NULL_HANDLE, starsShown.getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
         const VkDescriptorBufferInfo scale{ exposure, 0, VK_WHOLE_SIZE };
-        const VkDescriptorImageInfo pyramid{ mSampler, spread.getView(), VK_IMAGE_LAYOUT_GENERAL };
+        const VkDescriptorImageInfo pyramid{ mSampler.get(), spread.getView(), VK_IMAGE_LAYOUT_GENERAL };
 
         // The first three are storage images and the last two are not, so the shared filler covers
         // the front of the set and the two below name themselves.

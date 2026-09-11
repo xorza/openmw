@@ -7,6 +7,8 @@
 
 #include <components/sdlutil/vsyncmode.hpp>
 
+#include "owned.hpp"
+
 namespace Rtx
 {
     class Device;
@@ -20,7 +22,6 @@ namespace Rtx
     {
     public:
         Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent);
-        ~Swapchain();
 
         Swapchain(const Swapchain&) = delete;
         Swapchain& operator=(const Swapchain&) = delete;
@@ -63,7 +64,7 @@ namespace Rtx
 
         const Device& mDevice;
         VkSurfaceKHR mSurface = VK_NULL_HANDLE;
-        VkSwapchainKHR mHandle = VK_NULL_HANDLE;
+        Owned<VkSwapchainKHR, vkDestroySwapchainKHR> mHandle;
         VkSurfaceFormatKHR mFormat{};
         VkPresentModeKHR mPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 

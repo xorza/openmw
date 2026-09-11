@@ -8,6 +8,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
+#include "owned.hpp"
 
 namespace Rtx
 {
@@ -24,7 +25,6 @@ namespace Rtx
     {
     public:
         explicit CommandPool(const Device& device);
-        ~CommandPool();
 
         CommandPool(const CommandPool&) = delete;
         CommandPool& operator=(const CommandPool&) = delete;
@@ -111,8 +111,8 @@ namespace Rtx
         void forgetDeferred();
 
         const Device& mDevice;
-        VkCommandPool mHandle = VK_NULL_HANDLE;
-        VkFence mFence = VK_NULL_HANDLE;
+        Owned<VkCommandPool, vkDestroyCommandPool> mHandle;
+        Owned<VkFence, vkDestroyFence> mFence;
 
         /// Recorded and ended, waiting for the next submit to carry them first, with the staging
         /// their copies read.
