@@ -263,20 +263,17 @@ namespace Rtx
             EXPECT_FALSE(leaf.isTranslucent()) << "a painted mask on an opaque material";
             EXPECT_TRUE(leaf.isCutout()) << "and it keeps the branch it has";
 
-            const Material pane{ .mDiffuse = texture,
-                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f),
-                .mAlphaMode = Surface::AlphaMode::Blend };
+            const Material pane{ .mDiffuse = texture, .mOpacity = 0.3f, .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_TRUE(pane.isTranslucent());
 
             // The mode is half of it: a faded material the content never asked to blend is drawn as
-            // it was authored, and a cutout stays a cutout however faint its own colour is.
-            const Material faded{ .mDiffuse = texture, .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f) };
-            EXPECT_FALSE(faded.isTranslucent()) << "opaque mode, whatever the colour says";
+            // it was authored, and a cutout stays a cutout however faint its own alpha is.
+            const Material faded{ .mDiffuse = texture, .mOpacity = 0.3f };
+            EXPECT_FALSE(faded.isTranslucent()) << "opaque mode, whatever the alpha says";
 
-            const Material tested{ .mDiffuse = texture,
-                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f),
-                .mAlphaRef = 0.3f,
-                .mAlphaMode = Surface::AlphaMode::Cutout };
+            const Material tested{
+                .mDiffuse = texture, .mOpacity = 0.3f, .mAlphaRef = 0.3f, .mAlphaMode = Surface::AlphaMode::Cutout
+            };
             EXPECT_FALSE(tested.isTranslucent()) << "a mask the content asked to test is a mask";
 
             // And the texture is the other half of what tells a pane from a cloud. Neither of them
@@ -298,18 +295,16 @@ namespace Rtx
         TEST(RtxSceneDescTest, aMediumIsBlendedEverywhereAndPaintedSolidNowhere)
         {
             constexpr Index texture = 3;
-            const osg::Vec4f faint(1.0f, 1.0f, 1.0f, 0.3f);
+            constexpr float faint = 0.3f;
 
             const Material cloud{ .mDiffuse = texture,
-                .mDiffuseColour = faint,
+                .mOpacity = faint,
                 .mAlphaMode = Surface::AlphaMode::Blend,
                 .mDiffuseNeverSolid = true };
             EXPECT_TRUE(cloud.isMedium());
             EXPECT_TRUE(cloud.getTraversed().mMedium) << "and the placements wearing it are told";
 
-            const Material stained{
-                .mDiffuse = texture, .mDiffuseColour = faint, .mAlphaMode = Surface::AlphaMode::Blend
-            };
+            const Material stained{ .mDiffuse = texture, .mOpacity = faint, .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_FALSE(stained.isMedium()) << "paint that closes is something to stop on";
 
             const Material leaf{
@@ -317,7 +312,7 @@ namespace Rtx
             };
             EXPECT_FALSE(leaf.isMedium()) << "an opaque material, whatever its paint does";
 
-            const Material glass{ .mDiffuseColour = faint, .mAlphaMode = Surface::AlphaMode::Blend };
+            const Material glass{ .mOpacity = faint, .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_FALSE(glass.isMedium()) << "no map to have measured";
         }
 
@@ -681,7 +676,7 @@ namespace Rtx
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             const Index glass = scene.addMaterial(Material{
-                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
+                .mOpacity = 0.5f,
                 .mAlphaMode = Surface::AlphaMode::Blend,
             });
 
@@ -712,7 +707,7 @@ namespace Rtx
             EXPECT_TRUE(scene.getTables().mPlacements.getMoved().empty())
                 << "a texture scrolling reported the placements wearing it";
 
-            worn.mDiffuseColour.a() = 1.0f;
+            worn.mOpacity = 1.0f;
             scene.setMaterial(glass, worn);
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getMoved()), (std::vector<Index>{ one, two }));
             scene.advancePlacement();

@@ -6,7 +6,6 @@
 #include <gtest/gtest.h>
 
 #include <osg/Matrixf>
-#include <osg/Vec4f>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -56,7 +55,7 @@ namespace Rtx
                 .mAlphaMode = Surface::AlphaMode::Cutout,
             });
             const Index glass = scene.addMaterial(Material{
-                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
+                .mOpacity = 0.5f,
                 .mAlphaMode = Surface::AlphaMode::Blend,
             });
             const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
@@ -118,7 +117,7 @@ namespace Rtx
 
             // A material crossing opaque re-classes the placement wearing it.
             Material solid = scene.getTables().mMaterials.getRows()[glass];
-            solid.mDiffuseColour.a() = 1.0f;
+            solid.mOpacity = 1.0f;
             scene.setMaterial(glass, solid);
             updateInstanceRecords(scene.getTables(), kept, changed);
             expectSame(kept, scene, "re-classed");

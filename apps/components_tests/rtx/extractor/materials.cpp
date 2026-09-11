@@ -224,7 +224,7 @@ namespace Rtx::Testing
 
                 // The material is asked as well, because the fade landing there instead would pass
                 // every other assertion in this test.
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().front().mDiffuseColour.a(), 1.0f)
+                EXPECT_EQ(scene.getTables().mMaterials.getRows().front().mOpacity, 1.0f)
                     << "a shared material took one actor's fade";
 
                 std::vector<Rtx::InstanceRecord> records;
@@ -286,7 +286,12 @@ namespace Rtx::Testing
         }
 
         /// The emissive multiplier is folded into the colour, because their product is all the
-        /// game's own shader ever uses.
+        /// game's own shader ever uses — and it is folded in *past* the decode, because a
+        /// multiplier is a gain on the light and not a colour of its own.
+        ///
+        /// The content states `(0.5, 0.25, 0)` in the space it was authored in, and the sRGB curve
+        /// takes that to `(0.2140411, 0.0508761, 0)`. Within a millionth, because the curve is a
+        /// `pow` and the numbers here are decimals.
         TEST_F(RtxSceneExtractorTest, anEmissiveMultiplierIsFoldedIntoTheColourItScales)
         {
             const auto extractOne = [](float multiplier) {
@@ -294,7 +299,7 @@ namespace Rtx::Testing
                 osg::StateSet& state = *quad->getOrCreateStateSet();
 
                 Surface::Material& surface = describe(state);
-                surface.mEmissiveColour = osg::Vec3f(0.5f, 0.25f, 0.0f);
+                surface.mEmissiveColour = Surface::Colour{ 0.5f, 0.25f, 0.0f };
                 surface.mEmissiveMult = multiplier;
 
                 Rtx::SceneDesc scene;
@@ -305,11 +310,18 @@ namespace Rtx::Testing
                 return scene.getTables().mMaterials.getRows().front().mEmissiveColour;
             };
 
-            EXPECT_EQ(extractOne(2.0f), osg::Vec3f(1.0f, 0.5f, 0.0f));
-            EXPECT_EQ(extractOne(0.5f), osg::Vec3f(0.25f, 0.125f, 0.0f));
+            const auto expectScaled = [&](float multiplier) {
+                const osg::Vec3f got = extractOne(multiplier);
+                EXPECT_NEAR(got.x(), 0.2140411f * multiplier, 1e-6f) << "at " << multiplier;
+                EXPECT_NEAR(got.y(), 0.0508761f * multiplier, 1e-6f) << "at " << multiplier;
+                EXPECT_EQ(got.z(), 0.0f) << "at " << multiplier;
+            };
+
+            expectScaled(2.0f);
+            expectScaled(0.5f);
 
             // The default is one, so a model that asked for nothing keeps the colour it authored.
-            EXPECT_EQ(extractOne(1.0f), osg::Vec3f(0.5f, 0.25f, 0.0f));
+            expectScaled(1.0f);
         }
 
         /// A glowing surface earns no lamp, and a `LightSource` beside it is what does the lighting.
@@ -326,7 +338,7 @@ namespace Rtx::Testing
                     osg::Matrixf::scale(2.0f, 2.0f, 2.0f) * osg::Matrixf::translate(0.0f, 0.0f, 5.0f));
 
                 osg::ref_ptr<osg::Geometry> quad = makeQuad();
-                describe(*quad->getOrCreateStateSet()).mEmissiveColour = osg::Vec3f(0.5f, 0.25f, 0.0f);
+                describe(*quad->getOrCreateStateSet()).mEmissiveColour = Surface::Colour{ 0.5f, 0.25f, 0.0f };
                 root->addChild(quad);
                 if (torch)
                     root->addChild(makeLightSource(100.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f)));
@@ -672,7 +684,7 @@ namespace Rtx::Testing
             walk(*node, 0, 1);
 
             ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, osg::Vec4f(0.25f, 0.0f, 0.0f, 1.0f));
+            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.0508761f);
 
             // What the entry holds is the state set and never what was written into it, so a second
             // walk reads the surface again.
@@ -681,9 +693,10 @@ namespace Rtx::Testing
             walk(*node, 0, 2);
 
             ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u) << "the same surface is the same slot";
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, osg::Vec4f(0.5f, 0.0f, 0.0f, 1.0f));
+            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.2140411f);
 
-            // And the chain changes under it.
+            // And the chain changes under it: the controller swapped under the walk is not the one
+            // that painted the surface.
             osg::ref_ptr<ColourController> second = new ColourController;
             second->mRed = 0.75f;
             node->removeUpdateCallback(first);
@@ -693,8 +706,7 @@ namespace Rtx::Testing
             walk(*node, 0, 3);
 
             ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, osg::Vec4f(0.75f, 0.0f, 0.0f, 1.0f))
-                << "the controller swapped under the walk is not the one that painted the surface";
+            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.5225216f);
         }
     }
 }

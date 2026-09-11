@@ -7,11 +7,10 @@
 
 #include <osg/Image>
 #include <osg/Vec2f>
-#include <osg/Vec3f>
-#include <osg/Vec4f>
 #include <osg/ref_ptr>
 
 #include "alphamode.hpp"
+#include "colour.hpp"
 #include "vertexcolour.hpp"
 
 namespace osg
@@ -118,11 +117,24 @@ namespace Surface
         /// the other way, which is `Rtx::ShapeFold`'s business and not this flag's.
         bool mTwoSided = false;
 
-        /// Alpha included: `NiMaterialProperty` keeps the surface's opacity here and nowhere else.
-        osg::Vec4f mDiffuseColour{ 1.0f, 1.0f, 1.0f, 1.0f };
-        osg::Vec3f mAmbientColour{ 1.0f, 1.0f, 1.0f };
-        osg::Vec3f mEmissiveColour{ 0.0f, 0.0f, 0.0f };
-        osg::Vec3f mSpecularColour{ 0.0f, 0.0f, 0.0f };
+        /// The four colours a `NiMaterialProperty` states for a surface.
+        ///
+        /// **Display-encoded, and `Surface::Colour` is what says so.** A renderer working in light
+        /// divides the curve out through `Rtx::decodeColour`, and one drawing in the game's own
+        /// space uses them as they stand.
+        Colour mDiffuseColour{ 1.0f, 1.0f, 1.0f };
+        Colour mAmbientColour{ 1.0f, 1.0f, 1.0f };
+        Colour mEmissiveColour;
+        Colour mSpecularColour;
+
+        /// How much of the surface is there, before its texture is read.
+        ///
+        /// **Beside the diffuse colour and not inside it, because that is where the record keeps
+        /// it.** `NiMaterialProperty` states an alpha of its own next to four colours, and it is
+        /// `osg::Material`'s four-component diffuse that merged the two — a shape a description of
+        /// what the content said has no reason to copy. `NifOsg::AlphaController` animates this
+        /// one field and leaves the colour alone.
+        float mOpacity = 1.0f;
 
         /// Clamped to OpenGL's limit at the point of authoring, because content routinely exceeds it
         /// and the number above the clamp never meant anything.
@@ -188,7 +200,7 @@ namespace Surface
     /// without looking at what hangs off it — so two surfaces merged into one must not have had
     /// different descriptions. They cannot: every field here is authored from a record that also
     /// produced part of the state being compared, so state sets that compare equal describe the
-    /// same surface. `apps/components_tests/rtxtool/material.cpp` is what keeps that true.
+    /// same surface.
     ///
     /// **On the state set and not on the drawable**, because that is where the content's own
     /// inheritance already lands: a `NiTexturingProperty` three nodes up and a `NiMaterialProperty`

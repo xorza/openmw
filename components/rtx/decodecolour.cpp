@@ -14,6 +14,11 @@ namespace Rtx
         return osg::Vec3f(toLinear(encoded.r()), toLinear(encoded.g()), toLinear(encoded.b()));
     }
 
+    osg::Vec3f decodeColour(const Surface::Colour& encoded)
+    {
+        return toLinear(osg::Vec3f(encoded.mRed, encoded.mGreen, encoded.mBlue));
+    }
+
     osg::Vec3f decodeColour(std::uint32_t packed)
     {
         const auto channel = [](std::uint32_t bits) { return toLinear(static_cast<std::uint8_t>(bits & 0xFFu)); };

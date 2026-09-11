@@ -11,6 +11,8 @@
 #include <string_view>
 #include <vector>
 
+#include <source_location>
+
 #include <gtest/gtest.h>
 
 #include <osg/BlendFunc>
@@ -239,7 +241,26 @@ namespace Rtx::Testing
             const osg::Vec4f colour(mRed, 0.0f, 0.0f, 1.0f);
             auto* colours = static_cast<osg::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
             colours->setDiffuse(osg::Material::FRONT_AND_BACK, colour);
-            Surface::getWritableMaterial(*stateset)->mDiffuseColour = colour;
+            Surface::getWritableMaterial(*stateset)->mDiffuseColour = Surface::Colour{ mRed, 0.0f, 0.0f };
         }
     };
+
+    /// What a `ColourController`'s red comes to in the scene: the sRGB curve divided out of it, and
+    /// nothing at all in the other two channels.
+    ///
+    /// **Within a millionth in the one channel that moves**, because the curve is a `pow` and a
+    /// test states what it expects as a decimal. The other two are exact, since nought decodes to
+    /// nought — and they are asked because a decode that swapped the channels would pass on the
+    /// first alone.
+    ///
+    /// @param where the caller's line, so a failure reports there rather than here.
+    inline void expectRed(
+        const osg::Vec3f& colour, float red, std::source_location where = std::source_location::current())
+    {
+        const ::testing::ScopedTrace trace(where.file_name(), static_cast<int>(where.line()), "expectRed");
+
+        EXPECT_NEAR(colour.x(), red, 1e-6f);
+        EXPECT_EQ(colour.y(), 0.0f);
+        EXPECT_EQ(colour.z(), 0.0f);
+    }
 }

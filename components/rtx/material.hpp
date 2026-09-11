@@ -39,7 +39,12 @@ namespace Rtx
         Index mNormal = sNoIndex;
         Index mEmissive = sNoIndex;
 
-        osg::Vec4f mDiffuseColour{ 1.0f, 1.0f, 1.0f, 1.0f };
+        /// What the texture is tinted by, in linear light.
+        ///
+        /// **Three channels and not the record's four**, which is the split `GpuMaterial` already
+        /// made: the alpha beside it is `mOpacity` and is not a colour, so nothing decodes it and
+        /// nothing multiplies an albedo by it.
+        osg::Vec3f mDiffuseColour{ 1.0f, 1.0f, 1.0f };
 
         /// How much the surface glows on its own, with the material's own multiplier folded in.
         ///
@@ -47,6 +52,10 @@ namespace Rtx
         /// only ever uses their product, and carrying two numbers would be carrying one of them for
         /// the sake of it.
         osg::Vec3f mEmissiveColour{ 0.0f, 0.0f, 0.0f };
+
+        /// How much of the surface is there, as the content stated it and before its texture is
+        /// read. One for everything that is all there, which is nearly everything.
+        float mOpacity = 1.0f;
 
         float mAlphaRef = 0.0f;
 
@@ -150,7 +159,7 @@ namespace Rtx
         /// material a stand-in threshold, so the build marks a pane non-opaque and traversal stops
         /// for it — which is what a transmittance needs anyway. A reader deciding what to do with a
         /// candidate asks this one first.
-        bool isTranslucent() const { return mAlphaMode == Surface::AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
+        bool isTranslucent() const { return mAlphaMode == Surface::AlphaMode::Blend && mOpacity < 1.0f; }
 
         /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
         ///

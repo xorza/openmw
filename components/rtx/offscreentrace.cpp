@@ -11,6 +11,7 @@
 #include <components/resource/imagemanager.hpp>
 
 #include "camera.hpp"
+#include "decodecolour.hpp"
 #include "posecull.hpp"
 #include "poseupdate.hpp"
 #include "scenedesc.hpp"
@@ -22,7 +23,7 @@ namespace Rtx
     {
         osg::Vec3f irradianceOf(const osg::Vec4f& colour)
         {
-            return osg::Vec3f(colour.r(), colour.g(), colour.b()) * std::numbers::pi_v<float>;
+            return decodeColour(colour) * std::numbers::pi_v<float>;
         }
     }
 

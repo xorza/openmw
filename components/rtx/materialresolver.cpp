@@ -15,6 +15,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "alphaimage.hpp"
+#include "decodecolour.hpp"
 #include "extractionstats.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
@@ -140,8 +141,7 @@ namespace Rtx
         // **The same two facts `Material::isTranslucent` reads**, off the description they are
         // copied from, so the reader walks the texels of exactly the images `describe` would.
         const Surface::Material& described = *reading.mDescribed;
-        const bool translucent
-            = described.mAlphaMode == Surface::AlphaMode::Blend && described.mDiffuseColour.a() < 1.0f;
+        const bool translucent = described.mAlphaMode == Surface::AlphaMode::Blend && described.mOpacity < 1.0f;
         const osg::Image* const diffuse = described.getTexture(Surface::TextureRole::Diffuse);
 
         if (translucent && diffuse != nullptr && !diffuse->getFileName().empty())
@@ -274,10 +274,15 @@ namespace Rtx
         material.mVertexColour = described->mVertexColour;
 
         material.mTwoSided = described->mTwoSided;
-        material.mDiffuseColour = described->mDiffuseColour;
+        material.mOpacity = described->mOpacity;
 
-        // Folded together because the game's own shader only ever uses their product.
-        material.mEmissiveColour = described->mEmissiveColour * described->mEmissiveMult;
+        // **Decoded here, because this is where the game's numbers enter the trace.** A record's
+        // colour is written in the space the artist saw and everything past this is light.
+        material.mDiffuseColour = decodeColour(described->mDiffuseColour);
+
+        // The multiplier is applied past the decode: it is a gain on the light and not a colour of
+        // its own. Folded in because the game's own shader only ever uses their product.
+        material.mEmissiveColour = decodeColour(described->mEmissiveColour) * described->mEmissiveMult;
 
         // **Scaled about the middle of the texture, then offset**, which is what `NifOsg` builds its
         // texture matrix from — so `(uv - 0.5) * scale + 0.5 + offset`, resolved here into the

@@ -8,6 +8,7 @@
 #include <components/surface/material.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "decodecolour.hpp"
 #include "extractionstats.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
@@ -198,7 +199,7 @@ namespace Rtx
                 .mPosition = stood,
                 .mRadius = radius,
                 .mAxis = axis,
-                .mColour = osg::Vec3f(colour.r(), colour.g(), colour.b()),
+                .mColour = decodeColour(colour),
                 .mAlpha = alpha,
                 .mMoved = stood - came,
             });

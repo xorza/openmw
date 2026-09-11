@@ -136,8 +136,12 @@ namespace Rtx::Testing
     /// would be holding up a surface this renderer does not have.
     inline void addPane(SceneDesc& scene, std::span<const osg::Vec3f> quad, const osg::Vec4f& colour, float fade = 1.0f)
     {
+        // A test states a pane as a colour and how much of it there is, which is the pair the
+        // record states too. Linear already, so there is nothing to decode: `Rtx::decodeColour` is
+        // for what a content file wrote.
         const Index glass = scene.addMaterial(Material{
-            .mDiffuseColour = colour,
+            .mDiffuseColour = osg::Vec3f(colour.r(), colour.g(), colour.b()),
+            .mOpacity = colour.a(),
             .mAlphaMode = Surface::AlphaMode::Blend,
         });
 

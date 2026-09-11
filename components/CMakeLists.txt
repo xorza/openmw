@@ -150,7 +150,7 @@ add_component_dir (bodyparts
     )
 
 add_component_dir (surface
-    alphamode material vertexcolour
+    alphamode colour material vertexcolour
     )
 
 add_component_dir (nif

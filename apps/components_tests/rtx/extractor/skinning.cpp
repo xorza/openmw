@@ -441,7 +441,7 @@ namespace Rtx::Testing
             const ExtractionStats first = walk(*node);
             ASSERT_EQ(first.mMaterialsAdded, 1u) << "the controller's state set is the only one on the path";
             ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, osg::Vec4f(0.25f, 0.0f, 0.0f, 1.0f));
+            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.0508761f);
 
             controller->mRed = 0.75f;
             mScene.clearPlacement();
@@ -450,7 +450,7 @@ namespace Rtx::Testing
             EXPECT_EQ(second.mMaterialsAdded, 0u) << "the surface did not change, only what it is wearing";
             EXPECT_EQ(second.mMaterialsReused, 1u);
             ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, osg::Vec4f(0.75f, 0.0f, 0.0f, 1.0f));
+            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.5225216f);
 
             // And a frame the controller said nothing new on writes nothing to the device: the row
             // goes over when the scene names it, and only then.

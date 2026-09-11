@@ -64,7 +64,7 @@ namespace Rtx
         template <class Texture, class Layers, class Value>
         void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
         {
-            const auto& [kind, diffuse, normal, emissive, diffuseColour, emissiveColour, alphaRef, alphaMode,
+            const auto& [kind, diffuse, normal, emissive, diffuseColour, emissiveColour, opacity, alphaRef, alphaMode,
                 vertexColour, twoSided, textureTransform, run, flatten, animated, neverSolid]
                 = material;
 
@@ -77,6 +77,7 @@ namespace Rtx
             value(kind);
             value(diffuseColour);
             value(emissiveColour);
+            value(opacity);
             value(alphaRef);
             value(alphaMode);
             value(vertexColour);

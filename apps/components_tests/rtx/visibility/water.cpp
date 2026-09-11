@@ -437,7 +437,7 @@ namespace Rtx::Testing
             };
 
             Material black;
-            black.mDiffuseColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
+            black.mDiffuseColour = osg::Vec3f(0.0f, 0.0f, 0.0f);
 
             SceneDesc dry;
             dry.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),

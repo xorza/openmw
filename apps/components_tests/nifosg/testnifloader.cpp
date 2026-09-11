@@ -134,8 +134,8 @@ namespace
     /// became an `osg::Material` — and anything that is not the OpenGL renderer had to read those
     /// back and work out what the content had said. The description is the content's own answer.
     ///
-    /// Textures are the sweep's job (`apps/components_tests/rtxtool/material.cpp`): binding one here
-    /// would need a VFS with an image in it, and real content exercises every role rather than two.
+    /// Textures are left out: binding one here would need a VFS with an image in it, and what a
+    /// role is worth is settled by `SurfaceMaterialTest` rather than by a second spelling of it.
     TEST_F(NifOsgLoaderTest, shouldDescribeASurfaceFromItsProperties)
     {
         Nif::NiMaterialProperty colours;
@@ -174,15 +174,17 @@ namespace
         // is the other half.
         EXPECT_TRUE(found->mTwoSided);
 
-        // The material's alpha rides in the diffuse colour, which is where the NIF keeps it.
-        EXPECT_EQ(found->mDiffuseColour, osg::Vec4f(0.25f, 0.5f, 0.75f, 0.5f));
-        EXPECT_EQ(found->mAmbientColour, osg::Vec3f(0.1f, 0.2f, 0.3f));
-        EXPECT_EQ(found->mEmissiveColour, osg::Vec3f(0.5f, 0.25f, 0.0f));
+        // The colours as the record states them, display-encoded, and the alpha beside them rather
+        // than inside the diffuse — which is how `NiMaterialProperty` keeps the two.
+        EXPECT_EQ(found->mDiffuseColour, (Surface::Colour{ 0.25f, 0.5f, 0.75f }));
+        EXPECT_FLOAT_EQ(found->mOpacity, 0.5f);
+        EXPECT_EQ(found->mAmbientColour, (Surface::Colour{ 0.1f, 0.2f, 0.3f }));
+        EXPECT_EQ(found->mEmissiveColour, (Surface::Colour{ 0.5f, 0.25f, 0.0f }));
         EXPECT_FLOAT_EQ(found->mEmissiveMult, 2.0f);
 
         // Morrowind has specular lighting off, and the loader zeroes it rather than describing what
         // the record happens to hold.
-        EXPECT_EQ(found->mSpecularColour, osg::Vec3f(0.0f, 0.0f, 0.0f));
+        EXPECT_EQ(found->mSpecularColour, Surface::Colour{});
         EXPECT_FLOAT_EQ(found->mGlossiness, 0.0f);
     }
 

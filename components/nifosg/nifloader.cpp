@@ -3055,18 +3055,21 @@ namespace NifOsg
                 node->getOrCreateStateSet()->setAttributeAndModes(mat, osg::StateAttribute::ON);
             }
 
+            const auto stated = [](const osg::Vec4f& colour) {
+                return Surface::Colour{ colour.r(), colour.g(), colour.b() };
+            };
+
             // **Read off `mat` rather than derived a second time.** Three overlapping NIF properties
             // decide these between them, and sixty lines above have just resolved the vertex-colour
             // modes, the emissive-only light mode, Morrowind's disabled specular and the
             // no-vertex-colours fallback. That is one answer, and computing it twice is how the two
             // come to disagree. `mat` is this function's own local, not a state set found later.
-            const osg::Vec4f emission = mat->getEmission();
-            const osg::Vec4f ambient = mat->getAmbient();
-            const osg::Vec4f specular = mat->getSpecular();
-            surface.mDiffuseColour = mat->getDiffuse();
-            surface.mAmbientColour = osg::Vec3f(ambient.x(), ambient.y(), ambient.z());
-            surface.mEmissiveColour = osg::Vec3f(emission.x(), emission.y(), emission.z());
-            surface.mSpecularColour = osg::Vec3f(specular.x(), specular.y(), specular.z());
+            const osg::Vec4f diffuse = mat->getDiffuse();
+            surface.mDiffuseColour = stated(diffuse);
+            surface.mOpacity = diffuse.a();
+            surface.mAmbientColour = stated(mat->getAmbient());
+            surface.mEmissiveColour = stated(mat->getEmission());
+            surface.mSpecularColour = stated(mat->getSpecular());
             surface.mGlossiness = mat->getShininess();
             surface.mEmissiveMult = mat->getEmissiveMultiplier();
             surface.mVertexColour = vertexColourOf(mat->getVertexColorMode());

@@ -90,7 +90,12 @@ namespace Rtx::Testing
             const Rtx::Sprite& low = mScene.getTables().mSprites[0];
             EXPECT_EQ(low.mPosition, osg::Vec3f(100.0f, 0.0f, 10.0f));
             EXPECT_FLOAT_EQ(low.mRadius, 6.0f);
-            EXPECT_EQ(low.mColour, osg::Vec3f(1.0f, 0.5f, 0.25f));
+            // **The ramp's colour, decoded.** A particle's ramp is written in the space the artist
+            // saw and a sprite is composited into light, so `(1, 0.5, 0.25)` reaches the table as
+            // `(1, 0.2140411, 0.0508761)`. Within a millionth, because the curve is a `pow`.
+            EXPECT_FLOAT_EQ(low.mColour.x(), 1.0f);
+            EXPECT_NEAR(low.mColour.y(), 0.2140411f, 1e-6f);
+            EXPECT_NEAR(low.mColour.z(), 0.0508761f, 1e-6f);
 
             // The colour ramp's alpha and the alpha ramp are separate and the rasterizer multiplies
             // them; here both are a half, so a quarter is what proves the product rather than one of

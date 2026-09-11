@@ -1003,7 +1003,6 @@ namespace Rtx::Testing
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(0.0f), .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{
-                        .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f),
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                     }) });
 
@@ -1085,7 +1084,7 @@ namespace Rtx::Testing
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{
-                        .mDiffuseColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f),
+                        .mDiffuseColour = osg::Vec3f(0.0f, 0.0f, 0.0f),
                     }) });
 
                 // Wide enough to fill the middle of the frame from the far end of the path, where
@@ -1094,8 +1093,8 @@ namespace Rtx::Testing
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{
-                        .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mOpacity = 0.5f,
                         .mAlphaMode = Surface::AlphaMode::Blend,
                     }) });
 

@@ -61,12 +61,11 @@ namespace Rtx
 
                 // One where the surface is all there, so traversal branches on a number rather than
                 // on a mode it was never sent.
-                .mOpacity = material.isTranslucent() ? material.mDiffuseColour.a() : 1.0f,
+                .mOpacity = material.isTranslucent() ? material.mOpacity : 1.0f,
                 .mLayerOffset = material.mLayers.mOffset,
                 .mLayerCount = material.mLayers.mCount,
                 .mEmissive = material.mEmissive,
-                .mDiffuseColour
-                = osg::Vec3f(material.mDiffuseColour.r(), material.mDiffuseColour.g(), material.mDiffuseColour.b()),
+                .mDiffuseColour = material.mDiffuseColour,
                 .mEmissiveColour = material.mEmissiveColour,
                 .mTextureTransform = material.mTextureTransform,
                 .mFlags

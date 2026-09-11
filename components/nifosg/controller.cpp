@@ -473,7 +473,7 @@ namespace NifOsg
             // The description is what a renderer reads, so what animates the surface animates that
             // too. Written in place after the first frame — see `Surface::getWritableMaterial`.
             if (Surface::Material* surface = Surface::getWritableMaterial(*stateset))
-                surface->mDiffuseColour.a() = value;
+                surface->mOpacity = value;
         }
     }
 
@@ -516,6 +516,7 @@ namespace NifOsg
             SceneUtil::Material* mat
                 = static_cast<SceneUtil::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
             Surface::Material* surface = Surface::getWritableMaterial(*stateset);
+            const Surface::Colour stated{ value.x(), value.y(), value.z() };
             using TargetColor = Nif::NiMaterialColorController::TargetColor;
             switch (mTargetColor)
             {
@@ -525,7 +526,7 @@ namespace NifOsg
                     diffuse.set(value.x(), value.y(), value.z(), diffuse.a());
                     mat->setDiffuse(diffuse);
                     if (surface != nullptr)
-                        surface->mDiffuseColour = diffuse;
+                        surface->mDiffuseColour = stated;
                     break;
                 }
                 case TargetColor::Specular:
@@ -534,7 +535,7 @@ namespace NifOsg
                     specular.set(value.x(), value.y(), value.z(), specular.a());
                     mat->setSpecular(specular);
                     if (surface != nullptr)
-                        surface->mSpecularColour = value;
+                        surface->mSpecularColour = stated;
                     break;
                 }
                 case TargetColor::Emissive:
@@ -543,7 +544,7 @@ namespace NifOsg
                     emissive.set(value.x(), value.y(), value.z(), emissive.a());
                     mat->setEmission(emissive);
                     if (surface != nullptr)
-                        surface->mEmissiveColour = value;
+                        surface->mEmissiveColour = stated;
                     break;
                 }
                 case TargetColor::Ambient:
@@ -553,7 +554,7 @@ namespace NifOsg
                     ambient.set(value.x(), value.y(), value.z(), ambient.a());
                     mat->setAmbient(ambient);
                     if (surface != nullptr)
-                        surface->mAmbientColour = value;
+                        surface->mAmbientColour = stated;
                 }
             }
             mat->updateStateSet(stateset);
