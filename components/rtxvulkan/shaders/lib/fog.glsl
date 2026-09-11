@@ -13,10 +13,13 @@
 // Both return transmittance and in-scatter apart, so a caller forms `colour * w + xyz` — which is
 // what lets fog live here, where the lights already are.
 
+#extension GL_EXT_control_flow_attributes : require
+
 #include "camera.h"
 #include "colour.h"
 #include "look.h"
 #include "scene.h"
+#include "sky.h"
 #include "bindings.glsl"
 #include "frame.glsl"
 #include "froxel.glsl"
@@ -101,7 +104,7 @@ float fogShape(vec3 position, float spacing)
     float amplitude = 1.0;
     float tile = FOG_TILE;
 
-    for (uint scale = 1u; scale < FOG_SCALES; ++scale)
+    [[unroll]] for (uint scale = 1u; scale < FOG_SCALES; ++scale)
     {
         amplitude *= 0.5;
         tile /= FOG_LACUNARITY;
@@ -235,11 +238,29 @@ float fogBeamDepth(float extinction, vec3 towards)
     return extinction * FOG_HEIGHT * frame.mFogLift / max(towards.z, 1.0e-3);
 }
 
-/// Every directional source over the air, as one ray sees it before anything stands in the way.
+/// What the two moons put into the air along a ray, before their slant through the fog: each
+/// irradiance through the phase function at the ray's own angle to it. In `MoonDisc` order.
+struct MoonTerms
+{
+    vec3 mMasser;
+    vec3 mSecunda;
+};
+
+/// One of them.
+vec3 fogMoonTerm(SkySource moon, vec3 direction)
+{
+    return HAS_MOONS ? moon.mIrradiance * fogPhase(dot(direction, moon.mDirection)) : vec3(0.0);
+}
+
+/// What one froxel is to do about the sky's own lights: whether the sun is up, what the moons put
+/// into the air, and which of the pair the one ray goes to.
 ///
 /// **Hoisted because a directional source holds its angle to the ray**, so its phase function is one
 /// evaluation for the whole of it — which is what makes a function of `fogPhase`'s shape affordable
 /// at all. A lamp's angle changes at every point, which is why lamps are estimated the other way.
+///
+/// The sun carries no term here: `fogMoonTermsAlong` says why its irradiance and its phase are put
+/// back at the pixel's own angle instead.
 struct FogSources
 {
     /// Whether there is a sun at all, which an interior and a night both answer no to.
@@ -248,19 +269,15 @@ struct FogSources
     /// sun, and it fades to that across dusk rather than stepping.
     bool mSunlit;
 
-    /// What it puts into the air along this ray.
-    ///
-    /// **Its shadow ray is cast wherever there is a sun**, and not only where this is worth one: the
-    /// air throws the sun forward so hard that looking away from it there is nothing to shadow, but a
-    /// puff of smoke in the same froxel is lit by the sun at a card's worth whichever way the eye
-    /// looks — `puffLight` — and reads the froxel's answer.
-    vec3 mSunward;
-
     /// **The moons light the air too, and nothing was saying so.** At night the only thing lighting
     /// this haze was `mFogColour`, the dome's own colour — so the air around a moon came back
     /// blue-grey however red the moon, and since the disc itself is dimmed by the air in front of
-    /// it, a rainy night drew the fog's colour and none of Masser's. In `MoonDisc` order.
-    vec3 mMoons[2];
+    /// it, a rainy night drew the fog's colour and none of Masser's.
+    ///
+    /// **The pair whole, because a pair not worth a ray is delivered whole.** It was a `vec3[2]`
+    /// subscripted by the draw, which is a function-scope array on this hardware and so a read of
+    /// scratch memory.
+    MoonTerms mTerms;
 
     /// Whether the pair is worth the one ray they share.
     ///
@@ -273,15 +290,23 @@ struct FogSources
     /// `FOG_SHAFT_FLOOR` lost its whole contribution rather than only its shadow.
     bool mMoonlit;
 
-    /// Which of the two the ray goes to, and the chance it was drawn.
+    /// What the one the draw landed on puts into the air, and the chance it was drawn.
     ///
     /// **Drawn in proportion to what each delivers, the way a surface draws them and the lamps are
     /// drawn.** Masser is the larger and the brighter almost always, so it is nearly always the
     /// draw; a second ray to place Secunda's shadow separately would cost as much again for a light
     /// a quarter its size. The sun's own ray is not traced at night, so this spends what the day
     /// already spends.
-    uint mMoon;
+    vec3 mDrawn;
     float mChance;
+
+    /// The one the draw landed on, so a ray can be aimed at it and its slant through the fog taken.
+    ///
+    /// **A `SkySource` and not an index into `frame.mMoons`.** `moonsInAir` read the pair at a
+    /// subscript the draw decided and `fogscatter.comp` added the same subscript to
+    /// `SKY_SOURCE_MASSER` to ask `skyVisible` — two places deriving one thing from a number, where
+    /// the thing itself fits here.
+    SkySource mDrawnSky;
 };
 
 /// What the sun puts into one point of the air, before its own colour and before a phase function.
@@ -319,61 +344,49 @@ float sunInAir(float extinction, float visible)
 vec3 moonsInAir(float extinction, FogSources sources, float lunar)
 {
     if (!sources.mMoonlit)
-        return sources.mMoons[0] * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
-            + sources.mMoons[1] * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection));
+        return sources.mTerms.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
+            + sources.mTerms.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection));
 
-    const uint moon = sources.mMoon;
-
-    return sources.mMoons[moon] * exp(-fogBeamDepth(extinction, frame.mMoons[moon].mDirection))
+    return sources.mDrawn * exp(-fogBeamDepth(extinction, sources.mDrawnSky.mDirection))
         * (lunar / sources.mChance);
 }
 
-/// What each sky source puts into the air along a ray, before its slant through the fog: its
-/// irradiance through the phase function at the ray's own angle to it.
-///
 /// **The column's half of `FogSources`.** A directional source holds its angle to a straight ray,
 /// so this is one evaluation for the whole ray — and every froxel of a column samples the column's
 /// ray, so it is one evaluation for the whole column. `fogdepth.comp` works it out once and stores
-/// it a layer a source; the scatter pass reads three texels where it evaluated three Mie phases.
+/// it a layer a moon; the scatter pass reads two texels where it evaluated two Mie phases.
 ///
-/// @return one entry a source, in `SkySource` order.
-vec3[SKY_SOURCES] fogSourceTermsAlong(vec3 direction)
+/// **The sun is not one of them.** Its irradiance and its phase are functions of the direction
+/// alone, so the trace puts both back at the pixel's own angle rather than the column's — what the
+/// froxel keeps for the sun is a transport and nothing else. A third layer carried the sun's term
+/// and no pass ever read it.
+MoonTerms fogMoonTermsAlong(vec3 direction)
 {
-    vec3 terms[SKY_SOURCES];
-    for (uint source = 0u; source < SKY_SOURCES; ++source)
-    {
-        const SkySource sky = skySourceAt(source);
-        const bool asked = source == SKY_SOURCE_SUN ? sunUp() : HAS_MOONS;
-
-        terms[source] = asked ? sky.mIrradiance * fogPhase(dot(direction, sky.mDirection)) : vec3(0.0);
-    }
-
-    return terms;
+    return MoonTerms(fogMoonTerm(skySourceAt(SKY_SOURCE_MASSER), direction),
+        fogMoonTerm(skySourceAt(SKY_SOURCE_SECUNDA), direction));
 }
 
-/// The froxel's half: which of the terms are worth a ray, and which moon the pair's goes to.
+/// The froxel's half: whether the pair is worth a ray, and which moon that ray goes to.
 ///
 /// @param draw one number in `[0, 1)`, which picks the moon the pair's ray goes to.
-FogSources fogSourcesFrom(vec3 terms[SKY_SOURCES], float draw)
+FogSources fogSourcesFrom(MoonTerms terms, float draw)
 {
-    const bool sunlit = sunUp();
-    const vec3 sunward = terms[SKY_SOURCE_SUN];
+    const float masser = dot(terms.mMasser, LUMINANCE_WEIGHTS);
+    const float secunda = dot(terms.mSecunda, LUMINANCE_WEIGHTS);
 
-    const vec3 moons[2] = vec3[2](terms[SKY_SOURCE_MASSER], terms[SKY_SOURCE_SECUNDA]);
-    const float weights[2] = float[2](dot(moons[0], LUMINANCE_WEIGHTS), dot(moons[1], LUMINANCE_WEIGHTS));
-
-    const float total = weights[0] + weights[1];
+    const float total = masser + secunda;
     const float worthARay = FOG_SHAFT_FLOOR * brightest(frame.mFogColour);
 
     // **A probability compared against the draw**, for the reason `gather` gives: a moon of no
     // weight is never the draw, and one carrying all of it always is.
-    const uint moon = total > 0.0 && draw < weights[0] / total ? 0u : 1u;
+    const bool drewMasser = total > 0.0 && draw < masser / total;
 
     // **Each flag carries its own constant and not only the terms behind it.** A moon's share folds
     // to nothing without one, but the comparison against a uniform does not fold with it — so the
     // block it guards stays in the kernel, which is the whole of what the constant is for.
-    return FogSources(sunlit, sunward, moons, HAS_MOONS && brightest(moons[0] + moons[1]) > worthARay, moon,
-        total > 0.0 ? weights[moon] / total : 1.0);
+    return FogSources(sunUp(), terms, HAS_MOONS && brightest(terms.mMasser + terms.mSecunda) > worthARay,
+        drewMasser ? terms.mMasser : terms.mSecunda, total > 0.0 ? (drewMasser ? masser : secunda) / total : 1.0,
+        drewMasser ? skySourceAt(SKY_SOURCE_MASSER) : skySourceAt(SKY_SOURCE_SECUNDA));
 }
 
 /// Which surfaces end a column's view of the air: everything the eye's own ray stops at, because

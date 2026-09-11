@@ -51,7 +51,7 @@ namespace Rtx
         /// 0.067% the radiance channels were put back to full floats over. Fifty times inside it.
         constexpr VkFormat sAlbedo = GBUFFER_ALBEDO;
 
-        /// Two full floats, for the reason `getMotion` gives.
+        /// Two halves, for the reason `gbuffer.h` gives.
         constexpr VkFormat sMotion = GBUFFER_MOTION;
 
         /// Two, and full floats rather than halves: a clip depth puts most of its precision within a
@@ -150,13 +150,31 @@ namespace Rtx
         }
     }
 
-    GBuffer::GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
+    GBuffer::GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, const std::uint32_t width,
+        const std::uint32_t height, const bool layers)
+        : mCarried(layers ? sChannelCount : bindingOf(Channel::Transparency))
     {
+        // **The three the eye sees through are last, so one count says which are the frame's.**
+        // `sEveryChannel` is in binding order and `gbuffer.h` puts them at the end.
+        static_assert(
+            bindingOf(Channel::Transparency) + 3 == sChannelCount, "the layer channels are no longer the last three");
+
         mChannels.reserve(sChannelCount);
         for (const Channel channel : sEveryChannel)
         {
             const ChannelFormat& described = formatOf(channel);
-            mChannels.emplace_back(device, width, height, described.mFormat, described.mUsage, channelName(channel));
+
+            // **One texel where nothing will read the channel**, which is sixteen bytes a pixel and
+            // a measured 33.7 MiB at 1080p. The set layout keeps its fourteen bindings and the
+            // trace keeps its fourteen declarations, so no shader knows: a store outside an image
+            // is discarded by the specification, and `visibility.rgen` does not make one anyway —
+            // it writes these three only under `mLayerCompositedAfter`, which is the flag this is.
+            if (carries(channel))
+                mChannels.emplace_back(
+                    device, width, height, described.mFormat, described.mUsage, channelName(channel));
+            else
+                mChannels.push_back(
+                    makeStandIn(device, pool, described.mFormat, VK_IMAGE_USAGE_STORAGE_BIT, channelName(channel)));
         }
 
         const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannelCount };
@@ -211,6 +229,9 @@ namespace Rtx
         // everything before it on the queue rather than at the compute stage, because what NGX
         // reads them at is its own; discarding from `TOP_OF_PIPE` waits for nothing at all, and
         // buys a torn frame for a barrier saved.
+        //
+        // **The stand-ins are in here too, for the reason `CompositePass::mNoSum` gives**, and one
+        // texel apiece rides in the same command as the channels beside them.
         Barriers barriers(commands);
         for (const Image& image : mChannels)
             barriers.add(image.describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,

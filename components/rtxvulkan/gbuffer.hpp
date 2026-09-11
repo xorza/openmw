@@ -37,7 +37,12 @@ namespace Rtx
     class GBuffer
     {
     public:
-        GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height);
+        /// @param layers whether anything after this chain reads the layer the eye sees through.
+        ///        Only an upscaled frame does — `VisibilityConstants::mLayerCompositedAfter` is the
+        ///        same question asked of the shader — and where nothing does, the three channels
+        ///        are one texel each instead of the frame's own extent.
+        GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
+            std::uint32_t height, bool layers);
 
         /// The set every `GBuffer` is addressed through, made once and outliving all of them.
         ///
@@ -50,6 +55,9 @@ namespace Rtx
 
         /// One channel's image, which is the image bound at that channel's number.
         const Image& get(Channel channel) const { return mChannels[bindingOf(channel)]; }
+
+        /// Whether a channel is the frame's own extent rather than a stand-in nothing reads.
+        bool carries(Channel channel) const { return bindingOf(channel) < mCarried; }
 
         VkDescriptorSet getSet() const { return mSet; }
 
@@ -72,6 +80,10 @@ namespace Rtx
         /// back to it — and a channel added to `channel.hpp` without the third reached its pass as
         /// a null.
         std::vector<Image> mChannels;
+
+        /// How many of them are the frame's own extent, which is all of them or all but the three
+        /// layer channels. They are last, so one count says which.
+        std::uint32_t mCarried;
 
         /// The set goes with the pool it came out of, which is what one pool per buffer is for.
         Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;

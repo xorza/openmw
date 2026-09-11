@@ -330,7 +330,7 @@ namespace Rtx::Shaders
 
         /// Masser and Secunda, in that order. An interface trace and an interior leave both at an
         /// alpha of nothing, which costs the sky one compare each.
-        MoonDisc mMoons[2];
+        MoonDisc mMoons[MOON_COUNT];
 
         /// Where the scene's lamps were binned. The pass folds it in from the tables it is handed,
         /// the way it folds the sea's in — `GpuLightGrid` says why it rides here and not in a table.

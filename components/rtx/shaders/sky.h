@@ -295,6 +295,9 @@ namespace Rtx::Shaders
         uint mFace;
     };
 
+    /// How many of them there are, in `SkySource` order after the sun: Masser, then Secunda.
+    const uint MOON_COUNT = 2u;
+
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #ifdef RTX_HOST

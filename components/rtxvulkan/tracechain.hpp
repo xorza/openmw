@@ -61,7 +61,10 @@ namespace Rtx
         /// Builds the chain at exactly this extent, whatever it was before.
         ///
         /// The caller is expected to have waited for anything still reading what this replaces.
-        void resize(std::uint32_t width, std::uint32_t height);
+        ///
+        /// @param layers whether anything reads the layer the eye sees through, which `GBuffer`
+        ///        answers with three channels or with three stand-ins.
+        void resize(std::uint32_t width, std::uint32_t height, bool layers);
 
         /// Makes the chain at least this big, keeping whatever extent it already reached on either
         /// axis, and answers whether anything was built.
@@ -71,7 +74,7 @@ namespace Rtx
         /// corner of a larger one's images rather than rebuilding them. Each axis goes to the
         /// larger of what was there and what is wanted, so a wide picture after a tall one does not
         /// throw the tall one's height away and build it again next time.
-        bool grow(std::uint32_t width, std::uint32_t height);
+        bool grow(std::uint32_t width, std::uint32_t height, bool layers);
 
         /// The extent the images are at, which is what a dispatch over the whole of one covers.
         /// Nought until the first `resize` or `grow`.

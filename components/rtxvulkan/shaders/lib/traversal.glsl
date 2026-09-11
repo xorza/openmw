@@ -93,10 +93,9 @@ float sampledOpacity(float opacity, float painted)
 /// that wants the colour beside the alpha. `mediumAlong` is that one.
 ///
 /// @param point where the hit lands on the material's own texture, made once by the caller.
-float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point, SurfaceCone cone, float coneWidth)
+float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point)
 {
-    const float painted
-        = material.mDiffuse == NO_TEXTURE ? 1.0 : sampleDiffuse(material.mDiffuse, point, cone, coneWidth).a;
+    const float painted = material.mDiffuse == NO_TEXTURE ? 1.0 : sampleDiffuse(material.mDiffuse, point).a;
 
     return sampledOpacity(opacity, painted);
 }
@@ -154,16 +153,16 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 
     vec2 uv[3];
     triangleUvs(triangleCorners(meshAt(instance.mMesh), primitive), uv);
-    const TexturePoint point = texturePoint(uv, cornerWeights(bary), material.mTextureTransform);
-    const SurfaceCone cone = surfaceConeAt(crossed, direction);
+    const TexturePoint point = texturePoint(
+        uv, cornerWeights(bary), material.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
 
     if (walkPast)
     {
-        through *= 1.0 - sampledOpacity(opacity, material, point, cone, coneWidth);
+        through *= 1.0 - sampledOpacity(opacity, material, point);
         return false;
     }
 
-    return sampleDiffuse(material.mDiffuse, point, cone, coneWidth).a >= material.mAlphaCutoff;
+    return sampleDiffuse(material.mDiffuse, point).a >= material.mAlphaCutoff;
 }
 
 /// The candidate loop, run to completion. It confirms every hit that lands on the material rather
@@ -356,9 +355,10 @@ Hit committedHit(
 /// and the whole chain — `skyVisible`, `lampVisible`, `ambientReaching` — was given a width to
 /// carry. Three interleaved pairs: neutral at the Balmora mages' guild, 0.86 against 0.88 ms at
 /// Ald-ruhn, and 1.17 against 1.29 ms at Seyda Neen's shore. The paper's finding is about the
-/// *fetch*, and this path's cost is the *level*: `coneLod` returns at once for a width of nought,
-/// so level zero here skips a texture-header read, a determinant and three logarithms at every
-/// candidate. What that early return saves is more than the cache gives back.
+/// *fetch*, and this path's cost is the *level*: a width of nought is answered at once, so level
+/// zero here skips a texture-header read in `coneLod`, and a determinant and two logarithms in
+/// `coneBase`, at every candidate. What those early returns save is more than the cache gives
+/// back.
 ///
 /// **A ray shorter than the bias it starts past is not a ray.** A candle sitting a unit off a table
 /// asks for a shadow ray whose end is behind its own beginning, and `rayQueryInitializeEXT` with a
@@ -655,7 +655,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     // Where the hit lands on the material's own sheet, which the albedo, the opacity and the
     // emissive map all read at. A terrain layer has a transform of its own and makes its own.
-    const TexturePoint point = texturePoint(uv, weight, material.mTextureTransform);
+    const TexturePoint point = texturePoint(uv, weight, material.mTextureTransform, cone, surface.mFootprint);
 
     vec3 albedo = NO_TEXTURE_ALBEDO;
 
@@ -678,13 +678,13 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
                 continue;
 
             albedo += showing
-                * sampleAlbedo(
-                    layer.mDiffuse, texturePoint(uv, weight, layer.mDiffuseTransform), cone, surface.mFootprint);
+                * sampleAlbedo(layer.mDiffuse,
+                    texturePoint(uv, weight, layer.mDiffuseTransform, cone, surface.mFootprint));
         }
     }
     else if (material.mDiffuse != NO_TEXTURE)
     {
-        albedo = sampleAlbedo(material.mDiffuse, point, cone, surface.mFootprint);
+        albedo = sampleAlbedo(material.mDiffuse, point);
     }
     // The vertex colour *replaces* the material's tint where the content asked for it, which is
     // what `glColorMaterial(GL_AMBIENT_AND_DIFFUSE)` does and what `getDiffuseColor` reads in the
@@ -697,11 +697,10 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // nothing else does.
     const float opacity = surfaceOpacity(instance, material);
     if (isSeenThrough(opacity))
-        surface.mOpacity = sampledOpacity(opacity, material, point, cone, surface.mFootprint);
+        surface.mOpacity = sampledOpacity(opacity, material, point);
 
     if (material.mEmissive != NO_TEXTURE)
-        surface.mEmitted
-            = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point, cone, surface.mFootprint).rgb;
+        surface.mEmitted = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point).rgb;
 
     return surface;
 }

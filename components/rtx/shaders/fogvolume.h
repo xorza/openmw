@@ -11,24 +11,29 @@
 // that have to agree. `gbuffer.h` says why a format is a macro rather than a constant, and what a
 // channel costs when the two statements of it drift.
 //
-// **Three formats and not one**, because two of these images hold a single channel: the sun's
+// **Four formats and not one**, because two of these images hold a single channel: the sun's
 // transport is a product of transmittances and carries no colour, so the accumulated and the
 // per-slice copies of it are half floats one wide. The column depth is a world distance and is the
 // one thing here a half float cannot hold.
+//
+// **The column's moon terms are the fourth, and they stay full width for what a half would move
+// rather than for what it could not hold.** `fogPhase` peaks at 345 at exact forward scatter and
+// the brightest pixel this game reaches is under nine, so a half has room to spare — and rounding
+// the term every froxel of a night reads would move the night's air for a megabyte at 1080p.
 
 #ifdef RTX_HOST
 
 #define FOG_VOLUME_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
 #define FOG_SUNWARD_FORMAT VK_FORMAT_R16_SFLOAT
 #define FOG_DEPTH_FORMAT VK_FORMAT_R32_SFLOAT
-#define FOG_SOURCES_FORMAT VK_FORMAT_R32G32B32A32_SFLOAT
+#define FOG_MOONS_FORMAT VK_FORMAT_R32G32B32A32_SFLOAT
 
 #else
 
 #define FOG_VOLUME_FORMAT rgba16f
 #define FOG_SUNWARD_FORMAT r16f
 #define FOG_DEPTH_FORMAT r32f
-#define FOG_SOURCES_FORMAT rgba32f
+#define FOG_MOONS_FORMAT rgba32f
 
 #endif
 
@@ -84,15 +89,19 @@ namespace Rtx::Shaders
     /// this one storage binding because none of them samples it.
     const uint BIND_FOG_COLUMN_DEPTH = 16;
 
-    /// What each sky source puts into the air along each column's ray, before its slant through the
-    /// fog: one layer a source, in `SkySource` order. `fogdepth.comp` writes it once a column and the
+    /// What each moon puts into the air along each column's ray, before its slant through the fog:
+    /// one layer a moon, in `MoonDisc` order. `fogdepth.comp` writes it once a column and the
     /// scatter pass reads it once a froxel, which is the phase function evaluated once where it was
     /// evaluated sixty-four times.
-    const uint BIND_FOG_COLUMN_SOURCES = 17;
+    ///
+    /// **The sun is not one of them.** Its irradiance and its phase are functions of the direction
+    /// alone, and `fogscatter.comp` says why the trace puts both back at the pixel's own angle
+    /// rather than the column's — so a third layer held the sun's term and no pass ever read it.
+    const uint BIND_FOG_COLUMN_MOONS = 17;
 
     /// Where the sampled bindings end and the storage ones begin, and how many the set declares.
     const uint FOG_SAMPLED_COUNT = BIND_FOG_SCATTER_TARGET;
-    const uint FOG_BINDING_COUNT = BIND_FOG_COLUMN_SOURCES + 1;
+    const uint FOG_BINDING_COUNT = BIND_FOG_COLUMN_MOONS + 1;
 
 #ifdef RTX_HOST
 }

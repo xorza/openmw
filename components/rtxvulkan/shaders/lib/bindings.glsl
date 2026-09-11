@@ -446,9 +446,9 @@ layout(set = 3, binding = BIND_FOG_SLICE_SUNWARD_TARGET, FOG_SUNWARD_FORMAT) uni
 /// its own texel and nothing between texels.
 layout(set = 3, binding = BIND_FOG_COLUMN_DEPTH, FOG_DEPTH_FORMAT) uniform image2D fogColumnDepth;
 
-/// What each sky source puts into the air along each column's ray, one layer a source, which
-/// `fogdepth.comp` writes and the scatter pass reads. `FogVolume::mColumnSources` says why it is
-/// the column's and not the froxel's.
-layout(set = 3, binding = BIND_FOG_COLUMN_SOURCES, FOG_SOURCES_FORMAT) uniform image3D fogColumnSources;
+/// What each moon puts into the air along each column's ray, one layer a moon, which
+/// `fogdepth.comp` writes and the scatter pass reads. `FogVolume::mColumnMoons` says why it is the
+/// column's and not the froxel's.
+layout(set = 3, binding = BIND_FOG_COLUMN_MOONS, FOG_MOONS_FORMAT) uniform image3D fogColumnMoons;
 
 #endif

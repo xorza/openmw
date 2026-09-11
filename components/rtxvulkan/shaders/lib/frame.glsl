@@ -13,9 +13,6 @@
 // had to find every copy. These pair the compile-time constant with the runtime test it stands in
 // front of, which is the rule `variants.glsl` states, and every reader asks here.
 
-#include "scene.h"
-#include "visibility.h"
-
 #include "bindings.glsl"
 #include "variants.glsl"
 

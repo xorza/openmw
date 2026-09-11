@@ -18,8 +18,6 @@
 // `Rtx::VisibilityVariant` is the other half. It reads each of these off the frame's own constants,
 // and `VisibilityPass` keeps one pipeline per tuple.
 
-#include "visibility.h"
-
 /// Whether the trace counts the primary rays that hit something.
 ///
 /// **A harness facility, so the game's module does not carry the atomic at all.** `shot` prints the

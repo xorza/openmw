@@ -29,9 +29,33 @@ vec3 movedBy(uint index, vec3 position)
     return was - position;
 }
 
-/// Where a point standing `was` from the previous eye lands on that eye's screen, from nought to one
-/// across it — or a negative coordinate where it lands on no screen at all.
+/// How far outside the previous screen a reprojection may claim, in screens.
 ///
+/// **A bound, because the divide has none.** A point a hair in front of the previous eye's plane is
+/// divided by nearly nothing, so the coordinate it lands on runs away — a huge finite number in
+/// FP32, handed to an upscaler as a motion vector. What a reader needs from a point that left the
+/// screen is the direction it left in and the fact that it left, and one screen of margin on each
+/// side carries both: two screen widths of motion is already past anything an upscaler reuses.
+const float PREVIOUS_SCREEN_REACH = 1.0;
+
+/// Where a point standing `was` from the previous eye lands on that eye's screen, and whether it
+/// landed anywhere at all.
+///
+/// **The two are separate fields because a screen coordinate has no spare value.** A point off the
+/// left edge is negative and so was the sentinel this returned, so a reader testing the sign could
+/// not tell them apart — and `reprojected` answered *this pixel did not move* for a surface that
+/// arrived from off-screen, which is a history reuse where the honest answer is a history miss. It
+/// fired along the leading edge of every horizontal pan.
+struct PreviousScreen
+{
+    /// Nought to one across the previous frame, and outside that where the point left it, bounded
+    /// by `PREVIOUS_SCREEN_REACH`.
+    vec2 mAt;
+
+    /// False where there is no previous frame, and where the point stood behind that eye.
+    bool mFound;
+};
+
 /// **The inverse of the generation in `rayAt`, and shared for the reason `rayAt` itself is.** A
 /// pixel reprojects the surface it found and the fog volume reprojects every froxel of its own grid;
 /// two derivations of one projection are two chances to disagree about where the previous frame was.
@@ -39,25 +63,24 @@ vec3 movedBy(uint index, vec3 position)
 /// **An offset from the eye and never a world position.** `mCameraMotion` is the step between two
 /// eyes, differenced on the host where a float still has digits to spare — where the two positions
 /// themselves are six figures long and nearly equal.
-vec2 previousScreen(vec3 was)
+PreviousScreen previousScreen(vec3 was)
 {
     // A basis of nothing is what the frame carries where there is no previous frame at all: the
-    // first, a resize, a new scene, and any jump a motion vector could not describe.
-    if (!(dot(frame.mPreviousForward, frame.mPreviousForward) > 0.0))
-        return vec2(-1.0);
-
-    // Behind the previous eye there is no answer, and the divide below would fold such a point back
+    // first, a resize, a new scene, and any jump a motion vector could not describe. Behind the
+    // previous eye there is no answer either, and the divide below would fold such a point back
     // into the frame as a plausible coordinate.
     const float ahead = dot(was, frame.mPreviousForward);
-    if (!(ahead > 0.0))
-        return vec2(-1.0);
+    if (!(dot(frame.mPreviousForward, frame.mPreviousForward) > 0.0) || !(ahead > 0.0))
+        return PreviousScreen(vec2(0.0), false);
 
     // The basis carries the image plane's half extents, so dividing by each vector's own square
     // undoes the direction and the scale together.
     const float across = dot(was, frame.mPreviousRight) / dot(frame.mPreviousRight, frame.mPreviousRight);
     const float down = -dot(was, frame.mPreviousUp) / dot(frame.mPreviousUp, frame.mPreviousUp);
 
-    return (vec2(across, down) / ahead) * 0.5 + 0.5;
+    const vec2 at = (vec2(across, down) / ahead) * 0.5 + 0.5;
+
+    return PreviousScreen(clamp(at, vec2(-PREVIOUS_SCREEN_REACH), vec2(1.0 + PREVIOUS_SCREEN_REACH)), true);
 }
 
 /// Where a surface stood on the previous frame's screen, less where it stands on this one, in
@@ -82,11 +105,11 @@ vec2 reprojected(uvec2 pixel, vec3 was)
     if (frame.mCamera.mOrthographic != 0u)
         return vec2(0.0);
 
-    const vec2 screen = previousScreen(was);
-    if (screen.x < 0.0)
+    const PreviousScreen screen = previousScreen(was);
+    if (!screen.mFound)
         return vec2(0.0);
 
-    const vec2 before = screen * vec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
+    const vec2 before = screen.mAt * vec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
     return before - (vec2(pixel) + 0.5 + frame.mCamera.mJitter);
 }
 

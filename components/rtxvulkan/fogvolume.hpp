@@ -180,13 +180,13 @@ namespace Rtx
         /// and never sampled.
         Image mColumnDepth;
 
-        /// What each sky source puts into the air along each column's ray, one layer a source.
+        /// What each moon puts into the air along each column's ray, one layer a moon.
         ///
         /// **The half of `FogSources` that is the column's and not the froxel's.** The phase
         /// function takes the angle between the ray and the source, which is one number for the
         /// whole ray — so the depth pass works it out once and the scatter pass reads it, where each
-        /// froxel used to evaluate three of them for itself.
-        Image mColumnSources;
+        /// froxel used to evaluate one for itself per moon.
+        Image mColumnMoons;
 
         /// Linear on all three axes and clamped on all three: a column at the edge of the screen has
         /// no neighbour outside it, and the nearest and furthest slices are the whole of what a ray

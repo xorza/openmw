@@ -112,10 +112,10 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
 
         vec2 uv[3];
         triangleUvs(triangleCorners(meshAt(instance.mMesh), primitive), uv);
-        const TexturePoint point = texturePoint(uv, cornerWeights(bary), material.mTextureTransform);
-        const SurfaceCone surfaceCone = surfaceConeAt(crossed, direction);
+        const TexturePoint point = texturePoint(uv, cornerWeights(bary), material.mTextureTransform,
+            surfaceConeAt(crossed, direction), cone.mWidth + cone.mSpread * at);
 
-        const vec4 texel = sampleDiffuse(material.mDiffuse, point, surfaceCone, cone.mWidth + cone.mSpread * at);
+        const vec4 texel = sampleDiffuse(material.mDiffuse, point);
 
         // **`sampledOpacity` and not the same arithmetic written again**, so that one surface cannot
         // be hazed two ways: this is the number a shadow ray asks of the same shell. It is handed

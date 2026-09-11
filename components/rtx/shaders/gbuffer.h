@@ -30,6 +30,16 @@
 // 1/255 steps. Fog thick enough for that step to show is fog no star is visible through. Four
 // megabytes at 1080p against the sixteen a half-float image would take for the same three numbers.
 //
+// **And a motion vector is a half, because a reprojection is now bounded.** It could not be while
+// `previousScreen` divided by a distance that approaches nought, which has no bound at all and
+// reaches a half float as infinity. `PREVIOUS_SCREEN_REACH` holds it to one screen outside the
+// frame either way, so the largest vector a 1920-wide render can carry is 3840 — where a half's
+// step is two pixels, on a vector that left the screen twice over. Inside the frame, where a vector
+// is read, that step is a sixtieth of a pixel at sixteen and a thousandth at one. NVIDIA's Ray
+// Reconstruction guide takes the format.
+//
+// Twelve bytes a pixel across the three motion channels, and 24 MiB of that at 1080p.
+//
 // **A normal is eleven bits a component, because everything that reads one compares directions.**
 // The guide's `xyz` is a unit vector and its `w` a fraction, and the sharpest test made of either is
 // the cascade's `pow(dot, 128)`, which cuts a tap at about six degrees of tilt — against the 0.03
@@ -50,7 +60,7 @@
 #define GBUFFER_RADIANCE VK_FORMAT_R32G32B32A32_SFLOAT
 #define GBUFFER_ALBEDO VK_FORMAT_R16G16B16A16_SFLOAT
 #define GBUFFER_GUIDE VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_MOTION VK_FORMAT_R32G32_SFLOAT
+#define GBUFFER_MOTION VK_FORMAT_R16G16_SFLOAT
 #define GBUFFER_DEPTH VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_LAYER VK_FORMAT_R16G16B16A16_SFLOAT
 #define GBUFFER_LAYER_OPACITY VK_FORMAT_R8G8B8A8_UNORM
@@ -62,7 +72,7 @@
 #define GBUFFER_RADIANCE rgba32f
 #define GBUFFER_ALBEDO rgba16f
 #define GBUFFER_GUIDE rgba16f
-#define GBUFFER_MOTION rg32f
+#define GBUFFER_MOTION rg16f
 #define GBUFFER_DEPTH rg32f
 #define GBUFFER_LAYER rgba16f
 #define GBUFFER_LAYER_OPACITY rgba8

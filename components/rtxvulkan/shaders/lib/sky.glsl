@@ -12,7 +12,7 @@
 
 #include "colour.h"
 #include "scene.h"
-#include "visibility.h"
+#include "sky.h"
 #include "bindings.glsl"
 #include "frame.glsl"
 
@@ -216,6 +216,12 @@ vec3 skyPatches(vec3 direction)
     vec3 painted = vec3(0.0);
 
     // `patch` is a reserved word in GLSL, which is why this is not called one.
+    //
+    // **Not `[[unroll]]`, where every other loop over a compile-time shape is.** There is no local
+    // array here for it to take out of scratch memory, and it moves the picture: six of the 23
+    // views, up to 17 of 255 on 7 per cent of the pixels with the exposure held. With the upscaler
+    // off the same pair differs on 2845 pixels by one, so what unrolling changes is the last bit of
+    // the trace and what shows it is Ray Reconstruction.
     for (uint layer = 0u; layer < SKY_PATCH_COUNT; ++layer)
     {
         const SkyPatch sheet = frame.mSkyPatches[layer];

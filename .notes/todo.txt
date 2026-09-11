@@ -6,4 +6,5 @@
 - tracy
 - precompile shaders?
 - fsr and other denoisers and upscalers
+- atrous shared-memory tile, then Dolp's permutation schedule
 - rtx 20xx

@@ -46,7 +46,7 @@ namespace Rtx
     {
     }
 
-    void TraceChain::resize(const std::uint32_t width, const std::uint32_t height)
+    void TraceChain::resize(const std::uint32_t width, const std::uint32_t height, const bool layers)
     {
         assert(width > 0 && height > 0);
 
@@ -56,18 +56,18 @@ namespace Rtx
         mColour = std::make_unique<Image>(
             mDevice, mWidth, mHeight, VK_FORMAT_R32G32B32A32_SFLOAT, mColourUsage, mColourName);
 
-        mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mWidth, mHeight);
+        mChannels = std::make_unique<GBuffer>(mDevice, mPool, mChannelLayout, mWidth, mHeight, layers);
         mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mWidth, mHeight);
         mAccumulate.resize(mWidth, mHeight);
         mFilter.resize(mWidth, mHeight);
     }
 
-    bool TraceChain::grow(const std::uint32_t width, const std::uint32_t height)
+    bool TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const bool layers)
     {
         if (isBuilt() && width <= mWidth && height <= mHeight)
             return false;
 
-        resize(std::max(mWidth, width), std::max(mHeight, height));
+        resize(std::max(mWidth, width), std::max(mHeight, height), layers);
         return true;
     }
 

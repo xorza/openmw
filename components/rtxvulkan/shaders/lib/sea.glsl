@@ -11,6 +11,8 @@
 // not. `WavePass` transforms all three out of one spectrum for that reason, and this reads them.
 // Nothing in here is lit — that is `water.glsl`.
 
+#extension GL_EXT_control_flow_attributes : require
+
 #include "look.h"
 #include "scene.h"
 #include "wave.h"
@@ -184,7 +186,7 @@ WaterSurface waterSurfaceAt(vec2 at, float footprint)
     // **The tiles add rather than one of them being chosen.** Each carries the whole spectrum at
     // half its variance, so the sum is one sea of the roughness asked for — and their widths are not
     // multiples of one another, so the sum repeats only at a distance no frame contains.
-    for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
+    [[unroll]] for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
     {
         const vec2 uv = waveCoordinate(cascade, at);
         const float level = waveLevel(cascade, footprint);
@@ -259,7 +261,7 @@ float caustic(vec2 at, float depth, float footprint)
     const float branched = WATER_CAUSTIC_GRAIN * sqrt(depth / WATER_CAUSTIC_FOCUS);
     const float widened = max(footprint, max(blurred, branched));
 
-    for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
+    [[unroll]] for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
     {
         const vec2 uv = waveCoordinate(cascade, at);
         const float level = waveLevel(cascade, widened);

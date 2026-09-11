@@ -40,7 +40,7 @@
 #include "camera.h"
 #include "look.h"
 #include "scene.h"
-#include "visibility.h"
+#include "sky.h"
 
 #include "lib/bindings.glsl"
 #include "lib/fog.glsl"
@@ -71,12 +71,12 @@ vec3 fogVolumeWas(vec3 fromEye)
 {
     const vec3 was = fromEye + frame.mCameraMotion;
 
-    const vec2 screen = previousScreen(was);
-    if (screen.x < 0.0)
+    const PreviousScreen screen = previousScreen(was);
+    if (!screen.mFound)
         return vec3(-1.0);
 
     // Normalised by the image and never by the frame, for the reason `fogVolumeAlong` gives.
-    const vec2 at = screen * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight))
+    const vec2 at = screen.mAt * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight))
         / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns);
 
     // The depth curve, inverted. A slice holds what its own jittered point read, so its texel centre
@@ -199,9 +199,8 @@ void main()
     const vec2 sunDraw = vec2(randomNext(lampState), randomNext(lampState));
     const vec2 moonDraw = vec2(randomNext(lampState), randomNext(lampState));
 
-    vec3 terms[SKY_SOURCES];
-    for (uint source = 0u; source < SKY_SOURCES; ++source)
-        terms[source] = imageLoad(fogColumnSources, ivec3(column, int(source))).xyz;
+    const MoonTerms terms = MoonTerms(
+        imageLoad(fogColumnMoons, ivec3(column, 0)).xyz, imageLoad(fogColumnMoons, ivec3(column, 1)).xyz);
 
     const FogSources sources = fogSourcesFrom(terms, randomNext(lampState));
 
@@ -232,7 +231,7 @@ void main()
     if (sources.mSunlit)
         visible = skyVisible(position, SKY_SOURCE_SUN, sunDraw);
     if (sources.mMoonlit)
-        lunar = skyVisible(position, SKY_SOURCE_MASSER + sources.mMoon, moonDraw);
+        lunar = skyVisible(sources.mDrawnSky, position, moonDraw);
 
     // **And the ambient's, which the air never asked and a puff does.** The air scatters the
     // weather's fog colour unshadowed, which is Morrowind's convention for it; a puff is lit by the

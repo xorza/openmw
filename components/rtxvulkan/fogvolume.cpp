@@ -82,9 +82,8 @@ namespace Rtx
               device, mColumns, mRows, FOG_SUNWARD_FORMAT, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
         , mColumnDepth(device, mColumns, mRows, FOG_DEPTH_FORMAT,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column depth")
-        , mColumnSources(device, mColumns, mRows, FOG_SOURCES_FORMAT,
-              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column sources", 1,
-              Shaders::SKY_SOURCES)
+        , mColumnMoons(device, mColumns, mRows, FOG_MOONS_FORMAT,
+              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column moons", 1, Shaders::MOON_COUNT)
         , mSampler(Sampler::forTarget(device, "fog volume"))
     {
         const auto sets = static_cast<std::uint32_t>(mSets.size());
@@ -136,7 +135,7 @@ namespace Rtx
             named[Shaders::BIND_FOG_SLICE_TARGET] = &mSlice;
             named[Shaders::BIND_FOG_SLICE_SUNWARD_TARGET] = &mSliceSunward;
             named[Shaders::BIND_FOG_COLUMN_DEPTH] = &mColumnDepth;
-            named[Shaders::BIND_FOG_COLUMN_SOURCES] = &mColumnSources;
+            named[Shaders::BIND_FOG_COLUMN_MOONS] = &mColumnMoons;
 
             std::array<VkDescriptorImageInfo, sBindings> views{};
             std::array<VkWriteDescriptorSet, sBindings> writes{};
@@ -172,7 +171,7 @@ namespace Rtx
             constexpr VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
             for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,
-                     &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth, &mColumnSources })
+                     &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth, &mColumnMoons })
             {
                 image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
@@ -199,7 +198,7 @@ namespace Rtx
         // every read after that, the trace's included.
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mAir, &mAirSunward, &mSlice,
-                 &mSliceSunward, &mColumnDepth, &mColumnSources })
+                 &mSliceSunward, &mColumnDepth, &mColumnMoons })
             barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
@@ -218,7 +217,7 @@ namespace Rtx
     void FogVolume::depthTaken(VkCommandBuffer commands) const
     {
         Barriers barriers(commands);
-        for (const Image* image : { &mColumnDepth, &mColumnSources })
+        for (const Image* image : { &mColumnDepth, &mColumnMoons })
             barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT));

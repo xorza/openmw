@@ -12,7 +12,7 @@
 // piece of the sky that is not `sky.glsl`'s.
 
 #include "scene.h"
-#include "visibility.h"
+#include "sky.h"
 
 #include "texturearray.glsl"
 

@@ -245,7 +245,10 @@ namespace Rtx
         if (upscaling())
             render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscale);
 #endif
-        mFrame.resize(render.width, render.height);
+        // **The layer channels only where something upscales**, which is the same test
+        // `mLayerCompositedAfter` makes of the shader: Ray Reconstruction is the one reader the
+        // trace hands a separate layer to, and a frame nothing upscales composites its own.
+        mFrame.resize(render.width, render.height, upscaling());
 
         // **Two, and interchangeable**, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
@@ -264,7 +267,15 @@ namespace Rtx
 
         if (upscaling())
         {
-            mUpscaled = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R32G32B32A32_SFLOAT,
+            // **Half floats, where the trace's own composite is full ones.** That one is the
+            // instrument a reference is read off and a thousand frames are summed into; this one
+            // is shown and never summed, and a reference is built with the upscaler off. The peak
+            // linear radiance a frame of this game reaches is under nine — measured over the whole
+            // view suite and over a camera pointed at the noon sun — so a half carries it with four
+            // orders of magnitude to spare, at a step of one part in two thousand where the display
+            // quantizes to one in 255. Sixteen bytes a pixel of the output extent rather than
+            // thirty-two: 66 MiB at 4K rather than 133.
+            mUpscaled = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");
 
             // Building uploads the network's weights, which is once per resolution rather than
@@ -1136,7 +1147,7 @@ namespace Rtx
 
     void VulkanRenderer::growViewTargets(std::uint32_t width, std::uint32_t height)
     {
-        if (!mView.grow(width, height))
+        if (!mView.grow(width, height, false))
             return;
 
         mViewTarget = std::make_unique<Image>(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
@@ -1277,6 +1288,7 @@ namespace Rtx
     void VulkanRenderer::readChannel(const Channel channel, std::vector<float>& values)
     {
         assert(mFrame.isBuilt());
+        assert(mFrame.getChannels().carries(channel) && "a channel this frame stands in for, read back as its own");
 
         // **One lookup, where this was a switch of fourteen arms each naming its own channel back.**
         // A channel is its binding, and the buffer is indexed by it.
@@ -1308,36 +1320,47 @@ namespace Rtx
         std::vector<std::uint8_t> bytes;
         image.read(mPool, VK_IMAGE_LAYOUT_GENERAL, bytes);
 
-        // **A caller asked for floats, and not every channel is stored as one.** The masks hold a
-        // yes or a no in a byte, so what comes back is widened rather than reinterpreted — a
-        // `memcpy` over those would hand back four texels read as one number.
-        if (image.getFormat() == GBUFFER_MASK)
+        // **A caller asked for floats, and not every channel is stored as one.** Every format the
+        // renderer reads back is named, and one that is not is a throw rather than a `memcpy` —
+        // which is how the motion channels came back as pairs of halves read as one number apiece
+        // the day they narrowed, and only because one test happened to read one of them.
+        //
+        // Tested on the format rather than on a macro, because several macros across three headers
+        // name each of these.
+        switch (image.getFormat())
         {
-            values.resize(bytes.size());
-            for (std::size_t at = 0; at < bytes.size(); ++at)
-                values[at] = static_cast<float>(bytes[at]) / 255.0f;
+            // A mask holds a yes or a no in a byte, so what comes back is widened rather than
+            // reinterpreted.
+            case GBUFFER_MASK:
+                values.resize(bytes.size());
+                for (std::size_t at = 0; at < bytes.size(); ++at)
+                    values[at] = static_cast<float>(bytes[at]) / 255.0f;
 
-            return;
+                return;
+
+            case VK_FORMAT_R16G16_SFLOAT:
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+                values.resize(bytes.size() / sizeof(std::uint16_t));
+                for (std::size_t at = 0; at < values.size(); ++at)
+                {
+                    std::uint16_t half = 0;
+                    std::memcpy(&half, bytes.data() + at * sizeof(half), sizeof(half));
+                    values[at] = fromHalf(half);
+                }
+
+                return;
+
+            case VK_FORMAT_R32_SFLOAT:
+            case VK_FORMAT_R32G32_SFLOAT:
+            case VK_FORMAT_R32G32B32A32_SFLOAT:
+                values.resize(bytes.size() / sizeof(float));
+                std::memcpy(values.data(), bytes.data(), bytes.size());
+
+                return;
+
+            default:
+                throw Error("no float decode is recorded for this image format");
         }
-
-        // **And the denoiser's blend is half floats**, which a `memcpy` would hand back as pairs of
-        // halves read as one number apiece. Tested on the format rather than on a macro, because
-        // four of them across three headers name this one.
-        if (image.getFormat() == VK_FORMAT_R16G16B16A16_SFLOAT)
-        {
-            values.resize(bytes.size() / sizeof(std::uint16_t));
-            for (std::size_t at = 0; at < values.size(); ++at)
-            {
-                std::uint16_t half = 0;
-                std::memcpy(&half, bytes.data() + at * sizeof(half), sizeof(half));
-                values[at] = fromHalf(half);
-            }
-
-            return;
-        }
-
-        values.resize(bytes.size() / sizeof(float));
-        std::memcpy(values.data(), bytes.data(), bytes.size());
     }
 
     void VulkanRenderer::takeValidationErrors(std::vector<std::string>& errors)
