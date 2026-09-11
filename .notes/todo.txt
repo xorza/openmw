@@ -6,5 +6,5 @@
 - tracy
 - precompile shaders?
 - fsr and other denoisers and upscalers
-- atrous shared-memory tile, then Dolp's permutation schedule
+- atrous: one packed geometry channel for the denoiser (.notes/rtx-filter-geometry.md)
 - rtx 20xx

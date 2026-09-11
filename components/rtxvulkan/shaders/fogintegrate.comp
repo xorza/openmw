@@ -39,16 +39,28 @@
 
 layout(local_size_x = FOG_COLUMN_WORKGROUP, local_size_y = FOG_COLUMN_WORKGROUP) in;
 
-/// The tent `[1 2 1]` squared, over the nine columns around one, and where each of them stands.
-const float FOG_TENT[9] = float[9](1.0, 2.0, 1.0, 2.0, 4.0, 2.0, 1.0, 2.0, 1.0);
-const ivec2 FOG_TENT_AT[9] = ivec2[9](ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0), ivec2(0, 0),
-    ivec2(1, 0), ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1));
+/// Where the `i`th column of the tent stands, as the offset from the middle one.
+///
+/// **Arithmetic and not a table**, for the reason `atrous.comp`'s `kernelAt` gives. Two tables read
+/// at a counter cost this pass nine copies of themselves in scratch memory.
+ivec2 fogTentOffset(int i)
+{
+    return ivec2(i % 3, i / 3) - 1;
+}
+
+/// The tent `[1 2 1]` squared, which is that row against itself across and up.
+float fogTentWeight(int i)
+{
+    const ivec2 offset = fogTentOffset(i);
+
+    return (offset.x == 0 ? 2.0 : 1.0) * (offset.y == 0 ? 2.0 : 1.0);
+}
 
 /// The `i`th column of the tent around `column`, clamped to the edge of the grid — which is the
 /// neighbour the sampler would have read there.
 ivec2 fogTentAt(ivec2 column, int i, ivec2 grid)
 {
-    return clamp(column + FOG_TENT_AT[i], ivec2(0), grid - 1);
+    return clamp(column + fogTentOffset(i), ivec2(0), grid - 1);
 }
 
 /// What one froxel holds, with its neighbours across the screen averaged in and every filter
@@ -78,7 +90,7 @@ ivec2 fogTentAt(ivec2 column, int i, ivec2 grid)
 /// ten frames and nine neighbours. Multiplying them here rather than in the pass that traced is
 /// what lets each be treated as what it is.
 ///
-/// @param surfaces where the nine columns' views of the air end, in the order of `FOG_TENT_AT`.
+/// @param surfaces where the nine columns' views of the air end, in `fogTentOffset` order.
 FogSlice sliceAt(ivec2 column, uint slice, ivec2 grid, float surfaces[9])
 {
     const float near = froxelNear(slice);
@@ -92,9 +104,11 @@ FogSlice sliceAt(ivec2 column, uint slice, ivec2 grid, float surfaces[9])
             continue;
 
         const ivec2 at = fogTentAt(column, i, grid);
-        point += FOG_TENT[i] * texelFetch(fogScatter, ivec3(at, int(slice)), 0);
-        seeing += FOG_TENT[i] * texelFetch(fogSunward, ivec3(at, int(slice)), 0);
-        total += FOG_TENT[i];
+        const float tent = fogTentWeight(i);
+
+        point += tent * texelFetch(fogScatter, ivec3(at, int(slice)), 0);
+        seeing += tent * texelFetch(fogSunward, ivec3(at, int(slice)), 0);
+        total += tent;
     }
 
     if (!(total > 0.0))
@@ -121,6 +135,12 @@ void main()
 
     // **Where this column's view of the air ends, and its neighbours'** — `fogdepth.comp` says why
     // it matters. Read once for the column: the tent asks for all nine at every slice.
+    //
+    // **The one array here that stays one.** It holds nine measured depths rather than a table two
+    // selects can state, and GLSL copies an array parameter by value — so this and the two copies
+    // `sliceAt` takes are irreducible short of nine named scalars. Removing the other thirteen
+    // across this pass and the two denoiser passes moved the clock by nothing, so nine named
+    // scalars would buy nothing either.
     float surfaces[9];
     for (int i = 0; i < 9; ++i)
         surfaces[i] = imageLoad(fogColumnDepth, fogTentAt(column, i, grid.xy)).x;

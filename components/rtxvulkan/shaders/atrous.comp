@@ -71,8 +71,20 @@ layout(push_constant, scalar) uniform Push
     AtrousConstants level;
 };
 
-/// The B3 spline the wavelet is built from, as its 1D row.
-const float KERNEL[5] = float[](1.0 / 16.0, 1.0 / 4.0, 3.0 / 8.0, 1.0 / 4.0, 1.0 / 16.0);
+/// The B3 spline the wavelet is built from, as its 1D row: 1, 4, 6, 4, 1 over sixteen.
+///
+/// **A select and not a table, and that is a rule for every fixed table in this renderer.** `glslc`
+/// cannot subscript a constant composite, so it copies the whole array into function storage once
+/// per subscript *expression* — which on this hardware is scratch memory. `[[unroll]]` does not
+/// undo it, because the copy is emitted before any loop is unrolled: a probe over the three passes
+/// that did this took sixteen such copies to fourteen and no further, where stating the value
+/// instead took them to three.
+float kernelAt(int offset)
+{
+    const int away = abs(offset);
+
+    return away == 0 ? 6.0 / 16.0 : (away == 1 ? 4.0 / 16.0 : 1.0 / 16.0);
+}
 
 /// Where the trace's ray through `pixel` ended up, `away` along it.
 ///
@@ -149,7 +161,7 @@ void main()
             const vec3 light = texelFetch(source, tap, 0).rgb;
             const float lit = exp(-abs(here - dot(light, LUMINANCE_WEIGHTS)) / spread);
 
-            const float w = KERNEL[x + 2] * KERNEL[y + 2] * facing * coplanar * lit;
+            const float w = kernelAt(x) * kernelAt(y) * facing * coplanar * lit;
             sum += light * w;
             weight += w;
         }

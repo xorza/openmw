@@ -159,11 +159,6 @@ void main()
     const vec2 across = fract(corner);
     const ivec2 low = ivec2(floor(corner));
 
-    const float weights[4]
-        = float[4]((1.0 - across.x) * (1.0 - across.y), across.x * (1.0 - across.y),
-            (1.0 - across.x) * across.y, across.x * across.y);
-    const ivec2 offsets[4] = ivec2[4](ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1));
-
     vec3 mean = vec3(0.0);
     vec2 moments = vec2(0.0);
     float frames = 0.0;
@@ -172,17 +167,23 @@ void main()
     const bool trusted = frame.mReset == 0u && imageLoad(biasMask, at).r <= 0.0;
     if (trusted)
     {
+        // Which of the four, and its share, are arithmetic on the counter rather than two tables
+        // read at it — `atrous.comp`'s `kernelAt` says why a fixed table is not one here.
         for (int i = 0; i < 4; ++i)
         {
-            const ivec2 tap = low + offsets[i];
-            if (weights[i] <= 0.0 || !sameSurface(tap, normal, scaled))
+            const ivec2 quadCorner = ivec2(i & 1, i >> 1);
+            const vec2 share = mix(vec2(1.0) - across, across, vec2(quadCorner));
+            const float bilinear = share.x * share.y;
+
+            const ivec2 tap = low + quadCorner;
+            if (bilinear <= 0.0 || !sameSurface(tap, normal, scaled))
                 continue;
 
             const vec4 heldMoments = imageLoad(historyMoments, tap);
-            mean += imageLoad(historyColour, tap).rgb * weights[i];
-            moments += heldMoments.rg * weights[i];
-            frames += heldMoments.a * weights[i];
-            weight += weights[i];
+            mean += imageLoad(historyColour, tap).rgb * bilinear;
+            moments += heldMoments.rg * bilinear;
+            frames += heldMoments.a * bilinear;
+            weight += bilinear;
         }
     }
 
