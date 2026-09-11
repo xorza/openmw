@@ -63,6 +63,11 @@ namespace MWRender
         /// game's frame number carries every frame a loading screen happened to draw — measured,
         /// two runs of one binary then sat at different points in the Halton sequence and 47% of
         /// the frame differed by up to 38 of 255, however long the warm-up.
+        ///
+        /// **`apps/rtxtool/repeatable.sh` is where it shows**, and as a count rather than as a red
+        /// run: what this walks reaches the picture and not the scene columns, and that gate reports
+        /// a differing picture instead of failing on one. A sequence that came apart again would
+        /// read there as pictures differing from an early frame on.
         std::optional<std::uint32_t> getSampleFrame() const;
 
         /// How many frames have gone into the running sum, this one included, or nought where the

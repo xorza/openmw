@@ -359,10 +359,11 @@ namespace RtxTool
 
         /// Everything a command that renders one place opens with.
         ///
-        /// **One statement, because six commands opened with the same four calls.** Each chose a
-        /// place, framed it for the sky that place stands under, wrote the frame into the settings
-        /// the engine reads and made a stop of it — and then differed only by what it asked the
-        /// stop to keep.
+        /// **One statement, because every such command opened with the same four calls.** Each
+        /// chose a place, framed it for the sky that place stands under, wrote the frame into the
+        /// settings the engine reads and made a stop of it — and then differed only by what it
+        /// asked the stop to keep. `runOnePlace` below is the rest of that opening, for the
+        /// commands that also hold the place still.
         ///
         /// **The frame is written into the settings before the stop is made**, so a picture and the
         /// sky it was framed for are one answer.
@@ -395,6 +396,25 @@ namespace RtxTool
             staged.mSpot = Viewpoint{ .mView = view.mName, .mNote = view.mNote, .mCell = view.mCell };
 
             return staged;
+        }
+
+        /// Stages the one place a command names, holds it still, and runs it with `fill` applied.
+        ///
+        /// **A command that draws one still place is this and the field it writes.** The staging,
+        /// the freeze and the run are the same three calls whichever field that is, and a command
+        /// that spelled them out could leave the freeze off — which is a picture the world moved
+        /// under, with nothing in the output to say so.
+        ///
+        /// A command that wants more than one measured frame has its own reason for the number, so
+        /// it stages by hand. `commandShot` is the one, and says why there.
+        template <class Fill>
+        int runOnePlace(const Command& command, Fill fill)
+        {
+            StagedPlace staged = stageOnePlace(command);
+            holdStill(staged.mStop, command.mVariables);
+            fill(staged.mStop.mActions);
+
+            return runOneStop(command, std::move(staged.mStop));
         }
 
         /// The places a profiling run visits, in the order it visits them.
@@ -472,11 +492,8 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            StagedPlace staged = stageOnePlace(command);
-            holdStill(staged.mStop, variables);
-            staged.mStop.mActions.mSheet = variables["out"].as<std::string>();
-
-            return runOneStop(command, std::move(staged.mStop));
+            return runOnePlace(
+                command, [&](Rtx::Actions& actions) { actions.mSheet = variables["out"].as<std::string>(); });
         }
 
         /// The inventory doll of one person, traced against a scene of its own.
@@ -495,12 +512,10 @@ namespace RtxTool
                 return 1;
             }
 
-            StagedPlace staged = stageOnePlace(command);
-            holdStill(staged.mStop, variables);
-            staged.mStop.mActions.mDoll = people.front();
-            staged.mStop.mActions.mDollOut = variables["out"].as<std::string>();
-
-            return runOneStop(command, std::move(staged.mStop));
+            return runOnePlace(command, [&](Rtx::Actions& actions) {
+                actions.mDoll = people.front();
+                actions.mDollOut = variables["out"].as<std::string>();
+            });
         }
 
         /// One local-map tile of where a place stands, framed as the game's own compass frames one.
@@ -508,11 +523,8 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            StagedPlace staged = stageOnePlace(command);
-            holdStill(staged.mStop, variables);
-            staged.mStop.mActions.mMapTile = variables["out"].as<std::string>();
-
-            return runOneStop(command, std::move(staged.mStop));
+            return runOnePlace(
+                command, [&](Rtx::Actions& actions) { actions.mMapTile = variables["out"].as<std::string>(); });
         }
 
         /// What the renderer was handed at a place, without looking at what it drew.
@@ -520,13 +532,11 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            StagedPlace staged = stageOnePlace(command);
-            holdStill(staged.mStop, variables);
-            staged.mStop.mActions.mFind = variables["find"].as<std::string>();
-            staged.mStop.mActions.mDigest = staged.mStop.mActions.mFind.empty();
-            staged.mStop.mActions.mWalkTwice = variables["twice"].as<bool>();
-
-            return runOneStop(command, std::move(staged.mStop));
+            return runOnePlace(command, [&](Rtx::Actions& actions) {
+                actions.mFind = variables["find"].as<std::string>();
+                actions.mDigest = actions.mFind.empty();
+                actions.mWalkTwice = variables["twice"].as<bool>();
+            });
         }
 
         int commandVerify(const Command& command)

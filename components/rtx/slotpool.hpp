@@ -17,8 +17,12 @@ namespace Rtx
     /// draws. `Rtx::Identity` hashes by address, so a sweep retires in whatever order the allocator
     /// left its map in, and a list taken from the back then hands the same live set different slots
     /// in two processes. The lowest makes the answer a function of what is standing rather than of
-    /// the order the dead left in. Measured on `one-cell-walk`: the `materials` and `textures`
-    /// columns differed from frame 2 on 89 frames of 90.
+    /// the order the dead left in. Measured on `one-cell-walk`: taken from the back, the `materials`
+    /// and `textures` columns differed from frame 2 on 89 frames of 90.
+    ///
+    /// **`apps/rtxtool/repeatable.sh` is what asks it now.** The reading above is one run of a
+    /// question the gate puts to every scene column of every pair, so a take that went back to the
+    /// last one freed fails there rather than going quiet until somebody measures again.
     ///
     /// **Its own type, because three tables keep one.** `SlotRows` holds the rows beside it;
     /// `GuiTextures` and `VulkanRenderer`'s view scenes hold rows this cannot — a `unique_ptr` is
