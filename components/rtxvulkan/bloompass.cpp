@@ -74,11 +74,7 @@ namespace Rtx
             VkDescriptorImageInfo{ VK_NULL_HANDLE, target.getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
 
-        // The kernel samples one and stores into the other, so each write takes the type its own
-        // binding was declared with.
-        std::array<VkWriteDescriptorSet, 2> writes{};
-        for (std::uint32_t binding = 0; binding < images.size(); ++binding)
-            writes[binding] = imageWrite(binding, images[binding], sBindings[binding].descriptorType);
+        const std::array<VkWriteDescriptorSet, 2> writes = imageWrites(images, sBindings);
 
         const Shaders::BloomConstants constants{
             .mWidth = target.getWidth(),
@@ -105,10 +101,13 @@ namespace Rtx
 
         // Nothing has written the levels yet this frame, so the halvings may discard whatever the
         // last one left.
+        Barriers opened(commands);
         for (const std::unique_ptr<Image>& level : mLevels)
-            level->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+            opened.add(level->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+
+        opened.flush();
 
         const Image* source = &frame;
         for (const std::unique_ptr<Image>& level : mLevels)

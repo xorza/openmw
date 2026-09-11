@@ -45,12 +45,16 @@ SkySource skySourceAt(uint source)
 /// well as the absorption, and `lightThroughWater` is the one place it is answered.
 ///
 /// @param draw one pair in `[0, 1)`, which aims the ray inside the disc's cone.
-float skyVisible(vec3 position, uint source, vec2 draw)
+float skyVisible(SkySource sky, vec3 position, vec2 draw)
 {
-    const SkySource sky = skySourceAt(source);
-
     return lightThrough(position, coneDirection(sky.mDirection, sky.mLimb, draw), frame.mFar)
         * cloudShadow(position, sky.mDirection);
+}
+
+/// The same for a caller that has an index and not a source.
+float skyVisible(vec3 position, uint source, vec2 draw)
+{
+    return skyVisible(skySourceAt(source), position, draw);
 }
 
 /// Which lamps one cell of the grid holds, as a range into the light list.
@@ -288,6 +292,41 @@ float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
 {
     const float cosine = dot(normal, towards);
     return dot(side, towards) > 0.0 ? max(cosine, 0.0) : transmission * max(-cosine, 0.0);
+}
+
+/// One sky source, weighed for a point that is about to draw between them.
+///
+/// **Named rather than kept in an array, because a computed index is a spill.** The three were held
+/// in two `float[SKY_SOURCES]` locals and read back at the one the draw picked, and that index is
+/// not one the compiler can fold: `visibilitysurface.rchit.spv` carried six `float[3]` variables in
+/// the function storage class, which is what a local array with a computed index becomes on this
+/// hardware. Three named values cost registers instead.
+///
+/// **The spills are gone and the trace did not move.** `visibilitysurface.rchit.spv` held six of
+/// those arrays and holds none now, over three interleaved pairs that read the same to within the
+/// card's own drift. Kept because a spill is what the compiler cannot undo for the next reader who
+/// adds a fourth source.
+struct SkyChoice
+{
+    SkySource mSky;
+
+    /// What the surface makes of this source's direction, or nought where it is not asked.
+    float mCosine;
+
+    /// What it would deliver unshadowed, as a luminance, which is what the draw is made on.
+    float mWeight;
+};
+
+/// Everything about one source that can be known before a ray is traced to it.
+///
+/// @param asked whether this source is one the caller wants at all — a sun that is down, or a moon
+///        a bounce does not ask for.
+SkyChoice skyChoiceAt(uint source, vec3 normal, vec3 side, float transmission, bool asked)
+{
+    const SkySource sky = skySourceAt(source);
+    const float cosine = asked ? litCosine(normal, side, sky.mDirection, transmission) : 0.0;
+
+    return SkyChoice(sky, cosine, cosine > 0.0 ? cosine * dot(sky.mIrradiance, LUMINANCE_WEIGHTS) : 0.0);
 }
 
 /// Offers one candidate to `kept`, already resolved to what it delivers at `from`.

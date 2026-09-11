@@ -447,7 +447,7 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     // view is drawn into a volume grown to the largest one asked for, so the two are not the same
     // number — and the pass fills every column the image has for exactly that reason: the pixel at
     // the edge interpolates against the column outside it.
-    const vec2 across = (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(textureSize(fogVolumeAir, 0).xy);
+    const vec2 across = (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns);
 
     const float slices = float(FOG_VOLUME_SLICES);
     const float reach = min(distance, FOG_REACH);
@@ -492,6 +492,54 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     return vec4(air.xyz + sun, air.w);
 }
 
+/// What a column of air along one ray is, before anything says how far to follow it.
+///
+/// **Split out because the sprite march asks for the same ray at a hundred distances.** Every term
+/// here is a function of the origin and the direction alone, and one of them is an exponential.
+///
+/// **The exponential it hoists is not what it is for.** Three interleaved pairs over Balmora in a
+/// storm put the split at 1.26 to 1.28 ms against 1.23 to 1.27 — the compiler was already lifting
+/// it out of the loop. What is left is the statement that these five terms do not vary with the
+/// span, which is the thing a reader could not see before.
+struct FogRay
+{
+    /// How far the eye stands over the fog's base, which may be under it.
+    float mFrom;
+
+    /// How fast that height changes per unit travelled, which is the direction's own `z`.
+    float mRise;
+
+    /// The scale height the profile falls off over.
+    float mScale;
+
+    /// `exp` of the entry height over that scale, which every span from this origin shares.
+    float mEntering;
+
+    /// One where the air reaches the ground, nought where a sea floor cuts it off.
+    float mUnder;
+};
+
+/// What that column is, for one origin and one direction.
+FogRay fogRayFrom(vec3 origin, vec3 direction)
+{
+    FogRay ray;
+    ray.mScale = FOG_HEIGHT * frame.mFogLift;
+    ray.mFrom = origin.z - fogBase();
+    ray.mRise = direction.z;
+
+    // What a point below the base holds. A dry cell's layer is capped there rather than growing
+    // without bound; a wet cell's stops at the surface, because the air pools *at* the water.
+    ray.mUnder = fogPools() ? 0.0 : 1.0;
+
+    // Where the ray enters the layer is where it starts, in every case the span below reaches: a
+    // ray that starts above the base enters at its own height and one that starts below enters at
+    // the base itself, which is a height of nought. So the exponential at the entry is the same
+    // number for every span from this origin, and this is the one place it is taken.
+    ray.mEntering = ray.mFrom > 0.0 ? exp(-ray.mFrom / ray.mScale) : 1.0;
+
+    return ray;
+}
+
 /// The layer's optical depth over the first `span` of a ray, exactly, before the coverage band.
 ///
 /// **The half of the air a closed form reaches.** What varies along a ray is a height falloff and a
@@ -503,19 +551,16 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
 /// The profile is `fogExtinctionAt`'s own rather than a second statement of it: below the base the
 /// density is the layer's full strength where the cell is dry and nothing at all where the base is
 /// the water's own surface, which is what that function says twice over.
-float fogColumn(vec3 origin, vec3 direction, float span)
+float fogColumnOver(FogRay ray, float span)
 {
-    const float base = fogBase();
-    const float scale = FOG_HEIGHT * frame.mFogLift;
+    const float under = ray.mUnder;
+    const float scale = ray.mScale;
 
-    // What a point below the base holds. A dry cell's layer is capped there rather than growing
-    // without bound; a wet cell's stops at the surface, because the air pools *at* the water.
-    const float under = fogPools() ? 0.0 : 1.0;
+    const float from = ray.mFrom;
+    const float to = from + ray.mRise * span;
 
-    const float from = origin.z - base;
-    const float to = from + direction.z * span;
-
-    // The stretch spent above the base: the heights it runs between, and its own length.
+    // The stretch spent above the base: the heights it runs between, and its own length. `enters`
+    // is `from` or nought and never anything else, which is what `mEntering` was taken from.
     float enters = 0.0;
     float leaves = 0.0;
     float above = 0.0;
@@ -540,7 +585,7 @@ float fogColumn(vec3 origin, vec3 direction, float span)
     // heights are above the base. Written the other way round — one `exp` times the mean falloff of
     // the climb — a ray descending a few scale heights asks for `exp` of a large positive number
     // and gets infinity times nothing.
-    const float entering = exp(-enters / scale);
+    const float entering = ray.mEntering;
     const float leaving = exp(-leaves / scale);
     const float climb = (leaves - enters) / scale;
 
@@ -550,6 +595,12 @@ float fogColumn(vec3 origin, vec3 direction, float span)
     const float mean = abs(climb) < 1.0e-4 ? 0.5 * (entering + leaving) : (entering - leaving) / climb;
 
     return frame.mFogExtinction * (above * mean + under * (span - above));
+}
+
+/// The same for a caller that follows one ray to one distance and asks nothing else of it.
+float fogColumn(vec3 origin, vec3 direction, float span)
+{
+    return fogColumnOver(fogRayFrom(origin, direction), span);
 }
 
 /// Weighs every lamp reaching a stretch of a ray into `kept`, and returns what they scatter into it.

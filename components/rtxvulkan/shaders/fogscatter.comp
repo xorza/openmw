@@ -46,6 +46,7 @@
 #include "lib/fog.glsl"
 #include "lib/froxel.glsl"
 #include "lib/lights.glsl"
+#include "lib/pixels.glsl"
 #include "lib/random.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
@@ -75,9 +76,8 @@ vec3 fogVolumeWas(vec3 fromEye)
         return vec3(-1.0);
 
     // Normalised by the image and never by the frame, for the reason `fogVolumeAlong` gives.
-    const vec2 columns = vec2(textureSize(fogWasScatter, 0).xy);
     const vec2 at = screen * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight))
-        / float(FOG_VOLUME_SCALE) / columns;
+        / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns);
 
     // The depth curve, inverted. A slice holds what its own jittered point read, so its texel centre
     // is the slice's middle and a distance reads straight off the curve with no half-texel shift —
@@ -91,7 +91,7 @@ void main()
 {
     const ivec3 grid = imageSize(fogScatterTarget);
     const ivec3 froxel = ivec3(gl_GlobalInvocationID);
-    if (any(greaterThanEqual(froxel, grid)))
+    if (outsideOf(uvec3(froxel), uvec3(grid)))
         return;
 
     const ivec2 column = froxel.xy;

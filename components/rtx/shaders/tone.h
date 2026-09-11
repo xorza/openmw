@@ -4,19 +4,16 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_TONE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_TONE_H
 
+#include "camera.h"
+#include "hosttypes.h"
 #include "portable.h"
+#include "sky.h"
 
-// What the display pass needs. Included verbatim by both sides, for the reason `visibility.h` is.
-
-#include "visibility.h"
+// What the display pass needs. Included verbatim by both sides, for the reason `sky.h` is.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-
 #endif
 
     /// Threads along each edge of the tone pass's workgroup.

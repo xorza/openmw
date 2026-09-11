@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_WAVE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_WAVE_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // The sea as a set of transformed tiles rather than as a list of sinusoids.
@@ -20,13 +21,8 @@
 // the curvature. The synthesis is one pass a frame over a few small grids.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// The largest grid any tile is sampled on, along each axis.

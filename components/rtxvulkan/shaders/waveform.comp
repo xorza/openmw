@@ -20,6 +20,8 @@
 #include "scene.h"
 #include "wave.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = 8, local_size_y = 8) in;
 
 /// The amplitudes drawn for this sea state, and how fast each turns. Centred, so the entry at
@@ -55,7 +57,7 @@ void main()
 {
     const uvec2 cell = gl_GlobalInvocationID.xy;
     const uint count = frame.mCount;
-    if (cell.x >= count || cell.y >= count)
+    if (outsideOf(cell, uvec2(count)))
         return;
 
     const uint at = cell.y * count + cell.x;

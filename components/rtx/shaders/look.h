@@ -3,6 +3,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_LOOK_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_LOOK_H
 
+#include "hosttypes.h"
 #include "portable.h"
 #include "scene.h"
 
@@ -29,13 +30,8 @@
 // go into settling the result.
 
 #ifdef RTX_HOST
-
-#include <osg/Vec3f>
-
 namespace Rtx::Shaders
 {
-    using vec3 = osg::Vec3f;
-
 #endif
 
     /// Darkest luminance the histogram resolves, as a power of two. About a thousandth of mid grey,

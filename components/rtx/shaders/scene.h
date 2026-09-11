@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_SCENE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_SCENE_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // The scene's tables, and the scale its brightnesses are measured on, as both sides see them.
@@ -17,34 +18,8 @@
 // still one statement, in the direction a light pass can take without taking the tables too.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec2f>
-#include <osg/Vec3f>
-#include <osg/Vec3ui>
-#include <osg/Vec4f>
-
 namespace Rtx::Shaders
 {
-    using vec2 = osg::Vec2f;
-    using vec3 = osg::Vec3f;
-    using vec4 = osg::Vec4f;
-    using uvec3 = osg::Vec3ui;
-    using uint = std::uint32_t;
-    using uint64 = std::uint64_t;
-
-#else
-
-// **Asked for here rather than by each shader that includes this.** The tables below are addressed
-// by 64-bit pointers, so a shader reading them needs the extension in scope — and nineteen of them
-// declared it for themselves while this header, which is what actually spells `uint64_t`, declared
-// nothing. A pass that took a constant out of here and had no use for a pointer got a syntax error
-// pointing at a line it never wrote.
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-
-#define uint64 uint64_t
-
 #endif
 
     /// A slot of the bindless texture array that is not one.
@@ -770,8 +745,6 @@ namespace Rtx::Shaders
 
 #ifdef RTX_HOST
 }
-#else
-#undef uint64
 #endif
 
 // What both shading languages read and nothing on this side calls. The split is about who calls a

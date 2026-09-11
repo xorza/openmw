@@ -98,8 +98,7 @@ vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
     // The column this pixel stands in and the depth the puff stands at, on `fogVolumeAlong`'s own
     // mapping — the volume's slices are square-rooted in range, so the near air keeps its detail.
     // The level named for the reason `fogSliceAt` gives.
-    const vec3 at = vec3(
-        (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(textureSize(fogSunward, 0).xy),
+    const vec3 at = vec3((vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns),
         sqrt(min(seen, FOG_REACH) / FOG_REACH));
 
     const vec3 seeing = textureLod(fogSunward, at, 0.0).xyz;
@@ -123,15 +122,28 @@ vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
 /// puff and the flame between them.
 ///
 /// `SPRITE_ALPHA_LIMIT` says why an alpha of one is not taken at its word.
+///
+/// **One whole crossing is answered without the power, and that is the common case.** A streak
+/// sprite sees its own quad edge on and sets `crossings` to exactly one, so every raindrop in a
+/// storm paid a logarithm and an exponential to reach the number it started with. The test is
+/// uniform across an emitter's run, which is the order `spritesAlong` walks in.
 float paintedOver(float painted, float crossings)
 {
-    return 1.0 - pow(1.0 - min(painted, SPRITE_ALPHA_LIMIT), crossings);
+    const float held = min(painted, SPRITE_ALPHA_LIMIT);
+    if (crossings == 1.0)
+        return held;
+
+    return 1.0 - pow(1.0 - held, crossings);
 }
 
 /// The same per channel, for a flame that absorbs as much as it emits in each of them.
 vec3 paintedOver(vec3 painted, float crossings)
 {
-    return 1.0 - pow(1.0 - min(painted, vec3(SPRITE_ALPHA_LIMIT)), vec3(crossings));
+    const vec3 held = min(painted, vec3(SPRITE_ALPHA_LIMIT));
+    if (crossings == 1.0)
+        return held;
+
+    return 1.0 - pow(1.0 - held, vec3(crossings));
 }
 
 /// How a ball is lit from `toward` against its mean, on the side of it the eye sees.
@@ -338,6 +350,10 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     const vec3 across = normalize(frame.mCamera.mRight);
     const vec3 upward = normalize(frame.mCamera.mUp);
     const Cone cone = coneAt(frame.mCamera);
+
+    // The air along this one ray, built before the walk: every sprite below asks the same column
+    // for a different distance, and what does not depend on the distance is an exponential.
+    const FogRay air = fogRayFrom(origin, direction);
 
     // **The tiles are derived and not carried**, from the same function the bin uses, so the two
     // cannot disagree about how many there are across.
@@ -554,7 +570,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // through the volume, which integrates the height falloff, and these charged one density
         // over the whole path — so a puff seen down a slope kept a third more of itself than the
         // air left it.
-        const float reaching = exp(-fogColumn(origin, direction, seen) * band);
+        const float reaching = exp(-fogColumnOver(air, seen) * band);
 
         if (emitter.mAdditive != 0u)
         {
@@ -629,10 +645,12 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                     layerMean = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
                 }
 
-                const float layer = 1.0 - min(layerMean, SPRITE_ALPHA_LIMIT);
+                // **One logarithm for the two powers.** `pow` is an `exp2` over a `log2` and both
+                // raise the same base, so taking the logarithm once leaves two exponentials.
+                const float layer = log2(1.0 - min(layerMean, SPRITE_ALPHA_LIMIT));
 
-                wrapped.mSunLit *= pow(layer, sprite.mSunLayers);
-                wrapped.mAmbientLit *= pow(layer, sprite.mSkyLayers);
+                wrapped.mSunLit *= exp2(layer * sprite.mSunLayers);
+                wrapped.mAmbientLit *= exp2(layer * sprite.mSkyLayers);
             }
         }
 

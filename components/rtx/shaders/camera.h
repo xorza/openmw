@@ -3,23 +3,14 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_CAMERA_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_CAMERA_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // How a pixel becomes a ray, and nothing else about the frame.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec2f>
-#include <osg/Vec3f>
-
 namespace Rtx::Shaders
 {
-    using vec2 = osg::Vec2f;
-    using vec3 = osg::Vec3f;
-    using uint = std::uint32_t;
-
 #endif
 
     /// Everything needed to turn a pixel into a ray — **and not where the eye is.**

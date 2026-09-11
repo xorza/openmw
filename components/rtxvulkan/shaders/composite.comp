@@ -15,6 +15,8 @@
 #include "composite.h"
 #include "gbuffer.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = COMPOSITE_WORKGROUP, local_size_y = COMPOSITE_WORKGROUP) in;
 
 /// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
@@ -48,7 +50,7 @@ layout(push_constant, scalar) uniform Push
 void main()
 {
     const uvec2 pixel = gl_GlobalInvocationID.xy;
-    if (pixel.x >= frame.mWidth || pixel.y >= frame.mHeight)
+    if (outsideOf(pixel, uvec2(frame.mWidth, frame.mHeight)))
         return;
 
     const ivec2 at = ivec2(pixel);

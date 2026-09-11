@@ -3,17 +3,13 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_COLOUR_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_COLOUR_H
 
+#include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
 
 #ifdef RTX_HOST
-
-#include <osg/Vec3f>
-
 namespace Rtx::Shaders
 {
-    using vec3 = osg::Vec3f;
-
 #endif
 
     /// How this renderer weighs a colour into a brightness.

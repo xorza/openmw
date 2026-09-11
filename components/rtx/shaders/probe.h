@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_PROBE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_PROBE_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // What a device-behaviour probe is handed. Included verbatim by both sides, for the reason
@@ -15,21 +16,8 @@
 // answered by elimination.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec4f>
-
 namespace Rtx::Shaders
 {
-    using vec4 = osg::Vec4f;
-    using uint = std::uint32_t;
-    using uint64 = std::uint64_t;
-
-#else
-
-#define uint64 uint64_t
-
 #endif
 
     /// Threads in the probe's workgroup.
@@ -89,10 +77,6 @@ namespace Rtx::Shaders
     static_assert(sizeof(ProbeAddresses) == 16, "ProbeAddresses must be scalar-packed on every side");
     static_assert(sizeof(ProbeRow) == 48, "ProbeRow must be scalar-packed on every side");
 }
-
-#else
-
-#undef uint64
 
 #endif
 

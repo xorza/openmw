@@ -24,22 +24,17 @@ namespace Rtx
     namespace
     {
         /// The amplitudes, how fast each turns, and the three packed fields between them.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sFormBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-        };
+        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sFormBindings
+            = computeBindings<3>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-        constexpr std::array<VkDescriptorSetLayoutBinding, 1> sLineBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-        };
+        constexpr std::array<VkDescriptorSetLayoutBinding, 1> sLineBindings
+            = computeBindings<1>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-        /// The fields in, and the three textures out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 4> sComposeBindings{
-            VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
-            VkDescriptorSetLayoutBinding{ 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+        /// The fields in, and the two textures out.
+        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sComposeBindings{
+            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
 
         /// The side of the workgroup `wavecompose.comp` declares, which is what its dispatch has
@@ -190,10 +185,13 @@ namespace Rtx
             // Every level is written whole below, so none needs what the last frame left in it —
             // but the last frame's trace may still be sampling it, and the last frame's chain may
             // still be blitting it, so the discard waits for everything ahead of it on the queue.
+            Barriers opened(commands);
             for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
-                image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                opened.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+
+            opened.flush();
 
             const std::array<VkDescriptorBufferInfo, 3> blocks{
                 VkDescriptorBufferInfo{ tile.mAmplitudes.getHandle(), 0, VK_WHOLE_SIZE },

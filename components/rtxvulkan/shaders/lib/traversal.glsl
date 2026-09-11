@@ -221,7 +221,20 @@ struct Hit
     /// not the structure's own.
     uint mInstance;
 
-    uint mPrimitive;
+    /// Where in the shared vertex buffers this triangle's three corners are, already global.
+    ///
+    /// **Resolved inside the query and carried out, where the primitive index used to be.** The
+    /// index block has to be read there in any case, to interpolate the shading normal while the
+    /// object-to-world matrix is still in scope — and `resolve` then read the same block for the
+    /// same three numbers. Two words more in a `Hit` against one block-table address and three
+    /// index loads on every ray that lands.
+    ///
+    /// **It measured neutral, and it is kept for the duplication and not for the time.** Three
+    /// interleaved pairs at the Balmora mages' guild and on the Seyda Neen ship: 1.45 to 1.47 ms
+    /// against 1.45 to 1.46, and 1.46 to 1.53 against 1.47 to 1.52. Either the compiler already
+    /// shared the load, or the two extra words paid for what it saved.
+    uvec3 mCorner;
+
     vec2 mBary;
     float mDistance;
 
@@ -251,7 +264,7 @@ Hit noHit()
     Hit hit;
     hit.mHit = false;
     hit.mInstance = 0u;
-    hit.mPrimitive = 0u;
+    hit.mCorner = uvec3(0u);
     hit.mBary = vec2(0.0);
     hit.mDistance = frame.mFar;
     hit.mFootprint = 0.0;
@@ -270,7 +283,6 @@ Hit committedHit(
     Hit hit;
     hit.mHit = true;
     hit.mInstance = instance;
-    hit.mPrimitive = primitive;
     hit.mBary = bary;
     hit.mDistance = distance;
     hit.mFootprint = footprint;
@@ -282,7 +294,9 @@ Hit committedHit(
     // scale that shrank a real normal past the threshold would otherwise change which branch it
     // took.
     const GpuInstance placement = instanceAt(instance);
-    const vec3 shading = triangleNormal(triangleCorners(meshAt(placement.mMesh), primitive), cornerWeights(bary));
+    hit.mCorner = triangleCorners(meshAt(placement.mMesh), primitive);
+
+    const vec3 shading = triangleNormal(hit.mCorner, cornerWeights(bary));
     hit.mShading = dot(shading, shading) > 1e-8 ? mat3(toWorld) * shading : vec3(0.0);
 
     return hit;
@@ -336,6 +350,15 @@ Hit committedHit(
 ///
 /// No cone here, so the cutout is decided at the finest mip. A shadow ray carries no footprint, and
 /// aliasing in a leaf's shadow is worth far less than aliasing on the leaf.
+///
+/// **And handing it one was measured, and it lost.** JCGT 10(1) 2021 finds level zero slower than a
+/// cone level in every scene it tries, so the shading point's own footprint was passed down here
+/// and the whole chain — `skyVisible`, `lampVisible`, `ambientReaching` — was given a width to
+/// carry. Three interleaved pairs: neutral at the Balmora mages' guild, 0.86 against 0.88 ms at
+/// Ald-ruhn, and 1.17 against 1.29 ms at Seyda Neen's shore. The paper's finding is about the
+/// *fetch*, and this path's cost is the *level*: `coneLod` returns at once for a width of nought,
+/// so level zero here skips a texture-header read, a determinant and three logarithms at every
+/// candidate. What that early return saves is more than the cache gives back.
 ///
 /// **A ray shorter than the bias it starts past is not a ray.** A candle sitting a unit off a table
 /// asks for a shadow ray whose end is behind its own beginning, and `rayQueryInitializeEXT` with a
@@ -578,7 +601,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     const GpuInstance instance = instanceAt(surface.mInstance);
     const GpuMesh mesh = meshAt(instance.mMesh);
-    const uvec3 corner = triangleCorners(mesh, hit.mPrimitive);
+    const uvec3 corner = hit.mCorner;
     const vec3 weight = cornerWeights(hit.mBary);
 
     // The plane the traversal already gave: position fetch has the corners and no buffer has to be

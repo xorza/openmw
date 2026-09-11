@@ -3,6 +3,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_BINDINGS_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_BINDINGS_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // Where set 0's inputs are bound, for the shader that declares them and the pass that writes them.
@@ -25,13 +26,8 @@
 // directory and no other.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// The top-level structure every ray is traced against.

@@ -3,6 +3,9 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_scalar_block_layout : require
 
+// `texelFetch` without a sampler, which is what the four read-only inputs below are declared as.
+#extension GL_EXT_samplerless_texture_functions : require
+
 // One level of an edge-stopping à-trous wavelet, over the indirect channel alone.
 //
 // **The first level writes where the accumulator will look for its history**, which is SVGF's
@@ -35,10 +38,16 @@
 #include "colour.h"
 #include "gbuffer.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = ATROUS_WORKGROUP, local_size_y = ATROUS_WORKGROUP) in;
 
 /// One bounce, albedo divided out, as the last level left it.
-layout(set = 0, binding = 0, ATROUS_CHANNEL) uniform readonly image2D source;
+///
+/// **A sampled image and not a storage one, on every input this pass only reads.**
+/// `AtrousPass::sBindings` carries the measurement. A sampled declaration states no format, which
+/// is why these four name none where the target below does.
+layout(set = 0, binding = 0) uniform texture2D source;
 
 /// Where this level puts what it made of it.
 layout(set = 0, binding = 1, ATROUS_CHANNEL) uniform writeonly image2D filtered;
@@ -46,16 +55,16 @@ layout(set = 0, binding = 1, ATROUS_CHANNEL) uniform writeonly image2D filtered;
 /// The shading normal in `xyz`. A ray that hit nothing left a zero normal, which no surface can
 /// match, so the sky neither contributes nor gets filtered. `w` is roughness, which this does not
 /// read: the edge tests are about where a surface is, not what it is made of.
-layout(set = 0, binding = 2, GBUFFER_GUIDE) uniform readonly image2D guide;
+layout(set = 0, binding = 2) uniform texture2D guide;
 
 /// Clip depth in `r` and the distance from the eye in `g`. This reads the second, in world units,
 /// because a tolerance against a clip value would mean something different at every distance.
-layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
+layout(set = 0, binding = 3) uniform texture2D depth;
 
 /// The estimator's own variance in `b`, written by the accumulator in front of this cascade. One
 /// where a pixel has no history to have measured a spread with, which reads as "trust the
 /// neighbours entirely" and is the honest answer for a single sample.
-layout(set = 0, binding = 4, ACCUMULATE_MOMENTS) uniform readonly image2D moments;
+layout(set = 0, binding = 4) uniform texture2D moments;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -80,19 +89,19 @@ vec3 positionAt(ivec2 pixel, float away)
 void main()
 {
     const ivec2 at = ivec2(gl_GlobalInvocationID.xy);
-    if (at.x >= int(level.mCamera.mWidth) || at.y >= int(level.mCamera.mHeight))
+    if (outsideOf(uvec2(at), uvec2(level.mCamera.mWidth, level.mCamera.mHeight)))
         return;
 
-    const vec3 normal = imageLoad(guide, at).xyz;
+    const vec3 normal = texelFetch(guide, at, 0).xyz;
 
     // A pixel with no surface under it has nothing to filter and nothing to say to its neighbours.
     if (dot(normal, normal) <= 0.0)
     {
-        imageStore(filtered, at, imageLoad(source, at));
+        imageStore(filtered, at, texelFetch(source, at, 0));
         return;
     }
 
-    const float away = imageLoad(depth, at).g;
+    const float away = texelFetch(depth, at, 0).g;
     const vec3 position = positionAt(at, away);
 
     // What one pixel covers where this surface is, which is the scale every plane offset below is
@@ -108,8 +117,8 @@ void main()
     // **How noisy this pixel still is, which is what makes the brightness test mean anything.** A
     // difference of one against a variance of four is nothing; the same difference against a settled
     // pixel is an edge. The epsilon is a divide guard and nothing else.
-    const float spread = level.mLuminanceSigma * sqrt(imageLoad(moments, at).b) + 1e-4;
-    const float here = dot(imageLoad(source, at).rgb, LUMINANCE_WEIGHTS);
+    const float spread = level.mLuminanceSigma * sqrt(texelFetch(moments, at, 0).b) + 1e-4;
+    const float here = dot(texelFetch(source, at, 0).rgb, LUMINANCE_WEIGHTS);
 
     vec3 sum = vec3(0.0);
     float weight = 0.0;
@@ -121,7 +130,7 @@ void main()
             if (tap.x < 0 || tap.y < 0 || tap.x >= int(level.mCamera.mWidth) || tap.y >= int(level.mCamera.mHeight))
                 continue;
 
-            const vec3 facingThere = imageLoad(guide, tap).xyz;
+            const vec3 facingThere = texelFetch(guide, tap, 0).xyz;
             if (dot(facingThere, facingThere) <= 0.0)
                 continue;
 
@@ -133,11 +142,11 @@ void main()
             // normal that matches — the centre tap's with its own, above all — can pass one, and a
             // hundred and twenty-eight powers of that is a weight an eighth too heavy.
             const float facing = pow(clamp(dot(normal, facingThere), 0.0, 1.0), level.mNormalPower);
-            const float offset = abs(dot(normal, positionAt(tap, imageLoad(depth, tap).g) - position));
+            const float offset = abs(dot(normal, positionAt(tap, texelFetch(depth, tap, 0).g) - position));
             const float coplanar = exp(-offset / (level.mPlaneSigma * footprint));
 
             // The third of SVGF's three, and the only one about the light rather than the surface.
-            const vec3 light = imageLoad(source, tap).rgb;
+            const vec3 light = texelFetch(source, tap, 0).rgb;
             const float lit = exp(-abs(here - dot(light, LUMINANCE_WEIGHTS)) / spread);
 
             const float w = KERNEL[x + 2] * KERNEL[y + 2] * facing * coplanar * lit;
@@ -146,5 +155,5 @@ void main()
         }
 
     // The centre always passes its own tests, so the weight can only be zero if it underflowed.
-    imageStore(filtered, at, vec4(weight > 0.0 ? sum / weight : imageLoad(source, at).rgb, 1.0));
+    imageStore(filtered, at, vec4(weight > 0.0 ? sum / weight : texelFetch(source, at, 0).rgb, 1.0));
 }

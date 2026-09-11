@@ -4,6 +4,7 @@
 #define OPENMW_COMPONENTS_RTX_SHADERS_ACCUMULATE_H
 
 #include "camera.h"
+#include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
 
@@ -53,13 +54,8 @@
 #endif
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// Threads along each edge of the accumulator's workgroup.

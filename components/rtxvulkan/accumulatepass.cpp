@@ -24,6 +24,11 @@ namespace Rtx
 
         constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings
             = computeBindings<sBindingCount>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+
+        /// **`SAMPLED` beside `STORAGE` on what the cascade after this reads.** `AtrousPass` takes
+        /// its taps through the texture unit and a sampled descriptor needs the bit at creation,
+        /// which is a promise made here and kept there.
+        constexpr VkImageUsageFlags sReadAndWrite = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     }
 
     AccumulatePass::AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -40,18 +45,18 @@ namespace Rtx
 
         for (std::size_t i = 0; i < 2; ++i)
         {
-            mColour[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_COLOUR, VK_IMAGE_USAGE_STORAGE_BIT,
+            mColour[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_COLOUR, sReadAndWrite,
                 i == 0 ? "accumulate-colour-0" : "accumulate-colour-1");
             mSurface[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_SURFACE,
                 VK_IMAGE_USAGE_STORAGE_BIT, i == 0 ? "accumulate-surface-0" : "accumulate-surface-1");
-            mMoments[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_MOMENTS,
-                VK_IMAGE_USAGE_STORAGE_BIT, i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
+            mMoments[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_MOMENTS, sReadAndWrite,
+                i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
         }
 
         // `TRANSFER_SRC` for `FrameImage::Accumulated`, which is the one figure `shot --tail` counts a
         // firefly in and the only image in the frame that holds a clamped bounce.
         mBlended = std::make_unique<Image>(mDevice, width, height, ATROUS_CHANNEL,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "accumulate-blended");
+            sReadAndWrite | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "accumulate-blended");
 
         mCurrent = 0;
         mFresh = true;
@@ -70,25 +75,31 @@ namespace Rtx
         // **The first frame after a resize has nothing behind it**, and an image whose contents were
         // never written is not zero — it is whatever the allocation held. Discarding it is what makes
         // the reset below a statement about the history rather than about the memory.
+        Barriers barriers(commands);
+
         const VkImageLayout held = mFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
         for (const Image* image : { mColour[previous].get(), mSurface[previous].get(), mMoments[previous].get() })
-            image->transition(commands, held, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+            barriers.add(image->describeTransition(held, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT));
 
         for (const Image* image : { mColour[mCurrent].get(), mSurface[mCurrent].get(), mMoments[mCurrent].get() })
-            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
 
         // **Waiting on both of the cascade's accesses and not only its read.** Two frames are in
         // flight over one blend image, and the levels of the cascade write it as well as read it —
         // so a frame arriving here has to wait for the previous frame's odd levels to finish
         // writing, which a dependency naming the read alone would not order.
-        mBlended->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+        barriers.add(mBlended->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+                | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+
+        barriers.flush();
 
         const std::array<VkDescriptorImageInfo, sBindingCount> images{
             VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Indirect).getView(), VK_IMAGE_LAYOUT_GENERAL },

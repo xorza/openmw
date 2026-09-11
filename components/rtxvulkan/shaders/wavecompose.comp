@@ -13,6 +13,8 @@
 #include "gbuffer.h"
 #include "wave.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(set = 0, binding = 0, scalar) readonly buffer Field
@@ -44,7 +46,7 @@ void main()
 {
     const uvec2 cell = gl_GlobalInvocationID.xy;
     const uint count = frame.mCount;
-    if (cell.x >= count || cell.y >= count)
+    if (outsideOf(cell, uvec2(count)))
         return;
 
     const uint at = cell.y * count + cell.x;

@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_BLOOM_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_BLOOM_H
 
+#include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
 
@@ -11,16 +12,8 @@
 // reason `visibility.h` is.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec2f>
-
 namespace Rtx::Shaders
 {
-    using vec2 = osg::Vec2f;
-    using uint = std::uint32_t;
-
 #endif
 
     /// Threads along each edge of a bloom workgroup.

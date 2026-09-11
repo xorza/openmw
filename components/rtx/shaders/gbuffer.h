@@ -3,6 +3,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_GBUFFER_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_GBUFFER_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // What each channel of the G-buffer is made of, said once for both sides that have to agree.
@@ -78,13 +79,8 @@
 // which is a change that compiles, runs, and hands every pass the wrong image.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// What the trace resolved on its own: direct light, emission, the sky, water and the fog.

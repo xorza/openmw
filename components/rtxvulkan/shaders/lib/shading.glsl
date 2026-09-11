@@ -108,38 +108,30 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     // are the same until a source weighs nothing: the running share is then flat across it, and a
     // draw under the share before it has already picked. The draw is the one the moons' pick used to
     // take, and the ray's pair is the sun's, so every lamp draw below keeps its place.
-    float cosines[SKY_SOURCES];
-    float weights[SKY_SOURCES];
-    float total = 0.0;
-    for (uint source = 0u; source < SKY_SOURCES; ++source)
-    {
-        const SkySource sky = skySourceAt(source);
-        const bool asked = source == SKY_SOURCE_SUN ? sunUp() : HAS_MOONS && path == PATH_SEEN;
+    // **The three are named and not indexed**, for the reason `SkyChoice` gives: the pick is a value
+    // the compiler cannot fold, and a local array read at one is a spill. The additions below are
+    // the ones the loop made, in the order it made them, so the draw picks what it always picked.
+    const bool lunar = HAS_MOONS && path == PATH_SEEN;
+    const SkyChoice sun = skyChoiceAt(SKY_SOURCE_SUN, normal, side, transmission, sunUp());
+    const SkyChoice masser = skyChoiceAt(SKY_SOURCE_MASSER, normal, side, transmission, lunar);
+    const SkyChoice secunda = skyChoiceAt(SKY_SOURCE_SECUNDA, normal, side, transmission, lunar);
 
-        cosines[source] = asked ? litCosine(normal, side, sky.mDirection, transmission) : 0.0;
-        weights[source] = cosines[source] > 0.0 ? cosines[source] * dot(sky.mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
-        total += weights[source];
-    }
-
+    const float total = sun.mWeight + masser.mWeight + secunda.mWeight;
     if (total > 0.0)
     {
-        uint picked = SKY_SOURCES - 1u;
-        float share = 0.0;
-        for (uint source = 0u; source + 1u < SKY_SOURCES; ++source)
-        {
-            share += weights[source] / total;
-            if (moonDraw[1].x < share)
-            {
-                picked = source;
-                break;
-            }
-        }
+        const float sunShare = sun.mWeight / total;
+        const float moonShare = sunShare + masser.mWeight / total;
 
-        const SkySource sky = skySourceAt(picked);
-        const float chance = weights[picked] / total;
+        SkyChoice picked = secunda;
+        if (moonDraw[1].x < sunShare)
+            picked = sun;
+        else if (moonDraw[1].x < moonShare)
+            picked = masser;
 
-        radiance += sky.mIrradiance * lightThroughWater(position, sky.mDirection, footprint)
-            * (cosines[picked] * INV_PI * skyVisible(position, picked, sunDraw) / chance);
+        const float chance = picked.mWeight / total;
+
+        radiance += picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, footprint)
+            * (picked.mCosine * INV_PI * skyVisible(picked.mSky, position, sunDraw) / chance);
     }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the

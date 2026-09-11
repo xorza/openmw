@@ -29,6 +29,7 @@
 
 #include "lib/bindings.glsl"
 #include "lib/fog.glsl"
+#include "lib/pixels.glsl"
 #include "lib/traversal.glsl"
 #include "lib/variants.glsl"
 
@@ -38,7 +39,7 @@ void main()
 {
     const ivec2 grid = imageSize(fogColumnDepth);
     const ivec2 column = ivec2(gl_GlobalInvocationID.xy);
-    if (any(greaterThanEqual(column, grid)))
+    if (outsideOf(uvec2(column), uvec2(grid)))
         return;
 
     // **Traced whatever the air weighs.** The scatter pass fills its froxels' sources for a puff of

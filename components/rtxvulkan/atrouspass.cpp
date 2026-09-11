@@ -14,9 +14,27 @@ namespace Rtx
     {
         /// The channel coming in, the channel going out, the two that say where the edges in the
         /// surface are — normals from the guide, distances from the depth — and the one that says
-        /// where the edges in the light are. All storage images, all pushed.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings
-            = computeBindings<5>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        /// where the edges in the light are. All pushed.
+        ///
+        /// **Sampled on the four this pass only reads, storage on the one it writes.** A
+        /// twenty-five tap gather wants the texture unit and its cache, and only a
+        /// `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE` reaches it: three interleaved pairs with the
+        /// upscaler off put the cascade at 2.05 to 2.06 ms against 2.14 to 2.20 at the Balmora
+        /// mages' guild, and 1.40 to 1.42 against 1.46 to 1.50 at Seyda Neen's shore. An image
+        /// bound here as sampled and elsewhere as storage is legal from `VK_IMAGE_LAYOUT_GENERAL`,
+        /// which is the layout every one of these is already in.
+        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
+            computeBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+            computeBinding(3, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+            computeBinding(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+        };
+
+        /// **Both reads, because a level's inputs are sampled and its target is storage.** An image
+        /// is each in turn as the levels ping-pong, so a dependency that named one of the two would
+        /// leave the other frame's access uncovered.
+        constexpr VkAccessFlags2 sReads = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
         /// How sharply a tap's normal has to agree with the centre's, and how far off its plane it
         /// may sit.
@@ -49,8 +67,10 @@ namespace Rtx
         if (mScratch != nullptr && mScratch->getWidth() == width && mScratch->getHeight() == height)
             return;
 
-        mScratch = std::make_unique<Image>(
-            mDevice, width, height, ATROUS_CHANNEL, VK_IMAGE_USAGE_STORAGE_BIT, "atrous-scratch");
+        // `SAMPLED` because a level reads what the level before it wrote, and it reads through
+        // the texture unit. See `sBindings`.
+        mScratch = std::make_unique<Image>(mDevice, width, height, ATROUS_CHANNEL,
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "atrous-scratch");
     }
 
     const Image& AtrousPass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended,
@@ -63,8 +83,8 @@ namespace Rtx
         // Nothing has written the scratch yet this frame, so the first level may discard it. Every
         // level after reads what the one before wrote, which is what the barriers below order.
         mScratch->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
         // **One assignment and not eight.** These used to be copied a field at a time out of the
         // frame's own description, which is how the filter's rays and the trace's could have come to
@@ -93,12 +113,13 @@ namespace Rtx
                 // The level about to run reads what the last one wrote and overwrites what it read,
                 // so both channels have to be ordered against it — the second is a write after a
                 // read, which needs the stages named and nothing made visible.
+                Barriers between(commands);
                 for (const Image* image : { source, target })
-                    image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                    between.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | sReads,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | sReads));
+
+                between.flush();
             }
 
             const std::array<VkDescriptorImageInfo, 5> images{
@@ -109,7 +130,7 @@ namespace Rtx
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, moments.getView(), VK_IMAGE_LAYOUT_GENERAL },
             };
 
-            const std::array<VkWriteDescriptorSet, 5> writes = storageImageWrites(images);
+            const std::array<VkWriteDescriptorSet, 5> writes = imageWrites(images, sBindings);
 
             level.mStep = 1u << pass;
 
@@ -130,7 +151,7 @@ namespace Rtx
         // apiece, which is what a compute read that overtook part of a compute write looks like.
         source->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads);
 
         // One swap past the last dispatch, so this is what that dispatch wrote.
         return *source;

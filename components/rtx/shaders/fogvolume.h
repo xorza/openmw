@@ -3,8 +3,9 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_FOGVOLUME_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_FOGVOLUME_H
 
+#include "hosttypes.h"
 #include "portable.h"
-#include "visibility.h"
+#include "sky.h"
 
 // What the fog volume's images are made of and where each one is bound, said once for both sides
 // that have to agree. `gbuffer.h` says why a format is a macro rather than a constant, and what a
@@ -43,13 +44,8 @@
 // the layout and the writes cannot disagree about which kind a binding is.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// What the air scatters at a point and the three answers a ray each gave there, as the

@@ -84,13 +84,18 @@ namespace Rtx
         const Image& blended = mAccumulate.getBlended();
         closeZone(timer, commands);
 
-        // The cascade reads what the accumulator just wrote, in both images. The history it
-        // writes for the next frame is ordered by the discard `AccumulatePass::record` made of
-        // it, which named a compute write as what would come next.
+        // The cascade reads what the accumulator just wrote, in both images, and it reads through
+        // the texture unit — so the dependency names the sampled access and not only the storage
+        // one. The history the cascade writes for the next frame is ordered by the discard
+        // `AccumulatePass::record` made of it, which named a compute write as what would come next.
+        Barriers handed(commands);
         for (const Image* written : { &blended, &moments })
-            written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            handed.add(written->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+
+        handed.flush();
 
         openZone(timer, commands, "filter");
         const Image& indirect

@@ -72,6 +72,22 @@ namespace Rtx
     /// **The whole set for a pass whose descriptors are all storage images**, and the first `n` of
     /// one whose are not — `TonePass` fills its buffer and its sampler itself. `images` has to
     /// outlive the writes, as `imageWrite` says.
+    /// One write per image, each taking the type its own binding was declared with.
+    ///
+    /// **The layout decides the type, not the call site.** A pass whose bindings are not all one
+    /// kind — a sampler in and a storage image out — otherwise names the type twice, and a binding
+    /// that later changes kind is then a silent mismatch rather than a compile error.
+    template <std::size_t Count>
+    std::array<VkWriteDescriptorSet, Count> imageWrites(const std::array<VkDescriptorImageInfo, Count>& images,
+        const std::array<VkDescriptorSetLayoutBinding, Count>& bindings)
+    {
+        std::array<VkWriteDescriptorSet, Count> writes{};
+        for (std::uint32_t at = 0; at < Count; ++at)
+            writes[at] = imageWrite(at, images[at], bindings[at].descriptorType);
+
+        return writes;
+    }
+
     template <std::size_t Count>
     std::array<VkWriteDescriptorSet, Count> storageImageWrites(const std::array<VkDescriptorImageInfo, Count>& images)
     {

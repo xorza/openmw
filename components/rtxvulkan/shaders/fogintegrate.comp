@@ -35,6 +35,7 @@
 
 #include "lib/bindings.glsl"
 #include "lib/froxel.glsl"
+#include "lib/pixels.glsl"
 
 layout(local_size_x = FOG_COLUMN_WORKGROUP, local_size_y = FOG_COLUMN_WORKGROUP) in;
 
@@ -115,7 +116,7 @@ void main()
 {
     const ivec3 grid = imageSize(fogVolumeAirTarget);
     const ivec2 column = ivec2(gl_GlobalInvocationID.xy);
-    if (any(greaterThanEqual(column, grid.xy)))
+    if (outsideOf(uvec2(column), uvec2(grid.xy)))
         return;
 
     // **Where this column's view of the air ends, and its neighbours'** — `fogdepth.comp` says why

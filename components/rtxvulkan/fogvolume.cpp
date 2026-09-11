@@ -197,27 +197,33 @@ namespace Rtx
         // pair is this frame's history and survives, one loop down. The first thing that touches any
         // of these is a compute pass writing it — `depthTaken`, `scattered` and `handOver` order
         // every read after that, the trace's included.
+        Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mAir, &mAirSunward, &mSlice,
                  &mSliceSunward, &mColumnDepth, &mColumnSources })
-            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
 
         // **From `GENERAL` and not from undefined**, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand
         // this frame a volume of nothing to average against.
         for (const Image* image : { &mScatter[1 - written], &mSunward[1 - written] })
-            image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+
+        barriers.flush();
     }
 
     void FogVolume::depthTaken(VkCommandBuffer commands) const
     {
+        Barriers barriers(commands);
         for (const Image* image : { &mColumnDepth, &mColumnSources })
-            image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT));
+
+        barriers.flush();
     }
 
     void FogVolume::scattered(VkCommandBuffer commands, const std::uint64_t frame) const
@@ -229,26 +235,32 @@ namespace Rtx
         // to a read-only one — so what this orders is the writes against the reads and nothing
         // else. **Against the trace as well as the integrate pass**, because a puff of smoke reads
         // two of these at a point: `puffLight` says which and why.
+        Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
-            image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+
+        barriers.flush();
     }
 
     void FogVolume::handOver(VkCommandBuffer commands) const
     {
+        Barriers barriers(commands);
         for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
-            image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
 
         // The column depth the trace reads beside them, which `depthTaken` ordered only against the
         // two compute passes between.
-        mColumnDepth.transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+        barriers.add(mColumnDepth.describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+            VK_ACCESS_2_SHADER_STORAGE_READ_BIT));
+
+        barriers.flush();
     }
 }

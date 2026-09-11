@@ -80,6 +80,12 @@ namespace Rtx
         /// texture coordinate and a cone width into a level.
         float getExtent(std::size_t cascade) const { return sWaveTiles[cascade].mExtent; }
 
+        /// How wide one texel of that tile is, which is what a cone width becomes a level against.
+        float getTexel(std::size_t cascade) const
+        {
+            return sWaveTiles[cascade].mExtent / static_cast<float>(sWaveTiles[cascade].mGrid);
+        }
+
         /// What `Rtx::waveSlope` made of the sea last described.
         ///
         /// Held rather than fetched: it is the same number the coarsest level of every curvature

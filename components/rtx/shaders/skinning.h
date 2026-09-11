@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_SKINNING_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_SKINNING_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // What poses a skinned body or a morphed face on the device, as both sides see it. Included
@@ -17,21 +18,8 @@
 // weight, positions only. What the game draws is the target, and these are its numbers.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec4f>
-
 namespace Rtx::Shaders
 {
-    using vec4 = osg::Vec4f;
-    using uint = std::uint32_t;
-    using uint64 = std::uint64_t;
-
-#else
-
-#define uint64 uint64_t
-
 #endif
 
     /// Lanes in one workgroup of either kernel. A body is a few thousand vertices, so a dispatch is
@@ -111,10 +99,6 @@ namespace Rtx::Shaders
     static_assert(sizeof(SkinConstants) == 64, "SkinConstants must be scalar-packed on every side");
     static_assert(sizeof(MorphConstants) == 40, "MorphConstants must be scalar-packed on every side");
 }
-
-#else
-
-#undef uint64
 
 #endif
 

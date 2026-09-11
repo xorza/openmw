@@ -133,16 +133,21 @@ set(RTX_SHADER_LIB
     shaders/lib/fog.glsl
     shaders/lib/footprint.glsl
     shaders/lib/frame.glsl
+    shaders/lib/froxel.glsl
     shaders/lib/geometry.glsl
     shaders/lib/hitstage.glsl
     shaders/lib/lights.glsl
+    shaders/lib/medium.glsl
     shaders/lib/payload.glsl
+    shaders/lib/pixels.glsl
     shaders/lib/random.glsl
     shaders/lib/reproject.glsl
     shaders/lib/sea.glsl
     shaders/lib/shading.glsl
     shaders/lib/sky.glsl
     shaders/lib/sprites.glsl
+    shaders/lib/starfield.glsl
+    shaders/lib/texturearray.glsl
     shaders/lib/texturing.glsl
     shaders/lib/traversal.glsl
     shaders/lib/underwater.glsl

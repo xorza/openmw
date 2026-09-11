@@ -185,17 +185,26 @@ set(RTX_FILES
 # Structures and constants shared verbatim with the shader language, through `#ifdef __cplusplus`.
 # They stay with the core rather than following the GLSL, because the host reads them as well.
 set(RTX_SHADER_HEADERS
-    shaders/bindings.h
-    shaders/colour.h
+    shaders/accumulate.h
     shaders/atrous.h
+    shaders/bindings.h
+    shaders/bloom.h
+    shaders/camera.h
+    shaders/colour.h
     shaders/composite.h
+    shaders/exposure.h
     shaders/fogvolume.h
     shaders/gbuffer.h
+    shaders/hosttypes.h
     shaders/look.h
     shaders/portable.h
+    shaders/probe.h
     shaders/scene.h
     shaders/skinning.h
+    shaders/sky.h
     shaders/spritebin.h
+    shaders/spriteshade.h
+    shaders/tone.h
     shaders/visibility.h
     shaders/wave.h
 )

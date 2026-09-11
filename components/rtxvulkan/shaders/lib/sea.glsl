@@ -150,9 +150,7 @@ float resolvedShare(uint cascade, float level)
 /// a cone narrower than a texel has nothing further to be shown.
 float waveLevel(uint cascade, float footprint)
 {
-    const float texel = frame.mWaveExtent[cascade] / float(textureSize(waveSurface[cascade], 0).x);
-
-    return max(log2(footprint / texel), 0.0);
+    return max(log2(footprint / frame.mWaveTexel[cascade]), 0.0);
 }
 
 /// The water's surface where a ray met it: one read of each tile, and everything taken from it.

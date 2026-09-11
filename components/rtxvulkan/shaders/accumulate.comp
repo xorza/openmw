@@ -23,6 +23,8 @@
 #include "colour.h"
 #include "gbuffer.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = ACCUMULATE_WORKGROUP, local_size_y = ACCUMULATE_WORKGROUP) in;
 
 /// The bounce this frame traced, one sample a pixel, exactly as the trace left it.
@@ -120,7 +122,7 @@ bool sameSurface(ivec2 at, vec3 normal, float scaled)
 void main()
 {
     const ivec2 at = ivec2(gl_GlobalInvocationID.xy);
-    if (at.x >= int(frame.mCamera.mWidth) || at.y >= int(frame.mCamera.mHeight))
+    if (outsideOf(uvec2(at), uvec2(frame.mCamera.mWidth, frame.mCamera.mHeight)))
         return;
 
     const vec3 sampled = imageLoad(indirect, at).rgb;

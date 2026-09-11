@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_EXPOSURE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_EXPOSURE_H
 
+#include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
 
@@ -11,13 +12,8 @@
 // the reason `visibility.h` is.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// Bins in the log-luminance histogram.

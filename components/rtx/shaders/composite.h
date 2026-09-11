@@ -4,19 +4,15 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_COMPOSITE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_COMPOSITE_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // What the last pass needs to turn the trace's separate channels back into one picture. Included
 // verbatim by both sides, for the reason `visibility.h` is.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
 namespace Rtx::Shaders
 {
-    using uint = std::uint32_t;
-
 #endif
 
     /// Threads along each edge of the composite's workgroup.

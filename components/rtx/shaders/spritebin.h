@@ -5,6 +5,7 @@
 #define OPENMW_COMPONENTS_RTX_SHADERS_SPRITEBIN_H
 
 #include "camera.h"
+#include "hosttypes.h"
 #include "portable.h"
 #include "scene.h"
 
@@ -26,21 +27,8 @@
 // order, so no atomic ever decides where an entry lands.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec3f>
-
 namespace Rtx::Shaders
 {
-    using vec3 = osg::Vec3f;
-    using uint = std::uint32_t;
-    using uint64 = std::uint64_t;
-
-#else
-
-#define uint64 uint64_t
-
 #endif
 
     /// Lanes that share one sprite in the pass that counts its tiles.
@@ -110,10 +98,6 @@ namespace Rtx::Shaders
 
     static_assert(sizeof(SpriteBinConstants) == 120, "SpriteBinConstants must be scalar-packed on every side");
 }
-
-#else
-
-#undef uint64
 
 #endif
 

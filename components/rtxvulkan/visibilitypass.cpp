@@ -433,7 +433,10 @@ namespace Rtx
         // **The tiles' widths come off the pass that built them**, so what the shader divides by is
         // what is actually bound rather than a second statement of the same table.
         for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
+        {
             described.mWaveExtent[cascade] = inputs.mWaves->getExtent(cascade);
+            described.mWaveTexel[cascade] = inputs.mWaves->getTexel(cascade);
+        }
 
         described.mWaveSlope = inputs.mWaves->getSlope();
 
@@ -448,6 +451,10 @@ namespace Rtx
             .mInverseCell = lamps.getInverseCell(),
             .mSize = lamps.getSize(),
         };
+
+        // And how many froxels stand in front of the camera, off the volume that holds them, so the
+        // three shaders that divide by it stop asking the driver for a number the host already has.
+        described.mFogColumns = Shaders::uvec2(inputs.mFogVolume->getColumns(), inputs.mFogVolume->getRows());
 
         // And where every table is, for the same reason. The scene names its own; the two it does
         // not own are the pass's tile and the structure's index blocks.

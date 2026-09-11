@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_SPRITESHADE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_SPRITESHADE_H
 
+#include "hosttypes.h"
 #include "portable.h"
 
 // How many layers of its own emitter stand between each sprite and a light, counted each frame.
@@ -49,21 +50,8 @@
 // that something is the second implementation this has none of.
 
 #ifdef RTX_HOST
-
-#include <cstdint>
-
-#include <osg/Vec3f>
-
 namespace Rtx::Shaders
 {
-    using vec3 = osg::Vec3f;
-    using uint = std::uint32_t;
-    using uint64 = std::uint64_t;
-
-#else
-
-#define uint64 uint64_t
-
 #endif
 
     /// How many lights each emitter is shaded against, which is what the dispatch and the order
@@ -102,10 +90,6 @@ namespace Rtx::Shaders
 
     static_assert(sizeof(SpriteShadeConstants) == 48, "SpriteShadeConstants must be scalar-packed on every side");
 }
-
-#else
-
-#undef uint64
 
 #endif
 
