@@ -44,6 +44,26 @@ namespace Rtx
 
         bool contains(const Key& key) const { return find(key) != nullptr; }
 
+        /// The row `key` names, for a caller whose contract is that there is one.
+        ///
+        /// **A reference, because `find` hands a caller a case it never handles.** Three callers
+        /// asserted the pointer and dereferenced it, and `NDEBUG` takes the assert away — which
+        /// left a release build with a path that reads through nought and a compiler right to say
+        /// so. A reference cannot be nought, so the case stops existing rather than being
+        /// suppressed.
+        ///
+        /// **The assert is the contract and not a guard.** A key that is not here is a caller that
+        /// lost track of what it holds, which is a logic error and never a state to handle.
+        const Row& at(const Key& key) const
+        {
+            const const_iterator found = lowerBound(key);
+            assert(found != mRows.end() && !(key < KeyOf{}(*found)) && "a key read that nothing holds");
+
+            return *found;
+        }
+
+        Row& at(const Key& key) { return const_cast<Row&>(std::as_const(*this).at(key)); }
+
         /// The row `key` names, inserting what `make` answers where nothing holds it.
         ///
         /// **One search either way**, which is what makes this one call rather than a `find` and an

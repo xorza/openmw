@@ -210,10 +210,8 @@ namespace Rtx
     void CellRing::dropTexture(const PreparedTexture& texture)
     {
         const osg::Image* const image = texture.mImage.get();
-        HeldTexture* const held = mTextures.find(image);
-        assert(held != nullptr && "a reading dropped that was never held");
-
-        if (--held->mHolders == 0)
+        HeldTexture& held = mTextures.at(image);
+        if (--held.mHolders == 0)
             mTextures.erase(image);
     }
 
@@ -248,18 +246,12 @@ namespace Rtx
 
     CellRing::HeldModel& CellRing::knownOf(const PreparedModel& model)
     {
-        HeldModel* const known = mModels.find(&model);
-        assert(known != nullptr && "a model the frame was never told of");
-
-        return *known;
+        return mModels.at(&model);
     }
 
     void CellRing::release(PreparedModel& model, const bool wasHeld)
     {
-        HeldModel* const found = mModels.find(&model);
-        assert(found != nullptr && "a model released that the frame never knew of");
-
-        HeldModel& known = *found;
+        HeldModel& known = mModels.at(&model);
         if (wasHeld)
             --known.mHeld;
         else
