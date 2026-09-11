@@ -124,6 +124,12 @@ namespace Rtx
             + " ms; the device has stopped answering";
     }
 
+    std::string neverSettled(const char* call)
+    {
+        return std::string(call) + " was asked " + std::to_string(sEnumerationTries)
+            + " times and lengthened its list every time";
+    }
+
     void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience)
     {
         const VkResult result = vkWaitForFences(device.getHandle(), 1, &fence, VK_TRUE, patience);

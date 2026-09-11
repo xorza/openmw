@@ -1,6 +1,7 @@
 #include "device.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <string>
@@ -288,15 +289,13 @@ namespace Rtx
                 .executableIndex = executable,
             };
 
-            std::uint32_t count = 0;
-            checkVk(mFunctions.mGetPipelineExecutableStatistics(mHandle, &which, &count, nullptr),
-                "vkGetPipelineExecutableStatisticsKHR");
-
-            std::vector<VkPipelineExecutableStatisticKHR> statistics(count);
-            for (VkPipelineExecutableStatisticKHR& statistic : statistics)
-                statistic.sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR;
-            checkVk(mFunctions.mGetPipelineExecutableStatistics(mHandle, &which, &count, statistics.data()),
-                "vkGetPipelineExecutableStatisticsKHR");
+            const std::vector<VkPipelineExecutableStatisticKHR> statistics
+                = enumerateVk<VkPipelineExecutableStatisticKHR>(
+                    "vkGetPipelineExecutableStatisticsKHR",
+                    [&](std::uint32_t* count, VkPipelineExecutableStatisticKHR* into) {
+                        return mFunctions.mGetPipelineExecutableStatistics(mHandle, &which, count, into);
+                    },
+                    VkPipelineExecutableStatisticKHR{ .sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR });
 
             // **Whatever the driver chose to say, and not a list this side picked.** The names are
             // the compiler's own — NVIDIA reports registers and spills, another vendor reports

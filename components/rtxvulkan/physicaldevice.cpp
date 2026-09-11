@@ -1,9 +1,11 @@
 #include "physicaldevice.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 #include <components/rtx/error.hpp>
 
@@ -16,12 +18,10 @@ namespace Rtx
     {
         std::vector<std::string> getDeviceExtensions(VkPhysicalDevice device)
         {
-            std::uint32_t count = 0;
-            checkVk(vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr),
-                "vkEnumerateDeviceExtensionProperties");
-            std::vector<VkExtensionProperties> properties(count);
-            checkVk(vkEnumerateDeviceExtensionProperties(device, nullptr, &count, properties.data()),
-                "vkEnumerateDeviceExtensionProperties");
+            const std::vector<VkExtensionProperties> properties = enumerateVk<VkExtensionProperties>(
+                "vkEnumerateDeviceExtensionProperties", [&](std::uint32_t* count, VkExtensionProperties* into) {
+                    return vkEnumerateDeviceExtensionProperties(device, nullptr, count, into);
+                });
 
             std::vector<std::string> names;
             names.reserve(properties.size());
@@ -77,13 +77,12 @@ namespace Rtx
 
     PhysicalDevice PhysicalDevice::select(VkInstance instance)
     {
-        std::uint32_t count = 0;
-        checkVk(vkEnumeratePhysicalDevices(instance, &count, nullptr), "vkEnumeratePhysicalDevices");
-        if (count == 0)
+        const std::vector<VkPhysicalDevice> handles = enumerateVk<VkPhysicalDevice>(
+            "vkEnumeratePhysicalDevices", [&](std::uint32_t* count, VkPhysicalDevice* into) {
+                return vkEnumeratePhysicalDevices(instance, count, into);
+            });
+        if (handles.empty())
             throw Unsupported("no Vulkan device is installed");
-
-        std::vector<VkPhysicalDevice> handles(count);
-        checkVk(vkEnumeratePhysicalDevices(instance, &count, handles.data()), "vkEnumeratePhysicalDevices");
 
         std::string rejections;
         PhysicalDevice best;

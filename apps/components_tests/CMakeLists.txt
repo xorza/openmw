@@ -161,6 +161,7 @@ if (OPENMW_RTX)
         rtx/probe.cpp
         rtx/reconstruction.cpp
         rtx/requirements.cpp
+        rtx/result.cpp
         rtx/runallocator.cpp
         rtx/scenedesc.cpp
         rtx/extractor/fixture.hpp

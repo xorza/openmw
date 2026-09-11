@@ -1,8 +1,10 @@
 #include "swapchain.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <initializer_list>
 #include <string_view>
+#include <vector>
 
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
@@ -16,12 +18,10 @@ namespace Rtx
     {
         VkSurfaceFormatKHR chooseFormat(VkPhysicalDevice device, VkSurfaceKHR surface)
         {
-            std::uint32_t count = 0;
-            checkVk(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &count, nullptr),
-                "vkGetPhysicalDeviceSurfaceFormatsKHR");
-            std::vector<VkSurfaceFormatKHR> formats(count);
-            checkVk(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &count, formats.data()),
-                "vkGetPhysicalDeviceSurfaceFormatsKHR");
+            const std::vector<VkSurfaceFormatKHR> formats = enumerateVk<VkSurfaceFormatKHR>(
+                "vkGetPhysicalDeviceSurfaceFormatsKHR", [&](std::uint32_t* count, VkSurfaceFormatKHR* into) {
+                    return vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, count, into);
+                });
 
             if (formats.empty())
                 throw Unsupported("the surface offers no formats");
@@ -45,12 +45,10 @@ namespace Rtx
         VkPresentModeKHR chooseFrom(
             VkPhysicalDevice device, VkSurfaceKHR surface, std::initializer_list<VkPresentModeKHR> wanted)
         {
-            std::uint32_t count = 0;
-            checkVk(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &count, nullptr),
-                "vkGetPhysicalDeviceSurfacePresentModesKHR");
-            std::vector<VkPresentModeKHR> modes(count);
-            checkVk(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &count, modes.data()),
-                "vkGetPhysicalDeviceSurfacePresentModesKHR");
+            const std::vector<VkPresentModeKHR> modes = enumerateVk<VkPresentModeKHR>(
+                "vkGetPhysicalDeviceSurfacePresentModesKHR", [&](std::uint32_t* count, VkPresentModeKHR* into) {
+                    return vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, count, into);
+                });
 
             for (const VkPresentModeKHR mode : wanted)
                 if (std::find(modes.begin(), modes.end(), mode) != modes.end())
@@ -178,12 +176,9 @@ namespace Rtx
         checkVk(vkCreateSwapchainKHR(mDevice.getHandle(), &create, nullptr, mHandle.put(mDevice.getHandle())),
             "vkCreateSwapchainKHR");
 
-        std::uint32_t count = 0;
-        checkVk(
-            vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle.get(), &count, nullptr), "vkGetSwapchainImagesKHR");
-        mImages.resize(count);
-        checkVk(vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle.get(), &count, mImages.data()),
-            "vkGetSwapchainImagesKHR");
+        mImages = enumerateVk<VkImage>("vkGetSwapchainImagesKHR", [&](std::uint32_t* count, VkImage* into) {
+            return vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle.get(), count, into);
+        });
     }
 
     void Swapchain::destroy()

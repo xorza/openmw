@@ -1,6 +1,7 @@
 #include "instance.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -20,10 +21,10 @@ namespace Rtx
 
         bool hasLayer(const char* name)
         {
-            std::uint32_t count = 0;
-            checkVk(vkEnumerateInstanceLayerProperties(&count, nullptr), "vkEnumerateInstanceLayerProperties");
-            std::vector<VkLayerProperties> layers(count);
-            checkVk(vkEnumerateInstanceLayerProperties(&count, layers.data()), "vkEnumerateInstanceLayerProperties");
+            const std::vector<VkLayerProperties> layers = enumerateVk<VkLayerProperties>(
+                "vkEnumerateInstanceLayerProperties", [](std::uint32_t* count, VkLayerProperties* into) {
+                    return vkEnumerateInstanceLayerProperties(count, into);
+                });
 
             return std::any_of(layers.begin(), layers.end(),
                 [&](const VkLayerProperties& layer) { return std::strcmp(layer.layerName, name) == 0; });
@@ -31,12 +32,10 @@ namespace Rtx
 
         bool hasInstanceExtension(const char* name)
         {
-            std::uint32_t count = 0;
-            checkVk(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr),
-                "vkEnumerateInstanceExtensionProperties");
-            std::vector<VkExtensionProperties> extensions(count);
-            checkVk(vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data()),
-                "vkEnumerateInstanceExtensionProperties");
+            const std::vector<VkExtensionProperties> extensions = enumerateVk<VkExtensionProperties>(
+                "vkEnumerateInstanceExtensionProperties", [](std::uint32_t* count, VkExtensionProperties* into) {
+                    return vkEnumerateInstanceExtensionProperties(nullptr, count, into);
+                });
 
             return std::any_of(extensions.begin(), extensions.end(), [&](const VkExtensionProperties& extension) {
                 return std::strcmp(extension.extensionName, name) == 0;

@@ -1,12 +1,17 @@
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <vulkan/vulkan_core.h>
+
+#include <components/rtx/error.hpp>
 
 namespace Rtx
 {
@@ -17,8 +22,8 @@ namespace Rtx
 
     /// Throws `Error` naming `call` and the result unless `result` is `VK_SUCCESS`.
     ///
-    /// `VK_INCOMPLETE` is a failure here. Enumeration loops that can legitimately see it handle it
-    /// before calling this.
+    /// `VK_INCOMPLETE` is a failure here, and `enumerateVk` is the one caller that answers it
+    /// instead of raising it.
     void checkVk(VkResult result, const char* call);
 
     /// The same, for a call that can lose the device: a submit, a wait, an acquire or a present.
@@ -54,6 +59,64 @@ namespace Rtx
 
     /// What a wait that ran out is called, so the two places that can say it say it the same way.
     std::string timedOut(const char* what, std::uint64_t patience);
+
+    /// What an enumeration whose list never stopped growing is called.
+    std::string neverSettled(const char* call);
+
+    /// How many times an enumeration may be told the driver's list is longer than it just said.
+    ///
+    /// **A bound, for the reason `sPatience` is one.** Asking again with the longer count is the
+    /// whole answer to `VK_INCOMPLETE`, and a driver that lengthened its list on every ask would
+    /// spin here forever — which cannot be told from work. Four, because a list that has not
+    /// settled after three re-reads is not settling.
+    inline constexpr int sEnumerationTries = 4;
+
+    /// The two-call enumeration every Vulkan list query is made of, asked until the driver has
+    /// nothing left to add.
+    ///
+    /// **`VK_INCOMPLETE` is a legal answer to the second call, and it is the whole reason this
+    /// exists.** The count comes from one call and the elements from the next, so a list that grew
+    /// in between leaves the second call unable to say everything and saying so. The backend wrote
+    /// that pair out eight times by hand and answered it in none of them, because the rule lived
+    /// only in the sentence above `checkVk`: a surface that offered one more format than it had a
+    /// moment earlier ended the process during start-up.
+    ///
+    /// **One call site, so the ninth copy cannot be written without the answer in it.**
+    ///
+    /// @param call the entry point's own name, for the message a failure carries.
+    /// @param enumerate invoked as `(std::uint32_t* count, T* into)`, exactly as the entry point
+    ///        takes them.
+    /// @param prototype what every element is set to before the fill, which is how a structure that
+    ///        has to carry its own `sType` is given one.
+    template <class T, class Enumerate>
+    std::vector<T> enumerateVk(const char* call, Enumerate&& enumerate, const T& prototype = T{})
+    {
+        std::vector<T> into;
+
+        for (int asked = 0; asked < sEnumerationTries; ++asked)
+        {
+            std::uint32_t count = 0;
+            checkVk(enumerate(&count, nullptr), call);
+            if (count == 0)
+                return into;
+
+            into.assign(count, prototype);
+
+            const VkResult filled = enumerate(&count, into.data());
+            if (filled == VK_INCOMPLETE)
+                continue;
+
+            checkVk(filled, call);
+
+            // **Down to what the fill wrote and never up.** A list that shrank between the two
+            // calls leaves elements nothing touched, and a driver that reported more than it was
+            // given room for would otherwise be handed back elements that are not there.
+            into.resize(std::min(static_cast<std::size_t>(count), into.size()));
+            return into;
+        }
+
+        throw Error(neverSettled(call));
+    }
 
     /// Logs `failure` and what was raised. `tearDown` calls this and nothing else should.
     void reportTornDown(std::string_view failure, const char* raised);
