@@ -84,10 +84,7 @@ namespace Rtx
         mRooms.resize(held);
         mUpdateScratch.resize(held, 0);
         mUpdatable.resize(held, 0);
-        mBuiltSize.resize(held, 0);
-        mTightness.resize(held, Tightness::None);
-        mAskedAt.resize(held, 0);
-        mTightSize.resize(held, 0);
+        mCompaction.resize(held);
 
         mBuild.sizeTo(meshes.size());
         mLiveBuilds.clear();
@@ -291,11 +288,11 @@ namespace Rtx
 
             // Kept per slot so the figure compaction is judged against covers the whole scene rather
             // than the meshes this call happened to build.
-            mBuiltSize[slot] = mBuildSizes[at];
+            mCompaction[slot].mBuiltSize = mBuildSizes[at];
 
             // **Built loose whatever stood in the slot before**, and a mesh that refits keeps its
             // slack: a refit writes back into it.
-            mTightness[slot] = mUpdatable[slot] != 0 ? Tightness::None : Tightness::Loose;
+            mCompaction[slot].mTightness = mUpdatable[slot] != 0 ? Tightness::None : Tightness::Loose;
 
             mLiveBuilds.push_back(mBuild.mBuilds[at]);
             mBuild.mRangePointers.push_back(&mBuild.mRanges[at]);
@@ -313,13 +310,14 @@ namespace Rtx
 
     void BottomLevelStore::forget(const Index slot)
     {
-        if (mTightness[slot] == Tightness::Answered)
+        Compaction& state = mCompaction[slot];
+        if (state.mTightness == Tightness::Answered)
         {
-            mCompactableNow -= mBuiltSize[slot];
-            mCompactableTight -= mTightSize[slot];
+            mCompactableNow -= state.mBuiltSize;
+            mCompactableTight -= state.mTightSize;
         }
 
-        mTightness[slot] = Tightness::None;
+        state.mTightness = Tightness::None;
     }
 
     void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands, Graveyard& graveyard)
@@ -345,9 +343,9 @@ namespace Rtx
                 "vkCreateQueryPool");
             mCompactablePool = wanted;
 
-            for (Tightness& tightness : mTightness)
-                if (tightness == Tightness::Asked)
-                    tightness = Tightness::Loose;
+            for (Compaction& state : mCompaction)
+                if (state.mTightness == Tightness::Asked)
+                    state.mTightness = Tightness::Loose;
         }
 
         // **One reset and one write per run of consecutive slots**, which is what a cell's
@@ -358,7 +356,8 @@ namespace Rtx
         mAskScratch.clear();
         for (std::uint32_t slot = 0; slot < held; ++slot)
         {
-            if (mTightness[slot] != Tightness::Loose)
+            Compaction& state = mCompaction[slot];
+            if (state.mTightness != Tightness::Loose)
             {
                 askRun(commands, first);
                 continue;
@@ -368,8 +367,8 @@ namespace Rtx
                 first = slot;
             mAskScratch.push_back(mStructures[slot]);
 
-            mTightness[slot] = Tightness::Asked;
-            mAskedAt[slot] = mPlacements;
+            state.mTightness = Tightness::Asked;
+            state.mAskedAt = mPlacements;
             mAsked.push(Ask{ .mSlot = static_cast<Index>(slot), .mAt = mPlacements });
         }
         askRun(commands, first);
@@ -427,20 +426,21 @@ namespace Rtx
             for (std::size_t at = 0; at < count; ++at)
             {
                 const Index slot = mAsked.at(at).mSlot;
+                Compaction& state = mCompaction[slot];
 
                 // A driver that refuses outright leaves its structures as they were built, and so
                 // does one that says a tight copy would be no smaller: the copy would spend a room
                 // and a command to change nothing.
                 const VkDeviceSize tight = read == VK_SUCCESS ? mReadScratch[at] : 0;
-                if (tight == 0 || tight >= mBuiltSize[slot])
+                if (tight == 0 || tight >= state.mBuiltSize)
                 {
-                    mTightness[slot] = Tightness::Tight;
+                    state.mTightness = Tightness::Tight;
                     continue;
                 }
 
-                mTightness[slot] = Tightness::Answered;
-                mTightSize[slot] = tight;
-                mCompactableNow += mBuiltSize[slot];
+                state.mTightness = Tightness::Answered;
+                state.mTightSize = tight;
+                mCompactableNow += state.mBuiltSize;
                 mCompactableTight += tight;
                 mAnswered.push(slot);
             }
@@ -471,10 +471,11 @@ namespace Rtx
             // **The slot may have been handed out again since it answered.** A cell that left took
             // its meshes with it, and whatever stands here now is not what this answer is about —
             // its own question is.
-            if (mTightness[slot] != Tightness::Answered)
+            Compaction& state = mCompaction[slot];
+            if (state.mTightness != Tightness::Answered)
                 continue;
 
-            const VkDeviceSize tight = mTightSize[slot];
+            const VkDeviceSize tight = state.mTightSize;
             const StructureRoom room = mStorage.take(mDevice, tight, sCompactionPerPlacement);
             const VkAccelerationStructureCreateInfoKHR create{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
@@ -504,13 +505,13 @@ namespace Rtx
 
             // The pair the report prints follows the copy, so what it says is what is left to save
             // rather than what was saved once.
-            mCompactableNow -= mBuiltSize[slot];
+            mCompactableNow -= state.mBuiltSize;
             mCompactableTight -= tight;
 
             mStructures[slot] = made;
             mRooms[slot] = room;
-            mBuiltSize[slot] = tight;
-            mTightness[slot] = Tightness::Tight;
+            state.mBuiltSize = tight;
+            state.mTightness = Tightness::Tight;
 
             // Asked before the copy has run, which is what makes the top level buildable in this
             // same command buffer: an address belongs to the structure from the moment it is

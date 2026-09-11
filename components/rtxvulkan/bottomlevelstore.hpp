@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/backlog.hpp>
 #include <components/rtx/index.hpp>
 #include <components/rtx/slotset.hpp>
 
@@ -151,31 +152,18 @@ namespace Rtx
             std::uint64_t mAt = 0;
         };
 
-        /// A list consumed from the front in the order it was filled.
+        /// What the compaction knows about the structure in one slot: where it stands, the placement
+        /// count when its question was recorded — what `readAnswers` reads it against — what it was
+        /// created at, and what the driver said a tight copy would come to, once answered.
         ///
-        /// **Emptied once it is drained and never before**, so a route allocates for it only while
-        /// it grows, and what is left in it is never moved.
-        template <class T>
-        struct Backlog
+        /// **One row and not four vectors resized in step by hand.** Every field here is written by
+        /// the same three steps — built, asked, answered — and read together by the copy.
+        struct Compaction
         {
-            std::vector<T> mItems;
-            std::size_t mRead = 0;
-
-            std::size_t size() const { return mItems.size() - mRead; }
-            bool empty() const { return size() == 0; }
-            const T& at(std::size_t offset) const { return mItems[mRead + offset]; }
-            void push(const T& item) { mItems.push_back(item); }
-            void pop(std::size_t count) { mRead += count; }
-
-            /// Lets go of what was consumed, where everything was.
-            void settle()
-            {
-                if (mRead == mItems.size())
-                {
-                    mItems.clear();
-                    mRead = 0;
-                }
-            }
+            Tightness mTightness = Tightness::None;
+            std::uint64_t mAskedAt = 0;
+            VkDeviceSize mBuiltSize = 0;
+            VkDeviceSize mTightSize = 0;
         };
 
         /// Records the compaction question for every loose structure not yet asked about.
@@ -192,7 +180,8 @@ namespace Rtx
         /// waiting on a later one.
         bool isOutstanding(const Ask& ask) const
         {
-            return mTightness[ask.mSlot] == Tightness::Asked && mAskedAt[ask.mSlot] == ask.mAt;
+            const Compaction& state = mCompaction[ask.mSlot];
+            return state.mTightness == Tightness::Asked && state.mAskedAt == ask.mAt;
         }
 
         /// Drops what the compaction knew about `slot`, ahead of its structure going.
@@ -236,15 +225,8 @@ namespace Rtx
         /// at nought bytes — a mesh with no triangles is described by nobody and built by nobody.
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mLiveBuilds;
 
-        /// What each mesh's structure was created at, by slot.
-        std::vector<VkDeviceSize> mBuiltSize;
-
-        /// Per slot: where its structure stands with the compaction, the placement count when its
-        /// question was recorded — what `readAnswers` reads it against — and what the driver said a
-        /// tight copy would come to, once answered.
-        std::vector<Tightness> mTightness;
-        std::vector<std::uint64_t> mAskedAt;
-        std::vector<VkDeviceSize> mTightSize;
+        /// The compaction's state per slot, grown with the mesh table.
+        std::vector<Compaction> mCompaction;
 
         /// One query per slot, grown with the mesh table.
         ///

@@ -85,6 +85,12 @@ namespace Rtx
         /// Frees every slot the last `mark` did not name, and says how many that was.
         std::size_t sweep();
 
+        /// Takes and gives back one hold on a row — `MeshTable::hold` says what for.
+        void hold(Index material) { mRows.hold(material); }
+        void drop(Index material) { mRows.drop(material); }
+
+        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
+
         void clearArrivals();
 
     private:

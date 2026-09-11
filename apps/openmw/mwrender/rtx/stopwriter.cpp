@@ -59,6 +59,7 @@
 #include "../offscreenview.hpp"
 #include "../renderer.hpp"
 #include "checks.hpp"
+#include "viewhost.hpp"
 
 namespace MWRender
 {
@@ -73,10 +74,10 @@ namespace MWRender
         constexpr float sMapFar = 150000.0f;
     }
 
-    void StopWriter::write(const TracedRun& run, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
+    void StopWriter::write(const FrameContext& context, const FrameReport& report, const Rtx::Actions& actions,
         const StopFacts& facts, Rtx::RunRecord& record)
     {
-        const Writing into{ run, reconstruction, record };
+        const Writing into{ context, report, record };
 
         if (!actions.mCapture.empty())
             writeCapture(into, actions.mCapture);
@@ -108,7 +109,7 @@ namespace MWRender
 
     void StopWriter::writeCapture(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mRun.mBackend;
+        Rtx::Renderer& renderer = into.mContext.mHost.getBackend();
         const Rtx::FrameExtents extents = renderer.getExtents();
 
         renderer.readPixels(mPixels);
@@ -132,16 +133,16 @@ namespace MWRender
 
     void StopWriter::reportTail(const Writing& into)
     {
-        if (!Rtx::hasFrameImage(into.mReconstruction, Rtx::FrameImage::Accumulated))
+        if (!Rtx::hasFrameImage(into.mReport.mReconstruction, Rtx::FrameImage::Accumulated))
         {
             into.mRecord.note(
                 std::format("no bounce tail: only the wavelet writes one, and {} put this frame back together\n",
-                    Rtx::denoiserName(into.mReconstruction.mDenoiser)));
+                    Rtx::denoiserName(into.mReport.mReconstruction.mDenoiser)));
             into.mRecord.fail();
             return;
         }
 
-        Rtx::Renderer& renderer = into.mRun.mBackend;
+        Rtx::Renderer& renderer = into.mContext.mHost.getBackend();
 
         std::vector<float> bounce;
         renderer.readFrameImage(Rtx::FrameImage::Accumulated, bounce);
@@ -176,7 +177,7 @@ namespace MWRender
 
     void StopWriter::writeDump(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mRun.mBackend;
+        Rtx::Renderer& renderer = into.mContext.mHost.getBackend();
 
         std::vector<float> radiance;
         renderer.readFrameImage(Rtx::FrameImage::Composite, radiance);
@@ -194,8 +195,8 @@ namespace MWRender
 
     void StopWriter::reportScene(const Writing& into, const bool walkedTwice)
     {
-        const Rtx::SceneTables scene = into.mRun.mScene.getTables();
-        const Rtx::ExtractionStats& stats = into.mRun.mWalked;
+        const Rtx::SceneTables scene = into.mContext.mScene.getTables();
+        const Rtx::ExtractionStats& stats = into.mReport.mWalked;
 
         into.mRecord.note(
             std::format("\nplaced\n"
@@ -282,7 +283,7 @@ namespace MWRender
 
         if (walkedTwice)
         {
-            const Rtx::ExtractionStats& again = into.mRun.mWalkedAgain;
+            const Rtx::ExtractionStats& again = into.mReport.mWalkedAgain;
             into.mRecord.note(
                 std::format("\nsecond pass over the same graph\n"
                             "  new meshes:           {} (should be 0)\n"
@@ -294,11 +295,11 @@ namespace MWRender
 
     void StopWriter::writeSheet(const Writing& into, const std::filesystem::path& sheet)
     {
-        Resource::ResourceSystem* resources = into.mRun.mResources;
+        Resource::ResourceSystem* resources = into.mContext.mHost.getResources();
         if (resources == nullptr)
             return;
 
-        const Rtx::SceneTables scene = into.mRun.mScene.getTables();
+        const Rtx::SceneTables scene = into.mContext.mScene.getTables();
 
         Rtx::SceneTextures described;
         described.describeAll(scene, *resources->getImageManager());
@@ -349,7 +350,7 @@ namespace MWRender
 
     void StopWriter::writeMapTile(const Writing& into, const std::filesystem::path& file)
     {
-        osg::Group* root = into.mRun.mSceneRoot;
+        osg::Group* root = into.mContext.mHost.getSceneRoot();
         if (root == nullptr)
             return;
 
@@ -370,7 +371,7 @@ namespace MWRender
         spec.mSun = SceneUtil::mapLight();
         spec.mFromWorld = true;
 
-        const std::unique_ptr<OffscreenView> view = into.mRun.mViews.createOffscreenView(spec);
+        const std::unique_ptr<OffscreenView> view = into.mContext.mViews.createOffscreenView(spec);
         view->setView(osg::Matrixf::lookAt(osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight),
             osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight - 1.0f), osg::Vec3f(0.0f, 1.0f, 0.0f)));
 
@@ -397,7 +398,7 @@ namespace MWRender
             return;
         }
 
-        InventoryPreview preview(into.mRun.mViews, into.mRun.mResources, subject);
+        InventoryPreview preview(into.mContext.mViews, into.mContext.mHost.getResources(), subject);
         preview.rebuild();
 
         // **Through the view and not through the texture the GUI draws from**, which is the one
@@ -408,7 +409,7 @@ namespace MWRender
 
     void StopWriter::reportFound(const Writing& into, const std::string& needle)
     {
-        const Rtx::SceneTables scene = into.mRun.mScene.getTables();
+        const Rtx::SceneTables scene = into.mContext.mScene.getTables();
         const std::span<const VFS::Path::Normalized> paths = scene.mTextures.getPaths();
 
         // **Found by texture and reported by placement**, because a mesh carries no name of its own
@@ -444,7 +445,7 @@ namespace MWRender
         for (const Rtx::Check check : checks)
         {
             std::string found;
-            const bool held = checkHolds(into.mRun, check, facts, found);
+            const bool held = checkHolds(into.mContext, into.mReport, check, facts, found);
 
             into.mRecord.checked(held);
             into.mRecord.note(std::format("  {:<20} {:<4} {}\n", checkName(check), held ? "ok" : "FAIL", found));

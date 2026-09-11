@@ -196,6 +196,22 @@ namespace Rtx
         /// Gives back one `holdTexture`. The slot is freed here where nothing else names it.
         void dropTexture(Index texture);
 
+        /// Takes and gives back one hold on a mesh or a material row, which keeps it through every
+        /// `release` between.
+        ///
+        /// **For a row the walk will never name.** A residency that adds a row straight to the scene
+        /// — a cell's ground, which has no drawable and no state set — is the only thing that knows
+        /// the row is alive, and this is how it says so. The row goes on the first `release` after
+        /// the last hold is given back, whatever else that release found: `hasDroppedHolds` is what
+        /// tells a caller gated on the identity maps that it owes one.
+        void holdMesh(Index mesh);
+        void dropMesh(Index mesh);
+        void holdMaterial(Index material);
+        void dropMaterial(Index material);
+
+        /// Whether a hold on a mesh or a material went to nought since the last `release`.
+        bool hasDroppedHolds() const;
+
         /// Places `instance` in a slot and returns it.
         ///
         /// **The slot is the placement's name for as long as it stands.** It is the custom index a

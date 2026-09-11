@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <components/surface/material.hpp>
+
 #include "gl/glrenderer.hpp"
 
 #ifdef OPENMW_RTX
@@ -11,6 +13,11 @@
 
 namespace MWRender
 {
+    int Renderer::getMaxTextureUnits() const
+    {
+        return Surface::sAssumedTextureUnits;
+    }
+
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec)
     {
         if (name == "opengl")

@@ -6,12 +6,11 @@
 #include <string>
 #include <vector>
 
-#include <components/rtx/reconstruction.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
 #include "checks.hpp"
-#include "tracedrun.hpp"
+#include "framereport.hpp"
 
 namespace Rtx
 {
@@ -43,7 +42,7 @@ namespace MWRender
         /// @param reconstruction what put that frame back together, which decides what channels it
         ///        has. `Rtx::hasFrameImage` is where that rule lives.
         /// @param facts what the stop asked for and came to, which only a check reads.
-        void write(const TracedRun& run, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
+        void write(const FrameContext& context, const FrameReport& report, const Rtx::Actions& actions,
             const StopFacts& facts, Rtx::RunRecord& record);
 
     private:
@@ -55,8 +54,8 @@ namespace MWRender
         /// Bundling them keeps the three off every writer's signature.
         struct Writing
         {
-            const TracedRun& mRun;
-            Rtx::Reconstruction mReconstruction;
+            const FrameContext& mContext;
+            const FrameReport& mReport;
             Rtx::RunRecord& mRecord;
         };
 

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "framespend.hpp"
 #include "renderer.hpp"
 #include "texturebuilder.hpp"
 #include "wavespectrum.hpp"
@@ -47,20 +48,6 @@ namespace Rtx
         /// where nothing arrives, and waiting for the next arrival to give the memory back is what
         /// made the island route settle at what it had visited.
         std::size_t mDropped = 0;
-
-        /// How long the ground the composite queue handed back took, in milliseconds.
-        double mBakeMs = 0.0;
-
-        /// How long the arrived textures took to open and describe. Nought on a `Placed`.
-        double mTexturesMs = 0.0;
-
-        /// How long the renderer took to be told — whichever of the three calls this was, and the
-        /// texture slots given back beside it.
-        ///
-        /// **Timed here and not inside the backend**, because what the three have in common is that
-        /// they are the hand-over, and a backend that timed itself would be answering a question
-        /// about the host's frame. `Rtx::Timing::Upload` says what the three rows are for.
-        double mUploadMs = 0.0;
     };
 
     /// Takes, once a frame, the cheapest of the three ways to hand a mirrored scene over.
@@ -72,8 +59,9 @@ namespace Rtx
     /// that gained a mesh and the frame names a bottom-level structure that does not exist; place one
     /// that was compacted and every index points at something else.
     ///
-    /// One per renderer and scene, and it checks rather than trusting that: a pairing it does not
-    /// recognise is built from nothing rather than appended to.
+    /// **Stateless against the backend.** Whether the backend holds this scene, and at which
+    /// revision, is the backend's to say — `SceneSink::describeHeld` — so a scene it does not hold
+    /// is built from nothing rather than appended to, whichever uploader asks.
     class SceneUploader
     {
     public:
@@ -93,25 +81,18 @@ namespace Rtx
         ///        neither has ground to flatten, so an uploader of its own would carry a mutex, a
         ///        thread and a shading cache to bake nothing.
         /// @param readings where a describe finds images read ahead of the frame, or null.
+        /// @param spend where the three halves of the hand-over are timed into, or null. `Bake` is
+        ///        the ground the composite queue handed back, `Textures` the arrived textures being
+        ///        opened and described, `Upload` the renderer being told — whichever of the three
+        ///        calls this was, and the texture slots given back beside it. **Timed here and not
+        ///        inside the backend**, because what the three have in common is that they are the
+        ///        hand-over, and a backend that timed itself would be answering a question about the
+        ///        host's frame.
         SceneUpload hand(SceneSink& renderer, SceneSlot slot, SceneDesc& scene, Resource::ImageManager& images,
-            CompositeQueue* composites, const SeaState& sea = SeaState{}, const TextureReadings* readings = nullptr);
+            CompositeQueue* composites, const SeaState& sea = SeaState{}, const TextureReadings* readings = nullptr,
+            FrameSpend* spend = nullptr);
 
     private:
-        /// **Whether the pair in front of it is the pair it last built, and appending is only
-        /// allowed onto that.**
-        ///
-        /// `bench` is what makes this a check instead of a rule in a comment: it runs several places
-        /// through one renderer, a scene of its own for each, and a fresh uploader beside each scene.
-        /// An uploader that took the renderer's texture count on faith would begin the second place's
-        /// descriptions past the end of its own table — a hundreds-long overrun of a table that is
-        /// hundreds long, and it read as a `std::bad_alloc` from somewhere else entirely.
-        ///
-        /// Compared and never dereferenced. The count is what carries the argument — an array
-        /// somebody else left behind is not one to append to whatever its address was — and the two
-        /// pointers are what stop a coincidence in it from mattering.
-        bool recognises(
-            const SceneSink& renderer, SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const;
-
         /// What an arrival is described into, and the storage the descriptions point at.
         ///
         /// **Held, so an arrival frame does not pay for the buffers.** Every vector inside settles
@@ -119,22 +100,5 @@ namespace Rtx
         /// reads them between calls: `setScene` and `extendScene` are done with the spans when they
         /// return.
         SceneTextures mTextures;
-
-        const SceneSink* mRenderer = nullptr;
-        const SceneDesc* mScene = nullptr;
-
-        /// Which of that renderer's scenes, so an uploader cannot append a doll onto the world.
-        SceneSlot mSlot;
-
-        /// How long the renderer's texture array was when this last left it.
-        std::uint32_t mUploaded = 0;
-
-        /// Which revision of the scene the structures and the texture array were built from.
-        ///
-        /// **A counter and not a set of table sizes**, because walking across a cell boundary loses
-        /// one cell as it gains another: a scene that ends the frame the same size it started is
-        /// exactly the case a size comparison misses, and the structures it kept describe geometry
-        /// that has gone.
-        std::uint64_t mBuilt = 0;
     };
 }

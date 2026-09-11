@@ -103,6 +103,11 @@ namespace Rtx
             /// Counted rather than sized, because a freed slot taken over by something else is a
             /// mesh arriving at a table that did not grow.
             std::uint64_t mBuiltMeshes = 0;
+
+            /// Which scene's tables this was built from and at what revision of the whole
+            /// structure, which is what `describeHeld` answers and an uploader appends against.
+            const MeshTable* mBuiltFrom = nullptr;
+            std::uint64_t mBuiltStructure = 0;
         };
 
     public:
@@ -119,14 +124,14 @@ namespace Rtx
             const SeaState& sea) override;
         void extendScene(SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived,
             const SeaState& sea) override;
-        std::uint32_t getTextureCount(SceneSlot slot) const override;
+        SceneHeld describeHeld(SceneSlot slot) const override;
         void dropTextures(SceneSlot slot, std::span<const Index> textures) override;
         void placeScene(SceneSlot slot, const SceneTables& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
         void setUpscale(Upscale upscale) override;
-        Upscale getUpscale() const override { return mUpscale; }
+        Upscale getUpscale() const override { return mUpscaling.mMode; }
 
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
         FrameExtents getExtents() const override;
@@ -260,10 +265,9 @@ namespace Rtx
         /// where nothing reads it until later.
         FrameRing mRing{ mDevice, mPool, mCountHits, mCountCrossings };
 
-        /// What the frames are traced under. **Changing it rebuilds every target**, which is what
-        /// `setUpscale` is for and why it is a setting rather than a frame option.
-        Upscale mUpscale = Upscale::Off;
-        Preset mPreset = Preset::Default;
+        /// What the frames are traced under. **Changing the mode rebuilds every target**, which is
+        /// what `setUpscale` is for and why it is a setting rather than a frame option.
+        Upscaling mUpscaling;
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
         /// spent by the next frame that reconstructs from one, which is not always the one after.

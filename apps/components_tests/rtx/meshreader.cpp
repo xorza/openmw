@@ -148,8 +148,8 @@ namespace Rtx::Testing
             ASSERT_TRUE(reader.read(readDrawable(*quad), reading));
 
             Resolving adopted;
-            Known& entry = adopted.mResolver.adopt(*quad, reading, sNoIndex);
-            EXPECT_EQ(entry.mIndex, 0u);
+            const Index mesh = adopted.mResolver.adopt(*quad, reading, sNoIndex);
+            EXPECT_EQ(mesh, 0u);
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u);
 
             Resolving resolved;
@@ -170,9 +170,14 @@ namespace Rtx::Testing
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u) << "resolved to the mesh already held";
             EXPECT_EQ(adopted.mStats.mMeshesReused, 1u);
 
-            // And adopting again stamps rather than adds, returning the same entry.
-            EXPECT_EQ(&adopted.mResolver.adopt(*quad, reading, sNoIndex), &entry);
+            // And adopting again holds rather than adds, answering the same mesh — and a hold is what
+            // keeps the entry through a sweep the walk did not stamp it in.
+            EXPECT_EQ(adopted.mResolver.adopt(*quad, reading, sNoIndex), mesh);
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u);
+            EXPECT_TRUE(adopted.mResolver.whole());
+
+            adopted.mResolver.release(*quad);
+            adopted.mResolver.release(*quad);
         }
     }
 }

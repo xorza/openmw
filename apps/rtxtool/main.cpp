@@ -199,14 +199,14 @@ namespace RtxTool
             request.mDistantStatics = variables["distant-statics"].as<bool>();
             request.mDay = variables["day"].as<int>();
 
-            request.mProfile.mUpscale
+            request.mProfile.mUpscaling.mMode
                 = Rtx::sUpscaleNames.require(variables["upscale"].as<std::string>(), "an upscale mode");
-            request.mProfile.mPreset
+            request.mProfile.mUpscaling.mPreset
                 = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
             request.mProfile.mDelight = variables["delight"].as<float>();
-            request.mProfile.mFilter = variables["filter"].as<bool>();
+            request.mProfile.mReconstruction.mFilter = variables["filter"].as<bool>();
             request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();
-            request.mProfile.mJitter = variables["jitter"].as<bool>();
+            request.mProfile.mReconstruction.mJitter = variables["jitter"].as<bool>();
             request.mProfile.mCountCrossings = variables["crossings"].as<bool>();
             request.mProfile.mExposure = parseExposure(variables["exposure"].as<std::string>());
 

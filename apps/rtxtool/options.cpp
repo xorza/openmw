@@ -156,7 +156,8 @@ namespace RtxTool
         option(sFramed, "delight", bpo::value<float>()->default_value(byDefault.mProfile.mDelight),
             "how much of the lighting painted into each texture to divide back out, from 0 to 1. "
             "Zero is the A/B that says what it did");
-        option(sFramed, "filter", bpo::value<bool>()->default_value(byDefault.mProfile.mFilter)->implicit_value(true),
+        option(sFramed, "filter",
+            bpo::value<bool>()->default_value(byDefault.mProfile.mReconstruction.mFilter)->implicit_value(true),
             "run the denoiser over the indirect light. Off shows the raw bounce, and is what a "
             "reference is made with");
         // Defaulted to an empty list rather than left absent, because `readConfiguration` walks
@@ -168,7 +169,8 @@ namespace RtxTool
             "own record, which is what the game equips them with");
 
         option(sFramed, "upscale",
-            bpo::value<std::string>()->default_value(std::string(Rtx::upscaleName(byDefault.mProfile.mUpscale))),
+            bpo::value<std::string>()->default_value(
+                std::string(Rtx::upscaleName(byDefault.mProfile.mUpscaling.mMode))),
             std::format("put DLSS Ray Reconstruction between the trace and the picture: {}. --size "
                         "is what comes out, and what gets traced is DLSS's answer for it. It "
                         "denoises for itself, so --filter stops applying. Quality by default, so a "
@@ -181,7 +183,8 @@ namespace RtxTool
                 .c_str());
 
         option(sFramed, "preset",
-            bpo::value<std::string>()->default_value(std::string(Rtx::presetName(byDefault.mProfile.mPreset))),
+            bpo::value<std::string>()->default_value(
+                std::string(Rtx::presetName(byDefault.mProfile.mUpscaling.mPreset))),
             std::format("which Ray Reconstruction network to run: {}. Ray Reconstruction keeps its "
                         "own presets, and they are not super-resolution's -- A through C are retired, d is the "
                         "default transformer model and e is the latest. `default` hands the choice to the "
@@ -340,7 +343,8 @@ namespace RtxTool
             "thresholds. What a firefly is counted in, and the one thing bytes cannot say. Wants "
             "--upscale=off so the wavelet and its accumulator run at all");
 
-        option(sFramed, "jitter", bpo::value<bool>()->default_value(byDefault.mProfile.mJitter)->implicit_value(true),
+        option(sFramed, "jitter",
+            bpo::value<bool>()->default_value(byDefault.mProfile.mReconstruction.mJitter)->implicit_value(true),
             "sample a different point inside each pixel every frame. Only worth anything to "
             "something putting several frames together, and forced on whenever anything upscales");
 

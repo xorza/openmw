@@ -15,11 +15,12 @@ namespace Rtx
         /// device or a loader and have no field here to reach.
         TEST(RtxFrameOptionsTest, aFrameCarriesTheProfilesHalfAndItsOwn)
         {
-            const RenderProfile asked{ .mFilter = false, .mJitter = true, .mExposure = std::nullopt };
+            const RenderProfile asked{ .mReconstruction = { .mFilter = false, .mJitter = true },
+                .mExposure = std::nullopt };
             const FrameOptions made = FrameOptions::forFrame(asked, 64, 0.02f, 1.5f);
 
-            EXPECT_FALSE(made.mFilter) << "the filter the profile turned off";
-            EXPECT_TRUE(made.mJitter) << "the jitter the profile turned on";
+            EXPECT_FALSE(made.mReconstruction.mFilter) << "the filter the profile turned off";
+            EXPECT_TRUE(made.mReconstruction.mJitter) << "the jitter the profile turned on";
             EXPECT_EQ(made.mExposure, std::nullopt) << "the exposure the profile left to the frame";
 
             EXPECT_EQ(made.mAccumulate, 64u) << "what the schedule has averaged so far";
@@ -44,8 +45,8 @@ namespace Rtx
             EXPECT_EQ(made.mSinceLast, std::nullopt);
             EXPECT_FLOAT_EQ(made.mExposureBias, 1.0f);
 
-            EXPECT_TRUE(made.mFilter) << "a profile that asked for nothing keeps the filter on";
-            EXPECT_FALSE(made.mJitter);
+            EXPECT_TRUE(made.mReconstruction.mFilter) << "a profile that asked for nothing keeps the filter on";
+            EXPECT_FALSE(made.mReconstruction.mJitter);
             EXPECT_EQ(made.mExposure, std::nullopt) << "a played frame measures the exposure off itself";
         }
     }

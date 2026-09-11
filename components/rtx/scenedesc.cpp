@@ -72,6 +72,31 @@ namespace Rtx
         mTextures.drop(texture);
     }
 
+    void SceneDesc::holdMesh(Index mesh)
+    {
+        mMeshTable.hold(mesh);
+    }
+
+    void SceneDesc::dropMesh(Index mesh)
+    {
+        mMeshTable.drop(mesh);
+    }
+
+    void SceneDesc::holdMaterial(Index material)
+    {
+        mMaterialTable.hold(material);
+    }
+
+    void SceneDesc::dropMaterial(Index material)
+    {
+        mMaterialTable.drop(material);
+    }
+
+    bool SceneDesc::hasDroppedHolds() const
+    {
+        return mMeshTable.hasDroppedHolds() || mMaterialTable.hasDroppedHolds();
+    }
+
     Run SceneDesc::addMask(std::span<const float> weights)
     {
         return mMaterialTable.addMask(weights);

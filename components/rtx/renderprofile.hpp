@@ -3,7 +3,6 @@
 #include <optional>
 
 #include "reconstruction.hpp"
-#include "upscale.hpp"
 
 namespace Rtx
 {
@@ -20,8 +19,11 @@ namespace Rtx
     /// rather than asking the registry per knob per frame.
     struct RenderProfile
     {
-        Upscale mUpscale = Upscale::Off;
-        Preset mPreset = Preset::D;
+        /// What the upscaler is built with. Carried whole into `RendererOptions`.
+        Upscaling mUpscaling;
+
+        /// What every frame asks of the reconstruction. Carried whole into `FrameOptions`.
+        ReconstructionRequest mReconstruction;
 
         /// Whether the trace counts the see-through surfaces each primary ray crosses.
         bool mCountCrossings = false;
@@ -31,8 +33,6 @@ namespace Rtx
         float mDelight = 1.0f;
 
         bool mShowAlbedo = false;
-        bool mFilter = true;
-        bool mJitter = false;
 
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured, and a reference wants it held still.

@@ -4,49 +4,19 @@
 #include <stop_token>
 #include <vector>
 
-#include <osg/Node>
 #include <osg/Vec2i>
 
-#include <components/esm/refid.hpp>
-
+#include "cellworld.hpp"
 #include "monitor.hpp"
 #include "ownedby.hpp"
 #include "worker.hpp"
 
-namespace Terrain
-{
-    class ObjectStorage;
-    class Storage;
-}
-
 namespace Rtx
 {
     class CellReader;
-    class ContentSource;
     struct PreparedCell;
     struct PreparedModel;
     struct PreparedTexture;
-
-    /// Where a supply reads its cells from: the content, and which worldspace of it.
-    ///
-    /// **One value, because it is one question.** These are exactly `CellReader`'s arguments, and a
-    /// change to any of them is a reader that has to be built again — so they are compared as one
-    /// rather than field by field at the call that asks.
-    struct CellWorld
-    {
-        const Terrain::ObjectStorage* mStorage = nullptr;
-        Terrain::Storage* mGround = nullptr;
-        ContentSource* mContent = nullptr;
-        ESM::RefId mWorldspace;
-
-        /// Which nodes a walk of a template may descend into — the frame walk's own.
-        osg::Node::NodeMask mMask = ~0u;
-
-        /// Whether there is enough here to read anything at all.
-        bool isReadable() const { return mStorage != nullptr && mGround != nullptr && mContent != nullptr; }
-
-        bool operator==(const CellWorld& other) const = default;
-    };
 
     /// What the reading thread is to read next: the cells, and what to read of each.
     ///

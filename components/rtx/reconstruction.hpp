@@ -85,7 +85,28 @@ namespace Rtx
         return sPresetNames.named(name);
     }
 
-    /// What a caller asked of the reconstruction, before the upscaler has its say.
+    /// What the upscaler is built with, decided once per set of targets.
+    ///
+    /// **One struct, because the two are one decision and were held apart in five places.** The
+    /// mode says whether an upscaler runs and at what ratio; the preset says which network it runs.
+    /// Neither changes per frame — a feature is created per resolution with both — so they travel
+    /// together from the profile to the renderer's options to the renderer itself, and a frame
+    /// reads what the renderer holds.
+    struct Upscaling
+    {
+        Upscale mMode = Upscale::Off;
+
+        /// Which network to pin, where one runs at all.
+        ///
+        /// **Pinned rather than left to the library**, which is what makes two runs comparable: the
+        /// default has changed between SDK versions and again between the convolutional and
+        /// transformer models, so a frame reconstructed under it is a frame nobody can reproduce.
+        Preset mPreset = Preset::D;
+
+        bool operator==(const Upscaling& other) const = default;
+    };
+
+    /// What a frame asks of the reconstruction, before the upscaler has its say.
     struct ReconstructionRequest
     {
         /// Whether the wavelet was wanted over the indirect channel.
@@ -94,8 +115,7 @@ namespace Rtx
         /// Whether the primary ray was wanted moved inside its pixel.
         bool mJitter = false;
 
-        /// Which network to pin, where one runs at all.
-        Preset mPreset = Preset::D;
+        bool operator==(const ReconstructionRequest& other) const = default;
     };
 
     /// What actually reconstructs a frame, worked out once from what was asked of it.
@@ -113,11 +133,9 @@ namespace Rtx
     {
         Denoiser mDenoiser = Denoiser::None;
 
-        /// Off wherever nothing upscales, which is also every frame the wavelet can run in.
-        Upscale mUpscale = Upscale::Off;
-
-        /// Which network ran. `Default` where none did, rather than the preset nobody used.
-        Preset mPreset = Preset::Default;
+        /// What upscaled the frame: off wherever nothing did, which is also every frame the wavelet
+        /// can run in, and then `Preset::Default` rather than the preset nobody used.
+        Upscaling mUpscaling{ .mMode = Upscale::Off, .mPreset = Preset::Default };
 
         /// Whether the primary ray moved inside its pixel this frame.
         bool mJitter = false;
@@ -143,22 +161,19 @@ namespace Rtx
         bool filtered() const { return mDenoiser == Denoiser::Wavelet; }
 
         /// The whole of the rule, and the only copy of it.
-        static Reconstruction resolve(Upscale upscale, const ReconstructionRequest& asked)
+        static Reconstruction resolve(const Upscaling& upscaling, const ReconstructionRequest& asked)
         {
-            if (upscale == Upscale::Off)
+            if (upscaling.mMode == Upscale::Off)
             {
                 return Reconstruction{
                     .mDenoiser = asked.mFilter ? Denoiser::Wavelet : Denoiser::None,
-                    .mUpscale = Upscale::Off,
-                    .mPreset = Preset::Default,
                     .mJitter = asked.mJitter,
                 };
             }
 
             return Reconstruction{
                 .mDenoiser = Denoiser::RayReconstruction,
-                .mUpscale = upscale,
-                .mPreset = asked.mPreset,
+                .mUpscaling = upscaling,
                 .mJitter = true,
                 .mFilterSuppressed = asked.mFilter,
                 .mJitterForced = !asked.mJitter,

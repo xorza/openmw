@@ -71,6 +71,15 @@ namespace Rtx
         /// against is what the run was asked for — and the request is this component's own.
         void finish(const SessionRequest& request);
 
+        /// Everything a launcher reads back, with `left` where the eye was, or null where the run
+        /// reached no place.
+        ///
+        /// **The whole result and never a field at a time.** A launcher reads four of these and a
+        /// run fills all four, so a hand-over written out member by member loses whichever ones
+        /// nobody remembered — silently, since an unfilled `SessionResult` is a valid one describing
+        /// a camera at the origin.
+        SessionResult describe(const Standing* left) const;
+
     private:
         std::vector<BenchPlace> mPlaces;
         BenchHeader mHeader;

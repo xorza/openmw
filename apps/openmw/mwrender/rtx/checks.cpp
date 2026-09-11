@@ -41,16 +41,17 @@ namespace MWRender
             = static_cast<float>(Constants::CellSizeInUnits) * (2 * Constants::CellGridRadius + 1);
     }
 
-    bool checkHolds(const TracedRun& run, const Rtx::Check check, const StopFacts& facts, std::string& found)
+    bool checkHolds(const FrameContext& context, const FrameReport& report, const Rtx::Check check,
+        const StopFacts& facts, std::string& found)
     {
-        const Rtx::SceneTables scene = run.mScene.getTables();
-        const Rtx::ExtractionStats& stats = run.mWalked;
+        const Rtx::SceneTables scene = context.mScene.getTables();
+        const Rtx::ExtractionStats& stats = report.mWalked;
 
         switch (check)
         {
             case Rtx::Check::WalkTwice:
             {
-                const Rtx::ExtractionStats& again = run.mWalkedAgain;
+                const Rtx::ExtractionStats& again = report.mWalkedAgain;
                 found = std::format("{} meshes and {} materials added by the second walk, {} drawables resolved",
                     again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused);
                 return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0;
@@ -131,9 +132,9 @@ namespace MWRender
             }
 
             case Rtx::Check::TexturesReadable:
-                found = std::format(
-                    "{} of {} textures could not be read", run.mUnreadableTextures, scene.mTextures.getPaths().size());
-                return run.mUnreadableTextures == 0;
+                found = std::format("{} of {} textures could not be read", report.mUnreadableTextures,
+                    scene.mTextures.getPaths().size());
+                return report.mUnreadableTextures == 0;
 
             case Rtx::Check::CrossingsAppend:
             {

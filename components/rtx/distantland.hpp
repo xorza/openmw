@@ -3,10 +3,18 @@
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 
+#include <components/misc/constants.hpp>
+
 namespace Rtx
 {
+    /// One exterior cell's side, in units, as a float once for every ring that measures by it.
+    inline constexpr float sCellSize = static_cast<float>(Constants::CellSizeInUnits);
+
     /// The cell a world position stands in, on the exterior grid.
     osg::Vec2i cellOf(const osg::Vec3f& position);
+
+    /// Whether `cell` is within `band` cells of `eye` on both axes — the square the rings are.
+    bool withinCells(const osg::Vec2i& cell, const osg::Vec2i& eye, int band);
 
     /// How far from the eye the world is built, in units.
     ///

@@ -376,7 +376,7 @@ namespace Rtx
             ASSERT_EQ(mScene.getTables().mDeformers.getRigs().size(), 1u);
             EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].getVertexCount(), 4u);
             EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].mBoneCount, 1u);
-            EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].mUses, 2u);
+            EXPECT_EQ(mScene.getTables().mDeformers.getRigHolds(mRig), 2u);
             EXPECT_EQ(mScene.getTables().mDeformers.getRuns().size(), 4u);
             EXPECT_EQ(mScene.getTables().mDeformers.getInfluences().size(), 1u);
             EXPECT_EQ(mScene.getTables().mDeformers.getArrivedRigs().size(), 1u);
@@ -449,7 +449,7 @@ namespace Rtx
 
             const std::array keepTwo{ mStill, mOther };
             ASSERT_TRUE(mScene.release(keepTwo, {}));
-            EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].mUses, 1u);
+            EXPECT_EQ(mScene.getTables().mDeformers.getRigHolds(mRig), 1u);
             EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].getVertexCount(), 4u)
                 << "a rig with a mesh on it stays";
             EXPECT_EQ(std::vector<Index>(mScene.getTables().mMeshes.getDeformed().begin(),
@@ -459,7 +459,7 @@ namespace Rtx
 
             const std::array keepOne{ mStill };
             ASSERT_TRUE(mScene.release(keepOne, {}));
-            EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].mUses, 0u);
+            EXPECT_EQ(mScene.getTables().mDeformers.getRigHolds(mRig), 0u);
             EXPECT_EQ(mScene.getTables().mDeformers.getRigs()[mRig].getVertexCount(), 0u)
                 << "a rig nothing stands on is free";
             EXPECT_TRUE(mScene.getTables().mDeformers.getArrivedRigs().empty());
@@ -515,8 +515,8 @@ namespace Rtx
             ASSERT_LT(early, late);
 
             ASSERT_TRUE(scene.release({}, {}));
-            ASSERT_EQ(scene.getTables().mDeformers.getRigs()[first].mUses, 0u);
-            ASSERT_EQ(scene.getTables().mDeformers.getRigs()[second].mUses, 0u);
+            ASSERT_EQ(scene.getTables().mDeformers.getRigHolds(first), 0u);
+            ASSERT_EQ(scene.getTables().mDeformers.getRigHolds(second), 0u);
 
             // **Read after two removals in one sweep**, which is the pass `DeformerTable::compact`
             // owes: a set with a removal outstanding refuses to answer at all.
@@ -607,7 +607,7 @@ namespace Rtx
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     Deform::Morph, morph);
             EXPECT_EQ(scene.getTables().mMeshes.getRows()[face].mDeform, Deform::Morph);
-            EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].mUses, 1u);
+            EXPECT_EQ(scene.getTables().mDeformers.getMorphHolds(morph), 1u);
             EXPECT_EQ(scene.getTables().mDeformers.getWeights().size(), 2u);
             EXPECT_EQ(scene.getTables().mDeformers.getBindVertexCount(), 4u);
 
@@ -627,7 +627,7 @@ namespace Rtx
             // The morph goes with its mesh and its offsets with it: the next set of the same shape
             // lands where they were.
             ASSERT_TRUE(scene.release({}, {}));
-            EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].mUses, 0u);
+            EXPECT_EQ(scene.getTables().mDeformers.getMorphHolds(morph), 0u);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].getVertexCount(), 0u);
             EXPECT_EQ(scene.addMorph(offsets, 2), morph);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphOffsets().size(), 8u);

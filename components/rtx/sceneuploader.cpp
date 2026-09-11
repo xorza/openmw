@@ -25,17 +25,22 @@ namespace Rtx
         }
     }
 
-    bool SceneUploader::recognises(
-        const SceneSink& renderer, const SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const
-    {
-        return mRenderer == &renderer && mSlot == slot && mScene == &scene && mUploaded == textures;
-    }
-
     SceneUpload SceneUploader::hand(SceneSink& renderer, const SceneSlot slot, SceneDesc& scene,
         Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea,
-        const TextureReadings* const readings)
+        const TextureReadings* const readings, FrameSpend* const spend)
     {
-        const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
+        // Timed into a row nobody reads where the caller handed none, so the three stretches below
+        // are written once each rather than guarded three times.
+        FrameSpend unread;
+        FrameSpend& timed = spend != nullptr ? *spend : unread;
+
+        // **Whether what the backend holds in this slot is this scene, and appending is only
+        // allowed onto that.** `bench` runs several places through one renderer, a scene of its own
+        // for each; an uploader that appended onto whatever the slot held would begin the second
+        // place's descriptions past the end of its own table — a hundreds-long overrun of a table
+        // that is hundreds long, and it read as a `std::bad_alloc` from somewhere else entirely.
+        const SceneHeld held = renderer.describeHeld(slot);
+        const bool mine = held.mScene == &scene.getTables().mMeshes;
 
         // **Here rather than where a walk ends, because a scene can be walked more than once.** The
         // game walks its precipitation beside its world, and a light met by the second walk would be
@@ -53,7 +58,7 @@ namespace Rtx
         const std::size_t baked = composites != nullptr ? composites->advance(scene, images) : 0;
 
         const std::chrono::steady_clock::time_point gathered = std::chrono::steady_clock::now();
-        done.mBakeMs = since(began, gathered);
+        timed.at(Timing::Bake) = since(began, gathered);
 
         // **After the two calls above, because both rewrite what the spans reach.**
         const SceneTables tables = scene.getTables();
@@ -62,9 +67,14 @@ namespace Rtx
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
         // instances the walk already knows.
         //
+        // **A revision and not a set of table sizes**, because walking across a cell boundary loses
+        // one cell as it gains another: a scene that ends the frame the same size it started is
+        // exactly the case a size comparison misses, and the structures it kept describe geometry
+        // that has gone.
+        //
         // A frame that only finished a bake has no new geometry and a new texture, which is an
         // arrival for everything below even though nothing was walked.
-        const bool arrived = !mine || tables.getStructureRevision() != mBuilt || baked > 0;
+        const bool arrived = !mine || tables.getStructureRevision() != held.mStructureRevision || baked > 0;
 
         if (!arrived)
         {
@@ -82,7 +92,7 @@ namespace Rtx
             // until something arrived to take the slots over.
             renderer.placeScene(slot, tables, sea);
 
-            done.mUploadMs = since(told, std::chrono::steady_clock::now());
+            timed.at(Timing::Upload) = since(told, std::chrono::steady_clock::now());
             done.mKind = SceneUpload::Kind::Placed;
         }
         else
@@ -101,7 +111,7 @@ namespace Rtx
                 mTextures.describe(tables, images, tables.mTextures.getArrived(), composites, readings);
 
             const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();
-            done.mTexturesMs = since(gathered, described);
+            timed.at(Timing::Textures) = since(gathered, described);
 
             done.mDescribed = mTextures.getDescriptions().size();
             done.mUnreadable = mTextures.getUnreadable();
@@ -121,18 +131,13 @@ namespace Rtx
                 done.mKind = SceneUpload::Kind::Extended;
             }
 
-            done.mUploadMs = since(described, std::chrono::steady_clock::now());
+            timed.at(Timing::Upload) = since(described, std::chrono::steady_clock::now());
         }
 
         // **One tail, because all three hand-overs end the same way**: each has uploaded, so each is
-        // done with the scene's arrivals and with the queue's bytes, and each leaves the uploader
-        // describing what it just handed over. Said per branch instead, none of it is owed by any
-        // one branch in particular, so a branch written without a line of it looks finished — and
-        // the release is the line a frame that baked a composite never reaches.
-        //
-        // Every field below is already what it is being set to wherever the placing branch ran, since
-        // that branch is reached only where `mine` held and nothing on it moves a revision or grows
-        // the renderer's table.
+        // done with the scene's arrivals and with the queue's bytes. Said per branch instead, none of
+        // it is owed by any one branch in particular, so a branch written without a line of it looks
+        // finished — and the release is the line a frame that baked a composite never reaches.
         scene.clearArrivals();
 
         // **After the upload and not before.** Between the collect and here, what the queue holds is
@@ -141,11 +146,6 @@ namespace Rtx
         if (composites != nullptr)
             composites->releaseFinished();
 
-        mRenderer = &renderer;
-        mSlot = slot;
-        mScene = &scene;
-        mUploaded = renderer.getTextureCount(slot);
-        mBuilt = tables.getStructureRevision();
         return done;
     }
 }

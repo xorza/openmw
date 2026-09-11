@@ -6,17 +6,13 @@
 #include <optional>
 #include <string_view>
 
-#include <osg/Quat>
-#include <osg/Vec3d>
 #include <osg/Vec3f>
 
-#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrun.hpp>
-#include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/runrecord.hpp>
 
-#include "tracedrun.hpp"
+#include "framereport.hpp"
 
 namespace MWRender
 {
@@ -82,14 +78,9 @@ namespace MWRender
         /// `renderFrame`, so nothing re-enters this.
         void beforeFrame();
 
-        /// Takes one traced frame. Reports and asks the game to quit once the last stop is done.
-        ///
-        /// `frameMs` is the whole frame and not the wait: measured from one call to the next, so it
-        /// carries everything the game does between them — which is the number a player feels and
-        /// the one `result.mWaitMs` cannot see. `spend` is what this fork owns of it, by phase, and
-        /// `Rtx::Timing` says which of its figures is a share of which.
-        void frame(const TracedRun& run, const Rtx::FrameResult& result, double frameMs, const Rtx::FrameSpend& spend,
-            bool rebuilt);
+        /// Takes one traced frame the device answered for — `FrameReport::mResult` is set. Reports
+        /// and asks the game to quit once the last stop is done.
+        void frame(const FrameContext& context, const FrameReport& report);
 
         /// Whether the stop wants the graph walked a second time, so it can report what that added.
         bool wantsSecondWalk() const;
@@ -128,34 +119,19 @@ namespace MWRender
         /// Puts the world where `mAt` says and starts counting.
         void beginStop();
 
-        /// Closes the stop, records it, and moves to the next one — or ends the run.
-        ///
-        /// @param reconstruction what put the last measured frame back together, which is the frame
-        ///        every writer describes.
-        void endStop(const TracedRun& run, const Rtx::Reconstruction& reconstruction);
+        /// Closes the stop, records it, and moves to the next one — or ends the run. `report` is
+        /// the last measured frame's, which is the frame every writer describes.
+        void endStop(const FrameContext& context, const FrameReport& report);
 
         /// Writes what the run was asked to write and ends it.
         void finish();
 
-        /// Everything a launcher reads back, including where the eye was left.
+        /// Takes note of where the eye stands, on a frame that still has a world to take it from.
         ///
-        /// **Written into `mInto` from the destructor and nowhere else.** A run that ends its last
-        /// stop and a window somebody closes both come here, and only one of the two ever reaches
-        /// `finish`.
-        ///
-        /// **The whole result and never a field at a time.** A launcher reads four of these and a
-        /// run fills all four, so a hand-over written out member by member loses whichever ones
-        /// nobody remembered — silently, since an unfilled `Rtx::SessionResult` is a valid one
-        /// describing a camera at the origin.
-        ///
-        /// **And it asks the world nothing.** `OMW::Engine::~Engine` clears its members in a body
-        /// rather than leaving them to declaration order, and it clears the world and the state
-        /// manager *before* the renderer that holds this — so every question put to
-        /// `MWBase::Environment` from here goes through a pointer to something that has gone.
-        /// Where the run was left is read off the note `noteStanding` took instead.
-        Rtx::SessionResult describeRun() const;
-
-        /// Takes that note, on a frame that still has a world to take it from.
+        /// **Because the destructor asks the world nothing.** `OMW::Engine::~Engine` clears its
+        /// members in a body rather than leaving them to declaration order, and it clears the world
+        /// and the state manager *before* the renderer that holds this — so every question put to
+        /// `MWBase::Environment` from there goes through a pointer to something that has gone.
         void noteStanding();
 
         /// Flies the player along the current stop's route by one frame's worth.
@@ -208,26 +184,17 @@ namespace MWRender
         std::size_t mAt = 0;
         bool mStarted = false;
 
-        /// Where the eye stood, what it faced and what the sky was, on one frame.
-        ///
-        /// **The numbers and never the names**, because `noteStanding` writes one of these every
-        /// frame and a weather's spelling is a `std::string`. `describeRun` turns the last one into
-        /// the `Rtx::Standing` a launcher reads, and it is reached once.
-        struct Note
-        {
-            osg::Vec3d mAt;
-            osg::Quat mFacing;
-            float mHour = 0.0f;
-            int mDay = 0;
-            int mWeather = 0;
-        };
-
-        /// The last frame the run drew. Empty until a stop has begun, so a run that reached no
-        /// place describes none rather than describing wherever the new game happened to start.
+        /// Where the eye stood and what the sky was on the last frame the run drew, as a launcher
+        /// reads it back. Empty until a stop has begun, so a run that reached no place describes
+        /// none rather than describing wherever the new game happened to start.
         ///
         /// **The run's and not the stop's**, because what it answers is where the run was left —
         /// which is a question asked after the last stop has closed.
-        std::optional<Note> mStood;
+        ///
+        /// **Kept as the launcher's own type**, and the one conversion — a facing to a point looked
+        /// at, a weather id to its name — made where the note is taken. The name is a `std::string`
+        /// assigned per frame, which is a copy into room the string already has.
+        std::optional<Rtx::Standing> mStood;
 
         /// What the run has come to so far: the places, the report and the verdict. Its own type,
         /// because everything with something to say writes into all of it.

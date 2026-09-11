@@ -65,7 +65,7 @@ namespace Rtx
         /// handed to somebody else. Whoever restarts the counter calls this in the same breath.
         void restart();
 
-        ResidencyCount collect(Collector& into) override;
+        void collect(SceneAdopter& into, ExtractionStats& stats) override;
 
     private:
         /// One cell that has been read, and what it stood — null where it stood nothing.

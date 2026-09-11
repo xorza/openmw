@@ -17,6 +17,7 @@
 #include "meshreader.hpp"
 #include "preparedcell.hpp"
 #include "preparedtexture.hpp"
+#include "sortedrows.hpp"
 #include "spares.hpp"
 #include "templatewalk.hpp"
 #include "texturedata.hpp"
@@ -39,10 +40,14 @@ namespace Rtx
     /// **A model is read once and lent to every cell that names it, and so is an image.** Every
     /// reference of a model across every cell this reads points at one `PreparedModel`, which
     /// holds a count of the cells lent it; every image a model or a cell's ground names is one
-    /// `PreparedTexture`, counted the same way. A hold is a cell's and not the frame's, because
-    /// the frame cannot know what this has lent since it last looked: it gives a cell's holds back
-    /// when it lets the cell go, and a model whose last hold is back is refilled for the next one,
+    /// `PreparedTexture`, counted the same way. A lend is a cell's and not the frame's, because
+    /// the frame cannot know what this has lent since it last looked: it gives a cell's lends back
+    /// when it lets the cell go, and a model whose last lend is back is refilled for the next one,
     /// so a long walk across the world reads into the buffers its first cells grew.
+    ///
+    /// **The frame keeps a count of its own beside this one** — `CellHolds` — and the two are two
+    /// facts. This counts what was lent, cells the frame has not seen included; that counts what
+    /// the frame holds.
     ///
     /// **Not thread-safe, and one instance a thread.** Everything it keeps is scratch and a lender.
     class CellReader
@@ -98,16 +103,23 @@ namespace Rtx
         Spares<PreparedModel> mModels;
         Spares<PreparedTexture> mTextures;
 
+        /// What the two tables are ordered by, stated once each.
+        struct PathOf
+        {
+            std::string_view operator()(const PreparedModel* held) const { return held->mPath; }
+        };
+
+        struct ImageOf
+        {
+            const osg::Image* operator()(const PreparedTexture* held) const { return held->mImage.get(); }
+        };
+
         /// Every model lent, sorted by path, and every image lent, sorted by address.
         ///
         /// **Sorted and searched rather than keyed**, for the reason `DistantLights` keeps its cells
         /// so: an insert shifts a few hundred pointers on a thread with time to spare, and a lookup
         /// costs no node and no string.
-        std::vector<PreparedModel*> mByPath;
-        std::vector<PreparedTexture*> mByImage;
-
-        /// How many lent models and cells name each lent image, in `mByImage`'s order. An image
-        /// nothing names any more is given back with the last of them.
-        std::vector<std::uint32_t> mImageHolders;
+        SortedRows<PreparedModel*, std::string_view, PathOf> mByPath;
+        SortedRows<PreparedTexture*, const osg::Image*, ImageOf> mByImage;
     };
 }

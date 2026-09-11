@@ -15,6 +15,7 @@
 
 #include "monitor.hpp"
 #include "ownedby.hpp"
+#include "recycled.hpp"
 #include "run.hpp"
 #include "scenedesc.hpp"
 #include "shadingcache.hpp"
@@ -318,7 +319,7 @@ namespace Rtx
         /// **Everything here has been through `reuse`**, which is what putting one back means — so
         /// one taken off is empty and holds no image, and `gather` fills it without clearing it
         /// first.
-        std::vector<Request> mSpare;
+        Recycled<Request> mSpare;
 
         std::string mKey;
 

@@ -80,7 +80,8 @@ namespace Rtx::Testing
         /// A residency standing a mesh and a material of its own, which no drawable names.
         ///
         /// What the cell ring does for a cell's ground: the rows are added straight to the scene,
-        /// named to the extractor on every walk, and let go of by not being named.
+        /// held on it, and let go of by giving the holds back — outside any walk, which is when a
+        /// detached world lets go of everything.
         class OwnedRows : public Residency
         {
         public:
@@ -91,42 +92,34 @@ namespace Rtx::Testing
 
             void follow(const WorldAround&) override {}
 
-            void letGo() { mHolding = false; }
+            void letGo()
+            {
+                mScene.dropInstance(mSlot);
+                mSlot = sNoIndex;
+                mScene.dropMesh(mMesh);
+                mScene.dropMaterial(mMaterial);
+            }
 
             Index getMesh() const { return mMesh; }
 
-            ResidencyCount collect(Collector& into) override
+            void collect(SceneAdopter&, ExtractionStats& stats) override
             {
-                ResidencyCount count;
+                if (mMesh != sNoIndex)
+                    return;
 
-                if (mMesh == sNoIndex)
-                {
-                    const std::array<osg::Vec3f, 3> corners{ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
-                        osg::Vec3f(0.0f, 1.0f, 0.0f) };
-                    const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
+                const std::array<osg::Vec3f, 3> corners{ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
+                    osg::Vec3f(0.0f, 1.0f, 0.0f) };
+                const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
-                    mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
-                    mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle }, FoldedShape{},
-                        Deform::None, sNoIndex, mMaterial);
-                    mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
-                    count.mMeshesAdded = 1;
-                    count.mMaterialsAdded = 1;
-                }
+                mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
+                mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle }, FoldedShape{},
+                    Deform::None, sNoIndex, mMaterial);
+                mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
+                mScene.holdMesh(mMesh);
+                mScene.holdMaterial(mMaterial);
 
-                if (mHolding)
-                {
-                    into.keepOwnedMesh(mMesh);
-                    into.keepOwnedMaterial(mMaterial);
-                }
-                else if (mSlot != sNoIndex)
-                {
-                    mScene.dropInstance(mSlot);
-                    mSlot = sNoIndex;
-                    count.mMeshesDisowned = 1;
-                    count.mMaterialsDisowned = 1;
-                }
-
-                return count;
+                ++stats.mMeshesAdded;
+                ++stats.mMaterialsAdded;
             }
 
         private:
@@ -134,14 +127,14 @@ namespace Rtx::Testing
             Index mMesh = sNoIndex;
             Index mMaterial = sNoIndex;
             Index mSlot = sNoIndex;
-            bool mHolding = true;
         };
 
-        /// **A row a residency owns survives every sweep it is named through, and goes on the first
-        /// it is not.** The identity maps hold nothing for it, so without the naming the sweep after
-        /// the first walk would release the ground under the player's feet — and without the
-        /// disowning, a sweep on a frame where every map stood whole would never run at all.
-        TEST_F(RtxSceneExtractorTest, aRowAResidencyOwnsIsKeptWhileNamedAndReleasedWhenDisowned)
+        /// **A row a residency holds survives every sweep, and goes on the first after the hold is
+        /// given back.** The identity maps hold nothing for it, so without the hold the sweep after
+        /// the first walk would release the ground under the player's feet — and without the scene
+        /// saying a hold went, a sweep on a frame where every map stood whole would never run at
+        /// all.
+        TEST_F(RtxSceneExtractorTest, aRowAResidencyHoldsIsKeptWhileHeldAndReleasedWhenLetGo)
         {
             OwnedRows rows(mScene);
             Residency* held = &rows;
@@ -153,7 +146,7 @@ namespace Rtx::Testing
             EXPECT_EQ(first.mMaterialsAdded, 1u);
             ASSERT_EQ(mScene.getTables().mMeshes.getLiveCount(), 1u);
 
-            EXPECT_TRUE(mExtractor.retire().empty()) << "a named row is a survivor";
+            EXPECT_TRUE(mExtractor.retire().empty()) << "a held row is a survivor";
             EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 1u);
 
             // A second walk with nothing else in it: every map stands whole, and the row still
@@ -162,14 +155,18 @@ namespace Rtx::Testing
             EXPECT_TRUE(mExtractor.retire().empty());
             EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 1u);
 
+            // Let go of between walks, as a detached world does, and gone on the sweep after the
+            // next — whose maps stand whole, so it is the dropped hold alone that runs it.
             rows.letGo();
+            EXPECT_TRUE(mScene.hasDroppedHolds());
             mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 3);
 
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
             EXPECT_EQ(went.mMaterials, 1u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 0u) << "the disowned row was released";
+            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), 0u) << "the row nothing holds was released";
             EXPECT_EQ(mScene.getTables().mMaterials.getLiveCount(), 0u);
+            EXPECT_FALSE(mScene.hasDroppedHolds());
         }
 
         TEST_F(RtxSceneExtractorTest, aSweepDropsWhatTheWalkNoLongerFindsAndCarriesTheRest)
@@ -331,9 +328,8 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.getTables().getMeshBones(standing->mMesh)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 11.0f))
                 << "the sweep kept the actor from the cell that unloaded";
             EXPECT_EQ(mScene.getTables().mDeformers.getRigs().size(), 2u) << "a rig is a slot and keeps its index";
-            EXPECT_EQ(mScene.getTables()
-                          .mDeformers.getRigs()[mScene.getTables().mMeshes.getRows()[standing->mMesh].mDeformer]
-                          .mUses,
+            EXPECT_EQ(mScene.getTables().mDeformers.getRigHolds(
+                          mScene.getTables().mMeshes.getRows()[standing->mMesh].mDeformer),
                 1u)
                 << "the rig of the one that left went with it and the survivor's stayed";
         }
@@ -387,11 +383,13 @@ namespace Rtx::Testing
             mExtractor.advance();
             const Retirement went = mExtractor.retire();
 
-            // Both drawables were reached and the map is the size it was, so the sweep found nothing
-            // to erase — and the slot still has to go.
+            // Both drawables were reached and the map is the size it was, so the sweep erased no
+            // entry — and the slot the abandoned entry named still has to go, which is the one row
+            // the release reports.
             EXPECT_EQ(again.mMeshesAdded, 1u) << "the longer mesh was posed into the slot it does not fit";
             EXPECT_EQ(again.mMeshesReused, 1u) << "the crate was mirrored again rather than recognised";
-            EXPECT_TRUE(went.empty()) << "the sweep erased an entry that was still being reached";
+            EXPECT_EQ(went.mMeshes, 1u) << "the abandoned slot, and nothing the walk reached";
+            EXPECT_EQ(went.mMaterials, 0u);
 
             ASSERT_EQ(mScene.getTables().mMeshes.getRows().size(), 3u);
             EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].mVertices.mCount, 0u)

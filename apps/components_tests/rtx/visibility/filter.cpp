@@ -418,7 +418,8 @@ namespace Rtx::Testing
             const auto renderOne = [&](std::uint32_t frame, bool filter) {
                 Shaders::VisibilityConstants sampled = camera;
                 sampled.mFrame = frame;
-                mRenderer->renderFrame(sampled, FrameOptions{ .mAccumulate = 0, .mFilter = filter, .mExposure = 1.0f });
+                mRenderer->renderFrame(sampled,
+                    FrameOptions{ .mAccumulate = 0, .mReconstruction = { .mFilter = filter }, .mExposure = 1.0f });
             };
 
             const auto radiance = [&] {

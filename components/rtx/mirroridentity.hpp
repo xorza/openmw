@@ -39,14 +39,21 @@ namespace Rtx
         bool operator()(const T* left, const osg::ref_ptr<T>& right) const { return left == right.get(); }
     };
 
-    /// An entry in one of the identity maps, and when it was last met.
+    /// An entry in one of the identity maps, when it was last met, and what holds it.
     ///
     /// The epoch is what a sweep runs on: a walk stamps everything it resolves, so anything still
     /// carrying an older stamp is something the graph no longer has.
+    ///
+    /// **The holds are the other keeper.** A residency stands rows the walk never meets — a
+    /// distant cell's models — under the same entries the walk would find a clone's mesh under, so
+    /// that a mesh both stand is one mesh. It used to keep them by stamping every held entry on
+    /// every walk, through a callback chain four objects long; a count on the entry says the same
+    /// thing once, when the hold is taken, and the sweep keeps what is held whatever its stamp.
     struct Known
     {
         Index mIndex = sNoIndex;
         std::uint64_t mEpoch = 0;
+        std::uint32_t mHolds = 0;
     };
 
     /// A map of what the mirror knows, and how much of it the walk in progress has reached.
@@ -57,14 +64,18 @@ namespace Rtx
     /// reach the same conclusion. The count is only ever an equality: a walk stamps an entry once,
     /// so it cannot pass the size, and anything short of it means something went unreached.
     ///
+    /// **A held entry counts as reached without being stamped.** `mHeld` is how many entries carry
+    /// a hold, and a stamp on one of them is not counted, so the two counts together are the size
+    /// exactly when every unheld entry was met — which is what `whole` asks.
+    ///
     /// **The count belongs to one epoch, and the table remembers which.** A table is not always
     /// retired — where nothing died anywhere, the mesh table and the material table are left alone —
     /// so a reset written into the sweep would leave one epoch's count standing over the next
     /// epoch's walk.
     ///
     /// **Every write goes through this class**, because a count kept beside the map is a count free
-    /// to fall behind it. `stamp`, `add`, `reach` and `abandon` are the whole of what a walk does to
-    /// one, and each keeps the count true.
+    /// to fall behind it. `stamp`, `add`, `reach`, `hold`, `drop` and `abandon` are the whole of what
+    /// a walk and a residency do to one, and each keeps the counts true.
     template <class Map>
     class Kept
     {
@@ -97,17 +108,48 @@ namespace Rtx
         /// Records that the walk in progress met `entry`.
         ///
         /// Counted on the way to the stamp rather than by the stamp, so an entry two walks of one
-        /// epoch both reach counts once.
+        /// epoch both reach counts once. A held entry is stamped and not counted: `mHeld` already
+        /// stands for it.
         void stamp(Entry entry) { stamp(entry->second); }
 
-        /// The same for an entry a caller already holds, which is what a replay of a paged chunk
-        /// stamps with: it looks every entry of a run up before it stamps any of them, so that a
-        /// run it turns out not to hold is a walk rather than a half-stamped chunk.
+        /// The same for an entry a caller already holds.
         void stamp(Known& held)
         {
             freshen();
-            mReached += held.mEpoch != mPass.mEpoch ? 1 : 0;
+            mReached += held.mHolds == 0 && held.mEpoch != mPass.mEpoch ? 1 : 0;
             held.mEpoch = mPass.mEpoch;
+        }
+
+        /// Takes one hold on `entry`, which keeps it — and the row it names — through every sweep
+        /// until the hold is given back.
+        void hold(Entry entry)
+        {
+            freshen();
+
+            Known& held = entry->second;
+            if (held.mHolds++ != 0)
+                return;
+
+            ++mHeld;
+            mReached -= held.mEpoch == mPass.mEpoch ? 1 : 0;
+        }
+
+        /// Gives one hold back. An entry no hold and no stamp keeps is the next sweep's, and the
+        /// sweep is owed for it whatever else the walk reached.
+        void drop(Entry entry)
+        {
+            freshen();
+
+            Known& held = entry->second;
+            assert(held.mHolds > 0 && "an entry given back more often than it was held");
+            if (--held.mHolds != 0)
+                return;
+
+            --mHeld;
+            if (held.mEpoch == mPass.mEpoch)
+                ++mReached;
+            else
+                mAbandoned = true;
         }
 
         /// Adds what the walk has just resolved, stamped. `key` must not already be held.
@@ -116,6 +158,7 @@ namespace Rtx
         {
             freshen();
             held.mEpoch = mPass.mEpoch;
+            held.mHolds = 0;
 
             [[maybe_unused]] const bool arrived = mKnown.emplace(key, std::move(held)).second;
             assert(arrived && "an identity the map already held, added again");
@@ -135,8 +178,9 @@ namespace Rtx
             freshen();
 
             const auto [entry, arrived] = mKnown.try_emplace(key);
-            mReached += arrived || entry->second.mEpoch != mPass.mEpoch ? 1 : 0;
-            entry->second.mEpoch = mPass.mEpoch;
+            Known& held = entry->second;
+            mReached += held.mHolds == 0 && (arrived || held.mEpoch != mPass.mEpoch) ? 1 : 0;
+            held.mEpoch = mPass.mEpoch;
 
             return Arrival{ .mEntry = entry, .mArrived = arrived };
         }
@@ -150,7 +194,13 @@ namespace Rtx
         void abandon(Entry entry)
         {
             freshen();
-            mReached -= entry->second.mEpoch == mPass.mEpoch ? 1 : 0;
+
+            const Known& held = entry->second;
+            if (held.mHolds != 0)
+                --mHeld;
+            else
+                mReached -= held.mEpoch == mPass.mEpoch ? 1 : 0;
+
             mKnown.erase(entry);
             mAbandoned = true;
         }
@@ -160,14 +210,15 @@ namespace Rtx
         bool whole() const
         {
             // A count from an earlier epoch says nothing about this one, which has reached nothing
-            // yet: only an empty map is whole then.
+            // yet: only a map with nothing unheld in it is whole then.
             if (mCountedEpoch != mPass.mEpoch)
-                return mKnown.empty();
+                return mKnown.size() == mHeld;
 
-            return !mAbandoned && mReached == mKnown.size();
+            return !mAbandoned && mReached + mHeld == mKnown.size();
         }
 
-        /// Drops every entry the epoch did not reach, and collects the slots the survivors name.
+        /// Drops every entry neither the epoch nor a hold keeps, and collects the slots the
+        /// survivors name.
         ///
         /// **Not skipped where the map is whole, unlike `retire`.** The list it fills is read beside
         /// another table's, so a caller that wants either wants both of this epoch — `whole` is what
@@ -183,7 +234,7 @@ namespace Rtx
             std::uint32_t dropped = 0;
             for (auto entry = mKnown.begin(); entry != mKnown.end();)
             {
-                if (entry->second.mEpoch == mPass.mEpoch)
+                if (keeps(entry->second))
                 {
                     live.push_back(entry->second.mIndex);
                     ++entry;
@@ -198,7 +249,8 @@ namespace Rtx
             return dropped;
         }
 
-        /// Drops every entry the epoch did not reach, handing `drop` what each held on its way out.
+        /// Drops every entry neither the epoch nor a hold keeps, handing `drop` what each held on
+        /// its way out.
         ///
         /// **Skipped where the map is whole**, which is the point of the count.
         template <class Drop>
@@ -208,7 +260,7 @@ namespace Rtx
                 return;
 
             std::erase_if(mKnown, [this, &drop](const auto& entry) {
-                if (entry.second.mEpoch == mPass.mEpoch)
+                if (keeps(entry.second))
                     return false;
 
                 drop(entry.second);
@@ -225,6 +277,9 @@ namespace Rtx
         }
 
     private:
+        /// Whether a sweep keeps `held`: met this epoch, or held by something.
+        bool keeps(const Known& held) const { return held.mHolds != 0 || held.mEpoch == mPass.mEpoch; }
+
         /// Starts the count again where the epoch has moved on since it was last touched.
         void freshen()
         {
@@ -236,12 +291,12 @@ namespace Rtx
             mAbandoned = false;
         }
 
-        /// What a sweep leaves behind: every entry still here carries this epoch's stamp, and every
-        /// slot the map names stands.
+        /// What a sweep leaves behind: every entry still here carries this epoch's stamp or a hold,
+        /// and every slot the map names stands.
         void settle()
         {
             mCountedEpoch = mPass.mEpoch;
-            mReached = mKnown.size();
+            mReached = mKnown.size() - mHeld;
             mAbandoned = false;
         }
 
@@ -250,6 +305,11 @@ namespace Rtx
 
         std::uint64_t mCountedEpoch = 0;
         std::size_t mReached = 0;
+
+        /// How many entries carry a hold. Kept across epochs, unlike `mReached`: a hold is not a
+        /// fact about a walk.
+        std::size_t mHeld = 0;
+
         bool mAbandoned = false;
     };
 

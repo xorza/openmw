@@ -40,9 +40,6 @@ namespace Rtx
         /// Rows one pose of this rig takes, which is what every mesh on it is given.
         Index mBoneCount = 0;
 
-        /// How many meshes stand on it. Nought is a free slot.
-        Index mUses = 0;
-
         /// Vertices this rig skins, which every mesh on it must have exactly. One run word apiece.
         Index getVertexCount() const { return mRuns.mCount; }
     };
@@ -56,9 +53,6 @@ namespace Rtx
 
         Index mTargetCount = 0;
 
-        /// How many meshes stand on it. Nought is a free slot.
-        Index mUses = 0;
-
         /// Vertices this morph moves, which every mesh on it must have exactly.
         Index getVertexCount() const { return mTargetCount > 0 ? mOffsets.mCount / mTargetCount : 0; }
     };
@@ -68,7 +62,8 @@ namespace Rtx
     /// **One type, because a deformer and the poses standing on it are one invariant.** A rig is
     /// shared by every mesh built from one skin and goes with the last of them, so the count, the
     /// runs behind it and the rows each mesh was given have to be released in one order, across six
-    /// allocators and two free lists.
+    /// allocators and two free lists. The count is the one `SlotRows` keeps: a mesh standing on a
+    /// rig is one hold on its row, and the last hold given back is what frees it.
     ///
     /// **The mesh's own fields stay on the mesh.** Which deformer poses it, where its rows sit and
     /// whether it has been posed are facts about the mesh, so every call here takes the
@@ -109,6 +104,10 @@ namespace Rtx
 
         std::span<const Index> getArrivedRigs() const { return mArrivedRigs.getSlots(); }
         std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs.getSlots(); }
+
+        /// How many meshes stand on a rig or a morph. Nought is a free slot.
+        std::uint32_t getRigHolds(Index rig) const { return mRigs.getHolds(rig); }
+        std::uint32_t getMorphHolds(Index morph) const { return mMorphs.getHolds(morph); }
 
         /// How many vertices the deforming meshes' bind poses take between them.
         Index getBindVertexCount() const { return mBindRuns.getEnd(); }

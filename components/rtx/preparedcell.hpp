@@ -81,7 +81,7 @@ namespace Rtx
         /// How many cells the reader has lent this to and not yet had back. The reader's own, and
         /// the frame never reads it: `CellReader::giveBack` says why a hold is a cell's and not
         /// the frame's.
-        std::uint32_t mHolders = 0;
+        std::uint32_t mLent = 0;
 
         std::vector<PreparedPart> mParts;
 
@@ -121,7 +121,7 @@ namespace Rtx
             mPath.clear();
             mTemplate = nullptr;
             mRadius = 0.0f;
-            mHolders = 0;
+            mLent = 0;
             mParts.clear();
             mTextures.clear();
             mPositions.clear();

@@ -101,7 +101,7 @@ namespace Rtx
     };
 
     /// Walks the graph and hands every geometry it meets to the extractor.
-    class MirrorTraversal : public osg::NodeVisitor, public Collector
+    class MirrorTraversal : public osg::NodeVisitor, public SceneAdopter
     {
     public:
         explicit MirrorTraversal(SceneExtractor& extractor);
@@ -124,23 +124,15 @@ namespace Rtx
 
         void take(osg::Node& node) override { node.accept(*this); }
 
-        MaterialResolver::Resolved adoptMaterial(const MaterialReading& reading) override
-        {
-            return mExtractor.adoptMaterial(reading);
-        }
+        Index adoptMaterial(const MaterialReading& reading) override { return mExtractor.adoptMaterial(reading); }
 
-        Known& adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, const Index material) override
+        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, const Index material) override
         {
             return mExtractor.adoptMesh(drawable, reading, material);
         }
 
-        Known* findMaterial(const osg::StateSet* const key) override { return mExtractor.findMaterial(key); }
-
-        void keepMesh(Known& held) override { mExtractor.keepMesh(held); }
-        void keepMaterial(Known& held) override { mExtractor.keepMaterial(held); }
-
-        void keepOwnedMesh(const Index mesh) override { mExtractor.keepOwnedMesh(mesh); }
-        void keepOwnedMaterial(const Index material) override { mExtractor.keepOwnedMaterial(material); }
+        void releaseMesh(const osg::Drawable& drawable) override { mExtractor.releaseMesh(drawable); }
+        void releaseMaterial(const osg::StateSet* const key) override { mExtractor.releaseMaterial(key); }
 
     private:
         /// Walks `node` and everything under it, under the identity the caller worked out for it.
@@ -556,12 +548,9 @@ namespace Rtx
 
         // **Inside the same walk, not beside it.** What a residency stands is part of the same
         // frame as everything else — the same epoch, the same stats, the same sweep — and a second
-        // `begin` would date it apart from the rest. The rows a residency owns are what this walk's
-        // residencies name, and nothing older.
-        mOwnedMeshes.clear();
-        mOwnedMaterials.clear();
+        // `begin` would date it apart from the rest.
         for (Residency* resident : hidden)
-            stood(resident->collect(*mWalk));
+            resident->collect(*mWalk, stats);
 
         // **After the whole walk, including whatever the residency brought in.** Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
@@ -573,21 +562,6 @@ namespace Rtx
         mPass.mStats = nullptr;
 
         return stats;
-    }
-
-    void SceneExtractor::stood(const ResidencyCount& count)
-    {
-        ExtractionStats& stats = mPass.getStats();
-
-        stats.mInstances += count.mDistantStatics + count.mGroundCells;
-        stats.mDistantStatics += count.mDistantStatics;
-        stats.mGroundCells += count.mGroundCells;
-
-        stats.mMeshesAdded += count.mMeshesAdded;
-        stats.mMaterialsAdded += count.mMaterialsAdded;
-
-        mDisownedMeshes += count.mMeshesDisowned;
-        mDisownedMaterials += count.mMaterialsDisowned;
     }
 
     void SceneExtractor::advance()
@@ -620,17 +594,16 @@ namespace Rtx
         // release has nothing to free and the lists have nothing to say — and what that saves is two
         // walks of a map with one entry per drawable, plus the two keep-set tables `release` writes
         // to reach the same answer.
-        // **And where a residency let go of a row it owned**, which no map can see: the row was
-        // never in one, and it is released by not being named below.
-        if (!mMeshes.whole() || !mMaterials.whole() || mDisownedMeshes > 0 || mDisownedMaterials > 0)
+        //
+        // **And where a hold on a row went to nought**, which no map can see: a residency's ground
+        // row was never in one, and the release is what frees it now that nothing keeps it.
+        if (!mMeshes.whole() || !mMaterials.whole() || mScene.hasDroppedHolds())
         {
-            went.mMeshes = mMeshes.retire(mLiveMeshes) + mDisownedMeshes;
-            went.mMaterials = mMaterials.retire(mLiveMaterials) + mDisownedMaterials;
-            mDisownedMeshes = 0;
-            mDisownedMaterials = 0;
+            const std::size_t meshesBefore = mScene.getTables().mMeshes.getLiveCount();
+            const std::size_t materialsBefore = mScene.getTables().mMaterials.getLiveCount();
 
-            mLiveMeshes.insert(mLiveMeshes.end(), mOwnedMeshes.begin(), mOwnedMeshes.end());
-            mLiveMaterials.insert(mLiveMaterials.end(), mOwnedMaterials.begin(), mOwnedMaterials.end());
+            mMeshes.retire(mLiveMeshes);
+            mMaterials.retire(mLiveMaterials);
 
             // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the
             // gaps renumbered every mesh and every material, so everything built from an index —
@@ -639,6 +612,12 @@ namespace Rtx
             // rebuilds. A slot that is freed keeps its index and its room, and the next arrival that
             // fits takes it over. Nothing downstream is told anything, because for it nothing moved.
             mScene.release(mLiveMeshes, mLiveMaterials);
+
+            // Counted off the tables rather than off the maps, because a row a hold let go of was in
+            // no map to be counted there.
+            went.mMeshes = static_cast<std::uint32_t>(meshesBefore - mScene.getTables().mMeshes.getLiveCount());
+            went.mMaterials
+                = static_cast<std::uint32_t>(materialsBefore - mScene.getTables().mMaterials.getLiveCount());
         }
 
         // **Swept whatever the two tables above did, because each of these goes stale on its own.**

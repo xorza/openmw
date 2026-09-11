@@ -39,6 +39,7 @@ namespace Rtx::Testing
             // What the backend does: the array is made again and ends where the scene's table
             // does, whatever it held before.
             countAt(slot) = static_cast<std::uint32_t>(scene.mTextures.getPaths().size());
+            heldAt(slot) = { &scene.mMeshes, scene.getStructureRevision() };
         }
 
         void extendScene(Rtx::SceneSlot slot, const Rtx::SceneTables& scene, std::span<const Rtx::TextureData> arrived,
@@ -57,6 +58,7 @@ namespace Rtx::Testing
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.
             mAppendedToWrongEnd |= countAt(slot) != scene.mTextures.getPaths().size();
+            heldAt(slot).mRevision = scene.getStructureRevision();
         }
 
         void placeScene(Rtx::SceneSlot, const Rtx::SceneTables&, const Rtx::SeaState&) override
@@ -65,7 +67,13 @@ namespace Rtx::Testing
             mDescribed = 0;
         }
 
-        std::uint32_t getTextureCount(Rtx::SceneSlot slot) const override { return countAt(slot); }
+        Rtx::SceneHeld describeHeld(Rtx::SceneSlot slot) const override
+        {
+            const Built& built = heldAt(slot);
+            return Rtx::SceneHeld{
+                .mScene = built.mScene, .mStructureRevision = built.mRevision, .mTextureCount = countAt(slot)
+            };
+        }
 
         /// **The texture array does not shrink**, which is what `mTextures` staying put records: a
         /// slot goes on being where an append begins from whether or not it holds an image.
@@ -103,7 +111,21 @@ namespace Rtx::Testing
         Rtx::SceneSlot addViewScene() override
         {
             mViewTextures.push_back(0);
+            mViewBuilt.emplace_back();
             return Rtx::SceneSlot::view(mViewScenes++);
+        }
+
+        /// What a slot was built from, which is what says whether an uploader may append.
+        struct Built
+        {
+            const Rtx::MeshTable* mScene = nullptr;
+            std::uint64_t mRevision = 0;
+        };
+
+        Built& heldAt(Rtx::SceneSlot slot) { return slot.isWorld() ? mBuilt : mViewBuilt[slot.getViewIndex()]; }
+        const Built& heldAt(Rtx::SceneSlot slot) const
+        {
+            return slot.isWorld() ? mBuilt : mViewBuilt[slot.getViewIndex()];
         }
 
         /// **A table a slot, as a real backend keeps.** An uploader that mixed the world's count
@@ -114,7 +136,7 @@ namespace Rtx::Testing
             return slot.isWorld() ? mTextures : mViewTextures[slot.getViewIndex()];
         }
 
-        /// The same for a caller that only reads, so that `getTextureCount` needs no cast.
+        /// The same for a caller that only reads, so that `describeHeld` needs no cast.
         std::uint32_t countAt(Rtx::SceneSlot slot) const
         {
             return slot.isWorld() ? mTextures : mViewTextures[slot.getViewIndex()];
@@ -144,6 +166,8 @@ namespace Rtx::Testing
         std::vector<std::uint32_t> mDescribedSlots;
 
         std::vector<std::uint32_t> mViewTextures;
+        std::vector<Built> mViewBuilt;
+        Built mBuilt;
         std::uint32_t mViewScenes = 0;
         std::uint32_t mPlaced = 0;
         std::uint32_t mExtended = 0;

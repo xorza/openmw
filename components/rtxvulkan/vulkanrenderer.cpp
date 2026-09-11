@@ -121,8 +121,7 @@ namespace Rtx
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
         , mCountCrossings(options.mCountCrossings)
-        , mUpscale(options.mUpscale)
-        , mPreset(options.mPreset)
+        , mUpscaling(options.mUpscaling)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
@@ -145,7 +144,7 @@ namespace Rtx
         , mGuiTextures(mDevice, mPool)
     {
         // Before the first targets, because what to trace at is its answer and not ours.
-        if (mUpscale != Upscale::Off)
+        if (mUpscaling.mMode != Upscale::Off)
             startUpscaler();
 
         // Before the first targets, because a windowed renderer is sized by its surface rather
@@ -201,7 +200,7 @@ namespace Rtx
     bool VulkanRenderer::upscaling() const
     {
 #ifdef OPENMW_RTX_DLSS
-        return mNgx != nullptr && mUpscale != Upscale::Off;
+        return mNgx != nullptr && mUpscaling.mMode != Upscale::Off;
 #else
         return false;
 #endif
@@ -209,7 +208,7 @@ namespace Rtx
 
     void VulkanRenderer::setUpscale(Upscale upscale)
     {
-        if (upscale == mUpscale)
+        if (upscale == mUpscaling.mMode)
             return;
 
         // **Before anything is torn down**, so a mode this machine cannot reach leaves the renderer
@@ -217,7 +216,7 @@ namespace Rtx
         if (upscale != Upscale::Off)
             startUpscaler();
 
-        mUpscale = upscale;
+        mUpscaling.mMode = upscale;
 
         // The same wait a resize makes, and for the same reason: what is about to be replaced may
         // still be in flight.
@@ -243,7 +242,7 @@ namespace Rtx
         VkExtent2D render{ width, height };
 #ifdef OPENMW_RTX_DLSS
         if (upscaling())
-            render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscale);
+            render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscaling.mMode);
 #endif
         // **The layer channels only where something upscales**, which is the same test
         // `mLayerCompositedAfter` makes of the shader: Ray Reconstruction is the one reader the
@@ -281,8 +280,8 @@ namespace Rtx
             // Building uploads the network's weights, which is once per resolution rather than
             // once per frame.
             mPool.submitAndWait([&](VkCommandBuffer commands) {
-                mUpscaler = std::make_unique<DlssPass>(
-                    *mNgx, commands, render, VkExtent2D{ mOutputWidth, mOutputHeight }, mUpscale, mPreset);
+                mUpscaler = std::make_unique<DlssPass>(*mNgx, commands, render,
+                    VkExtent2D{ mOutputWidth, mOutputHeight }, mUpscaling.mMode, mUpscaling.mPreset);
             });
         }
 #endif
@@ -500,6 +499,8 @@ namespace Rtx
             held.mBuffers->getNormals(), nullptr);
         held.mAcceleration->build(setup, scene, held.mRecords, graveyard);
         held.mBuiltMeshes = scene.mMeshes.getRevision();
+        held.mBuiltFrom = &scene.mMeshes;
+        held.mBuiltStructure = scene.getStructureRevision();
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
         // instead of being logged on the way past.
@@ -571,6 +572,8 @@ namespace Rtx
         // this is that round trip removed.
         setup.defer();
 
+        held.mBuiltStructure = scene.getStructureRevision();
+
         // Always, because the top level names every instance and an arrival changed the list. It is
         // rebuilt every frame regardless, so an arrival costs it nothing.
         placeScene(slot, scene, sea);
@@ -582,10 +585,14 @@ namespace Rtx
             readStats(held);
     }
 
-    std::uint32_t VulkanRenderer::getTextureCount(const SceneSlot slot) const
+    SceneHeld VulkanRenderer::describeHeld(const SceneSlot slot) const
     {
         const ViewScene& held = sceneAt(slot);
-        return held.mTextures == nullptr ? 0 : held.mTextures->getCount();
+        return SceneHeld{
+            .mScene = held.mBuiltFrom,
+            .mStructureRevision = held.mBuiltStructure,
+            .mTextureCount = held.mTextures == nullptr ? 0 : held.mTextures->getCount(),
+        };
     }
 
     void VulkanRenderer::dropTextures(const SceneSlot slot, std::span<const Index> textures)
@@ -910,7 +917,7 @@ namespace Rtx
         // then hands the frame to NGX, which writes the upscaled image itself and was never given
         // `pInAlpha`: what came back would be the feature's alpha rather than the frame's. It is one
         // everywhere today because nothing asks for the other thing here.
-        assert((camera.mTransparentBackground == 0 || mUpscale == Upscale::Off)
+        assert((camera.mTransparentBackground == 0 || mUpscaling.mMode == Upscale::Off)
             && "a frame that stops where nothing was hit belongs to traceGuiTexture, which does not upscale");
 
         // The frame `placeScene` opened, or a new one where nothing was placed.
@@ -943,8 +950,7 @@ namespace Rtx
         // **What reconstructs this frame, decided once and by one rule.** Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
         // result, so what a run reports and what it did are one answer.
-        const Reconstruction reconstruction = Reconstruction::resolve(mUpscale,
-            ReconstructionRequest{ .mFilter = options.mFilter, .mJitter = options.mJitter, .mPreset = mPreset });
+        const Reconstruction reconstruction = Reconstruction::resolve(mUpscaling, options.mReconstruction);
         frame.mReconstruction = reconstruction;
 
         const Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);

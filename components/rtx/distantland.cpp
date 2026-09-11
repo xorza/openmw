@@ -1,17 +1,19 @@
 #include "distantland.hpp"
 
 #include <cmath>
-
-#include <components/misc/constants.hpp>
+#include <cstdlib>
 
 namespace Rtx
 {
     osg::Vec2i cellOf(const osg::Vec3f& position)
     {
-        constexpr float size = static_cast<float>(Constants::CellSizeInUnits);
+        return osg::Vec2i(static_cast<int>(std::floor(position.x() / sCellSize)),
+            static_cast<int>(std::floor(position.y() / sCellSize)));
+    }
 
-        return osg::Vec2i(
-            static_cast<int>(std::floor(position.x() / size)), static_cast<int>(std::floor(position.y() / size)));
+    bool withinCells(const osg::Vec2i& cell, const osg::Vec2i& eye, const int band)
+    {
+        return std::abs(cell.x() - eye.x()) <= band && std::abs(cell.y() - eye.y()) <= band;
     }
 
     float distantLandReach(float cells, float viewingDistance)
@@ -19,6 +21,6 @@ namespace Rtx
         if (!(cells > 0.0f))
             return viewingDistance;
 
-        return cells * static_cast<float>(Constants::CellSizeInUnits);
+        return cells * sCellSize;
     }
 }

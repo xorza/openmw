@@ -346,8 +346,7 @@ namespace Rtx::Testing
 
                 mRenderer->renderFrame(sampled,
                     FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
-                        .mJitter = shot.mJitter,
-                        .mFilter = shot.mFilter,
+                        .mReconstruction = { .mFilter = shot.mFilter, .mJitter = shot.mJitter },
                         .mExposure = shot.mExposure });
 
                 // Every frame hits the same primary geometry, so the last one's count is the answer

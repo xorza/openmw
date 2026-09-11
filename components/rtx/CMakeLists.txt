@@ -13,13 +13,19 @@
 
 set(RTX_FILES
     alphaimage.cpp
+    backlog.hpp
     alphaimage.hpp
     bluenoise.cpp
     bluenoise.hpp
     camera.cpp
     camera.hpp
+    cellholds.cpp
+    cellholds.hpp
+    cellplacer.cpp
+    cellplacer.hpp
     cellreader.cpp
     cellreader.hpp
+    cellworld.hpp
     channel.hpp
     cloudshell.cpp
     cloudshell.hpp
@@ -47,6 +53,7 @@ set(RTX_FILES
     frameclock.hpp
     frameimage.cpp
     frameimage.hpp
+    framespend.hpp
     frameworld.cpp
     frameworld.hpp
     geometryfold.cpp
@@ -105,6 +112,8 @@ set(RTX_FILES
     placementtable.hpp
     pool.hpp
     preparedcell.hpp
+    heldcell.hpp
+    recycled.hpp
     preparedground.hpp
     preparedtexture.hpp
     png.cpp

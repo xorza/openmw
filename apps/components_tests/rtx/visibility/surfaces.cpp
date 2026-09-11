@@ -125,7 +125,7 @@ namespace Rtx::Testing
 
             mRenderer->readPixels(shown);
             ASSERT_TRUE(wearsRed(centre)) << "the wall did not start out red";
-            ASSERT_EQ(mRenderer->getTextureCount(Rtx::SceneSlot::world()), 1u);
+            ASSERT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 1u);
 
             // A second texture and a second material, on a wall nearer the eye. The mesh table is
             // untouched, so this is the append path and not a rebuild.
@@ -139,7 +139,7 @@ namespace Rtx::Testing
             const Index blueTexture = scene.getTables().mMaterials.getRows()[blue].mDiffuse;
             const TextureData second = describeTexel(blueTexel, blueTexture);
             mRenderer->extendScene(Rtx::SceneSlot::world(), scene.getTables(), std::span(&second, 1), SeaState{});
-            EXPECT_EQ(mRenderer->getTextureCount(Rtx::SceneSlot::world()), 2u);
+            EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u);
 
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
@@ -172,7 +172,7 @@ namespace Rtx::Testing
 
             mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), std::span(&first, 1), SeaState{});
 
-            EXPECT_EQ(mRenderer->getTextureCount(Rtx::SceneSlot::world()), 2u)
+            EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u)
                 << "the array stopped at the last texture it was handed rather than at the table";
 
             // **And what the report says is what is stood, not how long the table is.** The two are

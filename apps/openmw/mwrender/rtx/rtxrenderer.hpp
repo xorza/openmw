@@ -18,9 +18,9 @@
 
 #include "../renderer.hpp"
 #include "framecapture.hpp"
+#include "framereport.hpp"
 #include "framespan.hpp"
 #include "session.hpp"
-#include "tracedrun.hpp"
 #include "viewhost.hpp"
 #include "worldmirror.hpp"
 
@@ -82,8 +82,6 @@ namespace MWRender
         explicit RtxRenderer(const RendererSpec& spec);
         ~RtxRenderer() override;
 
-        int getMaxTextureUnits() const override { return mMaxTextureUnits; }
-
         /// Paged always, chunked never, merged never, and no composite map.
         ///
         /// **The map reads how far the ground reaches through the paged answer**, and this
@@ -131,14 +129,8 @@ namespace MWRender
 
         void renderGui() override;
 
-        bool done() const override { return false; }
-
         void capture(osg::Image& image, int width, int height) override;
         void saveScreenshot() override;
-
-        /// Nothing draws on another thread, so there is nothing to hold still.
-        void suspendDraw() override {}
-        void resumeDraw() override {}
 
         /// **A present mode, which is what a swapchain calls this.** Off is mailbox rather than
         /// immediate — the newest frame and no tearing — and adaptive is relaxed FIFO. Costs a
@@ -147,30 +139,19 @@ namespace MWRender
         void setUpscale(Rtx::Upscale upscale) override;
         Rtx::Upscale getUpscale() const override { return mRenderer->getUpscale(); }
 
-        /// GLSL is the rasterizer's language. What this renderer draws with is compiled SPIR-V, and
-        /// swapping it under a running frame is not a thing it offers.
-        void reloadChangedShaders(Shader::ShaderManager& shaders) override {}
-
         std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, Resource::ImageManager& images,
             Shader::ShaderManager& shaders, const VFS::Manager& vfs, float scalingFactor,
             VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
 
         osg::Timer_t getStartTick() const override { return mStartTick; }
 
-        /// The OSG stats overlay is the rasterizer's instrumentation and the rasterizer draws it.
-        /// What this renderer has instead is its own frame times, `MWRender::Session`, and the
-        /// frame rate on the window's title.
-        void installStatsOverlay(const VFS::Manager& vfs, bool toFile) override {}
-        void reportStats(unsigned frameNumber, std::ostream& stream) const override {}
-
         /*internal:*/
-
-        /// What a measured stop is allowed to look at. `TracedRun` says why it is a value.
-        TracedRun describeRun();
 
         Rtx::Renderer& getBackend() override { return *mRenderer; }
         bool hasScene() const override { return mHasScene; }
         std::optional<PoseMoment> describePose() override;
+        Resource::ResourceSystem* getResources() override { return mResources; }
+        osg::Group* getSceneRoot() override;
         void deferRedraw(TracedView& view) override;
         void forgetView(TracedView& view) override;
 
@@ -195,16 +176,37 @@ namespace MWRender
         /// **Acted on only once the window stops moving**, which `sSettleSeconds` says the price of.
         void fitToWindow();
 
-        /// Traces the world the walk has just mirrored, from the eye the frame arrived with.
+        /// Traces the world the walk has just mirrored, from the eye the frame arrived with: the
+        /// frame behind is finished, the scene handed over, the deferred views drawn, the camera
+        /// aimed, the frame traced and the report closed — each a step below.
         ///
         /// **Its refusals are not the frame's.** A world with nothing in it and a camera with no
         /// roll are both reasons not to trace and neither is a reason not to present, so they end
         /// here rather than in `renderFrame` — see the comment on the call.
         ///
-        /// `walkMs` and `updateMs` are what the mirror took and what the game took before it,
-        /// carried through rather than measured here: the benchmark's row is closed at the end of
-        /// the trace and both stretches are over before it starts.
-        void traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs, double updateMs);
+        /// `report` arrives with what the mirror took and what the game took before it, carried
+        /// through rather than measured here: the benchmark's row is closed at the end of the trace
+        /// and both stretches are over before it starts.
+        void traceWorld(const SceneFrame& frame, FrameReport& report);
+
+        /// Waits the frame behind out and reads what the device answered for it, into the report.
+        void finishBehind(FrameReport& report);
+
+        /// Hands the scene the walk built to the backend, timing the three halves of it into the
+        /// report, and says whether it was rebuilt from nothing.
+        void handOver(const SceneFrame& frame, FrameReport& report);
+
+        /// The eye the frame arrived with, built for the render extent — or nothing for a camera the
+        /// builder refused, which is reported once.
+        std::optional<Rtx::Shaders::VisibilityConstants> aim(const SceneFrame& frame);
+
+        /// Traces one frame from `constants`, with the world's sky described into it, and closes
+        /// the report with what it came to.
+        void trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report);
+
+        /// What a measured stop is allowed to look at beyond the report. `FrameContext` says why it
+        /// is a value.
+        FrameContext describeContext();
 
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
@@ -220,7 +222,6 @@ namespace MWRender
         void presentWithGui();
 
         Stage& mStage;
-        int mMaxTextureUnits = 0;
 
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
@@ -320,8 +321,8 @@ namespace MWRender
         /// jitters and what the sampler walks are the same sequence the world is counting.
         std::size_t mFrame = 0;
 
-        /// Whether a camera the builder refused has already been reported. `traceWorld` says why
-        /// once is the whole of it.
+        /// Whether a camera the builder refused has already been reported. `aim` says why once is
+        /// the whole of it.
         bool mComplained = false;
     };
 }

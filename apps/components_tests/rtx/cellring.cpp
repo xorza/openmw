@@ -198,10 +198,13 @@ namespace Rtx::Testing
 
             void start()
             {
-                mRing.setContent(&mLand, &mContent, ~0u);
-
-                mAround.mStorage = &mStorage;
-                mAround.mWorldspace = ESM::Cell::sDefaultWorldspaceId;
+                mAround.mWorld = Rtx::CellWorld{
+                    .mStorage = &mStorage,
+                    .mGround = &mLand,
+                    .mContent = &mContent,
+                    .mWorldspace = ESM::Cell::sDefaultWorldspaceId,
+                    .mMask = ~0u,
+                };
                 mRing.follow(mAround);
             }
 
@@ -380,8 +383,7 @@ namespace Rtx::Testing
             EXPECT_EQ(standing, 1u);
 
             // **A steady frame reaches the heap zero times**, which is the rule every loader here
-            // keeps: what the ring holds is placed, stamped and counted out of buffers it already
-            // grew.
+            // keeps: what the ring holds is placed and counted out of buffers it already grew.
             const std::size_t before = Testing::getAllocationCount();
             const ExtractionStats again = walk(mWalked++);
             const std::size_t spent = Testing::getAllocationCount() - before;
@@ -389,10 +391,10 @@ namespace Rtx::Testing
 
             EXPECT_EQ(again.mMeshesAdded, 0u) << "a second walk of one frame adds nothing";
             EXPECT_EQ(again.mMaterialsAdded, 0u);
-            EXPECT_GT(again.mMeshesReused, 0u);
+            EXPECT_EQ(again.mMeshesReused, 0u) << "what the ring holds is held, and is not met again to be reused";
             EXPECT_EQ(placed(), 3u + sPlacedCells);
 
-            EXPECT_TRUE(mExtractor.retire().empty()) << "everything the ring holds was stamped";
+            EXPECT_TRUE(mExtractor.retire().empty()) << "everything the ring holds is held through the sweep";
 
             // A script disables one tree: the walk after it stands two. Swept between walks, as
             // every frame of the game is.

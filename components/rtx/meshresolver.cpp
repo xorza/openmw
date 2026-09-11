@@ -130,11 +130,12 @@ namespace Rtx
         return mesh;
     }
 
-    Known& MeshResolver::adopt(const osg::Drawable& drawable, const MeshReading& reading, const Index material)
+    Index MeshResolver::adopt(const osg::Drawable& drawable, const MeshReading& reading, const Index material)
     {
         ExtractionStats& stats = mPass.getStats();
 
-        if (const auto known = mMeshes.find(&drawable); known != mMeshes.end())
+        auto known = mMeshes.find(&drawable);
+        if (known != mMeshes.end())
         {
             // A template's drawable is never the walk's: the walk meets clones, and a clone of a
             // deforming drawable is a deep copy at another address. So what the map holds under
@@ -143,18 +144,28 @@ namespace Rtx
                 && "a reading adopted under a drawable the mirror poses");
 
             ++stats.mMeshesReused;
-            mMeshes.stamp(known);
-            return known->second;
+        }
+        else
+        {
+            if (reading.mShape.mSheet)
+                ++stats.mSheets;
+
+            const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex, material);
+            mMeshes.add(&drawable, Known{ .mIndex = mesh });
+            ++stats.mMeshesAdded;
+
+            known = mMeshes.find(&drawable);
         }
 
-        if (reading.mShape.mSheet)
-            ++stats.mSheets;
+        mMeshes.hold(known);
+        return known->second.mIndex;
+    }
 
-        const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex, material);
-        mMeshes.add(&drawable, Known{ .mIndex = mesh });
-        ++stats.mMeshesAdded;
-
-        return mMeshes.find(&drawable)->second;
+    void MeshResolver::release(const osg::Drawable& drawable)
+    {
+        const auto known = mMeshes.find(&drawable);
+        assert(known != mMeshes.end() && "a mesh released that the mirror does not hold");
+        mMeshes.drop(known);
     }
 
     /// Added once per skin and once per set of targets however many drawables share them, and
@@ -368,9 +379,9 @@ namespace Rtx
         mScene.poseMorph(mesh, mWeightScratch, reachOf(morph));
     }
 
-    std::uint32_t MeshResolver::retire(std::vector<Index>& live)
+    void MeshResolver::retire(std::vector<Index>& live)
     {
-        return mMeshes.sweep(live);
+        mMeshes.sweep(live);
     }
 
     void MeshResolver::retireDeformers()

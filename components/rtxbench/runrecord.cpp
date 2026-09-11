@@ -21,6 +21,18 @@ namespace Rtx
             fail();
     }
 
+    SessionResult RunRecord::describe(const Standing* const left) const
+    {
+        SessionResult result;
+        result.mExitStatus = mExitStatus;
+        result.mPlaces = mPlaces;
+        result.mReport = mReport;
+        if (left != nullptr)
+            result.mLeft = *left;
+
+        return result;
+    }
+
     void RunRecord::finish(const SessionRequest& request)
     {
         mReport += describeTotal(mPlaces, false);

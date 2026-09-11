@@ -83,7 +83,7 @@ namespace Rtx
         ///
         /// **Everything but `take` aborts.** `DistantLights` stands nodes and adopts no row, so a
         /// call to any of the rest would be this residency doing something it has no business doing.
-        struct CountLights : osg::NodeVisitor, Collector
+        struct CountLights : osg::NodeVisitor, SceneAdopter
         {
             CountLights()
                 : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
@@ -92,30 +92,20 @@ namespace Rtx
 
             void take(osg::Node& node) override { node.accept(*this); }
 
-            MaterialResolver::Resolved adoptMaterial(const MaterialReading&) override
+            Index adoptMaterial(const MaterialReading&) override
             {
                 ADD_FAILURE() << "the lights adopted a material";
-                return MaterialResolver::Resolved{};
+                return sNoIndex;
             }
 
-            Known& adoptMesh(const osg::Drawable&, const MeshReading&, Index) override
+            Index adoptMesh(const osg::Drawable&, const MeshReading&, Index) override
             {
                 ADD_FAILURE() << "the lights adopted a mesh";
-                return mNothing;
+                return sNoIndex;
             }
 
-            Known* findMaterial(const osg::StateSet*) override
-            {
-                ADD_FAILURE() << "the lights looked a material up";
-                return nullptr;
-            }
-
-            void keepMesh(Known&) override { ADD_FAILURE() << "the lights kept a mesh"; }
-            void keepMaterial(Known&) override { ADD_FAILURE() << "the lights kept a material"; }
-            void keepOwnedMesh(Index) override { ADD_FAILURE() << "the lights own a mesh"; }
-            void keepOwnedMaterial(Index) override { ADD_FAILURE() << "the lights own a material"; }
-
-            Known mNothing;
+            void releaseMesh(const osg::Drawable&) override { ADD_FAILURE() << "the lights released a mesh"; }
+            void releaseMaterial(const osg::StateSet*) override { ADD_FAILURE() << "the lights released a material"; }
 
             void apply(osg::Node& node) override
             {
@@ -136,15 +126,16 @@ namespace Rtx
 
             // The eye at the origin, and the grid the game stands for itself around it — so the lamp
             // four cells out is one the graph route never had a node for.
-            lights.follow(WorldAround{ .mStorage = &storage,
-                .mWorldspace = ESM::Cell::sDefaultWorldspaceId,
-                .mEye = osg::Vec3f(),
-                .mReach = sCellSize * 6.0f,
-                .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
-                .mOutdoors = true });
+            lights.follow(
+                WorldAround{ .mWorld = { .mStorage = &storage, .mWorldspace = ESM::Cell::sDefaultWorldspaceId },
+                    .mEye = osg::Vec3f(),
+                    .mReach = sCellSize * 6.0f,
+                    .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
+                    .mOutdoors = true });
 
             CountLights counted;
-            lights.collect(counted);
+            ExtractionStats stats;
+            lights.collect(counted, stats);
             return counted.mFound;
         }
 
@@ -173,20 +164,21 @@ namespace Rtx
             const OneLamp storage(0);
 
             DistantLights lights;
-            lights.follow(WorldAround{ .mStorage = &storage,
-                .mWorldspace = ESM::Cell::sDefaultWorldspaceId,
-                .mEye = osg::Vec3f(),
-                .mReach = sCellSize * 6.0f,
-                .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
-                .mOutdoors = true });
+            lights.follow(
+                WorldAround{ .mWorld = { .mStorage = &storage, .mWorldspace = ESM::Cell::sDefaultWorldspaceId },
+                    .mEye = osg::Vec3f(),
+                    .mReach = sCellSize * 6.0f,
+                    .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
+                    .mOutdoors = true });
 
+            ExtractionStats stats;
             CountLights first;
-            lights.collect(first);
+            lights.collect(first, stats);
             EXPECT_EQ(storage.getReadings(), 160u) << "thirteen cells square, less the nine the game stands";
             EXPECT_EQ(first.mFound, 1u);
 
             CountLights again;
-            lights.collect(again);
+            lights.collect(again, stats);
             EXPECT_EQ(storage.getReadings(), 160u) << "a cell was read a second time";
             EXPECT_EQ(again.mFound, 1u) << "what was read once was not handed over twice";
 
@@ -195,7 +187,7 @@ namespace Rtx
             lights.restart();
 
             CountLights afresh;
-            lights.collect(afresh);
+            lights.collect(afresh, stats);
             EXPECT_EQ(storage.getReadings(), 320u) << "a restart kept what it was told to drop";
             EXPECT_EQ(afresh.mFound, 1u);
         }

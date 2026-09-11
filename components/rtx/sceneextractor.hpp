@@ -238,30 +238,19 @@ namespace Rtx
         const osg::StateSet* animate(osg::Node& node);
 
     private:
-        /// **What a residency may do inside a walk, and nothing else may.** `Rtx::Collector` is what
-        /// says so: it is the object a residency is handed, `MirrorTraversal` is what implements it,
-        /// and these are what that implementation forwards to. Public, they were eleven calls in
+        /// **What a residency may do inside a walk, and nothing else may.** `Rtx::SceneAdopter` is
+        /// what says so: it is the object a residency is handed, `MirrorTraversal` is what implements
+        /// it, and these are what that implementation forwards to. Public, they were eleven calls in
         /// front of every reader of this class that only mean anything inside one walk.
         friend class MirrorTraversal;
 
-        Known& adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material)
+        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material)
         {
             return mMeshes.adopt(drawable, reading, material);
         }
-        MaterialResolver::Resolved adoptMaterial(const MaterialReading& reading) { return mMaterials.adopt(reading); }
-        Known* findMaterial(const osg::StateSet* key) { return mMaterials.find(key); }
-        void keepMesh(Known& held) { mMeshes.stampReused(held); }
-        void keepMaterial(Known& held) { mMaterials.stampReused(held); }
-
-        void keepOwnedMesh(Index mesh) { mOwnedMeshes.push_back(mesh); }
-        void keepOwnedMaterial(Index material) { mOwnedMaterials.push_back(material); }
-
-        /// Adds what one residency reported into this walk's own counts, and into the disowned
-        /// tally the next sweep reads.
-        ///
-        /// **A row let go of is simply not named**, and this is what tells the sweep to run the
-        /// release even where every identity map stands whole.
-        void stood(const ResidencyCount& count);
+        Index adoptMaterial(const MaterialReading& reading) { return mMaterials.adopt(reading); }
+        void releaseMesh(const osg::Drawable& drawable) { mMeshes.release(drawable); }
+        void releaseMaterial(const osg::StateSet* key) { mMaterials.release(key); }
 
         /// Whether a drawable carrying `mask` is the world's water.
         bool isWater(osg::Node::NodeMask mask) const;
@@ -311,13 +300,6 @@ namespace Rtx
 
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;
-
-        /// The rows a residency owns and named on the walk in progress, and how many it let go of
-        /// since the last sweep. See `keepOwnedMesh`.
-        std::vector<Index> mOwnedMeshes;
-        std::vector<Index> mOwnedMaterials;
-        std::uint32_t mDisownedMeshes = 0;
-        std::uint32_t mDisownedMaterials = 0;
 
         /// Which sweep is current, and where the walk in progress puts its counts.
         ///

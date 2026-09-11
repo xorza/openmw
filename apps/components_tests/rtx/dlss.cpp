@@ -321,7 +321,7 @@ namespace Rtx
             static void SetUpTestSuite()
             {
                 RendererOptions options = Testing::describeRenderer(sBuiltWidth, sBuiltHeight);
-                options.mUpscale = Upscale::Performance;
+                options.mUpscaling.mMode = Upscale::Performance;
                 sUpscaling = createRenderer(options, sObstacle);
             }
 
@@ -423,7 +423,7 @@ namespace Rtx
             std::vector<std::uint8_t> reference;
             mRenderer->resize(extents.mRenderWidth, extents.mRenderHeight);
             mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
-            mRenderer->renderFrame(camera, FrameOptions{ .mFilter = false });
+            mRenderer->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
             mRenderer->readPixels(reference);
 
             // **Several frames, because a temporal upscaler has nothing on the first.** The camera
@@ -626,8 +626,8 @@ namespace Rtx
                 scene.addEmitter(sprites, cut, false);
 
                 upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), puff, SeaState{});
-                upscaling->renderFrame(camera, FrameOptions{ .mFilter = false });
-                upscaling->renderFrame(camera, FrameOptions{ .mFilter = false });
+                upscaling->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
+                upscaling->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
 
                 std::vector<float> layer;
                 upscaling->readChannel(Channel::TransparencyMotion, layer);

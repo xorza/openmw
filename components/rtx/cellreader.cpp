@@ -112,13 +112,6 @@ namespace Rtx
         constexpr std::array<Surface::TextureRole, 4> sRoles{ Surface::TextureRole::Diffuse,
             Surface::TextureRole::Emissive, Surface::TextureRole::Normal, Surface::TextureRole::NormalHeight };
 
-        /// Where the reading of `image` sits among `sorted`, or where it would: the readings are
-        /// ordered by the address of the image they describe.
-        auto placeOf(std::vector<PreparedTexture*>& sorted, const osg::Image* image)
-        {
-            return std::lower_bound(sorted.begin(), sorted.end(), image,
-                [](const PreparedTexture* held, const osg::Image* wanted) { return held->mImage.get() < wanted; });
-        }
     }
 
     CellReader::CellReader(const Terrain::ObjectStorage& storage, Terrain::Storage& ground, ContentSource& content,
@@ -136,16 +129,16 @@ namespace Rtx
         if (image.getFileName().empty())
             return nullptr;
 
-        const auto at = placeOf(mByImage, &image);
-        if (at != mByImage.end() && (*at)->mImage == &image)
+        if (PreparedTexture* const* const known = mByImage.find(&image))
         {
-            ++mImageHolders[static_cast<std::size_t>(at - mByImage.begin())];
-            return *at;
+            ++(*known)->mLent;
+            return *known;
         }
 
         PreparedTexture& texture = mTextures.take();
         texture.mImage = &image;
         texture.mPath = VFS::Path::Normalized(image.getFileName());
+        texture.mLent = 1;
 
         // **What the frame's describe would have done, done here.** A file that carried no chain
         // gets one built; every file gets its shading estimated. Both read every texel, and both
@@ -171,19 +164,15 @@ namespace Rtx
             texture.mReadable = false;
         }
 
-        const std::size_t index = static_cast<std::size_t>(at - mByImage.begin());
-        mByImage.insert(at, &texture);
-        mImageHolders.insert(mImageHolders.begin() + static_cast<std::ptrdiff_t>(index), 1u);
+        mByImage.insert(&texture);
 
         return &texture;
     }
 
     PreparedModel* CellReader::readModel(const VFS::Path::NormalizedView path)
     {
-        const auto at = std::lower_bound(mByPath.begin(), mByPath.end(), path.value(),
-            [](const PreparedModel* held, const std::string_view wanted) { return held->mPath < wanted; });
-        if (at != mByPath.end() && (*at)->mPath == path.value())
-            return *at;
+        if (PreparedModel* const* const known = mByPath.find(path.value()))
+            return *known;
 
         const osg::ref_ptr<const osg::Node> node = mContent.getTemplate(path);
         if (node == nullptr)
@@ -222,10 +211,7 @@ namespace Rtx
             }
         }
 
-        // Where `lower_bound` put it, before anything was inserted into the model's own path.
-        mByPath.insert(std::lower_bound(mByPath.begin(), mByPath.end(), model.mPath,
-                           [](const PreparedModel* held, const std::string& wanted) { return held->mPath < wanted; }),
-            &model);
+        mByPath.insert(&model);
 
         return &model;
     }
@@ -291,7 +277,7 @@ namespace Rtx
             if (index == prepared.mModels.size())
             {
                 prepared.mModels.push_back(read);
-                ++read->mHolders;
+                ++read->mLent;
             }
 
             prepared.mRefs.push_back(PreparedRef{
@@ -313,32 +299,26 @@ namespace Rtx
 
     void CellReader::giveBack(PreparedTexture& texture)
     {
-        const auto at = placeOf(mByImage, texture.mImage.get());
-        assert(at != mByImage.end() && *at == &texture && "an image given back that was never lent");
-
-        const std::size_t index = static_cast<std::size_t>(at - mByImage.begin());
-        if (--mImageHolders[index] > 0)
+        assert(texture.mLent > 0 && "an image given back more often than it was lent");
+        if (--texture.mLent > 0)
             return;
 
-        mByImage.erase(at);
-        mImageHolders.erase(mImageHolders.begin() + static_cast<std::ptrdiff_t>(index));
+        mByImage.erase(texture.mImage.get());
         texture.reuse();
         mTextures.give(texture);
     }
 
     void CellReader::giveBack(PreparedModel& model)
     {
-        assert(model.mHolders > 0 && "a model given back more often than it was lent");
-        if (--model.mHolders > 0)
+        assert(model.mLent > 0 && "a model given back more often than it was lent");
+        if (--model.mLent > 0)
             return;
 
         for (PreparedTexture* texture : model.mTextures)
             giveBack(*texture);
 
-        const auto at = std::lower_bound(mByPath.begin(), mByPath.end(), model.mPath,
-            [](const PreparedModel* held, const std::string& wanted) { return held->mPath < wanted; });
-        assert(at != mByPath.end() && *at == &model && "a model given back that was never lent");
-        mByPath.erase(at);
+        // Erased under the path it is still filed under, before `reuse` clears it.
+        mByPath.erase(std::string_view(model.mPath));
 
         model.reuse();
         mModels.give(model);

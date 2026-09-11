@@ -155,6 +155,11 @@ namespace MWRender
     /// outright — an interface over those would be a mini-GL that Vulkan does not fit, which is the
     /// argument the backend boundary makes one level further down for the same reason. What is
     /// here is what the game asks for, and none of it is called more than a few times a frame.
+    ///
+    /// **A pure virtual is a question both renderers answer. A question only the rasterizer can
+    /// answer has a default here**, and the ray tracer does not override it: what it would say is
+    /// nothing, and five overrides saying nothing were five places a reader had to check to learn
+    /// that the question was the rasterizer's.
     class Renderer
     {
     public:
@@ -173,7 +178,10 @@ namespace MWRender
         /// `mPostProcessing` that is false, and says it without putting the shape of one renderer's
         /// insides in the caller. Asking a renderer for the thing is a better question than asking
         /// it what it has — except where the answer is not a thing.
-        virtual int getMaxTextureUnits() const = 0;
+        ///
+        /// **A GL fact, so the default is the one number a renderer with no GL context can give**:
+        /// `Surface::sAssumedTextureUnits`, which is what the content was described against.
+        virtual int getMaxTextureUnits() const;
 
         /// The window the renderer made. Input, the GUI's scale and the gamma ramp are SDL's
         /// business and read it; what is bound to it is not theirs to know.
@@ -333,8 +341,9 @@ namespace MWRender
         /// same way; one that mirrors the graph and traces it very much can.
         virtual void renderGui() = 0;
 
-        /// Whether the window has been closed.
-        virtual bool done() const = 0;
+        /// Whether the window has been closed. A renderer whose window is closed by SDL's own quit
+        /// event answers no.
+        virtual bool done() const { return false; }
 
         /// The frame without the GUI, into an image. The screenshot console command and the save
         /// thumbnails; blocks until the frame it asked for has been drawn.
@@ -344,9 +353,9 @@ namespace MWRender
         virtual void saveScreenshot() = 0;
 
         /// Between these two nothing is reading the scene graph, so it can be mutated. A renderer
-        /// that draws on the calling thread answers both with nothing.
-        virtual void suspendDraw() = 0;
-        virtual void resumeDraw() = 0;
+        /// that draws on the calling thread has nothing to hold still.
+        virtual void suspendDraw() {}
+        virtual void resumeDraw() {}
 
         /// Compiles arriving resources over several frames instead of stalling on first use. Null
         /// where `OPENMW_DONT_PRECOMPILE` asked for none, which is why this one is a pointer.
@@ -383,7 +392,9 @@ namespace MWRender
 
         /// Recompiles whatever shader source has been edited since the last call. Costs a directory
         /// scan and nothing else when the feature is off, which is what makes it callable per frame.
-        virtual void reloadChangedShaders(Shader::ShaderManager& shaders) = 0;
+        /// GLSL is the rasterizer's language; a renderer drawing with compiled SPIR-V has nothing to
+        /// reload.
+        virtual void reloadChangedShaders(Shader::ShaderManager& shaders) {}
 
         /// The origin the per-frame profiler measures from, so its spans land on the same axis as
         /// the counters the renderer writes beside them.
@@ -391,9 +402,10 @@ namespace MWRender
 
         /// This renderer's own instrumentation — the overlay its debug keys toggle, and the
         /// per-frame dump `OPENMW_OSG_STATS_FILE` asks for. What it counts is its own business, so
-        /// what it draws and what it writes are too.
-        virtual void installStatsOverlay(const VFS::Manager& vfs, bool toFile) = 0;
-        virtual void reportStats(unsigned frameNumber, std::ostream& stream) const = 0;
+        /// what it draws and what it writes are too. The OSG stats overlay is the rasterizer's; a
+        /// renderer with its own frame times has nothing to install.
+        virtual void installStatsOverlay(const VFS::Manager& vfs, bool toFile) {}
+        virtual void reportStats(unsigned frameNumber, std::ostream& stream) const {}
 
         /// MyGUI's backend. `MyGUI::RenderManager` is MyGUI's own interface, so a second one of
         /// these is a second implementation of an existing interface rather than a new abstraction.

@@ -71,6 +71,18 @@ namespace Rtx
         /// Frees every slot the last `mark` did not name, and says how many that was.
         std::size_t sweep();
 
+        /// Takes and gives back one hold on a row, which keeps it through every sweep between.
+        ///
+        /// **For a row nothing the walk meets will name.** A cell's ground has no drawable, so no
+        /// identity map holds it and a sweep would free it on the first frame; the residency that
+        /// stood it holds it instead, and lets go when the cell does.
+        void hold(Index mesh) { mRows.hold(mesh); }
+        void drop(Index mesh) { mRows.drop(mesh); }
+
+        /// Whether a hold went to nought since the last `mark`, which is a sweep owed however whole
+        /// the identity maps stand.
+        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
+
         std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }

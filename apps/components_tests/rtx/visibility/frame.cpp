@@ -622,7 +622,7 @@ namespace Rtx::Testing
                 {
                     Shaders::VisibilityConstants sampled = camera;
                     sampled.mFrame = frame;
-                    mRenderer->renderFrame(sampled, FrameOptions{ .mJitter = true });
+                    mRenderer->renderFrame(sampled, FrameOptions{ .mReconstruction = { .mJitter = true } });
                 }
 
                 std::vector<float> motion;

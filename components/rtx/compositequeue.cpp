@@ -113,13 +113,7 @@ namespace Rtx
             // crossing gathers dozens, so building each here and freeing it in `collect` is a
             // region's worth of allocation twice over. Whatever comes off the list is already
             // empty: `mSpare` says that is what putting one back means.
-            Request request;
-            if (!mSpare.empty())
-            {
-                request = std::move(mSpare.back());
-                mSpare.pop_back();
-            }
-
+            Request request = mSpare.take();
             request.mAsked = wanted;
             request.mSequence = mNextGiven++;
             mQueuedAt.push_back(mFrame);
@@ -268,7 +262,7 @@ namespace Rtx
         for (Baked& baked : mTaken)
         {
             baked.mRequest.reuse();
-            mSpare.push_back(std::move(baked.mRequest));
+            mSpare.give(std::move(baked.mRequest));
         }
 
         mTaken.clear();

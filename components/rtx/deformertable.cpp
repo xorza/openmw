@@ -119,8 +119,7 @@ namespace Rtx
             Rig& rig = mRigs.at(range.mDeformer);
             mBones.release(Run{ .mOffset = range.mPoseOffset, .mCount = rig.mBoneCount });
 
-            assert(rig.mUses > 0 && "a rig given back more often than it was stood on");
-            if (--rig.mUses == 0)
+            if (mRigs.drop(range.mDeformer))
             {
                 mRuns.release(rig.mRuns);
                 mInfluences.release(rig.mInfluences);
@@ -134,8 +133,7 @@ namespace Rtx
             Morph& morph = mMorphs.at(range.mDeformer);
             mWeights.release(Run{ .mOffset = range.mPoseOffset, .mCount = morph.mTargetCount });
 
-            assert(morph.mUses > 0 && "a morph given back more often than it was stood on");
-            if (--morph.mUses == 0)
+            if (mMorphs.drop(range.mDeformer))
             {
                 mMorphOffsets.release(morph.mOffsets);
                 morph = Morph{};
@@ -162,15 +160,13 @@ namespace Rtx
         // `MeshRange::mPosed` is what says the first pose names the mesh regardless.
         if (range.mDeform == Deform::Rig)
         {
-            Rig& rig = mRigs.at(range.mDeformer);
-            ++rig.mUses;
-            range.mPoseOffset = mBones.allocateZeroed(rig.mBoneCount).mOffset;
+            mRigs.hold(range.mDeformer);
+            range.mPoseOffset = mBones.allocateZeroed(mRigs.at(range.mDeformer).mBoneCount).mOffset;
         }
         else
         {
-            Morph& morph = mMorphs.at(range.mDeformer);
-            ++morph.mUses;
-            range.mPoseOffset = mWeights.allocateZeroed(morph.mTargetCount).mOffset;
+            mMorphs.hold(range.mDeformer);
+            range.mPoseOffset = mWeights.allocateZeroed(mMorphs.at(range.mDeformer).mTargetCount).mOffset;
         }
     }
 

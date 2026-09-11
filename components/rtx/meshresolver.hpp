@@ -73,27 +73,22 @@ namespace Rtx
         /// Standing only: a reading carries no rig and no morph, and a drawable the mirror holds as
         /// deforming is not one this may be asked about.
         ///
-        /// @return the entry the mesh is held under, whose index is the mesh and which stays where
-        ///         it is for as long as it is stamped — so a caller that stamps it every frame may
-        ///         keep it rather than look the drawable up again.
-        Known& adopt(const osg::Drawable& drawable, const MeshReading& reading, Index material);
+        /// **One hold is taken on the entry**, which keeps it and the mesh through every sweep until
+        /// `release` gives it back — `Known::mHolds` says why a count and not a stamp per walk.
+        Index adopt(const osg::Drawable& drawable, const MeshReading& reading, Index material);
 
-        /// Records that the walk met `held` again, for a caller that kept what `adopt` handed it.
-        void stampReused(Known& held)
-        {
-            ++mPass.getStats().mMeshesReused;
-            mMeshes.stamp(held);
-        }
+        /// Gives one `adopt` back. The mirror must hold `drawable`, which it does for as long as
+        /// anything holds it.
+        void release(const osg::Drawable& drawable);
 
         /// Whether every mesh the map holds was met this epoch — see `Kept::whole`. What the
         /// mirror asks before it sweeps, because the survivor list this fills is read beside the
         /// material resolver's.
         bool whole() const { return mMeshes.whole(); }
 
-        /// Drops every mesh this epoch did not meet, and collects the survivors into `live`.
-        ///
-        /// @return how many were dropped.
-        std::uint32_t retire(std::vector<Index>& live);
+        /// Drops every mesh neither this epoch nor a hold keeps, and collects the survivors into
+        /// `live`.
+        void retire(std::vector<Index>& live);
 
         /// Drops the rigs and the morph targets no mesh named this epoch.
         ///

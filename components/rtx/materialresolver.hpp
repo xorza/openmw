@@ -75,10 +75,9 @@ namespace Rtx
     public:
         /// A material slot and the state set it is held under.
         ///
-        /// **The key travels with the slot** because a caller stamping the material on later walks
-        /// — the cell ring, for a model it adopted — has to find the entry without reading the
-        /// drawable again, and which state set of a chain names a material is this class's answer.
-        /// A caller that picked one for itself would be a second answer to that.
+        /// **The key travels with the slot** because which state set of a chain names a material is
+        /// this class's answer, and a caller that picked one for itself would be a second answer to
+        /// that.
         struct Resolved
         {
             Index mIndex = sNoIndex;
@@ -103,27 +102,17 @@ namespace Rtx
         /// @param scratch what a translucent diffuse map's texels are walked through.
         static MaterialReading read(std::span<const Shading> shading, AlphaScratch& scratch);
 
-        /// The material slot for a reading, adding it where the mirror holds none under its key and
-        /// stamping it where it does. Standing only: a reading carries no controller.
-        Resolved adopt(const MaterialReading& reading);
+        /// The material slot for a reading, adding it where the mirror holds none under its key,
+        /// with one hold taken on the entry — `MeshResolver::adopt` says why a hold. Standing only:
+        /// a reading carries no controller. `sNoIndex` and no hold for a reading with no key.
+        Index adopt(const MaterialReading& reading);
+
+        /// Gives one `adopt` back, by the state set the reading named. Nothing for null.
+        void release(const osg::StateSet* key);
 
         /// The sea's own, keyed on the state set it has not got because a node mask is what
         /// identifies it.
         Resolved resolveWater();
-
-        /// The entry `key` is held under, unstamped, or null where the map holds none.
-        ///
-        /// **What a replay of a chunk looks its materials up with.** Which key a drawable's
-        /// material is held under is this class's answer and not its caller's, so a replay carries
-        /// the one it was given rather than working it out a second time.
-        Known* find(const osg::StateSet* key);
-
-        /// Records that the walk met `held` again, which is what `find` found.
-        void stampReused(Known& held)
-        {
-            ++mPass.getStats().mMaterialsReused;
-            mMaterials.stamp(held);
-        }
 
         /// Runs the state-set controller on `node`, if it carries one, and hands back what it wrote.
         ///
@@ -137,10 +126,9 @@ namespace Rtx
         /// fills is read beside the mesh resolver's.
         bool whole() const { return mMaterials.whole(); }
 
-        /// Drops every material this epoch did not meet, and collects the survivors into `live`.
-        ///
-        /// @return how many were dropped.
-        std::uint32_t retire(std::vector<Index>& live);
+        /// Drops every material neither this epoch nor a hold keeps, and collects the survivors
+        /// into `live`.
+        void retire(std::vector<Index>& live);
 
         /// Lets go of the images and the animated state sets this epoch did not meet.
         ///
@@ -191,11 +179,11 @@ namespace Rtx
         };
 
         /// The state set a node's controllers write into, kept so that the address a material is
-        /// keyed on is the same one next frame. See `animate`.
-        struct Animated
+        /// keyed on is the same one next frame. See `animate`. An entry like any other, so the map
+        /// sweeps it by the epoch every entry carries; its index names nothing.
+        struct Animated : Known
         {
             osg::ref_ptr<osg::StateSet> mStateSet;
-            std::uint64_t mEpoch = 0;
         };
 
         SceneDesc& mScene;

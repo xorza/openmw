@@ -252,8 +252,8 @@ namespace Rtx
     static_assert(sizeof(Light) == 36, "Light is read whole and must have no padding");
     static_assert(sizeof(Sprite) == 56, "Sprite is read whole and must have no padding");
     static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
-    static_assert(sizeof(Rig) == 24, "Rig is read whole and must have no padding");
-    static_assert(sizeof(Morph) == 16, "Morph is read whole and must have no padding");
+    static_assert(sizeof(Rig) == 20, "Rig is read whole and must have no padding");
+    static_assert(sizeof(Morph) == 12, "Morph is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
 

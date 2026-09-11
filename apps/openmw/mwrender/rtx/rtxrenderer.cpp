@@ -35,6 +35,7 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/namedenum.hpp>
@@ -43,7 +44,6 @@
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/upscale.hpp>
-#include <components/rtxbench/frametimes.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
@@ -78,13 +78,14 @@ namespace MWRender
         {
             Rtx::RenderProfile profile;
 
-            profile.mUpscale = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
-            profile.mPreset = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
+            profile.mUpscaling.mMode = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
+            profile.mUpscaling.mPreset
+                = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
             profile.mCountCrossings = Settings::rtx().mCountCrossings;
             profile.mDelight = Settings::rtx().mDelight;
             profile.mShowAlbedo = Settings::rtx().mShowAlbedo;
-            profile.mFilter = Settings::rtx().mFilter;
-            profile.mJitter = Settings::rtx().mJitter;
+            profile.mReconstruction.mFilter = Settings::rtx().mFilter;
+            profile.mReconstruction.mJitter = Settings::rtx().mJitter;
 
             // Nought is how a settings file says "measure it", there being no way to write nothing.
             if (const float exposure = Settings::rtx().mExposure; exposure > 0.0f)
@@ -159,13 +160,7 @@ namespace MWRender
         // every state set as it is built — so nothing else in the process pays for it.
         Surface::describeSurfaces(true);
 
-        // **One name with the harness, because neither host has a GL context to ask.**
-        mMaxTextureUnits = Surface::sAssumedTextureUnits;
-
         createWindow(spec.mResourceDir, mSession != nullptr && mSession->isHeadless());
-
-        const Rtx::Upscale upscale = mProfile.mUpscale;
-        const Rtx::Preset preset = mProfile.mPreset;
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -180,8 +175,7 @@ namespace MWRender
         options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mAskedWidth;
         options.mHeight = mAskedHeight;
-        options.mUpscale = upscale;
-        options.mPreset = preset;
+        options.mUpscaling = mProfile.mUpscaling;
         options.mWindow = mWindow;
         // **The run's answer where a run was installed, and the build's otherwise.** A launcher
         // making a measurement says on its command line whether the layers load, because a figure
@@ -232,8 +226,8 @@ namespace MWRender
         // session runs, so it does not belong in the periodic line; what that line carries is the
         // one word a reader of any single line needs, and the rest — which network, at what pair of
         // sizes — is here, where it was chosen.
-        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::upscaleName(upscale) << ", Ray Reconstruction preset "
-                         << Rtx::presetName(preset);
+        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::upscaleName(mProfile.mUpscaling.mMode)
+                         << ", Ray Reconstruction preset " << Rtx::presetName(mProfile.mUpscaling.mPreset);
 
         // **Grass hangs off the quad tree, and this renderer has the game build none.** Its ground
         // is the cell ring's, and a quad tree beside it would build chunks nothing traces; a setting
@@ -494,18 +488,14 @@ namespace MWRender
             gui->collectDrawCalls();
     }
 
-    TracedRun RtxRenderer::describeRun()
+    FrameContext RtxRenderer::describeContext()
     {
-        return TracedRun{
-            .mBackend = *mRenderer,
-            .mViews = *this,
-            .mScene = mMirror.getScene(),
-            .mWalked = mFound,
-            .mWalkedAgain = mFoundAgain,
-            .mResources = mResources,
-            .mSceneRoot = mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr,
-            .mUnreadableTextures = mUnreadable,
-        };
+        return FrameContext{ .mHost = *this, .mViews = *this, .mScene = mMirror.getScene() };
+    }
+
+    osg::Group* RtxRenderer::getSceneRoot()
+    {
+        return mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr;
     }
 
     std::optional<PoseMoment> RtxRenderer::describePose()
@@ -674,11 +664,13 @@ namespace MWRender
     {
         const osg::FrameStamp& when = frame.mWhen;
 
+        FrameReport report;
+
         // **What the game spent since this renderer last let go of the frame** — its update, its
         // cells arriving and whatever it waits on to get them. It is the one stretch of the loop
         // nothing else measures, and it is timed rather than profiled because most of it is a
         // thread asleep.
-        const double updateMs = mSpan.sinceLeft(std::chrono::steady_clock::now());
+        report.mSpend.at(Rtx::Timing::Update) = mSpan.sinceLeft(std::chrono::steady_clock::now());
 
         mFrame = when.getFrameNumber();
 
@@ -710,14 +702,15 @@ namespace MWRender
         // other.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
         mFound = mMirror.mirror(frame, mFrame);
-        const double walkMs = Rtx::since(walked, std::chrono::steady_clock::now());
+        report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
+        report.mSpend.at(Rtx::Timing::Fold) = mFound.mFoldMs;
 
         // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
         // because a second whole-graph walk is the largest cost a frame has.
         if (mSession != nullptr && mSession->wantsSecondWalk())
             mFoundAgain = mMirror.mirror(frame, mFrame);
 
-        traceWorld(frame, mFound, walkMs, updateMs);
+        traceWorld(frame, report);
 
         presentWithGui();
 
@@ -730,53 +723,13 @@ namespace MWRender
         mSpan.leave(std::chrono::steady_clock::now());
     }
 
-    void RtxRenderer::traceWorld(
-        const SceneFrame& frame, const Rtx::ExtractionStats& found, const double walkMs, const double updateMs)
+    void RtxRenderer::traceWorld(const SceneFrame& frame, FrameReport& report)
     {
-        const osg::FrameStamp& when = frame.mWhen;
-        const osg::Camera& camera = frame.mCamera;
-        const WorldState& world = frame.mWorld;
-
         if (mMirror.getScene().getTables().mPlacements.getPlacedCount() == 0)
             return;
 
-        // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
-        // writes the copy of the tables the frame behind is still tracing, so it waits that frame
-        // out before it writes — and left to it the stall lands inside `place ms`, which then reads
-        // as placement work rather than as a device the CPU is ahead of. One figure, in `wait ms`,
-        // which `Rtx::FrameSamples` carries for the harness and for the game alike so that the two
-        // reports can be read against each other.
-        //
-        // **Before the submit below, which is what keeps the CPU a frame ahead of the device**, and
-        // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What comes
-        // back is the frame behind, so the bench row below carries it beside this frame's wall time.
-        //
-        // **Timed as well as waited for**, because the fence is not the whole of it: the ring then
-        // reads the device's counters and its timestamps and destroys what that frame was the last
-        // to read, and none of that is in the figure the device reports.
-        const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
-        const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
-        const double finishMs = Rtx::since(finishing, std::chrono::steady_clock::now());
-
-        // Placed, appended or rebuilt — the decision, and the describing a rebuild needs, are the
-        // harness's too and are written once (`Rtx::SceneUploader`).
-        const std::chrono::steady_clock::time_point handing = std::chrono::steady_clock::now();
-        const Rtx::SceneUpload handed = mMirror.hand(*mRenderer, frame.mImages);
-        const double placeMs = Rtx::since(handing, std::chrono::steady_clock::now());
-
-        mHasScene = true;
-
-        if (handed.mKind == Rtx::SceneUpload::Kind::Rebuilt)
-            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getTables().mMeshes.getRows().size()
-                             << " meshes into " << found.mInstances << " instances with " << found.mLights
-                             << " lights, " << found.mDeformed << " of them deforming, and skipped "
-                             << found.mSkippedUnknown << " it cannot read";
-
-        mUnreadable += handed.mUnreadable;
-
-        if (handed.mUnreadable > 0)
-            Log(Debug::Warning) << "Ray tracing could not read " << handed.mUnreadable << " of " << handed.mDescribed
-                                << " textures and drew them grey — a live graph holds textures that were never files";
+        finishBehind(report);
+        handOver(frame, report);
 
         // **Before the frame and after the scene**, which is the only moment both are true: a
         // picture inside the interface traces against the world this walk has just handed over.
@@ -785,6 +738,60 @@ namespace MWRender
         // cannot look along is no reason to leave a map tile blank.
         drawDeferredViews();
 
+        const std::optional<Rtx::Shaders::VisibilityConstants> constants = aim(frame);
+        if (!constants.has_value())
+            return;
+
+        trace(frame, *constants, report);
+    }
+
+    void RtxRenderer::finishBehind(FrameReport& report)
+    {
+        // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
+        // writes the copy of the tables the frame behind is still tracing, so it waits that frame
+        // out before it writes — and left to it the stall lands inside `place ms`, which then reads
+        // as placement work rather than as a device the CPU is ahead of. One figure, in `wait ms`,
+        // which `Rtx::FrameSamples` carries for the harness and for the game alike so that the two
+        // reports can be read against each other.
+        //
+        // **Before the submit, which is what keeps the CPU a frame ahead of the device**, and
+        // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What comes
+        // back is the frame behind, so the bench row carries it beside this frame's wall time.
+        //
+        // **Timed as well as waited for**, because the fence is not the whole of it: the ring then
+        // reads the device's counters and its timestamps and destroys what that frame was the last
+        // to read, and none of that is in the figure the device reports.
+        const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
+        report.mResult = mRenderer->finishFrame();
+        report.mSpend.at(Rtx::Timing::Finish) = Rtx::since(finishing, std::chrono::steady_clock::now());
+    }
+
+    void RtxRenderer::handOver(const SceneFrame& frame, FrameReport& report)
+    {
+        // Placed, appended or rebuilt — the decision, and the describing a rebuild needs, are the
+        // harness's too and are written once (`Rtx::SceneUploader`).
+        const std::chrono::steady_clock::time_point handing = std::chrono::steady_clock::now();
+        const Rtx::SceneUpload handed = mMirror.hand(*mRenderer, frame.mImages, report.mSpend);
+        report.mSpend.at(Rtx::Timing::Place) = Rtx::since(handing, std::chrono::steady_clock::now());
+        report.mRebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
+
+        mHasScene = true;
+
+        if (report.mRebuilt)
+            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getTables().mMeshes.getRows().size()
+                             << " meshes into " << mFound.mInstances << " instances with " << mFound.mLights
+                             << " lights, " << mFound.mDeformed << " of them deforming, and skipped "
+                             << mFound.mSkippedUnknown << " it cannot read";
+
+        mUnreadable += handed.mUnreadable;
+
+        if (handed.mUnreadable > 0)
+            Log(Debug::Warning) << "Ray tracing could not read " << handed.mUnreadable << " of " << handed.mDescribed
+                                << " textures and drew them grey — a live graph holds textures that were never files";
+    }
+
+    std::optional<Rtx::Shaders::VisibilityConstants> RtxRenderer::aim(const SceneFrame& frame)
+    {
         const Rtx::FrameExtents extents = mRenderer->getExtents();
 
         // **The matrix and not a look-at, which is what lets the player look at their own feet.**
@@ -800,10 +807,9 @@ namespace MWRender
         // **The frame's field of view and not the setting's.** `WorldState` carries the one the
         // world settled on, which is the override wherever something asked for one — a zoom, a
         // cutscene, a script — and the setting only where nothing did.
-        std::optional<Rtx::Shaders::VisibilityConstants> viewpoint;
         try
         {
-            viewpoint = Rtx::makeCameraFromView(camera.getViewMatrix(), frame.mEye.mFieldOfView, extents.mRenderWidth,
+            return Rtx::makeCameraFromView(frame.mCamera.getViewMatrix(), frame.mEye.mFieldOfView, extents.mRenderWidth,
                 extents.mRenderHeight, sNear, Rtx::sFarPlane);
         }
         catch (const Rtx::Error& what)
@@ -817,13 +823,15 @@ namespace MWRender
                 mComplained = true;
                 Log(Debug::Warning) << "Ray tracing skipped a frame: " << what.what();
             }
-            return;
+
+            return std::nullopt;
         }
+    }
 
-        Rtx::Shaders::VisibilityConstants constants = *viewpoint;
-
-        const Rtx::WorldReading read = readWorld(
-            world, mMirror.getSky(), mMirror.getMoonFaces(), landReach(), static_cast<float>(when.getSimulationTime()));
+    void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report)
+    {
+        const Rtx::WorldReading read = readWorld(frame.mWorld, mMirror.getSky(), mMirror.getMoonFaces(), landReach(),
+            static_cast<float>(frame.mWhen.getSimulationTime()));
 
         const float exposureBias = Rtx::describeWorld(read, constants);
 
@@ -867,7 +875,7 @@ namespace MWRender
         // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
 
-        const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(
+        report.mReconstruction = mRenderer->renderFrame(
             constants, Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias));
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
@@ -875,35 +883,24 @@ namespace MWRender
         // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         const std::optional<double> since = mSpan.enter(now);
-        const double presentMs = mSpan.takePresent();
+        report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, now);
+        report.mSpend.at(Rtx::Timing::Present) = mSpan.takePresent();
 
         if (since.has_value())
         {
-            const double frameMs = *since;
-            const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
+            report.mFrameMs = *since;
+            report.mWalked = mFound;
+            report.mWalkedAgain = mFoundAgain;
+            report.mUnreadableTextures = mUnreadable;
 
-            if (mSession != nullptr && result.has_value())
-            {
-                Rtx::FrameSpend spend;
-                spend.at(Rtx::Timing::Finish) = finishMs;
-                spend.at(Rtx::Timing::Walk) = walkMs;
-                spend.at(Rtx::Timing::Fold) = found.mFoldMs;
-                spend.at(Rtx::Timing::Place) = placeMs;
-                spend.at(Rtx::Timing::Bake) = handed.mBakeMs;
-                spend.at(Rtx::Timing::Textures) = handed.mTexturesMs;
-                spend.at(Rtx::Timing::Upload) = handed.mUploadMs;
-                spend.at(Rtx::Timing::Trace) = Rtx::since(tracing, now);
-                spend.at(Rtx::Timing::Present) = presentMs;
-                spend.at(Rtx::Timing::Update) = updateMs;
-
-                mSession->frame(describeRun(), *result, frameMs, spend, rebuilt);
-            }
+            if (mSession != nullptr && report.mResult.has_value())
+                mSession->frame(describeContext(), report);
 
             // **Every frame and not the ones the device answered for**, because what this reads is
             // the wall between two traces and the device's answer is not part of it. Once a
             // second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
-            if (const std::string_view title = mSpeed.addFrame(frameMs);
+            if (const std::string_view title = mSpeed.addFrame(*since);
                 !title.empty() && (SDL_GetWindowFlags(mWindow) & SDL_WINDOW_HIDDEN) == 0)
                 SDL_SetWindowTitle(mWindow, title.data());
         }
@@ -911,8 +908,9 @@ namespace MWRender
         // **Counted where it is summed**, because `finishFrame` answers nothing until a frame it
         // put in flight comes back. Counting every frame instead divided the total by frames that
         // had contributed nothing to it, so the average read low by a factor nobody could see.
-        if (result.has_value() && mSpeed.addWait(result->mWaitMs))
+        if (report.mResult.has_value() && mSpeed.addWait(report.mResult->mWaitMs))
         {
+            const Rtx::FrameExtents extents = mRenderer->getExtents();
             const Rtx::SceneTables scene = mMirror.getScene().getTables();
 
             // **The emitters among it, because they are the half a placement count does not carry.**
@@ -923,8 +921,8 @@ namespace MWRender
                              << scene.mPlacements.getPlacedCount() << " instances and " << scene.mEmitters.size()
                              << " emitters holding " << scene.mSprites.size() << " sprites at " << extents.mRenderWidth
                              << "x" << extents.mRenderHeight << ", reconstructed by "
-                             << Rtx::denoiserName(reconstruction.mDenoiser) << " to " << extents.mOutputWidth << "x"
-                             << extents.mOutputHeight;
+                             << Rtx::denoiserName(report.mReconstruction.mDenoiser) << " to " << extents.mOutputWidth
+                             << "x" << extents.mOutputHeight;
         }
     }
 }

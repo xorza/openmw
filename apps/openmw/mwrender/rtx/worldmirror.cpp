@@ -106,8 +106,8 @@ namespace MWRender
 
     void WorldMirror::detach()
     {
-        // **The ring first, because its thread reads the storages the world owns.**
-        mRing.setContent(nullptr, nullptr, 0);
+        // **The ring first, because its thread reads the storages the world owns.** A world with
+        // nothing in it is what stops the thread and drops what it held.
         mRing.follow(Rtx::WorldAround{});
         mDistantLights.follow(Rtx::WorldAround{});
 
@@ -173,22 +173,29 @@ namespace MWRender
 
         // **The same eye, the same reach and the world's own grid, said once.** What the game has
         // stood for itself is what neither residency may stand again, and `Terrain::World` is where
-        // both renderers read that from. Told to each of them as one value: they read all six of
+        // both renderers read that from. Told to each of them as one value: they read all of
         // these, and a fact stated twice is one that can be stated differently.
+        //
+        // **The world inside it is the land the heights are read from, the loader the models come
+        // out of, and the template walk's own mask** — the three only the ring reads, stated here
+        // beside the two both residencies do rather than told to the ring by a call of its own.
         const Rtx::WorldAround around{
-            .mStorage = &frame.mObjectStorage,
-            .mWorldspace = frame.mTerrain.getWorldspace(),
+            .mWorld = {
+                .mStorage = &frame.mObjectStorage,
+                .mGround = frame.mTerrain.getStorage(),
+                .mContent = mContent.get(),
+                .mWorldspace = frame.mTerrain.getWorldspace(),
+                .mMask = templateTraversal(),
+            },
             .mEye = eye,
             .mReach = landReach(),
             .mActiveGrid = frame.mTerrain.getActiveGrid(),
             .mOutdoors = !frame.mWorld.isInteriorCell(),
         };
 
-        // **The land the world reads its heights from, the loader the models come out of, and the
-        // same switch the paging read.** With `object paging` off this renderer stands the
+        // **The same switch the paging read.** With `object paging` off this renderer stands the
         // distance's statics itself, and the harness's `--distant-statics` drives the one setting
         // either way. The ground stands whatever the switch says.
-        mRing.setContent(frame.mTerrain.getStorage(), mContent.get(), templateTraversal());
         mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
         mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
         mRing.setFrame(frameNumber);
@@ -205,9 +212,10 @@ namespace MWRender
         return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber);
     }
 
-    Rtx::SceneUpload WorldMirror::hand(Rtx::SceneSink& renderer, Resource::ImageManager& images)
+    Rtx::SceneUpload WorldMirror::hand(Rtx::SceneSink& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend)
     {
-        return mUploader.hand(renderer, Rtx::SceneSlot::world(), mScene, images, &mComposites, Rtx::SeaState{}, &mRing);
+        return mUploader.hand(
+            renderer, Rtx::SceneSlot::world(), mScene, images, &mComposites, Rtx::SeaState{}, &mRing, &spend);
     }
 
     void WorldMirror::settle()

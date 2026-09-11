@@ -236,7 +236,7 @@ namespace MWRender
     {
         if (mInto != nullptr)
         {
-            *mInto = describeRun();
+            *mInto = mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
             return;
         }
 
@@ -253,37 +253,19 @@ namespace MWRender
         const Camera& camera = *world.getRenderingManager()->getCamera();
         const MWWorld::TimeStamp now = world.getTimeStamp();
 
-        mStood = Note{
-            .mAt = camera.getPosition(),
-            .mFacing = camera.getOrient(),
-            .mHour = now.getHour(),
-            .mDay = now.getDay(),
-            .mWeather = world.getCurrentWeatherScriptId(),
-        };
-    }
+        const osg::Vec3d at = camera.getPosition();
 
-    Rtx::SessionResult Session::describeRun() const
-    {
-        Rtx::SessionResult result;
-        result.mExitStatus = mRecord.getExitStatus();
-        result.mPlaces.assign(mRecord.getPlaces().begin(), mRecord.getPlaces().end());
-        result.mReport = mRecord.getReport();
+        // Assigned field by field into the note it already holds, so the weather's string keeps
+        // its room from one frame to the next.
+        Rtx::Standing& stood = mStood.has_value() ? *mStood : mStood.emplace();
+        stood.mEye = osg::Vec3f(at);
 
-        if (!mStood.has_value())
-            return result;
-
-        result.mLeft = Rtx::Standing{
-            .mEye = osg::Vec3f(mStood->mAt),
-
-            // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a
-            // view file holds a `look`, and a landmark's distance is what makes one readable.
-            .mLook = osg::Vec3f(mStood->mAt + mStood->mFacing * osg::Vec3d(0.0, sLookAhead, 0.0)),
-            .mHour = mStood->mHour,
-            .mDay = mStood->mDay,
-            .mWeather = std::string(Rtx::weatherName(static_cast<std::uint32_t>(mStood->mWeather))),
-        };
-
-        return result;
+        // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a view
+        // file holds a `look`, and a landmark's distance is what makes one readable.
+        stood.mLook = osg::Vec3f(at + camera.getOrient() * osg::Vec3d(0.0, sLookAhead, 0.0));
+        stood.mHour = now.getHour();
+        stood.mDay = now.getDay();
+        stood.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(world.getCurrentWeatherScriptId()));
     }
 
     void Session::abandon(const std::string_view why)
@@ -668,7 +650,7 @@ namespace MWRender
         // **After the schedule has moved, because the note is of the frame about to be drawn.** The
         // route flies the eye and the turn crosses the sky above it, both between this call and the
         // trace — so a note taken before them describes a camera under a sky that no frame ever
-        // used. The last one taken is what `describeRun` publishes.
+        // used. The last one taken is what `RunRecord::describe` publishes.
         noteStanding();
     }
 
@@ -677,10 +659,10 @@ namespace MWRender
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mWalkTwice;
     }
 
-    void Session::frame(const TracedRun& run, const Rtx::FrameResult& result, const double frameMs,
-        const Rtx::FrameSpend& spend, const bool rebuilt)
+    void Session::frame(const FrameContext& context, const FrameReport& report)
     {
-        Rtx::Renderer& renderer = run.mBackend;
+        Rtx::Renderer& renderer = context.mHost.getBackend();
+        const double frameMs = report.mFrameMs;
 
         if (mDone || !mStarted)
             return;
@@ -704,9 +686,9 @@ namespace MWRender
         if (mProgress->mSeen <= warmup)
             return;
 
-        mProgress->mSamples.add(frameMs, spend);
-        mProgress->mSamples.addWait(result.mWaitMs);
-        mProgress->mGpu.add(result.mGpu);
+        mProgress->mSamples.add(frameMs, report.mSpend);
+        mProgress->mSamples.addWait(report.mResult->mWaitMs);
+        mProgress->mGpu.add(report.mResult->mGpu);
         mProgress->mWallMs += frameMs;
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
@@ -719,14 +701,14 @@ namespace MWRender
         if (const void* cell = MWBase::Environment::get().getWorld()->getPlayerPtr().getCell();
             mProgress->mCell != nullptr && cell != mProgress->mCell)
         {
-            mProgress->mCrossings.add(rebuilt, frameMs, 0.0);
+            mProgress->mCrossings.add(report.mRebuilt, frameMs, 0.0);
             mProgress->mCell = cell;
         }
 
         const Rtx::FrameExtents extents = renderer.getExtents();
         const double traced = static_cast<double>(extents.mRenderWidth) * extents.mRenderHeight;
         if (traced > 0.0)
-            mProgress->mHitPercent = static_cast<double>(result.mHits) / traced * 100.0;
+            mProgress->mHitPercent = static_cast<double>(report.mResult->mHits) / traced * 100.0;
 
         const std::uint32_t drawn = mProgress->mSeen - warmup;
 
@@ -734,19 +716,19 @@ namespace MWRender
         {
             renderer.readPixels(mHeld->mPixels);
 
-            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(run.mScene.getTables()));
+            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(context.mScene.getTables()));
         }
 
         if (drawn < measured)
             return;
 
-        endStop(run, result.mReconstruction);
+        endStop(context, report);
     }
 
-    void Session::endStop(const TracedRun& run, const Rtx::Reconstruction& reconstruction)
+    void Session::endStop(const FrameContext& context, const FrameReport& report)
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
-        Rtx::Renderer& renderer = run.mBackend;
+        Rtx::Renderer& renderer = context.mHost.getBackend();
 
         mHeld->mProfiling->disable();
 
@@ -769,7 +751,7 @@ namespace MWRender
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
-        mHeld->mWriter.write(run, reconstruction, stop.mActions,
+        mHeld->mWriter.write(context, report, stop.mActions,
             StopFacts{ .mCrossings = mProgress->mCrossings, .mStand = stop.mStand }, mRecord);
 
         Rtx::BenchPlace place;

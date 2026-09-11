@@ -26,7 +26,8 @@ namespace Rtx
     {
         // **What is read is a fact about the world and not about where the eye is**, so only a
         // change of the content or of the worldspace empties what has been read.
-        const bool changed = mAround.mStorage != around.mStorage || mAround.mWorldspace != around.mWorldspace;
+        const bool changed = mAround.mWorld.mStorage != around.mWorld.mStorage
+            || mAround.mWorld.mWorldspace != around.mWorld.mWorldspace;
 
         mAround = around;
 
@@ -42,13 +43,13 @@ namespace Rtx
     osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell) const
     {
         std::vector<Terrain::PagedCellRef> refs;
-        mAround.mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mAround.mWorldspace, refs);
+        mAround.mWorld.mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mAround.mWorld.mWorldspace, refs);
 
         osg::ref_ptr<osg::Group> group;
 
         for (const Terrain::PagedCellRef& ref : refs)
         {
-            const std::optional<SceneUtil::LightCommon> light = mAround.mStorage->getLight(ref.mRefId);
+            const std::optional<SceneUtil::LightCommon> light = mAround.mWorld.mStorage->getLight(ref.mRefId);
 
             // **A reference naming no record is the content's to answer for**, and the game draws
             // nothing for one either. Nothing is invented here to stand in its place.
@@ -78,12 +79,12 @@ namespace Rtx
         return group;
     }
 
-    ResidencyCount DistantLights::collect(Collector& into)
+    void DistantLights::collect(SceneAdopter& into, ExtractionStats&)
     {
-        // **Nothing to report, ever.** What this stands is lights, which the walk counts as it
-        // places each of them, and it owns no mesh and no material row.
-        if (mAround.mStorage == nullptr || !mAround.mOutdoors)
-            return ResidencyCount{};
+        // **Nothing to add to the stats, ever.** What this stands is lights, which the walk counts
+        // as it places each of them, and it owns no mesh and no material row.
+        if (mAround.mWorld.mStorage == nullptr || !mAround.mOutdoors)
+            return;
 
         const int reach = static_cast<int>(std::ceil(mAround.mReach / Constants::CellSizeInUnits));
         const osg::Vec2i eye = cellOf(mAround.mEye);
@@ -115,7 +116,5 @@ namespace Rtx
                 if (found->mLights != nullptr)
                     into.take(*found->mLights);
             }
-
-        return ResidencyCount{};
     }
 }

@@ -58,7 +58,7 @@ namespace Rtx
         /// **Read off what the slot is and not off a count**, because a slot is taken before it is
         /// named: a caller that asked the count would find a texture it was in the middle of
         /// building.
-        bool isFree(Index texture) const { return mSlots.at(texture).mKind == Kind::Free; }
+        bool isFree(Index texture) const { return mSlots.at(texture) == Kind::Free; }
 
         /// The file each slot names, empty where it names none.
         std::span<const VFS::Path::Normalized> getPaths() const { return mPaths; }
@@ -81,6 +81,13 @@ namespace Rtx
 
     private:
         /// What stands in a slot, and so which of the two name tables carries its name.
+        ///
+        /// **The row itself, stated rather than deduced.** A slot is a file or a bake and never
+        /// both, and asking two names which one it is spells that invariant out at every call
+        /// instead of holding it. What else is true of a slot — how many things name it — is the
+        /// hold count `SlotRows` keeps beside every row, so an empty name and a count of nought say
+        /// the same thing, except in the window between `add` and whatever is about to name what
+        /// it returned.
         enum class Kind : std::uint8_t
         {
             Free,
@@ -92,26 +99,6 @@ namespace Rtx
             Baked,
         };
 
-        /// Everything true of a slot that is not its name.
-        ///
-        /// **One row and not two arrays**, because the two are written by the same three calls: a
-        /// slot is taken and named together, and given back together.
-        struct Slot
-        {
-            /// How many things name it.
-            ///
-            /// **Kept beside the name rather than read off it.** A slot's name is cleared when the
-            /// last reference goes and the slot goes onto the free list — so an empty name and a
-            /// count of nought say the same thing, except in the window between `add` and whatever
-            /// is about to name what it returned.
-            std::uint32_t mRefs = 0;
-
-            /// **Which of the two named it, stated rather than deduced.** A slot is a file or a
-            /// bake and never both, and asking two names which one it is spells that invariant out
-            /// at every call instead of holding it.
-            Kind mKind = Kind::Free;
-        };
-
         /// A free slot where there is one, a new row otherwise. The caller names it; this only
         /// finds it somewhere to stand.
         Index takeSlot();
@@ -120,7 +107,7 @@ namespace Rtx
         std::vector<std::string> mBaked;
 
         /// Parallel to both, one row a slot, and the slots nothing stands in.
-        SlotRows<Slot> mSlots;
+        SlotRows<Kind> mSlots;
 
         SlotChanges mChanges;
 

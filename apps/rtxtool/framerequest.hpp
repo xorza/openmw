@@ -34,7 +34,7 @@ namespace RtxTool
     /// may fix either and the command line may overrule it — `stopFor` is where the two meet.
     struct FrameRequest
     {
-        /// The size the frame is presented at. What it is traced at follows from `mProfile.mUpscale`.
+        /// The size the frame is presented at. What it is traced at follows from `mProfile.mUpscaling`.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;
         float mFieldOfView = 60.0f;
@@ -63,6 +63,6 @@ namespace RtxTool
         /// **Held whole rather than spelled out again.** Everything above is the engine's — a
         /// window, a camera, how much world to build — and everything the trace decides is one type
         /// that the game reads out of `[RTX]` and this fills from the command line.
-        Rtx::RenderProfile mProfile{ .mUpscale = sUpscaleByDefault };
+        Rtx::RenderProfile mProfile{ .mUpscaling = { .mMode = sUpscaleByDefault } };
     };
 }

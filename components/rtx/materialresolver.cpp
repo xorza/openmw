@@ -81,21 +81,16 @@ namespace Rtx
         return entry->second.mStateSet;
     }
 
-    Known* MaterialResolver::find(const osg::StateSet* const key)
-    {
-        const auto known = mMaterials.find(key);
-        return known == mMaterials.end() ? nullptr : &known->second;
-    }
-
     Index MaterialResolver::reuse(const osg::StateSet* const key)
     {
-        Known* const held = find(key);
-        if (held == nullptr)
+        const auto known = mMaterials.find(key);
+        if (known == mMaterials.end())
             return sNoIndex;
 
-        stampReused(*held);
+        ++mPass.getStats().mMaterialsReused;
+        mMaterials.stamp(known);
 
-        return held->mIndex;
+        return known->second.mIndex;
     }
 
     Index MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
@@ -150,16 +145,35 @@ namespace Rtx
         return reading;
     }
 
-    MaterialResolver::Resolved MaterialResolver::adopt(const MaterialReading& reading)
+    Index MaterialResolver::adopt(const MaterialReading& reading)
     {
         if (reading.mKey == nullptr)
-            return Resolved{};
+            return sNoIndex;
 
-        if (const Index held = reuse(reading.mKey); held != sNoIndex)
-            return Resolved{ .mIndex = held, .mKey = reading.mKey };
+        auto known = mMaterials.find(reading.mKey);
+        if (known != mMaterials.end())
+        {
+            ++mPass.getStats().mMaterialsReused;
+            mMaterials.stamp(known);
+        }
+        else
+        {
+            adopt(reading.mKey, describe(reading.mDescribed, false, reading.mDiffuseSolid));
+            known = mMaterials.find(reading.mKey);
+        }
 
-        return Resolved{ .mIndex = adopt(reading.mKey, describe(reading.mDescribed, false, reading.mDiffuseSolid)),
-            .mKey = reading.mKey };
+        mMaterials.hold(known);
+        return known->second.mIndex;
+    }
+
+    void MaterialResolver::release(const osg::StateSet* const key)
+    {
+        if (key == nullptr)
+            return;
+
+        const auto known = mMaterials.find(key);
+        assert(known != mMaterials.end() && "a material released that the mirror does not hold");
+        mMaterials.drop(known);
     }
 
     MaterialResolver::Resolved MaterialResolver::resolve(std::span<const Shading> shading)
@@ -302,9 +316,9 @@ namespace Rtx
         return material;
     }
 
-    std::uint32_t MaterialResolver::retire(std::vector<Index>& live)
+    void MaterialResolver::retire(std::vector<Index>& live)
     {
-        return mMaterials.sweep(live);
+        mMaterials.sweep(live);
     }
 
     void MaterialResolver::retireHolds()

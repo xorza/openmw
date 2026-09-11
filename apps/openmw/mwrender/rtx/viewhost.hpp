@@ -6,11 +6,13 @@
 namespace osg
 {
     class FrameStamp;
+    class Group;
 }
 
 namespace Resource
 {
     class ImageManager;
+    class ResourceSystem;
 }
 
 namespace Rtx
@@ -62,6 +64,13 @@ namespace MWRender
 
         /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
         virtual std::optional<PoseMoment> describePose() = 0;
+
+        /// The world's resources, or null before there is a world. Where a picture of its own
+        /// subject reads its textures from.
+        virtual Resource::ResourceSystem* getResources() = 0;
+
+        /// Whatever is topmost, or null. For a picture of the world that has to be told what to draw.
+        virtual osg::Group* getSceneRoot() = 0;
 
         /// Draws `view` on the next frame that has a world in it.
         virtual void deferRedraw(TracedView& view) = 0;

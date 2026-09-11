@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 
 #include <osg/Image>
 #include <osg/ref_ptr>
@@ -41,12 +42,17 @@ namespace Rtx
         /// draws the stand-in for. Nothing above is meaningful then.
         bool mReadable = false;
 
+        /// How many lent models and cells name it. The reader's count, and given back with the last
+        /// of them — `PreparedModel::mLent` is the same count for a model.
+        std::uint32_t mLent = 0;
+
         /// Makes room for the next image. The chain keeps its bytes.
         void reuse()
         {
             mImage = nullptr;
             mPath.clear();
             mReadable = false;
+            mLent = 0;
         }
     };
 }

@@ -11,13 +11,11 @@ namespace Rtx
         // One size, so any freed slot will do — the array element it names is written over wherever
         // it sits, which is what the arrivals list is for. The two name tables and the change list
         // follow the rows in the same call, because all four are indexed by the slot.
-        const Index index = mSlots.take(Slot{}, [this](const std::size_t slots) {
+        const Index index = mSlots.take(Kind::Free, [this](const std::size_t slots) {
             mPaths.resize(slots);
             mBaked.resize(slots);
             mChanges.grow(slots);
         });
-
-        assert(mSlots.at(index).mRefs == 0 && "a free slot something still names");
 
         return index;
     }
@@ -30,7 +28,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mPaths[index] = path;
-        mSlots.at(index).mKind = Kind::File;
+        mSlots.at(index) = Kind::File;
 
         mPathIndex.emplace(path, index);
         mChanges.note(index, SlotNews::Arrived);
@@ -47,7 +45,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mBaked[index] = key;
-        mSlots.at(index).mKind = Kind::Baked;
+        mSlots.at(index) = Kind::Baked;
 
         mBakedIndex.emplace(key, index);
         mChanges.note(index, SlotNews::Arrived);
@@ -59,7 +57,7 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        ++mSlots.at(texture).mRefs;
+        mSlots.hold(texture);
     }
 
     void TextureTable::drop(const Index texture)
@@ -67,15 +65,14 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        Slot& slot = mSlots.at(texture);
-        assert(slot.mRefs > 0 && "a texture given back more often than it was taken");
-
-        if (--slot.mRefs > 0)
+        if (!mSlots.drop(texture))
             return;
+
+        Kind& kind = mSlots.at(texture);
 
         // The name leaves the lookup with the slot, or the next reference to it resolves to a slot
         // nothing is standing in.
-        switch (slot.mKind)
+        switch (kind)
         {
             case Kind::File:
                 mPathIndex.erase(mPaths[texture]);
@@ -90,7 +87,7 @@ namespace Rtx
                 break;
         }
 
-        slot.mKind = Kind::Free;
+        kind = Kind::Free;
         mSlots.free(texture);
         mChanges.note(texture, SlotNews::Freed);
     }

@@ -29,6 +29,7 @@ struct SDL_Window;
 
 namespace Rtx
 {
+    class MeshTable;
     struct SceneTables;
 
     /// Developer instrumentation. Nobody enables any of this in a run they care about the frame rate
@@ -96,20 +97,15 @@ namespace Rtx
         /// every pipeline compiled from source every run.
         std::filesystem::path mCacheDirectory;
 
-        /// The size the frame is **presented** at. What it is traced at follows from `mUpscale`.
+        /// The size the frame is **presented** at. What it is traced at follows from
+        /// `mUpscaling.mMode`.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;
 
-        /// Fixed for the renderer's lifetime: an upscaler is brought up once and sized per
-        /// resolution, and a build that has none refuses anything but `Off` at construction.
-        Upscale mUpscale = Upscale::Off;
-
-        /// Which network the upscaler runs, where one runs at all.
-        ///
-        /// **Pinned rather than left to the library**, which is what makes two runs comparable: the
-        /// default has changed between SDK versions and again between the convolutional and
-        /// transformer models, so a frame reconstructed under it is a frame nobody can reproduce.
-        Preset mPreset = Preset::D;
+        /// What the upscaler is built with. The mode is fixed for the renderer's lifetime bar
+        /// `FrameSource::setUpscale`: an upscaler is brought up once and sized per resolution, and a
+        /// build that has none refuses anything but `Off` at construction.
+        Upscaling mUpscaling;
 
         /// Where the frame is shown, or null for a renderer that only reads pixels back.
         ///
@@ -217,6 +213,31 @@ namespace Rtx
         /// What to trace against: a slot `addViewScene` gave out, or the world's for the one the
         /// frame is drawn from. A map tile is a picture of the world; a doll is not.
         SceneSlot mScene = SceneSlot::world();
+    };
+
+    /// What a backend built one of its scenes from, as it says so itself.
+    ///
+    /// **The backend's answer and not the uploader's memo.** The uploader used to keep the
+    /// renderer, the scene, the slot, the texture count and the revision it last handed over, and
+    /// ask the backend its count to compare — whether a backend still holds this scene was answered
+    /// on both sides of the seam, with nothing holding the two in step. The backend is the one that
+    /// holds, so the backend says: which scene's tables, at which revision, and how long its
+    /// texture table is.
+    struct SceneHeld
+    {
+        /// The mesh table the scene was built from, which is what identifies a `SceneDesc` for as
+        /// long as it lives, or null where this slot holds nothing.
+        const MeshTable* mScene = nullptr;
+
+        /// `SceneTables::getStructureRevision` as it stood at the last `setScene` or `extendScene`.
+        std::uint64_t mStructureRevision = 0;
+
+        /// How long the texture table is, which is where an `extendScene`'s arrivals begin.
+        ///
+        /// **The length and not the tally.** A slot the scene gave back keeps its place so that
+        /// nothing above it is renumbered, and it stands nothing — `SceneStats::mTextureCount` is
+        /// how many there actually are, and the two differ by every slot a walked-away region left.
+        std::uint32_t mTextureCount = 0;
     };
 
     /// What a backend reports about the scene it took. The harness's summary line, as a struct.
@@ -337,30 +358,24 @@ namespace Rtx
         /// carries it to a caller. An interior has no hour and keeps the one here.
         float mExposureBias = 1.0f;
 
-        /// Whether to move the primary ray inside its pixel, by where the frame index falls in a
-        /// Halton sequence.
+        /// What the frame asks of the reconstruction, before the upscaler has its say.
         ///
-        /// Overwrites the camera's own `mJitter`, which is otherwise left as the caller wrote it —
-        /// zero for anything `makeCamera` made, and an exact offset where something wants one.
+        /// `mJitter` moves the primary ray inside its pixel, by where the frame index falls in a
+        /// Halton sequence. It overwrites the camera's own `mJitter`, which is otherwise left as the
+        /// caller wrote it — zero for anything `makeCamera` made, and an exact offset where something
+        /// wants one. **Off unless something is putting the frames back together**: a jittered frame
+        /// on its own is the same picture sampled slightly wrong; it is only worth anything to an
+        /// upscaler reconstructing from several, or to a sum that averages them into an antialiased
+        /// one.
         ///
-        /// **Off unless something is putting the frames back together.** A jittered frame on its own
-        /// is the same picture sampled slightly wrong; it is only worth anything to an upscaler
-        /// reconstructing from several, or to a sum that averages them into an antialiased one.
+        /// `mFilter` runs the denoiser over the indirect channel. **Off is how the answer it is
+        /// judged against gets made**: a converged reference is the average of enough unbiased
+        /// samples, and a filtered sample is not one of those — so a thousand filtered frames
+        /// converge on the filter's opinion rather than on the truth.
         ///
-        /// **Ignored while the renderer is upscaling**, which always jitters: reconstruction from
-        /// several frames of the same sample point is reconstruction from one sample.
-        bool mJitter = false;
-
-        /// Whether the denoiser runs over the indirect channel.
-        ///
-        /// **Off is how the answer it is judged against gets made.** A converged reference is the
-        /// average of enough unbiased samples, and a filtered sample is not one of those — so a
-        /// thousand filtered frames converge on the filter's opinion rather than on the truth.
-        ///
-        /// **Ignored while the renderer is upscaling**, which denoises for itself: Ray
-        /// Reconstruction reconstructs detail from the raw bounce, and handing it a frame already
-        /// blurred is asking it to recover what was thrown away.
-        bool mFilter = true;
+        /// **Both are overruled while the renderer is upscaling**, which always jitters and denoises
+        /// for itself — `Reconstruction::resolve` is the rule and reports what it overruled.
+        ReconstructionRequest mReconstruction;
 
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame itself.
@@ -374,7 +389,7 @@ namespace Rtx
 
         /// What a run decided once, and what this frame stands for.
         ///
-        /// **Made and not filled in field by field.** Three of the fields above are a
+        /// **Made and not filled in field by field.** Two of the fields above are a
         /// `RenderProfile`'s, and the one call site that wrote them out one at a time carried the
         /// exposure and dropped the filter, the jitter and the accumulation — three switches a
         /// player and the harness could both ask for and neither could get. A field the profile
@@ -391,8 +406,7 @@ namespace Rtx
                 .mAccumulate = accumulate,
                 .mSinceLast = sinceLast,
                 .mExposureBias = exposureBias,
-                .mJitter = profile.mJitter,
-                .mFilter = profile.mFilter,
+                .mReconstruction = profile.mReconstruction,
                 .mExposure = profile.mExposure,
             };
         }
@@ -501,12 +515,8 @@ namespace Rtx
             SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived, const SeaState& sea)
             = 0;
 
-        /// How long the renderer's texture table is, which is where `extendScene`'s `arrived` begins.
-        ///
-        /// **The length and not the tally.** A slot the scene gave back keeps its place so that
-        /// nothing above it is renumbered, and it stands nothing — `SceneStats::mTextureCount` is
-        /// how many there actually are, and the two differ by every slot a walked-away region left.
-        virtual std::uint32_t getTextureCount(SceneSlot slot) const = 0;
+        /// What this slot was last built from, and how far it has been extended since.
+        virtual SceneHeld describeHeld(SceneSlot slot) const = 0;
 
         /// Destroys the images of the texture slots a scene has given up.
         ///
@@ -535,9 +545,6 @@ namespace Rtx
         /// `scene` must be the tables of the scene `setScene` was given, with `clearPlacement` called and the
         /// instances re-walked: the placements index into structures this already holds.
         virtual void placeScene(SceneSlot slot, const SceneTables& scene, const SeaState& sea) = 0;
-
-        /// Only meaningful once `setScene` has been called.
-        virtual const SceneStats& getSceneStats() const = 0;
 
         /// A scene of its own for a picture inside the interface to be traced against.
         ///
@@ -773,6 +780,10 @@ namespace Rtx
         /// `SceneStats` cannot put, because that counts what the scene is and this counts what the
         /// device gave up for it.
         virtual MemoryReport getMemoryReport() const = 0;
+
+        /// What the world scene is made of, as the backend last placed it. Only meaningful once
+        /// `SceneSink::setScene` has been called for the world.
+        virtual const SceneStats& getSceneStats() const = 0;
 
         /// Copies the traced image into `pixels`, four bytes per pixel, tightly packed.
         /// Not const: it submits a copy and waits for it.

@@ -159,11 +159,13 @@ if (OPENMW_RTX)
         rtx/parallel.cpp
         rtx/pipelinecache.cpp
         rtx/probe.cpp
+        rtx/mirroridentity.cpp
         rtx/reconstruction.cpp
         rtx/requirements.cpp
         rtx/result.cpp
         rtx/runallocator.cpp
         rtx/scenedesc.cpp
+        rtx/slotrows.cpp
         rtx/extractor/fixture.hpp
         rtx/extractor/lights.cpp
         rtx/extractor/materials.cpp

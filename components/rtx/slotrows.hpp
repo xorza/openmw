@@ -11,12 +11,18 @@
 
 namespace Rtx
 {
-    /// A table of fixed-size rows: the rows, the slots nothing stands in, and the sweep.
+    /// A table of fixed-size rows: the rows, the slots nothing stands in, what holds each, and the
+    /// sweep.
     ///
     /// **One type, because six tables held the same three rules.** Each kept a row vector beside a
     /// free list, and two of them spelled the taking out by hand because they carry arrays parallel
     /// to the rows that a shared helper had no way to reach. `take`'s growth hook is what reaches
     /// them.
+    ///
+    /// **And one hold count, because four of them counted holders by hand.** A texture is named by
+    /// materials, a rig by the meshes on it, a ground row by the residency that stood it; each is a
+    /// count beside the row that says whether the row may go, and each was a field of its own with
+    /// a name of its own. The count lives here, the table decides what a count of nought means.
     ///
     /// **A slot is never moved and never closed up.** A mesh index names a bottom-level
     /// acceleration structure and a texture index is what a material points at, so a dropped row
@@ -52,7 +58,7 @@ namespace Rtx
             return mRows[slot];
         }
 
-        /// Puts `row` in a free slot, or in a new one.
+        /// Puts `row` in a free slot, or in a new one. The slot arrives with no holds.
         ///
         /// @param grew called with the table's new length wherever the table grew, so a caller
         ///        holding arrays parallel to this one follows in the same call. `TextureTable`
@@ -64,11 +70,13 @@ namespace Rtx
             if (index == sNoIndex)
             {
                 mRows.push_back(row);
+                mHolds.push_back(0);
                 grew(mRows.size());
 
                 return static_cast<Index>(mRows.size() - 1);
             }
 
+            assert(mHolds[index] == 0 && "a free slot something still holds");
             mRows[index] = row;
 
             return index;
@@ -83,10 +91,46 @@ namespace Rtx
         void free(Index slot)
         {
             assert(slot < mRows.size());
+            assert(mHolds[slot] == 0 && "a slot freed while something holds it");
             mFree.free(slot);
         }
 
-        /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
+        /// Counts one more holder of `slot`.
+        void hold(Index slot)
+        {
+            assert(slot < mRows.size());
+            ++mHolds[slot];
+        }
+
+        /// Counts one holder off `slot`, and says whether that was the last.
+        ///
+        /// **What the last one means is the table's to decide**: a texture frees the slot on the
+        /// spot, a rig with it, and a mesh or a material row waits for the sweep — which is what
+        /// `hasDroppedHolds` tells the caller it owes.
+        bool drop(Index slot)
+        {
+            assert(slot < mRows.size());
+            assert(mHolds[slot] > 0 && "a slot given back more often than it was held");
+
+            if (--mHolds[slot] != 0)
+                return false;
+
+            mDroppedHolds = true;
+            return true;
+        }
+
+        std::uint32_t getHolds(Index slot) const
+        {
+            assert(slot < mRows.size());
+            return mHolds[slot];
+        }
+
+        /// Whether a hold went to nought since the last `mark`, so that a sweep gated on some other
+        /// count still runs for it.
+        bool hasDroppedHolds() const { return mDroppedHolds; }
+
+        /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named or
+        /// a hold keeps.
         ///
         /// **Apart from `sweep`, because a scene marks two tables and frees neither where both came
         /// back whole.**
@@ -109,10 +153,19 @@ namespace Rtx
                 mKept[index] = 1;
             }
 
+            // A held row is a survivor whether or not anything named it.
+            for (Index index = 0; index < mRows.size(); ++index)
+                if (mHolds[index] != 0 && mKept[index] == 0)
+                {
+                    mKept[index] = 1;
+                    ++distinct;
+                }
+
             // A slot already free is one nothing may free again.
             for (const Index index : mFree.getSlots())
                 mKept[index] = 1;
 
+            mDroppedHolds = false;
             return distinct;
         }
 
@@ -143,6 +196,9 @@ namespace Rtx
     private:
         std::vector<Row> mRows;
 
+        /// How many things hold each row, parallel to the rows.
+        std::vector<std::uint32_t> mHolds;
+
         /// The slots nothing stands in.
         SlotPool mFree;
 
@@ -152,5 +208,7 @@ namespace Rtx
         /// that is already giving thousands of runs back to the allocators, and the last one that
         /// should also be sizing a buffer to the whole table.
         std::vector<std::uint8_t> mKept;
+
+        bool mDroppedHolds = false;
     };
 }
