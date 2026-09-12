@@ -6,14 +6,11 @@
 
 #include <osg/Vec3f>
 
-#include "index.hpp"
-#include "meshrange.hpp"
-#include "runallocator.hpp"
-#include "runbuffer.hpp"
+#include "mesh.hpp"
+#include "runs.hpp"
 #include "shaders/scene.h"
 #include "shaders/skinning.h"
-#include "slotrows.hpp"
-#include "slotset.hpp"
+#include "slots.hpp"
 
 namespace Rtx
 {

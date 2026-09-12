@@ -5,11 +5,10 @@
 #include <cmath>
 #include <cstddef>
 
-#include "colourblock.hpp"
+#include "colour.hpp"
 #include "error.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
-#include "srgb.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx

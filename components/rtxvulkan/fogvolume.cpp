@@ -2,7 +2,11 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <span>
+#include <vector>
 
+#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/shaders/fogvolume.h>
 #include <components/rtx/shaders/scene.h>
 
@@ -12,6 +16,33 @@
 
 namespace Rtx
 {
+    FogTile::FogTile(const Device& device, CommandPool& pool)
+        : mField(device, Shaders::FOG_FIELD_SIZE, Shaders::FOG_FIELD_SIZE, VK_FORMAT_R8G8_UNORM,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "fog field", Shaders::FOG_FIELD_LEVELS,
+            Shaders::FOG_FIELD_SIZE)
+        , mSampler(makeContentSampler(device, "fog field"))
+    {
+        const FogNoise noise = bakeFogNoise();
+
+        // **Every level uploaded rather than halved from the one above.** A chain `buildMips` made
+        // would be the mean of what is over it and nothing else, and this field's levels are each
+        // stretched back to one spread — `bakeFogNoise` says why that is what a coverage band needs.
+        // It could not make one for a volume in any case. Seventy-three kilobytes cross the bus once
+        // for the life of the device.
+        std::vector<VkBufferImageCopy> regions;
+        regions.reserve(Shaders::FOG_FIELD_LEVELS);
+        for (std::uint32_t level = 0; level < Shaders::FOG_FIELD_LEVELS; ++level)
+            regions.push_back(VkBufferImageCopy{
+                .bufferOffset = noise.mOffsets[level],
+                .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },
+                .imageExtent = { mField.getWidthAt(level), mField.getHeightAt(level), mField.getDepthAt(level) },
+            });
+
+        Batch batch(pool);
+        uploadImage(device, batch, mField, std::as_bytes(std::span(noise.mBytes)), regions);
+        batch.flush();
+    }
+
     namespace
     {
         /// Half floats, and the range is what makes them enough.
@@ -62,7 +93,7 @@ namespace Rtx
                     | VK_SHADER_STAGE_MISS_BIT_KHR,
                 nullptr };
 
-        return SetLayout(device, bindings);
+        return makeSetLayout(device, bindings);
     }
 
     FogVolume::FogVolume(
@@ -84,7 +115,7 @@ namespace Rtx
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column depth")
         , mColumnMoons(device, mColumns, mRows, FOG_MOONS_FORMAT,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column moons", 1, Shaders::MOON_COUNT)
-        , mSampler(Sampler::forTarget(device, "fog volume"))
+        , mSampler(makeTargetSampler(device, "fog volume"))
     {
         const auto sets = static_cast<std::uint32_t>(mSets.size());
         const std::array<VkDescriptorPoolSize, 2> sizes{
@@ -100,7 +131,7 @@ namespace Rtx
         checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, mPool.put(device.getHandle())),
             "vkCreateDescriptorPool");
 
-        const std::array<VkDescriptorSetLayout, 2> shapes{ layout.getHandle(), layout.getHandle() };
+        const std::array<VkDescriptorSetLayout, 2> shapes{ layout.get(), layout.get() };
         const VkDescriptorSetAllocateInfo allocate{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
             .descriptorPool = mPool.get(),

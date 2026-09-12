@@ -7,11 +7,11 @@
 
 #include <osg/Vec3f>
 
-#include <components/rtx/index.hpp>
-#include <components/rtx/meshrange.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
-#include <components/rtx/slotset.hpp>
+#include <components/rtx/slots.hpp>
 #include <components/rtxvulkan/blockedbuffer.hpp>
 #include <components/rtxvulkan/bottomlevelstore.hpp>
 #include <components/rtxvulkan/commands.hpp>
@@ -61,15 +61,15 @@ namespace Rtx
             void stage()
             {
                 const Device& device = getDevice();
-                const SceneTables tables = mScene.getTables();
+                const SceneDesc& tables = mScene;
 
                 mPoses.open(device, 1, sBuildInputUsage, "poses");
                 mIndices.open(device, sBuildInputUsage, "indices");
 
                 Batch setup(getPool());
-                mIndices.reserve(setup, static_cast<std::uint32_t>(tables.mMeshes.getIndices().size()));
-                for (const MeshRange& range : tables.mMeshes.getRows())
-                    mIndices.writeAt(setup, range.mIndices.mOffset, range.mIndices.in(tables.mMeshes.getIndices()));
+                mIndices.reserve(setup, static_cast<std::uint32_t>(tables.meshes().getIndices().size()));
+                for (const MeshRange& range : tables.meshes().getRows())
+                    mIndices.writeAt(setup, range.mIndices.mOffset, range.mIndices.in(tables.meshes().getIndices()));
                 orderStagedWrites(setup);
                 setup.flush();
 
@@ -79,7 +79,7 @@ namespace Rtx
             void build(BottomLevelStore& store, std::span<const Index> meshes, Graveyard& graveyard)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene.getTables(), meshes, mPoses.at(FrameSlot{}), mIndices, graveyard);
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, graveyard);
                 batch.flush();
             }
 

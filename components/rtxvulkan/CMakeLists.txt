@@ -184,8 +184,6 @@ set(RTX_VULKAN_FILES
     dispatch.hpp
     exposurepass.cpp
     exposurepass.hpp
-    fogtile.cpp
-    fogtile.hpp
     fogvolume.cpp
     fogvolume.hpp
     framehistory.hpp
@@ -211,14 +209,14 @@ set(RTX_VULKAN_FILES
     instance.hpp
     memory.cpp
     memory.hpp
+    handles.cpp
+    handles.hpp
     owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
     placing.hpp
     pipelinecache.cpp
     pipelinecache.hpp
-    pipelinelayout.cpp
-    pipelinelayout.hpp
     presenter.cpp
     presenttargets.cpp
     presenttargets.hpp
@@ -227,22 +225,14 @@ set(RTX_VULKAN_FILES
     requirements.hpp
     result.cpp
     result.hpp
-    sampler.cpp
-    sampler.hpp
     sceneacceleration.cpp
     sceneacceleration.hpp
     scenebuffers.cpp
     scenebuffers.hpp
-    setlayout.cpp
-    setlayout.hpp
-    shadermodule.cpp
-    shadermodule.hpp
     skinpass.cpp
     skinpass.hpp
-    spritebinpass.cpp
-    spritebinpass.hpp
-    spriteshadepass.cpp
-    spriteshadepass.hpp
+    spritepasses.cpp
+    spritepasses.hpp
     skintables.cpp
     skintables.hpp
     slottable.hpp

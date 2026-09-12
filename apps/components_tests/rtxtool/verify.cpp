@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <apps/rtxtool/verify.hpp>
-#include <components/rtx/png.hpp>
+#include <components/rtx/texels.hpp>
 
 namespace RtxTool
 {

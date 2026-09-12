@@ -11,8 +11,8 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/index.hpp>
-#include <components/rtx/slotset.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/slots.hpp>
 
 #include "blockedbuffer.hpp"
 #include "device.hpp"
@@ -21,22 +21,11 @@
 
 namespace Rtx
 {
-    /// One host-side table and one device copy of it per frame in flight.
-    ///
-    /// **A copy is behind because something wrote a row, and for no other reason.** That sentence is
-    /// the whole of what this type exists to make true. A copy's debt derived from the scene's own
-    /// change lists — `getMoved`, `getSettled`, `getDeformed` — replayed at every table rests on
-    /// four things nothing checks: that every site subscribes to the same lists, that the lists are
-    /// still current when each site runs, that every writer settles exactly once, and that a
-    /// table's growth path agrees with its debt about when a copy was filled whole. Each of those
-    /// fails silently, as a frame of wrong geometry.
-    ///
-    /// Here there is nothing to subscribe to and no list whose lifetime matters. `write` marks the
-    /// row owed by every copy; `sync` pays one copy's debt and clears it, in one loop, in one place.
-    ///
-    /// **The host rows are the truth and the copies are derived from them.** So a row is computed
-    /// once however many copies take it, and a copy filled whole and a copy given three rows are the
-    /// same code reading the same array.
+    /// One host-side table and one device copy of it per frame in flight. A copy is behind because
+    /// something wrote a row, and for no other reason: `write` marks the row owed by every copy and
+    /// `sync` pays one copy's debt, in one place, where a debt derived from the scene's change
+    /// lists replayed at every table failed silently as a frame of wrong geometry. The host rows
+    /// are the truth, so a row is computed once however many copies take it.
     template <class Row>
     class SlotTable
     {
@@ -69,18 +58,9 @@ namespace Rtx
             return mRows[at];
         }
 
-        /// Makes the table `rows` long, value-initialising anything appended.
-        ///
-        /// **What is appended is owed and what was already there is not.** A row keeps its offset
-        /// when the table grows, so a copy that has row seven still has it; only the rows past its
-        /// old end are news to it. A copy whose *buffer* has to be made again is a different
-        /// question, and `sync` is where that one is asked.
-        ///
-        /// **And what is dropped is forgotten, because a debt is what `sync` reads the rows with.**
-        /// A copy still owing row five when the table falls to two rows sends `sync` indexing past
-        /// the end of `mRows`, and the debt's own flags still reach that far, so `SlotSet` catches
-        /// nothing either. This is the one place the row count changes, and so the only place that
-        /// can say so.
+        /// Makes the table `rows` long, value-initialising anything appended. What is appended is
+        /// owed and what was already there is not; what is dropped is forgotten, or a copy still
+        /// owing a row past the new end would send `sync` indexing past `mRows`.
         void resize(std::size_t rows)
         {
             const std::size_t had = mRows.size();
@@ -105,11 +85,8 @@ namespace Rtx
                 mOwed[slot].owe(mAppended);
         }
 
-        /// Whether `slot`'s copy would change if it were synced now.
-        ///
-        /// **What an early return asks.** A caller that skips work when nothing has changed has to
-        /// ask the copy it would have written, not the scene it would have read: a copy can carry a
-        /// debt from frames ago while the scene stands perfectly still.
+        /// Whether `slot`'s copy would change if it were synced now — what an early return asks,
+        /// because a copy can carry a debt from frames ago while the scene stands still.
         bool owes(FrameSlot slot) const
         {
             assert(slot.get() < mSlots);
@@ -129,16 +106,9 @@ namespace Rtx
             RowDebt& owed = mOwed[slot.get()];
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
-            // **A copy made again is empty whatever the debt says**, so a growth that reallocates
-            // is itself a reason to write the whole table.
-            //
-            // **Asked only where it does not fit**, and doubled when it is asked, so a table that
-            // keeps growing is made again a logarithmic number of times rather than once an arrival.
-            // Doubling unconditionally is doubling every frame: `growTo` remakes whatever it is
-            // asked for that is larger than what it has, and twice the size always is.
-            //
-            // A byte where the table is empty, because a descriptor with nothing bound to it is
-            // undefined rather than blank. `growTo` is where that rule lives.
+            // A copy made again is empty whatever the debt says. Doubled only where it does not
+            // fit, because `growTo` remakes whatever is larger than what it has. A byte where the
+            // table is empty, because a descriptor with nothing bound is undefined rather than blank.
             const VkDeviceSize least = std::max(needed, VkDeviceSize{ 1 });
             if (copy.getSize() < least)
             {
@@ -210,13 +180,9 @@ namespace Rtx
         std::vector<Index> mAppended;
     };
 
-    /// One `BlockedBuffer` per frame in flight, and what each copy has yet to be told.
-    ///
-    /// **`SlotTable`'s sibling for a table whose truth lives elsewhere.** A row table is written
-    /// from host rows this object owns; a block table holds a mesh's vertices, and those are the
-    /// scene's — so the caller says how to read one and this says which ones are owed. The rule
-    /// either way is the same and it is the whole point of both: a copy is behind because `write`
-    /// named it, and `sync` is the only thing that clears that.
+    /// One `BlockedBuffer` per frame in flight, and what each copy has yet to be told —
+    /// `SlotTable`'s sibling for a table whose truth is the scene's, so the caller says how to read
+    /// a run and this says which are owed.
     class SlotBlocks
     {
     public:
@@ -277,14 +243,9 @@ namespace Rtx
             mOwed[slot.get()].clear();
         }
 
-        /// One copy, written or read behind the account's back.
-        ///
-        /// **The one way to break the rule this type is for**, and it is here because a load has to
-        /// break it: an arrival fills every copy whole and then says so with `settle`, which is
-        /// cheaper and clearer than naming every run it just wrote. A caller that writes through
-        /// this and does not settle has left the account describing a copy that no longer matches
-        /// it, which is the whole failure this type exists to end. Per-frame writes go through
-        /// `write` and `sync`.
+        /// One copy, written or read behind the account's back, because an arrival fills every
+        /// copy whole and then says so with `settle`. Per-frame writes go through `write` and
+        /// `sync`.
         BlockedBuffer& at(FrameSlot slot)
         {
             assert(slot.get() < mSlots);
@@ -316,12 +277,8 @@ namespace Rtx
         std::uint32_t mSlots = 1;
         std::array<BlockedBuffer, sFrameSlots> mCopies;
 
-        /// **A set and not a `RowDebt`, because there is no "everything" here to owe.** A row table
-        /// can fill a copy whole from the rows it holds; a block table's data is the scene's, and
-        /// nothing here knows how many runs there are or how to read one. A copy starts owing
-        /// nothing and a load fills it through `at`.
-        ///
-        /// Cleared and refilled, never freed: it settles at the busiest pair of frames so far.
+        /// A set and not a `RowDebt`, because a block table's data is the scene's and there is no
+        /// "everything" here to owe. Cleared and refilled, never freed.
         std::array<SlotSet, sFrameSlots> mOwed;
     };
 }

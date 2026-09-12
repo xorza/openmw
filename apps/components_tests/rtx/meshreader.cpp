@@ -11,11 +11,11 @@
 #include <osg/Vec4ub>
 
 #include <components/rtx/extractionstats.hpp>
-#include <components/rtx/index.hpp>
 #include <components/rtx/meshreader.hpp>
 #include <components/rtx/meshresolver.hpp>
-#include <components/rtx/mirrorpass.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/walk.hpp>
 
 #include "extractor/fixture.hpp"
 
@@ -155,15 +155,15 @@ namespace Rtx::Testing
             Resolving resolved;
             EXPECT_EQ(resolved.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad)), sNoIndex), 0u);
 
-            const SceneTables left = adopted.mScene.getTables();
-            const SceneTables right = resolved.mScene.getTables();
-            EXPECT_EQ(left.mMeshes.getRows()[0].mVertices.mCount, right.mMeshes.getRows()[0].mVertices.mCount);
-            EXPECT_EQ(left.mMeshes.getRows()[0].mIndices.mCount, right.mMeshes.getRows()[0].mIndices.mCount);
-            EXPECT_EQ(left.mMeshes.getRows()[0].mDeform, Deform::None);
-            EXPECT_EQ(std::vector(left.mMeshes.getPositions().begin(), left.mMeshes.getPositions().end()),
-                std::vector(right.mMeshes.getPositions().begin(), right.mMeshes.getPositions().end()));
-            EXPECT_EQ(std::vector(left.mMeshes.getIndices().begin(), left.mMeshes.getIndices().end()),
-                std::vector(right.mMeshes.getIndices().begin(), right.mMeshes.getIndices().end()));
+            const SceneDesc& left = adopted.mScene;
+            const SceneDesc& right = resolved.mScene;
+            EXPECT_EQ(left.meshes().getRows()[0].mVertices.mCount, right.meshes().getRows()[0].mVertices.mCount);
+            EXPECT_EQ(left.meshes().getRows()[0].mIndices.mCount, right.meshes().getRows()[0].mIndices.mCount);
+            EXPECT_EQ(left.meshes().getRows()[0].mDeform, Deform::None);
+            EXPECT_EQ(std::vector(left.meshes().getPositions().begin(), left.meshes().getPositions().end()),
+                std::vector(right.meshes().getPositions().begin(), right.meshes().getPositions().end()));
+            EXPECT_EQ(std::vector(left.meshes().getIndices().begin(), left.meshes().getIndices().end()),
+                std::vector(right.meshes().getIndices().begin(), right.meshes().getIndices().end()));
 
             // The walk meeting the drawable after the ring adopted it finds the ring's mesh.
             EXPECT_EQ(adopted.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad)), sNoIndex), 0u);

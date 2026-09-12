@@ -1,13 +1,172 @@
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <filesystem>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <components/rtx/error.hpp>
 #include <components/rtxbench/frametimes.hpp>
+
+#include "../rtx/allocations.hpp"
 
 namespace Rtx
 {
+    namespace
+    {
+        /// A line closes on the frame that fills a second, describes exactly that second, and the
+        /// next second starts from nothing.
+        TEST(RtxFrameRateTest, aSecondOfFramesClosesOneLineAndTheNextStartsFromNothing)
+        {
+            FrameRate rate;
+            EXPECT_TRUE(rate.getText().empty()) << "nothing has closed";
+
+            // Ninety-nine frames of ten milliseconds are 990 ms, which is short of a second.
+            for (int at = 0; at < 99; ++at)
+                EXPECT_FALSE(rate.add(10.0)) << "frame " << at + 1 << " closed a line early";
+            EXPECT_TRUE(rate.getText().empty()) << "an open second has no line";
+
+            const std::size_t before = Testing::getAllocationCount();
+            const bool closed = rate.add(10.0);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_TRUE(closed) << "the hundredth frame is the second";
+            EXPECT_EQ(spent, 0u) << "closing a line reached the heap " << spent << " times";
+            EXPECT_EQ(rate.getText(), "100 fps, 10.0 ms, worst 10.0 ms");
+
+            // Forty frames alternating 5 and 45 ms sum to 20 x 5 + 20 x 45 = 1000 exactly, with a
+            // mean of 25 — so the worst is the figure the mean hides. The first thirty-nine are
+            // 20 x 5 + 19 x 45 = 955, which is still open.
+            for (int at = 0; at < 39; ++at)
+                EXPECT_FALSE(rate.add(at % 2 == 0 ? 5.0 : 45.0)) << "frame " << at + 1 << " of the second second";
+            EXPECT_EQ(rate.getText(), "100 fps, 10.0 ms, worst 10.0 ms") << "an open second leaves the line alone";
+
+            EXPECT_TRUE(rate.add(45.0));
+            EXPECT_EQ(rate.getText(), "40 fps, 25.0 ms, worst 45.0 ms")
+                << "the first second's worst did not carry over";
+
+            // A rate that does not divide a second: 117 x 8.5 = 994.5 is open and 118 x 8.5 = 1003
+            // closes, at 1000 / 8.5 = 117.6 frames a second rounded to the nearest whole one.
+            for (int at = 0; at < 117; ++at)
+                EXPECT_FALSE(rate.add(8.5));
+            EXPECT_TRUE(rate.add(8.5));
+            EXPECT_EQ(rate.getText(), "118 fps, 8.5 ms, worst 8.5 ms");
+
+            // One frame longer than a second is a second on its own: 1000 / 1500 rounds to one.
+            EXPECT_TRUE(rate.add(1500.0));
+            EXPECT_EQ(rate.getText(), "1 fps, 1500.0 ms, worst 1500.0 ms");
+        }
+    }
+
+    namespace
+    {
+        /// A fifo with its reading end held open, standing in for the `perf record` that would
+        /// normally be on the other side of it.
+        class Reader
+        {
+        public:
+            explicit Reader(std::filesystem::path path)
+                : mPath(std::move(path))
+            {
+                std::filesystem::remove(mPath);
+                EXPECT_EQ(::mkfifo(mPath.c_str(), 0600), 0);
+
+                // Read-only and non-blocking, which is the one combination that opens a fifo with
+                // nobody writing to it yet.
+                mHandle = ::open(mPath.c_str(), O_RDONLY | O_NONBLOCK);
+                EXPECT_GE(mHandle, 0);
+            }
+
+            ~Reader()
+            {
+                if (mHandle >= 0)
+                    ::close(mHandle);
+                std::filesystem::remove(mPath);
+            }
+
+            const std::filesystem::path& getPath() const { return mPath; }
+
+            /// Everything written so far, which is nothing at all if the writer wrote nothing.
+            std::string read() const
+            {
+                std::array<char, 256> buffer{};
+                const ssize_t got = ::read(mHandle, buffer.data(), buffer.size());
+                return got > 0 ? std::string(buffer.data(), static_cast<std::size_t>(got)) : std::string();
+            }
+
+        private:
+            std::filesystem::path mPath;
+            int mHandle = -1;
+        };
+
+        TEST(RtxPerfControlTest, aBracketedRunSendsPerfTheTwoWordsItListensFor)
+        {
+            const Reader listening(std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-test");
+
+            {
+                PerfControl control(listening.getPath());
+                control.enable();
+                control.disable();
+            }
+
+            EXPECT_EQ(listening.read(), "enable\ndisable\n");
+        }
+
+        TEST(RtxPerfControlTest, twoPlacesEachBracketTheirOwnFrames)
+        {
+            const Reader listening(std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-pair-test");
+
+            PerfControl control(listening.getPath());
+            control.enable();
+            control.disable();
+            control.enable();
+            control.disable();
+
+            // The gap between them is a cell being loaded, and perf counts nothing across it.
+            EXPECT_EQ(listening.read(), "enable\ndisable\nenable\ndisable\n");
+        }
+
+        TEST(RtxPerfControlTest, aRunThatIsNotBeingProfiledSaysNothingAndOpensNothing)
+        {
+            PerfControl control(std::filesystem::path{});
+            control.enable();
+            control.disable();
+
+            // The point of the empty path: `bench` holds one of these whether or not perf is there,
+            // and the one that is not connected to anything must not go looking for a fifo.
+            SUCCEED();
+        }
+
+        TEST(RtxPerfControlTest, aStopBeforeTheFirstFrameSaysNothing)
+        {
+            const Reader listening(std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-stop-test");
+
+            PerfControl control(listening.getPath());
+            control.disable();
+
+            EXPECT_EQ(listening.read(), "");
+        }
+
+        TEST(RtxPerfControlTest, aFifoWithNobodyReadingItIsNamedRatherThanWaitedOn)
+        {
+            const std::filesystem::path missing
+                = std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-absent";
+            std::filesystem::remove(missing);
+
+            PerfControl control(missing);
+            EXPECT_THROW(control.enable(), Error);
+        }
+    }
+
     namespace
     {
         /// The six figures a run is quoted by, against hand-computed values.

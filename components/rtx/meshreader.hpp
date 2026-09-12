@@ -6,8 +6,7 @@
 #include <osg/Vec3f>
 
 #include "geometryfold.hpp"
-#include "mesharrays.hpp"
-#include "meshrange.hpp"
+#include "mesh.hpp"
 #include "nodekind.hpp"
 #include "shapefold.hpp"
 

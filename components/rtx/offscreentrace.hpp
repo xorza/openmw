@@ -15,8 +15,8 @@
 #include "frameimage.hpp"
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
-#include "sun.hpp"
-#include "traversals.hpp"
+#include "skylight.hpp"
+#include "walk.hpp"
 
 namespace osg
 {
@@ -35,49 +35,33 @@ namespace Rtx
     class SceneDesc;
     class SceneExtractor;
 
-    /// One picture traced from somewhere other than the eye: an inventory doll, a map tile.
+    /// One picture traced from somewhere other than the eye: an inventory doll, a map tile. The
+    /// trace writes straight into a slot of the renderer's GUI texture table, so the picture is
+    /// never a framebuffer and never in main memory unless somebody asks `readGuiTexture`.
     ///
-    /// **Nothing is rendered to a texture and nothing is read back.** A rasterizer answers this with
-    /// a pre-render camera hung off the graph and an `osg::Texture2D` under it; here the trace writes
-    /// straight into a slot of the renderer's GUI texture table, so the picture is never a frame,
-    /// never a framebuffer and never in main memory unless somebody asks `readGuiTexture` for it.
-    ///
-    /// **Two kinds, and which constructor built it is which.** A picture of the world traces against
-    /// the scene the renderer already holds, so it owns no scene of its own and `rebuildSubject` has
-    /// nothing to do. A picture of a subject is of a group somebody assembled for it — nothing in it
-    /// stands in a cell — so it is mirrored into a scene of its own and walked again whenever the
-    /// picture is asked for, which is when the character puts something on.
-    ///
-    /// **The trace and not the delivery.** What the picture is shown in — a `MyGUI::ITexture` in the
-    /// game, a PNG in the harness — is the caller's, and the slot is handed to `traceInto` rather
-    /// than owned here. That split is what lets the harness draw a doll with no GUI under it.
+    /// Two kinds, and which constructor built it is which: a picture of the world traces against
+    /// the scene the renderer already holds, and a picture of a subject is of a group assembled for
+    /// it, mirrored into a scene of its own and walked again whenever the picture is asked for.
+    /// The slot is handed to `traceInto` rather than owned here, which is what lets the harness
+    /// draw a doll with no GUI under it.
     class OffscreenTrace
     {
     public:
-        /// A picture of the world the renderer already holds.
+        /// A picture of the world the renderer already holds. Nothing is mirrored for it, so a
+        /// picture taken before the first frame is a picture of nothing.
         ///
-        /// Nothing is mirrored for it: the frame's own walk is what puts the geometry there, so a
-        /// picture taken before the first frame is a picture of nothing and the caller is what has
-        /// to wait.
-        ///
-        /// @param rayMask which classes the picture's camera draws, `Shaders::MASK_*` — the cull
-        ///        mask its host hands over, translated. A map tile's leaves out the actors, the
-        ///        effects and the particles, which is what makes it a chart rather than a frame from
-        ///        above.
+        /// @param rayMask which classes the picture's camera draws, `Shaders::MASK_*`. A map tile's
+        ///        leaves out the actors, the effects and the particles.
         OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, std::uint32_t rayMask);
 
         /// A picture of a subtree assembled for it alone.
         ///
-        /// @param mask which nodes the walk may descend into. **An inclusion mask**, AND-ed at every
-        ///        node, so a category left out of it is dropped wherever it appears below.
-        /// @param traversals where the walk's and the pick's traversal numbers come from. **Shared
-        ///        with everything else that can reach the same nodes** — the game hands the same
-        ///        counter to the world's walk and to every picture — because a subtree two walks
+        /// @param mask which nodes the walk may descend into, AND-ed at every node.
+        /// @param traversals where the walk's and the pick's traversal numbers come from, shared
+        ///        with everything else that can reach the same nodes, because a subtree two walks
         ///        reach would otherwise be run by whichever got there first and frozen for the
-        ///        other. Left out, this keeps a sequence of its own, which is right where nothing
-        ///        else walks the subject.
-        /// @param rayMask as above. The subject is the whole of what this scene holds, so a doll
-        ///        asks for every class.
+        ///        other. Left out, this keeps a sequence of its own.
+        /// @param rayMask as above. A doll asks for every class.
         OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, std::uint32_t rayMask,
             osg::Node& subject, osg::Node::NodeMask mask, Traversals* traversals = nullptr);
 
@@ -85,37 +69,23 @@ namespace Rtx
         /// declared here.
         ~OffscreenTrace();
 
-        OffscreenTrace(const OffscreenTrace&) = delete;
-        OffscreenTrace& operator=(const OffscreenTrace&) = delete;
-
         /// How the picture is projected and where it is clipped. Takes effect on the next trace.
         void setFraming(const SceneUtil::Framing& framing) { mFraming = framing; }
 
         /// The only light there is, in the numbers a rasterizer's object shaders were written for.
-        ///
-        /// **Converted here rather than by the caller**, because what a diffuse coefficient means as
-        /// an irradiance is a fact about light transport and not about whoever asked for a picture.
         /// A Lambertian surface returns `albedo / pi * E * cos`, so the `E` that makes that equal
-        /// `albedo * diffuse` at `cos = 1` is `diffuse * pi` — and with it a doll lit by the game's
-        /// own numbers comes out the brightness those numbers were chosen for.
-        ///
-        /// `FlatLight::mDirection` is where the light comes from, normalised here.
+        /// `albedo * diffuse` at `cos = 1` is `diffuse * pi`. `FlatLight::mDirection` is normalised
+        /// here.
         void setLight(const SceneUtil::FlatLight& light);
 
-        /// What the picture is left as where nothing was hit.
-        ///
-        /// **An alpha below one is the whole of "the picture stops here"**, because that is the same
-        /// statement: one the GUI composites over what is behind it has to say where it ends, and
-        /// one that fills its widget does not.
+        /// What the picture is left as where nothing was hit. An alpha below one is the whole of
+        /// "the picture stops here".
         void setClearColour(const osg::Vec4f& colour);
 
-        /// Which end of the picture the trace writes first.
-        ///
-        /// **A delivery convention and not a fact about the picture**, which is why it is said here
-        /// rather than assumed. `MWRender::OffscreenView::getTexture` promises rows bottom-first,
-        /// because that is what an OpenGL render-to-texture produces and what the widgets showing
-        /// one already invert V for; anything writing a file wants them the way round the trace
-        /// makes them. Flipping the camera's up vector is what costs nothing and does it.
+        /// Which end of the picture the trace writes first — a delivery convention:
+        /// `MWRender::OffscreenView::getTexture` promises rows bottom-first because that is what an
+        /// OpenGL render-to-texture produces, and a file wants them the other way. Flipping the
+        /// camera's up vector costs nothing.
         void setRowOrder(RowOrder order) { mRowOrder = order; }
 
         /// Where the picture is taken from. Takes effect on the next trace.
@@ -136,16 +106,11 @@ namespace Rtx
         /// Poses the subject, mirrors it and hands it to the renderer, and answers whether the
         /// result has anything in it. Nothing at all, and true, for a picture of the world.
         ///
-        /// **Two clocks, because they are two different questions.**
-        ///
-        /// @param posing what the update traversal runs on, and where its number comes from. A
-        ///        picture is redrawn when its subject changes rather than when the world moves, so
-        ///        this is the caller's own drawing clock — one that stands still would move the
-        ///        doll's bones the first time and never again, because a skeleton keeps the last
-        ///        number it saw.
+        /// @param posing what the update traversal runs on — the caller's own drawing clock, because
+        ///        a skeleton keeps the last number it saw and a clock that stood still would move the
+        ///        doll's bones the first time and never again.
         /// @param worldFrame which of a `SceneUtil::LightSource`'s two buffers update has just
-        ///        written, which is a property of the frame the *world* is in. It stops with the
-        ///        world when the game is paused; `posing` does not.
+        ///        written, which stops with the world when the game is paused; `posing` does not.
         bool rebuildSubject(const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images);
 
         /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`, and leaves a
@@ -153,20 +118,12 @@ namespace Rtx
         void traceInto(GuiSlot texture, bool readBack = false);
 
         /// What is at this point of the picture, in normalised device coordinates, as the path
-        /// through the subject to whatever was hit. Nothing for a picture of the world, which is
-        /// asked what is where by whoever placed it rather than by a ray.
-        ///
-        /// **On the processor and against the graph, not on the device.** What the caller wants back
-        /// is a node path, so it can ask the animation which equipment slot that was; a ray query
-        /// gives an instance index in a mirror, which is the wrong side of the question. The ray is
-        /// the one the trace would have sent through that point, built from the same basis, so what
-        /// a click finds is what the picture shows.
-        ///
-        /// **And the one place a skinned body is still posed on the processor.** The picture is
-        /// traced from a pose the device computed, so the drawable's own copy holds whatever the
-        /// last cull traversal left — the bind pose, where nothing has ever culled it. A click is
-        /// rare where a frame is not, so the subject is put through a cull of its own here, once
-        /// per pick, and the intersection reads the copy that cull wrote.
+        /// through the subject to whatever was hit. Nothing for a picture of the world. On the
+        /// processor and against the graph, because the caller wants a node path to ask the
+        /// animation which equipment slot that was; the ray is the one the trace would have sent
+        /// through that point. The one place a skinned body is still posed on the processor: the
+        /// drawable's own copy holds the bind pose, so the subject is put through a cull of its own
+        /// once per pick.
         bool pick(float x, float y, osg::NodePath& hit) const;
 
     private:
@@ -176,25 +133,15 @@ namespace Rtx
 
         Renderer& mRenderer;
 
-        /// Everything a picture of its own subject needs, and a picture of the world has none of.
-        ///
-        /// **One object, because the eleven are made together and are dead together.** They were
-        /// separate members and a null subject stood for all of them — one rule a reader had to
-        /// know rather than a shape that states it. `mSubject` being null is now the whole of what
-        /// "this is a picture of the world" means.
+        /// Everything a picture of its own subject needs, and a picture of the world has none of:
+        /// `mSubject` being null is the whole of what "this is a picture of the world" means.
         struct Subject
         {
             /// @param shared where the walk's and the pick's traversal numbers come from, or null to
-            ///        keep a sequence of its own. **Bound here and not by an initialiser**, because
-            ///        the alternative reads `mOwn` off an object that is still being made.
-            /// **Out of line, with the destructor and for its reason.** A constructor unwinds what
-            /// it has already made where its body throws, so it needs the four types below complete
-            /// exactly as a destructor does — and they are forward declared here.
+            ///        keep a sequence of its own. Out of line with the destructor, because a
+            ///        constructor that unwinds needs the forward-declared types complete too.
             explicit Subject(Traversals* shared);
             ~Subject();
-
-            Subject(const Subject&) = delete;
-            Subject& operator=(const Subject&) = delete;
 
             /// **Not const, because a picture is taken by changing it**: the update traversal poses
             /// the subject and the intersection visitor walks it, and both take a mutable node.

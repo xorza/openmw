@@ -18,9 +18,7 @@
 #include "../renderer.hpp"
 #include "framecapture.hpp"
 #include "framereport.hpp"
-#include "framespan.hpp"
 #include "session.hpp"
-#include "viewhost.hpp"
 #include "worldmirror.hpp"
 
 namespace Resource
@@ -60,6 +58,7 @@ namespace MyGUIRtx
 namespace MWRender
 {
     class TracedView;
+    struct PoseMoment;
 
     /// The picture as rays find it: a window, a mirror of the scene graph, and a trace.
     ///
@@ -78,7 +77,7 @@ namespace MWRender
     /// everywhere, so a frustum has nothing to say about what must be reachable — which is also
     /// why the frame is not one late the way an interop path would be. The mirror runs
     /// after the update traversal and the present runs after the mirror, all inside one frame.
-    class RtxRenderer final : public Renderer, public ViewHost
+    class RtxRenderer final : public Renderer
     {
     public:
         /// Throws `std::runtime_error` naming what stopped it — no loader for the backend's API,
@@ -108,7 +107,6 @@ namespace MWRender
         SDL_Window* getWindow() const override { return mWindow; }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
-        void setSceneRoot(osg::Group& root) override;
         void showWorld(bool shown) override { mWorldShown = shown; }
         bool toggleWorld() override { return mWorldToggled = !mWorldToggled; }
 
@@ -155,11 +153,28 @@ namespace MWRender
 
         /*internal:*/
 
-        Rtx::Renderer& getBackend() override { return *mRenderer; }
-        std::optional<PoseMoment> describePose() override;
-        void redraw(TracedView& view) override;
-        void flushRedraws() override;
-        void forgetView(TracedView& view) override;
+        /// The backend a view traces into, and reads a picture back out of. This and the four
+        /// below are the whole of what a traced view, drawn on a frame later than the one that
+        /// asked for it, needs back from the renderer that made it.
+        Rtx::Renderer& getBackend() { return *mRenderer; }
+
+        /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
+        std::optional<PoseMoment> describePose();
+
+        /// Draws `view` in the next frame's window — after the world's placement and before its
+        /// trace, where the copy of the tables a picture of the world reads is the frame's own.
+        ///
+        /// **Every picture, and not the ones asked before there was a world.** Drawn where asked, a
+        /// picture recorded the frame's trace's neighbour while a placement could still follow it,
+        /// and made a wait of every one of them. Asked twice in one frame is drawn once.
+        void redraw(TracedView& view);
+
+        /// Draws what `redraw` queued, now. For the harness, whose stop stands outside any frame
+        /// and writes the picture before the next one.
+        void flushRedraws();
+
+        /// Takes a view off that list, because it is going away.
+        void forgetView(TracedView& view);
 
     private:
         /// Makes the SDL window the backend builds its surface on. No GL attribute is set and no GL
@@ -221,8 +236,6 @@ namespace MWRender
         /// `sWorldViewsPerFrame` of the world's, and answers how long that took.
         double drawViews();
 
-        Stage& mStage;
-
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
 
@@ -279,8 +292,8 @@ namespace MWRender
 
         SDL_Window* mWindow = nullptr;
 
-        /// What the stage was handed. Made here because there is no viewer to make them, and held
-        /// because the frame is driven from them.
+        /// Made here because there is no viewer to make it, and held because the frame is driven
+        /// from it.
         osg::ref_ptr<Rtx::PoseUpdate> mUpdateVisitor;
 
         /// Where `advance` measures reference time from, and the origin the profiler's spans are

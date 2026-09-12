@@ -12,12 +12,12 @@
 // forward-declared. It brings `osg::Vec3Array`, which a morph is keyed on, with it.
 #include <components/sceneutil/riggeometry.hpp>
 
-#include "index.hpp"
 #include "meshreader.hpp"
 #include "mirroridentity.hpp"
-#include "mirrorpass.hpp"
+#include "runs.hpp"
 #include "scenedesc.hpp"
 #include "shaders/skinning.h"
+#include "walk.hpp"
 
 namespace osg
 {
@@ -33,16 +33,9 @@ namespace SceneUtil
 namespace Rtx
 {
     /// Turns the drawables a walk met into the scene's meshes, and poses the ones that deform.
-    ///
-    /// **Keyed on the drawable and not on the geometry.** A crate met again is the crate already
-    /// uploaded; a body met again is the same mesh posed again, and a pose is bone rows and never
-    /// vertices. That identity is what makes an incremental mirror possible instead of a rebuild
-    /// per frame, and it is why this holds state at all.
-    ///
-    /// **The rigs and the morphs are here because a mesh is what names one.** A skin is one
-    /// `InfluenceData` however many drawables share it, and a face's targets are one base array
-    /// however many heads carry them — so they are resolved, stamped and swept exactly where the
-    /// meshes on them are.
+    /// Keyed on the drawable: a crate met again is the crate already uploaded, and a body met
+    /// again is the same mesh posed again. The rigs and the morphs are here because a mesh is what
+    /// names one, and a skin is one `InfluenceData` however many drawables share it.
     class MeshResolver
     {
     public:
@@ -62,19 +55,9 @@ namespace Rtx
         Index resolve(const osg::Drawable& drawable, const DrawableRead& read, Index material);
 
         /// The mesh index for a drawable somebody else has already read, adding it where the mirror
-        /// does not hold it and stamping it where it does.
-        ///
-        /// **The insertion half of `resolve`, for a reading made off the frame.** A ring preparing
-        /// cells ahead of the eye reads and folds on a thread of its own; what the frame owes is the
-        /// copy into the scene and the identity the walk will find the mesh under — which is the
-        /// drawable, so that a clone of the same template met by the walk resolves to this mesh
-        /// rather than to a copy of it.
-        ///
-        /// Standing only: a reading carries no rig and no morph, and a drawable the mirror holds as
-        /// deforming is not one this may be asked about.
-        ///
-        /// **One hold is taken on the entry**, which keeps it and the mesh through every sweep until
-        /// `release` gives it back — `Known::mHolds` says why a count and not a stamp per walk.
+        /// does not hold it and stamping it where it does — the insertion half of `resolve`, for a
+        /// reading made off the frame, under the drawable so a clone met by the walk resolves to
+        /// this mesh. Standing only. One hold is taken on the entry until `release` gives it back.
         Index adopt(const osg::Drawable& drawable, const MeshReading& reading, Index material);
 
         /// Gives one `adopt` back. The mirror must hold `drawable`, which it does for as long as
@@ -90,11 +73,8 @@ namespace Rtx
         /// `live`.
         void retire(std::vector<Index>& live);
 
-        /// Drops the rigs and the morph targets no mesh named this epoch.
-        ///
-        /// **Asked whatever the meshes did**, and each map skips its own walk where the epoch
-        /// reached all of it. A deformer goes stale only where a mesh on it died, so this is nearly
-        /// always the two comparisons and nothing else.
+        /// Drops the rigs and the morph targets no mesh named this epoch. Nearly always two
+        /// comparisons and nothing else, because a deformer goes stale only where a mesh on it died.
         void retireDeformers();
 
         /// Reserves the identity maps once, so no frame rehashes them. `SceneExtractor` states the
@@ -122,13 +102,8 @@ namespace Rtx
         /// The same with the morph's weights, which its controller wrote under the update traversal.
         void poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph);
 
-        /// What poses one drawable, as the mirror already holds it.
-        ///
-        /// **The entry and not only the index**, because the stamp wants the one the lookup found:
-        /// a second `find` per posed part per frame is a pointer hash and a bucket walk for an
-        /// answer already in hand, and a crowded cell poses hundreds. Which of the two entries is
-        /// set follows from `DrawableRead::mDeform`, and neither is looked at while `mIndex` is
-        /// `sNoIndex`.
+        /// What poses one drawable, as the mirror already holds it — the entry and not only the
+        /// index, so the stamp does not `find` again for every posed part of a crowded cell.
         struct Held
         {
             Index mIndex = sNoIndex;
@@ -137,29 +112,17 @@ namespace Rtx
             Identity<const osg::Vec3Array>::Entry mMorph;
         };
 
-        /// The deformer this drawable stands on, where the mirror holds one — and `sNoIndex`
-        /// where it does not, which is what a slot that stands holds too, so the fit test compares
-        /// the two without a case of its own.
-        ///
-        /// **Stamps nothing.** Whether the slot still fits is decided after this, and a stamp in
-        /// front of that decision would keep a deformer the sweep is about to be told to drop.
+        /// The deformer this drawable stands on, where the mirror holds one, and `sNoIndex` where
+        /// it does not. Stamps nothing, because whether the slot still fits is decided after this.
         Held holdDeformer(const DrawableRead& read);
 
         /// The same for a drawable the mirror is meeting afresh: the deformer added and stamped,
-        /// or `sNoIndex` where the drawable stands.
-        ///
-        /// Throws where it does not pose exactly `vertices`. **Named rather than asserted**,
-        /// because a vertex count comes out of a content file and a mesh posed by a deformer of
-        /// another length is a kernel writing past the run it was handed.
+        /// or `sNoIndex` where the drawable stands. Throws where it does not pose exactly
+        /// `vertices`, because a vertex count comes out of a content file.
         Index addDeformer(const DrawableRead& read, std::size_t vertices);
 
-        /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept.
-        ///
-        /// **Stamped with the mesh, which is what keeps the sweep's two answers one answer**: a
-        /// deformer the sweep did not see go is one it keeps for as long as a mesh stands on it.
-        ///
-        /// The arrival path needs none of this: `resolveRig` and `resolveMorph` stamp through
-        /// `reach` as they go.
+        /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept, so a
+        /// deformer is kept for as long as a mesh stands on it.
         void stampDeformer(const DrawableRead& read, const Held& held);
 
         /// Poses `mesh` where the drawable deforms, and counts it. Nothing where it stands.
@@ -168,12 +131,9 @@ namespace Rtx
         SceneDesc& mScene;
         const MirrorPass& mPass;
 
-        // Keyed on pointer identity, which OpenMW's resource cache and its optimizer's
-        // SHARE_DUPLICATE_STATE pass together make meaningful: the same model loaded twice is the
-        // same object, and equivalent state sets are collapsed into one.
-        //
-        // **Owning, which is what makes that identity sound.** What these hold outlives the graph
-        // by one sweep, and a sweep is what lets go.
+        // Keyed on pointer identity, which OpenMW's resource cache and SHARE_DUPLICATE_STATE make
+        // meaningful, and owning, which makes it sound: what these hold outlives the graph by one
+        // sweep.
         Identity<const osg::Drawable> mMeshes{ mPass };
 
         /// What the scene knows each skin and each set of morph targets as. Swept with the meshes: a

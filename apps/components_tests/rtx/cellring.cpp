@@ -28,11 +28,11 @@
 #include <components/esm3/refnum.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/cellring.hpp>
-#include <components/rtx/contentsource.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/material.hpp>
-#include <components/rtx/meshinstance.hpp>
-#include <components/rtx/preparedtexture.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/prepared.hpp>
+#include <components/rtx/residency.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
@@ -256,7 +256,7 @@ namespace Rtx::Testing
                 return total;
             }
 
-            std::uint32_t placed() const { return mScene.getTables().mPlacements.getPlacedCount(); }
+            std::uint32_t placed() const { return mScene.placements().getPlacedCount(); }
 
             /// The placement standing the ground of `cell`, which is the one translated to the
             /// cell's centre.
@@ -265,7 +265,7 @@ namespace Rtx::Testing
                 const osg::Vec3f centre((static_cast<float>(cell.x()) + 0.5f) * sCellSize,
                     (static_cast<float>(cell.y()) + 0.5f) * sCellSize, 0.0f);
 
-                for (const MeshInstance& placement : mScene.getTables().mPlacements.getAll())
+                for (const MeshInstance& placement : mScene.placements().getAll())
                     if (placement.isPlaced() && placement.mTransform.getTrans() == centre)
                         return placement;
 
@@ -335,18 +335,18 @@ namespace Rtx::Testing
             // cell shades from its stack.
             const std::optional<MeshInstance> far = groundOf(osg::Vec2i(3, 0));
             ASSERT_TRUE(far.has_value());
-            EXPECT_EQ(mScene.getTables().mMeshes.getMeshPositions(far->mMesh)[0], FakeLand::positionAt(0, 0));
-            EXPECT_EQ(mScene.getTables().mMeshes.getMeshPositions(far->mMesh).size(),
+            EXPECT_EQ(mScene.meshes().getMeshPositions(far->mMesh)[0], FakeLand::positionAt(0, 0));
+            EXPECT_EQ(mScene.meshes().getMeshPositions(far->mMesh).size(),
                 static_cast<std::size_t>(FakeLand::sVerts) * FakeLand::sVerts);
             {
-                const Material& material = mScene.getTables().mMaterials.getRows()[far->mMaterial];
+                const Material& material = mScene.materials().getRows()[far->mMaterial];
                 EXPECT_EQ(material.mKind, MaterialKind::Terrain);
                 EXPECT_EQ(material.mLayers.mCount, 2u);
                 EXPECT_TRUE(material.mFlatten);
             }
             const std::optional<MeshInstance> home = groundOf(osg::Vec2i(0, 0));
             ASSERT_TRUE(home.has_value());
-            EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[home->mMaterial].mFlatten);
+            EXPECT_FALSE(mScene.materials().getRows()[home->mMaterial].mFlatten);
             EXPECT_FALSE(groundOf(osg::Vec2i(5, 0)).has_value()) << "prepared a band out, and not placed";
 
             // The ground's textures were read on the thread as the bark was.
@@ -366,7 +366,7 @@ namespace Rtx::Testing
             // walked in their own order, so the tree's is not the first placement.
             const osg::Vec3f expected = osg::Vec3f(0.0f, 0.0f, 5.0f) * gameStands(tree);
             std::size_t standing = 0;
-            for (const MeshInstance& placement : mScene.getTables().mPlacements.getAll())
+            for (const MeshInstance& placement : mScene.placements().getAll())
             {
                 const osg::Vec3f stood = osg::Vec3f() * placement.mTransform;
                 if ((stood - expected).length() < 0.01f)
@@ -380,7 +380,7 @@ namespace Rtx::Testing
             EXPECT_NEAR(untilted.z(), 55.0f, 0.001f);
             EXPECT_NEAR(untilted.x(), 3.2f * sCellSize, 0.01f);
             standing = 0;
-            for (const MeshInstance& placement : mScene.getTables().mPlacements.getAll())
+            for (const MeshInstance& placement : mScene.placements().getAll())
                 if ((osg::Vec3f() * placement.mTransform - untilted).length() < 0.01f)
                     ++standing;
             EXPECT_EQ(standing, 1u);
@@ -416,7 +416,7 @@ namespace Rtx::Testing
             around(osg::Vec4i(2, -1, 5, 2));
             walk(mWalked++);
             EXPECT_EQ(placed(), 2u + sPlacedCells) << "the fern and the tree at home stand outside the grid";
-            EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[far->mMaterial].mFlatten);
+            EXPECT_FALSE(mScene.materials().getRows()[far->mMaterial].mFlatten);
             EXPECT_TRUE(mExtractor.retire().empty());
 
             // The eye leaves for a cell far away. **The band that left goes on the first walk after
@@ -434,7 +434,7 @@ namespace Rtx::Testing
             fill();
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
             EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "eleven by eleven cells prepared";
-            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), sPreparedCells);
+            EXPECT_EQ(mScene.meshes().getLiveCount(), sPreparedCells);
         }
 
         /// The paging's size rule, per reference: a radius under the threshold at the eye's distance
@@ -495,7 +495,7 @@ namespace Rtx::Testing
             // of five is scaled with the reference, so a tree at scale `s` stands at `105 s`.
             const auto standing = [this] {
                 std::vector<std::pair<std::size_t, float>> slots;
-                const std::span<const MeshInstance> all = mScene.getTables().mPlacements.getAll();
+                const std::span<const MeshInstance> all = mScene.placements().getAll();
                 for (std::size_t slot = 0; slot < all.size(); ++slot)
                     if (all[slot].isPlaced())
                         slots.emplace_back(slot, all[slot].mTransform.getTrans().z());
@@ -586,7 +586,7 @@ namespace Rtx::Testing
             start();
 
             EXPECT_EQ(fill().mDistantStatics, 1u) << "the near tree, on the one mesh the model has";
-            const std::size_t meshes = mScene.getTables().mMeshes.getLiveCount();
+            const std::size_t meshes = mScene.meshes().getLiveCount();
 
             // The eye leaves for a cell from which the near tree's cell is out of the band and the
             // far tree's is in it: the walks that follow let the model go and take it up again.
@@ -599,13 +599,13 @@ namespace Rtx::Testing
             // the eleven cells of one column — and nothing else: the tree's mesh was stamped
             // through, so the scene holds the new band's ground and that one mesh.
             EXPECT_EQ(mExtractor.retire().mMeshes, sPreparedCells - 11u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getLiveCount(), meshes) << "one tree mesh, held throughout";
+            EXPECT_EQ(mScene.meshes().getLiveCount(), meshes) << "one tree mesh, held throughout";
 
             // Two more walks, so the thread's give-backs of what was returned have run against
             // the reader's own contract — which a model given back while lent breaks loudly.
             walk(mWalked++);
             walk(mWalked++);
-            EXPECT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 1u + sPlacedCells);
+            EXPECT_EQ(mScene.placements().getPlacedCount(), 1u + sPlacedCells);
         }
 
         /// Unsettled, the ring adopts one cell a frame as the thread delivers them, and a frame

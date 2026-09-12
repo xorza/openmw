@@ -82,7 +82,6 @@ namespace MWRender
 {
     class LocalMap;
     class Renderer;
-    class Stage;
 }
 
 namespace Gui
@@ -130,11 +129,10 @@ namespace MWGui
         typedef std::pair<std::string, int> Faction;
         typedef std::vector<Faction> FactionList;
 
-        WindowManager(MWRender::Renderer& renderer, MWRender::Stage& stage, osg::Group* guiRoot,
-            Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue,
-            const std::filesystem::path& logpath, bool consoleOnlyScripts, Translation::Storage& translationDataStorage,
-            ToUTF8::FromType encoding, bool exportFonts, const std::string& versionDescription,
-            Files::ConfigurationManager& cfgMgr);
+        WindowManager(MWRender::Renderer& renderer, osg::Group* guiRoot, Resource::ResourceSystem* resourceSystem,
+            SceneUtil::WorkQueue* workQueue, const std::filesystem::path& logpath, bool consoleOnlyScripts,
+            Translation::Storage& translationDataStorage, ToUTF8::FromType encoding, bool exportFonts,
+            const std::string& versionDescription, Files::ConfigurationManager& cfgMgr);
         virtual ~WindowManager();
 
         /// Set the ESMStore to use for retrieving of GUI-related strings.
@@ -422,7 +420,6 @@ namespace MWGui
 
         std::unique_ptr<MyGUIPlatform::Platform> mGuiPlatform;
         MWRender::Renderer& mRenderer;
-        MWRender::Stage& mStage;
 
         std::unique_ptr<Gui::FontLoader> mFontLoader;
         std::unique_ptr<StatsWatcher> mStatsWatcher;

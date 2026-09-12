@@ -46,10 +46,10 @@ namespace MyGUIRtx
     class Texture final : public MyGUI::ITexture
     {
     public:
-        Texture(std::string name, Rtx::GuiSurface& renderer, Resource::ImageManager* imageManager);
+        Texture(std::string name, Rtx::Renderer& renderer, Resource::ImageManager* imageManager);
 
         /// A mirror of `source`'s image. `source` belongs to the caller and outlives this.
-        Texture(Rtx::GuiSurface& renderer, osg::Texture2D& source);
+        Texture(Rtx::Renderer& renderer, osg::Texture2D& source);
 
         ~Texture() override;
 
@@ -111,7 +111,7 @@ namespace MyGUIRtx
         void widen();
 
         std::string mName;
-        Rtx::GuiSurface& mRenderer;
+        Rtx::Renderer& mRenderer;
         Resource::ImageManager* mImageManager;
 
         Rtx::GuiSlot mSlot;

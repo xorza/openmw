@@ -16,10 +16,9 @@
 #include "groundreader.hpp"
 #include "meshreader.hpp"
 #include "nodekind.hpp"
-#include "preparedcell.hpp"
-#include "preparedtexture.hpp"
-#include "sortedrows.hpp"
-#include "spares.hpp"
+#include "prepared.hpp"
+#include "scratch.hpp"
+#include "slots.hpp"
 #include "templatewalk.hpp"
 #include "texturedata.hpp"
 

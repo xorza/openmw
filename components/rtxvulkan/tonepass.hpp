@@ -8,8 +8,8 @@
 #include <components/rtx/shaders/tone.h>
 
 #include "computepipeline.hpp"
+#include "handles.hpp"
 #include "image.hpp"
-#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -34,9 +34,6 @@ namespace Rtx
         /// @param pool where the stand-in bound in place of a pyramid is put into its layout, once.
         TonePass(const Device& device, CommandPool& pool, VkDescriptorSetLayout textureLayout,
             const std::filesystem::path& shaderDirectory);
-
-        TonePass(const TonePass&) = delete;
-        TonePass& operator=(const TonePass&) = delete;
 
         /// @param colour the finished frame in linear radiance, in `VK_IMAGE_LAYOUT_GENERAL`.
         /// @param exposure one float, what to scale it by. `ExposurePass` writes it, measured off

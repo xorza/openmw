@@ -19,9 +19,9 @@
 #include "alphaimage.hpp"
 #include "compositequeue.hpp"
 #include "error.hpp"
-#include "imageformat.hpp"
 #include "scenedesc.hpp"
 #include "shadingmap.hpp"
+#include "texels.hpp"
 
 namespace Rtx
 {
@@ -142,16 +142,16 @@ namespace Rtx
         };
     }
 
-    void SceneTextures::describeAll(const SceneTables& scene, Resource::ImageManager& images,
+    void SceneTextures::describeAll(const SceneDesc& scene, Resource::ImageManager& images,
         const CompositeQueue* composites, const TextureReadings* readings)
     {
-        mEverything.resize(scene.mTextures.getPaths().size());
+        mEverything.resize(scene.textures().getPaths().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
         describe(scene, images, mEverything, composites, readings);
     }
 
-    void SceneTextures::describe(const SceneTables& scene, Resource::ImageManager& images, std::span<const Index> slots,
+    void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
         const CompositeQueue* composites, const TextureReadings* readings)
     {
         mLevels.clear();
@@ -169,7 +169,7 @@ namespace Rtx
             // gave back and leaves it in the table until something takes it over; describing it
             // would build an image, a shading map and a descriptor write for a slot no material can
             // reach — and count it as a texture that arrived.
-            if (scene.mTextures.isFree(slot))
+            if (scene.textures().isFree(slot))
                 continue;
 
             // Already decoded and still resident: the scene manager keeps image data on the CPU
@@ -183,9 +183,9 @@ namespace Rtx
             osg::ref_ptr<const osg::Image> image;
             Index light = sNoIndex;
 
-            const std::string& baked = scene.mTextures.getBaked()[slot];
+            const std::string& baked = scene.textures().getBaked()[slot];
             if (baked.empty())
-                image = openImage(images, scene.mTextures.getPaths()[slot]);
+                image = openImage(images, scene.textures().getPaths()[slot]);
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(baked))
             {
                 // **Baked from the sprite texture's alpha, here, because here is where a file is
@@ -303,9 +303,9 @@ namespace Rtx
                 // **Whichever of the two named the slot**, or a composite that could not be
                 // flattened reports itself as a file with no name — the one thing that would not
                 // help in finding it.
-                const std::string_view baked = scene.mTextures.getBaked()[kept.mSlot];
+                const std::string_view baked = scene.textures().getBaked()[kept.mSlot];
                 Log(Debug::Warning) << "Texture \""
-                                    << (baked.empty() ? scene.mTextures.getPaths()[kept.mSlot].value() : baked)
+                                    << (baked.empty() ? scene.textures().getPaths()[kept.mSlot].value() : baked)
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);

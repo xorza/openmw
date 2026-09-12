@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-#include <components/rtx/scenetables.hpp>
+#include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
 
 #include "device.hpp"
@@ -41,14 +41,14 @@ namespace Rtx
     {
     }
 
-    bool SkinPass::record(VkCommandBuffer commands, const SceneTables& scene, const FrameSlot slot, SkinTables& tables,
+    bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, SkinTables& tables,
         SlotBlocks& poses, SlotBlocks& normals, GpuTimer* const timer) const
     {
         // **Owed to every copy, and paid to this one.** A mesh that moved this frame reaches this
         // copy now and the other on the frame after next; a mesh that moved last frame and stands
         // still now is still owed here, or this copy would carry a pose two frames old the next
         // time it was traced.
-        poses.write(scene.mMeshes.getDeformed());
+        poses.write(scene.meshes().getDeformed());
 
         // One pipeline bound at a time, and a bind only where the kind changes: a crowd is one
         // kind for most of its length.
@@ -57,7 +57,7 @@ namespace Rtx
 
         BlockedBuffer& normalsInto = normals.at(slot);
         poses.sync(slot, [&](const Index index, BlockedBuffer& into) {
-            const MeshRange& mesh = scene.mMeshes.getRows()[index];
+            const MeshRange& mesh = scene.meshes().getRows()[index];
 
             // A slot owed from before it went, or one taken over by a mesh that stands: nothing
             // to pose. Its run in the poses holds what the arrival wrote.
@@ -78,7 +78,7 @@ namespace Rtx
 
             if (mesh.mDeform == Deform::Rig)
             {
-                const Rig& rig = scene.mDeformers.getRigs()[mesh.mDeformer];
+                const Rig& rig = scene.deformers().getRigs()[mesh.mDeformer];
                 const Shaders::SkinConstants push{
                     .mBindPositions = tables.getBindPositions(mesh),
                     .mBindNormals = tables.getBindNormals(mesh),
@@ -101,7 +101,7 @@ namespace Rtx
             }
             else
             {
-                const Morph& morph = scene.mDeformers.getMorphs()[mesh.mDeformer];
+                const Morph& morph = scene.deformers().getMorphs()[mesh.mDeformer];
                 const Shaders::MorphConstants push{
                     .mBase = tables.getBindPositions(mesh),
                     .mOffsets = tables.getMorphOffsets(morph),

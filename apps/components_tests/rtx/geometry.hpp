@@ -11,8 +11,8 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
-#include <components/rtx/index.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
 
@@ -118,7 +118,7 @@ namespace Rtx::Testing
     inline void poseByOneBone(SceneDesc& scene, Index mesh, const osg::Matrixf& bone)
     {
         osg::BoundingBoxf reach;
-        for (const osg::Vec3f& vertex : scene.getTables().mMeshes.getMeshPositions(mesh))
+        for (const osg::Vec3f& vertex : scene.meshes().getMeshPositions(mesh))
             reach.expandBy(vertex * bone);
 
         const std::array rows{ toGpuBone(bone) };

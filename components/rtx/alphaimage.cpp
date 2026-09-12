@@ -10,7 +10,7 @@
 
 #include <components/debug/debuglog.hpp>
 
-#include "colourblock.hpp"
+#include "colour.hpp"
 #include "error.hpp"
 #include "texturebuilder.hpp"
 

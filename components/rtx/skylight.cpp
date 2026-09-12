@@ -7,7 +7,7 @@
 #include <components/sceneutil/util.hpp>
 #include <components/sky/sun.hpp>
 
-#include "decodecolour.hpp"
+#include "colour.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "shaders/scene.h"

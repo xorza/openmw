@@ -9,8 +9,8 @@
 #include <vulkan/vulkan_core.h>
 
 #include "computepipeline.hpp"
+#include "handles.hpp"
 #include "image.hpp"
-#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -39,9 +39,6 @@ namespace Rtx
     {
     public:
         BloomPass(const Device& device, const std::filesystem::path& shaderDirectory);
-
-        BloomPass(const BloomPass&) = delete;
-        BloomPass& operator=(const BloomPass&) = delete;
 
         /// Builds a pyramid for a frame this size, if the last one was not this size.
         ///

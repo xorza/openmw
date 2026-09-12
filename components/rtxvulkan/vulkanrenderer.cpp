@@ -10,7 +10,7 @@
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/scenetables.hpp>
+#include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
 #include "framehistory.hpp"
@@ -39,12 +39,8 @@ namespace Rtx
 {
     namespace
     {
-        /// One half float, as the number it stands for.
-        ///
-        /// **By bits, where the test harness spells the same conversion out by arithmetic.** That is
-        /// deliberate on both sides: a test that decoded a half through the helper the renderer used
-        /// would agree with it however wrong it was, so the two derivations are kept apart and each
-        /// checks the other.
+        /// One half float, as the number it stands for. By bits, where the test harness spells the
+        /// same conversion out by arithmetic, so that each derivation checks the other.
         float fromHalf(std::uint16_t bits)
         {
             const std::uint32_t sign = static_cast<std::uint32_t>(bits & 0x8000u) << 16;
@@ -238,13 +234,9 @@ namespace Rtx
         mOutputWidth = width;
         mOutputHeight = height;
 
-        // Whatever upscales picks the render size; without one the two extents are the same number
-        // twice, and every pass below is written as though they always might not be.
-        //
-        // **The mode and not the runtime, which stopped being the same question the moment the mode
-        // could change.** A runtime that is up because somebody upscaled and then turned it off is
-        // still up — it costs a quarter of a second to raise and is kept for the next time — and
-        // asking it what to trace at for no upscaling at all is a question it refuses.
+        // Whatever upscales picks the render size. Asked of the mode and not of the runtime: a
+        // runtime that is up because somebody upscaled and then turned it off is kept for the next
+        // time, and asking it what to trace at for no upscaling is a question it refuses.
         VkExtent2D render{ width, height };
 #ifdef OPENMW_RTX_DLSS
         if (upscaling())
@@ -261,25 +253,17 @@ namespace Rtx
 
 #ifdef OPENMW_RTX_DLSS
         // Released before the next is built: the feature holds the network's weights for one pair
-        // of resolutions, which is most of what it occupies.
-        //
-        // **And the image it writes goes with it**, which is what makes `upscaling()` the answer for
-        // both. It is sized to the output — sixteen bytes a pixel — so leaving it behind would hold
-        // that memory until something upscaled again, at the extent of whichever frame last did,
-        // while every frame between the two still discarded it.
+        // of resolutions, and the image it writes is sixteen bytes a pixel of the output, so neither
+        // is left behind for a mode that may not come back.
         mUpscaler.reset();
         mUpscaled.reset();
 
         if (upscaling())
         {
-            // **Half floats, where the trace's own composite is full ones.** That one is the
-            // instrument a reference is read off and a thousand frames are summed into; this one
-            // is shown and never summed, and a reference is built with the upscaler off. The peak
-            // linear radiance a frame of this game reaches is under nine — measured over the whole
-            // view suite and over a camera pointed at the noon sun — so a half carries it with four
-            // orders of magnitude to spare, at a step of one part in two thousand where the display
-            // quantizes to one in 255. Sixteen bytes a pixel of the output extent rather than
-            // thirty-two.
+            // Half floats, where the trace's own composite is full ones: this one is shown and never
+            // summed. The peak linear radiance a frame of this game reaches is under nine, measured
+            // over the view suite and a camera pointed at the noon sun, so a half carries it with
+            // four orders of magnitude to spare at a step finer than the display's.
             mUpscaled = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");
 
@@ -302,10 +286,8 @@ namespace Rtx
         // A frame of a different size is not one this one can be reprojected against.
         mPreviousCamera = Shaders::VisibilityConstants{};
 
-        // **Dropped rather than resized, because most runs never make one.** Sixteen bytes a pixel
-        // of the output buys a sum that neither rounds nor clips — which is worth every byte to the
-        // reference mode and nothing at all to the frame a window or a plain shot draws. The first
-        // averaging frame is what asks for it.
+        // Dropped rather than resized, because most runs never make one: sixteen bytes a pixel is
+        // worth it to the reference mode and nothing to a window. The first averaging frame asks.
         mSum.reset();
     }
 
@@ -412,7 +394,7 @@ namespace Rtx
     }
 
     void VulkanRenderer::setScene(
-        const SceneSlot slot, const SceneTables& scene, std::span<const TextureData> textures, const SeaState& sea)
+        const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
 
@@ -477,20 +459,14 @@ namespace Rtx
         held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, sFrameSlots, graveyard);
 
         held.mTextures = std::make_unique<TextureArray>(
-            mDevice, setup, static_cast<std::uint32_t>(scene.mTextures.getPaths().size()), textures, graveyard);
+            mDevice, setup, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures, graveyard);
 
-        // **Built once and kept, because building one compiles every kernel the trace can ever
-        // need — 6.3 s on a cold cache, measured.** Nothing about the pass depends on the scene: it
-        // needs the device and the shape of the texture set, and every array declares that shape
-        // identically — the bindless binding is sized to its maximum rather than to the cell, so
-        // what varies between scenes is how many descriptors get allocated and never what the
-        // layout says. Identically defined layouts are compatible, so a set from a later array
-        // binds against the pipeline layout the first one produced. `TextureArray`'s layout is
-        // where that invariant is kept.
-        //
-        // A doll can be the first thing this renderer ever builds — a race preview stands in front
-        // of a game that has no world yet — and the pass belongs to neither scene. The display curve
-        // reads the same array and is kept for the same reason.
+        // Built once and kept, because building one compiles every kernel the trace can ever need
+        // — 6.3 s on a cold cache, measured. Nothing about the pass depends on the scene: every
+        // texture array declares the same bindless layout sized to its maximum, and identically
+        // defined layouts are compatible, so a set from a later array binds against the pipeline
+        // layout the first one produced. A doll can be the first thing this renderer ever builds,
+        // and the pass belongs to neither scene.
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
@@ -505,7 +481,7 @@ namespace Rtx
         mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
             held.mBuffers->getNormals(), nullptr);
         held.mAcceleration->build(setup, scene, held.mRecords, graveyard);
-        held.mBuiltMeshes = scene.mMeshes.getRevision();
+        held.mBuiltMeshes = scene.meshes().getRevision();
         held.mBuiltStructure = scene.getStructureRevision();
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
@@ -517,24 +493,20 @@ namespace Rtx
     }
 
     void VulkanRenderer::extendScene(
-        const SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived, const SeaState& sea)
+        const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
-        // **An arrival does not wait for the frames in flight.** What arrives is written into every
-        // copy of the geometry and the tables, but into room no frame in flight holds: a block is only ever appended
-        // to, `growTo` buries the buffer a growth displaced so an address already handed out stays
-        // good, and a run an arrival fills is one no placed instance names. The writes ride the
-        // placement's submit behind the frame before them, and end in the barrier
-        // `orderStagedWrites` records. What still waits is the copy of the rows and the poses this
-        // placement is about to write, in `placeScene`, against the frame that last traced it.
+        // An arrival does not wait for the frames in flight: what arrives is written into room no
+        // frame holds — a block is only appended to, `growTo` buries a displaced buffer so an
+        // address handed out stays good, and a run an arrival fills is one no placed instance
+        // names. The writes ride the placement's submit and end in the barrier `orderStagedWrites`
+        // records.
         //
-        // **It opens the frame it lands in, so that its builds have a zone.** The batch below rides
-        // that frame's placement submit, ahead of the refit and the top level, so the bracket around
-        // the builds has to be written against that frame's timer — and `beginFrame` clears the
-        // timer, so a zone opened before it would be forgotten. A picture inside the interface opens
-        // no frame and is not timed, which is the rule `placeScene` states.
+        // It opens the frame it lands in, so that its builds have a zone: `beginFrame` clears the
+        // timer, so a zone opened before it would be forgotten. A picture inside the interface
+        // opens no frame and is not timed.
         GpuTimer* timer = nullptr;
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
@@ -544,35 +516,26 @@ namespace Rtx
         Batch setup(mPool);
         held.mTextures->write(setup, arrived, graveyard);
 
-        // **The meshes that arrived, and no others.** Everything already built stays where it is:
-        // the geometry blocks are appended to rather than replaced, so every address a structure was
-        // built from is still its own, and the storage a departing mesh gives back goes to the next
-        // one that fits.
-        //
-        // **The revision and not the count.** A slot a departing cell freed is taken over by the
-        // next mesh that fits, so the table can hold different geometry at the same size — and a
-        // guard on the size would send that here without noticing.
-        if (scene.mMeshes.getRevision() != held.mBuiltMeshes)
+        // The meshes that arrived, and no others: the geometry blocks are appended to rather than
+        // replaced, so every address a structure was built from is still its own. The revision and
+        // not the count, because a freed slot taken over holds different geometry at the same size.
+        if (scene.meshes().getRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(setup, scene, graveyard);
             held.mSkinTables->extend(scene, graveyard);
             held.mAcceleration->extend(setup, scene, graveyard);
 
-            // **Posed before it is built**, as `setScene` does: an actor walking in is built over
-            // its pose and not over its bind. Into the first copy, which is what the build reads;
-            // the placement below poses the copy the frame traces. Untimed, so the frame's report
-            // carries one `skin` zone and it is the placement's. The builds are timed: what an
-            // arrival adds to the frame it lands in is the question their zone answers.
+            // Posed before it is built, as `setScene` does, into the first copy, which is what the
+            // build reads. Untimed, so the frame's report carries one `skin` zone and it is the
+            // placement's.
             mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
                 held.mBuffers->getNormals(), nullptr);
             held.mAcceleration->buildArrived(setup, scene, timer, graveyard);
-            held.mBuiltMeshes = scene.mMeshes.getRevision();
+            held.mBuiltMeshes = scene.meshes().getRevision();
         }
 
-        // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits
-        // what was recorded here in the same call as the refit and the top level, ahead of them,
-        // and the barrier every upload and build ends in is what orders them — a build reads
-        // structures the deferred half wrote as it would inside one command buffer, so a composite
+        // Deferred to the placement's submit: `placeScene` submits this ahead of the refit and the
+        // top level, and the barrier every upload and build ends in orders them, so a composite
         // landing costs no submit, fence or wait of its own.
         setup.defer();
 
@@ -612,18 +575,15 @@ namespace Rtx
     }
 
     bool VulkanRenderer::recordPlacement(
-        const SkinPass& skin, ViewScene& held, const SceneTables& scene, const Placing& placing)
+        const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing)
     {
-        // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
-        // and nothing arrives to take them over until the walk reaches the far side of the next one,
-        // so a frame that only places is the one that must not hold their structures. Already done
-        // where `extendScene` came through, and asking twice costs two comparisons a slot.
-        held.mAcceleration->release(scene.mMeshes.getFreed(), placing.mGraveyard);
+        // What the scene let go of, given back here: walking away from a ring frees its meshes and
+        // nothing arrives to take them over until the next ring, so a frame that only places is the
+        // one that must not hold their structures.
+        held.mAcceleration->release(scene.meshes().getFreed(), placing.mGraveyard);
 
-        // **Once, for the slots that changed, and both halves read it.** The rows carry a matrix
-        // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
-        // structure and the instance table were each building the whole set for themselves, every
-        // frame, to change a hundred of them.
+        // Once, for the slots that changed, and both halves read it: a nine-by-nine exterior is
+        // fifty thousand rows with a matrix inverse apiece, and a frame changes a hundred.
         updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
 
         // **The pose first, because the refit reads it.** Every skinned body and morphed face this
@@ -634,28 +594,23 @@ namespace Rtx
 
         const bool built = held.mAcceleration->place(scene, held.mRecords, held.mChangedRecords, placing);
 
-        // **Nothing to report, because nothing here is recorded.** The tables are host-visible and
-        // this writes them; what the trace reads of them is made visible by the submit that follows,
-        // which is why only the halves above have a command buffer and an answer about it.
-        //
-        // **Only what a moving world changed**, which is the instance rows and the lights.
-        // Rebuilding all of it is tens of milliseconds on a nine-by-nine region.
+        // Nothing to report, because nothing here is recorded: the tables are host-visible and the
+        // submit that follows makes them visible. Only what a moving world changed — rebuilding all
+        // of it is tens of milliseconds on a nine-by-nine region.
         held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, placing.mSlot, placing.mGraveyard);
 
         return posed || built;
     }
 
-    void VulkanRenderer::placeScene(const SceneSlot slot, const SceneTables& scene, const SeaState& sea)
+    void VulkanRenderer::placeScene(const SceneSlot slot, const SceneDesc& scene, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
 
-        // **The copy this placement writes is the one the last frame did not trace**, and whatever
-        // frame last traced it is waited for here. Usually that frame has long since signalled —
-        // the CPU is a frame ahead and no more — and the wait is a comparison; when the GPU is
-        // behind, this is where the CPU stands still, which is the right place. The other copy and
-        // not a parity of its own, because a frame need not place: two traces of one placement read
-        // the same copy twice, and the next placement has to go where neither of them is.
+        // The copy this placement writes is the one the last frame did not trace, and whatever
+        // frame last traced it is waited for here — usually a comparison, and where the GPU is
+        // behind, the right place for the CPU to stand still. The other copy and not a parity of
+        // its own, because a frame need not place.
         const FrameSlot into = held.mSlot.next();
         if (held.mReadBy[into.get()] != sNeverRead)
         {
@@ -668,11 +623,9 @@ namespace Rtx
             mRing.finishThrough(held.mReadBy[into.get()]);
         }
 
-        // **A picture inside the interface is placed into a batch that rides the next submit.** It
-        // is neither timed nor allowed to open the frame's report, and the trace that follows it is
-        // deferred the same way, so the two go to the queue in order in one call. What orders the
-        // pair is the barrier `place` ends in, which is what orders a deferred arrival against the
-        // world's placement in the same way.
+        // A picture inside the interface is placed into a batch that rides the next submit, neither
+        // timed nor opening the frame's report; the trace that follows is deferred the same way, and
+        // the barrier `place` ends in orders the pair.
         if (!slot.isWorld())
         {
             Batch placement(mPool);

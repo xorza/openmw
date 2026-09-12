@@ -11,7 +11,7 @@
 #include <components/resource/imagemanager.hpp>
 
 #include "camera.hpp"
-#include "decodecolour.hpp"
+#include "colour.hpp"
 #include "posecull.hpp"
 #include "poseupdate.hpp"
 #include "scenedesc.hpp"
@@ -189,7 +189,7 @@ namespace Rtx
         subject.mUploader.hand(
             mRenderer, SceneUploader::Handing{ .mSlot = subject.mSlot, .mScene = *subject.mScene, .mImages = images });
 
-        return subject.mScene->getTables().mPlacements.getPlacedCount() > 0;
+        return subject.mScene->placements().getPlacedCount() > 0;
     }
 
     void OffscreenTrace::traceInto(const GuiSlot texture, const bool readBack)

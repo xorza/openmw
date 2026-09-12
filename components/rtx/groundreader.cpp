@@ -12,8 +12,8 @@
 
 #include <components/esm/util.hpp>
 
-#include "contentsource.hpp"
-#include "decodecolour.hpp"
+#include "colour.hpp"
+#include "residency.hpp"
 
 namespace Rtx
 {

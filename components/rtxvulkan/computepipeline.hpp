@@ -7,8 +7,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "handles.hpp"
 #include "owned.hpp"
-#include "pipelinelayout.hpp"
 
 namespace Rtx
 {
@@ -46,9 +46,6 @@ namespace Rtx
             std::uint32_t pushConstantBytes, std::span<const VkDescriptorSetLayout> laterSets,
             const std::filesystem::path& module, std::string_view name,
             std::span<const std::uint32_t> specialization = {});
-
-        ComputePipeline(const ComputePipeline&) = delete;
-        ComputePipeline& operator=(const ComputePipeline&) = delete;
 
         VkPipeline getHandle() const { return mHandle.get(); }
 

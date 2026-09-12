@@ -16,11 +16,11 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "frameworld.hpp"
-#include "meantexel.hpp"
 #include "scenedesc.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "skylight.hpp"
+#include "texels.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx

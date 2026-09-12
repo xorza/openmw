@@ -2,8 +2,7 @@
 
 #include <osg/Vec3f>
 
-#include "index.hpp"
-#include "run.hpp"
+#include "runs.hpp"
 
 namespace Rtx
 {
@@ -64,7 +63,7 @@ namespace Rtx
         /// Far enough from `mCentre` to contain every sprite in the range, rim included.
         float mReach = 0.0f;
 
-        /// Where they sit in `SceneTables::mSprites`, laid end to end as the emitter placed them.
+        /// Where they sit in `SceneDesc::sprites`, laid end to end as the emitter placed them.
         Run mSprites;
 
         /// The sprite texture, or `sNoIndex` where the emitter had none — which draws nothing, since

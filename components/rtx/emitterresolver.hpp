@@ -5,10 +5,10 @@
 
 #include <osg/Matrixf>
 
-#include "index.hpp"
 #include "mirroridentity.hpp"
-#include "mirrorpass.hpp"
+#include "runs.hpp"
 #include "scenedesc.hpp"
+#include "walk.hpp"
 
 namespace osg
 {

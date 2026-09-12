@@ -146,7 +146,7 @@ add_component_dir (sceneutil
     )
 
 add_component_dir (surface
-    alphamode colour describe material vertexcolour
+    describe material
     )
 
 add_component_dir (nif

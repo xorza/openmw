@@ -42,7 +42,7 @@ namespace MyGUIRtx
         };
     }
 
-    RenderManager::RenderManager(Rtx::GuiSurface& renderer, Resource::ImageManager* imageManager, float scalingFactor)
+    RenderManager::RenderManager(Rtx::Renderer& renderer, Resource::ImageManager* imageManager, float scalingFactor)
         : mRenderer(renderer)
         , mImageManager(imageManager)
     {

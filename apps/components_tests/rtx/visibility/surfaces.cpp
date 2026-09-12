@@ -7,7 +7,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/shadingmap.hpp>
-#include <components/surface/vertexcolour.hpp>
+#include <components/surface/material.hpp>
 
 #include "fixture.hpp"
 
@@ -44,7 +44,7 @@ namespace Rtx::Testing
             // No sprites, so no tiles, and that table used to come out as `VK_NULL_HANDLE`.
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            const SceneBuffers buffers(device, setup, empty.getTables(), {}, 1, graveyard);
+            const SceneBuffers buffers(device, setup, empty, {}, 1, graveyard);
             setup.flush();
 
             // **Every table this hands out, and not the three that were caught.** The rule was the
@@ -112,7 +112,7 @@ namespace Rtx::Testing
 
             mRenderer->resize(size, size);
             const TextureData first = describeTexel(redTexel, 0);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), std::span(&first, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
 
             // **A hue rather than a pair of exact bytes.** The tone curve rolls a saturated colour
@@ -136,9 +136,9 @@ namespace Rtx::Testing
 
             // **The slot the scene gave it**, which is what an arrival now carries: a texture is
             // written where it belongs rather than after whatever is already there.
-            const Index blueTexture = scene.getTables().mMaterials.getRows()[blue].mDiffuse;
+            const Index blueTexture = scene.materials().getRows()[blue].mDiffuse;
             const TextureData second = describeTexel(blueTexel, blueTexture);
-            mRenderer->extendScene(Rtx::SceneSlot::world(), scene.getTables(), std::span(&second, 1), SeaState{});
+            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1), SeaState{});
             EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u);
 
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
@@ -152,7 +152,7 @@ namespace Rtx::Testing
             // And the first texture is still where it was: move the near wall out of the way and the
             // one behind it has to be red again, sampled from a descriptor nothing rewrote.
             scene.placements().drop(1);
-            mRenderer->placeScene(Rtx::SceneSlot::world(), scene.getTables(), SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
@@ -167,10 +167,10 @@ namespace Rtx::Testing
             const std::array<Index, 1> keptMeshes{ mesh };
             const std::array<Index, 1> keptMaterials{ red };
             ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
-            ASSERT_TRUE(scene.getTables().mTextures.isFree(blueTexture));
-            ASSERT_EQ(scene.getTables().mTextures.getPaths().size(), 2u) << "the table does not shrink";
+            ASSERT_TRUE(scene.textures().isFree(blueTexture));
+            ASSERT_EQ(scene.textures().getPaths().size(), 2u) << "the table does not shrink";
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), std::span(&first, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1), SeaState{});
 
             EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u)
                 << "the array stopped at the last texture it was handed rather than at the table";
@@ -195,8 +195,7 @@ namespace Rtx::Testing
             // zero, and the wall would sample a descriptor nobody ever wrote.
             const Index again = scene.materials().add(
                 Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("blue.dds")) });
-            ASSERT_EQ(scene.getTables().mMaterials.getRows()[again].mDiffuse, blueTexture)
-                << "the freed slot was not taken over";
+            ASSERT_EQ(scene.materials().getRows()[again].mDiffuse, blueTexture) << "the freed slot was not taken over";
 
             scene.placements().drop(0);
             scene.addInstance(
@@ -204,9 +203,9 @@ namespace Rtx::Testing
 
             const std::array<Index, 1> keptAgain{ again };
             ASSERT_TRUE(scene.release(keptMeshes, keptAgain));
-            ASSERT_TRUE(scene.getTables().mTextures.isFree(0u));
+            ASSERT_TRUE(scene.textures().isFree(0u));
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), std::span(&second, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
@@ -350,7 +349,7 @@ namespace Rtx::Testing
 
             SceneDesc single;
             const Index alone = addWall(single);
-            ASSERT_EQ(single.getTables().mMeshes.getRows()[alone].mVertices.mOffset, 0u);
+            ASSERT_EQ(single.meshes().getRows()[alone].mVertices.mOffset, 0u);
 
             // **One filler that fills both blocks**, because the vertex and index tables are blocked
             // at different sizes and a mesh pushed past one is not thereby past the other.
@@ -370,8 +369,8 @@ namespace Rtx::Testing
             // and 1,048,575 of 1,048,576 indices leaves a tail of one, which six will not fit into.
             // Asserted, because a test whose subject quietly moved back into block zero would pass
             // while testing nothing.
-            ASSERT_EQ(crossed.getTables().mMeshes.getRows()[beyond].mVertices.mOffset, SceneDesc::sVertexBlock);
-            ASSERT_EQ(crossed.getTables().mMeshes.getRows()[beyond].mIndices.mOffset, SceneDesc::sIndexBlock);
+            ASSERT_EQ(crossed.meshes().getRows()[beyond].mVertices.mOffset, SceneDesc::sVertexBlock);
+            ASSERT_EQ(crossed.meshes().getRows()[beyond].mIndices.mOffset, SceneDesc::sIndexBlock);
 
             std::vector<std::uint8_t> alonePixels;
             std::vector<std::uint8_t> crossedPixels;

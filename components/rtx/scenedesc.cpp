@@ -10,29 +10,28 @@ namespace Rtx
 {
     Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material)
     {
-        assert(
-            (material == sNoIndex || material < mMaterialTable.size()) && "a mesh wearing a material the scene lacks");
+        assert((material == sNoIndex || material < mMaterials.size()) && "a mesh wearing a material the scene lacks");
 
-        return mMeshTable.add(arrays, shape, deform, deformer, material);
+        return mMeshes.add(arrays, shape, deform, deformer, material);
     }
 
     void SceneDesc::poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds)
     {
-        assert(mesh < mMeshTable.size());
-        if (mDeformers.poseRig(mMeshTable.getRows()[mesh], bones))
-            mMeshTable.notePosed(mesh, bounds);
+        assert(mesh < mMeshes.size());
+        if (mDeformers.poseRig(mMeshes.getRows()[mesh], bones))
+            mMeshes.notePosed(mesh, bounds);
     }
 
     void SceneDesc::poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds)
     {
-        assert(mesh < mMeshTable.size());
-        if (mDeformers.poseMorph(mMeshTable.getRows()[mesh], weights))
-            mMeshTable.notePosed(mesh, bounds);
+        assert(mesh < mMeshes.size());
+        if (mDeformers.poseMorph(mMeshes.getRows()[mesh], weights))
+            mMeshes.notePosed(mesh, bounds);
     }
 
     void SceneDesc::setMaterial(Index material, const Material& what)
     {
-        if (!mMaterialTable.set(material, what))
+        if (!mMaterials.set(material, what))
             return;
 
         // Linear over the placements on the frame a surface crosses opaque, which a fade does twice
@@ -48,7 +47,7 @@ namespace Rtx
 
     bool SceneDesc::hasDroppedHolds() const
     {
-        return mMeshTable.hasDroppedHolds() || mMaterialTable.hasDroppedHolds();
+        return mMeshes.hasDroppedHolds() || mMaterials.hasDroppedHolds();
     }
 
     void SceneDesc::addLight(const Light& light)
@@ -106,8 +105,8 @@ namespace Rtx
 
     Index SceneDesc::addInstance(const MeshInstance& instance)
     {
-        assert(instance.mMesh < mMeshTable.size());
-        assert(instance.mMaterial == sNoIndex || instance.mMaterial < mMaterialTable.size());
+        assert(instance.mMesh < mMeshes.size());
+        assert(instance.mMaterial == sNoIndex || instance.mMaterial < mMaterials.size());
 
         return mPlacements.add(instance);
     }
@@ -132,7 +131,7 @@ namespace Rtx
     {
         mLights.clear();
 
-        mMeshTable.clearDeformed();
+        mMeshes.clearDeformed();
         mSprites.clear();
         mEmitters.clear();
     }
@@ -141,8 +140,8 @@ namespace Rtx
     {
         // Only meshes and materials are asked, and that is now the whole of what this frees: a
         // texture goes when the last material or hold naming it lets go, wherever that happens.
-        const std::size_t keptMeshes = mMeshTable.mark(meshes);
-        const std::size_t keptMaterials = mMaterialTable.mark(materials);
+        const std::size_t keptMeshes = mMeshes.mark(meshes);
+        const std::size_t keptMaterials = mMaterials.mark(materials);
 
         // **The ordinary frame leaves here**: a table with as many survivors as live entries has
         // nothing to free, and what it paid for the answer is the marking above.
@@ -150,11 +149,11 @@ namespace Rtx
         // **Asked of the marks and not of the span's length.** Those two agree only while the keep
         // set names each survivor once, which is a property of the identity map that fills it rather
         // than of this call — so a second way of collecting survivors cannot get it wrong.
-        if (keptMeshes == mMeshTable.getLiveCount() && keptMaterials == mMaterialTable.getLiveCount())
+        if (keptMeshes == mMeshes.getLiveCount() && keptMaterials == mMaterials.getLiveCount())
             return false;
 
-        const std::size_t freedMeshes = mMeshTable.sweep();
-        const std::size_t freedMaterials = mMaterialTable.sweep();
+        const std::size_t freedMeshes = mMeshes.sweep();
+        const std::size_t freedMaterials = mMaterials.sweep();
 
         // **The per-frame lists are left as the walk left them.** Emptying them here read as "the
         // walk that comes next refills them", and that walk is the *next frame's* — one frame after
@@ -176,10 +175,72 @@ namespace Rtx
 
     void SceneDesc::clearArrivals()
     {
-        mMeshTable.clearArrivals();
+        mMeshes.clearArrivals();
         mTextures.clearArrivals();
-        mMaterialTable.clearArrivals();
+        mMaterials.clearArrivals();
         mDeformers.clearArrivals();
     }
 
+    std::span<const Shaders::GpuBone> SceneDesc::getMeshBones(const Index mesh) const
+    {
+        return mDeformers.getMeshBones(mMeshes.getRows()[mesh]);
+    }
+
+    std::span<const float> SceneDesc::getMeshWeights(const Index mesh) const
+    {
+        return mDeformers.getMeshWeights(mMeshes.getRows()[mesh]);
+    }
+
+    template <class Visit>
+    void SceneDesc::forEachPlacement(Visit&& visit) const
+    {
+        for (const MeshInstance& instance : mPlacements.getAll())
+        {
+            if (!instance.isPlaced())
+                continue;
+
+            // **Each mesh's own box carried through its instances**, rather than every vertex of
+            // every instance — the difference between eight transforms per instance and several
+            // hundred. The mesh kept it as its vertices arrived, so nothing is walked here at all.
+            const osg::BoundingBoxf& box = mMeshes.getRows()[instance.mMesh].mBounds;
+            if (!box.valid())
+                continue;
+
+            osg::BoundingBoxf placed;
+            for (unsigned int corner = 0; corner < 8; ++corner)
+                placed.expandBy(box.corner(corner) * instance.mTransform);
+
+            visit(instance, placed);
+        }
+    }
+
+    osg::BoundingBoxf SceneDesc::getBounds() const
+    {
+        osg::BoundingBoxf bounds;
+        forEachPlacement([&](const MeshInstance&, const osg::BoundingBoxf& box) { bounds.expandBy(box); });
+
+        return bounds;
+    }
+
+    osg::BoundingBoxf SceneDesc::getContentBoundsWithin(const osg::BoundingBoxf& region) const
+    {
+        osg::BoundingBoxf bounds;
+        forEachPlacement([&](const MeshInstance& instance, const osg::BoundingBoxf& box) {
+            // An instance with no material is not a backdrop — the untextured test scenes place
+            // those, and a caller framing one means to see it.
+            if (instance.mMaterial != sNoIndex && mMaterials.getRows()[instance.mMaterial].mKind == MaterialKind::Water)
+                return;
+
+            if (!box.intersects(region))
+                return;
+
+            // The part inside, so a chunk straddling the edge contributes where it overlaps rather
+            // than dragging the answer out by its whole width.
+            bounds.expandBy(osg::BoundingBoxf(std::max(box.xMin(), region.xMin()), std::max(box.yMin(), region.yMin()),
+                std::max(box.zMin(), region.zMin()), std::min(box.xMax(), region.xMax()),
+                std::min(box.yMax(), region.yMax()), std::min(box.zMax(), region.zMax())));
+        });
+
+        return bounds;
+    }
 }

@@ -26,19 +26,16 @@
 #include "../mwbase/windowmanager.hpp"
 
 #include "../mwrender/renderer.hpp"
-#include "../mwrender/stage.hpp"
 
 #include "backgroundimage.hpp"
 
 namespace MWGui
 {
 
-    LoadingScreen::LoadingScreen(
-        Resource::ResourceSystem* resourceSystem, MWRender::Renderer& renderer, MWRender::Stage& stage)
+    LoadingScreen::LoadingScreen(Resource::ResourceSystem* resourceSystem, MWRender::Renderer& renderer)
         : WindowBase("openmw_loading_screen.layout")
         , mResourceSystem(resourceSystem)
         , mRenderer(renderer)
-        , mStage(stage)
         , mTargetFrameRate(120.0)
         , mLastWallpaperChangeTime(0.0)
         , mLastRenderTime(0.0)
@@ -131,7 +128,7 @@ namespace MWGui
         // Assign dummy bounding sphere callback to avoid the bounding sphere of the entire scene being recomputed after
         // each frame of loading We are already using node masks to avoid the scene from being updated/rendered, but
         // node masks don't work for computeBound()
-        mStage.getSceneRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
+        mRenderer.getSceneRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
 
         setVisible(true);
 
@@ -163,8 +160,8 @@ namespace MWGui
         else
             mImportantLabel = false; // label was already shown on loading screen
 
-        mStage.getSceneRoot().setComputeBoundingSphereCallback(nullptr);
-        mStage.getSceneRoot().dirtyBound();
+        mRenderer.getSceneRoot().setComputeBoundingSphereCallback(nullptr);
+        mRenderer.getSceneRoot().dirtyBound();
 
         setVisible(false);
 
@@ -278,8 +275,8 @@ namespace MWGui
 
         MWBase::Environment::get().getInputManager()->update(0, true, true);
 
-        osg::Stats& stats = mStage.getStats();
-        const unsigned frameNumber = mStage.getFrameStamp().getFrameNumber();
+        osg::Stats& stats = mRenderer.getStats();
+        const unsigned frameNumber = mRenderer.getFrameStamp().getFrameNumber();
 
         stats.setAttribute(frameNumber, "Loading", 1);
 
@@ -295,7 +292,7 @@ namespace MWGui
         mRenderer.eventTraversal();
         mRenderer.updateTraversal();
         mRenderer.renderGui();
-        mRenderer.advance(mStage.getFrameStamp().getSimulationTime());
+        mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
 
         mLastRenderTime = mTimer.time_m();
     }

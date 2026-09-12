@@ -32,9 +32,6 @@ namespace Rtx
     public:
         AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        AtrousPass(const AtrousPass&) = delete;
-        AtrousPass& operator=(const AtrousPass&) = delete;
-
         /// Makes room for a frame this size, if the last one was not. Before the first frame.
         ///
         /// The levels ping-pong, so a filtered frame needs a second channel to land in. Idempotent,

@@ -60,9 +60,6 @@ namespace Rtx
             const std::vector<const char*>& extraExtensions = {});
         ~Device();
 
-        Device(const Device&) = delete;
-        Device& operator=(const Device&) = delete;
-
         VkDevice getHandle() const { return mHandle; }
         VkQueue getQueue() const { return mQueue; }
         std::uint32_t getQueueFamily() const { return mPhysicalDevice.getQueueFamily(); }

@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <span>
 
-#include <components/rtx/png.hpp>
+#include <components/rtx/texels.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
 namespace RtxTool

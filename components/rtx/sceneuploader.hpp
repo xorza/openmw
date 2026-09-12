@@ -17,7 +17,7 @@ namespace Rtx
 {
     class CompositeQueue;
     class SceneDesc;
-    class SceneSink;
+    class Renderer;
 
     /// What handing a mirrored scene to a renderer came to.
     struct SceneUpload
@@ -60,7 +60,7 @@ namespace Rtx
     /// that was compacted and every index points at something else.
     ///
     /// **Stateless against the backend.** Whether the backend holds this scene, and at which
-    /// revision, is the backend's to say — `SceneSink::describeHeld` — so a scene it does not hold
+    /// revision, is the backend's to say — `Renderer::describeHeld` — so a scene it does not hold
     /// is built from nothing rather than appended to, whichever uploader asks.
     class SceneUploader
     {
@@ -101,7 +101,7 @@ namespace Rtx
             FrameSpend* mSpend = nullptr;
         };
 
-        SceneUpload hand(SceneSink& renderer, const Handing& handing);
+        SceneUpload hand(Renderer& renderer, const Handing& handing);
 
     private:
         /// Whether this uploader has ever built its scene into a backend. With the backend's own

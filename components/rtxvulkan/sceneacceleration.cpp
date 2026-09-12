@@ -7,7 +7,7 @@
 #include <utility>
 
 #include <components/rtx/error.hpp>
-#include <components/rtx/scenetables.hpp>
+#include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 
 #include "commands.hpp"
@@ -40,7 +40,7 @@ namespace Rtx
     }
 
     SceneAcceleration::SceneAcceleration(
-        const Device& device, Batch& batch, const SceneTables& scene, const std::uint32_t slots)
+        const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
         , mSlots(slots)
         , mBottomLevel(device, slots)
@@ -52,7 +52,7 @@ namespace Rtx
         mIndices.open(device, sBuildInputUsage, "indices");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
-        mEveryMesh.resize(scene.mMeshes.getRows().size());
+        mEveryMesh.resize(scene.meshes().getRows().size());
         for (std::size_t at = 0; at < mEveryMesh.size(); ++at)
             mEveryMesh[at] = static_cast<Index>(at);
 
@@ -65,7 +65,7 @@ namespace Rtx
     }
 
     void SceneAcceleration::build(
-        Batch& batch, const SceneTables& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
+        Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
     {
         assert(mBottomLevel.size() == 0 && mTopLevel == VK_NULL_HANDLE && "a scene built twice");
 
@@ -82,17 +82,17 @@ namespace Rtx
             mDevice.getFunctions().mDestroyAccelerationStructure(mDevice.getHandle(), mTopLevel, nullptr);
     }
 
-    void SceneAcceleration::writeGeometry(Batch& batch, const SceneTables& scene, std::span<const Index> meshes)
+    void SceneAcceleration::writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes)
     {
         // Each table's own reach, so a block exists for every run it has handed out. Blocks already
         // made are left exactly where they are, and one call reaches every copy — `SlotBlocks` is
         // what holds one per frame in flight.
-        mPoses.reserve(batch, scene.mDeformers.getBindVertexCount());
-        mIndices.reserve(batch, static_cast<std::uint32_t>(scene.mMeshes.getIndices().size()));
+        mPoses.reserve(batch, scene.deformers().getBindVertexCount());
+        mIndices.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getIndices().size()));
 
         for (const Index mesh : meshes)
         {
-            const MeshRange& range = scene.mMeshes.getRows()[mesh];
+            const MeshRange& range = scene.meshes().getRows()[mesh];
             if (range.mVertices.empty())
                 continue;
 
@@ -103,9 +103,9 @@ namespace Rtx
             if (range.mDeform != Deform::None)
                 for (std::uint32_t slot = 0; slot < mSlots; ++slot)
                     mPoses.at(FrameSlot{ slot })
-                        .writeAt(batch, range.mBindOffset, scene.mMeshes.getMeshPositions(mesh));
+                        .writeAt(batch, range.mBindOffset, scene.meshes().getMeshPositions(mesh));
 
-            mIndices.writeAt(batch, range.mIndices.mOffset, range.mIndices.in(scene.mMeshes.getIndices()));
+            mIndices.writeAt(batch, range.mIndices.mOffset, range.mIndices.in(scene.meshes().getIndices()));
         }
 
         // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
@@ -115,32 +115,32 @@ namespace Rtx
         orderStagedWrites(batch);
     }
 
-    void SceneAcceleration::extend(Batch& batch, const SceneTables& scene, Graveyard& graveyard)
+    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
     {
         // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
         // lists are disjoint, so a slot handed out again appears only among the arrivals and is
         // dealt with by `buildMeshes`, which buries whatever the slot was holding.
-        release(scene.mMeshes.getFreed(), graveyard);
+        release(scene.meshes().getFreed(), graveyard);
 
-        writeGeometry(batch, scene, scene.mMeshes.getArrived());
+        writeGeometry(batch, scene, scene.meshes().getArrived());
     }
 
-    void SceneAcceleration::buildArrived(Batch& batch, const SceneTables& scene, GpuTimer* timer, Graveyard& graveyard)
+    void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard)
     {
         // **The builds a crossing brings, bracketed as one zone.** Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
 
-        mBottomLevel.build(batch, scene, scene.mMeshes.getArrived(), mPoses.at(FrameSlot{}), mIndices, graveyard);
+        mBottomLevel.build(batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices, graveyard);
 
         closeZone(timer, batch.getCommands());
     }
 
-    void SceneAcceleration::prepareRefit(const SceneTables& scene, const FrameSlot slot, Graveyard& graveyard)
+    void SceneAcceleration::prepareRefit(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
     {
-        const std::span<const Index> deformed = scene.mMeshes.getDeformed();
+        const std::span<const Index> deformed = scene.meshes().getDeformed();
 
         // **This frame's copy, which the pass has already posed into.** `SkinPass::record` runs
         // ahead of this in the same command buffer and pays the poses' account — every pose this
@@ -182,7 +182,7 @@ namespace Rtx
         for (std::uint32_t i = 0; i < count; ++i)
         {
             const Index index = deformed[i];
-            const MeshRange& mesh = scene.mMeshes.getRows()[index];
+            const MeshRange& mesh = scene.meshes().getRows()[index];
 
             // The same description the first build was given, which is what makes the structure
             // it produces the same size as the one already sitting at this mesh's offset.
@@ -230,20 +230,17 @@ namespace Rtx
         closeZone(timer, commands);
     }
 
-    bool SceneAcceleration::place(const SceneTables& scene, std::span<const InstanceRecord> records,
+    bool SceneAcceleration::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
         std::span<const Index> changed, const Placing& placing)
     {
         assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the rows for");
 
         prepareRefit(scene, placing.mSlot, placing.mGraveyard);
 
-        // **What this copy owes, and not what the scene moved.** The top level is built from this
-        // copy of the rows, so what decides whether it has to be built again is whether those rows
-        // are about to change — a debt this copy may have carried for frames, not a list the current
-        // frame filled. A world that stands still owes nothing and still returns here, which is what
-        // the early return is for: building the same top level over the same rows was a submit and a
-        // fence on every frame of a standing camera. A refit alone still rebuilds it, because a top
-        // level caches the bounds of what it names.
+        // What this copy owes, and not what the scene moved: a world that stands still owes
+        // nothing, and building the same top level over the same rows was a submit and a fence on
+        // every frame of a standing camera. A refit alone still rebuilds it, because a top level
+        // caches the bounds of what it names.
         writeRows(records, changed);
 
         // **After the rows are grown to the scene and before the copy they are synced from.** A
@@ -316,16 +313,14 @@ namespace Rtx
             placeRow(at, records[at]);
     }
 
-    void SceneAcceleration::prepareTopLevel(const SceneTables& scene, const FrameSlot slot, Graveyard& graveyard)
+    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
     {
-        // **Checked here rather than left to the driver.** A scene that grew a mesh since `setScene`
-        // built the structures is a caller breaking `placeScene`'s contract, and the only symptom is
-        // a top level naming a bottom level that was never made — which surfaces as an invalid handle
-        // inside `vkGetAccelerationStructureDeviceAddressKHR` and says nothing about who did it. One
-        // comparison, once a frame, for a failure that otherwise takes the process down unexplained.
-        if (scene.mMeshes.getRows().size() != mBottomLevel.size())
+        // Checked here rather than left to the driver: a scene that grew a mesh since `setScene` is
+        // a caller breaking `placeScene`'s contract, and the only other symptom is an invalid handle
+        // inside `vkGetAccelerationStructureDeviceAddressKHR`.
+        if (scene.meshes().getRows().size() != mBottomLevel.size())
             throw Error("the scene grew from " + std::to_string(mBottomLevel.size()) + " meshes to "
-                + std::to_string(scene.mMeshes.getRows().size())
+                + std::to_string(scene.meshes().getRows().size())
                 + " without being built again; placeScene can only move what setScene made");
 
         mRowTable.sync(slot, graveyard);
@@ -337,7 +332,7 @@ namespace Rtx
         // The top level is built from this frame's copy, so the address moves with the slot.
         mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.getDeviceAddress(slot);
 
-        mCounts.mPlaced = scene.mPlacements.getPlacedCount();
+        mCounts.mPlaced = scene.placements().getPlacedCount();
     }
 
     void SceneAcceleration::discountRow(const Index slot)
@@ -407,11 +402,9 @@ namespace Rtx
             .instanceCustomIndex = slot & 0xFFFFFFu,
             .mask = record.mMask,
 
-            // **The kind, so that traversal picks the shader and the trace never asks what it
-            // hit.** One closest-hit shader stands behind `HIT_RECORD_LAYERS` records of the
-            // visibility pass's hit table, kinds in the order `MaterialKind` names them. Written
-            // here rather than read from a material row at the hit, which is the read this
-            // replaces; the launch adds the layer it traces for.
+            // The kind, so that traversal picks the shader and the trace never asks what it hit:
+            // one closest-hit shader stands behind `HIT_RECORD_LAYERS` records, kinds in the order
+            // `MaterialKind` names them, and the launch adds the layer it traces for.
             .instanceShaderBindingTableRecordOffset
             = static_cast<std::uint32_t>(record.mKind) * Shaders::HIT_RECORD_LAYERS,
             .flags = flags,

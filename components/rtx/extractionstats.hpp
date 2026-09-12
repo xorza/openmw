@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-#include "imageformat.hpp"
+#include "texels.hpp"
 
 namespace osg
 {
@@ -19,17 +19,10 @@ namespace Rtx
         std::uint32_t mMipped = 0;
     };
 
-    /// What the textures a walk reached for turned out to be, one entry per `ImageFormat`.
-    ///
-    /// Kept because the answer decides how they are uploaded, and guessing it from what the content
-    /// files ought to contain is how a renderer ends up with a path nothing takes.
-    ///
-    /// **Counted by enumerator and named at the end.** A walk meets every texture of every material
-    /// it reads, and animated ones again on each frame; naming one where it is met builds a
-    /// `std::string` on the frame path to key a map by.
-    ///
-    /// **Its own struct, because its sum is not the counters' sum.** The counts add per format, and
-    /// the unnamed format is the last one seen rather than a total.
+    /// What the textures a walk reached for turned out to be, one entry per `ImageFormat`, counted
+    /// by enumerator and named at the end, because naming one where it is met builds a
+    /// `std::string` on the frame path. Its own struct because the unnamed format is the last one
+    /// seen rather than a total.
     struct FormatCensus
     {
         std::array<FormatCount, sImageFormatCount> mMet{};
@@ -46,11 +39,8 @@ namespace Rtx
         FormatCensus& operator+=(const FormatCensus& other);
     };
 
-    /// What one extraction pass did.
-    ///
-    /// The reused counts are the interesting half: a mirror that adds nothing on a second pass over
-    /// an unchanged graph is the property the whole incremental design rests on, and it is only
-    /// visible as a number.
+    /// What one extraction pass did. The reused counts are the interesting half: a mirror that
+    /// adds nothing on a second pass over an unchanged graph is only visible as a number.
     struct ExtractionStats
     {
         /// Distinct geometry met for the first time, so one new entry in the scene each.
@@ -79,55 +69,32 @@ namespace Rtx
         /// actor rather than a count of them.
         std::uint32_t mDeformed = 0;
 
-        /// Skinned drawables mirrored as they stand, because no update traversal has resolved their
-        /// skeleton: `SceneUtil::RigGeometry::getBones` answered nothing. The rasterizer draws such a
-        /// rig in its bind pose too, so this is what it shows and not a loss — but a walk that
-        /// reaches a rig before the update that should have found its skeleton is a walk out of
-        /// order, and this is the number that says so.
+        /// Skinned drawables mirrored as they stand, because `SceneUtil::RigGeometry::getBones`
+        /// answered nothing. The rasterizer draws such a rig in its bind pose too; the number says
+        /// a walk reached a rig before the update that should have found its skeleton.
         std::uint32_t mUnskinned = 0;
 
-        /// Particle systems met, and the live particles they were holding.
-        ///
-        /// **Sprites and not triangles**, so neither number is a mesh or an instance: an emitter is
-        /// a sphere and a run of discs the primary ray composites, and nothing about it reaches an
-        /// acceleration structure. An emitter whose particles have all died places nothing and is
-        /// not counted.
+        /// Particle systems met, and the live particles they were holding — sprites and not
+        /// triangles, so neither number is a mesh or an instance. An emitter whose particles have
+        /// all died is not counted.
         std::uint32_t mEmitters = 0;
         std::uint32_t mSprites = 0;
 
-        /// Drawables this cannot read at all — neither an `osg::Geometry`, nor either of the two
-        /// deforming kinds, nor a particle system.
-        ///
-        /// What is left is OpenMW's own debug drawing, which a ray tracer answers differently
-        /// rather than misses. A canary and not a deficit: what it would catch is a new kind of
-        /// drawable arriving unnoticed.
+        /// Drawables this cannot read at all, which is OpenMW's own debug drawing. A canary for a
+        /// new kind of drawable arriving unnoticed.
         std::uint32_t mSkippedUnknown = 0;
 
-        /// Surfaces the content pipeline never described, which are drawn as whatever a default
-        /// `Material` is — untextured, opaque and one-sided.
-        ///
-        /// **A canary, and it should be zero.** `NifOsg` authors a `Surface::Material` for
-        /// everything it builds; a drawable arriving without one means a state set was made
-        /// somewhere else, or remade by something that copied the pipeline state and dropped the
-        /// description with it.
+        /// Surfaces the content pipeline never described, drawn as a default `Material` —
+        /// untextured, opaque and one-sided. A canary that should be zero: `NifOsg` describes
+        /// everything it builds.
         std::uint32_t mUndescribedSurfaces = 0;
 
-        /// Particle systems the walk met and could not draw, because nothing described them or
-        /// because what did named no diffuse map. Dropped whole: a sprite's silhouette is its
-        /// texture's alpha, so there is nothing to put on the screen either way.
-        ///
-        /// **One of these is the rasterizer's, and every world has it.** `MWRender::RippleSimulation`
-        /// hangs one `osgParticle::ParticleSystem` off the scene root under `Mask_Water` for the
-        /// whole session, indoors and out and whatever the weather, and it is built by hand rather
-        /// than by `NifOsg` — so nothing describes it. The traced path draws no ripple sprites: what
-        /// rain does to water is `VisibilityConstants::mRainOnWater`. So it is a canary and not a
-        /// deficit, the way `mSkippedUnknown` is for the debug drawer, and no check asserts it away.
-        ///
-        /// **Three counts and not one, because what each costs is different.** An undescribed
-        /// surface is drawn and drawn wrongly, an undescribed ground pass is left out of a stack
-        /// that still shades, and this one is a plume that is not there. One counter over the three
-        /// said "a material nothing described", which names the route rather than the outcome and
-        /// leaves a reader unable to tell which of the three had happened.
+        /// Particle systems the walk met and could not draw, because nothing described them or what
+        /// did named no diffuse map. One of these is the rasterizer's `MWRender::RippleSimulation`,
+        /// built by hand under `Mask_Water` in every world, and the traced path draws no ripple
+        /// sprites (`VisibilityConstants::mRainOnWater`), so it is a canary and not a deficit. Three
+        /// counts and not one, because an undescribed surface, an undescribed ground pass and a
+        /// missing plume each cost something different.
         std::uint32_t mSpritelessEmitters = 0;
 
         FormatCensus mFormats;
@@ -140,12 +107,9 @@ namespace Rtx
         std::uint32_t mLights = 0;
 
         /// Placements wearing a material other than the one their mesh arrived with, where that one
-        /// is not animated.
-        ///
-        /// **A canary, and it should be zero.** `MeshRange::mMaterial` says why a static mesh wears
-        /// one material by construction; a backend bakes against that one, and a placement wearing
-        /// another would be traced against a mask it does not carry. The loader says it cannot
-        /// happen, and this is the number that says so every frame.
+        /// is not animated. A canary that should be zero: a backend bakes against the mesh's
+        /// material, and a placement wearing another would be traced against a mask it does not
+        /// carry.
         std::uint32_t mWornOtherwise = 0;
 
         /// Placements the cell ring stood this walk: the distant statics, as instances of their

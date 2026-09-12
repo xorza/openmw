@@ -7,8 +7,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "handles.hpp"
 #include "owned.hpp"
-#include "pipelinelayout.hpp"
 
 namespace Rtx
 {
@@ -72,9 +72,6 @@ namespace Rtx
     {
     public:
         GraphicsPipeline(const Device& device, const GraphicsPipelineOptions& options);
-
-        GraphicsPipeline(const GraphicsPipeline&) = delete;
-        GraphicsPipeline& operator=(const GraphicsPipeline&) = delete;
 
         VkPipeline getHandle() const { return mHandle.get(); }
 

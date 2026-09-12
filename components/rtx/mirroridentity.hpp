@@ -10,19 +10,15 @@
 
 #include <osg/ref_ptr>
 
-#include "index.hpp"
-#include "mirrorpass.hpp"
+#include "runs.hpp"
+#include "walk.hpp"
 
 namespace Rtx
 {
-    /// Hashes and compares an owning key by the address it holds.
-    ///
-    /// **What lets an identity map hold its subject alive without paying for that on a lookup.** A
-    /// map keyed on a raw `osg` pointer can be fooled: the engine frees a body part and the
-    /// allocator puts the replacement exactly where it was, so the walk that meets the new one finds
-    /// the old one's entry and mirrors geometry it has nothing to do with. A `ref_ptr` key makes the
-    /// address *true* — nothing else can hold it while the entry does — and being transparent is
-    /// what keeps every lookup from a raw pointer out of the reference count.
+    /// Hashes and compares an owning key by the address it holds. A map keyed on a raw `osg`
+    /// pointer can be fooled — the engine frees a body part and the allocator puts the replacement
+    /// exactly where it was — and a `ref_ptr` key makes the address true; transparent, so a lookup
+    /// from a raw pointer stays out of the reference count.
     template <class T>
     struct ByAddress
     {
@@ -39,15 +35,9 @@ namespace Rtx
         bool operator()(const T* left, const osg::ref_ptr<T>& right) const { return left == right.get(); }
     };
 
-    /// An entry in one of the identity maps, when it was last met, and what holds it.
-    ///
-    /// The epoch is what a sweep runs on: a walk stamps everything it resolves, so anything still
-    /// carrying an older stamp is something the graph no longer has.
-    ///
-    /// **The holds are the other keeper.** A residency stands rows the walk never meets — a
-    /// distant cell's models — under the same entries the walk would find a clone's mesh under, so
-    /// that a mesh both stand is one mesh. A count on the entry, taken with the hold, is what the
-    /// sweep keeps by whatever the stamp says.
+    /// An entry in one of the identity maps, when it was last met, and what holds it. The epoch is
+    /// what a sweep runs on; the holds are the other keeper, for the rows a residency stands under
+    /// the same entries the walk would find a clone's mesh under.
     struct Known
     {
         Index mIndex = sNoIndex;
@@ -55,26 +45,13 @@ namespace Rtx
         std::uint32_t mHolds = 0;
     };
 
-    /// A map of what the mirror knows, and how much of it the walk in progress has reached.
-    ///
-    /// **The count is what lets a sweep be skipped rather than run to find nothing.** A world that
-    /// stands still reaches every entry it holds, and a map that was reached whole has nothing stale
-    /// in it — where the sweep would visit tens of thousands of entries, a cache miss apiece, to
-    /// reach the same conclusion. The count is only ever an equality: a walk stamps an entry once,
-    /// so it cannot pass the size, and anything short of it means something went unreached.
-    ///
-    /// **A held entry counts as reached without being stamped.** `mHeld` is how many entries carry
-    /// a hold, and a stamp on one of them is not counted, so the two counts together are the size
-    /// exactly when every unheld entry was met — which is what `whole` asks.
-    ///
-    /// **The count belongs to one epoch, and the table remembers which.** A table is not always
-    /// retired — where nothing died anywhere, the mesh table and the material table are left alone —
-    /// so a reset written into the sweep would leave one epoch's count standing over the next
-    /// epoch's walk.
-    ///
-    /// **Every write goes through this class**, because a count kept beside the map is a count free
-    /// to fall behind it. `stamp`, `add`, `reach`, `hold`, `drop` and `abandon` are the whole of what
-    /// a walk and a residency do to one, and each keeps the counts true.
+    /// A map of what the mirror knows, and how much of it the walk in progress has reached. The
+    /// count is what lets a sweep be skipped rather than run over tens of thousands of entries to
+    /// find nothing: a world that stands still reaches every entry it holds. A held entry counts as
+    /// reached without being stamped, so the two counts together are the size exactly when every
+    /// unheld entry was met — `whole`. The count belongs to one epoch, because a table is not
+    /// always retired. Every write goes through this class, or a count kept beside the map is free
+    /// to fall behind it.
     template <class Map>
     class Kept
     {
@@ -108,11 +85,8 @@ namespace Rtx
             return mKnown.find(key);
         }
 
-        /// Records that the walk in progress met `entry`.
-        ///
-        /// Counted on the way to the stamp rather than by the stamp, so an entry two walks of one
-        /// epoch both reach counts once. A held entry is stamped and not counted: `mHeld` already
-        /// stands for it.
+        /// Records that the walk in progress met `entry`. An entry two walks of one epoch both
+        /// reach counts once; a held entry is stamped and not counted.
         void stamp(Entry entry) { stamp(entry->second); }
 
         /// The same for an entry a caller already holds.
@@ -171,12 +145,8 @@ namespace Rtx
             return entry;
         }
 
-        /// The entry for `key`, stamped, made where the map holds none.
-        ///
-        /// A made entry arrives with its fields default and the caller fills them. **The first
-        /// epoch is why the arrival is counted rather than deduced**: an epoch of nought is what a
-        /// default entry carries and what the first walk stamps with, so a stamp alone cannot tell
-        /// the two apart.
+        /// The entry for `key`, stamped, made where the map holds none. A made entry arrives with
+        /// its fields default and the caller fills them.
         template <class Key>
         Arrival reach(const Key& key)
         {
@@ -191,11 +161,8 @@ namespace Rtx
         }
 
         /// Lets go of `entry` in the middle of a walk, where what it held turned out to describe
-        /// something else.
-        ///
-        /// **Why the count alone cannot say a map is whole.** The slot the entry named is named by
-        /// nothing now, so the frame owes a sweep however much of the map it went on to reach — a
-        /// replacement stamped in its place brings the count back up to the size and hides it.
+        /// something else. The frame then owes a sweep however much of the map it went on to reach,
+        /// which is why the count alone cannot say a map is whole.
         void abandon(Entry entry)
         {
             freshen();
@@ -223,12 +190,8 @@ namespace Rtx
         }
 
         /// Drops every entry neither the epoch nor a hold keeps, and collects the slots the
-        /// survivors name.
-        ///
-        /// **Not skipped where the map is whole, unlike `retire`.** The list it fills is read beside
-        /// another table's, so a caller that wants either wants both of this epoch — `whole` is what
-        /// it asks first. The survivors go out unsorted, which is how `SceneDesc::release` takes
-        /// them.
+        /// survivors name, unsorted, which is how `SceneDesc::release` takes them. Not skipped where
+        /// the map is whole, because the list is read beside another table's.
         ///
         /// @return how many were dropped.
         std::uint32_t sweep(std::vector<Index>& live)

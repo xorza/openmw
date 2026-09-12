@@ -51,7 +51,7 @@ namespace Rtx
     GuiPass::GuiPass(const Device& device, const std::filesystem::path& shaderDirectory, VkFormat targetFormat)
         : mOver(device, describePipeline(shaderDirectory, targetFormat, Blend::Over))
         , mAdditive(device, describePipeline(shaderDirectory, targetFormat, Blend::Additive))
-        , mSampler(Sampler::forTarget(device, "gui"))
+        , mSampler(makeTargetSampler(device, "gui"))
     {
     }
 

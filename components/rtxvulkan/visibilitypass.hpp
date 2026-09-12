@@ -24,7 +24,6 @@ namespace Rtx
     class FogVolume;
     class GBuffer;
     class GpuTimer;
-    class SetLayout;
     class SceneBuffers;
     class WavePass;
 
@@ -38,62 +37,41 @@ namespace Rtx
         /// placement wrote. The first for a scene that is traced and waited for.
         FrameSlot mSlot;
 
-        /// Where the index blocks are, which is `SceneAcceleration`'s: the build had to have the
-        /// indices first, and a shader needs the same ones at a hit.
-        ///
-        /// **Taken fresh every frame and never cached**, because the table is made again whenever a
-        /// block is added to it. An address copied once is the address of a buffer a later arrival
-        /// destroyed, and what that costs is the device.
+        /// Where the index blocks are, which is `SceneAcceleration`'s. Taken fresh every frame and
+        /// never cached, because the table is made again whenever a block is added to it.
         VkDeviceAddress mIndexBlocks = 0;
 
-        /// The bindless texture array's set, bound once and not pushed.
-        ///
-        /// **The set and not the layout it came from.** Every array declares the same shape, so a
-        /// set from a later array binds against the pipeline layout the first one produced — and
-        /// `compileEvery` makes every kernel before any frame runs, so no layout handle has to
-        /// survive a scene rebuild to reach a pipeline being built.
+        /// The bindless texture array's set, bound once and not pushed. Every array declares the
+        /// same shape, so a set from a later array binds against the pipeline layout the first one
+        /// produced.
         VkDescriptorSet mTextures = VK_NULL_HANDLE;
 
-        /// The sea, as the tiles it was synthesised into this frame.
-        ///
-        /// **Not the scene's, because the water is not.** One sea runs under every cell and under
-        /// the doll and the map beside them, so it belongs to the renderer and arrives here rather
-        /// than through a `SceneBuffers` that would hold one copy of it per scene.
+        /// The sea, as the tiles it was synthesised into this frame. Not the scene's, because one
+        /// sea runs under every cell and under the doll and the map beside them.
         const WavePass* mWaves = nullptr;
 
         /// The fog's fractal field, here for the same reason and drawn once for the life of the
         /// device rather than once a frame.
         const FogTile* mFog = nullptr;
 
-        /// Where the air in front of this camera is integrated, before the trace reads it.
-        ///
-        /// **Sized to the camera and so not the pass's**, which is the same reason `GBuffer` arrives
-        /// here rather than being held: a frame, a doll and a map tile are three sizes, and the pass
-        /// outlives all of them.
+        /// Where the air in front of this camera is integrated, before the trace reads it. Sized to
+        /// the camera and so not the pass's, as `GBuffer` is.
         const FogVolume* mFogVolume = nullptr;
 
-        /// The sprite tiles' list to read in place of the slot's, or nought to read the slot's.
-        ///
-        /// **For a camera that draws no sprites**, which binned none: the slot's list holds whatever
-        /// the last bin into it left, sized for another camera, and the shader reads the list before
-        /// it reads anything else. An empty list is two words — `SPRITE_LIST_UNBINNED` and a count
-        /// of nought — and one buffer of them serves every extent.
+        /// The sprite tiles' list to read in place of the slot's, or nought to read the slot's. For
+        /// a camera that draws no sprites: the slot's list holds whatever the last bin into it left,
+        /// sized for another camera. An empty list is two words, and one buffer serves every extent.
         VkDeviceAddress mSpriteList = 0;
 
-        /// Whether the eye can meet water in this scene.
-        ///
-        /// **The scene's answer and not the camera's**, which is why it is here: the frame's own
-        /// block says where a surface would be and never whether there is one, and a room with
-        /// neither is what `HAS_SEA` takes the waves out of.
+        /// Whether the eye can meet water in this scene — the scene's answer and not the camera's,
+        /// and what `HAS_SEA` takes the waves out of for a room.
         bool mWater = false;
     };
 
-    /// What a trace can be told at compile time, and so what keys a pipeline.
-    ///
-    /// **Each of these is only ever false where the shader's own test already answers no**, so a
-    /// variant takes out dead code and never an answer — which is what makes a specialized frame the
-    /// same picture, byte for byte, as the one kernel drew. `lib/variants.glsl` is the other half of
-    /// it, and says what each removes.
+    /// What a trace can be told at compile time, and so what keys a pipeline. Each is only ever
+    /// false where the shader's own test already answers no, so a variant takes out dead code and
+    /// never an answer, and a specialized frame is the same picture byte for byte.
+    /// `lib/variants.glsl` says what each removes.
     struct VisibilityVariant
     {
         bool mSun = true;
@@ -113,36 +91,25 @@ namespace Rtx
         static constexpr std::uint32_t sCount = 8;
     };
 
-    /// One ray per pixel against the top-level structure, shaded by the geometric normal it hit.
-    ///
-    /// Everything it needs arrives at record time — no descriptor pool, no set to allocate, and so
-    /// nothing for it to allocate per frame either. The frame's own description is the exception and
-    /// only just: it lives in a buffer this owns because it outgrew what a push constant may carry,
-    /// and that buffer is made once and rewritten in place.
+    /// One ray per pixel against the top-level structure. Everything it needs arrives at record
+    /// time, so nothing is allocated per frame; the frame's own description lives in a buffer this
+    /// owns because it outgrew what a push constant may carry.
     class VisibilityPass
     {
     public:
         /// @param pool used once, to get the blue-noise tile onto the device. The pass owns the
-        ///        tile because it belongs to the sampler and not to the scene or the camera: it is
-        ///        the same numbers whatever is being looked at.
+        ///        tile because it belongs to the sampler and not to the scene or the camera.
         /// @param textureLayout the layout of the bindless array this will be handed at record
-        ///        time. Needed here because a pipeline layout names every set it will ever see.
-        /// @param channelLayout the same, for the set a `GBuffer` hands over — and the reason it
-        ///        outlives any one of them, since this is created once and they are not.
+        ///        time, because a pipeline layout names every set it will ever see.
+        /// @param channelLayout the same, for the set a `GBuffer` hands over.
         /// @param volumeLayout the same again, for the set a `FogVolume` hands over.
-        /// @param countHits whether the trace counts the primary rays that hit anything. A harness
-        ///        facility: `shot` prints it and a test asserts on it, and nothing in the game reads
-        ///        it — so it is specialized away rather than branched on, and the game's module
-        ///        carries no atomic at all.
+        /// @param countHits whether the trace counts the primary rays that hit anything — a
+        ///        harness facility, specialized away rather than branched on.
         /// @param countCrossings whether it also counts the see-through surfaces each of those rays
-        ///        crosses. A second traversal a pixel, so it is a switch of its own and is off
-        ///        wherever a frame time is being taken.
+        ///        crosses, a second traversal a pixel.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
             bool countHits, bool countCrossings);
-
-        VisibilityPass(const VisibilityPass&) = delete;
-        VisibilityPass& operator=(const VisibilityPass&) = delete;
 
         /// Records the trace, in whichever kernel this frame calls for.
         ///
@@ -151,33 +118,20 @@ namespace Rtx
         ///        term has to survive to the filter with the albedo still divided out.
         /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
         /// @param historyLost whether the frame before this one is worth reprojecting into. Written
-        ///        into the block as a basis of nothing, which is what every shader here already
-        ///        reads as "there is no previous frame" — so a door, a resize and a rebuild reach
-        ///        the fog volume's own filter by the route the motion vectors already take. **The
-        ///        fog volume's answer and not the denoisers'**: this pass runs every frame, so what
-        ///        it is told is spent by the frame after it. `VulkanRenderer::mAirStale` says why
-        ///        the two are separate flags.
+        ///        into the block as a basis of nothing, which every shader here reads as "there is
+        ///        no previous frame". The fog volume's answer and not the denoisers'
+        ///        (`VulkanRenderer::mAirStale`).
         /// @param timer where the three zones this records go, or nothing where nobody is counting.
-        ///        The air is three dispatches under two zones and the trace a third zone, so they
-        ///        are timed apart — and the pass opens them because it is what decides whether the
-        ///        air happens at all.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
             const Buffer& hitCount, const Shaders::VisibilityConstants& constants, bool historyLost,
             GpuTimer* timer) const;
 
     private:
-        /// Makes every kernel this pass can ever need, before it returns.
-        ///
-        /// **The frame path must not be able to compile, and this is what makes that true.** The
-        /// trace took 2.8 seconds on a cold cache, and a frame that stopped for one held its
-        /// swapchain image and its submitted work for the whole of it: the driver answered with
-        /// `Xid 109, CTX SWITCH TIMEOUT` and reset the device. Two of the four constants turn with
-        /// the hour, so walking the clock walked straight into it.
-        ///
-        /// **In parallel, because the driver's cache is internally synchronised** and the tuples are
-        /// independent. Twenty-four kernels on a cold cache take 6.3 s of wall time against about
-        /// a minute of compiler, and `PipelineCache` outlives the process — so a warm run pays
-        /// nothing and the cold one is a load screen rather than a frame.
+        /// Makes every kernel this pass can ever need, before it returns, because the frame path
+        /// must not be able to compile: the trace took 2.8 seconds on a cold cache, and a frame
+        /// that stopped for one was `Xid 109, CTX SWITCH TIMEOUT` and a device reset. In parallel,
+        /// because the driver's cache is internally synchronised: twenty-four kernels take 6.3 s
+        /// of wall time cold, and `PipelineCache` outlives the process.
         void compileEvery(VkDescriptorSetLayout textureLayout);
 
         /// The sets bound after the pushed one, in the order both kernels declare them. A pipeline
@@ -189,37 +143,26 @@ namespace Rtx
         void writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const;
 
         /// Pushes set zero — everything both passes read — and binds the three sets nothing pushes.
-        ///
-        /// **Both of them, because the two passes read the same world.** A volume asks the same
-        /// questions of the same tables the trace does: it traces shadow rays against the same
-        /// structure, resolves the same alpha out of the same textures, and reads the same lamps. So
-        /// this takes a layout and a bind point rather than a pipeline: one is a launch and the
-        /// other a dispatch, and what they are handed is the same.
+        /// A layout and a bind point rather than a pipeline, because the volume reads the same
+        /// world the trace does.
         void pushInputs(VkCommandBuffer commands, VkPipelineBindPoint bindPoint, VkPipelineLayout layout,
             const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;
 
-        /// The same, for the pass that fills the fog volume's froxels.
-        ///
-        /// **Every tuple has one, a room's included.** The closed form a room could read instead
-        /// is a lamp reservoir and a shadow ray *per pixel*, where the volume walks the lamps once
-        /// per froxel and hands the pixel two fetches — which takes more off an interior's trace
-        /// than the volume costs it.
+        /// The same, for the pass that fills the fog volume's froxels. Every tuple has one, a
+        /// room's included: the volume walks the lamps once per froxel where the closed form would
+        /// be a lamp reservoir and a shadow ray per pixel.
         const ComputePipeline& scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
 
         Buffer mBlueNoise;
 
-        /// This frame's `VisibilityConstants`, on the device.
-        ///
-        /// **They were a push constant until they passed 256 bytes**, which is the whole of
-        /// `maxPushConstantsSize` on the hardware this targets. Written with `vkCmdUpdateBuffer`
-        /// rather than through a mapping: the write is recorded into the command buffer and so runs
-        /// in queue order, which is what lets one buffer serve every frame without a second copy to
-        /// keep the host and the device apart.
+        /// This frame's `VisibilityConstants`, on the device: a push constant until they passed
+        /// 256 bytes. Written with `vkCmdUpdateBuffer`, which runs in queue order, so one buffer
+        /// serves every frame.
         Buffer mConstants;
 
         /// Fixed for the life of the pass, where the four in `VisibilityVariant` are the frame's:
@@ -257,11 +200,8 @@ namespace Rtx
         /// it traces and shades nothing.
         std::unique_ptr<ComputePipeline> mDepthPipeline;
 
-        /// And one for the pass that integrates the columns, which takes no tuple at all.
-        ///
-        /// **It reads five images and writes two, and knows nothing else.** Whether there is a sun,
-        /// whether there are moons, whether there is a sea — every one of those was answered by the
-        /// pass that filled the froxels, and what is left here is a scan over what that wrote.
+        /// And one for the pass that integrates the columns, which takes no tuple at all: every
+        /// question was answered by the pass that filled the froxels.
         std::unique_ptr<ComputePipeline> mIntegratePipeline;
     };
 }

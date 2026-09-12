@@ -6,7 +6,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/runallocator.hpp>
+#include <components/rtx/runs.hpp>
 
 #include "buffer.hpp"
 

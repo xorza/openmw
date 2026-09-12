@@ -28,7 +28,7 @@ namespace Rtx
               "bloom halve")
         , mSpreadPipeline(device, sBindings, sizeof(Shaders::BloomConstants), {}, shaderDirectory / "bloomup.comp.spv",
               "bloom spread")
-        , mSampler(Sampler::forTarget(device, "bloom"))
+        , mSampler(makeTargetSampler(device, "bloom"))
     {
     }
 

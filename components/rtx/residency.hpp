@@ -3,19 +3,99 @@
 #include <cstdint>
 
 #include <osg/Drawable>
+#include <osg/Image>
 #include <osg/Node>
 #include <osg/StateSet>
 #include <osg/Vec3f>
 #include <osg/Vec4i>
+#include <osg/ref_ptr>
 
-#include "cellworld.hpp"
+#include <components/esm/refid.hpp>
+#include <components/vfs/pathutil.hpp>
+
 #include "extractionstats.hpp"
-#include "index.hpp"
 #include "materialresolver.hpp"
 #include "meshreader.hpp"
+#include "runs.hpp"
+
+namespace Terrain
+{
+    class ObjectStorage;
+    class Storage;
+}
+
+namespace Resource
+{
+    class SceneManager;
+}
 
 namespace Rtx
 {
+    /// Where a cell's content is read from, by path: a model's template, and an image.
+    ///
+    /// **An interface, so that a ring can be handed a model by a test that has no loader.** The
+    /// game answers out of `Resource::SceneManager`, whose template is the one node every clone of
+    /// the model is copied from — and so the one whose drawables the frame's walk will find — and
+    /// whose image cache hands one object to a template and to whoever asks for the path, which is
+    /// what lets a reading made against the one be found by the other.
+    class ContentSource
+    {
+    public:
+        virtual ~ContentSource() = default;
+
+        /// The template at `path`, or null where nothing stands for it. Safe to call from any
+        /// thread, which is what the game's loader promises of its own.
+        virtual osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView path) = 0;
+
+        /// The image at `path`, or null where nothing could be read there. Safe from any thread,
+        /// as the template is.
+        virtual osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView path) = 0;
+    };
+
+    /// The game's content, out of its scene manager.
+    class SceneContent final : public ContentSource
+    {
+    public:
+        explicit SceneContent(Resource::SceneManager& scenes)
+            : mScenes(scenes)
+        {
+        }
+
+        osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView path) override;
+        osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView path) override;
+
+    private:
+        Resource::SceneManager& mScenes;
+    };
+
+    /// Where the world's cells are read from: the content, and which worldspace of it.
+    ///
+    /// **One value, because it is one question.** These are exactly `CellReader`'s arguments, and a
+    /// change to any of them is a reader that has to be built again — so they are compared as one
+    /// rather than field by field at the call that asks. The frame states it once, inside
+    /// `WorldAround`, and every residency reads the same one.
+    struct CellWorld
+    {
+        /// What the content files say stands where, or null for a world with none.
+        const Terrain::ObjectStorage* mStorage = nullptr;
+
+        /// The land the heights and the blend maps are read off.
+        Terrain::Storage* mGround = nullptr;
+
+        /// The loader the models and the images come out of.
+        ContentSource* mContent = nullptr;
+
+        ESM::RefId mWorldspace;
+
+        /// Which nodes a walk of a template may descend into — the frame walk's own.
+        osg::Node::NodeMask mMask = ~0u;
+
+        /// Whether there is enough here to read anything at all.
+        bool isReadable() const { return mStorage != nullptr && mGround != nullptr && mContent != nullptr; }
+
+        bool operator==(const CellWorld& other) const = default;
+    };
+
     /// What a residency may do inside the walk that asks it.
     ///
     /// **One object, because the walk is what a residency is inside.** The rows a residency stands

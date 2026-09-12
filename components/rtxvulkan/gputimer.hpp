@@ -39,9 +39,6 @@ namespace Rtx
 
         explicit GpuTimer(const Device& device);
 
-        GpuTimer(const GpuTimer&) = delete;
-        GpuTimer& operator=(const GpuTimer&) = delete;
-
         /// Forgets the last frame's zones. Whatever is opened after this is one report.
         void beginFrame();
 

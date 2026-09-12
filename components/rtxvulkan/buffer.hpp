@@ -14,11 +14,8 @@ namespace Rtx
 {
     class Device;
 
-    /// A `VkBuffer` and the allocation behind it.
-    ///
-    /// **Three kinds of memory and one type**, because what differs between them is where the
-    /// allocation lives rather than what a buffer is. Which kind is asked for is the whole of the
-    /// decision, so the three are named rather than spelled as a bitmask at every call site.
+    /// A `VkBuffer` and the allocation behind it. Three kinds of memory and one type, named rather
+    /// than spelled as a bitmask at every call site.
     class Buffer
     {
     public:
@@ -29,35 +26,18 @@ namespace Rtx
         /// structure built for it.
         static Buffer deviceLocal(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage);
 
-        /// Video memory the host writes straight into.
+        /// Video memory the host writes straight into — what resizable BAR is for: the whole of
+        /// this device's sixteen gigabytes is host-visible, so a table the frame rewrites is a
+        /// `memcpy` and not two allocations, a submit and a wait. Write-only, which `map` enforces:
+        /// the memory is write-combining and a read of it is orders of magnitude slower. Nothing
+        /// here synchronises, because the owner keeps one per frame in flight and a host write made
+        /// before a submit is visible to it without a barrier.
         ///
-        /// **What resizable BAR is for, and the reason nothing here stages.** The whole of this
-        /// device's sixteen gigabytes is host-visible, so a table the frame rewrites needs no
-        /// staging copy, no transfer command, no barrier and no submit — it is a `memcpy` into the
-        /// memory the shader will read. Against the staging path it replaces, that is two
-        /// allocations, a queue submit and a wait on the whole queue removed per table per frame.
-        ///
-        /// **Write-only, which `map` enforces.** The memory is write-combining: sequential writes go
-        /// at bus speed and a *read* of it is uncached, unprefetched and orders of magnitude slower
-        /// than the host memory the caller built the data in. So a caller assembles into an ordinary
-        /// vector and copies once.
-        ///
-        /// **Nothing here synchronises, because the owner keeps one of these per frame in flight.**
-        /// `SceneBuffers` holds a copy of each table per frame slot and writes the copy the frame
-        /// before last has finished with — `SlotTable` is what knows which rows each copy still owes
-        /// — so the trace that read this buffer has finished before anything writes it again. A host
-        /// write made before a submit is visible to that submit without a barrier, which is what
-        /// makes the build commands that read these safe in the same recording.
-        ///
-        /// @param usage what the device does with it. `TRANSFER_DST` is neither needed nor added:
-        ///        nothing copies into one of these.
+        /// @param usage what the device does with it. `TRANSFER_DST` is not added.
         static Buffer hostWritten(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage);
 
         /// Host memory a copy is staged through, and the one kind the host may also read back.
         static Buffer staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage);
-
-        Buffer(const Buffer&) = delete;
-        Buffer& operator=(const Buffer&) = delete;
         Buffer(Buffer&&) noexcept = default;
         Buffer& operator=(Buffer&&) noexcept = default;
 
@@ -66,12 +46,8 @@ namespace Rtx
 
         /// The GPU-side address, for the acceleration structure builder and for anything that
         /// dereferences a pointer in a shader. Only valid when the buffer was created with
-        /// `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`, which is asserted.
-        ///
-        /// **Taken once at creation and kept**, because the frame block carries where every table is
-        /// and asking the driver for fourteen addresses a frame is fourteen calls the frame does not
-        /// owe. Nought for a slot with nothing in it yet, so a table nobody grew is named by the
-        /// assert that reads the block rather than by one here.
+        /// `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`, which is asserted. Taken once at creation,
+        /// because the frame block carries fourteen of them a frame.
         VkDeviceAddress getDeviceAddress() const
         {
             assert((mAddressable || mHandle.get() == VK_NULL_HANDLE) && "an address of a buffer not created for one");
@@ -79,25 +55,14 @@ namespace Rtx
             return mAddress;
         }
 
-        /// Records the dependency a host read of what the device wrote needs.
-        ///
-        /// **A fence does not make a device write visible to the host.** Its access scope covers
-        /// device access only, so a `map` after a wait can read what the caches happened to hold
-        /// rather than what the shader or the copy left. Host-coherent memory removes the
-        /// `vkInvalidateMappedMemoryRanges`; it does not remove this.
-        ///
-        /// **The rule lives here because nothing else can catch it.** Synchronization validation
-        /// sees no `memcpy`, so a missing dependency of this kind is invisible to the layers and
-        /// shows up as a figure that is occasionally wrong.
-        ///
-        /// Recorded by whoever wrote the buffer, into the submission the host then waits on.
+        /// Records the dependency a host read of what the device wrote needs: a fence's access
+        /// scope covers device access only, so a `map` after a wait can read what the caches
+        /// happened to hold. Synchronization validation sees no `memcpy`, so a missing one shows
+        /// up as a figure that is occasionally wrong. Recorded by whoever wrote the buffer.
         void orderForHostRead(VkCommandBuffer commands) const;
 
-        /// The whole buffer in main memory, for a caller that reads it back.
-        ///
-        /// **Only a staging buffer's, which is asserted.** Video memory the host writes is
-        /// write-combined and reading it is orders of magnitude slower than reading the copy the
-        /// caller wrote it from; `hostWritten` says the rest.
+        /// The whole buffer in main memory, for a caller that reads it back. Only a staging
+        /// buffer's, which is asserted: `hostWritten` memory is write-combined.
         void* map() const
         {
             assert(mReadable && "a read of memory that is written and never read back");
@@ -105,16 +70,10 @@ namespace Rtx
             return mMemory.map();
         }
 
-        /// `count` elements of the buffer at `offset` bytes in, to be written in place.
-        ///
-        /// **Written and never read**, which is `hostWritten`'s whole rule: a sequential fill of
-        /// write-combined memory costs what a `memcpy` costs, and reading one byte of it back costs
-        /// far more than the write did. `writeAt` is this for a caller that already holds the bytes;
-        /// this is for one that produces them where they land, which is what MyGUI's `lock` and
-        /// `unlock` are and why a GUI texture needs no buffer of its own.
-        ///
-        /// **Every host write goes through here**, so the two things that can be wrong about one —
-        /// memory the host cannot reach, and a run that leaves the buffer — are asked once.
+        /// `count` elements of the buffer at `offset` bytes in, to be written in place and never
+        /// read, for a caller that produces the bytes where they land — what MyGUI's `lock` and
+        /// `unlock` are. `writeAt` is this for a caller that already holds them. Every host write
+        /// goes through here, so a run that leaves the buffer is asked once.
         template <class T>
         std::span<T> writable(VkDeviceSize offset, VkDeviceSize count) const
         {
@@ -162,19 +121,9 @@ namespace Rtx
         bool mReadable = false;
     };
 
-    /// Grows `held` so it can hold `bytes`, and never leaves it holding nothing.
-    ///
-    /// **A table the frame names must be somewhere**, and a table with nothing in it is still
-    /// named. Written the obvious way — grow if what is wanted does not fit — a table asked for
-    /// nought bytes is never made at all, which is an address of nought in the frame block:
-    /// undefined, intermittent, and a lost device with no message. `VisibilityPass::record`
-    /// asserts on it, and this is the one place the rule is written.
-    ///
-    /// Keeps whatever it already has where that is big enough, so a table settles at its high-water
-    /// mark rather than being made again every frame.
-    ///
-    /// **Hands back what it displaced**, or an empty buffer where nothing was: a table too small
-    /// may still be read by a frame in flight, so the caller buries it under that frame rather than
-    /// letting it go here.
+    /// Grows `held` so it can hold `bytes`, and never leaves it holding nothing: a table asked for
+    /// nought bytes and never made is an address of nought in the frame block, which is a lost
+    /// device with no message. Keeps whatever it already has where that is big enough. Hands back
+    /// what it displaced, because a frame in flight may still be reading it.
     [[nodiscard]] Buffer growTo(Buffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage);
 }

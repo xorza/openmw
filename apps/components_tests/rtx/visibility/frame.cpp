@@ -616,7 +616,7 @@ namespace Rtx::Testing
                     = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, 1000000.0f);
 
                 mRenderer->resize(size, size);
-                mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+                mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
                 for (const std::uint32_t frame : { 1u, 2u })
                 {
@@ -889,7 +889,7 @@ namespace Rtx::Testing
                 scene.clearPlacement();
                 poseByOneBone(scene, wall, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
-                mRenderer->placeScene(Rtx::SceneSlot::world(), scene.getTables(), SeaState{});
+                mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
             };
 
             deformTo(400.0f);

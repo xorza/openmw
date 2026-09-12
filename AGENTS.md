@@ -93,8 +93,8 @@ backend ever arrives.
 
 - `components/rtx/` — the core: the scene description, the light transport, what the scene *is*. No
   graphics API, no game headers.
-- `components/rtxvulkan/` — the backend, reached through `components/rtxbackends/`. What is true of
-  an API lives here and nowhere else.
+- `components/rtxvulkan/` — the backend. What is true of an API lives here and nowhere else; the
+  two places that stand one up name `VulkanRenderer` and nothing else does.
 - `components/rtxbench/` — the instruments a measured run is taken with: a run's length, what a
   place came to, how it is printed and recorded, the card's clock, perf's fifo, a frame hash, a
   scene digest and a texture sheet. It knows nothing about a world.

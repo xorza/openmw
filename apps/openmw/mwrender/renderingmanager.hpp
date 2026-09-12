@@ -111,12 +111,11 @@ namespace MWRender
     class Groundcover;
     class PostProcessor;
     class Renderer;
-    class Stage;
 
     class RenderingManager : public MWRender::RenderingInterface
     {
     public:
-        RenderingManager(Renderer& renderer, Stage& stage, osg::ref_ptr<osg::Group> rootNode,
+        RenderingManager(Renderer& renderer, osg::ref_ptr<osg::Group> rootNode,
             Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue,
             DetourNavigator::Navigator& navigator, const MWWorld::GroundcoverStore& groundcoverStore,
             SceneUtil::UnrefQueue& unrefQueue);
@@ -351,7 +350,6 @@ namespace MWRender
         osg::ref_ptr<IntersectionVisitorWithIgnoreList> mIntersectionVisitor;
 
         Renderer& mRenderer;
-        Stage& mStage;
         osg::ref_ptr<osg::Group> mRootNode;
         osg::ref_ptr<SceneUtil::LightManager> mSceneRoot;
         Resource::ResourceSystem* mResourceSystem;

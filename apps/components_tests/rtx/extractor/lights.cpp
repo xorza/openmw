@@ -42,17 +42,17 @@ namespace Rtx::Testing
             const ExtractionStats stats = walk(*where);
 
             EXPECT_EQ(stats.mLights, 3u);
-            ASSERT_EQ(mScene.getTables().mLights.size(), 3u);
+            ASSERT_EQ(mScene.lights().size(), 3u);
 
-            for (const Rtx::Light& light : mScene.getTables().mLights)
+            for (const Rtx::Light& light : mScene.lights())
                 EXPECT_EQ(light.mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
 
-            EXPECT_NEAR(mScene.getTables().mLights[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
-            const std::span<const Rtx::Light> lights = mScene.getTables().mLights;
+            EXPECT_NEAR(mScene.lights()[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
+            const std::span<const Rtx::Light> lights = mScene.lights();
             EXPECT_EQ(lights[1].mIntensity, lights[0].mIntensity) << "an empty model dimmed the light hanging on it";
 
             // The same lamp scaled by what 1.5 of ambient decodes to.
-            EXPECT_NEAR(mScene.getTables().mLights[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
+            EXPECT_NEAR(mScene.lights()[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
         }
 
         /// A lamp the record says animates is mirrored at the instant the walk was told, not at rest.
@@ -78,7 +78,7 @@ namespace Rtx::Testing
                 extractor.setSimulationTime(seconds);
                 extractor.extract(*lamp, osg::Matrixf::identity(), 0);
 
-                const std::span<const Rtx::Light> lights = scene.getTables().mLights;
+                const std::span<const Rtx::Light> lights = scene.lights();
                 EXPECT_EQ(lights.size(), 1u);
 
                 return lights.empty() ? 0.0f : lights[0].mIntensity.x();

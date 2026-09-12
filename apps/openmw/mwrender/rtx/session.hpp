@@ -4,11 +4,14 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 
+#include <osg/Node>
 #include <osg/Vec3f>
 
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/renderprofile.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/runrecord.hpp>
 
@@ -16,6 +19,53 @@
 
 namespace MWRender
 {
+    /// What a harness run asks of the ray tracer, where a harness started this process. Carried
+    /// through `RendererSpec`, so who owns the request and the result is readable off the
+    /// signature; `GlRenderer` ignores it, which is why it hangs off the spec rather than sitting
+    /// in it.
+    struct RtxSetup
+    {
+        /// Nothing where the harness turned no knob, which is a run at whatever the settings say.
+        std::optional<Rtx::RenderProfile> mProfile;
+
+        /// Nothing where the harness asked for no measured run — `[RTX] session` is the other way
+        /// in, and a played binary has only that one.
+        std::optional<Rtx::SessionRequest> mSession;
+
+        /// Where the run's answer goes. The caller's own, and it has to outlive `Engine::go`: the
+        /// session fills it from its own destructor, which `~Engine` runs.
+        Rtx::SessionResult* mInto = nullptr;
+    };
+
+    /// A camera's cull mask as the trace reads it: which `Rtx::InstanceClass`es its rays meet, and
+    /// whether it draws the sprites. `Rtx::Shaders::MASK_*` in `scene.h` names the bits.
+    ///
+    /// **The one translation, so both renderers read one mask.** The rasterizer culls on
+    /// `SceneUtil::Mask_*`; the frame's eye and every picture inside the interface hand their cull
+    /// mask here, and the tracer draws what it names.
+    std::uint32_t rayMaskOf(osg::Node::NodeMask cullMask);
+
+    /// What a stop asked for and what it came to, beside the frame it drew.
+    ///
+    /// **Named for the reason `FrameContext` is.** Each of these is read by one claim and by nothing
+    /// else, and each arrived as a parameter of its own through `StopWriter::write` and
+    /// `StopWriter::runChecks` — neither of which reads either. A second was one parameter; a third
+    /// would have been another.
+    ///
+    /// Borrowed and valid for one stop.
+    struct StopFacts
+    {
+        /// What the stop's route came to, which only `CrossingsAppend` reads.
+        const Rtx::Crossings& mCrossings;
+
+        /// What the stop asked its camera to be, which only `CameraStands` reads.
+        const Rtx::Stand& mStand;
+    };
+
+    /// Whether one check holds of what `run` was handed and what it drew, with what it found in
+    /// `found` either way.
+    bool checkHolds(const FrameContext& context, const FrameReport& report, Rtx::Check check, const StopFacts& facts,
+        std::string& found);
 
     /// The run `[RTX] session` asks for, or nothing where nobody asked for one.
     ///
@@ -39,9 +89,6 @@ namespace MWRender
     public:
         Session(Rtx::SessionRequest request, Rtx::SessionResult* into);
         ~Session();
-
-        Session(const Session&) = delete;
-        Session& operator=(const Session&) = delete;
 
         bool isHeadless() const { return mRequest.mHeadless; }
 

@@ -1,23 +1,31 @@
 #include "options.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
+#include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <format>
+#include <locale>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <boost/program_options/option.hpp>
 #include <boost/program_options/value_semantic.hpp>
+#include <boost/program_options/variables_map.hpp>
 
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
 
-#include "framerequest.hpp"
+#include "run.hpp"
 #include "verbs.hpp"
-#include "views.hpp"
 
 namespace bpo = boost::program_options;
 
@@ -394,5 +402,106 @@ namespace RtxTool
         Files::ConfigurationManager::addCommonOptions(result.mDescription);
 
         return result;
+    }
+
+    std::optional<float> parseFloat(std::string_view text)
+    {
+        // Not `std::from_chars`: libc++ ships the floating-point overload only from macOS 26. `eof`
+        // is what says the whole field was consumed — the same question `from_chars` answers with
+        // its end pointer.
+        std::istringstream stream{ std::string(text) };
+        stream.imbue(std::locale::classic());
+
+        float value = 0.0f;
+        if (!(stream >> value) || !stream.eof())
+            return std::nullopt;
+
+        return value;
+    }
+
+    std::optional<osg::Vec3f> parseVec3(std::string_view text, std::string_view what)
+    {
+        if (text.empty())
+            return std::nullopt;
+
+        const auto fail = [&] {
+            throw std::runtime_error(
+                std::string(what) + " is not three numbers separated by commas: \"" + std::string(text) + '"');
+        };
+
+        osg::Vec3f result;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            while (!text.empty() && text.front() == ' ')
+                text.remove_prefix(1);
+
+            const std::size_t comma = text.find(',');
+            const std::string_view field = text.substr(0, comma);
+
+            const std::optional<float> value = parseFloat(field);
+            if (!value.has_value())
+                fail();
+
+            result[axis] = *value;
+
+            const bool last = axis == 2;
+            if ((comma == std::string_view::npos) != last)
+                fail();
+
+            if (!last)
+                text = text.substr(comma + 1);
+        }
+
+        return result;
+    }
+
+    Rtx::ValidationOptions chooseValidation(CommandSwitch layers, CommandSwitch sync, CommandSwitch gpu)
+    {
+        Rtx::ValidationOptions options;
+
+        // A refusal of the layers as a whole leaves only what was asked for by name standing.
+        options.mSynchronization = layers.isRefused() ? sync.isAsked() : sync.mValue;
+
+        // **Named or off, and a default cannot turn it on either.** The layer asks not to be run
+        // beside the core checks and `chooseValidation` says what running both cost, so reading
+        // this one by name is what keeps a build default from ever pairing them again.
+        options.mGpuAssisted = gpu.isAsked();
+
+        // Either of the two finer switches is a kind of validation, so either implies the layer that
+        // carries it.
+        options.mEnabled = layers.mValue || options.mSynchronization || options.mGpuAssisted;
+
+        // **Named on the command line, and not merely left on by the build.** A run that asked is a
+        // run whose answer is worthless without the layers, so it fails rather than reports nothing.
+        options.mDemanded = layers.isAsked() || sync.isAsked() || gpu.isAsked();
+
+        return options;
+    }
+
+    namespace
+    {
+        namespace bpo = boost::program_options;
+    }
+
+    std::filesystem::path ownConfigDirectory(const Files::ConfigurationManager& config)
+    {
+        return config.getCachePath() / "rtxtool";
+    }
+
+    void adoptConfigDirectory(bpo::variables_map& variables, const std::filesystem::path& directory)
+    {
+        std::filesystem::create_directories(directory);
+
+        // **The map's own entry and not a second parse.** `config` is a composing option, so a value
+        // stored from a second source would be merged by rules that are Boost's to keep; the container
+        // the first parse left is appended to directly, and `readConfiguration` reads it as it finds it.
+        //
+        // Present whenever the line was parsed against `ConfigurationManager::addCommonOptions`,
+        // because `store` writes a defaulted value for every option of its description that the line
+        // left out — so a map without it was parsed against the wrong description.
+        const auto found = variables.find("config");
+        assert(found != variables.end() && "the variables were not parsed against the engine's common options");
+
+        found->second.as<Files::MaybeQuotedPathContainer>().push_back(Files::MaybeQuotedPath{ directory });
     }
 }

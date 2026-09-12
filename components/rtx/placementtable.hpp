@@ -6,9 +6,9 @@
 
 #include <osg/Matrixf>
 
-#include "index.hpp"
-#include "meshinstance.hpp"
-#include "slotrows.hpp"
+#include "mesh.hpp"
+#include "runs.hpp"
+#include "slots.hpp"
 
 namespace Rtx
 {

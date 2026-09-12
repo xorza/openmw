@@ -17,22 +17,14 @@ set(RTXBENCH_FILES
     benchrun.hpp
     benchspec.cpp
     benchspec.hpp
-    contactsheet.cpp
-    contactsheet.hpp
+    runrecord.cpp
+    runrecord.hpp
     framehashes.cpp
     framehashes.hpp
-    framerate.cpp
-    framerate.hpp
     frametimes.cpp
     frametimes.hpp
     gpuclock.cpp
     gpuclock.hpp
-    perfcontrol.cpp
-    perfcontrol.hpp
-    runrecord.cpp
-    runrecord.hpp
-    scenedigest.cpp
-    scenedigest.hpp
 )
 
 source_group(components\\rtxbench FILES ${RTXBENCH_FILES})

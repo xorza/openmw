@@ -48,7 +48,6 @@
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
 #include "../screenshotwriter.hpp"
-#include "../stage.hpp"
 #include "../windowsetup.hpp"
 #include "gloffscreenview.hpp"
 #include "postprocessor.hpp"
@@ -118,8 +117,7 @@ namespace
 namespace MWRender
 {
     GlRenderer::GlRenderer(const RendererSpec& spec)
-        : mStage(spec.mStage)
-        , mSelectDepthFormatOperation(new SceneUtil::SelectDepthFormatOperation())
+        : mSelectDepthFormatOperation(new SceneUtil::SelectDepthFormatOperation())
         , mSelectColorFormatOperation(new SceneUtil::Color::SelectColorFormatOperation())
     {
         mViewer = new osgViewer::Viewer;
@@ -141,8 +139,7 @@ namespace MWRender
         // Taken from the viewer rather than made and handed to it: the viewer wires its update and
         // event visitors to the frame stamp at construction, and substituting objects underneath
         // without substituting those references is a bug that shows up frames later.
-        mStage.adopt(
-            *mViewer->getCamera(), *mViewer->getFrameStamp(), mViewer->getEventQueue(), *mViewer->getViewerStats());
+        adopt(*mViewer->getCamera(), *mViewer->getFrameStamp(), mViewer->getEventQueue(), *mViewer->getViewerStats());
 
         createWindow(spec.mResourceDir);
 
@@ -153,7 +150,7 @@ namespace MWRender
         mScreenCaptureHandler = new osgViewer::ScreenCaptureHandler(mScreenCaptureOperation);
         mViewer->addEventHandler(mScreenCaptureHandler);
 
-        mScreenshotManager = std::make_unique<ScreenshotManager>(*this, mStage);
+        mScreenshotManager = std::make_unique<ScreenshotManager>(*this);
     }
 
     GlRenderer::~GlRenderer()
@@ -166,7 +163,7 @@ namespace MWRender
         mViewer = nullptr;
 
         // `SDL_GL_DeleteContext` on a window that has already gone is undefined, and the graphics
-        // window would otherwise be torn down whenever the stage lets the camera go.
+        // window would otherwise be torn down whenever the base lets the camera go.
         if (mGraphicsWindow != nullptr)
             mGraphicsWindow->close();
         mGraphicsWindow = nullptr;
@@ -278,7 +275,7 @@ namespace MWRender
             traits->alpha = 0; // set to 0 to stop ScreenCaptureHandler reading the alpha channel
         }
 
-        osg::Camera& camera = mStage.getCamera();
+        osg::Camera& camera = getCamera();
         camera.setGraphicsContext(graphicsWindow);
         camera.setViewport(0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
 
@@ -363,7 +360,7 @@ namespace MWRender
             exts.glRenderbufferStorageMultisampleCoverageNV = nullptr;
 #endif
 
-        mStage.getEvents()->getCurrentEventState()->setWindowRectangle(
+        getEvents()->getCurrentEventState()->setWindowRectangle(
             0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
     }
 
@@ -399,7 +396,7 @@ namespace MWRender
         // **The chain goes above the world and becomes what is traversed.** Its constructor reads
         // `GLExtensions` off the camera's graphics context, which is why no renderer without one can
         // have it and why nothing above this line decides whether to build it.
-        mPostProcessor = new PostProcessor(world, *this, mStage, &worldRoot, mResources->getVFS());
+        mPostProcessor = new PostProcessor(world, *this, &worldRoot, mResources->getVFS());
         setSceneRoot(*mPostProcessor);
 
         Resource::SceneManager& scene = *world.getResourceSystem()->getSceneManager();
@@ -410,9 +407,8 @@ namespace MWRender
         scene.setSupportsNormalsRT(mPostProcessor->getSupportsNormalsRT());
     }
 
-    void GlRenderer::setSceneRoot(osg::Group& root)
+    void GlRenderer::adoptSceneRoot(osg::Group& root)
     {
-        mStage.setSceneRoot(root);
         mViewer->setSceneData(&root);
     }
 
@@ -541,8 +537,8 @@ namespace MWRender
         // and a loading screen wants the frame that was on the screen when it started, not the one
         // that was there when the last load did.
         mFreezeFrame->arm();
-        mStage.getCamera().removeInitialDrawCallback(mFreezeFrame);
-        mStage.getCamera().addInitialDrawCallback(mFreezeFrame);
+        getCamera().removeInitialDrawCallback(mFreezeFrame);
+        getCamera().addInitialDrawCallback(mFreezeFrame);
         mFreezing = true;
 
         return *mFrozenFrameTexture;
@@ -553,7 +549,7 @@ namespace MWRender
         if (!mFreezing || !mFreezeFrame->copied())
             return;
 
-        mStage.getCamera().removeInitialDrawCallback(mFreezeFrame);
+        getCamera().removeInitialDrawCallback(mFreezeFrame);
         mFreezing = false;
     }
 
@@ -561,7 +557,7 @@ namespace MWRender
     {
         // Above the post-processing chain rather than inside it: a pre-render camera has to be
         // reached before the frame it feeds, and what it draws is not part of that frame.
-        return std::make_unique<GlOffscreenView>(spec, mStage.getSceneRoot(), *mResources);
+        return std::make_unique<GlOffscreenView>(spec, getSceneRoot(), *mResources);
     }
 
     void GlRenderer::renderGui()

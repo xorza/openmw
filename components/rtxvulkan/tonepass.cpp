@@ -30,7 +30,7 @@ namespace Rtx
         const std::filesystem::path& shaderDirectory)
         : mPipeline(device, sBindings, sizeof(Shaders::ToneConstants), std::span(&textureLayout, 1),
             shaderDirectory / "tone.comp.spv", "tone")
-        , mSampler(Sampler::forTarget(device, "tone"))
+        , mSampler(makeTargetSampler(device, "tone"))
         , mNoBloom(makeStandIn(device, pool, BLOOM_LEVEL, VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom"))
     {
     }

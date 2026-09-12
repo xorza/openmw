@@ -19,41 +19,20 @@ namespace Rtx
 {
     namespace
     {
-        /// How the frame is described to Ray Reconstruction at creation.
-        ///
-        /// `IsHDR` because what the trace writes is scene-referred radiance rather than a tone-mapped
-        /// image — the whole point of the G-buffer split, and the tone curve comes after the upscale.
-        ///
-        /// **`MVLowRes` reads as a description, not a request.** It says the motion vectors *are* at
-        /// the low — render — resolution, which is where the trace writes them. Reasoning it the
-        /// other way round and leaving it out is rejected with "Low resolution Motion Vectors
-        /// required", a message that exists only in NGX's own log: the API returns
-        /// `FAIL_InvalidParameter`, which names no parameter.
-        ///
-        /// **`DepthInverted` is deliberately absent**, unlike in the reference implementation: the
-        /// clip depth this renderer writes is zero at the near plane and one at the far one.
-        ///
-        /// **`AutoExposure` is deliberately absent too**, and so are `DLSS.Pre.Exposure` and
-        /// `DLSS.Exposure.Scale` beside it in the SDK's own helper: Ray Reconstruction does not
-        /// support exposure at all, as its integration guide says in §3.7 and as the reference
-        /// measured — bit-identical with them and without.
+        /// How the frame is described to Ray Reconstruction at creation. `IsHDR` because the trace
+        /// writes scene-referred radiance and the tone curve comes after the upscale. `MVLowRes` is
+        /// a description, not a request: the motion vectors *are* at the render resolution, and
+        /// leaving it out is `FAIL_InvalidParameter` with the reason only in NGX's own log.
+        /// `DepthInverted` is absent because this renderer's clip depth is zero at the near plane;
+        /// `AutoExposure` and the exposure parameters are absent because Ray Reconstruction does
+        /// not support exposure (integration guide §3.7), measured bit-identical with and without.
         constexpr int sCreateFlags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
-        /// An image as NGX takes one, checked against the size the feature was built for.
-        ///
-        /// **Every resource passes through here, which is why the check lives here.** `record` used
-        /// to assert the colour and the output and none of the rest, so a guide, a depth, a motion
-        /// field or a mask at another resolution went to the network unremarked — the same failure
-        /// the `SAMPLED_BIT` assertion below exists for, where NGX returns success, the layers say
-        /// nothing, and the picture is wrong. Asserting at the one place a resource is made means a
-        /// channel added later cannot be the one nobody checked.
-        ///
-        /// **Read-write is a statement about the image and not about this call.** The SDK defines
-        /// the flag as "true if the resource is available for read and write access… for VkImage
-        /// resources: VkImageUsageFlags for the associated VkImage includes
-        /// `VK_IMAGE_USAGE_STORAGE_BIT`" (`nvsdk_ngx_defs_vk.h`), and every image here is created
-        /// with that bit. Passing `false` for the ones this evaluation only reads would be a false
-        /// answer to the question actually asked.
+        /// An image as NGX takes one, checked against the size the feature was built for, because
+        /// a guide at another resolution goes to the network unremarked: NGX returns success, the
+        /// layers say nothing, and the picture is wrong. Read-write is a statement about the image
+        /// and not about this call — `nvsdk_ngx_defs_vk.h` defines it as the `VkImage` carrying
+        /// `VK_IMAGE_USAGE_STORAGE_BIT`, which every image here does.
         NVSDK_NGX_Resource_VK resourceOf(const Image& image, VkExtent2D expected)
         {
             assert((image.getUsage() & VK_IMAGE_USAGE_SAMPLED_BIT) != 0
@@ -76,20 +55,14 @@ namespace Rtx
         if (NVSDK_NGX_FAILED(allocated) || mParameters == nullptr)
             throw Unsupported("NGX would not allocate a parameter map: " + describeNgxResult(allocated));
 
-        // **What a released feature costs, which is everything it held unless this is set.** NGX
-        // caches a feature's memory on release rather than freeing it, so that re-creating the same
-        // one is cheap — and a renderer that follows a window through a drag creates a different one
-        // every time, so nothing is ever reused and nothing is ever given back — gigabytes over
-        // a drag, until `vkAllocateMemory` refuses. The SDK's programming guide names both the
-        // behaviour and this hint.
+        // NGX caches a released feature's memory rather than freeing it, and a renderer that
+        // follows a window through a drag creates a different feature every time — gigabytes over a
+        // drag, until `vkAllocateMemory` refuses. The programming guide names this hint.
         NVSDK_NGX_Parameter_SetI(mParameters, NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
 
-        // **Set on the map before the feature is built, because it is read while it is built.** The
-        // create parameters carry no preset field; the hint is one of the values NGX picks up off
-        // the map it is handed, and setting it afterwards would name a network for a feature that
-        // already exists. Left unset, the installed library picks — and what it picks has changed
-        // between SDK versions and between the convolutional and transformer models, so two runs on
-        // two machines are not the same measurement.
+        // Set on the map before the feature is built, because it is read while it is built. Left
+        // unset, the installed library picks, and what it picks has changed between SDK versions,
+        // so two runs on two machines would not be the same measurement.
         NVSDK_NGX_Parameter_SetUI(
             mParameters, ngxPresetParameterOf(upscale), static_cast<unsigned int>(ngxPresetOf(preset)));
 
@@ -160,48 +133,30 @@ namespace Rtx
         evaluate.pInSpecularAlbedo = &specular;
         evaluate.pInNormals = &normals;
 
-        // **What one motion vector per pixel cannot describe.** The vector is written from the
-        // surface a primary ray hit, so what the frame reflects and what it composites in front of
-        // that surface both need saying separately: where a reflection went, which pixels are
-        // "not drawn as part of base pass", and which must not be accumulated across frames at all.
-        //
-        // All three sit in the block the header marks optional rather than the one it marks
-        // research, and all three measured neutral or better on a lamp's convergence.
+        // What one motion vector per pixel cannot describe: where a reflection went, which pixels
+        // are "not drawn as part of base pass", and which must not be accumulated across frames.
+        // All three measured neutral or better on a lamp's convergence.
         evaluate.pInMotionVectorsReflections = &reflections;
         evaluate.pInIsParticleMask = &particles;
         evaluate.pInBiasCurrentColorMask = &bias;
 
-        // **The layer itself, and not the colour pair below it.** The two are easy to confuse and
-        // the header separates them: these three sit beside the mask and the reflection vectors in
-        // the block it marks optional, and `pInColorBeforeTransparency` sits in the one it marks
-        // research. The pair selects a path through the network and measured worse; these say what
-        // the layer is, what it covers and where it moved, which is the question the mask beside
-        // them can only half answer.
+        // The layer itself, and not the colour pair below it, which selects a path through the
+        // network and measured worse.
         evaluate.pInTransparencyLayer = &layer;
         evaluate.pInTransparencyLayerOpacity = &layerOpacity;
         evaluate.pInTransparencyLayerMvecs = &layerMotion;
 
-        // **The four colour-pair guides are deliberately unset.** All of them sit in the block the
-        // header marks `/*** OPTIONAL - only for research purposes ***/`, and both pairs make the
-        // picture worse: the sprite pair nearly triples the horizontal smear down a turning
-        // camera's edge bands, and the fog pair stops a lamp's highlight converging at all.
-        //
-        // **Not their content.** Handing the fog pair two identical images — "the fog did nothing",
-        // which cannot be wrong — fails the same way, and pointing the sprite pair's second
-        // parameter at an image that is not `pInColor` reproduces its number to the last digit.
-        // These select a different path through the network rather than answer a question about the
-        // frame. The figures, on a turning camera through Balmora with sixteen frames of history,
-        // as the vertical gradient down the edge bands: neither pair 0.537, fog pair alone 0.339,
-        // sprite pair alone 1.385, both 1.385. And a lamp's peak byte over 1, 4, 16, 64 and 128
-        // frames: 83, 98, 111, 137, 149 with the fog pair, still climbing, against 101, 137, 161,
-        // 177, 179 without it, settled by sixty-four.
+        // The four colour-pair guides, marked research in the header, are deliberately unset: both
+        // pairs select a different path through the network rather than answer a question about the
+        // frame — two identical images for the fog pair fail the same way. Measured on a turning
+        // camera through Balmora as the vertical gradient down the edge bands: neither pair 0.537,
+        // fog pair 0.339, sprite pair 1.385, both 1.385; and a lamp's peak byte over 1, 4, 16, 64
+        // and 128 frames 83, 98, 111, 137, 149 with the fog pair against 101, 137, 161, 177, 179
+        // without.
 
-        // **Negated, on both axes.** The trace adds the offset to the *sample coordinate* — it moves
-        // where inside its pixel a ray is fired — where NGX wants the offset as applied to the
-        // projection, which moves the frustum the other way for the same picture. Handing over the
-        // coordinate's sign leaves Ray Reconstruction un-jittering in the direction that doubles the
-        // offset instead of cancelling it, and nothing reports it: the image still resolves, it just
-        // shakes by about a pixel a frame.
+        // Negated, on both axes: the trace adds the offset to the sample coordinate, where NGX
+        // wants it as applied to the projection. The wrong sign doubles the jitter instead of
+        // cancelling it, and nothing reports it — the image just shakes by about a pixel a frame.
         evaluate.InJitterOffsetX = -inputs.mJitter.x();
         evaluate.InJitterOffsetY = -inputs.mJitter.y();
 

@@ -7,11 +7,11 @@
 
 #include <components/rtx/error.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
 #include <components/rtxvulkan/result.hpp>
-#include <components/rtxvulkan/shadermodule.hpp>
 
 #include "harness.hpp"
 
@@ -116,14 +116,14 @@ namespace Rtx
             const std::filesystem::path visibility = Testing::getShaderDirectory() / "visibility.rgen.spv";
             ASSERT_TRUE(std::filesystem::exists(visibility)) << visibility;
 
-            const ShaderModule module(*mHarness->mDevice, visibility);
-            EXPECT_NE(module.getHandle(), VK_NULL_HANDLE);
+            const ShaderModule module = loadShaderModule(*mHarness->mDevice, visibility);
+            EXPECT_NE(module.get(), VK_NULL_HANDLE);
         }
 
         TEST_F(RtxDeviceTest, aFileThatIsNotSpirvIsRejectedRatherThanHandedToTheDriver)
         {
             const std::filesystem::path missing = Testing::getShaderDirectory() / "there-is-no-such-shader.spv";
-            EXPECT_THROW(ShaderModule(*mHarness->mDevice, missing), Error);
+            EXPECT_THROW(loadShaderModule(*mHarness->mDevice, missing), Error);
         }
 
         TEST_F(RtxDeviceTest, theReportNamesTheDeviceAndItsRayTracingLimits)

@@ -12,8 +12,8 @@
 #include <components/myguiplatform/guirendermanager.hpp>
 #include <components/myguirtx/texture.hpp>
 
-#include "raymask.hpp"
-#include "viewhost.hpp"
+#include "rtxrenderer.hpp"
+#include "session.hpp"
 
 namespace MWRender
 {
@@ -29,7 +29,7 @@ namespace MWRender
         /// **By value, and `Rtx::OffscreenTrace` neither copies nor moves.** Both returns are
         /// prvalues and so is the call, so guaranteed elision constructs it straight into the member
         /// — which is what lets the two constructors be the two kinds instead of a boolean.
-        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, ViewHost& host, Rtx::Traversals& traversals)
+        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, RtxRenderer& host, Rtx::Traversals& traversals)
         {
             const std::uint32_t width = static_cast<std::uint32_t>(spec.mWidth);
             const std::uint32_t height = static_cast<std::uint32_t>(spec.mHeight);
@@ -43,7 +43,7 @@ namespace MWRender
         }
     }
 
-    TracedView::TracedView(const OffscreenViewSpec& spec, ViewHost& host, Rtx::Traversals& traversals)
+    TracedView::TracedView(const OffscreenViewSpec& spec, RtxRenderer& host, Rtx::Traversals& traversals)
         : mHost(host)
         , mTrace(makeTrace(spec, host, traversals))
         , mWidth(spec.mWidth)

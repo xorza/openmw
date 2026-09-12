@@ -7,7 +7,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "graphicspipeline.hpp"
-#include "sampler.hpp"
+#include "handles.hpp"
 
 namespace Rtx
 {
@@ -45,9 +45,6 @@ namespace Rtx
         /// @param targetFormat the format of the image this will draw over. Fixed at construction
         ///        because a pipeline is compiled against it; a resize does not change it.
         GuiPass(const Device& device, const std::filesystem::path& shaderDirectory, VkFormat targetFormat);
-
-        GuiPass(const GuiPass&) = delete;
-        GuiPass& operator=(const GuiPass&) = delete;
 
         /// @param target what to draw over, in `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` and made
         ///        with `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT`, which is asserted. Loaded rather than

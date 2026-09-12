@@ -10,15 +10,11 @@
 #include <osg/Vec3f>
 
 #include "deformertable.hpp"
-#include "index.hpp"
-#include "mesharrays.hpp"
-#include "meshrange.hpp"
-#include "runbuffer.hpp"
+#include "mesh.hpp"
+#include "runs.hpp"
 #include "shaders/scene.h"
 #include "shapefold.hpp"
-#include "slotchanges.hpp"
-#include "slotrows.hpp"
-#include "slotset.hpp"
+#include "slots.hpp"
 
 namespace Rtx
 {
@@ -32,7 +28,7 @@ namespace Rtx
     /// **The deformers are borrowed and not owned.** A rig is shared by every mesh built from one
     /// skin, so the count lives with the table that hands rigs out; this stands one as a mesh
     /// arrives and releases one as a mesh goes.
-    class MeshTable
+    class MeshTable : public SweptTable<MeshRange>
     {
     public:
         /// How many vertices one block of the vertex attribute buffers holds, and how many indices
@@ -49,11 +45,6 @@ namespace Rtx
         {
         }
 
-        std::size_t size() const { return mRows.size(); }
-
-        /// How many slots hold a mesh, which is what a sweep compares its survivors against.
-        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
-
         /// Copies the vertex data into the shared buffers and returns the new mesh's index.
         ///
         /// Throws where the mesh is longer than a block. **Named rather than asserted**, because a
@@ -65,33 +56,14 @@ namespace Rtx
         /// frame, once.
         void notePosed(Index mesh, const osg::BoundingBoxf& bounds);
 
-        /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
-        std::size_t mark(std::span<const Index> keep);
-
         /// Frees every slot the last `mark` did not name, and says how many that was.
         std::size_t sweep();
-
-        /// Takes and gives back one hold on a row, which keeps it through every sweep between.
-        ///
-        /// **For a row nothing the walk meets will name.** A cell's ground has no drawable, so no
-        /// identity map holds it and a sweep would free it on the first frame; the residency that
-        /// stood it holds it instead, and lets go when the cell does. The row goes on the first
-        /// `release` after the last hold is given back, whatever else that release found:
-        /// `SceneDesc::hasDroppedHolds` is what tells a caller gated on the identity maps that it
-        /// owes one.
-        void hold(Index mesh) { mRows.hold(mesh); }
-        void drop(Index mesh) { mRows.drop(mesh); }
-
-        /// Whether a hold went to nought since the last `mark`, which is a sweep owed however whole
-        /// the identity maps stand.
-        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
 
         std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
         std::span<const osg::Vec3f> getColours() const { return mColours; }
         std::span<const std::uint32_t> getIndices() const { return mIndices.getAll(); }
-        std::span<const MeshRange> getRows() const { return mRows.getRows(); }
 
         std::span<const osg::Vec3f> getMeshPositions(Index mesh) const;
         std::span<const std::uint32_t> getMeshIndices(Index mesh) const;
@@ -143,13 +115,6 @@ namespace Rtx
         /// hit multiplies by it whatever the content said and no shader branches on whether there
         /// is one. `MeshArrays::mColours` says why it is linear here.
         std::vector<osg::Vec3f> mColours;
-
-        /// Every mesh row, and the slots nothing stands in.
-        ///
-        /// **Slots are never moved and never closed up**, because what goes on the free list is
-        /// what one departing ring left — tens of entries, not the table. A slot that is taken over
-        /// keeps its index and every placement standing on it stays where it is.
-        SlotRows<MeshRange> mRows;
 
         /// Which meshes were posed this frame. Emptied with the placement rather than with the
         /// arrivals: a pose is a fact about the frame and an arrival is a fact about the scene.

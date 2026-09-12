@@ -12,7 +12,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/slotpool.hpp>
+#include <components/rtx/slots.hpp>
 
 #include "bloompass.hpp"
 #include "buffer.hpp"
@@ -20,7 +20,6 @@
 #include "compositepass.hpp"
 #include "device.hpp"
 #include "exposurepass.hpp"
-#include "fogtile.hpp"
 #include "fogvolume.hpp"
 #include "framering.hpp"
 #include "frameslots.hpp"
@@ -28,13 +27,12 @@
 #include "graveyard.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"
+#include "handles.hpp"
 #include "instance.hpp"
 #include "placing.hpp"
 #include "presenttargets.hpp"
-#include "setlayout.hpp"
 #include "skinpass.hpp"
-#include "spritebinpass.hpp"
-#include "spriteshadepass.hpp"
+#include "spritepasses.hpp"
 #include "tonepass.hpp"
 #include "tracechain.hpp"
 #include "visibilitypass.hpp"
@@ -55,22 +53,13 @@ namespace Rtx
     class TextureArray;
 
     /// `Renderer` over Vulkan.
-    ///
-    /// This is the shot command and the pixel tests' fixture merged: both stood up a device, built a
-    /// scene on it, traced into an image and read it back, and both are now one implementation that
-    /// cannot disagree with itself.
     class VulkanRenderer final : public Renderer
     {
         static constexpr std::uint64_t sNeverRead = ~std::uint64_t{ 0 };
 
-        /// Everything one scene is traced against — the world's, or a picture's in the interface.
-        ///
-        /// **The same three objects and the same three branches for both**, which is what lets an
-        /// inventory doll be handed over by `Rtx::SceneUploader` exactly as a cell is: a slider
-        /// drag places what it already built instead of building it again.
-        ///
-        /// **Four objects and not six.** `VisibilityPass` and `SkinPass` are shared, because
-        /// nothing about either of them depends on which scene it works — every texture array
+        /// Everything one scene is traced against — the world's, or a picture's in the interface —
+        /// the same objects for both, which is what lets `Rtx::SceneUploader` hand a doll over
+        /// exactly as a cell. `VisibilityPass` and `SkinPass` are shared: every texture array
         /// declares the same bindless layout, and identically defined layouts are compatible.
         struct ViewScene
         {
@@ -82,27 +71,21 @@ namespace Rtx
             std::unique_ptr<SkinTables> mSkinTables;
 
             /// One row per placement slot, made whole when the scene is built and kept across
-            /// frames, with the rows the scene says changed rewritten by each placement.
-            ///
-            /// **Here rather than in either half**, because both need the same rows and each used
-            /// to build its own: the acceleration structure for the transforms it places, the
-            /// instance table for the motion the shader reads. A row carries a matrix inverse, and
-            /// a nine-by-nine exterior is fifty thousand rows. Per scene, because a picture inside
-            /// the interface places against rows of its own.
+            /// frames, with the rows the scene says changed rewritten by each placement. Here
+            /// rather than in either half, because the acceleration structure and the instance
+            /// table need the same rows and each used to build its own — fifty thousand matrix
+            /// inverses on a nine-by-nine exterior.
             std::vector<InstanceRecord> mRecords;
 
             /// Which of those `updateInstanceRecords` wrote this placement, cleared and refilled.
-            ///
-            /// **One list, read by both halves of a placement.** The acceleration structure's rows
-            /// and the shading table's rows are derived from the same records; two answers to which
-            /// changed is one of them being wrong, and terrain a frame behind.
+            /// One list read by both halves, because two answers to which changed is one of them
+            /// wrong and terrain a frame behind.
             std::vector<Index> mChangedRecords;
 
             /// Which revision of the mesh table the structures were built from, so `extendScene` can
-            /// tell a scene that only gained textures from one that gained geometry too.
-            ///
-            /// Counted rather than sized, because a freed slot taken over by something else is a
-            /// mesh arriving at a table that did not grow.
+            /// tell a scene that only gained textures from one that gained geometry too. A revision
+            /// and not a size, because a freed slot taken over is a mesh arriving at a table that
+            /// did not grow.
             std::uint64_t mBuiltMeshes = 0;
 
             /// Which scene's tables this was built from and at what revision of the whole
@@ -110,13 +93,9 @@ namespace Rtx
             std::uint64_t mBuiltStructure = 0;
 
             /// Which copy of the tables the last placement wrote — what a trace of this scene reads,
-            /// and the copy the next placement leaves alone.
-            ///
-            /// **A placement's parity and not a frame's**, because a frame need not place: a test
-            /// that traces the same placement twice reads the same copy twice, and the copy a
-            /// placement is about to write is guarded by the frame that last traced it, not by the
-            /// frame count. **Per scene**, so a doll redrawn on consecutive frames places into the
-            /// copy the frame before last read, exactly as the world does.
+            /// and the copy the next placement leaves alone. A placement's parity and not a frame's,
+            /// because a frame need not place; per scene, so a doll redrawn on consecutive frames
+            /// places exactly as the world does.
             FrameSlot mSlot;
 
             /// The last frame that traced each copy, or `sNeverRead`.
@@ -133,13 +112,13 @@ namespace Rtx
         bool isValidating() const override;
         void resetHistory() override { mDenoiserStale = mAirStale = true; }
 
-        void setScene(SceneSlot slot, const SceneTables& scene, std::span<const TextureData> textures,
+        void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures,
             const SeaState& sea) override;
-        void extendScene(SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived,
-            const SeaState& sea) override;
+        void extendScene(
+            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea) override;
         SceneHeld describeHeld(SceneSlot slot) const override;
         void dropTextures(SceneSlot slot, std::span<const Index> textures) override;
-        void placeScene(SceneSlot slot, const SceneTables& scene, const SeaState& sea) override;
+        void placeScene(SceneSlot slot, const SceneDesc& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
@@ -177,10 +156,6 @@ namespace Rtx
 
         /// The scene a slot names — the world's, or a picture's. A slot nothing holds is a caller
         /// bug, so it is asserted rather than reported.
-        ///
-        /// **The const one does the work.** Casting the other way round takes the constness off an
-        /// object that may really have it, which is the one direction of this pair that is not
-        /// always sound.
         const ViewScene& sceneAt(SceneSlot slot) const;
         ViewScene& sceneAt(SceneSlot slot);
 
@@ -191,29 +166,21 @@ namespace Rtx
         VisibilityInputs describeInputs(const ViewScene& held, const FogVolume* volume, std::uint32_t rayMask) const;
 
         /// The frame's camera as its trace will sample it: what the caller wrote, plus every field
-        /// only the renderer can fill.
-        ///
-        /// **One place a sampled camera is made.** `TraceRecording::mSampled` is documented as
-        /// arriving already sampled, and a caller filling it field by field is a place for one of
-        /// them to go missing from. A picture inside the interface fills the one it wants, and says
-        /// so where it does.
+        /// only the renderer can fill. The one place a sampled camera is made, so no field goes
+        /// missing.
         Shaders::VisibilityConstants sampleCamera(
             const Shaders::VisibilityConstants& camera, const Reconstruction& reconstruction) const;
 
         /// Everything a placement of `held` is, recorded and written where `placing` says. True
-        /// where anything was recorded, which is what says whether its command buffer is worth
-        /// submitting.
-        ///
-        /// **What differs between the world's placement and a picture's is around this and not in
-        /// it**: which copy, whether a frame is opened and timed, and whether the submit waits.
+        /// where anything was recorded, which is whether its command buffer is worth submitting.
+        /// What differs between the world's placement and a picture's is around this and not in
+        /// it.
         static bool recordPlacement(
-            const SkinPass& skin, ViewScene& held, const SceneTables& scene, const Placing& placing);
+            const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing);
 
         /// Reads into `mStats` what a placement can have moved, which is every figure but the three
-        /// a build settles.
-        ///
-        /// **Split from the rest because one of those three is a loop over every texture**, and a
-        /// placement runs on the frame path. What a placement cannot change it does not go and ask.
+        /// a build settles — one of which is a loop over every texture, and a placement runs on the
+        /// frame path.
         void readPlacedStats(const ViewScene& held);
 
         /// Reads all of `mStats`, for a scene that has just been built or extended.
@@ -228,12 +195,8 @@ namespace Rtx
 
         /// Whether a frame is upscaled: a runtime that is up **and** a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
-        /// second and somebody who turned it off may turn it back on.
-        ///
-        /// **The one answer the build decides, so that nothing else is compiled twice.** The three
-        /// members below exist only in a build with DLSS in it, so a reader that tested one of them
-        /// instead would be a reader that has to be conditionally compiled — and a reader outside a
-        /// guard is a build with the option off that does not compile at all.
+        /// second. The one answer the build decides, so that no reader of the three members below
+        /// has to be conditionally compiled.
         bool upscaling() const;
 
         /// Makes the picture-inside-the-interface chain at least this big, and the byte image the
@@ -260,11 +223,8 @@ namespace Rtx
         /// `RendererOptions::mCountCrossings` says why that is a switch of its own.
         bool mCountCrossings = false;
 
-        /// The frames in flight, their fences and what each may still be reading.
-        ///
-        /// **After the two counters, which it borrows.** Declaration order is construction order,
-        /// and a reference bound to a member that has not been given its value yet is a trap even
-        /// where nothing reads it until later.
+        /// The frames in flight, their fences and what each may still be reading. After the two
+        /// counters, which it borrows.
         FrameRing mRing{ mDevice, mPool, mCountHits, mCountCrossings };
 
         /// What the frames are traced under. **Changing the mode rebuilds every target**, which is
@@ -275,22 +235,15 @@ namespace Rtx
         /// spent by the next frame that reconstructs from one, which is not always the one after.
         bool mDenoiserStale = false;
 
-        /// The same for the fog volume, which keeps a past of its own.
-        ///
-        /// **Two flags because two histories are spent by different frames.** The denoisers run only
-        /// where a frame reconstructs, so their signal has to survive a frame that runs none; the
-        /// air is filled by the trace, which runs on every frame — so its signal is spent by the
-        /// very next one and holding it longer would leave the volume reprojecting nothing for the
-        /// whole of a run with the filter off. One flag served both, and what it served was the
-        /// denoisers: the volume's temporal filter did not exist outside a filtered frame.
+        /// The same for the fog volume, which keeps a past of its own. Two flags because two
+        /// histories are spent by different frames: the denoisers run only where a frame
+        /// reconstructs, so their signal has to survive a frame that runs none, while the air is
+        /// filled by every trace, so its signal is spent by the very next one.
         bool mAirStale = false;
 
-        /// When the last frame was recorded, so the next can say how long ago that was.
-        ///
-        /// **Measured here rather than asked of the caller.** What the upscaler wants is the
-        /// interval between the frames it is reconstructing across, and this is the function those
-        /// frames pass through — a number handed in instead could be forgotten by one caller,
-        /// stale in another, and wrong in both without anything saying so.
+        /// When the last frame was recorded, so the next can say how long ago that was. Measured
+        /// here rather than asked of the caller, because this is the function the frames the
+        /// upscaler reconstructs across pass through.
         std::optional<std::chrono::steady_clock::time_point> mLastFrameAt;
 
         std::uint32_t mOutputWidth = 0;
@@ -301,24 +254,14 @@ namespace Rtx
         /// says why there are two.
         PresentTargets mTargets;
 
-        /// The running sum a reference is built out of, and null until a frame asks for one.
-        ///
-        /// **Not a history, and nothing here reprojects.** The denoiser's past is `mDenoiserStale`,
-        /// `mPreviousCamera` and the image pairs `AccumulatePass` keeps. This is a plain per-pixel
-        /// total over however many frames the caller asked to average, so a world that moved under
-        /// it is what it is a sum of rather than a reason to drop it.
-        ///
-        /// **Whether it exists is also whether anything has written it**, because the frame that
-        /// makes one is the frame that fills it: the first write needs no contents and nothing to
-        /// wait on, and every one after reads what the last left — a hazard across submits that the
-        /// fence orders and does not make visible.
+        /// The running sum a reference is built out of, and null until a frame asks for one. Not a
+        /// history and nothing here reprojects: a plain per-pixel total over however many frames
+        /// the caller asked to average. Whether it exists is also whether anything has written it,
+        /// because the frame that makes one fills it.
         std::unique_ptr<Image> mSum;
 
         /// What every `GBuffer` here is shaped by — one description, however many of them the
-        /// frame's size brings and takes away. `GBuffer` says why the channels have a set.
-        ///
-        /// **Declared before both chains**, because the trace's pipeline names it when it is built
-        /// and every buffer allocates from it.
+        /// frame's size brings and takes away. Declared before both chains, which allocate from it.
         SetLayout mChannelLayout;
 
         /// The same for the air, which is a camera's the way the channels are. Declared before both
@@ -330,12 +273,8 @@ namespace Rtx
         TraceChain mFrame;
 
         /// What a picture inside the interface is traced into: a map tile, the inventory doll, the
-        /// race preview.
-        ///
-        /// **Its own chain and not the frame's.** Nothing here upscales, averages or measures an
-        /// exposure — a doll is a still picture of a subject rather than a frame in a sequence —
-        /// and borrowing the frame's images would mean resizing them away from the frame and back
-        /// between two of them.
+        /// race preview. Its own chain and not the frame's, because borrowing the frame's images
+        /// would mean resizing them away from the frame and back between two of them.
         TraceChain mView;
 
         /// The camera the last frame was traced with, for reprojecting this one against.
@@ -387,12 +326,8 @@ namespace Rtx
         /// layout that only a scene brings, and the layout every scene brings is the same one.
         std::unique_ptr<TonePass> mTone;
 
-        /// **The interface stays four members here rather than becoming an object.** They are a
-        /// grouping and not an invariant: `GuiTextures` already holds the part with a rule — the
-        /// staging arenas, the lent region, the layout a texture rests in — and what is left beside
-        /// it is a pipeline, a scratch vector and a counter with nothing binding them. An object
-        /// over the four would take the frame ring, the pool, the device and the present target per
-        /// call, which is four dependencies threaded in to move four members out.
+        /// The interface: `GuiTextures` holds the part with a rule, and what is left beside it is a
+        /// pipeline, a scratch vector and a counter with nothing binding them.
         GuiPass mGuiPass;
         GuiTextures mGuiTextures;
 
@@ -401,14 +336,7 @@ namespace Rtx
         std::vector<GuiDraw> mGuiDraws;
 
         /// Scenes belonging to pictures rather than to the world, by slot, and the slots nothing
-        /// holds. **`SlotPool` and not a list of its own**, for the reason `GuiTextures` keeps one.
-        ///
-        /// **These and `mView` stay members for the reason the interface above does.** `mView` is a
-        /// `TraceChain` whose sibling is the frame's own, `mViewTarget` is grown with it, and the
-        /// table is addressed by a slot the public interface hands out — so an object over the four
-        /// would need the device, the pool, the ring, the trace pipeline and every pass a picture
-        /// records, reached through one more indirection. `PresentTargets` earned its type by
-        /// holding a rule; this is a grouping.
+        /// holds.
         std::vector<std::unique_ptr<ViewScene>> mViewScenes;
         SlotPool mFreeViewScenes;
 
@@ -416,23 +344,16 @@ namespace Rtx
         /// until something asks for a picture, and grown with `mView`.
         std::unique_ptr<Image> mViewTarget;
 
-        /// Null where nothing asked for a window.
-        ///
-        /// **Last, so it is destroyed first**, which is not a detail: its command buffers still hold
-        /// recordings that blit out of `mTarget`, and destroying that image while a recording names
-        /// it is `VUID-vkDestroyImage-image-01000`. Declared beside the device — where its lifetime
-        /// reads as belonging — it outlived the image instead, and the layers said so on the way
-        /// out of a two-hundred-frame run.
+        /// Null where nothing asked for a window. Last, so it is destroyed first: its command
+        /// buffers still hold recordings that blit out of `mTarget`, and destroying that image while
+        /// a recording names it is `VUID-vkDestroyImage-image-01000`.
         std::unique_ptr<Presenter> mPresenter;
 
 #ifdef OPENMW_RTX_DLSS
-        /// NGX, where this renderer was asked to upscale.
-        ///
-        /// **Owned outright and null otherwise** — raised by `startUpscaler` the first time a mode
-        /// wants one, destroyed with the renderer, and the only one in the process. It outlives a
-        /// mode being turned off, so `upscaling` and not this is what says whether a frame is
-        /// upscaled. What `describeDevice` reports comes from `Dlss::probe` instead, which asks the
-        /// device without standing a runtime up.
+        /// NGX, raised by `startUpscaler` the first time a mode wants one and null otherwise. It
+        /// outlives a mode being turned off, so `upscaling` and not this says whether a frame is
+        /// upscaled; `describeDevice` reports from `Dlss::probe`, which asks the device without
+        /// standing a runtime up.
         std::unique_ptr<Dlss> mNgx;
 
         /// Ray Reconstruction, built for one pair of resolutions and so rebuilt by every resize.

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "error.hpp"
-#include "index.hpp"
+#include "runs.hpp"
 
 namespace Rtx
 {

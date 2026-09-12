@@ -100,7 +100,7 @@ namespace Rtx
             mRenderer->resize(sSize, sSize);
 
             SceneDesc scene = wall();
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
@@ -145,7 +145,7 @@ namespace Rtx
             // point of carrying them in the same report is that they are the same frame's cost.
             EXPECT_FALSE(reports(drawn.mGpu, "tlas")) << "nothing was placed, so nothing was built";
 
-            mRenderer->placeScene(Rtx::SceneSlot::world(), scene.getTables(), SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
             const Drawn placed = draw(*mRenderer, camera);
 
             EXPECT_TRUE(reports(placed.mGpu, "tlas")) << "the top level was rebuilt and went unmeasured";
@@ -167,7 +167,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
                 .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallCorners, .mIndices = Testing::sQuadIndices }) });
 
-            mRenderer->extendScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
             const Drawn arrived = draw(*mRenderer, camera);
 
             EXPECT_TRUE(reports(arrived.mGpu, "blas")) << "a mesh arrived and its structure was built unmeasured";

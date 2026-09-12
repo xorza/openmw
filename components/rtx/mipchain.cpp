@@ -10,8 +10,8 @@
 
 #include <osg/Vec3f>
 
-#include "srgb.hpp"
-#include "texelreader.hpp"
+#include "colour.hpp"
+#include "texels.hpp"
 
 namespace Rtx
 {

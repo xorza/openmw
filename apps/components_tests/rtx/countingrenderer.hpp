@@ -9,7 +9,7 @@
 #include <vector>
 
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/scenetables.hpp>
+#include <components/rtx/scenedesc.hpp>
 
 namespace Rtx::Testing
 {
@@ -29,7 +29,7 @@ namespace Rtx::Testing
         /// reaches the renderer at all, and this double has no history to throw away.
         void resetHistory() override { ++mHistoryResets; }
 
-        void setScene(Rtx::SceneSlot slot, const Rtx::SceneTables& scene, std::span<const Rtx::TextureData> textures,
+        void setScene(Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> textures,
             const Rtx::SeaState&) override
         {
             ++mRebuilt;
@@ -38,11 +38,11 @@ namespace Rtx::Testing
 
             // What the backend does: the array is made again and ends where the scene's table
             // does, whatever it held before.
-            countAt(slot) = static_cast<std::uint32_t>(scene.mTextures.getPaths().size());
+            countAt(slot) = static_cast<std::uint32_t>(scene.textures().getPaths().size());
             heldAt(slot) = { true, scene.getStructureRevision() };
         }
 
-        void extendScene(Rtx::SceneSlot slot, const Rtx::SceneTables& scene, std::span<const Rtx::TextureData> arrived,
+        void extendScene(Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> arrived,
             const Rtx::SeaState&) override
         {
             ++mExtended;
@@ -57,11 +57,11 @@ namespace Rtx::Testing
 
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.
-            mAppendedToWrongEnd |= countAt(slot) != scene.mTextures.getPaths().size();
+            mAppendedToWrongEnd |= countAt(slot) != scene.textures().getPaths().size();
             heldAt(slot).mRevision = scene.getStructureRevision();
         }
 
-        void placeScene(Rtx::SceneSlot, const Rtx::SceneTables&, const Rtx::SeaState&) override
+        void placeScene(Rtx::SceneSlot, const Rtx::SceneDesc&, const Rtx::SeaState&) override
         {
             ++mPlaced;
             mDescribed = 0;

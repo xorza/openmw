@@ -26,77 +26,48 @@ namespace Rtx
     class Device;
     class GpuTimer;
     class Graveyard;
-    struct SceneTables;
+    class SceneDesc;
     class SpriteBinPass;
     class SpriteShadePass;
 
-    /// The tables a shader reads at a hit: what the triangle was, and how it is shaded.
-    ///
-    /// Positions and indices are already on the GPU for the acceleration structure to be built from,
-    /// but a hit needs the *attributes* — and the mesh, instance and material tables to find them
-    /// through. Position fetch covered a normal; nothing covers a texture coordinate.
+    /// The tables a shader reads at a hit: the attributes, and the mesh, instance and material
+    /// tables to find them through. Position fetch covers a normal; nothing covers a texture
+    /// coordinate.
     class SceneBuffers
     {
     public:
         /// @param slots how many frames may be tracing this scene at once.
-        SceneBuffers(const Device& device, Batch& batch, const SceneTables& scene,
+        SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
             std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
 
-        /// Takes in the attributes of the meshes the scene says arrived.
-        ///
-        /// The blocks are appended to rather than replaced, so nothing already written moves and
-        /// nothing built from it has to be built again. A departure needs nothing here: a mesh slot
-        /// with no geometry in it is never read.
-        ///
-        /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
-        /// the normals and the whole mesh table, and a frame still reading either would see it torn.
-        void extend(Batch& batch, const SceneTables& scene, Graveyard& graveyard);
+        /// Takes in the attributes of the meshes the scene says arrived. The blocks are appended to
+        /// rather than replaced, and a departure needs nothing here. With nothing in flight, which
+        /// the caller guarantees: an arrival writes every copy of the normals and the whole mesh
+        /// table.
+        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
 
-        /// Rewrites what a moving world changes, leaving what it is made of alone.
-        ///
-        /// **The split is the whole point of this class having two entry points.** Rebuilding all of
-        /// it per frame is tens of milliseconds on a nine-by-nine region, and almost none of it has
-        /// changed: the texture coordinates and the mesh table are what the scene is made of and
-        /// only an arrival can alter them, and the materials, the layers and the masks change by
-        /// the row and the run, which is what the scene reports and what `shade` writes.
-        ///
-        /// What does change is where things are and what is lit. Those live in memory the host
-        /// writes straight into, so this is a `memcpy` and not a staging buffer, a copy command, a
-        /// submit and a wait on the queue. The vertices of anything skinned change too, and those
-        /// `SkinPass` writes on the device.
-        ///
-        /// **Into `slot`'s copy of every table a frame writes**, which the frame after next reads
-        /// again and no frame in between: the caller has waited that frame's fence. Every table
-        /// keeps its own copies and its own account of what each of them is owed, which is what
-        /// `SlotTable` and `SlotBlocks` are for.
+        /// Rewrites what a moving world changes — where things are and what is lit — leaving what
+        /// it is made of alone: rebuilding all of it is tens of milliseconds on a nine-by-nine
+        /// region. Those tables live in memory the host writes straight into, so this is a `memcpy`
+        /// and not a staging buffer, a submit and a wait. Into `slot`'s copy of every table a frame
+        /// writes, which the caller has waited the fence of; `SlotTable` and `SlotBlocks` keep each
+        /// copy's account of what it is owed.
         ///
         /// `scene` must be the one the constructor was given. `records` are the rows the
-        /// acceleration structure was placed with, handed in rather than made again: the motion
-        /// transform a shader reads and the one an instance was placed with have to come out of the
-        /// same arithmetic, and two places computing an inverse is two places to get it wrong — as
-        /// well as thousands of inversions a frame done twice for one answer.
+        /// acceleration structure was placed with, so the motion transform a shader reads and the
+        /// one an instance was placed with come out of the same arithmetic.
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list the rows
-        ///        are driven by. Whether a copy is then behind is `mInstanceTable`'s to know.
-        void place(const SceneTables& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
+        ///        are driven by.
+        void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
             FrameSlot slot, Graveyard& graveyard);
 
-        SceneBuffers(const SceneBuffers&) = delete;
-        SceneBuffers& operator=(const SceneBuffers&) = delete;
-
         /// Shades this scene's sprites against the frame's sun, writes them, and records the bin
-        /// of them into the screen tiles of the camera about to trace them.
-        ///
-        /// **From the frame and not from the placement**, because both the sun and the camera are
-        /// the frame's and neither exists until it does. `place` converted the sprites; this writes
-        /// the copy of them kept beside the buffer, hands `shading` the tables to count each
-        /// sprite's layers into, and hands `pass` the same tables to bin them from.
-        ///
-        /// **Recorded into `placing.mCommands` ahead of the trace that reads the tiles**, and after
-        /// that placement's copy of them is nothing's to read — which for a frame is the fence the
-        /// frame before last signalled, and for a picture inside the interface every frame's. Grows
-        /// the list first, from what this copy's last bin reported it needed, so nothing between
-        /// this and the trace moves a table.
+        /// of them into the screen tiles of the camera about to trace them. From the frame and not
+        /// from the placement, because both the sun and the camera are the frame's. Recorded into
+        /// `placing.mCommands` ahead of the trace that reads the tiles, and grows the list first
+        /// from what this copy's last bin reported it needed, so nothing between this and the trace
+        /// moves a table.
         void binSprites(const SpriteShadePass& shading, const SpriteBinPass& pass, const osg::Vec3f& origin,
             const Shaders::Camera& camera, const osg::Vec3f& toSun, const Placing& placing);
 
@@ -110,25 +81,17 @@ namespace Rtx
         SlotBlocks& getNormals() { return mNormalTable; }
 
         /// Where every table this owns is, for the frame's block: the twelve of `GpuTables` that are
-        /// the scene's, with `slot`'s copy wherever a table has one per frame in flight.
-        ///
-        /// **Addresses and never handles**, because nothing binds a table: a shader constructs a
-        /// reference from the block and reads. For the vertex attributes the address is a table of
-        /// addresses, one per block, and the shader resolves a global id to one of them itself. See
-        /// `BlockedBuffer`.
-        ///
-        /// **The two it leaves alone are not the scene's.** The blue-noise tile is the pass's and
-        /// the index blocks are the acceleration structure's, and each of those writes its own.
+        /// the scene's, with `slot`'s copy wherever a table has one per frame in flight. Addresses
+        /// and never handles, because a shader constructs a reference from the block and reads; for
+        /// the vertex attributes a table of addresses, one per block (`BlockedBuffer`). The
+        /// blue-noise tile and the index blocks are not the scene's and write their own.
         void describeTables(FrameSlot slot, Shaders::GpuTables& into) const;
 
         VkDeviceSize getBytes() const;
 
     private:
-        /// What a frame writes whole, once per frame in flight.
-        ///
-        /// **What is written by the row has left this**, because a table and the account of what
-        /// each copy of it still owes are one thing: `mInstanceTable`, `mMaterialTable` and
-        /// `mNormalTable` keep their own. These are the ones a placement fills from end to end.
+        /// What a frame writes whole, once per frame in flight. What is written by the row keeps
+        /// its own account: `mInstanceTable`, `mMaterialTable` and `mNormalTable`.
         struct Tables
         {
             Buffer mLayers;
@@ -172,25 +135,21 @@ namespace Rtx
         void reserve(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
 
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
-        /// copy of the normals — and rewrites the per-mesh row table.
-        ///
-        /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
-        /// hold everything else, and rewriting them would be rewriting what nothing changed.
-        void writeMeshes(Batch& batch, const SceneTables& scene, std::span<const Index> meshes, Graveyard& graveyard);
+        /// copy of the normals — and rewrites the per-mesh row table. Per mesh and not per scene,
+        /// because that is what an arrival is.
+        void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
 
         /// Writes the material rows `slot`'s copy owes, and the layer and mask runs that arrived into
         /// every copy — or a table whole where it had to be made again to hold them.
-        void shade(const SceneTables& scene, FrameSlot slot, Graveyard& graveyard);
+        void shade(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
 
         const Device* mDevice = nullptr;
         std::uint32_t mSlots = 1;
 
         // What the scene is made of, written on arrival and read by every frame: one copy, because
-        // an arrival waits for the frames in flight before it writes.
-        //
-        // **The colours are one copy as well, where the normals are one per frame in flight.** A
-        // skin recomputes a body's normals every frame and never repaints it, so what a cell wrote
-        // here on arrival is what every frame reads.
+        // an arrival waits for the frames in flight before it writes. The colours too, where the
+        // normals are one per frame in flight: a skin recomputes a body's normals and never
+        // repaints it.
         BlockedBuffer mTexCoords{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec2f) };
         BlockedBuffer mColours{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
 
@@ -198,11 +157,9 @@ namespace Rtx
         /// Rewritten whole whenever a mesh arrives or leaves, which is a few kilobytes.
         Buffer mMeshes;
 
-        // **Host-visible and rewritten from `place`, not uploaded once.** Anything that animates a
-        // state set gives the mirror a new material every frame — OpenMW's water cycles thirty-two
-        // of them — and a table that could only be filled at construction made that a reason to
-        // rebuild the whole table. The rows the scene says it wrote are what go over, and only
-        // those: the masks are megabytes and a flipbook turning changes none of them.
+        // Host-visible and rewritten from `place`, not uploaded once: anything that animates a
+        // state set gives the mirror a new material every frame, and only the rows the scene says
+        // it wrote go over — the masks are megabytes and a flipbook turning changes none of them.
         std::array<Tables, sFrameSlots> mTables;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;

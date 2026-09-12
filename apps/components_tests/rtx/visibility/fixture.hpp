@@ -29,7 +29,6 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/compositepass.hpp>
-#include <components/rtxvulkan/fogtile.hpp>
 #include <components/rtxvulkan/fogvolume.hpp>
 #include <components/rtxvulkan/gbuffer.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
@@ -329,7 +328,7 @@ namespace Rtx::Testing
             const std::function<void()>& afterEach = {})
         {
             mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), inSceneOrder(textures), shot.mSea);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures), shot.mSea);
 
             if (shot.mResetHistory)
                 mRenderer->resetHistory();

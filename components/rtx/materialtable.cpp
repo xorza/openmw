@@ -6,7 +6,7 @@ namespace Rtx
 {
     Index MaterialTable::add(const Material& material)
     {
-        hold(material);
+        holdTextures(material);
 
         const Index index = mRows.take(material);
         note(index);
@@ -25,8 +25,8 @@ namespace Rtx
         // it already had names the same texture twice running; releasing first would take that slot
         // to zero, empty its path and hand it to the next thing that asked — a slot changing
         // identity under everything standing on it, on a frame where nothing was supposed to move.
-        hold(what);
-        drop(row);
+        holdTextures(what);
+        dropTextures(row);
 
         row = what;
         note(material);
@@ -40,12 +40,12 @@ namespace Rtx
         mWritten.add(slot);
     }
 
-    void MaterialTable::hold(const Material& material)
+    void MaterialTable::holdTextures(const Material& material)
     {
         forEachTexture(material, [this](const Index texture) { mTextures.hold(texture); });
     }
 
-    void MaterialTable::drop(const Material& material)
+    void MaterialTable::dropTextures(const Material& material)
     {
         forEachTexture(material, [this](const Index texture) { mTextures.drop(texture); });
     }
@@ -64,18 +64,13 @@ namespace Rtx
         return run;
     }
 
-    std::size_t MaterialTable::mark(std::span<const Index> keep)
-    {
-        return mRows.mark(keep);
-    }
-
     std::size_t MaterialTable::sweep()
     {
         return mRows.sweep([this](Index, Material& going) {
             // **What it named goes with it**, and before its layer run does: the run is what says
             // which textures those were, and it is about to be handed to an allocator that will let
             // the next chunk write over it.
-            drop(going);
+            dropTextures(going);
 
             // **Its layers and the masks behind them go with it.** A material that carries layers is
             // a terrain chunk, so without this what accumulates is a blend map per chunk walked

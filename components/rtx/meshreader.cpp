@@ -12,7 +12,7 @@
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 
-#include "decodecolour.hpp"
+#include "colour.hpp"
 #include "error.hpp"
 #include "frameclock.hpp"
 

@@ -7,7 +7,7 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "index.hpp"
+#include "runs.hpp"
 #include "shaders/visibility.h"
 
 namespace Resource

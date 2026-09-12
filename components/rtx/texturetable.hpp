@@ -11,9 +11,8 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "index.hpp"
-#include "slotchanges.hpp"
-#include "slotrows.hpp"
+#include "runs.hpp"
+#include "slots.hpp"
 
 namespace Rtx
 {

@@ -5,11 +5,9 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
-#include <components/surface/alphamode.hpp>
-#include <components/surface/vertexcolour.hpp>
+#include <components/surface/material.hpp>
 
-#include "index.hpp"
-#include "run.hpp"
+#include "runs.hpp"
 
 namespace Rtx
 {
@@ -39,18 +37,12 @@ namespace Rtx
         Index mNormal = sNoIndex;
         Index mEmissive = sNoIndex;
 
-        /// What the texture is tinted by, in linear light.
-        ///
-        /// **Three channels and not the record's four**, which is the split `GpuMaterial` already
-        /// made: the alpha beside it is `mOpacity` and is not a colour, so nothing decodes it and
-        /// nothing multiplies an albedo by it.
+        /// What the texture is tinted by, in linear light. Three channels and not the record's
+        /// four: the alpha beside it is `mOpacity` and is not a colour.
         osg::Vec3f mDiffuseColour{ 1.0f, 1.0f, 1.0f };
 
-        /// How much the surface glows on its own, with the material's own multiplier folded in.
-        ///
-        /// The multiplier is not kept apart because nothing wants it apart: the game's own shader
-        /// only ever uses their product, and carrying two numbers would be carrying one of them for
-        /// the sake of it.
+        /// How much the surface glows on its own, with the material's own multiplier folded in,
+        /// because the game's own shader only ever uses their product.
         osg::Vec3f mEmissiveColour{ 0.0f, 0.0f, 0.0f };
 
         /// How much of the surface is there, as the content stated it and before its texture is
@@ -62,12 +54,9 @@ namespace Rtx
         Surface::AlphaMode mAlphaMode = Surface::AlphaMode::Opaque;
 
         /// What this surface's per-vertex colour is for — the tint that replaces `mDiffuseColour`,
-        /// the glow that replaces `mEmissiveColour`, or nothing.
-        ///
-        /// **On the material and not on the mesh, because that is where the content states it.**
-        /// A `NiVertexColorProperty` hangs above a shape and the colours are inside its data, and
-        /// two shapes sharing one state set share the mode. What a mesh carries is the colours
-        /// themselves, white where it brought none.
+        /// the glow that replaces `mEmissiveColour`, or nothing. On the material and not on the
+        /// mesh, because a `NiVertexColorProperty` hangs above a shape and two shapes sharing one
+        /// state set share the mode. What a mesh carries is the colours themselves.
         Surface::VertexColour mVertexColour = Surface::VertexColour::None;
 
         /// Sheet geometry lit and hit from both faces. Morrowind leans on this heavily and a ray
@@ -75,14 +64,9 @@ namespace Rtx
         bool mTwoSided = false;
 
         /// Mesh texture coordinates to this material's, as `uv * xy + zw` — the same form the
-        /// terrain layers use, so one sampler helper serves both.
-        ///
-        /// **A surface whose shading animates by scrolling.** Morrowind moves lava, waterfalls,
-        /// banners and smoke by rewriting a texture matrix rather than by moving geometry, and
-        /// `NifOsg::UVController` rewrites it every frame — 432 surfaces in Vivec alone. Held on the
-        /// material rather than the instance because that is what changes: the same mesh under two
-        /// controllers is two materials and one geometry, and `setMaterial` is built for shading
-        /// that moves.
+        /// terrain layers use. Morrowind moves lava, waterfalls, banners and smoke by rewriting a
+        /// texture matrix every frame — 432 surfaces in Vivec alone — so this is on the material,
+        /// which `setMaterial` rewrites, and not on the instance.
         osg::Vec4f mTextureTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
 
         /// Where this material's terrain layers sit in the scene's layer table.
@@ -92,90 +76,53 @@ namespace Rtx
         Run mLayers;
 
         /// Whether this chunk is wide enough that its stack is worth flattening into one texture.
-        ///
-        /// **Asked for here and answered later, which is the whole of why it is a flag.** A
-        /// composite costs tens of milliseconds and a cell boundary wants several, so the bake
-        /// cannot be done by the walk that meets the chunk. Until one arrives `mDiffuse` stays
-        /// unset and the chunk shades from the stack below — the branch the shader already takes for
-        /// every near chunk — so the picture is right throughout and only the cost per hit differs.
+        /// Asked for here and answered later, because a composite costs tens of milliseconds; until
+        /// one arrives `mDiffuse` stays unset and the chunk shades from the stack, so only the cost
+        /// per hit differs.
         bool mFlatten = false;
 
-        /// Whether a controller rewrites this material's state set every frame, so what it says
-        /// now is not what it will say next frame.
-        ///
-        /// **Constant for the material's whole life**, because it is a fact about the state set the
-        /// material is keyed on: `SceneExtractor::animate` gives a node with a controller a state
-        /// set of its own, and every material read off that state set is read off it again each
-        /// frame. It is what refuses such a material to the replay, which reuses what it read last
-        /// frame. `MeshRange::mMaterial` says why a mesh has one material to ask.
+        /// Whether a controller rewrites this material's state set every frame. Constant for the
+        /// material's whole life, because `SceneExtractor::animate` gives a node with a controller
+        /// a state set of its own. It is what refuses such a material to the replay, which reuses
+        /// what it read last frame.
         bool mAnimated = false;
 
-        /// Whether the diffuse map's alpha never reaches solid anywhere on it — `reachesSolid`.
-        ///
-        /// **A fact about the texture, kept on the material because the material is what asks.**
-        /// It is what separates a cloud from a pane among surfaces that carry the same alpha mode
-        /// and the same kind of alpha, and it is measured once for an image however many materials
-        /// name it.
-        ///
-        /// False for a material with no diffuse map at all, which is an untextured pane: all glass,
-        /// no paint, and a surface wherever it stands.
+        /// Whether the diffuse map's alpha never reaches solid anywhere on it — `reachesSolid` —
+        /// which is what separates a cloud from a pane among surfaces with the same alpha mode.
+        /// False for a material with no diffuse map at all, which is an untextured pane.
         bool mDiffuseNeverSolid = false;
 
-        /// Two materials are the same when every field is.
-        ///
-        /// **For telling a rewrite from a no-op.** A state set with a controller on it is re-read
-        /// every frame and usually says exactly what it said last time; treating that as a change
-        /// would write the row to the device for nothing.
+        /// For telling a rewrite from a no-op: a state set with a controller on it is re-read every
+        /// frame and usually says exactly what it said last time.
         bool operator==(const Material& other) const = default;
 
-        /// The alpha below which a texel is a hole, or zero where the surface has none.
-        ///
-        /// A blended material that never asked for a test gets a stand-in, because that is where
-        /// the game keeps its foliage. Right for a leaf and wrong for a pane of glass, until
-        /// ordered transparency gives the second one somewhere else to go.
+        /// The alpha below which a texel is a hole, or zero where the surface has none. A blended
+        /// material that never asked for a test gets a stand-in, because that is where the game
+        /// keeps its foliage.
         float getAlphaCutoff() const;
 
-        /// Whether traversal has to stop and ask this material whether a hit is a hole.
-        ///
-        /// The one predicate: the build marks an instance non-opaque by this and the shader tests
-        /// against the same cutoff, so the two cannot disagree about which triangles reach the
-        /// candidate loop. A cutoff with no texture to sample is not one — the mask lives in the
-        /// diffuse map's alpha and there is nothing else to read.
+        /// Whether traversal has to stop and ask this material whether a hit is a hole — the one
+        /// predicate the build marks an instance non-opaque by and the shader tests against. A
+        /// cutoff with no texture to sample is not one.
         bool isCutout() const { return getAlphaCutoff() > 0.0f && mDiffuse != sNoIndex; }
 
-        /// Whether what is behind this surface is meant to show through it.
-        ///
-        /// **`Surface::AlphaMode::Blend` alone does not say so, and this is the whole difficulty.** Morrowind
-        /// keeps its foliage under `NiAlphaProperty`, so a leaf card and a pane of glass carry the
-        /// same mode: the leaf is fully opaque where its painted mask is opaque, and the pane is
-        /// translucent everywhere. What tells them apart is the *material's* own alpha, which
-        /// `NiMaterialProperty` records and `NifOsg::AlphaController` animates.
-        ///
-        /// Told apart because the two want opposite answers from traversal. A mask averaged over the
-        /// ray cone and tested is right for the leaf and wrong for the pane; light attenuated as it
-        /// passes is right for the pane and turns the leaf to gauze.
-        ///
-        /// **Not the opposite of `isCutout`, and a pane is both.** `getAlphaCutoff` hands a blended
-        /// material a stand-in threshold, so the build marks a pane non-opaque and traversal stops
-        /// for it — which is what a transmittance needs anyway. A reader deciding what to do with a
-        /// candidate asks this one first.
+        /// Whether what is behind this surface is meant to show through it. `AlphaMode::Blend`
+        /// alone does not say so: Morrowind keeps its foliage under `NiAlphaProperty`, so a leaf
+        /// card and a pane of glass carry the same mode, and what tells them apart is the
+        /// *material's* own alpha. The two want opposite answers from traversal — a mask averaged
+        /// and tested is right for the leaf, light attenuated as it passes is right for the pane
+        /// and turns the leaf to gauze. Not the opposite of `isCutout`, and a pane is both.
         bool isTranslucent() const { return mAlphaMode == Surface::AlphaMode::Blend && mOpacity < 1.0f; }
 
         /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
-        ///
-        /// **Two facts, and neither alone.** The material's own alpha says the content meant to be
-        /// seen through it everywhere, which a leaf's does not. The texture says the paint never
-        /// closes anywhere on it, which a pane's lead came does. Where both hold there is nothing
-        /// for a ray to stop on, and the layers are composited as depth along it — `mediumAlong`.
+        /// Two facts and neither alone — the material's own alpha, which a leaf's does not say, and
+        /// a texture whose paint never closes, which a pane's lead came does. Where both hold the
+        /// layers are composited as depth along the ray — `mediumAlong`.
         bool isMedium() const { return isTranslucent() && mDiffuseNeverSolid; }
 
-        /// What a placement's row tells traversal about the material it wears.
-        ///
-        /// **Stated once, because two things read it.** The record builder puts these three answers
-        /// into the acceleration structure's row, and `setMaterial` has to know whether a rewrite
-        /// changed any of them — a fade crossing opaque does, a flipbook turning does not — so the
-        /// placements wearing the material can be rewritten. Two lists of the same three fields
-        /// would drift.
+        /// What a placement's row tells traversal about the material it wears, stated once because
+        /// the record builder writes it into the row and `setMaterial` has to know whether a
+        /// rewrite changed it.
         struct Traversed
         {
             MaterialKind mKind = MaterialKind::Surface;
@@ -197,33 +144,23 @@ namespace Rtx
         }
     };
 
-    /// One layer of a terrain material: a ground texture and the weights that place it.
-    ///
-    /// Morrowind's ground is a stack of tiling textures, each masked by a small grid of weights that
-    /// `ESMTerrain` derives from the land records — and OpenMW draws that stack as one alpha-blended
-    /// pass per layer over the same triangles. A ray tracer has one hit and shades it once, so the
-    /// stack is read back into layers and summed at the hit instead.
+    /// One layer of a terrain material: a ground texture and the weights that place it. OpenMW
+    /// draws the stack as one alpha-blended pass per layer; a ray tracer has one hit and sums the
+    /// layers at it instead.
     struct MaterialLayer
     {
         /// The ground texture, which tiles many times across a chunk.
         Index mDiffuse = sNoIndex;
 
-        /// This layer's weights in the scene's mask table, and the grid they form.
-        ///
-        /// An empty run means the layer covers everything: a chunk of a single ground type is given
-        /// no mask at all, because there is nothing for it to blend against. The run holds
-        /// `mMaskWidth * mMaskHeight` weights, and it is kept rather than rebuilt from the sides so
-        /// that what is given back is what was taken.
+        /// This layer's weights in the scene's mask table, and the grid they form. An empty run
+        /// means the layer covers everything. The run holds `mMaskWidth * mMaskHeight` weights and
+        /// is kept rather than rebuilt from the sides, so that what is given back is what was taken.
         Run mMask;
         std::uint16_t mMaskWidth = 0;
         std::uint16_t mMaskHeight = 0;
 
-        /// Cell texture coordinates to this layer's, as `uv * xy + zw`.
-        ///
-        /// `GroundReader` derives both from the tile count as `Terrain::createPasses` does: the
-        /// mask's carries a half-texel inset and a nudge that exist to match the original game, and
-        /// the numbers the derivation reaches are held by a test so the two cannot quietly stop
-        /// agreeing.
+        /// Cell texture coordinates to this layer's, as `uv * xy + zw`. `GroundReader` derives both
+        /// from the tile count as `Terrain::createPasses` does, and a test holds the numbers.
         osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
         osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
 

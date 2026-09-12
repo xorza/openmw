@@ -143,11 +143,6 @@ namespace Rtx
         return static_cast<std::uint32_t>(getIndices().size() / 3);
     }
 
-    std::size_t MeshTable::mark(std::span<const Index> keep)
-    {
-        return mRows.mark(keep);
-    }
-
     std::size_t MeshTable::sweep()
     {
         const std::size_t freed = mRows.sweep([this](const Index index, MeshRange& range) {

@@ -16,7 +16,6 @@
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "dispatch.hpp"
-#include "fogtile.hpp"
 #include "fogvolume.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
@@ -48,21 +47,15 @@ namespace Rtx
                 && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS);
         }
 
-        /// **Every stage on every binding, because one description of set zero serves both passes.**
-        /// The trace is a launch of five shaders and the fog volume is a dispatch, and all of them
-        /// read the same tables out of the same pushed set — so the layout they are addressed
-        /// through has to be legal for each of them. A hit is resolved in a closest-hit shader, a
-        /// cutout is tested in an any-hit shader and the sky is drawn in a miss shader, and each of
-        /// those reads the instances, the materials and the textures the same way the launch used
-        /// to.
+        /// Every stage on every binding, because one description of set zero serves the trace's
+        /// five shaders and the fog volume's dispatch.
         constexpr auto sStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR
             | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
         /// The structure, the hit counter, the frame itself, the sea and the fog's field, in the
-        /// order the shader declares them. The tables a hit reads are not here: `GpuTables` in the
-        /// frame block says where they are. The channels the trace writes are not here either:
-        /// `GBuffer` says why they have a set of their own.
+        /// order the shader declares them. The tables a hit reads are in `GpuTables`; the channels
+        /// the trace writes are `GBuffer`'s set.
         /// What each hit record carries: for every closest-hit shader in turn, one record per layer
         /// of the peel, which is how a shader is told which layer it stands at.
         constexpr std::size_t sHitRecordCount = Shaders::HIT_SHADER_COUNT * Shaders::HIT_RECORD_LAYERS;
@@ -155,8 +148,8 @@ namespace Rtx
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mCountHits(countHits ? 1u : 0u)
         , mCountCrossings(countCrossings ? 1u : 0u)
-        , mChannelLayout(channelLayout.getHandle())
-        , mVolumeLayout(volumeLayout.getHandle())
+        , mChannelLayout(channelLayout.get())
+        , mVolumeLayout(volumeLayout.get())
         , mDepthModule(shaderDirectory / "fogdepth.comp.spv")
         , mScatterModule(shaderDirectory / "fogscatter.comp.spv")
         , mIntegrateModule(shaderDirectory / "fogintegrate.comp.spv")
@@ -258,11 +251,8 @@ namespace Rtx
 
     void VisibilityPass::writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const
     {
-        // **Both directions, because one buffer serves every trace.** The write has to wait for the
-        // last dispatch that read it — a traced view and the world are two traces — and the next
-        // dispatch has to wait for the write. **And for the last write**, which two frames in
-        // flight make the frame before's own update of this buffer: a write after a write is a
-        // hazard of its own, and the dispatch between them is not what orders it.
+        // Both directions, because one buffer serves every trace: the write has to wait for the
+        // last dispatch that read it and for the last write, and the next dispatch for the write.
         const VkBufferMemoryBarrier2 beforeWrite{
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
@@ -282,11 +272,8 @@ namespace Rtx
         };
         vkCmdPipelineBarrier2(commands, &settle);
 
-        // A few hundred bytes, so this is an inline write into the command buffer rather than a
-        // staging copy — and being recorded, it runs in queue order with the traces around it. A
-        // clear command and not a copy, which is what the stage on either side of it says: the
-        // specification files `vkCmdUpdateBuffer` under the clear commands, and a barrier at the
-        // copy stage leaves the write outside its scope.
+        // A few hundred bytes, so an inline write that runs in queue order. The specification files
+        // `vkCmdUpdateBuffer` under the clear commands, so the stage on either side is the clear's.
         vkCmdUpdateBuffer(commands, mConstants.getHandle(), 0, sizeof(described), &described);
 
         const VkBufferMemoryBarrier2 written{
@@ -332,21 +319,14 @@ namespace Rtx
             curvatures[cascade] = { sampler, inputs.mWaves->getCurvature(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
         }
 
-        // **Nothing bound here may be nothing.** A descriptor the shader declares and a null handle
-        // is undefined at the dispatch: the driver may fault, may not, and says nothing either way —
-        // it cost this renderer a device and five seconds of a wedged process before the layers were
-        // asked. Both of these are inputs a caller promises to pass, so a null is a broken promise
-        // and not a state to handle. The tables are asked the same question as addresses, in
-        // `record`.
+        // Nothing bound here may be nothing: a null handle at the dispatch is undefined and cost
+        // this renderer a device before the layers were asked.
         [[maybe_unused]] const auto bound
             = [](const VkDescriptorBufferInfo& write) { return write.buffer != VK_NULL_HANDLE; };
         assert(bound(hitWrite) && bound(frameWrite) && "an input bound as nothing");
 
-        // **Appended rather than indexed.** Writes that each name their own slot — channels at
-        // `1 + i`, buffers at `i + 8`, the rest by hand — are a channel added silently moving two
-        // buffer writes on top of each other and leaving the new bindings unwritten, with the layout
-        // saying what was wrong and nothing else. A cursor cannot make that mistake, and the count
-        // below is checked rather than maintained.
+        // Appended rather than indexed, so a channel added cannot silently move two writes on top
+        // of each other; the count below is checked rather than maintained.
         std::array<VkWriteDescriptorSet, sBindings.size()> writes{};
         std::uint32_t filled = 0;
 
@@ -456,12 +436,9 @@ namespace Rtx
         // three shaders that divide by it stop asking the driver for a number the host already has.
         described.mFogColumns = Shaders::uvec2(inputs.mFogVolume->getColumns(), inputs.mFogVolume->getRows());
 
-        // And where every table is, for the same reason. The scene names its own; the two it does
-        // not own are the pass's tile and the structure's index blocks.
-        //
-        // **Every address read here names a buffer that is alive when the trace runs**, because the
-        // placement ran before this and buried what it displaced in the graveyard, which holds it
-        // until this frame's fence. Nothing between here and the submit grows a table.
+        // And where every table is. Every address read here names a buffer that is alive when the
+        // trace runs, because the placement buried what it displaced in the graveyard and nothing
+        // between here and the submit grows a table.
         inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
         described.mTables.mBlueNoise = mBlueNoise.getDeviceAddress();
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
@@ -542,13 +519,9 @@ namespace Rtx
 
         closeZone(timer, commands);
 
-        // **The count is read on the host after the frame's fence, and a fence makes nothing
-        // visible to the host.** The specification's note under fence signalling says so outright —
-        // the access scope of the dependency a fence defines holds device access only — and points
-        // at the host access types for the barrier that does. So the host's read is named here,
-        // where the write is, the way `SpriteBinPass` names the read of its report. A picture inside
-        // the interface traces through this too and nobody reads its count; what that costs is a
-        // barrier nothing waits behind.
+        // The count is read on the host after the frame's fence, and a fence makes nothing visible
+        // to the host — its access scope holds device access only — so the host's read is named
+        // here, where the write is.
         const VkMemoryBarrier2 counted{
             .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,

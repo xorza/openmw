@@ -9,7 +9,7 @@
 #include <components/esm3/refnum.hpp>
 
 #include "extractionstats.hpp"
-#include "heldcell.hpp"
+#include "held.hpp"
 #include "material.hpp"
 #include "residency.hpp"
 

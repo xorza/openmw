@@ -16,7 +16,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "alphaimage.hpp"
-#include "decodecolour.hpp"
+#include "colour.hpp"
 #include "extractionstats.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"

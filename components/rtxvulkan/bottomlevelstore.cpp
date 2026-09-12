@@ -6,9 +6,9 @@
 
 #include <osg/Vec3f>
 
-#include <components/rtx/meshrange.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/meshtable.hpp>
-#include <components/rtx/scenetables.hpp>
+#include <components/rtx/scenedesc.hpp>
 
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -22,15 +22,10 @@ namespace Rtx
 {
     namespace
     {
-        /// How much a placement copies tight before it leaves the rest to the next one.
-        ///
-        /// **A budget and not the lot, because a copy needs the tight room while the loose room is
-        /// still standing.** Compacting a cell in one placement would ask the storage for the whole
-        /// saving on top of what it was saving, and give the old rooms back only once the frame
-        /// retired — so the high-water mark would be the sum rather than the difference, and the
-        /// frame that did it would carry the whole copy. At this rate a cell is tight within a few
-        /// dozen placements of arriving, and what is outstanding at any moment is a block rather
-        /// than a cell.
+        /// How much a placement copies tight before it leaves the rest to the next one. A budget
+        /// and not the lot, because a copy needs the tight room while the loose room is still
+        /// standing, so compacting a cell in one placement would make the high-water mark the sum.
+        /// At this rate a cell is tight within a few dozen placements of arriving.
         constexpr VkDeviceSize sCompactionPerPlacement = 8 * 1024 * 1024;
     }
 
@@ -67,17 +62,15 @@ namespace Rtx
         }
     }
 
-    void BottomLevelStore::build(Batch& batch, const SceneTables& scene, std::span<const Index> meshes,
+    void BottomLevelStore::build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes,
         const BlockedBuffer& poses, const BlockedBuffer& indices, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
-        const std::size_t held = scene.mMeshes.getRows().size();
+        const std::size_t held = scene.meshes().getRows().size();
 
-        // Grown to what the scene now holds, and the scene never shrinks: a slot it took back keeps
-        // its index, and the tables below are indexed by it. **Asserted and not guarded**, because
-        // a mesh table that shrank has no right answer — the `resize` below drops the handles above
-        // the new end and leaks their structures, and a guard keeps structures for meshes that are
-        // gone.
+        // Grown to what the scene now holds, and the scene never shrinks. Asserted and not guarded,
+        // because a mesh table that shrank has no right answer: the `resize` below would drop the
+        // handles above the new end and leak their structures.
         assert(held >= mStructures.size() && "the scene's mesh table shrank under the structures");
         mStructures.resize(held, VK_NULL_HANDLE);
         mAddresses.resize(held, 0);
@@ -105,16 +98,14 @@ namespace Rtx
         mBuilding.clear();
         mBuilding.resize(meshes.size());
 
-        // **A static mesh's vertices are a build input and nothing else, so they go with the
-        // submit.** A hit reads its triangle's vertices back out of the structure through position
-        // fetch and it is never refitted, so the builder is the last thing that ever looks at them.
-        // Held in a table for the life of the cell they were the whole scene's vertices standing
-        // for one read apiece — a quarter of what a world reserved. A mesh that deforms is not
-        // here: it is built over the pose in the poses, which is its own destination every frame.
+        // A static mesh's vertices are a build input and nothing else, so they go with the submit:
+        // a hit reads them back out of the structure through position fetch. Held for the life of
+        // the cell they were a quarter of what a world reserved. A mesh that deforms is built over
+        // the pose in the poses.
         VkDeviceSize arrivedBytes = 0;
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
-            const MeshRange& mesh = scene.mMeshes.getRows()[meshes[at]];
+            const MeshRange& mesh = scene.meshes().getRows()[meshes[at]];
             if (mesh.mDeform != Deform::None || mesh.mVertices.empty())
                 continue;
 
@@ -134,12 +125,12 @@ namespace Rtx
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
             const Index mesh = meshes[at];
-            const MeshRange& range = scene.mMeshes.getRows()[mesh];
+            const MeshRange& range = scene.meshes().getRows()[mesh];
             if (range.mDeform != Deform::None || range.mVertices.empty())
                 continue;
 
-            stageInto(
-                batch, mDevice, arrived, mBuilding[at].mArrivedAt, std::as_bytes(scene.mMeshes.getMeshPositions(mesh)));
+            stageInto(batch, mDevice, arrived, mBuilding[at].mArrivedAt,
+                std::as_bytes(scene.meshes().getMeshPositions(mesh)));
         }
 
         batch.keep(std::move(arrived));
@@ -150,7 +141,7 @@ namespace Rtx
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
             const Index slot = meshes[at];
-            const MeshRange& mesh = scene.mMeshes.getRows()[slot];
+            const MeshRange& mesh = scene.meshes().getRows()[slot];
 
             // **A slot handed out again arrives holding different geometry.** Whatever was there is
             // destroyed and its room given back before this one asks for room of its own, so the
@@ -194,11 +185,9 @@ namespace Rtx
                 flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
             else
             {
-                // **What lets the builder be asked what it would come to tight.** A structure is
-                // built loose because the builder cannot know the answer until it has finished, and
-                // this is what makes the answer askable, for a fraction of a per cent of the
-                // structure against the half `askWhatCompactionWouldSave` reports it gives back. A
-                // mesh that refits is left out: a refit writes back into the slack.
+                // What lets the builder be asked what it would come to tight, for a fraction of a
+                // per cent against the half it gives back. A mesh that refits is left out: a refit
+                // writes back into the slack.
                 flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
             }
 
@@ -388,12 +377,9 @@ namespace Rtx
         {
             const Ask& oldest = mAsked.at(0);
 
-            // **Read once the placement that recorded the question has certainly run.** The ring
-            // waits for the frame `mSlots` back before it records this one, so a placement one
-            // further behind than the submit that carried the question has finished on the queue.
-            // That is the fence this would otherwise have to keep, and `WAIT_BIT` in its place would
-            // stall the frame a cell arrives in — the one frame that can least afford it. The
-            // questions are in the order they were asked, so what is ready is a prefix.
+            // Read once the placement that recorded the question has certainly run: the ring waits
+            // for the frame `mSlots` back before it records this one. The questions are in the order
+            // they were asked, so what is ready is a prefix.
             if (mPlacements <= oldest.mAt + mSlots)
                 break;
 

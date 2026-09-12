@@ -91,9 +91,6 @@ namespace Rtx
         ClockWatch() = default;
         ~ClockWatch();
 
-        ClockWatch(const ClockWatch&) = delete;
-        ClockWatch& operator=(const ClockWatch&) = delete;
-
         /// Forgets what the last place saw and starts sampling, taking one reading straight away so
         /// a place that ends at once still answers. Nothing at all where one is already running,
         /// which includes forgetting: that run's readings are its own.

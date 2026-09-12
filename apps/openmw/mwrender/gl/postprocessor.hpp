@@ -48,7 +48,6 @@ namespace MWRender
     class TransparentDepthBinCallback;
     class DistortionCallback;
     class Renderer;
-    class Stage;
     struct EyeState;
     struct WorldState;
 
@@ -98,8 +97,7 @@ namespace MWRender
             Status_Unchanged
         };
 
-        PostProcessor(RenderingManager& rendering, Renderer& renderer, Stage& stage, osg::Group* rootNode,
-            const VFS::Manager* vfs);
+        PostProcessor(RenderingManager& rendering, Renderer& renderer, osg::Group* rootNode, const VFS::Manager* vfs);
 
         ~PostProcessor();
 
@@ -241,7 +239,6 @@ namespace MWRender
 
         RenderingManager& mRendering;
         Renderer& mRenderer;
-        Stage& mStage;
         const VFS::Manager* mVFS;
 
         size_t mDirtyFrameId = 0;

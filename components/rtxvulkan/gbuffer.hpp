@@ -6,12 +6,12 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/channel.hpp>
+#include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
+#include "handles.hpp"
 #include "image.hpp"
 #include "owned.hpp"
-#include "setlayout.hpp"
 
 namespace Rtx
 {
@@ -50,9 +50,6 @@ namespace Rtx
         /// handed**, and the trace's pipelines are built before any camera has a size.
         static SetLayout describeLayout(const Device& device);
 
-        GBuffer(const GBuffer&) = delete;
-        GBuffer& operator=(const GBuffer&) = delete;
-
         /// One channel's image, which is the image bound at that channel's number.
         const Image& get(Channel channel) const { return mChannels[bindingOf(channel)]; }
 
@@ -76,7 +73,7 @@ namespace Rtx
 
     private:
         /// **An array and not fourteen members.** Named three times each — a member, an accessor,
-        /// and a hand-written table mapping the binding back — a channel added to `channel.hpp`
+        /// and a hand-written table mapping the binding back — a channel added to `Rtx::Channel`
         /// without the third reaches its pass as a null.
         std::vector<Image> mChannels;
 

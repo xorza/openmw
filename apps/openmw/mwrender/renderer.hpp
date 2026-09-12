@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include <osg/Timer>
+#include <osg/ref_ptr>
 
 #include <components/esm3/refnum.hpp>
 #include <components/rtx/upscale.hpp>
@@ -18,13 +19,22 @@ struct SDL_Window;
 
 namespace osg
 {
+    class Camera;
+    class FrameStamp;
     class Group;
     class Image;
+    class Stats;
+}
+
+namespace osgGA
+{
+    class EventQueue;
 }
 
 namespace osgUtil
 {
     class IncrementalCompileOperation;
+    class UpdateVisitor;
 }
 
 namespace MyGUI
@@ -64,7 +74,6 @@ namespace MWRender
     class PostProcessor;
     class RenderingManager;
     struct SceneFrame;
-    class Stage;
 
     /// What every renderer needs to exist, whatever it draws with.
     struct RtxSetup;
@@ -125,11 +134,6 @@ namespace MWRender
 
     struct RendererSpec
     {
-        /// The frame, the eye and the input queue. Made before any renderer and outliving it: the
-        /// renderer adopts these objects rather than making its own, which is what lets the game
-        /// hold the camera and the frame stamp without knowing what draws.
-        Stage& mStage;
-
         /// For work a frame must not wait on — writing a screenshot to disk, so far.
         SceneUtil::WorkQueue& mWorkQueue;
 
@@ -160,7 +164,7 @@ namespace MWRender
     class Renderer
     {
     public:
-        virtual ~Renderer() = default;
+        virtual ~Renderer();
 
         Renderer(const Renderer&) = delete;
         Renderer& operator=(const Renderer&) = delete;
@@ -216,7 +220,25 @@ namespace MWRender
 
         /// Whatever the renderer wants culled and drawn. Not always the node the world was built
         /// under: the rasterizer wraps it in its post-processing group and hands back the wrapper.
-        virtual void setSceneRoot(osg::Group& root) = 0;
+        ///
+        /// **The root hangs off the camera, and that is what lets the player touch the world.**
+        /// `RenderingManager::castCameraToViewportRay` accepts an intersection visitor on the camera
+        /// because its ray is in projection coordinates and the camera's matrices are what put that
+        /// ray in the world. Parented once however often it is said: the rasterizer parents the
+        /// same root a second time through `osgViewer::Viewer`.
+        void setSceneRoot(osg::Group& root);
+
+        /// The camera, the frame stamp, the input queue and the stats, which the game reads whatever
+        /// draws. Adopted by the renderer that made them — `osgViewer` builds the rasterizer's, the
+        /// ray tracer builds its own — and asked of the renderer rather than of a second object
+        /// standing beside it.
+        osg::Camera& getCamera() const;
+        osg::FrameStamp& getFrameStamp() const;
+        osgGA::EventQueue* getEvents() const { return mEvents.get(); }
+        osg::Stats& getStats() const;
+
+        osg::Group& getSceneRoot() const;
+        bool hasSceneRoot() const { return mSceneRoot != nullptr; }
 
         /// Whether the world is being shown at all. The interface is drawn either way.
         ///
@@ -410,7 +432,36 @@ namespace MWRender
 
     protected:
         Renderer() = default;
+
+        /// Taken from whatever made them, once, before anything asks. The ray tracer has no event
+        /// queue: what SDL would put in one is the function keys, which upstream reads with
+        /// `osgViewer` handlers it does not have.
+        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats);
+
+        /// What a renderer does with the root beyond hanging it off the camera: the rasterizer hands
+        /// it to its viewer.
+        virtual void adoptSceneRoot(osg::Group& root) {}
+
+    private:
+        osg::ref_ptr<osg::Camera> mCamera;
+        osg::ref_ptr<osg::FrameStamp> mFrameStamp;
+        osg::ref_ptr<osgGA::EventQueue> mEvents;
+        osg::ref_ptr<osg::Stats> mStats;
+        osg::ref_ptr<osg::Group> mSceneRoot;
     };
+
+    /// Runs the camera's own update callback and nothing below it.
+    ///
+    /// **The eye is updated without the world being walked a second time.** A renderer that drives
+    /// its own frame walks the scene from its own root — for the node path, which must not start at
+    /// an `ABSOLUTE_RF` camera — and then wants the one callback the camera carries. Accepting on
+    /// the camera to get it ran every animation controller, every `LightController` and
+    /// `LightManager::update` twice in the same frame, at the same traversal number.
+    ///
+    /// The callback belongs to `MWRender::Camera` — attached in its constructor, removed in its
+    /// destructor — so a camera carrying none is a frame outside that object's life, and nothing
+    /// happens.
+    void updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor);
 
     /// The one place the choice is made. Throws naming the name where there is no such renderer,
     /// because a fallback would answer "why does it look like that" with silence.

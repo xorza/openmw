@@ -63,7 +63,7 @@ namespace Rtx
         if (const auto known = mMeshes.find(&drawable); known != mMeshes.end())
         {
             const Index mesh = known->second.mIndex;
-            const MeshRange& range = mScene.getTables().mMeshes.getRows()[mesh];
+            const MeshRange& range = mScene.meshes().getRows()[mesh];
 
             // Nothing else in the map is re-read: the whole point of it is that a crate met again is
             // the crate already uploaded, and a cell is tens of thousands of these a frame.
@@ -140,7 +140,7 @@ namespace Rtx
             // A template's drawable is never the walk's: the walk meets clones, and a clone of a
             // deforming drawable is a deep copy at another address. So what the map holds under
             // this key is what this class adopted, and that stands.
-            assert(mScene.getTables().mMeshes.getRows()[known->second.mIndex].mDeform == Deform::None
+            assert(mScene.meshes().getRows()[known->second.mIndex].mDeform == Deform::None
                 && "a reading adopted under a drawable the mirror poses");
 
             ++stats.mMeshesReused;
@@ -175,7 +175,7 @@ namespace Rtx
 
         const bool rigged = read.mDeform == Deform::Rig;
         const Index deformer = rigged ? resolveRig(*read.mRig) : resolveMorph(*read.mMorph);
-        const DeformerTable& deformers = mScene.getTables().mDeformers;
+        const DeformerTable& deformers = mScene.deformers();
         const std::size_t skins = rigged ? deformers.getRigs()[deformer].getVertexCount()
                                          : deformers.getMorphs()[deformer].getVertexCount();
 
@@ -202,7 +202,7 @@ namespace Rtx
             // count is asked beside the identity.
             held.mMorph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
             if (held.mMorph != mMorphs.end()
-                && mScene.getTables().mDeformers.getMorphs()[held.mMorph->second.mIndex].mTargetCount
+                && mScene.deformers().getMorphs()[held.mMorph->second.mIndex].mTargetCount
                     == read.mMorph->getMorphTargetList().size())
                 held.mIndex = held.mMorph->second.mIndex;
         }
@@ -254,7 +254,7 @@ namespace Rtx
         // holds describes a mesh of another length; the rig it named stays for the meshes still on
         // it and goes with the last of them, and this drawable gets one of its own.
         const auto [known, arrived] = mRigs.reach(skin);
-        if (!arrived && mScene.getTables().mDeformers.getRigs()[known->second.mIndex].getVertexCount() == vertices)
+        if (!arrived && mScene.deformers().getRigs()[known->second.mIndex].getVertexCount() == vertices)
             return known->second.mIndex;
 
         // **The groups flattened into a run per vertex.** `RigGeometry::setInfluences` gathers the
@@ -305,7 +305,7 @@ namespace Rtx
         const auto [known, arrived] = mMorphs.reach(targets[0].getOffsets());
         if (!arrived)
         {
-            const Morph& held = mScene.getTables().mDeformers.getMorphs()[known->second.mIndex];
+            const Morph& held = mScene.deformers().getMorphs()[known->second.mIndex];
             if (held.mTargetCount == targets.size() && held.getVertexCount() == vertices)
                 return known->second.mIndex;
         }

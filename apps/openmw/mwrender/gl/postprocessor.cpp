@@ -36,7 +36,6 @@
 #include "../renderbin.hpp"
 #include "../renderer.hpp"
 #include "../renderingmanager.hpp"
-#include "../stage.hpp"
 #include "distortion.hpp"
 #include "opaqueblit.hpp"
 #include "pingpongcull.hpp"
@@ -120,13 +119,12 @@ namespace
 namespace MWRender
 {
     PostProcessor::PostProcessor(
-        RenderingManager& rendering, Renderer& renderer, Stage& stage, osg::Group* rootNode, const VFS::Manager* vfs)
+        RenderingManager& rendering, Renderer& renderer, osg::Group* rootNode, const VFS::Manager* vfs)
         : osg::Group()
         , mRootNode(rootNode)
         , mHUDCamera(new osg::Camera)
         , mRendering(rendering)
         , mRenderer(renderer)
-        , mStage(stage)
         , mVFS(vfs)
         , mUsePostProcessing(Settings::postProcessing().mEnabled)
         , mSamples(Settings::video().mAntialiasing)
@@ -152,7 +150,7 @@ namespace MWRender
         mHUDCamera->addChild(mCanvases[0]);
         mHUDCamera->addChild(mCanvases[1]);
         mHUDCamera->setCullCallback(new HUDCullCallback);
-        mStage.getCamera().addCullCallback(mPingPongCull);
+        mRenderer.getCamera().addCullCallback(mPingPongCull);
 
         // resolves the multisampled depth buffer and optionally draws an additional depth postpass
         mTransparentDepthPostPass
@@ -202,7 +200,7 @@ namespace MWRender
         distortion->setLocked(true);
         mInternalTechniques.push_back(std::move(distortion));
 
-        osg::GraphicsContext* gc = mStage.getCamera().getGraphicsContext();
+        osg::GraphicsContext* gc = mRenderer.getCamera().getGraphicsContext();
         osg::GLExtensions* ext = gc->getState()->get<osg::GLExtensions>();
 
         mWidth = gc->getTraits()->width;
@@ -227,9 +225,9 @@ namespace MWRender
         addChild(mHUDCamera);
         addChild(mRootNode);
 
-        mStage.getCamera().setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT);
-        mStage.getCamera().getGraphicsContext()->setResizedCallback(new ResizedCallback(this));
-        mStage.getCamera().setUserData(this);
+        mRenderer.getCamera().setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT);
+        mRenderer.getCamera().getGraphicsContext()->setResizedCallback(new ResizedCallback(this));
+        mRenderer.getCamera().setUserData(this);
 
         setCullCallback(mStateUpdater);
 
@@ -292,13 +290,13 @@ namespace MWRender
 
     size_t PostProcessor::frame() const
     {
-        return mStage.getFrameStamp().getFrameNumber();
+        return mRenderer.getFrameStamp().getFrameNumber();
     }
 
     void PostProcessor::resize()
     {
         mHUDCamera->resize(mWidth, mHeight);
-        mStage.getCamera().resize(mWidth, mHeight);
+        mRenderer.getCamera().resize(mWidth, mHeight);
         if (Stereo::getStereo())
             Stereo::Manager::instance().screenResolutionChanged();
 

@@ -14,10 +14,10 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
-#include "meantexel.hpp"
 #include "scenedesc.hpp"
 #include "shaders/look.h"
 #include "shaders/scene.h"
+#include "texels.hpp"
 
 namespace Rtx
 {

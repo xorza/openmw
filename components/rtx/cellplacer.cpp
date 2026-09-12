@@ -4,14 +4,12 @@
 #include <cstddef>
 #include <span>
 
-#include <components/surface/vertexcolour.hpp>
+#include <components/surface/material.hpp>
 
-#include "cellholds.hpp"
-#include "distantland.hpp"
-#include "mesharrays.hpp"
-#include "meshinstance.hpp"
-#include "meshrange.hpp"
-#include "preparedcell.hpp"
+#include "fogbuilder.hpp"
+#include "held.hpp"
+#include "mesh.hpp"
+#include "prepared.hpp"
 #include "scenedesc.hpp"
 
 namespace Rtx
@@ -261,7 +259,7 @@ namespace Rtx
             // held goes with the rewrite, and one it now wants is asked for by the row.
             if (wantsFlattening(cell.mCell, ground, around) != ground.mFlattened)
             {
-                Material given = mScene.getTables().mMaterials.getRows()[ground.mMaterial];
+                Material given = mScene.materials().getRows()[ground.mMaterial];
                 given.mFlatten = !ground.mFlattened;
                 given.mDiffuse = sNoIndex;
                 mScene.setMaterial(ground.mMaterial, given);

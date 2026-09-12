@@ -21,7 +21,6 @@ namespace Rtx
     class CommandPool;
     class Device;
     class GpuTimer;
-    class SetLayout;
     struct TraceRecording;
 
     /// Everything one camera's trace writes, at one extent.
@@ -54,9 +53,6 @@ namespace Rtx
         ///        two chains are told apart in both.
         TraceChain(const Device& device, CommandPool& pool, const SetLayout& channels, const SetLayout& fog,
             const std::filesystem::path& shaders, VkImageUsageFlags colourUsage, std::string_view colourName);
-
-        TraceChain(const TraceChain&) = delete;
-        TraceChain& operator=(const TraceChain&) = delete;
 
         /// Builds the chain at exactly this extent, whatever it was before.
         ///

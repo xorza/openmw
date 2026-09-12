@@ -17,9 +17,9 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/surface/material.hpp>
 
-#include "contentsource.hpp"
 #include "error.hpp"
 #include "materialresolver.hpp"
+#include "residency.hpp"
 #include "shading.hpp"
 #include "texturebuilder.hpp"
 

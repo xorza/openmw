@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include <osg/Matrixf>
@@ -9,7 +10,6 @@
 #include <components/rtx/offscreentrace.hpp>
 
 #include "../offscreenview.hpp"
-#include "viewhost.hpp"
 
 namespace MyGUI
 {
@@ -18,11 +18,36 @@ namespace MyGUI
 
 namespace osg
 {
+    class FrameStamp;
     class Image;
+}
+
+namespace Resource
+{
+    class ImageManager;
 }
 
 namespace MWRender
 {
+    class RtxRenderer;
+
+    /// The moment a picture of its own subject walks that subject at.
+    ///
+    /// **Asked for per redraw and never stored**, because two of the three change every frame. A
+    /// view that kept them would pose against whichever frame it was made on.
+    struct PoseMoment
+    {
+        /// The renderer's own clock, which advances once per drawn frame whether or not the world's
+        /// does. A doll posed against a stopped clock is a doll frozen the first time it was drawn.
+        const osg::FrameStamp& mStamp;
+
+        /// The game's frame number, which is which of a `SceneUtil::LightSource`'s two buffers
+        /// update has just written. Not a pose number; see `Rtx::Traversals`.
+        std::size_t mFrame = 0;
+
+        Resource::ImageManager& mImages;
+    };
+
     /// An offscreen view as a ray tracer makes one: the GUI's side of `Rtx::OffscreenTrace`.
     ///
     /// **What is here is what the trace is not.** The picture itself — the camera, the subject's own
@@ -36,7 +61,7 @@ namespace MWRender
         /// **`traversals` is the one sequence every mirror walk here poses at** — the world's and
         /// every view's. A subtree both can reach would otherwise be posed by whichever counter
         /// got there first and frozen for the other.
-        TracedView(const OffscreenViewSpec& spec, ViewHost& host, Rtx::Traversals& traversals);
+        TracedView(const OffscreenViewSpec& spec, RtxRenderer& host, Rtx::Traversals& traversals);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }
@@ -56,7 +81,7 @@ namespace MWRender
         MyGUI::ITexture& getTexture() const override { return *mTexture; }
 
     private:
-        ViewHost& mHost;
+        RtxRenderer& mHost;
         Rtx::OffscreenTrace mTrace;
 
         /// Made through MyGUI's own factory, so which backend is behind it is not this class's

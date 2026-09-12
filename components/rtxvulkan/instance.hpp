@@ -50,9 +50,6 @@ namespace Rtx
         explicit Instance(const InstanceOptions& options);
         ~Instance();
 
-        Instance(const Instance&) = delete;
-        Instance& operator=(const Instance&) = delete;
-
         VkInstance getHandle() const { return mHandle; }
 
         /// Null unless validation was requested and the layer was present.

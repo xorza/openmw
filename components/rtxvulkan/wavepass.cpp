@@ -59,7 +59,7 @@ namespace Rtx
               shaderDirectory / "waveline.comp.spv", "wave line")
         , mComposePipeline(device, sComposeBindings, sizeof(Shaders::WaveComposeConstants), {},
               shaderDirectory / "wavecompose.comp.spv", "wave compose")
-        , mSampler(Sampler::forContent(device, "wave"))
+        , mSampler(makeContentSampler(device, "wave"))
     {
         constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
             | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;

@@ -34,16 +34,9 @@ namespace Rtx
 {
     namespace
     {
-        /// Clears the one gate a renderer with no draw can only ever answer wrongly.
-        ///
-        /// `osgParticle` stops a system whose draw has not touched it for two frames — a sound
-        /// saving when the draw is what advances that number, and a permanent stop when nothing
-        /// draws through OpenGL at all. `ParticleSystem::_last_frame` moves in `drawImplementation`
-        /// and nowhere else, so two frames in, every system in the world is judged off screen and
-        /// stopped for good.
-        ///
-        /// Said where the system is driven rather than where its sprites are read, because it is
-        /// true of every system this renderer runs and not only of the ones with a texture to show.
+        /// Clears the one gate a renderer with no draw can only ever answer wrongly:
+        /// `osgParticle` stops a system whose draw has not touched it for two frames, and
+        /// `ParticleSystem::_last_frame` moves in `drawImplementation` and nowhere else.
         void keepRunning(osgParticle::ParticleSystem& system)
         {
             if (system.getFreezeOnCull())
@@ -58,21 +51,11 @@ namespace Rtx
         constexpr std::size_t sAnimatedBudget = 4096;
         constexpr std::size_t sEmitterBudget = 2048;
 
-        /// What identifies one placement from one frame to the next: the seed a walk starts from,
-        /// and the fold each node of its path adds.
-        ///
-        /// **The anchor and the node path under it, together.** Neither is enough alone: a drawable
-        /// is not an instance, because a hundred crates share one geometry, and a path is not one
-        /// either, because a hundred crates walked from a shared template node share the path as
-        /// well. What tells them apart is what the caller was placing.
-        ///
-        /// Hashed rather than kept, because a path is a vector of pointers per placement and the map
-        /// is walked every frame; at sixty-four bits over tens of thousands of placements a collision
-        /// is not a thing that happens.
-        ///
-        /// **Folded on the way down rather than taken at the leaf**, which is the argument `mHere`
-        /// makes for the matrix: the prefix every sibling under a node shares is worked out once as
-        /// the walk enters that node, against a depth's worth per drawable.
+        /// What identifies one placement from one frame to the next: the anchor a walk starts from
+        /// and the node path under it, together, because a hundred crates share one geometry and,
+        /// walked from a shared template node, one path as well. Hashed rather than kept, because a
+        /// path is a vector of pointers per placement; folded on the way down, so the prefix every
+        /// sibling shares is worked out once.
         std::size_t identityWith(std::size_t key, const std::size_t part)
         {
             return (key ^ part) * 0x100000001b3ull;
@@ -90,12 +73,9 @@ namespace Rtx
 
     }
 
-    /// Runs an `osg::Sequence`'s clock, and reaches nothing. See `MirrorTraversal::descend`.
-    ///
-    /// **A visitor of its own, because the claim it makes is one the mirror may not carry.**
-    /// `Sequence::traverse` moves its clock only for a visitor that says it is an update traversal
-    /// *and* walks in `TRAVERSE_ACTIVE_CHILDREN`; either one alone leaves the frame number at -1 and
-    /// nothing is shown at all. Neither claim is true of the mirror.
+    /// Runs an `osg::Sequence`'s clock, and reaches nothing. A visitor of its own, because
+    /// `Sequence::traverse` moves its clock only for an update traversal in
+    /// `TRAVERSE_ACTIVE_CHILDREN`, and neither claim is true of the mirror.
     struct SequenceClock : osg::NodeVisitor
     {
         SequenceClock()
@@ -148,11 +128,8 @@ namespace Rtx
         /// @param from the node's library, which `apply` has already asked for.
         bool stepParticles(osg::Node& node, NodeKind kind);
 
-        /// Where the node being visited stands in the world.
-        ///
-        /// Narrowed to single precision here and not before: `mHere` accumulates in the width
-        /// `computeLocalToWorld` returned, so a placement lands on the bits it landed on when every
-        /// drawable worked the chain out for itself.
+        /// Where the node being visited stands in the world, narrowed to single precision here and
+        /// not before, so a placement lands on the bits `computeLocalToWorld` would have landed it.
         osg::Matrixf placed() const { return osg::Matrixf(mHere) * mRoot; }
 
         SceneExtractor& mExtractor;
@@ -170,19 +147,11 @@ namespace Rtx
         /// A member for the reason the walk is: made once, and a frame allocates none of it.
         SequenceClock mSequenceClock;
 
-        /// **The emitters' own clock, and it is not the world's.**
-        ///
-        /// `osgParticle` integrates the difference between one frame stamp and the last, so what it
-        /// is handed has to move forward in the steps its content was authored against. A step of
-        /// nothing emits nothing; a step of half an hour puts every plume in the cell on its own
-        /// ceiling at once — and the world's clock does both, across a loading screen, a paused
-        /// window, or a harness warming its emitters while the world holds still. This one moves
-        /// only through `advanceEmitters`, which cannot be handed a jump or a step backwards.
-        ///
-        /// Its frame number is the one sequence `ParticleProcessor` keeps its once-per-frame guard
-        /// against, so however many walks reach an emitter, exactly one of them steps it — and that
-        /// is why nothing else in this renderer may drive a particle system. Two clocks writing that
-        /// guard is not two steps, it is a `_t0` from whichever wrote last.
+        /// The emitters' own clock, and it is not the world's: `osgParticle` integrates the
+        /// difference between one frame stamp and the last, and the world's clock jumps across a
+        /// loading screen. Its frame number is the sequence `ParticleProcessor` keeps its
+        /// once-per-frame guard against, which is why nothing else in this renderer may drive a
+        /// particle system.
         osg::ref_ptr<osg::FrameStamp> mEmitterStamp = new osg::FrameStamp;
         double mEmitterSeconds = 0.0;
         unsigned int mEmitterFrame = 0;
@@ -263,15 +232,9 @@ namespace Rtx
             return;
         }
 
-        // **Told it was reached, because nothing else here will tell it.** A semi-active skeleton —
-        // which is every actor but the player — skips its update traversal, and so stops moving its
-        // bones, once three traversals have passed with nothing reaching it. Under a renderer that
-        // culls, the cull is what keeps saying so; here this walk is.
-        //
-        // **The frame and not this walk's own number.** What compares against it is the update
-        // traversal, whose number is the frame's; a pose number is a different sequence that only
-        // agrees with it by accident, and a skeleton compared against the wrong one freezes in the
-        // pose it arrived in.
+        // Told it was reached, because a semi-active skeleton stops moving its bones once three
+        // traversals have passed with nothing reaching it, and here this walk is what reaches it.
+        // The frame and not this walk's own number, because the update traversal is what compares.
         if (auto* skeleton = as<SceneUtil::Skeleton>(kind, NodeKind::Skeleton, node))
         {
             skeleton->markReached(static_cast<unsigned int>(mFrame));
@@ -311,48 +274,25 @@ namespace Rtx
     }
 
     /// Descends into the children of `node` that are in the world, and runs a flipbook's clock on
-    /// the way past. `descendInWorld` is the rule; this is the step it leaves to its caller.
-    ///
-    /// **The clock lives in a traversal this renderer does not run**, which is the same statement
-    /// `stepParticles` makes below, so this walk is what has to run it. `SequenceClock` makes the
-    /// claim that clock wants, and then the frame it settled on is walked by the mirror itself:
-    /// handing `Sequence::traverse` only the traversal mode leaves its frame at -1 and shows nothing.
-    ///
-    /// **Unlike a particle step, a sequence step may be taken twice.** `Sequence` reads the frame
-    /// stamp's simulation time outright, so two calls at the same time settle on the same frame —
-    /// which is what makes it safe on the `stepOnly` pass as well as on a mirrored frame.
-    ///
-    /// A branch that is off is off for its emitters too, and an `osgParticle` step is the difference
-    /// between one frame stamp and the last one that reached it — so a system that comes back on
-    /// after an hour is handed the hour in one step. That is what the rasterizer's cull does with the
-    /// same graph, and it is a property of `osgParticle`'s clock rather than of this walk.
+    /// the way past, because that clock lives in a traversal this renderer does not run:
+    /// `SequenceClock` makes the claim it wants, and the frame it settled on is walked by the
+    /// mirror. Unlike a particle step, a sequence step may be taken twice, because `Sequence`
+    /// reads the simulation time outright. A branch that is off is off for its emitters too, and a
+    /// system that comes back on after an hour is handed the hour in one step, as under a cull.
     void MirrorTraversal::descend(osg::Node& node, const NodeKind kind)
     {
         descendInWorld(node, kind, *this, [this](osg::Sequence& frames) { frames.traverse(mSequenceClock); });
     }
 
     /// Runs one node of an `osgParticle` simulation, and says whether that is what this node was.
-    ///
-    /// **The whole of `osgParticle` hangs off the cull traversal.** Emission, the affector programs
-    /// and the integration all live in `ParticleProcessor::traverse` and
-    /// `ParticleSystemUpdater::traverse`, and both open by asking whether the visitor calling them
-    /// is a cull visitor. A ray tracer culls nothing, so left alone every particle system in the
-    /// world stands still on the state its file was authored with: candles without flames, braziers
-    /// without smoke, rain that never falls. This walk is the only thing that reaches them, so this
-    /// walk is what runs them — the same reason it is what poses an actor.
-    ///
-    /// **So it says it is a cull visitor, to these two nodes and for the length of one call.**
-    /// `PoseCull` is a real one and warns against exactly this, because `SceneUtil::RigGeometry`
-    /// and `MorphGeometry` answer the same question with an unchecked `static_cast` — as does
-    /// `MWRender::CameraRelativeTransform`, which `apply(osg::Transform&)` below hands this very
-    /// visitor. Neither of these two casts: both only compare the type, and
-    /// `ParticleSystem::update` reaches for the visitor through `asCullVisitor`, which answers null
-    /// and skips a depth sort a ray tracer has no use for. Both derive from a plain `osg::Node`,
-    /// whose `traverse` is empty, so the claim cannot reach a child — and that is what keeps it
-    /// away from the three that would take it badly.
-    ///
-    /// This walk and not a cull of its own, for the same reason it is here at all: a processor reads
-    /// its world transform off the visitor's node path, and this is the walk standing on one.
+    /// The whole of `osgParticle` hangs off the cull traversal — `ParticleProcessor::traverse` and
+    /// `ParticleSystemUpdater::traverse` both open by asking whether the visitor is a cull visitor
+    /// — and a ray tracer culls nothing, so this walk says it is one, to these two nodes and for
+    /// the length of one call. Safe because neither casts: both only compare the type, and both
+    /// derive from a plain `osg::Node` whose `traverse` is empty, so the claim cannot reach the
+    /// three that would take it badly (`SceneUtil::RigGeometry`, `MorphGeometry`,
+    /// `MWRender::CameraRelativeTransform`). This walk and not a cull of its own, because a
+    /// processor reads its world transform off the visitor's node path.
     bool MirrorTraversal::stepParticles(osg::Node& node, const NodeKind kind)
     {
         if (auto* processor = as<osgParticle::ParticleProcessor>(kind, NodeKind::ParticleProcessor, node))
@@ -400,23 +340,12 @@ namespace Rtx
         mStepOnly = false;
     }
 
-    /// **Accumulated on the way down rather than recomputed on the way up.**
-    ///
-    /// `osg::computeLocalToWorld` walks a drawable's whole path back to the root and multiplies the
-    /// chain again, so a product every sibling under a transform shares is rebuilt once per sibling
-    /// — O(depth) per drawable, in a visitor already standing at that depth. One multiply per
-    /// transform *entered* is the same answer for a fraction of the work.
-    ///
-    /// `computeLocalToWorldMatrix` is what `computeLocalToWorld` calls on each transform it meets,
-    /// so the answer is the same one: an absolute reference frame still replaces the accumulation
-    /// instead of adding to it, because that is the branch inside it that does so.
-    ///
-    /// **The visitor goes with it, and not the null pointer `computeLocalToWorld` passes.** That
-    /// function only ever reaches a transform with a drawable somewhere below it; this one enters
-    /// every transform it walks, and the sky's `MWRender::CameraRelativeTransform` dereferences the
-    /// visitor without checking it, to catch the eye point off a cull. A visitor that is not a cull
-    /// visitor takes exactly the branch a null one would have — here and in `osg::AutoTransform`,
-    /// the other one that looks — so nothing moves.
+    /// Accumulated on the way down rather than recomputed on the way up: `osg::computeLocalToWorld`
+    /// walks a drawable's whole path back to the root, O(depth) per drawable, and
+    /// `computeLocalToWorldMatrix` is what it calls on each transform, so the answer is the same.
+    /// The visitor goes with it and not the null pointer `computeLocalToWorld` passes, because the
+    /// sky's `MWRender::CameraRelativeTransform` dereferences it without checking; a visitor that is
+    /// not a cull visitor takes the branch a null one would have.
     void MirrorTraversal::enterTransform(osg::Transform& node, const std::size_t identity)
     {
         // Nothing an emitter needs is in the chain: a processor reads its world transform off the
@@ -464,11 +393,9 @@ namespace Rtx
         mShading.resize(held);
     }
 
-    /// **Everything the content did not hide**, asked of the loader that stamped the bit rather
-    /// than named a second time here. `NifOsg::Loader` is what marks a hidden node and a collision
-    /// shape, and `Terrain::ObjectPaging` asks it the same question to decide what distant land may
-    /// copy — so a host that never configured the loader gets a mask of all ones and walks into
-    /// nodes the content said are not there.
+    /// Everything the content did not hide, asked of the loader that stamped the bit: a host that
+    /// never configured `NifOsg::Loader` gets a mask of all ones and walks into nodes the content
+    /// said are not there.
     SceneExtractor::SceneExtractor(SceneDesc& scene, Traversals* traversals)
         : mScene(scene)
         , mWalk(std::make_unique<MirrorTraversal>(*this))
@@ -563,58 +490,36 @@ namespace Rtx
     {
         Retirement went;
 
-        // **Placements first, because dropping one is what makes its mesh droppable.** A slot the
-        // walks no longer reach names geometry nothing is standing on any more, and a sweep that
-        // ran the other way round would keep every mesh alive on the strength of a placement it was
-        // about to delete.
-        //
-        // Freed rather than compacted: a slot index is the custom index a hit reads back, so
-        // closing the gap would rename every placement above it. The gap is handed to the next
-        // thing placed.
-        //
-        // **Not run at all where every placement was reached**, which is a world that stands still —
-        // see `Kept::whole`. The sweep erases nothing then, and it costs a walk of the whole map to
-        // say so.
+        // Placements first, because dropping one is what makes its mesh droppable. Freed rather
+        // than compacted, because a slot index is the custom index a hit reads back. Not run at all
+        // where every placement was reached (`Kept::whole`), which is a world that stands still.
         mPlacements.retire([this](const Known& gone) { mScene.placements().drop(gone.mIndex); });
 
-        // **Both tables or neither, and nothing at all where both stand whole.** `SceneDesc::release`
-        // frees the mesh table and the material table against one pair of survivor lists, so a list
-        // an earlier epoch filled cannot be read beside a list this one did: the slots it names have
-        // since been handed out. Where the two are whole nothing has stopped being named, so the
-        // release has nothing to free and the lists have nothing to say — and what that saves is two
-        // walks of a map with one entry per drawable, plus the two keep-set tables `release` writes
-        // to reach the same answer.
-        //
-        // **And where a hold on a row went to nought**, which no map can see: a residency's ground
-        // row was never in one, and the release is what frees it now that nothing keeps it.
+        // Both tables or neither, because `SceneDesc::release` frees them against one pair of
+        // survivor lists and a list an earlier epoch filled names slots since handed out. Nothing at
+        // all where both stand whole, which saves two walks of a map with one entry per drawable —
+        // unless a hold on a row went to nought, which no map can see.
         if (!mMeshes.whole() || !mMaterials.whole() || mScene.hasDroppedHolds())
         {
-            const std::size_t meshesBefore = mScene.getTables().mMeshes.getLiveCount();
-            const std::size_t materialsBefore = mScene.getTables().mMaterials.getLiveCount();
+            const std::size_t meshesBefore = mScene.meshes().getLiveCount();
+            const std::size_t materialsBefore = mScene.materials().getLiveCount();
 
             mMeshes.retire(mLiveMeshes);
             mMaterials.retire(mLiveMaterials);
 
-            // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the
-            // gaps renumbers every mesh and every material, so everything built from an index —
-            // which is every bottom-level acceleration structure in the world — has to be built
-            // again on every crossing. A slot that is freed keeps its index and its room, and the
-            // next arrival that fits takes it over. Nothing downstream is told anything, because
-            // for it nothing moved.
+            // Freed, not compacted: closing the gaps would renumber every bottom-level acceleration
+            // structure in the world on every crossing.
             mScene.release(mLiveMeshes, mLiveMaterials);
 
             // Counted off the tables rather than off the maps, because a row a hold let go of was in
             // no map to be counted there.
-            went.mMeshes = static_cast<std::uint32_t>(meshesBefore - mScene.getTables().mMeshes.getLiveCount());
-            went.mMaterials
-                = static_cast<std::uint32_t>(materialsBefore - mScene.getTables().mMaterials.getLiveCount());
+            went.mMeshes = static_cast<std::uint32_t>(meshesBefore - mScene.meshes().getLiveCount());
+            went.mMaterials = static_cast<std::uint32_t>(materialsBefore - mScene.materials().getLiveCount());
         }
 
-        // **Swept whatever the two tables above did, because each of these goes stale on its own.**
-        // A skin outlives the mesh that named it by nothing, but an image a material stopped reading
-        // and a state set whose node left the graph both go on a frame where no material died at
-        // all — and a sprite's texture hangs off no material, so nothing but an emitter leaving can
-        // speak for it. Each map skips its own walk where the epoch reached all of it.
+        // Swept whatever the two tables above did, because an image a material stopped reading, a
+        // state set whose node left the graph and a sprite's texture each go stale on a frame where
+        // no material died at all.
         mMeshes.retireDeformers();
         mMaterials.retireHolds();
         mEmitters.retire();
@@ -635,14 +540,9 @@ namespace Rtx
     void SceneExtractor::addLight(
         const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime)
     {
-        // **The recorded colours and this frame's scalars, and never the colours the rasterizer
-        // draws from.** `lightColour` says why the two are not the same light: a scale of a
-        // display-encoded number is not a scale of the light it stands for. It leaves this walk with
-        // nothing to know about which of a light's two buffers a frame belongs to.
-        //
-        // **`LightSource::getEmpty` is not asked**, and that is deliberate: it means the model this
-        // light hangs on has no geometry (`CheckEmptyLightVisitor`, `lightutil.cpp:17-38`), which is
-        // a rasterizer's reason to skip a light and not a statement that the light is off. A `LIGH`
+        // The recorded colours and this frame's scalars, never the colours the rasterizer draws
+        // from (`lightColour`). `LightSource::getEmpty` is not asked: it means the model this light
+        // hangs on has no geometry, which is a rasterizer's reason to skip a light, and a `LIGH`
         // whose mesh is empty still burns.
         const std::optional<Light> made
             = makeLight(lightColour(source, simulationTime), source.getSourceRadius(), place.getTrans());
@@ -691,10 +591,10 @@ namespace Rtx
         // A placement wearing anything but the material its mesh arrived with is the canary —
         // `SceneUtil::CopyOp` shares the state set under every copy, so the only material a mesh
         // can be seen in two of is one a controller made per node.
-        const Index arrivedWearing = mScene.getTables().mMeshes.getRows()[mesh].mMaterial;
+        const Index arrivedWearing = mScene.meshes().getRows()[mesh].mMaterial;
         if (arrivedWearing != sNoIndex)
         {
-            const Material& worn = mScene.getTables().mMaterials.getRows()[arrivedWearing];
+            const Material& worn = mScene.materials().getRows()[arrivedWearing];
             if (!worn.mAnimated && material.mIndex != arrivedWearing)
                 ++stats.mWornOtherwise;
         }

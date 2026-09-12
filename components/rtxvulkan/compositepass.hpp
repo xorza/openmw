@@ -29,9 +29,6 @@ namespace Rtx
         /// @param pool used once, to lay out the stand-in below. Nothing here touches it again.
         CompositePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
 
-        CompositePass(const CompositePass&) = delete;
-        CompositePass& operator=(const CompositePass&) = delete;
-
         /// @param buffer must have been handed over, so its writes are visible to this read. Its
         ///        indirect channel is not read: `indirect` says where the bounce actually is.
         /// @param indirect the bounce to put the albedo back into — the filter's output, or the

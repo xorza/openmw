@@ -15,14 +15,13 @@ set(RTX_TEST_FILES
     rtx/commands.cpp
     rtx/compositequeue.cpp
     rtx/computepipeline.cpp
-    rtx/decodecolour.cpp
+    rtx/colour.cpp
     rtx/device.cpp
     rtx/deviceprofile.cpp
     rtx/dispatch.cpp
     rtx/distantlights.cpp
     rtx/dlss.cpp
     rtx/fogbuilder.cpp
-    rtx/fognoise.cpp
     rtx/frameclock.cpp
     rtx/frameimage.cpp
     rtx/framering.cpp
@@ -38,11 +37,10 @@ set(RTX_TEST_FILES
     rtx/guitextures.cpp
     rtx/harness.cpp
     rtx/harness.hpp
-    rtx/imageformat.cpp
+    rtx/texels.cpp
     rtx/instancerecord.cpp
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp
-    rtx/meantexel.cpp
     rtx/meshreader.cpp
     rtx/memory.cpp
     rtx/mipchain.cpp
@@ -50,7 +48,7 @@ set(RTX_TEST_FILES
     rtx/moonbuilder.cpp
     rtx/nodekind.cpp
     rtx/offscreentrace.cpp
-    rtx/ownedby.cpp
+    rtx/worker.cpp
     rtx/parallel.cpp
     rtx/pipelinecache.cpp
     rtx/probe.cpp
@@ -58,9 +56,9 @@ set(RTX_TEST_FILES
     rtx/reconstruction.cpp
     rtx/requirements.cpp
     rtx/result.cpp
-    rtx/runallocator.cpp
+    rtx/runs.cpp
     rtx/scenedesc.cpp
-    rtx/slotrows.cpp
+    rtx/slots.cpp
     rtx/extractor/fixture.hpp
     rtx/extractor/lights.cpp
     rtx/extractor/materials.cpp
@@ -77,11 +75,9 @@ set(RTX_TEST_FILES
     rtx/skybuilder.cpp
     rtx/skylight.cpp
     rtx/slottable.cpp
-    rtx/spritebinpass.cpp
+    rtx/spritepasses.cpp
     rtx/spritelight.cpp
     rtx/spritelistsize.cpp
-    rtx/spriteshade.cpp
-    rtx/srgb.cpp
     rtx/statistics.hpp
     rtx/structurestorage.cpp
     rtx/terraincomposite.cpp
@@ -107,20 +103,13 @@ set(RTX_TEST_FILES
     rtx/wavepass.cpp
     rtx/wavespectrum.cpp
     rtxbench/benchspec.cpp
-    rtxbench/contactsheet.cpp
+    rtxbench/runrecord.cpp
     rtxbench/framehashes.cpp
-    rtxbench/framerate.cpp
     rtxbench/frametimes.cpp
     rtxbench/gpuclock.cpp
-    rtxbench/perfcontrol.cpp
-    rtxbench/scenedigest.cpp
-    rtxtool/benchsuite.cpp
     rtxtool/options.cpp
-    rtxtool/ownconfig.cpp
-    rtxtool/validationchoice.cpp
+    rtxtool/run.cpp
     rtxtool/verify.cpp
-    rtxtool/viewpoint.cpp
-    rtxtool/views.cpp
     sky/sun.cpp
     sky/timeofday.cpp
     sceneutil/localtoworld.cpp

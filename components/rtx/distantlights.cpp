@@ -13,7 +13,7 @@
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/terrain/objectstorage.hpp>
 
-#include "distantland.hpp"
+#include "fogbuilder.hpp"
 #include "lightbuilder.hpp"
 
 namespace Rtx

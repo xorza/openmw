@@ -7,9 +7,9 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/backlog.hpp>
-#include <components/rtx/index.hpp>
-#include <components/rtx/slotset.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/scratch.hpp>
+#include <components/rtx/slots.hpp>
 
 #include "blockedbuffer.hpp"
 #include "owned.hpp"
@@ -22,18 +22,11 @@ namespace Rtx
     class Device;
     class Graveyard;
     class GpuTimer;
-    struct SceneTables;
+    class SceneDesc;
 
-    /// One bottom-level acceleration structure per mesh, and what it takes to keep them tight.
-    ///
-    /// All of them sit inside a single storage buffer at offsets. Per-mesh buffers would be the
-    /// obvious shape and would spend a device allocation on each of a cell's several hundred meshes;
-    /// the scene description is flat for the same reason.
-    ///
-    /// **The compaction is here because it is what a store does**, and not a stage beside one. A
-    /// structure is built loose, the driver is asked what a tight copy would come to, and the copy
-    /// takes room out of the same storage and gives the loose room back — every step of which reads
-    /// the handles, the rooms, the addresses and the built sizes this holds and nothing else.
+    /// One bottom-level acceleration structure per mesh, all inside a single storage buffer at
+    /// offsets, and the compaction that keeps them tight: a structure is built loose, the driver is
+    /// asked what a tight copy would come to, and the copy takes room out of the same storage.
     class BottomLevelStore
     {
     public:
@@ -42,28 +35,19 @@ namespace Rtx
         BottomLevelStore(const Device& device, std::uint32_t slots);
         ~BottomLevelStore();
 
-        BottomLevelStore(const BottomLevelStore&) = delete;
-        BottomLevelStore& operator=(const BottomLevelStore&) = delete;
-
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
-        ///
-        /// A slot that already holds one has it destroyed and its room given back first: a slot the
-        /// scene took back and handed out again arrives carrying different geometry.
+        /// A slot that already holds one has it destroyed first: a slot the scene handed out again
+        /// arrives carrying different geometry.
         ///
         /// @param poses the first copy of the deforming vertices, which is what a deforming mesh's
         ///        structure is built over — `SkinPass` has written the pose into it.
         /// @param indices the shared index blocks, which every structure is built through.
-        void build(Batch& batch, const SceneTables& scene, std::span<const Index> meshes, const BlockedBuffer& poses,
+        void build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, const BlockedBuffer& poses,
             const BlockedBuffer& indices, Graveyard& graveyard);
 
-        /// Destroys the structures of `meshes` and gives their storage back.
-        ///
-        /// **Idempotent**, because both the frame that places and the one that appends run it: a
-        /// slot whose structure has already gone holds no handle and no room, and asking again is a
-        /// pair of comparisons.
-        ///
-        /// The structures go to `graveyard` rather than being destroyed: the last frame's top level
-        /// still names them, and that frame may still be tracing.
+        /// Destroys the structures of `meshes` and gives their storage back. Idempotent, because
+        /// both the frame that places and the one that appends run it. The structures go to
+        /// `graveyard`: the last frame's top level still names them.
         void release(std::span<const Index> meshes, Graveyard& graveyard);
 
         std::size_t size() const { return mStructures.size(); }
@@ -80,14 +64,10 @@ namespace Rtx
         VkDeviceSize getUpdateScratch(const Index mesh) const { return mUpdateScratch[mesh]; }
 
         /// Reads every compaction answer whose placement has certainly run, and makes a tight
-        /// structure for as many of the answered as this placement's budget takes.
-        ///
-        /// The set it returns names the meshes whose structures moved: every row placing one names
-        /// an address that is no longer there, and the caller writes those rows again. Empty where
-        /// nothing was copied, which is also when `recordCompaction` has nothing to record.
-        ///
-        /// **Counts the placement**, which is what the readiness rule below reads. One call per
-        /// placement, which is what every caller makes.
+        /// structure for as many of the answered as this placement's budget takes. The set it
+        /// returns names the meshes whose structures moved, whose rows the caller writes again.
+        /// Counts the placement, which is what the readiness rule below reads; one call per
+        /// placement.
         const SlotSet& prepareCompaction(Graveyard& graveyard);
 
         /// Copies each structure `prepareCompaction` made room for into it.
@@ -99,19 +79,9 @@ namespace Rtx
         VkDeviceSize getLiveBytes() const { return mStorage.getLiveBytes(); }
 
         /// What the structures still to be copied tight would come to, or nought where there are
-        /// none and where the device would not say.
-        ///
-        /// **What is left to save, and so nought once a cell has settled.** A structure is built
-        /// loose because the builder cannot know the answer until it has finished, and
-        /// `prepareCompaction` copies each into the size it turned out to need at a budget per
-        /// placement. So this falls to nothing over the placements after an arrival, while
-        /// `getBytes` falls by what it named.
-        ///
-        /// **The answers already read, and not a question of its own.** The queries are read where
-        /// `prepareCompaction` reads them, `mSlots` placements after the one that wrote them — asking
-        /// here instead means `VK_QUERY_RESULT_WAIT_BIT`, which stands the CPU still until the builds
-        /// this frame recorded have run. That is the frame a cell arrives in, and it is the one frame
-        /// that can least afford it.
+        /// none and where the device would not say — what is left to save, falling to nothing over
+        /// the placements after an arrival. The answers already read, and not a question of its
+        /// own: `VK_QUERY_RESULT_WAIT_BIT` would stand the CPU still on the frame a cell arrives in.
         VkDeviceSize getCompactableBytes() const { return mCompactableTight; }
 
         /// What those same structures occupy now. The pair says what compaction has left to give
@@ -119,13 +89,9 @@ namespace Rtx
         VkDeviceSize getCompactableNowBytes() const { return mCompactableNow; }
 
     private:
-        /// What the compaction knows about the structure in a slot.
-        ///
-        /// **A state per slot and a question per structure, asked once.** Asking about every loose
-        /// structure the scene holds at every build, and reading the answers only when no build
-        /// follows within `mSlots` placements, is a route that builds on every frame never reading
-        /// an answer, never copying anything tight, and asking the device about thousands of
-        /// structures over again on every arrival frame, in front of the trace.
+        /// What the compaction knows about the structure in a slot — a state per slot and a
+        /// question per structure, asked once, because asking about every loose structure at every
+        /// build never read an answer while cells kept arriving.
         enum class Tightness : std::uint8_t
         {
             /// No structure, or one that refits and so keeps its slack.
@@ -154,9 +120,6 @@ namespace Rtx
         /// What the compaction knows about the structure in one slot: where it stands, the placement
         /// count when its question was recorded — what `readAnswers` reads it against — what it was
         /// created at, and what the driver said a tight copy would come to, once answered.
-        ///
-        /// **One row and not four vectors resized in step by hand.** Every field here is written by
-        /// the same three steps — built, asked, answered — and read together by the copy.
         struct Compaction
         {
             Tightness mTightness = Tightness::None;
@@ -197,11 +160,8 @@ namespace Rtx
         /// Where each of those sits in the storage, so a released mesh can give its room back.
         std::vector<StructureRoom> mRooms;
 
-        /// Each of those structures' device address, asked for once when it was made.
-        ///
-        /// **Not once per instance per frame.** A handle lasts from one `setScene` to the next and
-        /// its address with it, and a nine-by-nine exterior asking per instance is fifty thousand
-        /// driver calls a frame to be told the same fifty thousand numbers.
+        /// Each of those structures' device address, asked for once when it was made: a
+        /// nine-by-nine exterior asking per instance is fifty thousand driver calls a frame.
         std::vector<VkDeviceAddress> mAddresses;
 
         std::vector<VkDeviceSize> mUpdateScratch;
@@ -232,11 +192,9 @@ namespace Rtx
         /// The compaction's state per slot, grown with the mesh table.
         std::vector<Compaction> mCompaction;
 
-        /// One query per slot, grown with the mesh table.
-        ///
-        /// **Indexed by slot, so a question needs no bookkeeping of where its answer went.** The
-        /// pool it outgrows is buried and not destroyed — a batch in flight may still be writing into
-        /// it — and whoever was asked through it is asked again through the new one.
+        /// One query per slot, grown with the mesh table. The pool it outgrows is buried and not
+        /// destroyed — a batch in flight may still be writing into it — and whoever was asked
+        /// through it is asked again through the new one.
         Owned<VkQueryPool, vkDestroyQueryPool> mCompactable;
         std::uint32_t mCompactablePool = 0;
 
@@ -259,12 +217,9 @@ namespace Rtx
         /// The meshes those copies moved, for the caller's walk over the rows placing them.
         SlotSet mMovedMeshes;
 
-        /// How many placements this store has been through.
-        ///
-        /// **What stands in for a fence.** The ring waits for the frame `mSlots` back before it
-        /// records this one, so a placement that far behind has finished on the queue and the
-        /// answers it carried are there to be read. Asking with `WAIT_BIT` instead would stall the
-        /// frame a cell arrives in, which is the one frame that can least afford it.
+        /// How many placements this store has been through — what stands in for a fence: the ring
+        /// waits for the frame `mSlots` back before it records this one, so a placement that far
+        /// behind has finished on the queue.
         std::uint64_t mPlacements = 0;
         std::uint32_t mSlots = 1;
     };

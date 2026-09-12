@@ -1,4 +1,4 @@
-#include "hosted.hpp"
+#include "run.hpp"
 
 #include <ostream>
 #include <set>
@@ -17,9 +17,7 @@
 #include <components/toutf8/toutf8.hpp>
 
 #include <apps/openmw/engine.hpp>
-#include <apps/openmw/mwrender/rtx/setup.hpp>
-
-#include "viewpoint.hpp"
+#include <apps/openmw/mwrender/rtx/session.hpp>
 
 namespace RtxTool
 {

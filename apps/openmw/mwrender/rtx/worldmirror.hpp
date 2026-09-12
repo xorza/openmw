@@ -5,10 +5,10 @@
 
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/compositequeue.hpp>
-#include <components/rtx/contentsource.hpp>
 #include <components/rtx/distantlights.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/residency.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
@@ -71,7 +71,7 @@ namespace MWRender
         Rtx::ExtractionStats mirror(const SceneFrame& frame, std::size_t frameNumber);
 
         /// Hands the scene to `renderer`, building only what has to be built.
-        Rtx::SceneUpload hand(Rtx::SceneSink& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend);
+        Rtx::SceneUpload hand(Rtx::Renderer& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend);
 
         /// Whether each hand-over waits for the composites it collects, and each walk for the one
         /// cell it adopts. `Rtx::CompositeQueue::setSettled` and `Rtx::CellRing::setSettled` say why

@@ -34,7 +34,6 @@
 #include "gl/water.hpp"
 #include "renderer.hpp"
 #include "sceneframe.hpp"
-#include "stage.hpp"
 
 namespace MWRender
 {
@@ -170,15 +169,15 @@ namespace MWRender
         // underwater switch that freezes the rain reads the point the last cull left. Here and not
         // in `update`, because `Camera::updateCamera` writes the view matrix from the update
         // traversal, which runs between the two.
-        mSky->setViewPoint(mStage.getCamera().getInverseViewMatrix().getTrans());
+        mSky->setViewPoint(mRenderer.getCamera().getInverseViewMatrix().getTrans());
 
         const WorldState world = describeWorld();
         const EyeState seenFrom = describeEye();
 
         const SceneFrame frame{
             .mScene = *mSceneRoot,
-            .mCamera = mStage.getCamera(),
-            .mWhen = mStage.getFrameStamp(),
+            .mCamera = mRenderer.getCamera(),
+            .mWhen = mRenderer.getFrameStamp(),
             .mWorld = world,
             .mEye = seenFrom,
             .mImages = *mResourceSystem->getImageManager(),

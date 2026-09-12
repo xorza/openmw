@@ -22,7 +22,7 @@ namespace Rtx
         std::vector<InstanceRecord> whole(const SceneDesc& scene)
         {
             std::vector<InstanceRecord> records;
-            makeInstanceRecords(scene.getTables(), records);
+            makeInstanceRecords(scene, records);
             return records;
         }
 
@@ -71,7 +71,7 @@ namespace Rtx
 
             std::vector<InstanceRecord> kept;
             std::vector<Index> changed;
-            makeInstanceRecords(scene.getTables(), kept);
+            makeInstanceRecords(scene, kept);
             expectSame(kept, scene, "built");
             EXPECT_TRUE(kept[leaf].mCutout);
             EXPECT_TRUE(kept[pane].mTranslucent);
@@ -94,7 +94,7 @@ namespace Rtx
             // A move: the motion appears on the frame of the move and goes on the frame after.
             scene.placements().advance();
             scene.placements().move(leaf, osg::Matrixf::translate(1.0f, 0.0f, 5.0f));
-            updateInstanceRecords(scene.getTables(), kept, changed);
+            updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "moved");
             EXPECT_FALSE(kept[leaf].mMotion == still) << "a mover carried no motion";
             // The four the build placed, settling for the first time, and then the leaf again for
@@ -102,31 +102,31 @@ namespace Rtx
             EXPECT_EQ(changed, (std::vector<Index>{ leaf, pane, water, chunk, leaf })) << "the slots written, in order";
 
             scene.placements().advance();
-            updateInstanceRecords(scene.getTables(), kept, changed);
+            updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "settled");
             EXPECT_TRUE(kept[leaf].mMotion == still) << "the frame after a move carried the motion on";
             EXPECT_EQ(changed, (std::vector<Index>{ leaf })) << "a settling slot is a row a backend rewrites";
 
             // A fade re-classes the row and moves nothing.
             scene.placements().fade(leaf, 0.5f);
-            updateInstanceRecords(scene.getTables(), kept, changed);
+            updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "faded");
             EXPECT_TRUE(kept[leaf].mTranslucent);
             EXPECT_TRUE(kept[leaf].mMotion == still);
             scene.placements().advance();
 
             // A material crossing opaque re-classes the placement wearing it.
-            Material solid = scene.getTables().mMaterials.getRows()[glass];
+            Material solid = scene.materials().getRows()[glass];
             solid.mOpacity = 1.0f;
             scene.setMaterial(glass, solid);
-            updateInstanceRecords(scene.getTables(), kept, changed);
+            updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "re-classed");
             EXPECT_FALSE(kept[pane].mTranslucent) << "a pane gone opaque still stops traversal to ask";
             scene.placements().advance();
 
             // A drop empties the row; the slot taken over is a new row, and the table grows past it.
             scene.placements().drop(pane);
-            updateInstanceRecords(scene.getTables(), kept, changed);
+            updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "dropped");
             EXPECT_FALSE(kept[pane].mPlaced);
             scene.placements().advance();
@@ -136,7 +136,7 @@ namespace Rtx
                     .mTransform = osg::Matrixf::translate(0.0f, 3.0f, 0.0f), .mMesh = mesh, .mMaterial = cutout }),
                 pane);
             const Index more = scene.addInstance(MeshInstance{ .mMesh = mesh });
-            updateInstanceRecords(scene.getTables(), kept, changed);
+            updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "taken over and grown");
             EXPECT_TRUE(kept[pane].mPlaced);
             EXPECT_TRUE(kept[pane].mCutout) << "the slot's new tenant, not its last";

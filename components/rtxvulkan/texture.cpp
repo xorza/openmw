@@ -102,7 +102,7 @@ namespace Rtx
                 .pBindingFlags = flags.data(),
             };
 
-            return SetLayout(
+            return makeSetLayout(
                 device, bindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
         }
 
@@ -192,7 +192,7 @@ namespace Rtx
     TextureArray::TextureArray(const Device& device, Batch& batch, std::uint32_t slots,
         std::span<const TextureData> textures, Graveyard& graveyard)
         : mDevice(device)
-        , mSampler(Sampler::forContent(device, "textures"))
+        , mSampler(makeContentSampler(device, "textures"))
         , mLayout(makeLayout(device))
     {
         if (slots > sMaxTextures)
@@ -203,7 +203,7 @@ namespace Rtx
         // the set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `extend` then only ever writes the range that is new.
-        SetPool own = allocateSet(device, mLayout.getHandle());
+        SetPool own = allocateSet(device, mLayout.get());
         mPool = std::move(own.mPool);
         mSet = own.mSet;
 

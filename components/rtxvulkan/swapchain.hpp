@@ -23,9 +23,6 @@ namespace Rtx
     public:
         Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent);
 
-        Swapchain(const Swapchain&) = delete;
-        Swapchain& operator=(const Swapchain&) = delete;
-
         /// Takes the next image. False means the swapchain no longer matches the window and must be
         /// recreated — which a resize, a monitor change or a compositor restart all cause, and none
         /// of which is an error.

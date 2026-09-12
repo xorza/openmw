@@ -46,7 +46,6 @@ option(BUILD_BULLETOBJECTTOOL   "Build Bullet object tool" ON)
 option(BUILD_OPENCS_TESTS       "Build OpenMW Construction Set tests" OFF)
 option(BUILD_OPENMW_TESTS       "Build OpenMW tests" OFF)
 option(OPENMW_RTX               "Build the experimental ray tracing renderer" OFF)
-option(OPENMW_RTX_VULKAN        "Build its Vulkan backend" ON)
 option(OPENMW_RTX_DLSS          "Upscale and denoise with DLSS Ray Reconstruction" ON)
 option(PRECOMPILE_HEADERS_WITH_MSVC "Precompile most common used headers with MSVC (alternative to ccache)" ON)
 

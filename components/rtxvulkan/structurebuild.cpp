@@ -2,7 +2,7 @@
 
 #include <osg/Vec3f>
 
-#include <components/rtx/meshrange.hpp>
+#include <components/rtx/mesh.hpp>
 
 namespace Rtx
 {

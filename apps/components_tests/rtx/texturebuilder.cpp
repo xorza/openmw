@@ -14,7 +14,7 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/mipchain.hpp>
-#include <components/rtx/preparedtexture.hpp>
+#include <components/rtx/prepared.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/spritelight.hpp>
@@ -187,7 +187,7 @@ namespace Rtx
             addModel(scene, path);
 
             SceneTextures described;
-            described.describeAll(scene.getTables(), images);
+            described.describeAll(scene, images);
             ASSERT_EQ(described.getUnreadable(), 0u) << "the image did not come back from the cache";
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
 
@@ -196,7 +196,7 @@ namespace Rtx
             ASSERT_EQ(described.getDescriptions()[0].mLevels.size(), std::size_t{ 3 });
 
             const std::size_t before = Testing::getAllocationCount();
-            described.describeAll(scene.getTables(), images);
+            described.describeAll(scene, images);
             const std::size_t spent = Testing::getAllocationCount() - before;
 
             EXPECT_EQ(spent, 0u) << "a second description reached the heap " << spent << " times";
@@ -234,8 +234,8 @@ namespace Rtx
 
             ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
             ASSERT_EQ(going.mTexture, 0u) << "the gap has to be below something to be a gap";
-            ASSERT_TRUE(scene.getTables().mTextures.isFree(going.mTexture));
-            ASSERT_FALSE(scene.getTables().mTextures.isFree(staying.mTexture));
+            ASSERT_TRUE(scene.textures().isFree(going.mTexture));
+            ASSERT_FALSE(scene.textures().isFree(staying.mTexture));
 
             // The VFS is empty, so the one that is described does not resolve — which is the other
             // half of the statement: a slot that named a file and failed at it is a failure, and a
@@ -252,10 +252,10 @@ namespace Rtx
             // One loader for both, which is how the uploader holds it: the second call clears what
             // the first left and answers on its own.
             SceneTextures described;
-            described.describe(scene.getTables(), images, both);
+            described.describe(scene, images, both);
             check(described, "described by arrival");
 
-            described.describeAll(scene.getTables(), images);
+            described.describeAll(scene, images);
             check(described, "described from the whole table");
         }
 
@@ -272,7 +272,7 @@ namespace Rtx
                 = scene.textures().addBaked(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
 
             SceneTextures described;
-            described.describeAll(scene.getTables(), images);
+            described.describeAll(scene, images);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
@@ -319,14 +319,14 @@ namespace Rtx
             reading.mTexture.mReadable = true;
 
             SceneTextures taken;
-            taken.describeAll(scene.getTables(), images, nullptr, &reading);
+            taken.describeAll(scene, images, nullptr, &reading);
             ASSERT_EQ(taken.getDescriptions().size(), 1u);
             EXPECT_EQ(taken.getDescriptions()[0].mLevels.size(), 3u) << "the reading's chain, down to one texel";
             EXPECT_EQ(taken.getDescriptions()[0].mShading[0], 2.0f) << "the reading's estimate, not one made here";
             EXPECT_EQ(taken.getDescriptions()[0].mShading.size(), Rtx::ShadingMap::sCells);
 
             SceneTextures built;
-            built.describeAll(scene.getTables(), images);
+            built.describeAll(scene, images);
             ASSERT_EQ(built.getDescriptions().size(), 1u);
             EXPECT_EQ(built.getDescriptions()[0].mLevels.size(), 3u) << "built here, to the same chain";
             EXPECT_NEAR(built.getDescriptions()[0].mShading[0], 1.0f, 0.01f)
@@ -335,7 +335,7 @@ namespace Rtx
             // An unreadable reading is no reading: the miss path runs and the stand-in follows.
             reading.mTexture.mReadable = false;
             SceneTextures again;
-            again.describeAll(scene.getTables(), images, nullptr, &reading);
+            again.describeAll(scene, images, nullptr, &reading);
             EXPECT_NEAR(again.getDescriptions()[0].mShading[0], 1.0f, 0.01f);
         }
 

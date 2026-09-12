@@ -37,14 +37,14 @@ namespace MyGUIRtx
         }
     }
 
-    Texture::Texture(std::string name, Rtx::GuiSurface& renderer, Resource::ImageManager* imageManager)
+    Texture::Texture(std::string name, Rtx::Renderer& renderer, Resource::ImageManager* imageManager)
         : mName(std::move(name))
         , mRenderer(renderer)
         , mImageManager(imageManager)
     {
     }
 
-    Texture::Texture(Rtx::GuiSurface& renderer, osg::Texture2D& source)
+    Texture::Texture(Rtx::Renderer& renderer, osg::Texture2D& source)
         : mRenderer(renderer)
         , mImageManager(nullptr)
         , mFormat(MyGUI::PixelFormat::R8G8B8A8)

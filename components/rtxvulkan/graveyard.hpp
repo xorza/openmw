@@ -31,9 +31,6 @@ namespace Rtx
         Graveyard(const Device& device, CommandPool& pool);
         ~Graveyard();
 
-        Graveyard(const Graveyard&) = delete;
-        Graveyard& operator=(const Graveyard&) = delete;
-
         /// Each takes an empty one and does nothing with it, so a caller can bury what a growth
         /// displaced without asking whether it displaced anything.
         void bury(Buffer&& buffer);

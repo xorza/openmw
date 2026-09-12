@@ -21,25 +21,20 @@
 #include <components/files/conversion.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/extractionstats.hpp>
-#include <components/rtx/imageformat.hpp>
-#include <components/rtx/index.hpp>
 #include <components/rtx/material.hpp>
-#include <components/rtx/meshinstance.hpp>
-#include <components/rtx/meshrange.hpp>
-#include <components/rtx/png.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/colour.h>
+#include <components/rtx/texels.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtxbench/benchrecord.hpp>
-#include <components/rtxbench/contactsheet.hpp>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
-#include <components/rtxbench/scenedigest.hpp>
 #include <components/settings/values.hpp>
-#include <components/surface/alphamode.hpp>
+#include <components/surface/material.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -56,8 +51,8 @@
 #include "../localmap.hpp"
 #include "../offscreenview.hpp"
 #include "../renderer.hpp"
-#include "checks.hpp"
-#include "viewhost.hpp"
+#include "rtxrenderer.hpp"
+#include "session.hpp"
 
 namespace MWRender
 {
@@ -69,8 +64,8 @@ namespace MWRender
         /// instead, which is a drain a stop may pay and a frame may not.
         void drawPicturesNow(const FrameContext& context)
         {
-            context.mHost.flushRedraws();
-            context.mBackend.finishGuiTraces();
+            context.mRenderer.flushRedraws();
+            context.mRenderer.getBackend().finishGuiTraces();
         }
     }
 
@@ -109,7 +104,7 @@ namespace MWRender
 
     void StopWriter::writeCapture(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mContext.mBackend;
+        Rtx::Renderer& renderer = into.mContext.mRenderer.getBackend();
         const Rtx::FrameExtents extents = renderer.getExtents();
 
         renderer.readPixels(mPixels);
@@ -142,7 +137,7 @@ namespace MWRender
             return;
         }
 
-        Rtx::Renderer& renderer = into.mContext.mBackend;
+        Rtx::Renderer& renderer = into.mContext.mRenderer.getBackend();
 
         std::vector<float> bounce;
         renderer.readFrameImage(Rtx::FrameImage::Accumulated, bounce);
@@ -177,7 +172,7 @@ namespace MWRender
 
     void StopWriter::writeDump(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mContext.mBackend;
+        Rtx::Renderer& renderer = into.mContext.mRenderer.getBackend();
 
         std::vector<float> radiance;
         renderer.readFrameImage(Rtx::FrameImage::Composite, radiance);
@@ -195,7 +190,7 @@ namespace MWRender
 
     void StopWriter::reportScene(const Writing& into)
     {
-        const Rtx::SceneTables scene = into.mContext.mScene.getTables();
+        const Rtx::SceneDesc& scene = into.mContext.mScene;
         const Rtx::ExtractionStats& stats = into.mReport.mWalked.mFound;
 
         into.mRecord.note(
@@ -210,9 +205,9 @@ namespace MWRender
                         "  vertex+index bytes:   {} KiB\n"
                         "  handed over:          {}\n"
                         "  laid out as:          {}\n",
-                scene.mPlacements.getPlacedCount(), stats.mDistantStatics, stats.mGroundCells,
-                scene.mMeshes.getRows().size(), scene.mMaterials.getRows().size(), scene.mTextures.getPaths().size(),
-                scene.mMeshes.getTriangleCount(), scene.mMeshes.getGeometryBytes() / 1024,
+                scene.placements().getPlacedCount(), stats.mDistantStatics, stats.mGroundCells,
+                scene.meshes().getRows().size(), scene.materials().getRows().size(), scene.textures().getPaths().size(),
+                scene.meshes().getTriangleCount(), scene.meshes().getGeometryBytes() / 1024,
                 Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
         for (std::size_t at = 0; at < stats.mFormats.mMet.size(); ++at)
@@ -243,7 +238,7 @@ namespace MWRender
         std::uint32_t media = 0;
         std::uint32_t glowing = 0;
         std::uint32_t flattened = 0;
-        for (const Rtx::Material& material : scene.mMaterials.getRows())
+        for (const Rtx::Material& material : scene.materials().getRows())
         {
             cutouts += material.isCutout() ? 1 : 0;
             tested += material.mAlphaMode == Surface::AlphaMode::Cutout ? 1 : 0;
@@ -254,7 +249,7 @@ namespace MWRender
         }
 
         std::uint32_t sheets = 0;
-        for (const Rtx::MeshRange& mesh : scene.mMeshes.getRows())
+        for (const Rtx::MeshRange& mesh : scene.meshes().getRows())
             sheets += mesh.mShape.mSheet ? 1 : 0;
 
         into.mRecord.note(
@@ -266,7 +261,7 @@ namespace MWRender
                         "  deforming drawables:  {}\n"
                         "  flattened ground:     {} cells outside the active grid\n"
                         "  emitters:             {} holding {} live particles\n",
-                cutouts, tested, translucent, media, glowing, scene.mLights.size(), stats.mDeformed, flattened,
+                cutouts, tested, translucent, media, glowing, scene.lights().size(), stats.mDeformed, flattened,
                 stats.mEmitters, stats.mSprites));
 
         into.mRecord.note(
@@ -299,7 +294,7 @@ namespace MWRender
         if (resources == nullptr)
             return;
 
-        const Rtx::SceneTables scene = into.mContext.mScene.getTables();
+        const Rtx::SceneDesc& scene = into.mContext.mScene;
 
         Rtx::SceneTextures described;
         described.describeAll(scene, *resources->getImageManager());
@@ -315,7 +310,7 @@ namespace MWRender
 
         // The sheet carries no lettering, so the order is printed instead: left to right, top to
         // bottom, the way it was drawn.
-        const std::span<const VFS::Path::Normalized> paths = scene.mTextures.getPaths();
+        const std::span<const VFS::Path::Normalized> paths = scene.textures().getPaths();
         for (std::size_t at = 0; at < paths.size(); ++at)
             into.mRecord.note(std::format("  {}  {}\n", at, paths[at].value()));
 
@@ -403,7 +398,7 @@ namespace MWRender
         }
 
         {
-            InventoryPreview preview(into.mContext.mViews, into.mContext.mResources, subject);
+            InventoryPreview preview(into.mContext.mRenderer, into.mContext.mResources, subject);
             preview.rebuild();
 
             // **Through the view and not through the texture the GUI draws from**, which is the one
@@ -418,14 +413,14 @@ namespace MWRender
 
     void StopWriter::reportFound(const Writing& into, const std::string& needle)
     {
-        const Rtx::SceneTables scene = into.mContext.mScene.getTables();
-        const std::span<const VFS::Path::Normalized> paths = scene.mTextures.getPaths();
+        const Rtx::SceneDesc& scene = into.mContext.mScene;
+        const std::span<const VFS::Path::Normalized> paths = scene.textures().getPaths();
 
         // **Found by texture and reported by placement**, because a mesh carries no name of its own
         // once it is a run of triangles: what a walk keeps is the material it arrived wearing, and a
         // material names the file it samples.
         std::uint32_t met = 0;
-        for (const Rtx::MeshInstance& instance : scene.mPlacements.getAll())
+        for (const Rtx::MeshInstance& instance : scene.placements().getAll())
         {
             if (!instance.isPlaced())
                 continue;
@@ -433,7 +428,7 @@ namespace MWRender
             if (instance.mMaterial == Rtx::sNoIndex)
                 continue;
 
-            const Rtx::Material& material = scene.mMaterials.getRows()[instance.mMaterial];
+            const Rtx::Material& material = scene.materials().getRows()[instance.mMaterial];
             if (material.mDiffuse == Rtx::sNoIndex)
                 continue;
 

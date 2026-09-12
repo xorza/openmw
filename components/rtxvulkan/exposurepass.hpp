@@ -33,9 +33,6 @@ namespace Rtx
     public:
         ExposurePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        ExposurePass(const ExposurePass&) = delete;
-        ExposurePass& operator=(const ExposurePass&) = delete;
-
         /// Measures `frame` and moves the answer toward it, where `getExposure` points.
         ///
         /// **What is written is not what was measured.** The exposure carries between frames and

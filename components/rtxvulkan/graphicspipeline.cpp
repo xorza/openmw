@@ -4,8 +4,8 @@
 #include <cstdint>
 
 #include "device.hpp"
+#include "handles.hpp"
 #include "result.hpp"
-#include "shadermodule.hpp"
 
 namespace Rtx
 {
@@ -13,20 +13,20 @@ namespace Rtx
         : mLayout(device, options.mBindings, options.mPushConstantBytes,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, {})
     {
-        const ShaderModule vertex(device, options.mVertexModule);
-        const ShaderModule fragment(device, options.mFragmentModule);
+        const ShaderModule vertex = loadShaderModule(device, options.mVertexModule);
+        const ShaderModule fragment = loadShaderModule(device, options.mFragmentModule);
 
         const std::array<VkPipelineShaderStageCreateInfo, 2> stages{
             VkPipelineShaderStageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                .module = vertex.getHandle(),
+                .module = vertex.get(),
                 .pName = "main",
             },
             VkPipelineShaderStageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .module = fragment.getHandle(),
+                .module = fragment.get(),
                 .pName = "main",
             },
         };

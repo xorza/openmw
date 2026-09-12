@@ -9,22 +9,19 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "cloudshell.hpp"
-#include "index.hpp"
 #include "moonbuilder.hpp"
 #include "nightsky.hpp"
+#include "runs.hpp"
 #include "shaders/look.h"
 #include "shaders/visibility.h"
-#include "sun.hpp"
+#include "skylight.hpp"
 
 namespace Rtx
 {
     class SceneDesc;
 
-    /// Which meshes the sky's two surfaces are read off.
-    ///
-    /// **Named by the host and not read here.** `Models/skyclouds` and the two star domes are
-    /// configuration, and this library holds no settings registry — the two hosts that build a sky
-    /// each own that plumbing already, and the rasterizer reads the same three keys for itself.
+    /// Which meshes the sky's two surfaces are read off — `Models/skyclouds` and the two star
+    /// domes — named by the host, because this library holds no settings registry.
     struct SkyMeshes
     {
         /// The cap the cloud deck is painted on.
@@ -36,16 +33,9 @@ namespace Rtx
     };
 
     /// Everything the sky was read from the content files: its sheets, what each of them averages,
-    /// and the surfaces they are laid on.
-    ///
-    /// **The textures are held rather than named by a material**, for the reason the moons' faces
-    /// are: the deck and the star sheet are found by rays that reached nothing, so no material can
-    /// speak for them and the sweep would take their slots back on the first frame a cell died.
-    ///
-    /// All ten weathers at once rather than the two a frame needs. A transition runs between two of
-    /// them and a player can walk into a region that offers neither, so loading on demand would put
-    /// a texture upload on the frame a storm arrives — which is the one frame that can least afford
-    /// it. Ten sky textures is under a megabyte.
+    /// and the surfaces they are laid on. The textures are held rather than named by a material,
+    /// because they are found by rays that reached nothing and the sweep would take their slots
+    /// back. All ten weathers at once, under a megabyte, so a storm arriving costs no upload.
     struct SkyContent
     {
         /// One per weather, in `WEATHER_*` order. `sNoIndex` where the content files record no
@@ -53,32 +43,18 @@ namespace Rtx
         std::array<Index, Shaders::WEATHER_COUNT> mClouds{};
 
         /// The mean luminance of what each weather's sheet paints, linear. Nought where no sheet
-        /// was read, which is a weather that draws no deck.
-        ///
-        /// **What a texel is read as a ratio to, so the painting gives shape and not a level.** Each
-        /// sheet is a photograph of a 2002 sky with that day's light already in it, so compositing
-        /// one lights every cloud twice. Against its own mean it carries where the cloud is thick
-        /// and where it is thin and nothing else, which is the half of it a lit deck can use.
-        ///
-        /// **And for half the decks it is the only shape there is.** Six of the ten weathers reach a
-        /// sheet the archives hold, and `tx_sky_overcast`, `_rainy` and `_thunder` carry an alpha of
-        /// 255 in every one of their texels — so a deck cut out of the alpha alone is a flat lid
-        /// across the whole sky. Their means are 0.268, 0.283 and 0.357, against the three that do
-        /// carry an alpha: clear 0.435, cloudy 0.552, foggy 0.639.
-        ///
-        /// Measured over the alpha rather than over the whole sheet, because clear weather's cirrus
-        /// covers a quarter of its own sheet and its wisps are not a quarter as bright as they look.
+        /// was read. What a texel is read as a ratio to, so the painting gives shape and not a
+        /// level: each sheet is a photograph of a 2002 sky with that day's light already in it. For
+        /// half the decks it is the only shape there is — `tx_sky_overcast`, `_rainy` and
+        /// `_thunder` carry an alpha of 255 in every texel; their means are 0.268, 0.283 and 0.357,
+        /// against clear 0.435, cloudy 0.552, foggy 0.639. Measured over the alpha, because clear
+        /// weather's cirrus covers a quarter of its own sheet.
         std::array<float, Shaders::WEATHER_COUNT> mCloudMean{};
 
-        /// The mean alpha of each weather's sheet: how much sky its deck hides on average.
-        ///
-        /// **What a cloud's shadow is measured against.** `Shaders::CLOUD_SHADOW_DEPTH` says why the
-        /// average cloud must darken nothing — the content's own `Sun_*_Color` has already dimmed
-        /// the sun for that weather, and a shadow that darkened by the whole of the alpha would
-        /// state it twice.
-        ///
-        /// A quarter for clear weather's cirrus, three quarters for cloudy, and all of it for the
-        /// three sheets that are 255 alpha in every texel.
+        /// The mean alpha of each weather's sheet: how much sky its deck hides on average, which a
+        /// cloud's shadow is measured against because the content's own `Sun_*_Color` has already
+        /// dimmed the sun for that weather (`Shaders::CLOUD_SHADOW_DEPTH`). A quarter for clear
+        /// weather's cirrus, three quarters for cloudy, all of it for the three opaque sheets.
         std::array<float, Shaders::WEATHER_COUNT> mCloudCover{};
 
         /// The night sky, read off the mesh the rasterizer draws it with: the star field, the scale
@@ -99,23 +75,15 @@ namespace Rtx
         float coverOf(std::uint32_t weather) const;
     };
 
-    /// Reads all of it, loading the textures into `scene` and holding them there.
-    ///
-    /// **A texture the archives do not hold is left out rather than reserved**, which is what `vfs`
-    /// is for. The shipped fallbacks name Solstheim's two skies without Bloodmoon's `bm` in them, so
-    /// a slot taken for either would be filled by the unreadable stand-in — and the stand-in is an
-    /// opaque grey, which over a cloud deck is the entire sky. Missing means no deck, as it does for
-    /// the two weathers that name no texture at all.
-    ///
-    /// **Held for the life of the scene and never given back**, for the reason `addMoonFaces`
-    /// gives: nothing a sweep can read names a sky texture.
+    /// Reads all of it, loading the textures into `scene` and holding them there for the life of
+    /// the scene. A texture the archives do not hold is left out rather than reserved: the shipped
+    /// fallbacks name Solstheim's two skies without Bloodmoon, and the unreadable stand-in is an
+    /// opaque grey, which over a cloud deck is the entire sky.
     SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes, const SkyMeshes& meshes);
 
     /// What a cloud deck radiates from below, where its own body shadows it and where it does not.
-    ///
-    /// **A vanilla asset lit rather than shown.** Every sky sheet is a photograph of a 2002 sky with
-    /// that day's light already painted into it, so the deck takes only the *shape* out of one and
-    /// the colour comes from here. `SkyContent::mCloudMean` carries the other half of that split.
+    /// The deck takes only the *shape* out of a sheet (`SkyContent::mCloudMean`) and the colour
+    /// comes from here.
     struct DeckLight
     {
         /// What a cloud in full sunlight shows: everything reaching the top of the layer.
@@ -126,11 +94,7 @@ namespace Rtx
         osg::Vec3f mShadowed;
     };
 
-    /// Lights a deck by what stands over it.
-    ///
-    /// **One place, because a deck is lit like anything else and this is the only thing that knows
-    /// it.** However a sun, a sky and two moons were reached, what a layer of water droplets does
-    /// with the three is the same.
+    /// Lights a deck by what stands over it, however a sun, a sky and two moons were reached.
     ///
     /// @param skyMean what the sky over the deck delivers, as a radiance — `SkyBudget::mMean`.
     /// @param moons both of them, whether or not either is up: a moon that is down delivers nothing
@@ -157,14 +121,10 @@ namespace Rtx
         float mScroll = 0.0f;
     };
 
-    /// The cloud deck, in the units the shader takes.
+    /// The cloud deck, in the units the shader takes — one conversion, so a screenshot and a
+    /// played frame stand under one sky.
     ///
-    /// **One conversion, wherever the numbers came from.** The weather system reports what it
-    /// settled on; what a deck *is* once those are known lives here, so a screenshot and a played
-    /// frame stand under one sky.
-    ///
-    /// @param light what the deck radiates, out of `deckLight` — worked out on the host rather than
-    ///        in the shader because it is one answer for the whole frame.
+    /// @param light what the deck radiates, out of `deckLight`.
     Shaders::CloudDeck describeClouds(const CloudCrossing& clouds, const DeckLight& light, const SkyContent& textures);
 
     /// The star field, in the units the shader takes.
@@ -174,13 +134,10 @@ namespace Rtx
     /// @param turn `MWRender::WorldState::mStarRoll`.
     Shaders::StarField describeStars(float fade, float glare, float turn, const SkyContent& textures);
 
-    /// The nebulae and the constellations, placed.
+    /// The nebulae and the constellations, placed — the same shape a moon is, a direction, a size
+    /// and a texture, drawn as the disc the moons are. Where they go was read off the mesh.
     ///
-    /// **The same shape a moon is**, which is the point: each is a sheet laid once across a patch of
-    /// sky, so what it comes to is a direction, a size and a texture — and the disc the moons are
-    /// already drawn as is what draws it. Where they go was read off the mesh, not written down.
-    ///
-    /// @param turn `MWRender::WorldState::mStarRoll`, because they are on the star sphere and turn with it.
+    /// @param turn `MWRender::WorldState::mStarRoll`, because they are on the star sphere.
     /// @param patches written here rather than returned, so a frame's description costs no
     ///        allocation.
     void describePatches(

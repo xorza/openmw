@@ -58,7 +58,6 @@ namespace MWRender
     class Camera;
     class PostProcessor;
     class Renderer;
-    class Stage;
 }
 
 namespace ToUTF8
@@ -200,8 +199,8 @@ namespace MWWorld
             Loading::Listener* listener);
 
         // Must be called after `loadData`.
-        void init(Debug::Level maxRecastLogLevel, MWRender::Renderer& renderer, MWRender::Stage& stage,
-            osg::ref_ptr<osg::Group> rootNode, SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue);
+        void init(Debug::Level maxRecastLogLevel, MWRender::Renderer& renderer, osg::ref_ptr<osg::Group> rootNode,
+            SceneUtil::WorkQueue* workQueue, SceneUtil::UnrefQueue& unrefQueue);
 
         virtual ~World();
 

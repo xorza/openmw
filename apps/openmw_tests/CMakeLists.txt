@@ -14,7 +14,7 @@ file(GLOB UNITTEST_SRC_FILES
 
     mwdialogue/testkeywordsearch.cpp
 
-    mwrender/stage.cpp
+    mwrender/renderer.cpp
 
     mwgui/tooltips.cpp
     mwgui/weightedsearch.cpp

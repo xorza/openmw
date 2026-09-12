@@ -35,22 +35,16 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
+#include <components/rtxvulkan/vulkanrenderer.hpp>
 
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
 
-#include "benchsuite.hpp"
-#include "framerequest.hpp"
-#include "hosted.hpp"
 #include "options.hpp"
-#include "ownconfig.hpp"
-#include "parsefloat.hpp"
-#include "validationchoice.hpp"
+#include "run.hpp"
 #include "verbs.hpp"
 #include "verify.hpp"
-#include "viewpoint.hpp"
-#include "views.hpp"
 
 namespace RtxTool
 {
@@ -236,7 +230,7 @@ namespace RtxTool
             // them from source, kept nothing, and left the next `shot` to compile them again.
             try
             {
-                const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(Rtx::RendererOptions{
+                const auto renderer = std::make_unique<Rtx::VulkanRenderer>(Rtx::RendererOptions{
                     .mShaderDirectory = command.mResources / "rtx" / "shaders",
                     .mCacheDirectory = command.mConfig.getCachePath(),
                     .mWidth = 1,

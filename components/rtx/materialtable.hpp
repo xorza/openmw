@@ -5,11 +5,9 @@
 #include <span>
 #include <vector>
 
-#include "index.hpp"
 #include "material.hpp"
-#include "runbuffer.hpp"
-#include "slotrows.hpp"
-#include "slotset.hpp"
+#include "runs.hpp"
+#include "slots.hpp"
 #include "texturetable.hpp"
 
 namespace Rtx
@@ -41,18 +39,13 @@ namespace Rtx
         }
     };
 
-    class MaterialTable
+    class MaterialTable : public SweptTable<Material>
     {
     public:
         explicit MaterialTable(TextureTable& textures)
             : mTextures(textures)
         {
         }
-
-        std::size_t size() const { return mRows.size(); }
-
-        /// How many slots hold a material, which is what a sweep compares its survivors against.
-        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
 
         Index add(const Material& material);
 
@@ -80,27 +73,14 @@ namespace Rtx
         /// happened to be at; a run that can be given back has to be asked for by length.
         Run addLayers(std::span<const MaterialLayer> layers);
 
-        std::span<const Material> getRows() const { return mRows.getRows(); }
         std::span<const MaterialLayer> getLayers() const { return mLayers.getAll(); }
         std::span<const float> getMasks() const { return mMasks.getAll(); }
 
         std::span<const Index> getWritten() const { return mWritten.getSlots(); }
         const ArrivedRuns& getArrived() const { return mArrived; }
 
-        /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
-        ///
-        /// **Apart from `sweep`, because a caller sweeps two tables or neither.** A scene marks its
-        /// meshes and its materials, and frees nothing where both came back whole.
-        std::size_t mark(std::span<const Index> keep);
-
         /// Frees every slot the last `mark` did not name, and says how many that was.
         std::size_t sweep();
-
-        /// Takes and gives back one hold on a row — `MeshTable::hold` says what for.
-        void hold(Index material) { mRows.hold(material); }
-        void drop(Index material) { mRows.drop(material); }
-
-        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
 
         void clearArrivals();
 
@@ -129,12 +109,10 @@ namespace Rtx
 
         /// Takes and gives back those slots. Only ever called in that pair, and `set` is why the
         /// order between them matters.
-        void hold(const Material& material);
-        void drop(const Material& material);
+        void holdTextures(const Material& material);
+        void dropTextures(const Material& material);
 
         TextureTable& mTextures;
-
-        SlotRows<Material> mRows;
 
         /// Rows written since the last `clearArrivals` — a flipbook that is added and then
         /// rewritten on one frame is one row, not two.

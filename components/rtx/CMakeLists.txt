@@ -13,32 +13,30 @@
 
 set(RTX_FILES
     alphaimage.cpp
-    backlog.hpp
+    scratch.hpp
     alphaimage.hpp
     bluenoise.cpp
     bluenoise.hpp
     camera.cpp
     camera.hpp
-    cellholds.cpp
-    cellholds.hpp
+    held.cpp
+    held.hpp
     cellplacer.cpp
     cellplacer.hpp
     cellreader.cpp
     cellreader.hpp
-    cellworld.hpp
-    channel.hpp
+    residency.hpp
+    frameimage.hpp
     cloudshell.cpp
     cloudshell.hpp
-    colourblock.cpp
-    colourblock.hpp
+    colour.cpp
+    colour.hpp
     compositequeue.cpp
     compositequeue.hpp
-    decodecolour.cpp
-    decodecolour.hpp
     deformertable.cpp
     deformertable.hpp
-    distantland.cpp
-    distantland.hpp
+    fogbuilder.cpp
+    fogbuilder.hpp
     distantlights.cpp
     distantlights.hpp
     emitterresolver.cpp
@@ -46,13 +44,8 @@ set(RTX_FILES
     error.hpp
     extractionstats.cpp
     extractionstats.hpp
-    fogbuilder.cpp
-    fogbuilder.hpp
-    fognoise.cpp
-    fognoise.hpp
     frameclock.hpp
     frameimage.cpp
-    frameimage.hpp
     framespend.hpp
     frameworld.cpp
     frameworld.hpp
@@ -60,16 +53,14 @@ set(RTX_FILES
     geometryfold.hpp
     groundreader.cpp
     groundreader.hpp
-    imageformat.cpp
-    imageformat.hpp
-    index.hpp
-    instanceclass.hpp
-    instancecounts.hpp
+    texels.cpp
+    texels.hpp
+    runs.hpp
+    mesh.hpp
     instancerecord.cpp
     instancerecord.hpp
-    light.hpp
-    lightbuilder.cpp
     lightbuilder.hpp
+    lightbuilder.cpp
     lightgrid.cpp
     lightgrid.hpp
     material.cpp
@@ -78,15 +69,10 @@ set(RTX_FILES
     materialresolver.hpp
     materialtable.cpp
     materialtable.hpp
-    meantexel.cpp
-    meantexel.hpp
     memoryreport.cpp
     memoryreport.hpp
-    mesharrays.hpp
-    meshinstance.hpp
     meshreader.cpp
     meshreader.hpp
-    meshrange.hpp
     meshtable.cpp
     meshtable.hpp
     meshresolver.cpp
@@ -94,7 +80,7 @@ set(RTX_FILES
     mipchain.cpp
     mipchain.hpp
     mirroridentity.hpp
-    mirrorpass.hpp
+    walk.hpp
     monitor.hpp
     moonbuilder.cpp
     moonbuilder.hpp
@@ -105,31 +91,19 @@ set(RTX_FILES
     nightsky.hpp
     offscreentrace.cpp
     offscreentrace.hpp
-    ownedby.hpp
+    worker.hpp
     ownedtexture.cpp
     ownedtexture.hpp
     parallel.hpp
     placementtable.cpp
     placementtable.hpp
-    pool.hpp
-    preparedcell.hpp
-    heldcell.hpp
-    recycled.hpp
-    preparedground.hpp
-    preparedtexture.hpp
-    png.cpp
-    png.hpp
+    prepared.hpp
     posecull.hpp
     poseupdate.hpp
     reconstruction.hpp
     renderer.hpp
     renderprofile.hpp
-    reuse.hpp
-    run.hpp
-    runallocator.cpp
-    runallocator.hpp
-    runbuffer.hpp
-    runlist.hpp
+    runs.cpp
     scenedesc.cpp
     scenedesc.hpp
     sceneextractor.cpp
@@ -147,47 +121,31 @@ set(RTX_FILES
     skybuilder.hpp
     skylight.cpp
     skylight.hpp
-    slotchanges.cpp
-    slotchanges.hpp
-    slotset.cpp
-    slotset.hpp
+    slots.cpp
+    slots.hpp
     spritelight.cpp
     spritelight.hpp
     spritelistsize.cpp
     spritelistsize.hpp
-    spares.hpp
     sprite.hpp
     cellring.cpp
     cellsupply.cpp
     cellring.hpp
     cellsupply.hpp
-    srgb.cpp
-    srgb.hpp
-    sun.hpp
-    contentsource.cpp
-    contentsource.hpp
+    residency.cpp
     templatewalk.cpp
     templatewalk.hpp
     terraincomposite.cpp
     terraincomposite.hpp
     slot.hpp
-    slotpool.hpp
-    slotrows.hpp
-    sortedrows.hpp
-    scenetables.cpp
-    scenetables.hpp
-    texelreader.cpp
-    texelreader.hpp
     texturebuilder.cpp
     texturebuilder.hpp
     texturedata.cpp
     texturedata.hpp
     texturetable.cpp
     texturetable.hpp
-    traversals.hpp
     wavecascade.cpp
     wavecascade.hpp
-    worker.hpp
     worlddescent.hpp
     wavespectrum.cpp
     wavespectrum.hpp

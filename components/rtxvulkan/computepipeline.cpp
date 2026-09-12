@@ -3,8 +3,8 @@
 #include <vector>
 
 #include "device.hpp"
+#include "handles.hpp"
 #include "result.hpp"
-#include "shadermodule.hpp"
 #include "specialization.hpp"
 
 namespace Rtx
@@ -14,7 +14,7 @@ namespace Rtx
         const std::filesystem::path& module, std::string_view name, std::span<const std::uint32_t> specialization)
         : mLayout(device, bindings, pushConstantBytes, VK_SHADER_STAGE_COMPUTE_BIT, laterSets)
     {
-        const ShaderModule compiled(device, module);
+        const ShaderModule compiled = loadShaderModule(device, module);
         const Specialization constants(specialization);
 
         const VkComputePipelineCreateInfo pipeline{
@@ -27,7 +27,7 @@ namespace Rtx
             .stage = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-                .module = compiled.getHandle(),
+                .module = compiled.get(),
                 .pName = "main",
                 .pSpecializationInfo = constants.getInfo(),
             },

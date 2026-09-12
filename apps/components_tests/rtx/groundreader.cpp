@@ -18,9 +18,9 @@
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadland.hpp>
-#include <components/rtx/contentsource.hpp>
 #include <components/rtx/groundreader.hpp>
-#include <components/rtx/preparedground.hpp>
+#include <components/rtx/prepared.hpp>
+#include <components/rtx/residency.hpp>
 #include <components/terrain/buffercache.hpp>
 #include <components/vfs/pathutil.hpp>
 

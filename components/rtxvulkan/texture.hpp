@@ -10,10 +10,9 @@
 
 #include <components/rtx/texturedata.hpp>
 
+#include "handles.hpp"
 #include "image.hpp"
 #include "owned.hpp"
-#include "sampler.hpp"
-#include "setlayout.hpp"
 
 namespace Rtx
 {
@@ -22,29 +21,19 @@ namespace Rtx
     class Graveyard;
 
     /// A sampled image on the GPU, the levels a content file brought for it, and the light the
-    /// file already had painted into it.
-    ///
-    /// **Two `Image`s and what was uploaded into them.** What a texture adds to an image is the
-    /// upload and the size of it; everything else — the allocation, the view, the barriers — is what
-    /// an image already is. The second is the shading map, `SHADING_EXTENT` squared, which travels
-    /// with the texture because it is a fact about the texture: it is measured on it, it is read at
-    /// the texture's own coordinates, and it goes when the texture goes.
+    /// file already had painted into it — two `Image`s and what was uploaded into them. The second
+    /// is the shading map, `SHADING_EXTENT` squared, which travels with the texture because it is
+    /// measured on it and read at its coordinates.
     class Texture
     {
     public:
         /// A slot with nothing in it yet, which is what the array holds while it is being filled.
         Texture() = default;
 
-        /// @param name what a capture calls it. Empty where the build names no objects — see
-        ///        `Device::wantsNames`.
+        /// @param name what a capture calls it. Empty where the build names no objects.
         /// @param regions the caller's scratch, cleared and refilled here with one copy per level.
-        ///        Passed in rather than owned because a texture is made per arrival and thrown at
-        ///        once into an array, and the array is what outlives them all.
         Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name,
             std::vector<VkBufferImageCopy>& regions);
-
-        Texture(const Texture&) = delete;
-        Texture& operator=(const Texture&) = delete;
         Texture(Texture&&) noexcept = default;
         Texture& operator=(Texture&&) noexcept = default;
 
@@ -78,73 +67,35 @@ namespace Rtx
     };
 
     /// Every texture a scene uses, in one descriptor array a shader indexes by material, and every
-    /// texture's shading map in a second array beside it at the same slot.
-    ///
-    /// A separate set from the per-frame one: this is written once and bound for the run, while the
-    /// other is pushed every frame. A bindless array cannot be a push descriptor anyway — there is
-    /// no pushing four thousand of them per frame.
-    ///
-    /// **Update after bind, so a cell landing may write it while work bound to it is still on the
-    /// queue.** A frame in flight is tracing through this set while an arrival describes the slots
-    /// it brought, and without it the arrival would need a set made and buried for itself.
-    ///
-    /// **The maps are an array and not a buffer**, because a map is a grid the texture unit filters:
-    /// one fetch where a shader reading one out of a buffer pays four loads and the wrap by hand,
-    /// half the memory, and no table to rewrite whole when it grows. The loads cost nothing the
-    /// trace can see, so this is the shape and not a saving. And an array of their own
-    /// rather than slots among the textures, for the reason `texturearray.glsl` gives.
+    /// texture's shading map in a second array beside it at the same slot. A separate set from the
+    /// per-frame one, bound for the run. Update after bind, so a cell landing may write it while a
+    /// frame in flight is tracing through it. The maps are an array and not a buffer, because a
+    /// map is a grid the texture unit filters; an array of their own for the reason
+    /// `texturearray.glsl` gives.
     class TextureArray
     {
     public:
-        /// An array of `slots` textures, with `textures` written into the slots they name.
-        ///
-        /// **The length is the scene's table and not what was described**, because a slot the scene
-        /// has given back is described by nobody and still sits between two that are: sizing to the
-        /// descriptions would put every texture above it one place too low. It also keeps `getCount`
-        /// equal to the table an uploader compares against, so a trailing free slot does not read as
-        /// a scene this array has never seen.
-        ///
-        /// `textures` may be empty. The shader declares the array unsized and is told no count at
-        /// all: what keeps every read in range is that the array is as long as the scene's table,
-        /// and a slot nothing describes is one no material names — which is what
-        /// `descriptorBindingPartiallyBound` is required for.
-        ///
-        /// `graveyard` is where what this displaces goes: nothing at construction, but the path is
-        /// one.
+        /// An array of `slots` textures, with `textures` written into the slots they name. The
+        /// length is the scene's table and not what was described, because a slot the scene has
+        /// given back still sits between two that are. `textures` may be empty: a slot nothing
+        /// describes is one no material names, which is what `descriptorBindingPartiallyBound` is
+        /// required for.
         TextureArray(const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures,
             Graveyard& graveyard);
 
-        /// Writes each of `arrived` into the slot it names, leaving every other texture alone.
-        ///
-        /// **This is why the set is allocated at the maximum rather than at the scene's count.**
-        /// A cell arriving, or an actor walking into view with a body texture nobody has worn yet,
-        /// would otherwise mean the whole array made again — hundreds of images re-uploaded, an
-        /// order of magnitude over every acceleration structure in the scene.
-        ///
-        /// **By slot and not by appending**, because a slot a departing cell freed is taken over
-        /// wherever it sits. A slot at the end grows the array; one inside it replaces what was
-        /// there, and the image that was there goes when it is replaced and not when it was freed —
-        /// so no descriptor ever names an image that has been destroyed.
-        ///
-        /// What a slot held before goes to `graveyard`: a frame in flight may be reading it.
+        /// Writes each of `arrived` into the slot it names, leaving every other texture alone —
+        /// why the set is allocated at the maximum rather than at the scene's count. By slot and not
+        /// by appending, because a slot a departing cell freed is taken over wherever it sits. What
+        /// a slot held before goes to `graveyard`: a frame in flight may be reading it.
         void write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard);
 
-        /// Destroys the images of `slots`, leaving the slots themselves where they are.
-        ///
-        /// **The descriptors are left naming what has gone**, which the binding's
-        /// `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT` makes legal: a descriptor that is not
-        /// dynamically used need not be valid, and no live material names a freed slot. Writing a
-        /// stand-in over each would cost a descriptor write per slot to change nothing a shader can
-        /// observe.
-        ///
-        /// The array does not shrink even where the slots are its last: `getCount` is where an
-        /// append begins and the scene's table has not shrunk either.
+        /// Destroys the images of `slots`, leaving the slots themselves where they are. The
+        /// descriptors are left naming what has gone, which `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT`
+        /// makes legal: no live material names a freed slot. The array does not shrink, because the
+        /// scene's table has not either.
         void drop(std::span<const std::uint32_t> slots, Graveyard& graveyard);
 
-        TextureArray(const TextureArray&) = delete;
-        TextureArray& operator=(const TextureArray&) = delete;
-
-        VkDescriptorSetLayout getLayout() const { return mLayout.getHandle(); }
+        VkDescriptorSetLayout getLayout() const { return mLayout.get(); }
         VkDescriptorSet getSet() const { return mSet; }
 
         /// How long the array is, which is where an append begins and what an uploader compares a

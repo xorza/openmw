@@ -7,10 +7,10 @@
 #include <osg/Image>
 
 #include "alphaimage.hpp"
-#include "index.hpp"
 #include "mipchain.hpp"
-#include "pool.hpp"
-#include "preparedtexture.hpp"
+#include "prepared.hpp"
+#include "runs.hpp"
+#include "scratch.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"
 
@@ -22,19 +22,12 @@ namespace Resource
 namespace Rtx
 {
     class CompositeQueue;
-    struct SceneTables;
+    class SceneDesc;
 
-    /// Describes one image for a backend's uploader without copying a byte of it.
-    ///
-    /// Levels are **appended** to `levels`, and the returned description spans the ones it added —
-    /// so `levels` must outlive the upload and must not grow again while the description is alive.
-    /// `SceneTextures` is what reserves for that.
-    ///
-    /// The levels are the file's own, however few it carried. `MipChain` is what builds the rest,
-    /// and `SceneTextures` is what asks it to.
-    ///
-    /// Throws for a format Morrowind does not produce: inventing a conversion path for something no
-    /// content file contains is how a renderer grows code nothing runs.
+    /// Describes one image for a backend's uploader without copying a byte of it. Levels are
+    /// appended to `levels`, and the returned description spans the ones it added, so `levels`
+    /// must not grow again while the description is alive. The levels are the file's own;
+    /// `MipChain` builds the rest. Throws for a format Morrowind does not produce.
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
 
     /// The image at `path`, or null where nothing could be read there.
@@ -43,12 +36,9 @@ namespace Rtx
     /// files and a renderer that fell over on one would fall over on a cell.
     osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, VFS::Path::NormalizedView path);
 
-    /// Where images already described off the frame are found, by the image.
-    ///
-    /// **What lets an arrival's describe cost a lookup instead of a read.** The chain a file did
-    /// not carry and the shading estimate both read every texel, and a reader on its own thread has
-    /// done both for the images its models name; a describe asks here first, and reads only what
-    /// nobody read ahead of it.
+    /// Where images already described off the frame are found, by the image, so an arrival's
+    /// describe costs a lookup instead of reading every texel for the chain and the shading
+    /// estimate.
     class TextureReadings
     {
     public:
@@ -60,22 +50,11 @@ namespace Rtx
     };
 
     /// Every live texture a scene names, described, and the storage those descriptions point into.
-    ///
-    /// **Each description carries the slot it belongs to and there is not one per slot.** A slot the
-    /// scene has given back is passed over rather than described, so a backend writes what arrived
-    /// and leaves the rest of its array alone.
-    ///
-    /// **This is where the core stops and a backend starts.** `TextureData` carries spans rather
-    /// than bytes, so something has to own the decoded images and the level table while a backend
-    /// reads them; this is that, and it knows no graphics API. Which of them becomes a `VkImage` or
-    /// an `MTLTexture` is the backend's business and none of this one's.
-    ///
-    /// Non-copyable and non-movable because the descriptions point into its own vectors, and because
-    /// it is a member of whatever hands scenes over rather than a value passed about.
-    ///
-    /// **Held for the life of its owner, and cleared and refilled per arrival.** Every buffer here
-    /// settles at the busiest cell so far. Built and thrown away instead, it would grow every one
-    /// of them on the frame a cell arrives — which is the frame with the least room for that.
+    /// Each description carries the slot it belongs to and there is not one per slot: a slot the
+    /// scene has given back is passed over. `TextureData` carries spans rather than bytes, so this
+    /// owns the decoded images and the level table while a backend reads them, and knows no
+    /// graphics API. Non-copyable because the descriptions point into its own vectors; held for
+    /// the life of its owner and refilled per arrival, so every buffer settles at the busiest cell.
     class SceneTextures
     {
     public:
@@ -86,50 +65,31 @@ namespace Rtx
         SceneTextures(SceneTextures&&) = delete;
         SceneTextures& operator=(SceneTextures&&) = delete;
 
-        /// Resolves and describes every texture `scene` still names, in table order.
-        ///
-        /// For a backend building an array from nothing. The free slots are not among them, so the
-        /// array has to be sized to the scene's table rather than to what comes out of here.
+        /// Resolves and describes every texture `scene` still names, in table order, for a backend
+        /// building an array from nothing. The free slots are not among them.
         /// @param composites where a chunk's flattened ground comes from, or null for a caller
-        ///        that bakes none. A terrain slot the queue has no composite for is one whose bake
-        ///        has not finished, and it is passed over rather than described — nothing points at
-        ///        it until it has bytes.
+        ///        that bakes none. A terrain slot the queue has no composite for yet is passed over.
         /// @param readings where images read ahead of the frame are found, or null for a caller
         ///        with none: a doll, a map tile, the harness's own world.
-        void describeAll(const SceneTables& scene, Resource::ImageManager& images,
+        void describeAll(const SceneDesc& scene, Resource::ImageManager& images,
             const CompositeQueue* composites = nullptr, const TextureReadings* readings = nullptr);
 
-        /// The same, for `slots` and nothing else.
-        ///
-        /// **This is what stops a texture being decoded twice.** Describing reads the image and
-        /// estimating its shading reads every texel of it, and a renderer that already holds three
-        /// hundred needs neither done again for them — that repeated work is a real share of the
-        /// game's CPU, under `ShadingMap` and `ColourBlock::read`.
-        ///
-        /// **A list and not an offset**, because a slot a departing cell freed is taken over
-        /// wherever it sits: what arrived is no longer the end of the table. Each description
-        /// carries the slot it belongs to, and a slot that has since been given back is skipped.
-        void describe(const SceneTables& scene, Resource::ImageManager& images, std::span<const Index> slots,
+        /// The same, for `slots` and nothing else — what stops a texture being decoded and its
+        /// shading estimated twice. A list and not an offset, because a slot a departing cell freed
+        /// is taken over wherever it sits.
+        void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
             const CompositeQueue* composites = nullptr, const TextureReadings* readings = nullptr);
 
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }
 
-        /// How many named a file that could not be read, each logged with its path where it was
-        /// described.
-        ///
-        /// **Not zero in the game.** The harness names textures out of content files and every one
-        /// of them is a `.dds` on disk; a live scene graph also holds textures that were never files
-        /// — a terrain composite map rendered on the GPU, a render-to-texture target, something a
-        /// script made. Those have no bytes to upload and no business bringing the renderer down.
+        /// How many named a file that could not be read, each logged with its path. Not zero in the
+        /// game: a live scene graph holds textures that were never files, and those have no
+        /// business bringing the renderer down.
         std::uint32_t getUnreadable() const { return mUnreadable; }
 
     private:
         /// One slot `describe` decided to describe, and what resolving it found.
-        ///
-        /// **One row and not three arrays sharing an index.** A slot, its image and which bake it
-        /// is are decided together in one pass and read together in the next, and three vectors
-        /// pushed in step are a rule a reader has to keep rather than a shape that keeps it.
         struct Kept
         {
             Index mSlot = sNoIndex;
@@ -166,13 +126,9 @@ namespace Rtx
         /// alpha of the file its key names. `SpriteLightMap` says what one is.
         Pool<SpriteLightMap> mSpriteLights;
 
-        /// The levels the files did not carry, for the few textures that carry none.
-        ///
-        /// **A pool of the chains that were built, and not one entry a texture.** Five thousand of
-        /// Morrowind's textures carry a chain and a hundred and eighty-seven do not, so an entry a
-        /// texture would be a pool the size of the cell — and each entry keeping its room means
-        /// every position that ever held a 512-square chain keeps 1.4 MB for ever. Pooled instead,
-        /// it is as deep as the most chains one arrival built, which is a handful.
+        /// The levels the files did not carry, for the few textures that carry none — a hundred
+        /// and eighty-seven of Morrowind's five thousand. A pool of the chains that were built and
+        /// not one entry a texture, because an entry that ever held a 512-square chain keeps 1.4 MB.
         Pool<MipChain> mChains;
 
         /// Every slot of the scene's table, which is what a rebuild asks about. Held rather than

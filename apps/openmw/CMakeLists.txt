@@ -22,7 +22,7 @@ add_openmw_dir (mwrender
     creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation
     bulletdebugdraw globalmap characterpreview camera localmap terrainstorage
     renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectstorage groundcover
-    actorutil animationpriority bonegroup blendmask animblendcontroller stage renderer windowsetup
+    actorutil animationpriority bonegroup blendmask animblendcontroller renderer windowsetup
     screenshotwriter describeworld
     )
 
@@ -37,7 +37,7 @@ add_openmw_dir (mwrender/gl
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
 if (OPENMW_RTX)
     add_openmw_dir (mwrender/rtx
-        checks framecapture framespan raymask readworld rtxrenderer session stopwriter tracedview worldmirror
+        framecapture framereport readworld rtxrenderer session stopwriter tracedview worldmirror
         )
 endif()
 
@@ -174,7 +174,7 @@ if (OPENMW_RTX)
     # One macro gates every game-side reference to the ray tracing renderer.
     target_compile_definitions(openmw-lib PUBLIC OPENMW_RTX)
 
-    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-backends openmw-rtx-bench openmw-myguirtx)
+    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-vulkan openmw-rtx-bench openmw-myguirtx)
 endif()
 
     # Workaround necessary to ensure osgAnimation::MatrixLinearSampler dynamic casts work under Clang

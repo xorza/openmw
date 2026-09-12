@@ -11,6 +11,7 @@
 #include <osg/Texture2D>
 #include <osg/Uniform>
 
+#include <components/rtx/material.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/texmat.hpp>
 #include <components/sceneutil/texturetype.hpp>

@@ -9,8 +9,8 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
+#include "handles.hpp"
 #include "owned.hpp"
-#include "pipelinelayout.hpp"
 
 namespace Rtx
 {
@@ -77,9 +77,6 @@ namespace Rtx
         TracePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
             std::span<const VkDescriptorSetLayout> laterSets, const TraceShaders& shaders, std::string_view name,
             std::span<const std::uint32_t> specialization = {});
-
-        TracePipeline(const TracePipeline&) = delete;
-        TracePipeline& operator=(const TracePipeline&) = delete;
 
         VkPipeline getHandle() const { return mHandle.get(); }
 

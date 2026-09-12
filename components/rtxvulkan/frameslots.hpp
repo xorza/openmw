@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <span>
 
-#include <components/rtx/index.hpp>
-#include <components/rtx/slotset.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/slots.hpp>
 
 namespace Rtx
 {

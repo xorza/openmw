@@ -15,6 +15,7 @@
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
 #include <components/rtxvulkan/validation.hpp>
+#include <components/rtxvulkan/vulkanrenderer.hpp>
 
 namespace Rtx::Testing
 {
@@ -87,7 +88,7 @@ namespace Rtx::Testing
             // Every test resizes to what it needs; one texel is only what the first target costs.
             try
             {
-                return createRenderer(describeRenderer(1, 1, validation));
+                return std::make_unique<VulkanRenderer>(describeRenderer(1, 1, validation));
             }
             catch (const Unsupported& obstacle)
             {

@@ -51,12 +51,8 @@ set(RTX_SHADER_INCLUDE "${OpenMW_SOURCE_DIR}/components/rtx/shaders")
 add_subdirectory (components/rtx)
 add_subdirectory (components/rtxbench)
 
-if (OPENMW_RTX_VULKAN)
-    add_subdirectory (components/rtxvulkan)
-endif()
-
+add_subdirectory (components/rtxvulkan)
 add_subdirectory (components/myguirtx)
-add_subdirectory (components/rtxbackends)
 
 # The harness drives a real game, so there has to be one to drive. Its library is still built
 # without one, because `components-tests` reaches into it and needs no engine.

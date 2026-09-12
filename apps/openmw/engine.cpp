@@ -61,7 +61,6 @@
 
 #include "mwrender/renderer.hpp"
 #include "mwrender/renderingmanager.hpp"
-#include "mwrender/stage.hpp"
 #include "mwrender/vismask.hpp"
 
 #include "mwclass/classes.hpp"
@@ -93,7 +92,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
 {
     const osg::Timer_t frameStart = mRenderer->getStartTick();
     const osg::Timer* const timer = osg::Timer::instance();
-    osg::Stats* const stats = &mStage->getStats();
+    osg::Stats* const stats = &mRenderer->getStats();
 
     mEnvironment.setFrameDuration(frametime);
 
@@ -329,8 +328,6 @@ OMW::Engine::~Engine()
     mUnrefQueue = nullptr;
     mWorkQueue = nullptr;
 
-    mStage = nullptr;
-
     mResourceSystem.reset();
 
     mEncoder = nullptr;
@@ -462,12 +459,12 @@ void OMW::Engine::prepareEngine()
         stereo->disableStereoForNode(guiRoot);
     rootNode->addChild(guiRoot);
 
-    mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, *mStage, guiRoot, mResourceSystem.get(),
+    mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, guiRoot, mResourceSystem.get(),
         mWorkQueue.get(), mCfgMgr.getLogPath(), mScriptConsoleMode, mTranslationDataStorage, mEncoding, mExportFonts,
         Version::getOpenmwVersionDescription(), mCfgMgr);
     mEnvironment.setWindowManager(*mWindowManager);
 
-    mInputManager = std::make_unique<MWInput::InputManager>(mRenderer->getWindow(), *mRenderer, *mStage, keybinderUser,
+    mInputManager = std::make_unique<MWInput::InputManager>(mRenderer->getWindow(), *mRenderer, keybinderUser,
         keybinderUserExists, userGameControllerdb, gameControllerdb, mGrab);
     mEnvironment.setInputManager(*mInputManager);
 
@@ -544,7 +541,7 @@ void OMW::Engine::prepareEngine()
     }
     listener->loadingOff();
 
-    mWorld->init(mMaxRecastLogLevel, *mRenderer, *mStage, std::move(rootNode), mWorkQueue.get(), *mUnrefQueue);
+    mWorld->init(mMaxRecastLogLevel, *mRenderer, std::move(rootNode), mWorkQueue.get(), *mUnrefQueue);
     mEnvironment.setWorldScene(mWorld->getWorldScene());
     mWorld->setupPlayer();
     mWorld->setRandomSeed(mRandomSeed);
@@ -591,7 +588,6 @@ void OMW::Engine::go()
     // Create encoder
     mEncoder = std::make_unique<ToUTF8::Utf8Encoder>(mEncoding);
 
-    mStage = std::make_unique<MWRender::Stage>();
     mWorkQueue = new SceneUtil::WorkQueue(Settings::cells().mPreloadNumThreads);
     // **Decided once, before the window exists, and never revisited.** `-DOPENMW_RTX=ON` decides
     // whether the ray tracer is built; this decides whether it runs.
@@ -600,7 +596,6 @@ void OMW::Engine::go()
 
     mRenderer = MWRender::createRenderer(wanted,
         MWRender::RendererSpec{
-            .mStage = *mStage,
             .mWorkQueue = *mWorkQueue,
             .mResourceDir = mResDir,
             .mScreenshotPath = mCfgMgr.getScreenshotPath(),
@@ -681,7 +676,7 @@ void OMW::Engine::go()
 
         mRenderer->advance(timeManager.getRenderingSimulationTime());
 
-        const unsigned frameNumber = mStage->getFrameStamp().getFrameNumber();
+        const unsigned frameNumber = mRenderer->getFrameStamp().getFrameNumber();
 
         if (!frame(frameNumber, static_cast<float>(dt)))
         {
@@ -704,7 +699,7 @@ void OMW::Engine::go()
             {
                 // Viewer frame number can be different from frameNumber because of loading screens which render new
                 // frames inside a simulation frame.
-                const unsigned currentFrameNumber = mStage->getFrameStamp().getFrameNumber();
+                const unsigned currentFrameNumber = mRenderer->getFrameStamp().getFrameNumber();
                 for (unsigned i = frameNumber; i <= currentFrameNumber; ++i)
                     mRenderer->reportStats(i - statsReportDelay, stats);
             }

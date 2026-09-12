@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "distantland.hpp"
+#include "fogbuilder.hpp"
 
 namespace Rtx
 {

@@ -49,9 +49,6 @@ namespace Rtx
         PipelineCache(VkDevice device, const VkPhysicalDeviceProperties& properties, const PipelineCacheSpec& spec);
         ~PipelineCache();
 
-        PipelineCache(const PipelineCache&) = delete;
-        PipelineCache& operator=(const PipelineCache&) = delete;
-
         /// Null when the cache could not be created, which every `vkCreate*Pipelines` accepts as
         /// "no cache" — so a caller passes this without asking whether it worked.
         VkPipelineCache getHandle() const { return mHandle.get(); }

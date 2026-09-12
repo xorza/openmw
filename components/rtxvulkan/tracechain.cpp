@@ -4,15 +4,14 @@
 #include <cassert>
 #include <cmath>
 
-#include <components/rtx/channel.hpp>
+#include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/composite.h>
 
 #include "compositepass.hpp"
 #include "gputimer.hpp"
 #include "placing.hpp"
 #include "scenebuffers.hpp"
-#include "spritebinpass.hpp"
-#include "spriteshadepass.hpp"
+#include "spritepasses.hpp"
 #include "tracerecording.hpp"
 #include "wavepass.hpp"
 

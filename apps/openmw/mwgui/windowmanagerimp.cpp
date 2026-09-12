@@ -64,7 +64,6 @@
 #include "../mwbase/world.hpp"
 
 #include "../mwrender/renderer.hpp"
-#include "../mwrender/stage.hpp"
 
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/class.hpp"
@@ -148,7 +147,7 @@ namespace MWGui
         }
     }
 
-    WindowManager::WindowManager(MWRender::Renderer& renderer, MWRender::Stage& stage, osg::Group* guiRoot,
+    WindowManager::WindowManager(MWRender::Renderer& renderer, osg::Group* guiRoot,
         Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue, const std::filesystem::path& logpath,
         bool consoleOnlyScripts, Translation::Storage& translationDataStorage, ToUTF8::FromType encoding,
         bool exportFonts, const std::string& versionDescription, Files::ConfigurationManager& cfgMgr)
@@ -156,7 +155,6 @@ namespace MWGui
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
         , mRenderer(renderer)
-        , mStage(stage)
         , mConsoleOnlyScripts(consoleOnlyScripts)
         , mCurrentModals()
         , mHud(nullptr)
@@ -261,7 +259,7 @@ namespace MWGui
         mKeyboardNavigation->setEnabled(keyboardNav);
         Gui::ImageButton::setDefaultNeedKeyFocus(keyboardNav);
 
-        auto loadingScreen = std::make_unique<LoadingScreen>(mResourceSystem, mRenderer, mStage);
+        auto loadingScreen = std::make_unique<LoadingScreen>(mResourceSystem, mRenderer);
         mLoadingScreen = loadingScreen.get();
         mWindows.push_back(std::move(loadingScreen));
 
@@ -329,7 +327,7 @@ namespace MWGui
         mGuiModeStates[GM_MainMenu] = GuiModeState(menu.get());
         mWindows.push_back(std::move(menu));
 
-        mLocalMapRender = std::make_unique<MWRender::LocalMap>(mRenderer, mStage.getSceneRoot());
+        mLocalMapRender = std::make_unique<MWRender::LocalMap>(mRenderer, mRenderer.getSceneRoot());
         auto map = std::make_unique<MapWindow>(mCustomMarkers, mDragAndDrop.get(), mLocalMapRender.get(), mWorkQueue);
         mMap = map.get();
         mWindows.push_back(std::move(map));
@@ -796,7 +794,7 @@ namespace MWGui
                 // at the time this function is called we are in the middle of a frame,
                 // so out of order calls are necessary to get a correct frameNumber for the next frame.
                 // refer to the advance() and frame() order in Engine::go()
-                mRenderer.advance(mStage.getFrameStamp().getSimulationTime());
+                mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
 
                 frameRateLimiter.limit();
             }
@@ -1447,12 +1445,12 @@ namespace MWGui
 
     void WindowManager::setCullMask(uint32_t mask)
     {
-        mStage.getCamera().setCullMask(mask);
+        mRenderer.getCamera().setCullMask(mask);
 
         // We could check whether stereo is enabled here, but these methods are
         // trivial and have no effect in mono or multiview so just call them regardless.
-        mStage.getCamera().setCullMaskLeft(mask);
-        mStage.getCamera().setCullMaskRight(mask);
+        mRenderer.getCamera().setCullMaskLeft(mask);
+        mRenderer.getCamera().setCullMaskRight(mask);
     }
 
     void WindowManager::popGuiMode(bool forceExit)
@@ -2138,7 +2136,7 @@ namespace MWGui
             // at the time this function is called we are in the middle of a frame,
             // so out of order calls are necessary to get a correct frameNumber for the next frame.
             // refer to the advance() and frame() order in Engine::go()
-            mRenderer.advance(mStage.getFrameStamp().getSimulationTime());
+            mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
 
             frameRateLimiter.limit();
         }

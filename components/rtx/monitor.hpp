@@ -33,9 +33,6 @@ namespace Rtx
     public:
         Monitor() = default;
 
-        Monitor(const Monitor&) = delete;
-        Monitor& operator=(const Monitor&) = delete;
-
         /// Runs `write` under the lock and wakes nobody, answering with whatever it answered.
         ///
         /// **By value**, so a caller cannot hand back a reference into state the lock was what

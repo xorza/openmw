@@ -13,7 +13,6 @@
 namespace MWRender
 {
     class Renderer;
-    class Stage;
 }
 
 namespace Resource
@@ -28,7 +27,7 @@ namespace MWGui
     class LoadingScreen : public WindowBase, public Loading::Listener
     {
     public:
-        LoadingScreen(Resource::ResourceSystem* resourceSystem, MWRender::Renderer& renderer, MWRender::Stage& stage);
+        LoadingScreen(Resource::ResourceSystem* resourceSystem, MWRender::Renderer& renderer);
         virtual ~LoadingScreen();
 
         /// Overridden from Loading::Listener, see the Loading::Listener documentation for usage details
@@ -51,7 +50,6 @@ namespace MWGui
 
         Resource::ResourceSystem* mResourceSystem;
         MWRender::Renderer& mRenderer;
-        MWRender::Stage& mStage;
 
         double mTargetFrameRate;
 

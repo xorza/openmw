@@ -85,7 +85,6 @@
 #include "recastmesh.hpp"
 #include "renderer.hpp"
 #include "sceneframe.hpp"
-#include "stage.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"
 #include "vismask.hpp"
@@ -194,13 +193,12 @@ namespace MWRender
         Resource::ResourceSystem* mResourceSystem;
     };
 
-    RenderingManager::RenderingManager(Renderer& renderer, Stage& stage, osg::ref_ptr<osg::Group> rootNode,
+    RenderingManager::RenderingManager(Renderer& renderer, osg::ref_ptr<osg::Group> rootNode,
         Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue,
         DetourNavigator::Navigator& navigator, const MWWorld::GroundcoverStore& groundcoverStore,
         SceneUtil::UnrefQueue& unrefQueue)
         : mSkyBlending(Settings::fog().mSkyBlending)
         , mRenderer(renderer)
-        , mStage(stage)
         , mRootNode(rootNode)
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
@@ -345,7 +343,7 @@ namespace MWRender
         if (PostProcessor* postProcessor = mRenderer.getPostProcessor())
             postProcessor->setupTransparentBin(mWater.get());
 
-        mCamera = std::make_unique<Camera>(&mStage.getCamera());
+        mCamera = std::make_unique<Camera>(&mRenderer.getCamera());
 
         mSunLight = new SceneUtil::Light;
         mSunLight->setDiffuse(osg::Vec4f(0, 0, 0, 1));
@@ -368,7 +366,7 @@ namespace MWRender
         mFog = std::make_unique<FogManager>();
 
         mSky = std::make_unique<SkyManager>(
-            sceneRoot, mRootNode, &mStage.getCamera(), resourceSystem->getSceneManager(), mSkyBlending);
+            sceneRoot, mRootNode, &mRenderer.getCamera(), resourceSystem->getSceneManager(), mSkyBlending);
         if (mSkyBlending)
         {
             int skyTextureUnit = mResourceSystem->getSceneManager()->getShaderManager().reserveGlobalTextureUnits(
@@ -382,13 +380,13 @@ namespace MWRender
             cullingMode &= ~(osg::CullStack::SMALL_FEATURE_CULLING);
         else
         {
-            mStage.getCamera().setSmallFeatureCullingPixelSize(Settings::camera().mSmallFeatureCullingPixelSize);
+            mRenderer.getCamera().setSmallFeatureCullingPixelSize(Settings::camera().mSmallFeatureCullingPixelSize);
             cullingMode |= osg::CullStack::SMALL_FEATURE_CULLING;
         }
 
-        mStage.getCamera().setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
-        mStage.getCamera().setCullingMode(cullingMode);
-        mStage.getCamera().setName(Constants::SceneCamera);
+        mRenderer.getCamera().setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
+        mRenderer.getCamera().setCullingMode(cullingMode);
+        mRenderer.getCamera().setName(Constants::SceneCamera);
 
         auto mask = ~(Mask_UpdateVisitor | Mask_SimpleWater);
         MWBase::Environment::get().getWindowManager()->setCullMask(mask);
@@ -399,7 +397,7 @@ namespace MWRender
         mStateUpdater->setFogEnd(mViewDistance);
 
         // Hopefully, anything genuinely requiring the default alpha func of GL_ALWAYS explicitly sets it
-        mStage.getSceneRoot().getOrCreateStateSet()->setAttribute(Shader::RemovedAlphaFunc::getInstance(GL_ALWAYS));
+        mRenderer.getSceneRoot().getOrCreateStateSet()->setAttribute(Shader::RemovedAlphaFunc::getInstance(GL_ALWAYS));
         // The transparent renderbin sets alpha testing on because that was faster on old GPUs. It's now slower and
         // breaks things.
         mRootNode->getOrCreateStateSet()->setMode(GL_ALPHA_TEST, osg::StateAttribute::OFF);
@@ -412,16 +410,16 @@ namespace MWRender
             mRootNode->getOrCreateStateSet()->setAttributeAndModes(clipcontrol, osg::StateAttribute::ON);
         }
 
-        SceneUtil::initTexMatForStateSet(*mStage.getSceneRoot().getOrCreateStateSet());
+        SceneUtil::initTexMatForStateSet(*mRenderer.getSceneRoot().getOrCreateStateSet());
 
         mRootNode->getOrCreateStateSet()->setMode(
             GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::PROTECTED | osg::StateAttribute::OVERRIDE);
 
-        SceneUtil::setCameraClearDepth(&mStage.getCamera());
+        SceneUtil::setCameraClearDepth(&mRenderer.getCamera());
 
         updateProjectionMatrix();
 
-        mStage.getCamera().setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        mRenderer.getCamera().setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     }
 
     RenderingManager::~RenderingManager()
@@ -480,7 +478,7 @@ namespace MWRender
 
     double RenderingManager::getReferenceTime() const
     {
-        return mStage.getFrameStamp().getReferenceTime();
+        return mRenderer.getFrameStamp().getReferenceTime();
     }
 
     SceneUtil::LightManager* RenderingManager::getLightRoot()
@@ -758,7 +756,7 @@ namespace MWRender
         mStateUpdater->setUnderwaterFogEnd(fogUnderwaterEnd);
         mStateUpdater->setUnderwaterFogColor(fogUnderwaterColor);
 
-        mStage.getCamera().setClearColor(isUnderwater ? fogUnderwaterColor : fogColor);
+        mRenderer.getCamera().setClearColor(isUnderwater ? fogUnderwaterColor : fogColor);
     }
 
     void RenderingManager::updatePlayerPtr(const MWWorld::Ptr& ptr)
@@ -834,7 +832,8 @@ namespace MWRender
     {
         if (bb.valid())
         {
-            const osg::Matrix viewProj = mStage.getCamera().getViewMatrix() * mStage.getCamera().getProjectionMatrix();
+            const osg::Matrix viewProj
+                = mRenderer.getCamera().getViewMatrix() * mRenderer.getCamera().getProjectionMatrix();
             const osg::Vec3f worldPoint((bb.xMin() + bb.xMax()) * 0.5f, (bb.yMin() + bb.yMax()) * 0.5f, bb.zMax());
             const osg::Vec4f clipPoint = osg::Vec4f(worldPoint, 1.0f) * viewProj;
             if (clipPoint.w() > 0.f)
@@ -1009,8 +1008,8 @@ namespace MWRender
             }
         }
 
-        mIntersectionVisitor->setTraversalNumber(mStage.getFrameStamp().getFrameNumber());
-        mIntersectionVisitor->setFrameStamp(&mStage.getFrameStamp());
+        mIntersectionVisitor->setTraversalNumber(mRenderer.getFrameStamp().getFrameNumber());
+        mIntersectionVisitor->setFrameStamp(&mRenderer.getFrameStamp());
         mIntersectionVisitor->setIntersector(intersector);
 
         unsigned int mask = ~0u;
@@ -1047,14 +1046,14 @@ namespace MWRender
 
         osg::Vec3d dist(0.f, 0.f, -maxDistance);
 
-        dist = dist * mStage.getCamera().getProjectionMatrix();
+        dist = dist * mRenderer.getCamera().getProjectionMatrix();
 
         osg::Vec3d end = intersector->getEnd();
         end.z() = dist.z();
         intersector->setEnd(end);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        mStage.getCamera().accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain));
+        mRenderer.getCamera().accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain));
 
         return getIntersectionResult(intersector, mIntersectionVisitor);
     }
@@ -1210,7 +1209,7 @@ namespace MWRender
         }
 
         // We always set the cameras projection matrix to the un-reversed variant for correct frustum culling.
-        mStage.getCamera().setProjectionMatrix(unreversedProjectionMatrix);
+        mRenderer.getCamera().setProjectionMatrix(unreversedProjectionMatrix);
 
         mPerViewUniformStateUpdater->setProjectionMatrix(projectionMatrix);
 
@@ -1328,8 +1327,8 @@ namespace MWRender
 
     void RenderingManager::reportStats() const
     {
-        osg::Stats* stats = &mStage.getStats();
-        unsigned int frameNumber = mStage.getFrameStamp().getFrameNumber();
+        osg::Stats* stats = &mRenderer.getStats();
+        unsigned int frameNumber = mRenderer.getFrameStamp().getFrameNumber();
         if (stats->collectStats("resource"))
         {
             mTerrain->reportStats(frameNumber, stats);
@@ -1404,7 +1403,7 @@ namespace MWRender
                     mRenderer.suspendDraw();
 
                     visitor.setDoThreadUnsafeOps(true);
-                    mStage.getSceneRoot().accept(visitor);
+                    mRenderer.getSceneRoot().accept(visitor);
                     lightManagersUpdated = true;
 
                     auto defines = mResourceSystem->getSceneManager()->getShaderManager().getGlobalDefines();
@@ -1419,7 +1418,7 @@ namespace MWRender
                 }
 
                 if (!lightManagersUpdated)
-                    mStage.getSceneRoot().accept(visitor);
+                    mRenderer.getSceneRoot().accept(visitor);
             }
             else if (it->first == "Shadows")
             {
@@ -1599,7 +1598,7 @@ namespace MWRender
     void RenderingManager::exportSceneGraph(
         const MWWorld::Ptr& ptr, const std::filesystem::path& filename, const std::string& format)
     {
-        osg::Node* node = &mStage.getSceneRoot();
+        osg::Node* node = &mRenderer.getSceneRoot();
         if (!ptr.isEmpty())
             node = ptr.getRefData().getBaseNode();
 

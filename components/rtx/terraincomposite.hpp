@@ -13,20 +13,13 @@
 
 namespace Rtx
 {
-    /// How large a baked composite is, square.
-    ///
-    /// The rasterizer's `composite map resolution` in all but name, and its default; stated here
-    /// rather than read from it because this path forces that setting past every chunk and would be
-    /// taking a number from a knob it has just declared meaningless.
+    /// How large a baked composite is, square: the rasterizer's `composite map resolution`
+    /// default, stated here because this path forces that setting past every chunk.
     inline constexpr std::uint32_t sCompositeExtent = 512;
 
-    /// How much painted light a bake divides out.
-    ///
-    /// **Full, because that is what every frame asks for.** The strength is a frame constant the
-    /// shader reads, and a composite cannot be corrected later — the estimate repeats with a
-    /// texture's tiling and a composite has none. `--delight` therefore reaches the near field and
-    /// not distant ground, which is a diagnostic knob telling half a story rather than a wrong
-    /// picture.
+    /// How much painted light a bake divides out: full, because a composite cannot be corrected
+    /// later — the estimate repeats with a texture's tiling and a composite has none — so
+    /// `--delight` reaches the near field and not distant ground.
     inline constexpr float sCompositeDelight = 1.0f;
 
     /// One layer of the stack a chunk's ground is drawn from, as a bake needs it.
@@ -54,13 +47,8 @@ namespace Rtx
         osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
     };
 
-    /// One level of a layer's diffuse, decoded to linear once.
-    ///
-    /// **DecodedLevel up front rather than a block per tap.** The level a bake reads is the one whose
-    /// texels are the size of one composite texel, so for ground tiling sixty times across a chunk
-    /// it is a handful of texels square — while the composite takes a quarter of a million samples
-    /// from it. Reading a compressed block at every tap doubles what a chunk costs; reading each
-    /// level once makes every tap an array lookup and changes not one texel of the answer.
+    /// One level of a layer's diffuse, decoded to linear once: the level a bake reads is a handful
+    /// of texels square, and the composite takes a quarter of a million samples from it.
     struct DecodedLevel
     {
         std::vector<osg::Vec3f> mTexels;
@@ -95,15 +83,8 @@ namespace Rtx
     };
 
     /// Everything a bake writes that is not its answer, held by whoever bakes rather than made per
-    /// chunk.
-    ///
-    /// **A bake's working set is larger than what it produces.** The sum alone is one `osg::Vec3f` a
-    /// texel — three megabytes at `sCompositeExtent` — and a nine-layer stack decodes eighteen
-    /// levels beside it. A crossing queues dozens of chunks, so making that per chunk is the same
-    /// megabytes taken and given back dozens of times over a load.
-    ///
-    /// **One thread's, and it is the caller that says which.** `CompositeQueue` holds one on its
-    /// baker and hands it to every bake; nothing here is guarded, because nothing else may touch it.
+    /// chunk: the sum alone is three megabytes at `sCompositeExtent`, and a crossing queues dozens
+    /// of chunks. One thread's, unguarded, because `CompositeQueue` holds one on each baker.
     struct CompositeScratch
     {
         /// One per layer of the deepest stack met so far, each keeping the levels it decoded. Never
@@ -122,44 +103,24 @@ namespace Rtx
         std::vector<std::uint8_t> mCovered;
     };
 
-    /// A chunk's whole layer stack, flattened into one texture.
-    ///
-    /// **The composite is the shading LOD and not only a way around a render target.** A distant
-    /// chunk covers many cells and carries every ground type in them; shading it live is a mask
-    /// lookup and a texture fetch per layer per hit, and distant hits are most of the pixels once
-    /// there is distance to look at. This turns that into one fetch, and the near field keeps the
-    /// live stack where the layer count is small and the sharpness is worth paying for.
-    ///
-    /// **On the CPU and in the core**, so it is written once for both backends, needs no device to
-    /// test, and reaches the uploader as the same `TextureData` a file does. The GL renderer answers
-    /// the same question with `Terrain::CompositeMapRenderer`, which this path has no context for.
-    ///
-    /// **Everything is summed in light.** Each layer's texel is decoded, has its painted light
-    /// divided out, is weighted by its mask and only then re-encoded — the same order the shader
-    /// reaches at a hit, and the reason a half-and-half blend comes out at 188 rather than 128.
-    ///
-    /// **Whole, and never on the frame.** A chunk takes tens of milliseconds to flatten — nine
-    /// ground types apiece against a mask 34 across — and that is a dropped frame however good the
-    /// average is. Sliced across frames it is a cost on every frame for seconds after a load
-    /// instead, which is the other way of being on the frame. So `CompositeQueue` builds one on a
-    /// thread of its own and hands the frame the bytes; nothing here is shaped for stopping part
-    /// way, and the spans a caller passes are read inside the constructor and never again.
-    ///
-    /// Every level is decoded once rather than a compressed block at every tap, and the stack is
-    /// walked a layer and a row at a time rather than a texel at a time. What is left is a quarter
-    /// of a million output texels, each summing the ground types whose masks reach it.
+    /// A chunk's whole layer stack, flattened into one texture — the shading LOD: a distant chunk
+    /// carries every ground type in many cells, and distant hits are most of the pixels. On the
+    /// CPU and in the core, so it reaches the uploader as the same `TextureData` a file does; the
+    /// GL renderer's `Terrain::CompositeMapRenderer` needs a context this path has not got.
+    /// Everything is summed in light — decoded, delighted, weighted, then re-encoded, the order the
+    /// shader reaches at a hit, and why a half-and-half blend comes out at 188 rather than 128.
+    /// Whole and never on the frame: a chunk takes tens of milliseconds, so `CompositeQueue` builds
+    /// one on a thread of its own, and the spans a caller passes are read inside the constructor
+    /// and never again.
     class TerrainComposite
     {
     public:
         /// Flattens the stack at `extent` square: every texel summed and the chain built.
         ///
         /// @param extent a power of two, so the chain halves exactly and ends at one texel.
-        /// @param delight how much of each layer's painted light to divide out, matching the frame
-        ///        constant the shader reads. **Baked in rather than left to the shader**, because
-        ///        the estimate repeats with the texture's tiling and the composite has none: this is
-        ///        the last point at which the tiling is still known.
-        /// @param scratch what the bake works in, which is the caller's so that a queue of them
-        ///        pays for it once. Cleared and refilled here, and read by nothing afterwards.
+        /// @param delight how much of each layer's painted light to divide out, baked in because
+        ///        this is the last point at which the texture's tiling is still known.
+        /// @param scratch what the bake works in, the caller's so that a queue of them pays once.
         TerrainComposite(
             std::span<const CompositeLayer> layers, std::uint32_t extent, float delight, CompositeScratch& scratch);
 

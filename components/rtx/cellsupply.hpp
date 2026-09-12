@@ -6,9 +6,8 @@
 
 #include <osg/Vec2i>
 
-#include "cellworld.hpp"
 #include "monitor.hpp"
-#include "ownedby.hpp"
+#include "residency.hpp"
 #include "worker.hpp"
 
 namespace Rtx
@@ -90,9 +89,6 @@ namespace Rtx
 
         /// Stops the thread. A cell in flight is finished and dropped rather than waited out.
         ~CellSupply();
-
-        CellSupply(const CellSupply&) = delete;
-        CellSupply& operator=(const CellSupply&) = delete;
 
         /// Whether this is already reading `world`, so a caller need not let go of what it holds.
         bool isReading(const CellWorld& world) const { return mWorld == world; }

@@ -15,9 +15,9 @@ namespace Rtx
     namespace
     {
         /// Hands over the texture slots the scene has given up, and says how many there were.
-        std::size_t dropFreed(SceneSink& renderer, SceneSlot slot, const SceneTables& scene)
+        std::size_t dropFreed(Renderer& renderer, SceneSlot slot, const SceneDesc& scene)
         {
-            const std::span<const Index> freed = scene.mTextures.getFreed();
+            const std::span<const Index> freed = scene.textures().getFreed();
             if (!freed.empty())
                 renderer.dropTextures(slot, freed);
 
@@ -25,7 +25,7 @@ namespace Rtx
         }
     }
 
-    SceneUpload SceneUploader::hand(SceneSink& renderer, const Handing& handing)
+    SceneUpload SceneUploader::hand(Renderer& renderer, const Handing& handing)
     {
         const SceneSlot slot = handing.mSlot;
         SceneDesc& scene = handing.mScene;
@@ -68,7 +68,7 @@ namespace Rtx
         timed.at(Timing::Bake) = since(began, gathered);
 
         // **After the two calls above, because both rewrite what the spans reach.**
-        const SceneTables tables = scene.getTables();
+        const SceneDesc& tables = scene;
 
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
@@ -115,7 +115,7 @@ namespace Rtx
             if (!mine)
                 mTextures.describeAll(tables, images, composites, readings);
             else
-                mTextures.describe(tables, images, tables.mTextures.getArrived(), composites, readings);
+                mTextures.describe(tables, images, tables.textures().getArrived(), composites, readings);
 
             const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();
             timed.at(Timing::Textures) = since(gathered, described);

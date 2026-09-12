@@ -8,7 +8,7 @@
 #include <osg/Vec3ui>
 #include <osg/Vec4f>
 
-#include "runlist.hpp"
+#include "runs.hpp"
 
 namespace Rtx
 {

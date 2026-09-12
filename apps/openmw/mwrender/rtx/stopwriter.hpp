@@ -9,8 +9,8 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
-#include "checks.hpp"
 #include "framereport.hpp"
+#include "session.hpp"
 
 namespace osg
 {

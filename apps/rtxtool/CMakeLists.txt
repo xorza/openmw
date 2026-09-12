@@ -1,23 +1,12 @@
 set(RTXTOOL_FILES
-    benchsuite.cpp
-    benchsuite.hpp
-    parsefloat.cpp
-    parsefloat.hpp
-    framerequest.hpp
+    run.cpp
+    run.hpp
     options.cpp
     options.hpp
-    ownconfig.cpp
-    ownconfig.hpp
-    validationchoice.cpp
-    validationchoice.hpp
     verbs.cpp
     verbs.hpp
     verify.cpp
     verify.hpp
-    viewpoint.cpp
-    viewpoint.hpp
-    views.cpp
-    views.hpp
 )
 
 source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} main.cpp)
@@ -29,7 +18,6 @@ target_link_libraries(openmw-rtxtool-lib
     Boost::program_options
     SDL2::SDL2
     openmw-rtx
-    openmw-rtx-backends
     openmw-rtx-bench
     openmw-rtx-vulkan
     components

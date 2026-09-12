@@ -11,7 +11,7 @@
 
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/slot.hpp>
-#include <components/rtx/slotpool.hpp>
+#include <components/rtx/slots.hpp>
 
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -24,81 +24,47 @@ namespace Rtx
     class Device;
     class Graveyard;
 
-    /// Every texture the GUI draws with, addressed by slot.
+    /// Every texture the GUI draws with, addressed by slot — a font atlas, a skin sheet, a map, a
+    /// video frame — nothing like the scene's bindless array. A slot a texture gave back is taken
+    /// over before the table grows (`Rtx::SlotPool`).
     ///
-    /// **Not the scene's bindless array, and deliberately nothing like it.** That one is indexed by
-    /// material, sized to the world and appended to when a cell arrives; these are a font atlas, a
-    /// skin sheet, a map and a video frame — a handful of images with nothing to do with what is
-    /// being traced, arriving and leaving as windows open and close.
-    ///
-    /// **A slot a texture gave back is taken over before the table grows**, so a session of opening
-    /// and closing menus does not walk the table upwards forever. Which one it takes is
-    /// `Rtx::SlotPool`'s answer, the same one every table of slots in this renderer gives.
-    ///
-    /// **Nothing here waits on the frame path.** Making a texture and writing one are recorded into
-    /// a batch and handed to the pool, to go ahead of whatever submits next — the interface's own
-    /// draw, a picture traced into a slot, a read back. Every reader needs these copies *ordered*
-    /// before it, which a handed-over batch is; having them *finished* is what a submit and a fence
-    /// of this class's own would buy, and nobody asked for it. It is not cheap either: the queue is
-    /// one queue and the frame went onto it a moment ago, so waiting here is waiting for the whole
-    /// traced frame, on every frame that wrote a texture at all. `finish` is the exception and says
-    /// what it is for.
-    ///
-    /// **Nothing outside reaches an image, and that is what makes the layout sayable.** A texture
-    /// rests in `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` between the calls here, which is a rule
-    /// only worth stating if the one path that writes a texture with device commands — a traced
-    /// view — goes through `writeWith` rather than transitioning it by hand.
+    /// Nothing here waits on the frame path: making a texture and writing one are recorded into a
+    /// batch and handed to the pool, to go ahead of whatever submits next. Every reader needs these
+    /// copies *ordered* before it, and waiting for them *finished* would be waiting for the whole
+    /// traced frame on every frame that wrote a texture; `finish` is the exception. A texture rests
+    /// in `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` between the calls here, which is why the one
+    /// path that writes one with device commands goes through `writeWith`.
     class GuiTextures
     {
     public:
         GuiTextures(const Device& device, CommandPool& pool);
         ~GuiTextures();
 
-        GuiTextures(const GuiTextures&) = delete;
-        GuiTextures& operator=(const GuiTextures&) = delete;
-
         /// A slot holding a texture of this size, cleared to nothing.
         GuiSlot add(std::uint32_t width, std::uint32_t height);
 
-        /// Bytes for a rectangle of a texture, to be filled and then handed back with `send`.
-        ///
-        /// **The memory the copy will read, so that filling it is the only time the pixels are
-        /// written.** MyGUI's own interface is a buffer lent out and taken back filled, and a
-        /// backend that lends one of its own puts a copy in front of every write — a video frame
-        /// then crosses main memory twice on its way to a device that could have been written into
-        /// once.
-        ///
-        /// The rectangle must lie inside the texture, and only one may be lent at a time. Both are
-        /// contracts and so asserts. The span is `height` rows of `width` pixels, four bytes each,
-        /// tightly packed, row zero first; it stops being writable at `send`.
-        ///
-        /// **Write it and do not read it back.** This is host-visible device memory, which is write
-        /// combined: filling it in order costs what a copy into main memory costs, and reading a
-        /// byte of it back costs far more than either.
+        /// Bytes for a rectangle of a texture, to be filled and then handed back with `send` — the
+        /// memory the copy will read, so that a video frame does not cross main memory twice. The
+        /// rectangle must lie inside the texture, and only one may be lent at a time; both are
+        /// asserts. The span is `height` rows of `width` pixels, four bytes each, tightly packed,
+        /// row zero first, and stops being writable at `send`. Write it and do not read it back: it
+        /// is write-combined memory.
         std::span<std::uint8_t> lend(GuiSlot slot, const GuiRegion& region);
 
         /// Records the copy of what `lend` handed out. Nothing has run when this returns.
         void send(GuiSlot slot);
 
-        /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first.
-        ///
-        /// `rgba` is the region's own rows and not slices of a wider image. For a caller that
-        /// already holds the pixels; one that is about to produce them wants `lend` instead, and
-        /// this is that pair with a copy in front of it.
+        /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first. `rgba` is
+        /// the region's own rows. `lend` and `send` with a copy in front of them.
         void write(GuiSlot slot, const GuiRegion& region, std::span<const std::uint8_t> rgba);
 
         void drop(GuiSlot slot);
 
         /// Opens an interface frame: hands `kept` every texture given back since the last one, and
-        /// takes the staging that frame's fence has just freed.
-        ///
-        /// **A texture is given back a frame after it was last drawn with, and that draw is still on
-        /// the queue.** The interface is submitted without a wait and its fence is read two frames
-        /// later, so nothing here can say when a view stops being read — the graveyard of the frame
-        /// being recorded is what knows, exactly as it does for everything else on the frame path.
-        ///
-        /// **Called once per interface frame, after that frame's fence and before anything is
-        /// handed over.** The staging turns on the same signal, and `mStaging` says why.
+        /// takes the staging that frame's fence has just freed. A texture is given back a frame
+        /// after it was last drawn with, and that draw is still on the queue, so the graveyard of
+        /// the frame being recorded is what knows when it stops being read. Once per interface
+        /// frame, after that frame's fence and before anything is handed over.
         void startFrame(Graveyard& kept);
 
         /// What the pass samples, or null where nothing holds that slot.
@@ -110,19 +76,10 @@ namespace Rtx
             return !slot.isNone() && slot.get() < mImages.size() && mImages[slot.get()] != nullptr;
         }
 
-        /// Lends the texture in `slot` to a caller that writes it with transfer commands, rather
-        /// than by handing over pixels: `record(image, layout)` is called with it ready to be
-        /// written and the layout it is in.
-        ///
-        /// **The layout is this class's and not its caller's.** A texture rests in
-        /// `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` and is put back there, and the scope opened
-        /// around what is recorded is every transfer stage — which is what *written with transfer
-        /// commands* means. A scope named instead for the commands one caller happens to record has
-        /// to be revisited every time that caller changes, and one branch of that agreement was
-        /// missing for as long as there has been a traced view.
-        ///
-        /// Ordering *within* what is recorded stays the caller's: two transfer writes to one image
-        /// are unordered unless something says otherwise.
+        /// Lends the texture in `slot` to a caller that writes it with transfer commands:
+        /// `record(image, layout)` is called with it ready to be written and the layout it is in,
+        /// and the scope opened around what is recorded is every transfer stage. Ordering *within*
+        /// what is recorded stays the caller's.
         template <class Record>
         void writeWith(GuiSlot slot, VkCommandBuffer commands, Record&& record)
         {
@@ -146,12 +103,9 @@ namespace Rtx
         void read(GuiSlot slot, std::vector<std::uint8_t>& pixels);
 
         /// Records a copy of the whole texture into a host-readable buffer kept for the slot, after
-        /// whatever `commands` already holds, and remembers that `frame` is what carries it.
-        ///
-        /// **Into the same batch as the trace that wrote the texture**, so the copy costs no submit
-        /// and no wait of its own: `takeCopy` hands the bytes over once the frame has been waited
-        /// for, which a frame is anyway two frames on. `Image::read` is a `submitAndWait`, which
-        /// the global map would pay for every cell it explores.
+        /// whatever `commands` already holds, and remembers that `frame` is what carries it — into
+        /// the same batch as the trace that wrote the texture, so the copy costs no submit and no
+        /// wait of its own; `takeCopy` hands the bytes over once the frame has been waited for.
         ///
         /// @param graveyard where a buffer this replaces is buried, because a batch recorded against
         ///        the old one may not have run.
@@ -167,12 +121,9 @@ namespace Rtx
         /// frames in flight both — so each may be taken whatever frame it was stamped with.
         void landTraces();
 
-        /// Submits what has been recorded, and what was already handed over, and waits for both.
-        ///
-        /// **For the two paths that take the command pool apart**, a resize and shutdown: a batch
-        /// handed over rides the pool's next submit, and those two are where there is no next
-        /// submit. A staging arena that fills before its frame is over wants it for its own reason,
-        /// and that is the only wait left on the frame path.
+        /// Submits what has been recorded, and what was already handed over, and waits for both —
+        /// for a resize and shutdown, where there is no next submit, and for a staging arena that
+        /// fills before its frame is over, which is the only wait left on the frame path.
         void finish();
 
     private:
@@ -181,11 +132,8 @@ namespace Rtx
         /// Costs nothing where nothing is pending, which is what lets every accessor call it.
         void handOver();
 
-        /// A run of the current staging arena, `bytes` long, and where it starts.
-        ///
-        /// **A run at a time out of one arena**, so several writes can share a submit: an arena
-        /// rewritten from the start would have the second write overwrite the first's bytes before
-        /// either copy had run.
+        /// A run of the current staging arena, `bytes` long, and where it starts, so several writes
+        /// can share a submit.
         VkDeviceSize reserve(VkDeviceSize bytes);
 
         const Device& mDevice;
@@ -209,29 +157,16 @@ namespace Rtx
         /// slot an arrival takes is one rule and this renderer keeps three tables by it.
         SlotPool mFree;
 
-        /// **One more arena than there are frames in flight.**
-        ///
-        /// A run of an arena is being read for as long as the submit that carried it is. The batch
-        /// is handed over rather than waited for, so the bytes a copy reads are still needed after
-        /// the call that filled them returns — and rewinding there would put the next write on top
-        /// of a copy that has not run.
-        ///
-        /// **Three and not two, and the extra one is the whole of why this is stated.** What is
-        /// written between two interface frames is carried by the *later* one's submit, and that
-        /// submit's fence is waited on `sFrameSlots` frames after that — so an arena has to last
-        /// from the frame before the one that sends it through to the one that waits, which is one
-        /// more frame than there are slots. Two arenas hands them back exactly one frame early, and
-        /// what that costs is a copy reading pixels of the frame after its own.
+        /// One more arena than there are frames in flight. What is written between two interface
+        /// frames is carried by the *later* one's submit, whose fence is waited on `sFrameSlots`
+        /// frames after that, so an arena has to last one more frame than there are slots; two
+        /// arenas hand them back exactly one frame early.
         static constexpr std::uint32_t sStagingArenas = sFrameSlots + 1;
 
         /// Written a run at a time, turned over by `startFrame`, and each grown to the largest
-        /// single region ever written: a video frame arrives through here whole once a frame and
-        /// must not allocate to do it.
-        ///
-        /// **Sized to a region rather than to a frame's worth of them.** A frame that writes more
-        /// than one holds submits what is already recorded and waits for it, which costs a round
-        /// trip and bounds what an arena can grow to; sizing them to the largest frame instead would
-        /// hold a load's worth of textures in host-visible video memory for the rest of the session.
+        /// single region ever written, so a video frame does not allocate. Sized to a region rather
+        /// than to a frame's worth of them: a frame that writes more than one waits, which bounds
+        /// what an arena can grow to.
         std::array<Buffer, sStagingArenas> mStaging;
         std::uint32_t mArena = 0;
         VkDeviceSize mStagingUsed = 0;

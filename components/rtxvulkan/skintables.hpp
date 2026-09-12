@@ -7,7 +7,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/scenetables.hpp>
+#include <components/rtx/scenedesc.hpp>
 
 #include "buffer.hpp"
 #include "frameslots.hpp"
@@ -39,10 +39,7 @@ namespace Rtx
     {
     public:
         /// @param slots how many frames may be posing this scene at once.
-        SkinTables(const Device& device, const SceneTables& scene, std::uint32_t slots, Graveyard& graveyard);
-
-        SkinTables(const SkinTables&) = delete;
-        SkinTables& operator=(const SkinTables&) = delete;
+        SkinTables(const Device& device, const SceneDesc& scene, std::uint32_t slots, Graveyard& graveyard);
 
         /// Takes in what the scene says arrived: the bind poses of the deforming meshes, the rigs
         /// and the morphs.
@@ -51,15 +48,15 @@ namespace Rtx
         /// the buffer it displaced — so a dispatch already recorded keeps reading the address it was
         /// handed — and what is written into a table that stayed is a run the arrival was just
         /// given. `CI/check_rtx_validation.sh` is what says so.
-        void extend(const SceneTables& scene, Graveyard& graveyard);
+        void extend(const SceneDesc& scene, Graveyard& graveyard);
 
         /// Writes `mesh`'s rows into `slot`'s copy and returns where they landed, for the dispatch
         /// about to read them. A `hostWritten` copy, so the write is a `memcpy` and the submit that
         /// follows sees it.
-        VkDeviceAddress writeBones(const SceneTables& scene, FrameSlot slot, Index mesh);
+        VkDeviceAddress writeBones(const SceneDesc& scene, FrameSlot slot, Index mesh);
 
         /// The same for a morphed mesh's weights.
-        VkDeviceAddress writeWeights(const SceneTables& scene, FrameSlot slot, Index mesh);
+        VkDeviceAddress writeWeights(const SceneDesc& scene, FrameSlot slot, Index mesh);
 
         /// Where `mesh`'s bind pose starts, in each of the two bind tables.
         VkDeviceAddress getBindPositions(const MeshRange& mesh) const;
@@ -75,9 +72,9 @@ namespace Rtx
     private:
         /// Writes the bind poses of `meshes` — or of every deforming mesh, where a table was made
         /// again — and the runs of `rigs` and `morphs` likewise.
-        void writeBind(const SceneTables& scene, std::span<const Index> meshes, bool whole);
-        void writeRigs(const SceneTables& scene, std::span<const Index> rigs, bool whole);
-        void writeMorphs(const SceneTables& scene, std::span<const Index> morphs, bool whole);
+        void writeBind(const SceneDesc& scene, std::span<const Index> meshes, bool whole);
+        void writeRigs(const SceneDesc& scene, std::span<const Index> rigs, bool whole);
+        void writeMorphs(const SceneDesc& scene, std::span<const Index> morphs, bool whole);
 
         const Device* mDevice = nullptr;
         std::uint32_t mSlots = 1;

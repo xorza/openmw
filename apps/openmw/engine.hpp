@@ -60,7 +60,6 @@ namespace MWRender
 {
     class Renderer;
     struct RtxSetup;
-    class Stage;
 }
 
 namespace MWInput
@@ -133,7 +132,6 @@ namespace OMW
         std::vector<std::string> mArchives;
         std::filesystem::path mResDir;
         /// The frame, the eye and the input queue. Made before any renderer and outliving it.
-        std::unique_ptr<MWRender::Stage> mStage;
 
         /// The picture, and the window it goes in. Chosen once, by name, before there is anything
         /// to draw.

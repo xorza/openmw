@@ -76,7 +76,7 @@ namespace MWRender
         SDL_Window* getWindow() const override { return mWindow; }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
-        void setSceneRoot(osg::Group& root) override;
+        void adoptSceneRoot(osg::Group& root) override;
         void showWorld(bool shown) override;
         bool toggleWorld() override;
 
@@ -131,8 +131,6 @@ namespace MWRender
         /// Takes the framebuffer copy back out of the frame once it has run. Left in, it would copy
         /// the whole screen into a texture on every frame from the first loading screen onwards.
         void retireFreezeFrame();
-
-        Stage& mStage;
         int mMaxTextureUnits = 0;
 
         /// What an offscreen view's light rig is built out of. Known from `attachWorld` onwards,
@@ -142,8 +140,8 @@ namespace MWRender
         SDL_Window* mWindow = nullptr;
 
         /// Held so the destructor can let the GL context go while the window it is bound to still
-        /// exists. The stage outlives the renderer and holds the camera, so releasing the viewer
-        /// does not on its own release what the camera points at.
+        /// exists. The base holds the camera and is destroyed last, so releasing the viewer does
+        /// not on its own release what the camera points at.
         osg::ref_ptr<SDLUtil::GraphicsWindowSDL2> mGraphicsWindow;
 
         osg::ref_ptr<osgViewer::Viewer> mViewer;

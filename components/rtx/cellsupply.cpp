@@ -3,8 +3,7 @@
 #include <utility>
 
 #include "cellreader.hpp"
-#include "preparedcell.hpp"
-#include "preparedtexture.hpp"
+#include "prepared.hpp"
 
 namespace Rtx
 {

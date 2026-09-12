@@ -8,9 +8,9 @@
 
 #include <osg/Vec3f>
 
+#include "colour.hpp"
 #include "shadingmap.hpp"
-#include "srgb.hpp"
-#include "texelreader.hpp"
+#include "texels.hpp"
 
 namespace Rtx
 {

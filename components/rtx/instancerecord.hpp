@@ -10,14 +10,9 @@
 
 namespace Rtx
 {
-    /// An affine transform as three rows of four, translation in the last column.
-    ///
-    /// The shape an instance descriptor wants and the one OpenSceneGraph does not have.  OSG
-    /// multiplies a row vector on the left, so its translation is the last *row*; a descriptor
-    /// multiplies a column vector on the right, so the rotation is transposed and the translation
-    /// moves to the last column. Getting that wrong mirrors the world about its diagonal, which is
-    /// subtle enough on symmetrical architecture to survive being looked at — so the conversion
-    /// happens once, here, and a backend only restates these rows in whatever order it stores them.
+    /// An affine transform as three rows of four, translation in the last column — the shape an
+    /// instance descriptor wants, where OSG's translation is the last *row*. Getting that wrong
+    /// mirrors the world about its diagonal, so the conversion happens once, here.
     struct Transform3x4
     {
         float mRows[3][4];
@@ -31,47 +26,31 @@ namespace Rtx
     /// and an instance's motion cannot disagree about which way round a matrix goes.
     Shaders::GpuBone toGpuBone(const osg::Matrixf& matrix);
 
-    /// One row of the top-level acceleration structure, with every decision already taken.
-    ///
-    /// **This is where the material policy lives, and it lives here once.** Which rays may see a
-    /// surface, and whether traversal has to stop and ask whether a hit is a hole, are answers about
-    /// Morrowind's content rather than about an API — and a backend working them out for itself
-    /// would be a second place for them to be got wrong.
+    /// One row of the top-level acceleration structure, with every decision already taken: which
+    /// rays may see a surface and whether traversal has to stop are answers about Morrowind's
+    /// content and not about an API.
     struct InstanceRecord
     {
         Transform3x4 mTransform;
 
-        /// World space to where this instance's world space was on the previous frame.
-        ///
-        /// **A single matrix rather than the previous transform**, so the shader multiplies once
-        /// instead of inverting: `inverse(current) * previous`.
-        ///
-        /// **Set to the identity outright where the instance did not move**, rather than computed
-        /// as an inverse times itself, which lands a few ulps away. `motion * p - p` is then
-        /// bit-exactly zero and a static world produces no motion at all — see the cost of the
-        /// alternative where it is built.
+        /// World space to where this instance's world space was on the previous frame:
+        /// `inverse(current) * previous`, so the shader multiplies once. The identity outright
+        /// where the instance did not move, so a static world produces motion that is bit-exactly
+        /// zero.
         Transform3x4 mMotion;
 
         /// The mesh whose bottom-level structure this places.
         Index mMesh = sNoIndex;
 
         /// What shading a hit on this instance takes — the material's own kind, carried on the
-        /// placement so that traversal can reach it.
-        ///
-        /// **Traversal picks the shader from this.** The backend writes it into the instance's
-        /// shader-table record offset, so the
-        /// hardware follows an index instead of the shader reading a material row to find out what
-        /// it is. An instance places one mesh with one material, so the kind is a fact about the
-        /// placement and not about the triangle met.
+        /// placement so that traversal picks the shader through the shader-table record offset
+        /// instead of the shader reading a material row.
         MaterialKind mKind = MaterialKind::Surface;
 
         /// Which rays are interested: the class bit `InstanceClass` gives it, or `MASK_WATER` for a
-        /// surface a shadow ray must pass straight through; `MASK_MEDIUM` beside either.
-        ///
-        /// Sunlight reaching a seabed has come through the surface, so a sea that occluded would
-        /// black out every shallow in the game — and saying it in the mask costs traversal nothing,
-        /// where building the water non-opaque so a candidate loop can wave shadow rays past costs
-        /// half the frame rate.
+        /// surface a shadow ray must pass straight through, or every shallow in the game goes
+        /// black; `MASK_MEDIUM` beside either. Said in the mask, because a candidate loop waving
+        /// shadow rays past costs half the frame rate.
         std::uint32_t mMask = 0;
 
         /// Whether traversal must stop and ask the shader whether a hit is a hole.
@@ -80,58 +59,30 @@ namespace Rtx
         /// meets, and a canopy stays the rectangle it was painted on.
         bool mCutout = false;
 
-        /// Whether traversal must stop and ask the shader how much of a hit there is.
-        ///
-        /// **Separate from `mCutout` because the question is.** A cutout is asked whether there is
-        /// anything at the hit at all and a translucent surface how much of it there is. Both reach
-        /// the shader the same way, and only the cutout's cost is counted — `placeRow` says why.
-        ///
-        /// **Two ways to earn it.** The material says a pane of glass is one wherever it is placed.
-        /// The placement says an actor the game is fading is one for as long as it fades, whatever
-        /// its material claims — and that actor keeps its cutout, since a fade is not a hole.
+        /// Whether traversal must stop and ask the shader how much of a hit there is — separate
+        /// from `mCutout`, which asks whether there is anything at the hit at all. Earned by the
+        /// material, for a pane of glass, or by the placement, for an actor the game is fading.
         bool mTranslucent = false;
 
-        /// Whether the slot this record sits in holds a placement.
-        ///
-        /// **Records are addressed by slot and slots have gaps**, because a slot index is what a hit
-        /// reads back and closing a gap would rename every placement after it. A record that is not
-        /// placed describes nothing and must not reach an acceleration structure.
+        /// Whether the slot this record sits in holds a placement. Records are addressed by slot
+        /// and slots have gaps, because a slot index is what a hit reads back.
         bool mPlaced = false;
 
         bool operator==(const InstanceRecord& other) const = default;
     };
 
-    /// Fills `records` with one row per slot the scene holds, in slot order.
-    ///
-    /// Two invariants a backend inherits and must not restate differently. A record's position is
-    /// the slot, which is the custom index the shader reads back at a hit — so a record with
-    /// `mPlaced` false is a gap to be skipped and never renumbered away. And **every instance is
-    /// built with face culling disabled**: Morrowind leans heavily on sheet geometry lit and hit
-    /// from both faces, and a ray tracer has to be told, because back-face culling is not free for
-    /// it the way a rasterizer's is.
-    ///
-    /// An out-parameter refilled in place, because a cell is thousands of instances and a rebuild
-    /// must not go back to the allocator for a buffer it already had.
-    void makeInstanceRecords(const SceneTables& scene, std::vector<InstanceRecord>& records);
+    /// Fills `records` with one row per slot the scene holds, in slot order — a record with
+    /// `mPlaced` false is a gap to be skipped and never renumbered away. Every instance is built
+    /// with face culling disabled, because Morrowind leans on sheet geometry lit and hit from both
+    /// faces. An out-parameter refilled in place.
+    void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
 
     /// Rewrites the rows of the slots the scene says changed — `getMoved` and `getSettled` — leaves
-    /// every other row as the last call left it, and names in `changed` every slot it wrote.
-    ///
-    /// **What a frame costs, and it is what moved.** A record carries a matrix inverse and a
-    /// nine-by-nine exterior is fifty thousand of them; building all of them again to change a
-    /// hundred is most of what placing the world would cost the CPU. `records` must be what
-    /// `makeInstanceRecords` filled for this scene, and is grown here where the scene grew — a slot
-    /// that arrived is in `getMoved`.
-    ///
-    /// **The one place the scene's change lists are read, and so the one place their order can be
-    /// got wrong.** Every table a frame writes is derived from these records; a table subscribing
-    /// to `getMoved` and `getSettled` for itself is a second subscription to keep in step, in
-    /// another file, with nothing saying the two agree — and terrain a frame behind when they do
-    /// not. What comes back in `changed` is what a backend writes; whether its own copies are then
-    /// behind is `SlotTable`'s to know.
-    ///
-    /// `changed` is cleared and refilled, so a caller keeps one across frames and allocates none.
-    /// A slot named twice is a row written twice, which costs a memcpy of one row.
+    /// every other row as the last call left it, and names in `changed` every slot it wrote. A
+    /// nine-by-nine exterior is fifty thousand matrix inverses, and a frame changes a hundred. The
+    /// one place the scene's change lists are read, so every table a frame writes derives from one
+    /// answer. `records` must be what `makeInstanceRecords` filled, grown here where the scene
+    /// grew; `changed` is cleared and refilled.
     void updateInstanceRecords(
-        const SceneTables& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed);
+        const SceneDesc& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed);
 }

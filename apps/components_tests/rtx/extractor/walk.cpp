@@ -39,7 +39,7 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mMeshesAdded, 2u);
             EXPECT_EQ(stats.mMeshesReused, 0u);
             EXPECT_EQ(stats.mInstances, 2u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getTriangleCount(), 4u);
+            EXPECT_EQ(mScene.meshes().getTriangleCount(), 4u);
         }
 
         /// A flipbook shows one frame at a time, and this walk is what advances it.
@@ -78,7 +78,7 @@ namespace Rtx::Testing
                 extractor.extract(*frames, osg::Matrixf::identity(), 0);
 
                 std::vector<osg::Vec3f> placed;
-                for (const MeshInstance& instance : scene.getTables().mPlacements.getAll())
+                for (const MeshInstance& instance : scene.placements().getAll())
                     placed.push_back(osg::Vec3f(0.0f, 0.0f, 0.0f) * instance.mTransform);
 
                 return placed;
@@ -146,7 +146,7 @@ namespace Rtx::Testing
 
             EXPECT_EQ(stats.mMeshesAdded, 1u);
             EXPECT_EQ(stats.mMeshesReused, 1u);
-            const std::span<const Rtx::MeshInstance> placed = mScene.getTables().mPlacements.getAll();
+            const std::span<const Rtx::MeshInstance> placed = mScene.placements().getAll();
             ASSERT_EQ(placed.size(), 2u);
             EXPECT_EQ(placed[0].mMesh, placed[1].mMesh);
 
@@ -177,7 +177,7 @@ namespace Rtx::Testing
             // The night branch was not walked, so it is not a mesh either: one added rather than two.
             EXPECT_EQ(noon.mMeshesAdded, 1u);
             EXPECT_EQ(noon.mInstances, 1u);
-            ASSERT_EQ(mScene.getTables().mPlacements.getAll().size(), 1u);
+            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
 
             root->setSingleChildOn(1);
@@ -192,10 +192,10 @@ namespace Rtx::Testing
             // leaving the graph costs — and gone after it, in its own slot rather than by
             // renumbering the one that arrived.
             EXPECT_EQ(mExtractor.retire().mMeshes, 1u);
-            EXPECT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 1u);
-            ASSERT_EQ(mScene.getTables().mPlacements.getAll().size(), 2u);
-            EXPECT_FALSE(mScene.getTables().mPlacements.getAll()[0].isPlaced()) << "the day branch outlived the sweep";
-            ASSERT_TRUE(mScene.getTables().mPlacements.getAll()[1].isPlaced());
+            EXPECT_EQ(mScene.placements().getPlacedCount(), 1u);
+            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
+            EXPECT_FALSE(mScene.placements().getAll()[0].isPlaced()) << "the day branch outlived the sweep";
+            ASSERT_TRUE(mScene.placements().getAll()[1].isPlaced());
             EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
@@ -207,8 +207,8 @@ namespace Rtx::Testing
             mExtractor.extract(*inner, osg::Matrixf::translate(0.0f, 0.0f, 5.0f), 0);
 
             // The quad's (1,1,0) corner doubles to (2,2,0), then rises by five.
-            ASSERT_EQ(mScene.getTables().mPlacements.getAll().size(), 1u);
-            EXPECT_EQ(osg::Vec3f(1.0f, 1.0f, 0.0f) * mScene.getTables().mPlacements.getAll()[0].mTransform,
+            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
+            EXPECT_EQ(osg::Vec3f(1.0f, 1.0f, 0.0f) * mScene.placements().getAll()[0].mTransform,
                 osg::Vec3f(2.0f, 2.0f, 5.0f));
         }
 
@@ -228,8 +228,8 @@ namespace Rtx::Testing
 
             walk(*scale);
 
-            ASSERT_EQ(mScene.getTables().mPlacements.getAll().size(), 1u);
-            const osg::Matrixf& place = mScene.getTables().mPlacements.getAll()[0].mTransform;
+            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
+            const osg::Matrixf& place = mScene.placements().getAll()[0].mTransform;
 
             // (1,0,0) shifts to (4,0,0), turns to (0,4,0), and scales to (0,8,0). Order is the whole
             // of what this asserts: composed the other way round it would be (0,2,0) moved to
@@ -277,7 +277,7 @@ namespace Rtx::Testing
             EXPECT_EQ(reads->mSaw, osg::NodeVisitor::NODE_VISITOR) << "the transform was handed a null visitor";
 
             // And it still placed what was under it, at the transform it asked for.
-            ASSERT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 1u);
+            ASSERT_EQ(mScene.placements().getPlacedCount(), 1u);
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 4.0f));
         }
 
@@ -304,7 +304,7 @@ namespace Rtx::Testing
 
             walk(*above);
 
-            ASSERT_EQ(mScene.getTables().mPlacements.getAll().size(), 2u);
+            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
 
             // The absolute one stands at its own translation and nowhere near the hundred above it.
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 7.0f));
@@ -326,7 +326,7 @@ namespace Rtx::Testing
 
             EXPECT_EQ(second.mMeshesAdded, 0u);
             EXPECT_EQ(second.mMeshesReused, 2u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows().size(), 2u);
+            EXPECT_EQ(mScene.meshes().getRows().size(), 2u);
 
             // **Each walk counts into its own report and never into the walk before it.** What a
             // resolver counts through is `MirrorPass`, which is the mirror's own member and outlives
@@ -339,13 +339,12 @@ namespace Rtx::Testing
             // at two places is still two rows of the acceleration structure — placements are not
             // deduplicated — but a second pass over an unchanged graph finds the slots those two
             // already hold rather than making two more. Nothing was added, and nothing moved.
-            EXPECT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 2u);
-            EXPECT_EQ(mScene.getTables().mPlacements.getAll().size(), 2u);
+            EXPECT_EQ(mScene.placements().getPlacedCount(), 2u);
+            EXPECT_EQ(mScene.placements().getAll().size(), 2u);
 
             mScene.placements().advance();
             EXPECT_EQ(walk(*root).mInstances, 2u);
-            EXPECT_TRUE(mScene.getTables().mPlacements.getMoved().empty())
-                << "an unchanged graph reported a placement moving";
+            EXPECT_TRUE(mScene.placements().getMoved().empty()) << "an unchanged graph reported a placement moving";
         }
 
         /// **A node path does not identify a placement, and this is the case that proves it.**
@@ -360,8 +359,8 @@ namespace Rtx::Testing
             mExtractor.extract(*shared, osg::Matrixf::translate(10.0f, 0.0f, 0.0f), 1);
             mExtractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
 
-            ASSERT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 2u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows().size(), 1u) << "one model is still one mesh";
+            ASSERT_EQ(mScene.placements().getPlacedCount(), 2u);
+            EXPECT_EQ(mScene.meshes().getRows().size(), 1u) << "one model is still one mesh";
 
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
             EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
@@ -373,8 +372,8 @@ namespace Rtx::Testing
             mExtractor.extract(*shared, osg::Matrixf::translate(11.0f, 0.0f, 0.0f), 1);
             mExtractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
 
-            ASSERT_EQ(mScene.getTables().mPlacements.getMoved().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mPlacements.getMoved()[0], 0u);
+            ASSERT_EQ(mScene.placements().getMoved().size(), 1u);
+            EXPECT_EQ(mScene.placements().getMoved()[0], 0u);
         }
 
         /// **Texture coordinates are read off the array's own type byte**, which is what
@@ -405,7 +404,7 @@ namespace Rtx::Testing
 
             mExtractor.extract(*root, osg::Matrixf::identity(), 1);
 
-            const Rtx::MeshTable& meshes = mScene.getTables().mMeshes;
+            const Rtx::MeshTable& meshes = mScene.meshes();
             ASSERT_EQ(meshes.getRows().size(), 2u);
             EXPECT_EQ(meshes.getRows()[0].mVertices.in(meshes.getTexCoords())[1], osg::Vec2f(1.0f, 0.5f))
                 << "a pair per vertex is read";

@@ -2,14 +2,103 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <format>
 #include <numeric>
 #include <string_view>
+#include <utility>
+
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <components/files/conversion.hpp>
+#include <components/rtx/error.hpp>
 
 namespace Rtx
 {
+    namespace
+    {
+        /// How much frame time closes a line. A second, so the figure moves as often as a clock's.
+        constexpr double sLineMs = 1000.0;
+    }
+
+    bool FrameRate::add(const double frameMs)
+    {
+        mSummedMs += frameMs;
+        mWorstMs = std::max(mWorstMs, frameMs);
+        ++mFrames;
+
+        if (mSummedMs < sLineMs)
+            return false;
+
+        const double meanMs = mSummedMs / mFrames;
+        const auto [end, length] = std::format_to_n(
+            mText.data(), mText.size(), "{:.0f} fps, {:.1f} ms, worst {:.1f} ms", sLineMs / meanMs, meanMs, mWorstMs);
+
+        // A line is under forty characters at any rate a frame can have, so the buffer is not a
+        // limit anything reaches — but a truncated line is still a line, and not an overrun.
+        assert(static_cast<std::size_t>(length) <= mText.size() && "the frame rate line outgrew its buffer");
+        mLength = std::min(static_cast<std::size_t>(length), mText.size());
+
+        mSummedMs = 0.0;
+        mWorstMs = 0.0;
+        mFrames = 0;
+
+        return true;
+    }
+
+    PerfControl::PerfControl(std::filesystem::path fifo)
+        : mFifo(std::move(fifo))
+    {
+    }
+
+    PerfControl::~PerfControl()
+    {
+        if (mHandle >= 0)
+            ::close(mHandle);
+    }
+
+    void PerfControl::enable()
+    {
+        if (mFifo.empty())
+            return;
+
+        connect();
+        send("enable\n");
+    }
+
+    void PerfControl::disable()
+    {
+        if (mHandle < 0)
+            return;
+
+        send("disable\n");
+    }
+
+    void PerfControl::connect()
+    {
+        if (mHandle >= 0)
+            return;
+
+        // `O_NONBLOCK` on a write-only fifo is what turns "no reader" from a hang into `ENXIO`, and
+        // a profiling run that hung would look like the benchmark being slow.
+        mHandle = ::open(mFifo.c_str(), O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+        if (mHandle < 0)
+            throw Error(std::format("cannot write to the perf control fifo {}: {}", Files::pathToUnicodeString(mFifo),
+                std::strerror(errno)));
+    }
+
+    void PerfControl::send(std::string_view command)
+    {
+        const ssize_t written = ::write(mHandle, command.data(), command.size());
+        if (written != static_cast<ssize_t>(command.size()))
+            throw Error(std::format("cannot send `{}` to the perf control fifo {}: {}",
+                command.substr(0, command.size() - 1), Files::pathToUnicodeString(mFifo), std::strerror(errno)));
+    }
+
     namespace
     {
         /// The `quantile`th value of an already sorted `times`, by nearest rank.

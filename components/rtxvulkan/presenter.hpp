@@ -20,67 +20,38 @@ namespace Rtx
     class Swapchain;
 
     /// The surface, the swapchain, and everything that keeps a frame from overtaking the one in
-    /// front of it.
-    ///
-    /// **All of it here rather than in whoever owns the window.** A caller driving a swapchain
-    /// itself has to get the same handful of things right — a semaphore per swapchain image and not
-    /// per frame in flight, a fence per image because mailbox hands one back before the presentation
-    /// engine has finished with it, the acquire's stage named in the first barrier's source scope,
-    /// the sync objects rebuilt when a recreate returns a different image count, and a `waitIdle`
-    /// before any of them are destroyed. The one caller that had done all that was also the only
-    /// place that could get it wrong.
-    ///
-    /// The renderer never draws into a swapchain image. It renders into one of its own and blits,
-    /// because the format a surface offers is not one a compute shader may store to.
+    /// front of it: a semaphore per swapchain image and not per frame in flight, a fence per image
+    /// because mailbox hands one back before the presentation engine has finished with it, the
+    /// sync objects rebuilt when a recreate returns a different image count, and a `waitIdle`
+    /// before any of them are destroyed. The renderer never draws into a swapchain image: it
+    /// blits, because the format a surface offers is not one a compute shader may store to.
     class Presenter
     {
     public:
-        /// What SDL says an instance needs before this window can have a surface.
-        ///
-        /// **Static, and asked before the instance exists**, which is the only order that works: the
-        /// instance has to be created with these enabled, and the surface cannot be made until it
-        /// has been.
+        /// What SDL says an instance needs before this window can have a surface. Static, because
+        /// the instance has to be created with these enabled before the surface can be made.
         static std::vector<const char*> getInstanceExtensions(SDL_Window* window);
 
         /// Throws `Error` where the surface or the swapchain will not come up.
         Presenter(const Device& device, VkInstance instance, SDL_Window* window);
         ~Presenter();
 
-        Presenter(const Presenter&) = delete;
-        Presenter& operator=(const Presenter&) = delete;
-
-        /// Blits `frame` onto the next swapchain image and queues it.
+        /// Blits `frame` onto the next swapchain image and queues it. False where the surface no
+        /// longer matches the window, which is not an error: the caller resizes and asks again.
         ///
-        /// False where the surface no longer matches the window — a resize, a monitor change or a
-        /// compositor restart, none of which is an error. The caller resizes and asks again.
-        ///
-        /// @param frame must be in `VK_IMAGE_LAYOUT_GENERAL` and hold the picture to show. It is
-        ///        left in that layout, which is where the next frame's passes expect it.
+        /// @param frame must be in `VK_IMAGE_LAYOUT_GENERAL` and is left there.
         bool present(const Image& frame);
 
-        /// Waits until the present that last read `frame` has finished with it.
-        ///
-        /// **A present's blit outlives the call that queued it.** `present` submits and returns; the
-        /// blit itself waits the acquire semaphore, which under FIFO is not signalled until the
-        /// presentation engine has let that swapchain image go. No barrier's source scope reaches
-        /// across a submit, so a renderer about to discard and rewrite an image it presented earlier
-        /// has to be told when that blit finished, and this is the only thing that can say.
-        ///
-        /// A no-op for an image this has never presented, and for one whose fence has since been
-        /// remade — a swapchain rebuild waits the device idle first, so what it forgets was already
-        /// finished.
+        /// Waits until the present that last read `frame` has finished with it. A present's blit
+        /// outlives the call that queued it — under FIFO it waits until the presentation engine has
+        /// let that swapchain image go — and no barrier's source scope reaches across a submit. A
+        /// no-op for an image this has never presented.
         void waitForLastUse(const Image& frame);
 
-        /// Whether the swapchain has to be remade to show `extent`.
-        ///
-        /// **Split from `rebuild` because a caller has work to do between the two.** A rebuild
-        /// resets the command pool, so whatever is staged in it has to be submitted and waited for
-        /// first — and that drain costs more than the rebuild it guards: paid on every settled
-        /// frame it is milliseconds of host time, and tens on a frame a ring arrives.
-        ///
-        /// **Not const, because a surface nobody can see is answered by remembering it.** A hidden
-        /// window takes no swapchain, so the staleness is what carries the rebuild to the frame the
-        /// window comes back on — and this is the call that finds out.
+        /// Whether the swapchain has to be remade to show `extent`. Split from `rebuild` because a
+        /// rebuild resets the command pool, so the caller has to drain first, and that drain costs
+        /// more than the rebuild it guards. Not const, because a hidden window takes no swapchain
+        /// and the staleness carries the rebuild to the frame the window comes back on.
         bool wantsResize(VkExtent2D extent);
 
         /// Remakes the swapchain at `extent`, unconditionally. Waits for everything in flight, so
@@ -123,16 +94,12 @@ namespace Rtx
             VkFence mBlit = VK_NULL_HANDLE;
         };
 
-        /// One per swapchain image, **taken in turn and never indexed by the image**, which is the
-        /// one thing an acquire cannot be keyed on: the image is what it returns.
-        ///
-        /// **A semaphore handed to `vkAcquireNextImageKHR` must carry no operation still pending**,
-        /// and the acquire's own signal stays pending until the blit that waits it has run. The blit
-        /// is submitted at once but does not run at once — with two frames in flight it queues
-        /// behind a whole frame of tracing — so one semaphore for every acquire is a frame handing
-        /// the layers `VUID-vkAcquireNextImageKHR-semaphore-01779` and the device an undefined wait.
-        /// A slot comes free exactly when its blit's fence signals, which is why the fence is kept
-        /// beside it.
+        /// One per swapchain image, taken in turn and never indexed by the image, which an acquire
+        /// cannot be keyed on. A semaphore handed to `vkAcquireNextImageKHR` must carry no operation
+        /// still pending, and the acquire's signal stays pending until the blit that waits it has
+        /// run — behind a whole frame of tracing — so one semaphore for every acquire is
+        /// `VUID-vkAcquireNextImageKHR-semaphore-01779`. A slot comes free when its blit's fence
+        /// signals.
         std::vector<Acquisition> mAcquiring;
 
         /// Which slot the next acquire takes.
@@ -148,17 +115,10 @@ namespace Rtx
         std::vector<Owned<VkFence, vkDestroyFence>> mPresenting;
 
         /// What the presentation engine signals when it has finished with each image, where the
-        /// device offers `VK_KHR_swapchain_maintenance1`. Empty where it does not.
-        ///
-        /// **The only thing that says a present is over.** `mPresenting` belongs to the blit's
-        /// submit, and a queue-idle proves the queue is empty rather than that the compositor has
-        /// let go — so without these the semaphore a present waits on is destroyed against a
-        /// guarantee the specification does not make.
-        ///
-        /// **A present that failed signals its fence too**, which is what makes waiting on every one
-        /// of these safe: the specification states that a request the presentation engine rejects
-        /// with `VK_ERROR_OUT_OF_DATE_KHR` leaves its queue operations enqueued, so the signal still
-        /// happens. A stale swapchain is the ordinary way a window is resized.
+        /// device offers `VK_KHR_swapchain_maintenance1` — the only thing that says a present is
+        /// over, since a queue-idle proves the queue is empty rather than that the compositor has
+        /// let go. A present rejected with `VK_ERROR_OUT_OF_DATE_KHR` still signals its fence, so
+        /// waiting on every one of these is safe.
         std::vector<Owned<VkFence, vkDestroyFence>> mPresented;
 
         std::vector<VkCommandBuffer> mCommands;
@@ -172,13 +132,9 @@ namespace Rtx
         };
         std::vector<LastUse> mLastUse;
 
-        /// Whether the surface stopped matching the window since the last rebuild.
-        ///
-        /// **Kept, because "the window changed size" and "the swapchain went stale" are different
-        /// questions with the same answer.** An acquire or a present can fail at a size nothing
-        /// asked to change, and a resize that only rebuilt when the extent differed would leave that
-        /// one unrecoverable — while rebuilding unconditionally makes the no-op resize a compositor
-        /// sends on first map cost a full teardown.
+        /// Whether the surface stopped matching the window since the last rebuild. An acquire or a
+        /// present can fail at a size nothing asked to change, and a resize that only rebuilt when
+        /// the extent differed would leave that one unrecoverable.
         bool mStale = false;
 
         /// Its own, because these are re-recorded every frame and the renderer's pool is shaped for

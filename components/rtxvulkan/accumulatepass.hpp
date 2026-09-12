@@ -38,9 +38,6 @@ namespace Rtx
     public:
         AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        AccumulatePass(const AccumulatePass&) = delete;
-        AccumulatePass& operator=(const AccumulatePass&) = delete;
-
         /// Makes room for a frame this size, if the last one was not. Before the first frame.
         ///
         /// **A resize is a reset**, because a history at the old size describes pixels that are no

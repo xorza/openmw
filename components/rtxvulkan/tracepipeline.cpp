@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "device.hpp"
+#include "handles.hpp"
 #include "result.hpp"
-#include "shadermodule.hpp"
 #include "specialization.hpp"
 
 namespace Rtx
@@ -44,11 +44,11 @@ namespace Rtx
 
         const auto addStage = [&](VkShaderStageFlagBits stage, const std::filesystem::path& module) {
             const auto at = static_cast<std::uint32_t>(stages.size());
-            compiled.emplace_back(device, module);
+            compiled.push_back(loadShaderModule(device, module));
             stages.push_back(VkPipelineShaderStageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = stage,
-                .module = compiled.back().getHandle(),
+                .module = compiled.back().get(),
                 .pName = "main",
                 .pSpecializationInfo = constants.getInfo(),
             });

@@ -26,6 +26,7 @@
 #include <components/rtxvulkan/dlsspass.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
+#include <components/rtxvulkan/vulkanrenderer.hpp>
 
 #include "testtexture.hpp"
 
@@ -321,7 +322,7 @@ namespace Rtx
                 options.mUpscaling.mMode = Upscale::Performance;
                 try
                 {
-                    sUpscaling = createRenderer(options);
+                    sUpscaling = std::make_unique<VulkanRenderer>(options);
                 }
                 catch (const Unsupported& obstacle)
                 {
@@ -426,14 +427,14 @@ namespace Rtx
 
             std::vector<std::uint8_t> reference;
             mRenderer->resize(extents.mRenderWidth, extents.mRenderHeight);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
             mRenderer->readPixels(reference);
 
             // **Several frames, because a temporal upscaler has nothing on the first.** The camera
             // does not move, so what the run buys is history rather than a different picture.
             constexpr std::uint32_t sFrames = 8;
-            upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
             for (std::uint32_t frame = 0; frame < sFrames; ++frame)
             {
                 camera.mFrame = frame;
@@ -472,7 +473,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
-            upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const auto drawTwice = [&] {
                 const FrameExtents extents = upscaling->getExtents();
@@ -522,7 +523,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
-            upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const auto drawAndRead = [&] {
                 const FrameExtents extents = upscaling->getExtents();
@@ -629,7 +630,7 @@ namespace Rtx
                     .mPosition = osg::Vec3f(0.0f, -ahead, 0.0f), .mRadius = 20.0f, .mAlpha = 0.2f, .mMoved = moved } };
                 scene.addEmitter(sprites, cut, false);
 
-                upscaling->setScene(Rtx::SceneSlot::world(), scene.getTables(), puff, SeaState{});
+                upscaling->setScene(Rtx::SceneSlot::world(), scene, puff, SeaState{});
                 upscaling->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
                 upscaling->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
 

@@ -31,8 +31,8 @@
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/camera.hpp>
-#include <components/rtx/distantland.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/framespend.hpp>
@@ -44,6 +44,7 @@
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/upscale.hpp>
+#include <components/rtxvulkan/vulkanrenderer.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
@@ -58,12 +59,9 @@
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
 #include "../screenshotwriter.hpp"
-#include "../stage.hpp"
 #include "../windowsetup.hpp"
-#include "raymask.hpp"
 #include "readworld.hpp"
 #include "session.hpp"
-#include "setup.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
@@ -125,8 +123,7 @@ namespace MWRender
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
-        : mStage(spec.mStage)
-        , mCapture(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
+        : mCapture(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
         , mMirror(MirrorSettings{
@@ -135,9 +132,8 @@ namespace MWRender
               .mReach = Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance),
           })
     {
-        // **Made here and handed straight over, because the stage is where they live.** Every
-        // renderer needs the four and one built on `osgViewer` gets them already wired together, so
-        // the one that owns its own surface builds them and the stage holds them for both.
+        // **Made here, because there is no viewer to make them.** Every renderer needs the four and
+        // one built on `osgViewer` gets them already wired together.
         const osg::ref_ptr<osg::Camera> camera = new osg::Camera;
         const osg::ref_ptr<osg::FrameStamp> frameStamp = new osg::FrameStamp;
         const osg::ref_ptr<osg::Stats> stats = new osg::Stats("Viewer");
@@ -147,9 +143,7 @@ namespace MWRender
         frameStamp->setSimulationTime(0.0);
         mUpdateVisitor->setFrameStamp(frameStamp);
 
-        // No event queue: what SDL would put in one is the function keys, which upstream reads with
-        // `osgViewer` handlers this renderer does not have.
-        mStage.adopt(*camera, *frameStamp, nullptr, *stats);
+        adopt(*camera, *frameStamp, nullptr, *stats);
 
         // **Read before anything is built, because it decides how the window opens and what the
         // trace counts.** A harness hands a whole run over in the spec; a played binary can only
@@ -237,7 +231,7 @@ namespace MWRender
         if (Settings::groundcover().mEnabled)
             throw std::runtime_error("groundcover is on, and the ray tracing renderer builds no quad tree to carry it");
 
-        mRenderer = Rtx::createRenderer(options);
+        mRenderer = std::make_unique<Rtx::VulkanRenderer>(options);
 
         Log(Debug::Info) << "Ray tracing on " << mRenderer->describeDevice();
 
@@ -296,11 +290,9 @@ namespace MWRender
 
     void RtxRenderer::createWindow(const std::filesystem::path& resourceDir, const bool hidden)
     {
-        // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** Which flag a
-        // surface needs is the one thing about the API this file would otherwise have had to know,
-        // and `Rtx::surfaceWindowFlag` is where that is settled. No GL context is ever made, which
-        // is the point of the whole path.
-        const WindowPlacement placement = describeWindow(Rtx::surfaceWindowFlag());
+        // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** No GL context is
+        // ever made, which is the point of the whole path.
+        const WindowPlacement placement = describeWindow(SDL_WINDOW_VULKAN);
 
         // **Hidden and not absent.** A surface still needs a window, and a swapchain built on one
         // nobody is looking at costs a present per frame and nothing else — so a headless run is
@@ -357,13 +349,6 @@ namespace MWRender
         setSceneRoot(worldRoot);
     }
 
-    void RtxRenderer::setSceneRoot(osg::Group& root)
-    {
-        // Which is also what puts the root under the camera an intersection visitor is accepted on;
-        // see `Stage::setSceneRoot`.
-        mStage.setSceneRoot(root);
-    }
-
     double RtxRenderer::beginFrame(const double measured)
     {
         mClock.advance(measured);
@@ -373,33 +358,33 @@ namespace MWRender
 
     void RtxRenderer::advance(double simulationTime)
     {
-        const double previousReferenceTime = mStage.getFrameStamp().getReferenceTime();
-        const unsigned int previousFrame = mStage.getFrameStamp().getFrameNumber();
+        const double previousReferenceTime = getFrameStamp().getReferenceTime();
+        const unsigned int previousFrame = getFrameStamp().getFrameNumber();
 
-        mStage.getFrameStamp().setFrameNumber(previousFrame + 1);
+        getFrameStamp().setFrameNumber(previousFrame + 1);
 
         // **What OpenMW ages its caches by**, which is why it comes from the frame's own clock and
         // not from the wall. `Rtx::FrameClock` says what reading the wall here cost.
-        mStage.getFrameStamp().setReferenceTime(mClock.getNow());
-        mStage.getFrameStamp().setSimulationTime(simulationTime);
+        getFrameStamp().setReferenceTime(mClock.getNow());
+        getFrameStamp().setSimulationTime(simulationTime);
 
         // The same two the viewer writes, because the profiler's own spans are reported against
         // them and a frame with neither reads as a frame that took no time. **A run that states a
         // step reports that cadence here**, because these are read off the stamp and the stamp is
         // what the run stated — what the frames really cost is what `Bench` prints beside them.
-        if (mStage.getStats().collectStats("frame_rate"))
+        if (getStats().collectStats("frame_rate"))
         {
-            const double spent = mStage.getFrameStamp().getReferenceTime() - previousReferenceTime;
-            mStage.getStats().setAttribute(previousFrame, "Frame duration", spent);
-            mStage.getStats().setAttribute(previousFrame, "Frame rate", spent > 0.0 ? 1.0 / spent : 0.0);
-            mStage.getStats().setAttribute(
-                mStage.getFrameStamp().getFrameNumber(), "Reference time", mStage.getFrameStamp().getReferenceTime());
+            const double spent = getFrameStamp().getReferenceTime() - previousReferenceTime;
+            getStats().setAttribute(previousFrame, "Frame duration", spent);
+            getStats().setAttribute(previousFrame, "Frame rate", spent > 0.0 ? 1.0 / spent : 0.0);
+            getStats().setAttribute(
+                getFrameStamp().getFrameNumber(), "Reference time", getFrameStamp().getReferenceTime());
         }
     }
 
     void RtxRenderer::eventTraversal()
     {
-        // Nothing to traverse: the stage adopted no queue, and everything the game acts on came
+        // Nothing to traverse: this renderer adopted no queue, and everything the game acts on came
         // through `SDLUtil::InputWrapper` and MyGUI before this.
     }
 
@@ -422,27 +407,24 @@ namespace MWRender
         assert(mGui != nullptr && "a frame before the interface was made");
         mGui->update(static_cast<float>(mClock.getStep()));
 
-        if (!mStage.hasSceneRoot())
+        if (!hasSceneRoot())
             return;
 
         mUpdateVisitor->reset();
-        mUpdateVisitor->setFrameStamp(&mStage.getFrameStamp());
-        mUpdateVisitor->setTraversalNumber(mStage.getFrameStamp().getFrameNumber());
+        mUpdateVisitor->setFrameStamp(&getFrameStamp());
+        mUpdateVisitor->setTraversalNumber(getFrameStamp().getFrameNumber());
 
         // **Not behind a loading screen.** What the rasterizer says with a blanked traversal mask
         // this says by not walking. The eye below still updates, as it does under that blanked mask:
         // the master camera's own bits are not among the ones it clears.
         if (drawsWorld())
-            mStage.getSceneRoot().accept(*mUpdateVisitor);
+            getSceneRoot().accept(*mUpdateVisitor);
 
         // **And the eye, which is not in the graph.** `MWRender::Camera` puts where the player is
         // looking onto the master camera from an update callback, exactly as the viewer's own update
         // traversal reaches it. Without this the view matrix is whatever it was made with, and every
         // frame is traced from the origin looking down.
-        //
-        // Through the stage, because the stage is what parented the world under that camera and so
-        // is what knows why accepting on it would walk the world twice.
-        mStage.updateEye(*mUpdateVisitor);
+        updateEye(getCamera(), *mUpdateVisitor);
     }
 
     void RtxRenderer::fitToWindow()
@@ -476,8 +458,7 @@ namespace MWRender
 
         // Whatever the backend settled on, which is what the trace and the GUI are both sized to.
         const Rtx::FrameExtents extents = mRenderer->getExtents();
-        mStage.getCamera().setViewport(
-            0, 0, static_cast<int>(extents.mOutputWidth), static_cast<int>(extents.mOutputHeight));
+        getCamera().setViewport(0, 0, static_cast<int>(extents.mOutputWidth), static_cast<int>(extents.mOutputHeight));
     }
 
     void RtxRenderer::drawGui()
@@ -492,11 +473,9 @@ namespace MWRender
     FrameContext RtxRenderer::describeContext()
     {
         return FrameContext{
-            .mBackend = *mRenderer,
-            .mViews = *this,
-            .mHost = *this,
+            .mRenderer = *this,
             .mResources = mResources,
-            .mSceneRoot = mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr,
+            .mSceneRoot = hasSceneRoot() ? &getSceneRoot() : nullptr,
             .mScene = mMirror.getScene(),
             .mReach = mMirror.getReach(),
         };
@@ -507,9 +486,7 @@ namespace MWRender
         if (mResources == nullptr)
             return std::nullopt;
 
-        return PoseMoment{
-            .mStamp = mStage.getFrameStamp(), .mFrame = mFrame, .mImages = *mResources->getImageManager()
-        };
+        return PoseMoment{ .mStamp = getFrameStamp(), .mFrame = mFrame, .mImages = *mResources->getImageManager() };
     }
 
     void RtxRenderer::redraw(TracedView& view)
@@ -761,7 +738,7 @@ namespace MWRender
 
     void RtxRenderer::traceWorld(const SceneFrame& frame, FrameReport& report)
     {
-        if (mMirror.getScene().getTables().mPlacements.getPlacedCount() == 0)
+        if (mMirror.getScene().placements().getPlacedCount() == 0)
             return;
 
         finishBehind(report);
@@ -815,11 +792,10 @@ namespace MWRender
         mHasScene = true;
 
         if (report.mRebuilt)
-            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getTables().mMeshes.getRows().size()
-                             << " meshes into " << mWalked.mFound.mInstances << " instances with "
-                             << mWalked.mFound.mLights << " lights, " << mWalked.mFound.mDeformed
-                             << " of them deforming, and skipped " << mWalked.mFound.mSkippedUnknown
-                             << " it cannot read";
+            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().meshes().getRows().size() << " meshes into "
+                             << mWalked.mFound.mInstances << " instances with " << mWalked.mFound.mLights << " lights, "
+                             << mWalked.mFound.mDeformed << " of them deforming, and skipped "
+                             << mWalked.mFound.mSkippedUnknown << " it cannot read";
 
         mUnreadable += handed.mUnreadable;
 
@@ -952,15 +928,15 @@ namespace MWRender
         if (report.mResult.has_value() && mSpeed.addWait(report.mResult->mWaitMs))
         {
             const Rtx::FrameExtents extents = mRenderer->getExtents();
-            const Rtx::SceneTables scene = mMirror.getScene().getTables();
+            const Rtx::SceneDesc& scene = mMirror.getScene();
 
             // **The emitters among it, because they are the half a placement count does not carry.**
             // Sprites are not instances and never enter that number, so a cell whose every flame,
             // brazier and raindrop had stopped read exactly like one whose emitters were running.
             Log(Debug::Info) << "Ray tracing: waited " << mSpeed.getWaitMs()
                              << " ms a frame for the device over the last " << mSpeed.getFrames() << ", tracing "
-                             << scene.mPlacements.getPlacedCount() << " instances and " << scene.mEmitters.size()
-                             << " emitters holding " << scene.mSprites.size() << " sprites at " << extents.mRenderWidth
+                             << scene.placements().getPlacedCount() << " instances and " << scene.emitters().size()
+                             << " emitters holding " << scene.sprites().size() << " sprites at " << extents.mRenderWidth
                              << "x" << extents.mRenderHeight << ", reconstructed by "
                              << Rtx::denoiserName(report.mReconstruction.mDenoiser) << " to " << extents.mOutputWidth
                              << "x" << extents.mOutputHeight;

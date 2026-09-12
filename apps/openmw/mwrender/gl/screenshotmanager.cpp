@@ -14,7 +14,6 @@
 #include "../../mwbase/world.hpp"
 
 #include "../renderer.hpp"
-#include "../stage.hpp"
 #include "postprocessor.hpp"
 
 namespace MWRender
@@ -95,9 +94,8 @@ namespace MWRender
         osg::ref_ptr<osg::Image> mImage;
     };
 
-    ScreenshotManager::ScreenshotManager(Renderer& renderer, Stage& stage)
+    ScreenshotManager::ScreenshotManager(Renderer& renderer)
         : mRenderer(renderer)
-        , mStage(stage)
         , mDrawCompleteCallback(new NotifyDrawCompletedCallback)
     {
     }
@@ -115,8 +113,8 @@ namespace MWRender
         camera->addChild(tempDrw);
 
         // Ref https://gitlab.com/OpenMW/openmw/-/issues/6013
-        mDrawCompleteCallback->reset(mStage.getFrameStamp().getFrameNumber());
-        mStage.getCamera().setFinalDrawCallback(mDrawCompleteCallback);
+        mDrawCompleteCallback->reset(mRenderer.getFrameStamp().getFrameNumber());
+        mRenderer.getCamera().setFinalDrawCallback(mDrawCompleteCallback);
         mRenderer.eventTraversal();
         mRenderer.updateTraversal();
         mRenderer.renderGui();
@@ -124,7 +122,7 @@ namespace MWRender
 
         // now that we've "used up" the current frame, get a fresh frame number for the next frame() following after the
         // screenshot is completed
-        mRenderer.advance(mStage.getFrameStamp().getSimulationTime());
+        mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
         camera->removeChild(tempDrw);
     }
 }

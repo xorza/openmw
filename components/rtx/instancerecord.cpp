@@ -55,15 +55,15 @@ namespace Rtx
     {
         /// The row for `slot` as it stands, still: the motion is the frame's question and is asked
         /// afterwards.
-        InstanceRecord recordOf(const SceneTables& scene, const Index slot)
+        InstanceRecord recordOf(const SceneDesc& scene, const Index slot)
         {
-            const MeshInstance& instance = scene.mPlacements.getAll()[slot];
+            const MeshInstance& instance = scene.placements().getAll()[slot];
             if (!instance.isPlaced())
                 return InstanceRecord{};
 
             // A plain opaque surface where the instance carries no material, which the untextured
             // test scenes place.
-            const std::span<const Material> materials = scene.mMaterials.getRows();
+            const std::span<const Material> materials = scene.materials().getRows();
             const Material::Traversed worn
                 = instance.mMaterial == sNoIndex ? Material::Traversed{} : materials[instance.mMaterial].getTraversed();
             const bool water = worn.mKind == MaterialKind::Water;
@@ -111,9 +111,9 @@ namespace Rtx
         /// drop falls out of the answer rather than being ignored by it: this is
         /// `inverse(current) * previous`, so a translation applied to both cancels — but only while
         /// the placement carries no rotation, which the sea's does not and a rotating one would.
-        void moveRecord(const SceneTables& scene, const Index slot, InstanceRecord& record)
+        void moveRecord(const SceneDesc& scene, const Index slot, InstanceRecord& record)
         {
-            const MeshInstance& instance = scene.mPlacements.getAll()[slot];
+            const MeshInstance& instance = scene.placements().getAll()[slot];
             if (!instance.isPlaced())
                 return;
 
@@ -122,7 +122,7 @@ namespace Rtx
             // outright rather than an inverse times itself — `inverse(T) * T` is the identity in
             // arithmetic and not in floats, and a few ulps of a six-figure world coordinate is a
             // fraction of a pixel of drift under a static surface.
-            const osg::Matrixf& previous = scene.mPlacements.getPrevious()[slot];
+            const osg::Matrixf& previous = scene.placements().getPrevious()[slot];
             if (previous == instance.mTransform)
                 return;
 
@@ -130,38 +130,38 @@ namespace Rtx
         }
     }
 
-    void makeInstanceRecords(const SceneTables& scene, std::vector<InstanceRecord>& records)
+    void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records)
     {
         // **Resized and not cleared.** `clear` plus `resize` writes the whole array twice — once
         // with zeroes and once with the records — and at a hundred bytes a slot over fifty thousand
         // slots that is five megabytes of pointless stores. The buffer is the caller's and keeps
         // its size between scenes; only a scene that grew or shrank pays anything here.
-        const std::span<const MeshInstance> instances = scene.mPlacements.getAll();
+        const std::span<const MeshInstance> instances = scene.placements().getAll();
         records.resize(instances.size());
 
         for (std::size_t slot = 0; slot < instances.size(); ++slot)
             records[slot] = recordOf(scene, static_cast<Index>(slot));
 
-        for (const Index slot : scene.mPlacements.getMoved())
+        for (const Index slot : scene.placements().getMoved())
             moveRecord(scene, slot, records[slot]);
     }
 
     void updateInstanceRecords(
-        const SceneTables& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed)
+        const SceneDesc& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed)
     {
-        records.resize(scene.mPlacements.getAll().size());
+        records.resize(scene.placements().getAll().size());
         changed.clear();
-        changed.reserve(scene.mPlacements.getSettled().size() + scene.mPlacements.getMoved().size());
+        changed.reserve(scene.placements().getSettled().size() + scene.placements().getMoved().size());
 
         // The settled first: a slot that moved again since it settled is in both lists, and the
         // pass that gives it its motion has to be the one that wins.
-        for (const Index slot : scene.mPlacements.getSettled())
+        for (const Index slot : scene.placements().getSettled())
         {
             records[slot] = recordOf(scene, slot);
             changed.push_back(slot);
         }
 
-        for (const Index slot : scene.mPlacements.getMoved())
+        for (const Index slot : scene.placements().getMoved())
         {
             records[slot] = recordOf(scene, slot);
             moveRecord(scene, slot, records[slot]);

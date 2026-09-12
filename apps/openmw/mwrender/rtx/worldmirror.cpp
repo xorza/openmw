@@ -211,7 +211,7 @@ namespace MWRender
         return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber);
     }
 
-    Rtx::SceneUpload WorldMirror::hand(Rtx::SceneSink& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend)
+    Rtx::SceneUpload WorldMirror::hand(Rtx::Renderer& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend)
     {
         return mUploader.hand(renderer,
             Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(),

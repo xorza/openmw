@@ -44,11 +44,10 @@ namespace Rtx::Testing
 
             walk(*root);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
 
             // 0.5 * (1 - 2) + 0.25 = -0.25, and 0.5 * (1 - 4) - 0.5 = -2.
-            EXPECT_EQ(
-                mScene.getTables().mMaterials.getRows()[0].mTextureTransform, osg::Vec4f(2.0f, 4.0f, -0.25f, -2.0f));
+            EXPECT_EQ(mScene.materials().getRows()[0].mTextureTransform, osg::Vec4f(2.0f, 4.0f, -0.25f, -2.0f));
         }
 
         /// The identity, and not by accident: every surface that does not scroll shares one sampler
@@ -63,8 +62,8 @@ namespace Rtx::Testing
 
             walk(*root);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mTextureTransform, osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f));
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            EXPECT_EQ(mScene.materials().getRows()[0].mTextureTransform, osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f));
         }
 
         TEST_F(RtxSceneExtractorTest, aMaterialKeepsItsSlotWhileTheNodesOwnStateSetAlternates)
@@ -96,7 +95,7 @@ namespace Rtx::Testing
                 EXPECT_EQ(went.mMaterials, 0u) << "pass " << pass << ": swept is added again next frame";
             }
 
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
+            EXPECT_EQ(mScene.materials().getRows().size(), 1u);
         }
 
         TEST_F(RtxSceneExtractorTest, degenerateTrianglesAreDropped)
@@ -112,7 +111,7 @@ namespace Rtx::Testing
 
             walk(*geometry);
 
-            EXPECT_EQ(mScene.getTables().mMeshes.getTriangleCount(), 1u);
+            EXPECT_EQ(mScene.meshes().getTriangleCount(), 1u);
         }
 
         TEST_F(RtxSceneExtractorTest, geometryWithNoTrianglesIsSkippedRatherThanAdded)
@@ -124,7 +123,7 @@ namespace Rtx::Testing
 
             EXPECT_EQ(stats.mSkippedEmpty, 1u);
             EXPECT_EQ(stats.mInstances, 0u);
-            EXPECT_TRUE(mScene.getTables().mMeshes.getRows().empty());
+            EXPECT_TRUE(mScene.meshes().getRows().empty());
         }
 
         /// A drawable that describes nothing inherits what the state sets above it say.
@@ -144,15 +143,14 @@ namespace Rtx::Testing
 
             walk(*parent);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            ASSERT_EQ(mScene.getTables().mTextures.getPaths().size(), 1u);
-            EXPECT_EQ(
-                mScene.getTables().mTextures.getPaths()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuse, 0u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            ASSERT_EQ(mScene.textures().getPaths().size(), 1u);
+            EXPECT_EQ(mScene.textures().getPaths()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
+            EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, 0u);
 
             // Nothing on the chain turned culling off, so the surface shows one face: the scene
             // root culls, and only a record that says otherwise makes a surface two-sided.
-            EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[0].mTwoSided);
+            EXPECT_FALSE(mScene.materials().getRows()[0].mTwoSided);
         }
 
         /// A blend is what marks a cutout in this data, and it has to survive into the material.
@@ -175,8 +173,8 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*quad, osg::Matrixf::identity(), 0);
 
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().size(), 1u);
-                return scene.getTables().mMaterials.getRows().front();
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
+                return scene.materials().getRows().front();
             };
 
             const Rtx::Material blended = extractOne(true);
@@ -219,20 +217,20 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*parent, osg::Matrixf::identity(), 0);
 
-                EXPECT_EQ(scene.getTables().mPlacements.getAll().size(), 1u);
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().size(), 1u);
+                EXPECT_EQ(scene.placements().getAll().size(), 1u);
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
 
                 // The material is asked as well, because the fade landing there instead would pass
                 // every other assertion in this test.
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().front().mOpacity, opacity)
+                EXPECT_EQ(scene.materials().getRows().front().mOpacity, opacity)
                     << "a shared material took one actor's fade";
 
                 std::vector<Rtx::InstanceRecord> records;
-                Rtx::makeInstanceRecords(scene.getTables(), records);
+                Rtx::makeInstanceRecords(scene, records);
                 EXPECT_EQ(records.size(), 1u);
                 EXPECT_TRUE(records.front().mCutout) << "a fade is not a hole, and the mask still has some";
 
-                return scene.getTables().mPlacements.getAll().front().mOpacity;
+                return scene.placements().getAll().front().mOpacity;
             };
 
             // Halves and quarters, so the product is exact in binary and the assertion is the
@@ -261,26 +259,25 @@ namespace Rtx::Testing
             walk(*parent);
 
             std::vector<Rtx::InstanceRecord> records;
-            ASSERT_EQ(mScene.getTables().mPlacements.getAll().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mPlacements.getAll().front().mOpacity, 1.0f);
-            Rtx::makeInstanceRecords(mScene.getTables(), records);
+            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
+            EXPECT_EQ(mScene.placements().getAll().front().mOpacity, 1.0f);
+            Rtx::makeInstanceRecords(mScene, records);
             EXPECT_FALSE(records.front().mTranslucent) << "an actor at full brightness stops every ray";
 
             mScene.placements().advance();
             fade->set(0.25f);
             walk(*parent);
 
-            EXPECT_EQ(mScene.getTables().mPlacements.getAll().size(), 1u)
-                << "a second placement rather than the one that faded";
-            EXPECT_EQ(mScene.getTables().mPlacements.getAll().front().mOpacity, 0.25f);
+            EXPECT_EQ(mScene.placements().getAll().size(), 1u) << "a second placement rather than the one that faded";
+            EXPECT_EQ(mScene.placements().getAll().front().mOpacity, 0.25f);
 
             // A fade is a row to rewrite — what traversal is told changed — and not a move: the
             // record carries no motion, or the actor would smear across the frame it faded on.
-            ASSERT_EQ(mScene.getTables().mPlacements.getMoved().size(), 1u)
+            ASSERT_EQ(mScene.placements().getMoved().size(), 1u)
                 << "a placement that faded on the spot reported no row to write";
-            EXPECT_EQ(mScene.getTables().mPlacements.getMoved().front(), 0u);
+            EXPECT_EQ(mScene.placements().getMoved().front(), 0u);
 
-            Rtx::makeInstanceRecords(mScene.getTables(), records);
+            Rtx::makeInstanceRecords(mScene, records);
             EXPECT_TRUE(records.front().mTranslucent);
             EXPECT_EQ(records.front().mMotion, Rtx::toTransform3x4(osg::Matrixf::identity()))
                 << "a fade on the spot carried a motion";
@@ -307,8 +304,8 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*quad, osg::Matrixf::identity(), 0);
 
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().size(), 1u);
-                return scene.getTables().mMaterials.getRows().front().mEmissiveColour;
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
+                return scene.materials().getRows().front().mEmissiveColour;
             };
 
             const auto expectScaled = [&](float multiplier) {
@@ -348,7 +345,7 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*root, osg::Matrixf::identity(), 0);
 
-                const std::span<const Light> lights = scene.getTables().mLights;
+                const std::span<const Light> lights = scene.lights();
                 return std::vector<Light>(lights.begin(), lights.end());
             };
 
@@ -378,8 +375,8 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*quad, osg::Matrixf::identity(), 0);
 
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().size(), 1u);
-                return scene.getTables().mMaterials.getRows()[0].mTwoSided;
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
+                return scene.materials().getRows()[0].mTwoSided;
             };
 
             EXPECT_TRUE(extractOne(true));
@@ -411,11 +408,10 @@ namespace Rtx::Testing
             const ExtractionStats stats = walk(*card);
 
             EXPECT_EQ(stats.mSheets, 1u);
-            ASSERT_EQ(mScene.getTables().mMeshes.getRows().size(), 1u);
-            EXPECT_TRUE(mScene.getTables().mMeshes.getRows()[0].mShape.mSheet);
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].getTriangleCount(), 2u) << "the back is gone";
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].mVertices.mCount, 8u)
-                << "its vertices stay; nothing points at them";
+            ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
+            EXPECT_TRUE(mScene.meshes().getRows()[0].mShape.mSheet);
+            EXPECT_EQ(mScene.meshes().getRows()[0].getTriangleCount(), 2u) << "the back is gone";
+            EXPECT_EQ(mScene.meshes().getRows()[0].mVertices.mCount, 8u) << "its vertices stay; nothing points at them";
 
             // A plain quad is a quad: nothing paired, nothing dropped, not a sheet.
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
@@ -424,8 +420,8 @@ namespace Rtx::Testing
             Rtx::SceneDesc plain;
             SceneExtractor other(plain);
             EXPECT_EQ(other.extract(*quad, osg::Matrixf::identity(), 0).mSheets, 0u);
-            EXPECT_FALSE(plain.getTables().mMeshes.getRows()[0].mShape.mSheet);
-            EXPECT_EQ(plain.getTables().mMeshes.getRows()[0].getTriangleCount(), 2u);
+            EXPECT_FALSE(plain.meshes().getRows()[0].mShape.mSheet);
+            EXPECT_EQ(plain.meshes().getRows()[0].getTriangleCount(), 2u);
         }
 
         TEST_F(RtxSceneExtractorTest, aDrawableTheCallerCallsWaterIsShadedAsWaterAndTheRestAreNot)
@@ -462,26 +458,26 @@ namespace Rtx::Testing
                 SceneExtractor silent(scene);
                 silent.extract(*root, osg::Matrixf::identity(), 0);
 
-                ASSERT_EQ(scene.getTables().mMaterials.getRows().size(), 3u);
-                for (const Rtx::Material& material : scene.getTables().mMaterials.getRows())
+                ASSERT_EQ(scene.materials().getRows().size(), 3u);
+                for (const Rtx::Material& material : scene.materials().getRows())
                     EXPECT_EQ(material.mKind, Rtx::MaterialKind::Surface);
             }
 
             mExtractor.setWaterMask(sWater);
             walk(*root);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 3u);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mKind, Rtx::MaterialKind::Water);
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[1].mKind, Rtx::MaterialKind::Surface)
+            ASSERT_EQ(mScene.materials().getRows().size(), 3u);
+            EXPECT_EQ(mScene.materials().getRows()[0].mKind, Rtx::MaterialKind::Water);
+            EXPECT_EQ(mScene.materials().getRows()[1].mKind, Rtx::MaterialKind::Surface)
                 << "a mask the caller did not name made a surface into a sea";
-            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[2].mKind, Rtx::MaterialKind::Surface)
+            EXPECT_EQ(mScene.materials().getRows()[2].mKind, Rtx::MaterialKind::Surface)
                 << "a drawable with the default mask was called water, which is every drawable";
 
             // **What being water is actually for.** A shadow ray has to pass through the surface, or
             // every shallow in the game is lit as though the sea were a wall; the mask is where the
             // record says so, and the material kind is where it comes from.
             std::vector<Rtx::InstanceRecord> records;
-            Rtx::makeInstanceRecords(mScene.getTables(), records);
+            Rtx::makeInstanceRecords(mScene, records);
 
             ASSERT_EQ(records.size(), 3u);
             EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_WATER);
@@ -533,11 +529,11 @@ namespace Rtx::Testing
 
             const ExtractionStats stats = walk(*root);
 
-            ASSERT_EQ(mScene.getTables().mMeshes.getRows().size(), 1u);
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].mMaterial, 0u);
-            EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[0].mAnimated);
-            EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].isCutout());
+            ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            EXPECT_EQ(mScene.meshes().getRows()[0].mMaterial, 0u);
+            EXPECT_FALSE(mScene.materials().getRows()[0].mAnimated);
+            EXPECT_TRUE(mScene.materials().getRows()[0].isCutout());
             EXPECT_EQ(stats.mInstances, 2u);
             EXPECT_EQ(stats.mWornOtherwise, 0u);
         }
@@ -560,11 +556,11 @@ namespace Rtx::Testing
 
             const ExtractionStats stats = walk(*node, 0, 1);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].mAnimated);
-            EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].isCutout());
-            ASSERT_EQ(mScene.getTables().mMeshes.getRows().size(), 1u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].mMaterial, 0u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            EXPECT_TRUE(mScene.materials().getRows()[0].mAnimated);
+            EXPECT_TRUE(mScene.materials().getRows()[0].isCutout());
+            ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
+            EXPECT_EQ(mScene.meshes().getRows()[0].mMaterial, 0u);
             EXPECT_EQ(stats.mWornOtherwise, 0u);
 
             // And it stays animated on the frame after, when the material is read again: the flag
@@ -573,7 +569,7 @@ namespace Rtx::Testing
             node->accept(update);
             mScene.clearPlacement();
             walk(*node, 0, 2);
-            EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].mAnimated);
+            EXPECT_TRUE(mScene.materials().getRows()[0].mAnimated);
         }
 
         /// A placement wearing a material other than the one its mesh arrived with is counted.
@@ -596,9 +592,9 @@ namespace Rtx::Testing
 
             const ExtractionStats stats = walk(*root);
 
-            ASSERT_EQ(mScene.getTables().mMeshes.getRows().size(), 1u);
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 2u);
-            EXPECT_EQ(mScene.getTables().mMeshes.getRows()[0].mMaterial, 0u) << "the material it arrived wearing";
+            ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 2u);
+            EXPECT_EQ(mScene.meshes().getRows()[0].mMaterial, 0u) << "the material it arrived wearing";
             EXPECT_EQ(stats.mInstances, 2u);
             EXPECT_EQ(stats.mWornOtherwise, 1u);
         }
@@ -647,12 +643,10 @@ namespace Rtx::Testing
                     EXPECT_EQ(spent, 0u) << spent << " allocations on frame " << frame;
                 }
 
-                ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u) << "on frame " << frame;
-                EXPECT_TRUE(mScene.getTables().mMaterials.getRows()[0].mAnimated);
-                EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuse, 0u)
-                    << "the same slot, on frame " << frame;
-                EXPECT_EQ(mScene.getTables().mTextures.getPaths().size(), 1u)
-                    << "a second slot arrived on frame " << frame;
+                ASSERT_EQ(mScene.materials().getRows().size(), 1u) << "on frame " << frame;
+                EXPECT_TRUE(mScene.materials().getRows()[0].mAnimated);
+                EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, 0u) << "the same slot, on frame " << frame;
+                EXPECT_EQ(mScene.textures().getPaths().size(), 1u) << "a second slot arrived on frame " << frame;
 
                 mExtractor.retire();
             }
@@ -665,7 +659,7 @@ namespace Rtx::Testing
             walk(*node, 0, 4);
             mExtractor.retire();
 
-            EXPECT_TRUE(mScene.getTables().mTextures.isFree(0)) << "the walk's own hold outlived the surface";
+            EXPECT_TRUE(mScene.textures().isFree(0)) << "the walk's own hold outlived the surface";
         }
 
         /// The surface is read from its controller every frame, and from whichever controller the
@@ -689,8 +683,8 @@ namespace Rtx::Testing
 
             walk(*node, 0, 1);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.0508761f);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            expectRed(mScene.materials().getRows()[0].mDiffuseColour, 0.0508761f);
 
             // What the entry holds is the state set and never what was written into it, so a second
             // walk reads the surface again.
@@ -698,8 +692,8 @@ namespace Rtx::Testing
             mScene.clearPlacement();
             walk(*node, 0, 2);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u) << "the same surface is the same slot";
-            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.2140411f);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u) << "the same surface is the same slot";
+            expectRed(mScene.materials().getRows()[0].mDiffuseColour, 0.2140411f);
 
             // And the chain changes under it: the controller swapped under the walk is not the one
             // that painted the surface.
@@ -711,8 +705,8 @@ namespace Rtx::Testing
             mScene.clearPlacement();
             walk(*node, 0, 3);
 
-            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
-            expectRed(mScene.getTables().mMaterials.getRows()[0].mDiffuseColour, 0.5225216f);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            expectRed(mScene.materials().getRows()[0].mDiffuseColour, 0.5225216f);
         }
     }
 }

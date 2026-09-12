@@ -9,12 +9,74 @@
 #include <osg/Vec2f>
 #include <osg/ref_ptr>
 
-#include "alphamode.hpp"
-#include "colour.hpp"
-#include "vertexcolour.hpp"
-
 namespace Surface
 {
+    /// What the alpha channel of a surface's diffuse texture means.
+    ///
+    /// `Cutout` and `Blend` are not exclusive in a NIF — `NiAlphaProperty` can ask for both — but no
+    /// renderer benefits from honouring both, and the rasterizer already resolves them this way:
+    /// blending wins, and the test threshold survives for a renderer that would rather cut out.
+    enum class AlphaMode
+    {
+        /// Ignore it. The overwhelming majority of Morrowind's geometry.
+        Opaque,
+
+        /// Test against the material's own threshold.
+        Cutout,
+
+        /// Blend. **This is where the foliage is**, and a ray tracer reads it the opposite of the
+        /// obvious way: barely any of Morrowind's material set is alpha-tested outright — a canopy,
+        /// a grate or a banner is an `NiAlphaProperty` over a texture whose alpha is all but binary,
+        /// and the original renderer sorted it rather than testing it.
+        /// `Rtx::Material::getAlphaCutoff` says what a renderer with no sort does about that.
+        Blend,
+    };
+
+    /// A colour as a content file states one: three channels from nought to one, display-encoded.
+    ///
+    /// **A type, because the space is the whole of what a reader gets wrong.** Morrowind's records
+    /// are written in the space the artist saw, and a renderer working in light has to divide the
+    /// display curve out of every one of them — `Rtx::decodeColour` is that crossing. An
+    /// `osg::Vec3f` says nothing about which side of it a value is on, so a reader that copied one
+    /// across was right by inspection and wrong in fact. This is the side a renderer cannot copy
+    /// out of.
+    ///
+    /// **No arithmetic, on purpose.** Nothing weighs, sums or scales a colour on this side of the
+    /// crossing: the content states it, a controller replaces it, and a renderer decodes it. A gain
+    /// belongs past the decode, where the numbers are light.
+    struct Colour
+    {
+        float mRed = 0.0f;
+        float mGreen = 0.0f;
+        float mBlue = 0.0f;
+
+        bool operator==(const Colour& other) const = default;
+    };
+
+    /// What a surface's per-vertex colour is for, as the content said.
+    ///
+    /// **`NiVertexColorProperty`'s three vertex modes, resolved against its light mode.**
+    /// `SceneUtil::VertexColorModes` carries six, because a loaded `osg::Material` can name the
+    /// ambient, the diffuse or the specular alone — but a NIF states only these three. A renderer
+    /// with one albedo folds the first two of those into the tint, and the specular has nowhere to
+    /// go in a model with no specular lobe.
+    enum class VertexColour
+    {
+        /// The colours are there and mean nothing, or there are none at all. `NifOsg` resolves both
+        /// to this, so a surface that says nothing here has nothing to apply.
+        None,
+
+        /// It replaces the material's diffuse and ambient colour, which is what
+        /// `glColorMaterial(GL_AMBIENT_AND_DIFFUSE)` does and what the game's own shader reads
+        /// through `getDiffuseColor`. Every piece of ground is this, and so is every model that
+        /// carries colours and says nothing about them.
+        Tint,
+
+        /// It replaces the material's emissive colour. The light mode that goes with it also takes
+        /// the diffuse and the ambient to nought, so such a surface is its glow and nothing else.
+        Glow,
+    };
+
     /// What a texture is for, as the content file said.
     ///
     /// **A role, not a texture unit.** A NIF says a map is a glow map and the loader has always known

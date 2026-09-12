@@ -15,8 +15,8 @@
 
 #include "buffer.hpp"
 #include "computepipeline.hpp"
+#include "handles.hpp"
 #include "image.hpp"
-#include "sampler.hpp"
 
 namespace Rtx
 {
@@ -47,9 +47,6 @@ namespace Rtx
         /// @param pool used by `describe`, which is not on the frame path. Held, because a sea state
         ///        can arrive at any time.
         WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
-
-        WavePass(const WavePass&) = delete;
-        WavePass& operator=(const WavePass&) = delete;
 
         /// Draws the amplitudes for a sea state, replacing whatever was drawn before.
         ///

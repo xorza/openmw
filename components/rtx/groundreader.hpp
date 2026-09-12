@@ -15,7 +15,7 @@
 #include <components/terrain/defs.hpp>
 #include <components/terrain/storage.hpp>
 
-#include "preparedground.hpp"
+#include "prepared.hpp"
 
 namespace Rtx
 {

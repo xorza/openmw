@@ -89,13 +89,13 @@ namespace Rtx
             for (std::size_t frame = 2; frame <= sBakeFrames; ++frame)
             {
                 EXPECT_EQ(queue.advance(scene, images), 0u) << "a composite was collected on frame " << frame;
-                EXPECT_EQ(scene.getTables().mMaterials.getRows()[chunk].mDiffuse, sNoIndex)
+                EXPECT_EQ(scene.materials().getRows()[chunk].mDiffuse, sNoIndex)
                     << "the chunk was given ground it is not due yet";
             }
 
             EXPECT_EQ(queue.advance(scene, images), 1u) << "the composite did not land on the frame it came due";
 
-            const Index baked = scene.getTables().mMaterials.getRows()[chunk].mDiffuse;
+            const Index baked = scene.materials().getRows()[chunk].mDiffuse;
             ASSERT_NE(baked, sNoIndex) << "the chunk still shades from its stack";
             EXPECT_NE(queue.find(baked), nullptr) << "the slot the chunk was given holds no composite";
 
