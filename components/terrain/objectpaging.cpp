@@ -419,8 +419,8 @@ namespace Terrain
         struct InstanceList
         {
             osg::ref_ptr<const osg::Node> mTemplate;
-            std::vector<const PagedCellRef*> mInstances;
-            AnalyzeVisitor::Result mAnalyzeResult;
+            std::vector<const PagedCellRef*> mInstances{};
+            AnalyzeVisitor::Result mAnalyzeResult{};
             bool mNeedCompile = false;
         };
 

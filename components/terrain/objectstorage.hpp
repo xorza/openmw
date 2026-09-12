@@ -23,10 +23,10 @@ namespace Terrain
     /// One reference a chunk stands, reduced to what the paging needs of it.
     struct PagedCellRef
     {
-        ESM::RefId mRefId;
-        ESM::RefNum mRefNum;
-        osg::Vec3f mPosition;
-        osg::Vec3f mRotation;
+        ESM::RefId mRefId{};
+        ESM::RefNum mRefNum{};
+        osg::Vec3f mPosition{};
+        osg::Vec3f mRotation{};
         float mScale = 1.f;
 
         /// The record type `mRefId` resolves to. Carried rather than looked up again: deciding
