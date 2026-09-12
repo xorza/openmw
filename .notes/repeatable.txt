@@ -12,6 +12,13 @@
   ten identical to none of four. The scene columns repeat on every pair, which is why this is a
   report and not a gate.
 
+2026-09-13  f620e7885f+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
+  measured, taken over the third review's changes: the post-processor and the screenshot manager on
+  the viewer again, the object paging back in `mwrender`, `TerrainPlan` collapsed to
+  `buildsTerrainChunks`, and the comment pass. Every scene column identical on every pair. Every
+  pair differed on the picture, on 174 to 358 pictures of 360; two pairs earlier the same session
+  differed on 141 and 183, and two before that on 359 and 359.
+
 2026-09-09  8fb5cb803e+  — ten pairs of `one-cell-walk`, six seconds, build-debug, after the drain in
   `VulkanRenderer::resize` was put behind `Presenter::wantsResize`. Identical over every pair, scene
   columns and picture both.
