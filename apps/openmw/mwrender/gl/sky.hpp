@@ -8,9 +8,6 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
-#include <components/sky/clouds.hpp>
-#include <components/sky/moonmodel.hpp>
-#include <components/sky/skyroll.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "precipitationocclusion.hpp"
@@ -41,14 +38,8 @@ namespace SceneUtil
     class Material;
 }
 
-namespace Weather
-{
-    class Precipitation;
-}
-
 namespace MWRender
 {
-
     ///@brief The SkyManager handles rendering of the sky domes, celestial bodies as well as other objects that need to
     /// be rendered
     /// relative to the camera (e.g. weather particle effects)
@@ -59,7 +50,7 @@ namespace MWRender
             Resource::SceneManager* sceneManager, bool enableSkyRTT);
         ~SkyManager();
 
-        void update();
+        void update(float duration);
 
         void setEnabled(bool enabled);
 
@@ -88,10 +79,12 @@ namespace MWRender
 
         float getPrecipitationAlpha() const;
 
+        void setStormParticleDirection(const osg::Vec3f& direction);
+
         void setSunDirection(const osg::Vec3f& direction);
 
-        void setMasserState(const Sky::MoonMoment& state);
-        void setSecundaState(const Sky::MoonMoment& state);
+        void setMasserState(const MoonState& state);
+        void setSecundaState(const MoonState& state);
 
         void setGlareTimeOfDayFade(float val);
 
@@ -106,22 +99,35 @@ namespace MWRender
 
         float getBaseWindSpeed() const;
 
-        /// What the weather drops. **Built here and drawn by whoever is drawing**, because a particle
-        /// system is not a rasterizer's or a tracer's — it is the world's, and there is one of it.
-        Weather::Precipitation* getPrecipitation() { return mPrecipitation.get(); }
-
-        /// How far the clouds have scrolled and the stars have rolled, which `MWRender::RenderingManager`
-        /// turns and hands down. **Not advanced here**: this manager belongs to one of the two
-        /// renderers and is built lazily, so a clock inside it is one the other cannot read.
-        void setRoll(const Sky::SkyRoll& roll) { mRoll = roll; }
-
         void setSunglare(bool enabled);
 
         SceneUtil::RTTNode* getSkyRTT() { return mSkyRTT.get(); }
 
+        osg::Vec4f getSkyColor() const { return mSkyColour; }
+
+        /// What the weather drops, for a renderer that walks the graph itself: the rain box and the
+        /// driven effect, or null where there is none. Both are camera-relative, so a walk stands
+        /// them at the eye.
+        osg::Node* getRainNode();
+        osg::Node* getParticleNode();
+
+        /// How far the cloud deck has scrolled and the stars have turned, for a renderer that draws
+        /// its own sky off the same clock.
+        float getCloudAnimationTimer() const { return mCloudAnimationTimer; }
+        float getAtmosphereNightRoll() const { return mAtmosphereNightRoll; }
+
+        /// Where the eye is this frame. The cull traversal tells the sky's root the same thing, and a
+        /// renderer that culls nothing has to say it here, or the underwater switch reads a stale one.
+        void setViewPoint(const osg::Vec3f& eye);
+
     private:
         void create();
         ///< no need to call this, automatically done on first enable()
+
+        void createRain();
+        void destroyRain();
+        void switchUnderwaterRain();
+        void updateRainParameters();
 
         Resource::SceneManager* mSceneManager;
 
@@ -131,6 +137,8 @@ namespace MWRender
         osg::ref_ptr<osg::Group> mSkyNode;
         osg::ref_ptr<osg::Group> mEarlyRenderBinRoot;
 
+        osg::ref_ptr<osg::PositionAttitudeTransform> mParticleNode;
+        osg::ref_ptr<osg::Node> mParticleEffect;
         osg::ref_ptr<UnderwaterSwitchCallback> mUnderwaterSwitch;
 
         osg::ref_ptr<osg::Group> mCloudNode;
@@ -143,6 +151,7 @@ namespace MWRender
         osg::ref_ptr<osg::Node> mAtmosphereDay;
 
         osg::ref_ptr<osg::PositionAttitudeTransform> mAtmosphereNightNode;
+        float mAtmosphereNightRoll;
         osg::ref_ptr<AtmosphereNightUpdater> mAtmosphereNightUpdater;
 
         osg::ref_ptr<AtmosphereUpdater> mAtmosphereUpdater;
@@ -151,6 +160,12 @@ namespace MWRender
         std::unique_ptr<Moon> mMasser;
         std::unique_ptr<Moon> mSecunda;
 
+        osg::ref_ptr<osg::Group> mRainNode;
+        osg::ref_ptr<osgParticle::ParticleSystem> mRainParticleSystem;
+        osg::ref_ptr<osgParticle::BoxPlacer> mPlacer;
+        osg::ref_ptr<RainCounter> mCounter;
+        osg::ref_ptr<RainShooter> mRainShooter;
+
         bool mPrecipitationOcclusion = false;
         std::unique_ptr<PrecipitationOccluder> mPrecipitationOccluder;
 
@@ -158,11 +173,11 @@ namespace MWRender
 
         bool mIsStorm;
 
-        /// How far the deck has scrolled and the stars have turned, as handed down. Never advanced
-        /// here, so the clock it is built on is nobody's.
-        Sky::SkyRoll mRoll{ false };
+        bool mTimescaleClouds;
+        float mCloudAnimationTimer;
 
         // particle system rotation is independent of cloud rotation internally
+        osg::Vec3f mStormParticleDirection;
         osg::Vec3f mStormDirection;
         osg::Vec3f mNextStormDirection;
 
@@ -170,11 +185,24 @@ namespace MWRender
         std::string mClouds;
         std::string mNextClouds;
         float mCloudBlendFactor;
+        float mCloudSpeed;
         float mStarsOpacity;
         osg::Vec4f mCloudColour;
         osg::Vec4f mSkyColour;
         osg::Vec4f mFogColour;
 
+        VFS::Path::Normalized mCurrentParticleEffect;
+
+        std::string mRainEffect;
+        float mRainSpeed;
+        float mRainDiameter;
+        float mRainMinHeight;
+        float mRainMaxHeight;
+        float mRainEntranceSpeed;
+        int mRainMaxRaindrops;
+        bool mRainRipplesEnabled;
+        bool mSnowRipplesEnabled;
+        float mWindSpeed;
         float mBaseWindSpeed;
 
         bool mEnabled;
@@ -182,13 +210,6 @@ namespace MWRender
 
         float mPrecipitationAlpha;
         bool mDirtyParticlesEffect;
-
-        /// What falls out of the weather, which both renderers draw and neither owns.
-        std::unique_ptr<Weather::Precipitation> mPrecipitation;
-
-        /// Hangs this renderer's own concerns back on whatever `mPrecipitation` has just built: the
-        /// occlusion pass, the underwater cull callback and the generated shaders' hints.
-        void decoratePrecipitation();
 
         osg::Vec4f mMoonScriptColor;
 

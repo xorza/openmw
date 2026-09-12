@@ -22,17 +22,17 @@ namespace Rtx
     /// then hand them to `makeSkylight` rather than assembling a sun themselves.
     struct SkyReading
     {
-        /// Where the disc stands, unit — `Sky::SunPlacement::mPosition`, by whatever route this
+        /// Where the disc stands, unit — `MWRender::WorldState::mSunPosition`, by whatever route this
         /// host reached it.
         ///
-        /// **The two fields and not the placement they name.** `Sky::SunPlacement` carries two more
+        /// **The two fields and not the placement they name.** `MWRender::WorldState` carries more
         /// that its own header calls the rasterizer's — a light direction that is not `-mPosition`,
         /// and a night switch that is not `mShare == 0` — and neither host has one to give: the game
         /// reads the weather system's dials back and the harness reads content files. Holding the
         /// struct would leave those two at nothing for a reader to trust.
         osg::Vec3f mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
-        /// How much of the sun is over the horizon — `Sky::SunPlacement::mShare`, which is where
+        /// How much of the sun is over the horizon — `Sky::sunShareAt`, which is where
         /// the rule that this alone answers "is there a sun" is argued.
         float mSunShare = 0.0f;
 
@@ -50,7 +50,7 @@ namespace Rtx
         /// The weather's `Ambient_*_Color` at this hour, linear.
         osg::Vec3f mAmbient;
 
-        /// What the disc is painted with, linear. `Sky::sunDiscAt`.
+        /// What the disc is painted with, linear. `MWRender::WorldState::mSunDiscColour`.
         osg::Vec3f mDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
         /// The weather's `Glare_View`: how much of the sun it lets through.
@@ -135,7 +135,7 @@ namespace Rtx
     /// How much of the sun a layer standing over the ground still has at `hour`.
     ///
     /// **The engine's sunset is a clock and not a horizon**, which is the whole of the shape here.
-    /// `Sky::sunShareAt` ramps on the hour and `Sky::sunAt` puts the disc level with the horizon at
+    /// `Sky::sunShareAt` ramps on the hour and the weather manager puts the disc level with the horizon at
     /// exactly `mNightStart`, so nothing anywhere takes an elevation — a layer that keeps the sun
     /// past the ground's horizon cannot be handed a lower one and is handed a different hour instead.
     ///

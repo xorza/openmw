@@ -33,9 +33,9 @@
 #include <components/sceneutil/statesetupdater.hpp>
 
 #include "../../mwbase/environment.hpp"
-#include "../vismask.hpp"
 
 #include "../renderbin.hpp"
+#include "../vismask.hpp"
 
 namespace
 {
@@ -849,10 +849,10 @@ namespace MWRender
     Moon::Moon(osg::Group* parentNode, Resource::SceneManager& sceneManager, float scaleFactor, Type type)
         : CelestialBody(parentNode, scaleFactor, 2)
         , mType(type)
-        , mPhase(Sky::MoonPhase::New)
+        , mPhase(MoonState::Phase::Unspecified)
         , mUpdater(new MoonUpdater(*sceneManager.getImageManager()))
     {
-        setPhase(Sky::MoonPhase::Full);
+        setPhase(MoonState::Phase::Full);
         setVisible(true);
 
         mGeom->addUpdateCallback(mUpdater);
@@ -868,10 +868,10 @@ namespace MWRender
         mUpdater->mTransparency *= ratio;
     }
 
-    void Moon::setState(const Sky::MoonMoment state)
+    void Moon::setState(const MoonState state)
     {
-        float radsX = ((state.mAlongArc) * static_cast<float>(osg::PI)) / 180.0f;
-        float radsZ = ((state.mAxisOffset) * static_cast<float>(osg::PI)) / 180.0f;
+        float radsX = ((state.mRotationFromHorizon) * static_cast<float>(osg::PI)) / 180.0f;
+        float radsZ = ((state.mRotationFromNorth) * static_cast<float>(osg::PI)) / 180.0f;
 
         osg::Quat rotX(radsX, osg::Vec3f(1.0f, 0.0f, 0.0f));
         osg::Quat rotZ(radsZ, osg::Vec3f(0.0f, 0.0f, 1.0f));
@@ -885,7 +885,7 @@ namespace MWRender
         mTransform->setAttitude(attX * rotZ);
 
         setPhase(state.mPhase);
-        mUpdater->mTransparency = state.mAlpha;
+        mUpdater->mTransparency = state.mMoonAlpha;
         mUpdater->mShadowBlend = state.mShadowBlend;
     }
 
@@ -901,10 +901,10 @@ namespace MWRender
 
     unsigned int Moon::getPhaseInt() const
     {
-        return Sky::phaseToInt(mPhase);
+        return MoonState::phaseToInt(mPhase);
     }
 
-    void Moon::setPhase(const Sky::MoonPhase phase)
+    void Moon::setPhase(const MoonState::Phase& phase)
     {
         if (mPhase == phase)
             return;
@@ -920,28 +920,28 @@ namespace MWRender
 
         switch (mPhase)
         {
-            case Sky::MoonPhase::New:
+            case MoonState::Phase::New:
                 textureName += "new";
                 break;
-            case Sky::MoonPhase::WaxingCrescent:
+            case MoonState::Phase::WaxingCrescent:
                 textureName += "one_wax";
                 break;
-            case Sky::MoonPhase::FirstQuarter:
+            case MoonState::Phase::FirstQuarter:
                 textureName += "half_wax";
                 break;
-            case Sky::MoonPhase::WaxingGibbous:
+            case MoonState::Phase::WaxingGibbous:
                 textureName += "three_wax";
                 break;
-            case Sky::MoonPhase::WaningCrescent:
+            case MoonState::Phase::WaningCrescent:
                 textureName += "one_wan";
                 break;
-            case Sky::MoonPhase::ThirdQuarter:
+            case MoonState::Phase::ThirdQuarter:
                 textureName += "half_wan";
                 break;
-            case Sky::MoonPhase::WaningGibbous:
+            case MoonState::Phase::WaningGibbous:
                 textureName += "three_wan";
                 break;
-            case Sky::MoonPhase::Full:
+            case MoonState::Phase::Full:
                 textureName += "full";
                 break;
             default:

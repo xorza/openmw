@@ -20,7 +20,7 @@ namespace MWRender
     {
         // **Where the sun *is*, and the light comes back along it.** The world also reports
         // `mSunVector`, which is where the rasterizer's light travels and is not the negation of
-        // this — `Sky::sunAt` says why, and why nothing that traces can hold both.
+        // this — `MWWorld::WeatherManager::update` says why, and why nothing that traces can hold both.
         osg::Vec3f discAt(world.mSunPosition.x(), world.mSunPosition.y(), world.mSunPosition.z());
         if (discAt.length2() > 0.0f)
             discAt.normalize();
@@ -101,14 +101,14 @@ namespace MWRender
         std::array<Rtx::MoonPlacement, 2> moons{};
         for (std::size_t moon = 0; moon < moons.size(); ++moon)
         {
-            const Sky::MoonMoment& state = world.mMoons[moon];
+            const Sky::MoonState& state = world.mMoons[moon];
 
             // **The glare is applied here and not by the weather system**, which is where the
             // rasterizer applies it too: `SkyManager::setWeather` calls `Moon::adjustTransparency`
             // with it after the state has been handed over. A thunderstorm hides its moons the same
             // way it hides its stars.
-            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mAlongArc, state.mAxisOffset, state.mPhase,
-                state.mDaylightFade * world.mSunGlare);
+            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
+                state.mRotationFromNorth, state.mPhase, state.mDaylightFade * world.mSunGlare);
             moons[moon].mFace = faces.of(static_cast<Rtx::Moon>(moon));
         }
 
@@ -124,7 +124,7 @@ namespace MWRender
             },
             .mOutdoors = world.isOutdoors(),
             .mGlare = world.mSunGlare,
-            .mStarRoll = world.mSkyRoll.mStars,
+            .mStarRoll = world.mStarRoll,
             .mSky = sky,
             .mMoons = moons,
             .mClouds = Rtx::CloudCrossing{
@@ -136,7 +136,7 @@ namespace MWRender
                 .mBlend = world.mCloudBlend,
                 .mDirection = world.mCloudDirection,
                 .mNextDirection = world.mNextCloudDirection,
-                .mScroll = world.mSkyRoll.mClouds,
+                .mScroll = world.mCloudScroll,
             },
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
@@ -147,7 +147,7 @@ namespace MWRender
             // elapsed seconds rather than the frame count: a sea that ran at the frame rate would
             // slow down whenever the frame did.
             .mSeconds = seconds,
-            .mRainOnWater = Rtx::rainOnWater(world.mPrecipitation),
+            .mRainOnWater = world.mRainOnWater,
         };
     }
 }

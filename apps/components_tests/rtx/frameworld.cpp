@@ -8,8 +8,6 @@
 #include <osg/Geometry>
 #include <osg/Group>
 
-#include <components/resource/resourcesystem.hpp>
-#include <components/resource/scenemanager.hpp>
 #include <components/rtx/cloudshell.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -17,9 +15,6 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/skybuilder.hpp>
-#include <components/toutf8/toutf8.hpp>
-#include <components/vfs/manager.hpp>
-#include <components/weather/precipitation.hpp>
 
 #include "extractor/fixture.hpp"
 
@@ -27,38 +22,25 @@ namespace Rtx
 {
     namespace
     {
-        /// A precipitation with nothing falling in it, and a quad of our own under its node.
+        /// A rain box with one quad of our own under it, which is all the walk can tell from a storm.
         ///
-        /// **The one thing a test can hold and the walk cannot tell from a real storm.** What
-        /// `mirrorPrecipitation` reads off the object is where the eye is, whether it is submerged
-        /// and what hangs under the node — so a weather that dropped nothing is enough to ask both
-        /// of its questions, and needs no content files to build.
-        class Falling
+        /// **What `mirrorPrecipitation` is handed is a node, an eye and whether it is submerged**, so
+        /// a group that drops nothing is enough to ask both of its questions, and needs no content
+        /// files to build.
+        osg::ref_ptr<osg::Group> makeFalling()
         {
-        public:
-            Falling()
-                : mResources(&mVfs, 1.0, &mEncoder.getStatelessEncoder())
-                , mFall(mRoot, *mResources.getSceneManager(), ~0u)
-            {
-                osg::ref_ptr<osg::Geometry> drop = new osg::Geometry;
-                drop->setVertexArray(
-                    Testing::makePositions({ { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } }));
-                drop->addPrimitiveSet(Testing::makeTriangles({ 0, 1, 2 }));
+            osg::ref_ptr<osg::Geometry> drop = new osg::Geometry;
+            drop->setVertexArray(
+                Testing::makePositions({ { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } }));
+            drop->addPrimitiveSet(Testing::makeTriangles({ 0, 1, 2 }));
 
-                osg::ref_ptr<osg::Geode> holder = new osg::Geode;
-                holder->addDrawable(drop);
-                mFall.getNode()->addChild(holder);
-            }
+            osg::ref_ptr<osg::Geode> holder = new osg::Geode;
+            holder->addDrawable(drop);
 
-            Weather::Precipitation& get() { return mFall; }
-
-        private:
-            VFS::Manager mVfs;
-            ToUTF8::Utf8Encoder mEncoder{ ToUTF8::WINDOWS_1252 };
-            Resource::ResourceSystem mResources;
-            osg::ref_ptr<osg::Group> mRoot = new osg::Group;
-            Weather::Precipitation mFall;
-        };
+            osg::ref_ptr<osg::Group> falling = new osg::Group;
+            falling->addChild(holder);
+            return falling;
+        }
 
         /// A sky to describe a world under, with every sheet the assembly can reach for.
         SkyContent skyWithSheets()
@@ -160,19 +142,17 @@ namespace Rtx
         /// makes every sprite's motion between two frames the eye's step as well as its fall, which
         /// is a reprojection of the wrong thing — and the drops would slide with the camera.
         ///
-        /// **And the walk stops entirely under water.** `Weather::Precipitation` freezes the drops
-        /// where they stand and leaves what to draw to whoever is drawing; walked anyway, the ones
-        /// the surface was crossed with hang in the air for as long as the eye stays under it.
+        /// **And the walk stops entirely under water.** The sky manager freezes the drops where
+        /// they stand and leaves what to draw to whoever is drawing; walked anyway, the ones the
+        /// surface was crossed with hang in the air for as long as the eye stays under it.
         TEST(RtxFrameWorldTest, dropsAreStoodAtTheEyeAndNoneIsWalkedUnderWater)
         {
-            Falling falling;
+            const osg::ref_ptr<osg::Group> falling = makeFalling();
             const osg::Vec3f eye(1000.0f, -2000.0f, 300.0f);
-
-            falling.get().update(Weather::Conditions{ .mEye = eye, .mUnderwater = false });
 
             SceneDesc scene;
             SceneExtractor extractor(scene);
-            mirrorPrecipitation(extractor, &falling.get(), 0);
+            mirrorPrecipitation(extractor, falling, eye, false, 0);
 
             ASSERT_EQ(scene.getTables().mPlacements.getPlacedCount(), 1u) << "the drop was not walked at all";
             EXPECT_EQ(Testing::placedAt(scene, 0), eye) << "the drops were stood somewhere other than the eye";
@@ -181,15 +161,14 @@ namespace Rtx
             // than geometry that is hidden.
             SceneDesc under;
             SceneExtractor beneath(under);
-            falling.get().update(Weather::Conditions{ .mEye = eye, .mUnderwater = true });
-            mirrorPrecipitation(beneath, &falling.get(), 0);
+            mirrorPrecipitation(beneath, falling, eye, true, 0);
 
             EXPECT_EQ(under.getTables().mPlacements.getPlacedCount(), 0u);
 
             // And a world with no weather over it at all is the third case the one call answers.
             SceneDesc dry;
             SceneExtractor none(dry);
-            mirrorPrecipitation(none, nullptr, 0);
+            mirrorPrecipitation(none, nullptr, eye, false, 0);
 
             EXPECT_EQ(dry.getTables().mPlacements.getPlacedCount(), 0u);
         }

@@ -166,12 +166,14 @@ namespace MWRender
         // and it is right that it does — a cloud deck is a texture on a ray that reached nothing,
         // and rain is geometry standing in front of one.
         //
-        // The same systems the rasterizer draws, not a second set of them. `Weather::Precipitation`
-        // owns them and neither renderer does.
-        Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mPrecipitation, frameNumber);
-
-        // **The eye, which decides the rings.** Where it stands is what the reach is measured from.
+        // The same systems the rasterizer draws, not a second set of them: the sky manager builds
+        // them and neither renderer owns them.
+        //
+        // **The eye, which stands the drops and decides the rings.** Where it stands is what the
+        // reach is measured from.
         const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
+        Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mRain, eye, frame.mWorld.mUnderwater, frameNumber);
+        Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mWeatherEffect, eye, frame.mWorld.mUnderwater, frameNumber);
 
         // **The same eye, the same reach and the world's own grid, said once.** What the game has
         // stood for itself is what neither residency may stand again, and `Terrain::World` is where

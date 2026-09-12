@@ -27,10 +27,11 @@ namespace Rtx
         /// A blend that is not a number is not a sky.
         ///
         /// **The bug this is here for turned the game's sky black and left the harness's alone.**
-        /// `Weather::cloudBlendFactor` divides the transition by `Clouds_Maximum_Percent`, and the
-        /// shipped fallbacks record none for ash or blight — so a transition into either handed back
-        /// a NaN. The rasterizer survives one, because a NaN opacity draws nothing and the sky it
-        /// already had stays; a tracer mixes its whole sky by it and gets a NaN back, which is black.
+        /// `MWWorld::Weather::transitionDelta` divides the transition by `Clouds_Maximum_Percent`, and
+        /// the shipped fallbacks record none for ash or blight — so a transition into either handed
+        /// back a NaN. The rasterizer survives one, because a NaN opacity draws nothing and the sky
+        /// it already had stays; a tracer mixes its whole sky by it and gets a NaN back, which is
+        /// black. `MWRender::RenderingManager::setWeather` is what stands between the two now.
         ///
         /// **And `std::clamp` does not catch it**, which is the part worth a test rather than a
         /// comment: it asks whether the value is *outside* the range, both comparisons are false for
@@ -114,7 +115,7 @@ namespace Rtx
 
         /// A deck is lit by what stands over it, and its own body is what keeps the sun off its base.
         ///
-        /// **The engine paints its deck and this one lights it.** `Sky::cloudColour` adds an eighth
+        /// **The engine paints its deck and this one lights it.** `SkyManager::setWeather` adds an eighth
         /// to a display-encoded fog, which read as light is a third again over a clear day and eight
         /// times over the same weather's night — so a painted deck arrived at midnight eight times
         /// the sky it covers. Lit, it is `CLOUD_TRANSMISSION` of whatever reaches it, whatever hour

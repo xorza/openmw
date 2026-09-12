@@ -62,7 +62,7 @@ namespace Rtx
         /// The direction is the arc tipped up from the horizon and swung about the zenith.
         ///
         /// **Swung and not tipped**, which is what makes both moons climb as high as the sun does
-        /// and only their rising points differ — so their paths cross. `Sky::MoonModel` is what
+        /// and only their rising points differ — so their paths cross. `MWWorld::MoonModel` is what
         /// says which angles an hour comes to; this is what a moon *is* once they are known.
         TEST(RtxMoonBuilderTest, aMoonStandsWhereItsArcAndItsOffsetPutIt)
         {
@@ -113,7 +113,7 @@ namespace Rtx
         /// is.
         ///
         /// **Two of the three ways a moon goes out.** The hour's own fade is
-        /// `Sky::MoonMoment::mDaylightFade` and is asserted where the clock is; what reaches here is
+        /// `Sky::MoonState::mDaylightFade` and is asserted where the clock is; what reaches here is
         /// that number with `Glare_View` already on it, which is the `adjustTransparency` the
         /// rasterizer applies after the moon's state is settled.
         TEST(RtxMoonBuilderTest, aMoonOffItsArcIsNotDrawnAndTheWeatherDimsOneThatIs)
@@ -136,7 +136,7 @@ namespace Rtx
         /// slant path, and takes the blue out first, so one comes over the edge as a deep red ember.
         ///
         /// **Eight degrees up is inside the arc the engine draws nothing over** — an hour after
-        /// Masser rises, by `Sky::MoonModel`'s clock.
+        /// Masser rises, by `MWWorld::MoonModel`'s clock.
         TEST(RtxMoonBuilderTest, aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt)
         {
             const MoonPlacement low = placeMoon(Moon::Masser, 7.826f, 35.0f, Sky::MoonPhase::Full, 1.0f);

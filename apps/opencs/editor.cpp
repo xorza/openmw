@@ -58,7 +58,7 @@ CS::Editor::Editor(int argc, char** argv)
         mDataDirs = config.first;
     }
 
-    NifOsg::Loader::configure({ .mShowMarkers = true });
+    NifOsg::Loader::setShowMarkers(true);
 
     mDocumentManager.setFileData(config.first, config.second);
 

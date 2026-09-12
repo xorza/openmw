@@ -1,8 +1,10 @@
 #include "renderingmanager.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #include <cstdlib>
+#include <optional>
 
 #include <osg/Camera>
 #include <osg/ClipControl>
@@ -17,6 +19,7 @@
 #include <osgUtil/LineSegmentIntersector>
 
 #include <components/nifosg/nifloader.hpp>
+#include <components/rtx/upscale.hpp>
 
 #include <components/debug/debuglog.hpp>
 
@@ -58,7 +61,6 @@
 #include <components/debug/debugdraw.hpp>
 #include <components/detournavigator/navigator.hpp>
 #include <components/detournavigator/navmeshcacheitem.hpp>
-#include <components/weather/precipitation.hpp>
 
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/class.hpp"
@@ -72,7 +74,6 @@
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../mwbase/world.hpp"
-#include "../mwworld/datetimemanager.hpp"
 
 #include "actorspaths.hpp"
 #include "camera.hpp"
@@ -208,7 +209,6 @@ namespace MWRender
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
         , mNavigator(navigator)
-        , mWorld(Sky::SkyRoll(Sky::timescaleClouds()))
         , mNightEyeFactor(0.f)
         // TODO: Near clip should not need to be bounded like this, but too small values break OSG shadow calculations
         // CPU-side. See issue: #6072
@@ -222,7 +222,7 @@ namespace MWRender
     {
         bool reverseZ = SceneUtil::AutoDepth::isReversed();
 
-        resourceSystem->getSceneManager()->setParticleSystemMask(Mask_ParticleSystem);
+        resourceSystem->getSceneManager()->setParticleSystemMask(MWRender::Mask_ParticleSystem);
         resourceSystem->getSceneManager()->setAutoUseNormalMaps(Settings::shaders().mAutoUseObjectNormalMaps);
         resourceSystem->getSceneManager()->setNormalMapPattern(Settings::shaders().mNormalMapPattern);
         resourceSystem->getSceneManager()->setNormalHeightMapPattern(Settings::shaders().mNormalHeightMapPattern);
@@ -396,11 +396,9 @@ namespace MWRender
 
         auto mask = ~(Mask_UpdateVisitor | Mask_SimpleWater);
         MWBase::Environment::get().getWindowManager()->setCullMask(mask);
-        NifOsg::Loader::configure({
-            .mHiddenNodeMask = Mask_UpdateVisitor,
-            .mIntersectionDisabledNodeMask = Mask_Effect,
-            .mSoftEffects = Settings::shaders().mSoftParticles,
-        });
+        NifOsg::Loader::setHiddenNodeMask(Mask_UpdateVisitor);
+        NifOsg::Loader::setIntersectionDisabledNodeMask(Mask_Effect);
+        NifOsg::Loader::setSoftEffectEnabled(Settings::shaders().mSoftParticles);
 
         mStateUpdater->setFogEnd(mViewDistance);
 
@@ -603,9 +601,7 @@ namespace MWRender
     {
         osg::Vec3f position = -direction;
 
-        // This is based on the exterior sun orbit and won't make sense for interiors, see
-        // `Sky::sunAt`, which is where the same line lives for everything that asks the arithmetic
-        // directly rather than being handed a direction.
+        // This is based on the exterior sun orbit and won't make sense for interiors, see WeatherManager::update
         position.z() = 400.f - std::abs(position.x());
 
         // The sun is not always synchronized with the sunlight because reasons
@@ -678,51 +674,33 @@ namespace MWRender
         // frame that asked it for the sky's colour got the black an unbuilt one starts at.
         mWorld.mSkyColour = weather.mSkyColor;
         mWorld.mCloudFog = weather.mFogColor;
-        mCloudSpeed = weather.mCloudSpeed;
         mWorld.mCloudDirection = weather.mStormDirection;
         mWorld.mNextCloudDirection = weather.mNextStormDirection;
         mWorld.mSunDiscColour = weather.mSunDiscColor;
         mWorld.mSunGlare = weather.mGlareView;
-        mWorld.mCloudBlend = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
+        // **Nothing recorded is not a rate.** `Weather::transitionDelta` divides by
+        // `Clouds_Maximum_Percent`, which the shipped fallbacks leave at nought for ash and blight,
+        // so a transition into either hands over an infinity or a NaN. The rasterizer survives one —
+        // a NaN opacity draws nothing and the old sky stays — and a tracer mixes its whole sky by
+        // it. Nothing recorded means the deck has crossed at once.
+        mWorld.mCloudBlend
+            = std::isfinite(weather.mCloudBlendFactor) ? std::clamp(weather.mCloudBlendFactor, 0.f, 1.f) : 1.f;
         mWorld.mNightFade = weather.mNight ? weather.mNightFade : 0.f;
 
         // **The record and not the gust.** What this decides is how deep the fog's layer stands and
         // how fast its field is carried, and both are the weather's settled character rather than
-        // the number the engine wanders about it. `mDownpour.mWindSpeed` is the gust, and the
+        // the number the engine wanders about it. `WeatherResult::mWindSpeed` is the gust, and the
         // rasterizer's own uniform is what wants that one.
-        mWorld.mBaseWindSpeed = weather.mDownpour.mBaseWindSpeed;
+        mWorld.mBaseWindSpeed = weather.mBaseWindSpeed;
     }
 
-    void RenderingManager::setStormParticleDirection(const osg::Vec3f& direction)
-    {
-        mStormParticleDirection = direction;
-    }
-
-    void RenderingManager::setSunVisible(bool visible)
-    {
-        if (visible)
-            mSky->sunEnable();
-        else
-            mSky->sunDisable();
-    }
-
-    void RenderingManager::setGlareTimeOfDayFade(float fade)
-    {
-        mSky->setGlareTimeOfDayFade(fade);
-    }
-
-    void RenderingManager::setMoonStates(const Sky::MoonMoment& masser, const Sky::MoonMoment& secunda)
+    void RenderingManager::setMoonStates(const Sky::MoonState& masser, const Sky::MoonState& secunda)
     {
         mWorld.mMoons[0] = masser;
         mWorld.mMoons[1] = secunda;
 
         mSky->setMasserState(masser);
         mSky->setSecundaState(secunda);
-    }
-
-    Weather::Precipitation* RenderingManager::getPrecipitation()
-    {
-        return mSky->getPrecipitation();
     }
 
     void RenderingManager::setSkyEnabled(bool enabled)
@@ -814,15 +792,7 @@ namespace MWRender
         {
             mEffectManager->update(dt);
 
-            // **The sky's clock is turned here and handed down, not kept inside the sky manager.**
-            // That manager belongs to one of the two renderers and is built lazily, so a ray-traced
-            // frame that asked it how far the clouds had scrolled was asking something that might
-            // never have been created — and got a nought that never moved.
-            mWorld.mSkyRoll.advance(
-                dt, mCloudSpeed, MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale());
-            mSky->setRoll(mWorld.mSkyRoll);
-
-            mSky->update();
+            mSky->update(dt);
 
             const MWWorld::Ptr& player = mPlayerAnimation->getPtr();
             osg::Vec3f playerPos(player.getRefData().getPosition().asVec3());
@@ -888,7 +858,14 @@ namespace MWRender
         described.mSunColour = mSunLight->getDiffuse();
         described.mAmbientColour = mSunLight->getAmbient();
         described.mNightEye = mSunLight->getAmbient() - mAmbientColor;
-        described.mPrecipitation = mSky->getPrecipitation();
+
+        // **The sky manager's, and read rather than kept.** It exists under both renderers — only its
+        // nodes are built lazily — so its clock and its particle systems are the one copy of each.
+        described.mRain = mSky->getRainNode();
+        described.mWeatherEffect = mSky->getParticleNode();
+        described.mRainOnWater = mSky->getRainRipplesEnabled() ? mSky->getPrecipitationAlpha() : 0.f;
+        described.mCloudScroll = mSky->getCloudAnimationTimer();
+        described.mStarRoll = mSky->getAtmosphereNightRoll();
 
         described.mLocation = simulation.isCellExterior() ? Location::Exterior
             : simulation.isCellQuasiExterior()            ? Location::QuasiExterior
@@ -915,22 +892,12 @@ namespace MWRender
 
     void RenderingManager::renderFrame()
     {
-        // **The whole of driving the weather, in one call and from the one place that holds all
-        // three answers.** Whether the eye is submerged is the water's, which way a storm blows
-        // arrived from the weather system, and the eye is the one this frame is drawn from — no
-        // other object has more than one of them.
-        //
-        // **Here and not in `update`, because the eye is not known there.** `Camera::updateCamera`
-        // writes the view matrix from the update traversal, which runs between the two; upstream's
-        // wrap operator read the render camera at cull time, and the rasterizer stands the box at
-        // that same camera. Handed `Camera::getPosition` before the update instead, the box slid by
-        // the previous frame's step of a different eye and drifted by the difference.
-        const osg::Vec3f eye = mStage.getCamera().getInverseViewMatrix().getTrans();
-        mSky->getPrecipitation()->update(Weather::Conditions{
-            .mEye = eye,
-            .mStormDirection = mStormParticleDirection,
-            .mUnderwater = mWater->isUnderwater(eye),
-        });
+        // **Where the eye is, told to the sky before the frame.** The cull traversal tells it the
+        // same thing under the rasterizer; a renderer that culls nothing has to say it here, or the
+        // underwater switch that freezes the rain reads the point the last cull left. Here and not
+        // in `update`, because `Camera::updateCamera` writes the view matrix from the update
+        // traversal, which runs between the two.
+        mSky->setViewPoint(mStage.getCamera().getInverseViewMatrix().getTrans());
 
         const WorldState world = describeWorld();
         const EyeState seenFrom = describeEye();
@@ -1640,6 +1607,16 @@ namespace MWRender
                     mAppliedShadowDefines = std::move(shadowDefines);
                 }
             }
+            // **Acted on while the game runs, unlike `RTX / enabled` beside it.** Which renderer
+            // draws is settled before the window exists; how hard its upscaler works is a pair of
+            // resolutions it can be rebuilt for. A renderer with no upscaler ignores this, and a
+            // name it cannot read leaves it where it is — `Rtx::upscaleNamed` refuses rather than
+            // defaulting, for the reason it gives.
+            else if (it->first == "RTX" && it->second == "upscale")
+            {
+                if (const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get()))
+                    mRenderer.setUpscale(*upscale);
+            }
             else if (it->first == "Post Processing" && it->second == "enabled"
                 && mRenderer.getPostProcessor() != nullptr)
             {
@@ -1713,7 +1690,7 @@ namespace MWRender
 
         osg::ref_ptr<const osg::Node> node = mResourceSystem->getSceneManager()->getTemplate(modelName);
         osg::ComputeBoundsVisitor computeBoundsVisitor;
-        computeBoundsVisitor.setTraversalMask(~(Mask_ParticleSystem | Mask_Effect));
+        computeBoundsVisitor.setTraversalMask(~(MWRender::Mask_ParticleSystem | MWRender::Mask_Effect));
         const_cast<osg::Node*>(node.get())->accept(computeBoundsVisitor);
         osg::BoundingBox bounds = computeBoundsVisitor.getBoundingBox();
 
@@ -1765,7 +1742,7 @@ namespace MWRender
         }
 
         SceneUtil::CullSafeBoundsVisitor computeBounds;
-        computeBounds.setTraversalMask(~(Mask_ParticleSystem | Mask_Effect));
+        computeBounds.setTraversalMask(~(MWRender::Mask_ParticleSystem | MWRender::Mask_Effect));
         rootNode->accept(computeBounds);
 
         return computeBounds.mBoundingBox;

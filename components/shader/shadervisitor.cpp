@@ -248,6 +248,19 @@ namespace Shader
         addedState->setName("addedState");
     }
 
+    // This list is used both for detecting known texture types (including added normal maps etc.) and setting the
+    // shader defines. Normal maps and normal height maps both get sent to the shader as a normal map, so the latter
+    // must be detected separately.
+    const char* defaultTextures[] = { "diffuseMap", "normalMap", "emissiveMap", "darkMap", "detailMap", "envMap",
+        "specularMap", "decalMap", "bumpMap", "glossMap" };
+    bool isTextureNameRecognized(std::string_view name)
+    {
+        if (std::find(std::begin(defaultTextures), std::end(defaultTextures), name) != std::end(defaultTextures))
+            return true;
+        else
+            return name == "normalHeightMap";
+    }
+
     /// Records a map this visitor found by filename in the description the loader authored.
     ///
     /// **Only where there already is one.** This augments a description; it does not invent one. A
@@ -294,7 +307,7 @@ namespace Shader
                     if (texture)
                     {
                         std::string texName = SceneUtil::getTextureType(*stateset, *texture, unit);
-                        if ((texName.empty() || !Surface::textureRoleNamed(texName).has_value()) && unit == 0)
+                        if ((texName.empty() || !isTextureNameRecognized(texName)) && unit == 0)
                             texName = "diffuseMap";
 
                         if (texName == "normalHeightMap")
@@ -378,12 +391,11 @@ namespace Shader
                     if (!writableStateSet)
                         writableStateSet = getWritableStateSet(node);
                     writableStateSet->setTextureAttribute(unit, normalMapTex, osg::StateAttribute::ON);
-                    const Surface::TextureRole role
-                        = normalHeight ? Surface::TextureRole::NormalHeight : Surface::TextureRole::Normal;
                     writableStateSet->setTextureAttribute(unit,
-                        new SceneUtil::TextureType(std::string(Surface::textureRoleName(role))),
+                        new SceneUtil::TextureType(normalHeight ? "normalHeightMap" : "normalMap"),
                         osg::StateAttribute::ON);
-                    describeDiscovered(*writableStateSet, role, normalMapTex);
+                    describeDiscovered(*writableStateSet,
+                        normalHeight ? Surface::TextureRole::NormalHeight : Surface::TextureRole::Normal, normalMapTex);
                     mRequirements.back().mTextures[unit] = "normalMap";
                     mRequirements.back().mTexStageRequiringTangents = unit;
                     mRequirements.back().mNormalHeight = normalHeight;
@@ -426,10 +438,8 @@ namespace Shader
                     if (!writableStateSet)
                         writableStateSet = getWritableStateSet(node);
                     writableStateSet->setTextureAttribute(unit, specularMapTex, osg::StateAttribute::ON);
-                    writableStateSet->setTextureAttribute(unit,
-                        new SceneUtil::TextureType(
-                            std::string(Surface::textureRoleName(Surface::TextureRole::Specular))),
-                        osg::StateAttribute::ON);
+                    writableStateSet->setTextureAttribute(
+                        unit, new SceneUtil::TextureType("specularMap"), osg::StateAttribute::ON);
                     describeDiscovered(*writableStateSet, Surface::TextureRole::Specular, specularMapTex);
                     mRequirements.back().mTextures[unit] = "specularMap";
                 }
@@ -540,18 +550,10 @@ namespace Shader
             previousAddedState = new AddedState;
 
         ShaderManager::DefineMap defineMap;
-        for (std::size_t i = 0; i < Surface::sTextureRoleCount; ++i)
+        for (unsigned int i = 0; i < sizeof(defaultTextures) / sizeof(defaultTextures[0]); ++i)
         {
-            const auto role = static_cast<Surface::TextureRole>(i);
-
-            // The shader has one normal-map sampler. A normal map carrying height sets that same
-            // define and announces itself with `normalHeight`, so there is no separate one to zero.
-            if (role == Surface::TextureRole::NormalHeight)
-                continue;
-
-            const std::string name(Surface::textureRoleName(role));
-            defineMap[name] = "0";
-            defineMap[name + std::string("UV")] = "0";
+            defineMap[defaultTextures[i]] = "0";
+            defineMap[std::string(defaultTextures[i]) + std::string("UV")] = "0";
         }
         for (std::map<int, std::string>::const_iterator texIt = reqs.mTextures.begin(); texIt != reqs.mTextures.end();
              ++texIt)

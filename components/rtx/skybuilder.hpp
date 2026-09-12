@@ -152,7 +152,7 @@ namespace Rtx
         osg::Vec3f mDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
         osg::Vec3f mNextDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
-        /// `Sky::SkyRoll::mClouds`, which both sheets share: the engine sets one texture matrix on
+        /// `MWRender::WorldState::mCloudScroll`, which both sheets share: the engine sets one texture matrix on
         /// both of its cloud updaters.
         float mScroll = 0.0f;
     };
@@ -171,7 +171,7 @@ namespace Rtx
     ///
     /// @param fade the engine's `Stars` ramp at this hour, which is what brings them out at dusk.
     /// @param glare the weather's `Glare_View`, which is what keeps them in under an overcast.
-    /// @param turn `Sky::SkyRoll::mStars`.
+    /// @param turn `MWRender::WorldState::mStarRoll`.
     Shaders::StarField describeStars(float fade, float glare, float turn, const SkyContent& textures);
 
     /// The nebulae and the constellations, placed.
@@ -180,7 +180,7 @@ namespace Rtx
     /// sky, so what it comes to is a direction, a size and a texture — and the disc the moons are
     /// already drawn as is what draws it. Where they go was read off the mesh, not written down.
     ///
-    /// @param turn `Sky::SkyRoll::mStars`, because they are on the star sphere and turn with it.
+    /// @param turn `MWRender::WorldState::mStarRoll`, because they are on the star sphere and turn with it.
     /// @param patches written here rather than returned, so a frame's description costs no
     ///        allocation.
     void describePatches(

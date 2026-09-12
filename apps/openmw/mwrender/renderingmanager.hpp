@@ -9,7 +9,6 @@
 #include "weatherresult.hpp"
 
 #include <components/settings/settings.hpp>
-#include <components/sky/moonmodel.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include <osg/ref_ptr>
@@ -85,11 +84,6 @@ namespace MWWorld
 namespace Debug
 {
     struct DebugDrawer;
-}
-
-namespace Weather
-{
-    class Precipitation;
 }
 
 namespace MWRender
@@ -197,24 +191,13 @@ namespace MWRender
 
         void setSkyEnabled(bool enabled);
 
-        /// What the weather drops, for whoever is drawing it. Null before the sky is built.
-        ///
-        /// **Owned by the sky manager and drawn by both**, which is the whole point of it being an
-        /// `osgParticle` system and not a renderer's own: there is one rain and one storm cloud, and
-        /// the ray tracer walks the same nodes the rasterizer does rather than making a second set.
-        Weather::Precipitation* getPrecipitation();
-
         /// What the weather system has just worked out, for whatever draws the sky.
         ///
-        /// **Forwarded rather than reached through.** `MWWorld::WeatherManager` already tells this
-        /// object about the fog, the ambient and the sun; these are the rest of the same sentence,
-        /// and routing them here is what keeps `SkyManager` — which is one renderer's — from being
-        /// named outside `mwrender`.
+        /// **Through here rather than straight to the sky manager**, because the frame's own record
+        /// (`WorldState`) is written from these two, and the ray tracer reads that record rather
+        /// than the sky manager.
         void setWeather(const WeatherResult& weather);
-        void setStormParticleDirection(const osg::Vec3f& direction);
-        void setSunVisible(bool visible);
-        void setGlareTimeOfDayFade(float fade);
-        void setMoonStates(const Sky::MoonMoment& masser, const Sky::MoonMoment& secunda);
+        void setMoonStates(const Sky::MoonState& masser, const Sky::MoonState& secunda);
 
         bool toggleRenderMode(RenderMode mode);
 
@@ -406,12 +389,6 @@ namespace MWRender
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
 
-        /// How fast this weather runs its cloud deck, which is what turns `mWorld.mSkyRoll`.
-        ///
-        /// **Off the weather rather than out of `SkyManager`.** That manager is one renderer's and
-        /// is built lazily, so a frame that asked it got whatever an unbuilt one starts at.
-        float mCloudSpeed = 0.f;
-
         osg::ref_ptr<NpcAnimation> mPlayerAnimation;
         osg::ref_ptr<SceneUtil::PositionAttitudeTransform> mPlayerNode;
         std::unique_ptr<Camera> mCamera;
@@ -432,11 +409,6 @@ namespace MWRender
         float mFirstPersonFieldOfView;
         bool mUpdateProjectionMatrix = false;
         bool mNight = false;
-
-        /// The last direction `MWWorld::WeatherManager` aimed its storm particles, kept because the
-        /// precipitation is driven from `renderFrame` and the weather is not: the weather system
-        /// computes it once a frame against the player's position and hands it straight on.
-        osg::Vec3f mStormParticleDirection = Weather::defaultStormDirection();
 
         osg::Vec2f mProjectionOffset;
         const MWWorld::GroundcoverStore& mGroundCoverStore;

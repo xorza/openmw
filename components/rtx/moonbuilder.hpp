@@ -2,7 +2,7 @@
 
 #include <osg/Vec3f>
 
-#include <components/sky/moonmodel.hpp>
+#include <components/sky/moonstate.hpp>
 
 #include "index.hpp"
 #include "shaders/look.h"
@@ -111,7 +111,7 @@ namespace Rtx
 
     /// A moon placed from angles somebody else worked out.
     ///
-    /// **The angles are somebody else's and the moon is this one's.** `Sky::MoonModel` settles
+    /// **The angles are somebody else's and the moon is this one's.** `MWWorld::MoonModel` settles
     /// where a moon stands at a day and an hour, and the weather system is what asks it. What a moon
     /// *is* once those angles are known — where its face points, how wide it is, which way its
     /// terminator falls — is one answer and lives here.
@@ -120,7 +120,7 @@ namespace Rtx
     /// @param axisOffset degrees the whole arc is swung about the zenith.
     /// @param phase which of the eight painted phases, counted from full.
     /// @param alpha the daylight fade, with the weather's `Glare_View` on it —
-    ///        `MoonMoment::mDaylightFade`. What decides whether the moon is up at all is `alongArc`,
+    ///        `Sky::MoonState::mDaylightFade`. What decides whether the moon is up at all is `alongArc`,
     ///        which the engine leaves at nought until it rises and returns to nought once it sets.
     MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, Sky::MoonPhase phase, float alpha);
 

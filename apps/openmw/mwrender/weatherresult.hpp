@@ -6,10 +6,14 @@
 #include <osg/Vec4f>
 
 #include <components/esm/refid.hpp>
-#include <components/weather/downpour.hpp>
+#include <components/sky/moonstate.hpp>
 
 namespace MWRender
 {
+    /// Where a moon stands, under the name the game spells it by. `Sky::` because both renderers
+    /// read it off the frame; `MWRender::` because the weather manager and its tests always wrote it.
+    using MoonState = Sky::MoonState;
+
     /// What the weather system worked out this moment is, for whatever draws the sky.
     ///
     /// **Here rather than beside the dome that reads it.** These are the weather's own numbers —
@@ -38,8 +42,8 @@ namespace MWRender
         float mDLFogFactor;
         float mDLFogOffset;
 
-        /// The two the transition works in, which are neither weather's settled answer: what each
-        /// side of it is blowing at right now. `mDownpour.mWindSpeed` is what they mix to.
+        float mWindSpeed;
+        float mBaseWindSpeed;
         float mCurrentWindSpeed;
         float mNextWindSpeed;
 
@@ -50,13 +54,22 @@ namespace MWRender
         bool mNight; // use night skybox
         float mNightFade; // fading factor for night skybox
 
+        bool mIsStorm;
+
         ESM::RefId mAmbientLoopSoundID;
         ESM::RefId mRainLoopSoundID;
         float mAmbientSoundVolume;
 
-        /// Everything that falls, handed to `Weather::Precipitation` unchanged: one struct, so the
-        /// rule that turns a base wind into a gust is applied in one place.
-        ::Weather::Downpour mDownpour;
+        std::string mParticleEffect;
+        std::string mRainEffect;
+        float mPrecipitationAlpha;
+
+        float mRainDiameter;
+        float mRainMinHeight;
+        float mRainMaxHeight;
+        float mRainSpeed;
+        float mRainEntranceSpeed;
+        int mRainMaxRaindrops;
 
         osg::Vec3f mStormDirection;
         osg::Vec3f mNextStormDirection;

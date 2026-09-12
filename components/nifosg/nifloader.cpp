@@ -323,33 +323,51 @@ namespace
 
 namespace NifOsg
 {
-    Loader::Configuration Loader::sConfiguration;
-    bool Loader::sConfigured = false;
+    bool Loader::sShowMarkers = false;
 
-    void Loader::configure(const Configuration& configuration)
+    void Loader::setShowMarkers(bool show)
     {
-        sConfiguration = configuration;
-        sConfigured = true;
+        sShowMarkers = show;
     }
 
     bool Loader::getShowMarkers()
     {
-        return sConfiguration.mShowMarkers;
+        return sShowMarkers;
     }
 
+    unsigned int Loader::sHiddenNodeMask = 0;
+
+    void Loader::setHiddenNodeMask(unsigned int mask)
+    {
+        sHiddenNodeMask = mask;
+    }
     unsigned int Loader::getHiddenNodeMask()
     {
-        return sConfiguration.mHiddenNodeMask;
+        return sHiddenNodeMask;
+    }
+
+    unsigned int Loader::sIntersectionDisabledNodeMask = ~0u;
+
+    void Loader::setIntersectionDisabledNodeMask(unsigned int mask)
+    {
+        sIntersectionDisabledNodeMask = mask;
     }
 
     unsigned int Loader::getIntersectionDisabledNodeMask()
     {
-        return sConfiguration.mIntersectionDisabledNodeMask;
+        return sIntersectionDisabledNodeMask;
+    }
+
+    bool Loader::sSoftEffectEnabled = false;
+
+    void Loader::setSoftEffectEnabled(bool enabled)
+    {
+        sSoftEffectEnabled = enabled;
     }
 
     bool Loader::getSoftEffectEnabled()
     {
-        return sConfiguration.mSoftEffects;
+        return sSoftEffectEnabled;
     }
 
     class LoaderImpl
@@ -716,8 +734,8 @@ namespace NifOsg
             const unsigned int uvSet = 0;
             std::vector<unsigned int> boundTextures;
             boundTextures.resize(3); // Dummy vector for attachNiSourceTexture
-            attachNiSourceTexture(Surface::TextureRole::Environment, textureEffect->mTexture.getPtr(),
-                textureEffect->wrapS(), textureEffect->wrapT(), uvSet, stateset, boundTextures, &material);
+            attachNiSourceTexture("envMap", textureEffect->mTexture.getPtr(), textureEffect->wrapS(),
+                textureEffect->wrapT(), uvSet, stateset, boundTextures, &material);
 
             stateset->addUniform(new osg::Uniform("envMapColor", osg::Vec4f(1, 1, 1, 1)));
             return true;
@@ -1212,14 +1230,10 @@ namespace NifOsg
             return mImageManager->getImage(Misc::ResourceHelpers::correctTexturePath(path, *mImageManager->getVFS()));
         }
 
-        /// Binds `image` and records what it is for.
-        ///
-        /// **The role goes to two places and they are not the same place.** `SceneUtil::TextureType`
-        /// names the unit for the OpenGL renderer's shaders; `material` is told the role directly,
-        /// so a renderer that binds no units never has to read the name back and guess. A null role
-        /// is a texture a controller will swap out, which has a unit and no meaning yet.
-        static osg::ref_ptr<osg::Texture2D> attachTexture(std::optional<Surface::TextureRole> role,
-            osg::ref_ptr<osg::Image> image, bool wrapS, bool wrapT, unsigned int uvSet, osg::StateSet* stateset,
+        /// @param material told what the texture is for, where `name` is a role's — `Surface::textureRoleNamed`.
+        ///        An empty name is a texture a controller will swap out, which has a unit and no meaning yet.
+        static osg::ref_ptr<osg::Texture2D> attachTexture(const std::string& name, osg::ref_ptr<osg::Image> image,
+            bool wrapS, bool wrapT, unsigned int uvSet, osg::StateSet* stateset,
             std::vector<unsigned int>& boundTextures, Surface::Material* material)
         {
             osg::ref_ptr<osg::Texture2D> texture2d = new osg::Texture2D(image);
@@ -1231,29 +1245,29 @@ namespace NifOsg
             if (stateset)
             {
                 stateset->setTextureAttribute(texUnit, texture2d, osg::StateAttribute::ON);
-                const std::string name(role.has_value() ? Surface::textureRoleName(*role) : std::string_view());
                 osg::ref_ptr<SceneUtil::TextureType> textureType = new SceneUtil::TextureType(name);
                 textureType = shareAttribute(textureType);
                 stateset->setTextureAttribute(texUnit, textureType, osg::StateAttribute::ON);
             }
-            if (material != nullptr && role.has_value())
-                material->setTexture(*role, texture2d);
+            if (material != nullptr)
+                if (const std::optional<Surface::TextureRole> role = Surface::textureRoleNamed(name))
+                    material->setTexture(*role, texture2d);
             boundTextures.emplace_back(uvSet);
             return texture2d;
         }
 
-        osg::ref_ptr<osg::Texture2D> attachExternalTexture(std::optional<Surface::TextureRole> role,
-            VFS::Path::NormalizedView path, bool wrapS, bool wrapT, unsigned int uvSet, osg::StateSet* stateset,
+        osg::ref_ptr<osg::Texture2D> attachExternalTexture(const std::string& name, VFS::Path::NormalizedView path,
+            bool wrapS, bool wrapT, unsigned int uvSet, osg::StateSet* stateset,
             std::vector<unsigned int>& boundTextures, Surface::Material* material) const
         {
-            return attachTexture(role, getTextureImage(path), wrapS, wrapT, uvSet, stateset, boundTextures, material);
+            return attachTexture(name, getTextureImage(path), wrapS, wrapT, uvSet, stateset, boundTextures, material);
         }
 
-        osg::ref_ptr<osg::Texture2D> attachNiSourceTexture(std::optional<Surface::TextureRole> role,
-            const Nif::NiSourceTexture* st, bool wrapS, bool wrapT, unsigned int uvSet, osg::StateSet* stateset,
+        osg::ref_ptr<osg::Texture2D> attachNiSourceTexture(const std::string& name, const Nif::NiSourceTexture* st,
+            bool wrapS, bool wrapT, unsigned int uvSet, osg::StateSet* stateset,
             std::vector<unsigned int>& boundTextures, Surface::Material* material) const
         {
-            return attachTexture(role, handleSourceTexture(st), wrapS, wrapT, uvSet, stateset, boundTextures, material);
+            return attachTexture(name, handleSourceTexture(st), wrapS, wrapT, uvSet, stateset, boundTextures, material);
         }
 
         /// Drops what an overridden texturing property bound, so a replacement starts from nothing.
@@ -2255,30 +2269,30 @@ namespace NifOsg
                 const Nif::NiTexturingProperty::Texture& tex = texprop->mTextures[i];
                 if (tex.mEnabled || (i == Nif::NiTexturingProperty::BaseTexture && !texprop->mController.empty()))
                 {
-                    Surface::TextureRole role{};
+                    std::string textureName;
                     switch (i)
                     {
                         // These are handled later on
                         case Nif::NiTexturingProperty::BaseTexture:
-                            role = Surface::TextureRole::Diffuse;
+                            textureName = "diffuseMap";
                             break;
                         case Nif::NiTexturingProperty::GlowTexture:
-                            role = Surface::TextureRole::Emissive;
+                            textureName = "emissiveMap";
                             break;
                         case Nif::NiTexturingProperty::DarkTexture:
-                            role = Surface::TextureRole::Dark;
+                            textureName = "darkMap";
                             break;
                         case Nif::NiTexturingProperty::BumpTexture:
-                            role = Surface::TextureRole::Bump;
+                            textureName = "bumpMap";
                             break;
                         case Nif::NiTexturingProperty::DetailTexture:
-                            role = Surface::TextureRole::Detail;
+                            textureName = "detailMap";
                             break;
                         case Nif::NiTexturingProperty::DecalTexture:
-                            role = Surface::TextureRole::Decal;
+                            textureName = "decalMap";
                             break;
                         case Nif::NiTexturingProperty::GlossTexture:
-                            role = Surface::TextureRole::Gloss;
+                            textureName = "glossMap";
                             break;
                         default:
                         {
@@ -2299,16 +2313,16 @@ namespace NifOsg
                         }
 
                         if (!tex.mSourceTexture.empty())
-                            attachNiSourceTexture(role, tex.mSourceTexture.getPtr(), tex.wrapS(), tex.wrapT(),
+                            attachNiSourceTexture(textureName, tex.mSourceTexture.getPtr(), tex.wrapS(), tex.wrapT(),
                                 tex.mUVSet, stateset, boundTextures, &material);
                         else
-                            attachTexture(role, nullptr, tex.wrapS(), tex.wrapT(), tex.mUVSet, stateset, boundTextures,
-                                &material);
+                            attachTexture(textureName, nullptr, tex.wrapS(), tex.wrapT(), tex.mUVSet, stateset,
+                                boundTextures, &material);
                     }
                     else
                     {
                         // Texture only comes from NiFlipController, so tex is ignored, set defaults
-                        attachTexture(role, nullptr, true, true, 0, stateset, boundTextures, &material);
+                        attachTexture(textureName, nullptr, true, true, 0, stateset, boundTextures, &material);
                     }
 
                     if (i == Nif::NiTexturingProperty::BumpTexture)
@@ -2356,16 +2370,16 @@ namespace NifOsg
                 const Bgsm::BGSMFile* bgsm = static_cast<const Bgsm::BGSMFile*>(material);
 
                 if (!bgsm->mDiffuseMap.empty())
-                    attachExternalTexture(Surface::TextureRole::Diffuse, VFS::Path::toNormalized(bgsm->mDiffuseMap),
-                        wrapS, wrapT, uvSet, stateset, boundTextures, &surface);
+                    attachExternalTexture("diffuseMap", VFS::Path::toNormalized(bgsm->mDiffuseMap), wrapS, wrapT, uvSet,
+                        stateset, boundTextures, &surface);
 
                 if (!bgsm->mNormalMap.empty())
-                    attachExternalTexture(Surface::TextureRole::Normal, VFS::Path::toNormalized(bgsm->mNormalMap),
-                        wrapS, wrapT, uvSet, stateset, boundTextures, &surface);
+                    attachExternalTexture("normalMap", VFS::Path::toNormalized(bgsm->mNormalMap), wrapS, wrapT, uvSet,
+                        stateset, boundTextures, &surface);
 
                 if (bgsm->mGlowMapEnabled && !bgsm->mGlowMap.empty())
-                    attachExternalTexture(Surface::TextureRole::Emissive, VFS::Path::toNormalized(bgsm->mGlowMap),
-                        wrapS, wrapT, uvSet, stateset, boundTextures, &surface);
+                    attachExternalTexture("emissiveMap", VFS::Path::toNormalized(bgsm->mGlowMap), wrapS, wrapT, uvSet,
+                        stateset, boundTextures, &surface);
 
                 if (bgsm->mTree)
                     stateset->addUniform(new osg::Uniform("useTreeAnim", true));
@@ -2375,8 +2389,8 @@ namespace NifOsg
                 const Bgsm::BGEMFile* bgem = static_cast<const Bgsm::BGEMFile*>(material);
 
                 if (!bgem->mBaseMap.empty())
-                    attachExternalTexture(Surface::TextureRole::Diffuse, VFS::Path::toNormalized(bgem->mBaseMap), wrapS,
-                        wrapT, uvSet, stateset, boundTextures, &surface);
+                    attachExternalTexture("diffuseMap", VFS::Path::toNormalized(bgem->mBaseMap), wrapS, wrapT, uvSet,
+                        stateset, boundTextures, &surface);
 
                 bool useFalloff = bgem->mFalloff;
                 stateset->addUniform(new osg::Uniform("useFalloff", useFalloff));
@@ -2511,19 +2525,16 @@ namespace NifOsg
                 switch (static_cast<Nif::BSShaderTextureSet::TextureType>(i))
                 {
                     case Nif::BSShaderTextureSet::TextureType::Base:
-                        attachExternalTexture(Surface::TextureRole::Diffuse,
-                            VFS::Path::toNormalized(textureSet->mTextures[i]), wrapS, wrapT, uvSet, stateset,
-                            boundTextures, &material);
+                        attachExternalTexture("diffuseMap", VFS::Path::toNormalized(textureSet->mTextures[i]), wrapS,
+                            wrapT, uvSet, stateset, boundTextures, &material);
                         break;
                     case Nif::BSShaderTextureSet::TextureType::Normal:
-                        attachExternalTexture(Surface::TextureRole::Normal,
-                            VFS::Path::toNormalized(textureSet->mTextures[i]), wrapS, wrapT, uvSet, stateset,
-                            boundTextures, &material);
+                        attachExternalTexture("normalMap", VFS::Path::toNormalized(textureSet->mTextures[i]), wrapS,
+                            wrapT, uvSet, stateset, boundTextures, &material);
                         break;
                     case Nif::BSShaderTextureSet::TextureType::Glow:
-                        attachExternalTexture(Surface::TextureRole::Emissive,
-                            VFS::Path::toNormalized(textureSet->mTextures[i]), wrapS, wrapT, uvSet, stateset,
-                            boundTextures, &material);
+                        attachExternalTexture("emissiveMap", VFS::Path::toNormalized(textureSet->mTextures[i]), wrapS,
+                            wrapT, uvSet, stateset, boundTextures, &material);
                         break;
                     default:
                     {
@@ -2704,9 +2715,8 @@ namespace NifOsg
                     if (!texprop->mFilename.empty())
                     {
                         const unsigned int uvSet = 0;
-                        attachExternalTexture(Surface::TextureRole::Diffuse,
-                            VFS::Path::toNormalized(texprop->mFilename), texprop->wrapS(), texprop->wrapT(), uvSet,
-                            stateset, boundTextures, &material);
+                        attachExternalTexture("diffuseMap", VFS::Path::toNormalized(texprop->mFilename),
+                            texprop->wrapS(), texprop->wrapT(), uvSet, stateset, boundTextures, &material);
                     }
                     if (mBethVersion >= 27)
                     {
@@ -2761,9 +2771,8 @@ namespace NifOsg
                     {
                         const unsigned int uvSet = 0;
                         unsigned int texUnit = static_cast<unsigned>(boundTextures.size());
-                        attachExternalTexture(Surface::TextureRole::Diffuse,
-                            VFS::Path::toNormalized(texprop->mSourceTexture), texprop->wrapS(), texprop->wrapT(), uvSet,
-                            stateset, boundTextures, &material);
+                        attachExternalTexture("diffuseMap", VFS::Path::toNormalized(texprop->mSourceTexture),
+                            texprop->wrapS(), texprop->wrapT(), uvSet, stateset, boundTextures, &material);
                         material.mTextureScale = texprop->mUVScale;
                         material.mTextureOffset = osg::Vec2f(-texprop->mUVOffset.x(), -texprop->mUVOffset.y());
                         {
@@ -3132,13 +3141,6 @@ namespace NifOsg
     osg::ref_ptr<osg::Node> Loader::load(
         Nif::FileView file, Resource::ImageManager* imageManager, Resource::BgsmFileManager* materialManager)
     {
-        // **A hard failure naming itself, and not an assert.** This tree ships with `NDEBUG`, so an
-        // assert here would state the contract in no build anybody runs — and the state it guards
-        // against is one that looks like it works: a hidden node carrying no bits is skipped by
-        // every visitor, so nothing draws it and nothing reports it either.
-        if (!sConfigured)
-            throw Nif::Exception("NifOsg::Loader::configure was never called", file.getFilename());
-
         LoaderImpl impl(file.getFilename(), file.getVersion(), file.getUserVersion(), file.getBethVersion());
         impl.mMaterialManager = materialManager;
         impl.mImageManager = imageManager;

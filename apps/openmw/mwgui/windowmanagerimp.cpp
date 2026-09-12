@@ -4,7 +4,6 @@
 #include <cassert>
 #include <chrono>
 #include <filesystem>
-#include <optional>
 #include <thread>
 
 #include <osg/Camera>
@@ -56,7 +55,6 @@
 #include <components/lua_ui/util.hpp>
 #include <components/lua_ui/widget.hpp>
 
-#include <components/rtx/upscale.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -1297,17 +1295,6 @@ namespace MWGui
 
             else if (setting.first == "Video" && setting.second == "vsync mode")
                 mRenderer.setVSync(Settings::video().mVsyncMode);
-
-            // **Acted on while the game runs, unlike `RTX / enabled` beside it.** Which renderer
-            // draws is settled before the window exists; how hard its upscaler works is a pair of
-            // resolutions it can be rebuilt for. A renderer with no upscaler ignores this, and a
-            // name it cannot read leaves it where it is — `Rtx::upscaleNamed` refuses rather than
-            // defaulting, for the reason it gives.
-            else if (setting.first == "RTX" && setting.second == "upscale")
-            {
-                if (const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get()))
-                    mRenderer.setUpscale(*upscale);
-            }
             else if (setting.first == "Video" && (setting.second == "gamma" || setting.second == "contrast"))
                 mVideoWrapper->setGammaContrast(Settings::video().mGamma, Settings::video().mContrast);
         }

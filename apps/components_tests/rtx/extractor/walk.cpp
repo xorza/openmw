@@ -14,23 +14,18 @@ namespace Rtx::Testing
         {
         public:
             explicit ConfiguredLoader(unsigned int hiddenNodeMask)
-                : mHeld{ .mHiddenNodeMask = NifOsg::Loader::getHiddenNodeMask(),
-                    .mIntersectionDisabledNodeMask = NifOsg::Loader::getIntersectionDisabledNodeMask(),
-                    .mSoftEffects = NifOsg::Loader::getSoftEffectEnabled(),
-                    .mShowMarkers = NifOsg::Loader::getShowMarkers() }
+                : mHeld(NifOsg::Loader::getHiddenNodeMask())
             {
-                NifOsg::Loader::Configuration asked = mHeld;
-                asked.mHiddenNodeMask = hiddenNodeMask;
-                NifOsg::Loader::configure(asked);
+                NifOsg::Loader::setHiddenNodeMask(hiddenNodeMask);
             }
 
-            ~ConfiguredLoader() { NifOsg::Loader::configure(mHeld); }
+            ~ConfiguredLoader() { NifOsg::Loader::setHiddenNodeMask(mHeld); }
 
             ConfiguredLoader(const ConfiguredLoader&) = delete;
             ConfiguredLoader& operator=(const ConfiguredLoader&) = delete;
 
         private:
-            NifOsg::Loader::Configuration mHeld;
+            unsigned int mHeld;
         };
 
         TEST_F(RtxSceneExtractorTest, twoDrawablesBecomeTwoMeshesAndTwoInstances)

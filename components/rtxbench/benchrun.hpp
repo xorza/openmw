@@ -166,7 +166,7 @@ namespace Rtx
     /// What the sky does at a stop.
     ///
     /// **Named for the stop rather than for the sky**, because `Sky` is a namespace this one is
-    /// inside the reach of: `Rtx` names `Sky::TimeOfDaySettings` and `Sky::SkyRoll`, and a type
+    /// inside the reach of: `Rtx` names `Sky::TimeOfDaySettings` and `Sky::MoonState`, and a type
     /// called `Sky` here would take the lookup from every one of them.
     ///
     /// **Asked of the game's own weather system rather than derived.** A sun, an air and a set of

@@ -24,7 +24,6 @@ file(GLOB UNITTEST_SRC_FILES
     myguiplatform/pixels.cpp
     myguiplatform/texture.cpp
 
-    misc/cellgrid.cpp
     misc/compression.cpp
     misc/progressreporter.cpp
     misc/testendianness.cpp
@@ -96,6 +95,7 @@ file(GLOB UNITTEST_SRC_FILES
     sceneutil/osgacontroller.cpp
 
     surface/material.cpp
+    surface/nifmaterial.cpp
 
     bsa/testbsafile.cpp
     bsa/testcompressedbsafile.cpp
@@ -226,13 +226,9 @@ if (OPENMW_RTX)
         rtxtool/verify.cpp
         rtxtool/viewpoint.cpp
         rtxtool/views.cpp
-        sky/clouds.cpp
-        sky/moon.cpp
-        sky/skyroll.cpp
         sky/sun.cpp
         sky/timeofday.cpp
-        weather/downpour.cpp
-        weather/precipitation.cpp
+        sceneutil/localtoworld.cpp
     )
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})
 endif()

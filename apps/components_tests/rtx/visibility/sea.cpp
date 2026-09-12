@@ -679,7 +679,7 @@ namespace Rtx::Testing
         /// roughness, and the one dot a flat sea shows spreads into a road.
         ///
         /// A snowy frame is the plumbing's business and not the shader's: `mRainOnWater` is nought
-        /// for snow before the frame is built, and `Weather::Precipitation` is where that is tested.
+        /// for snow before the frame is built, and `SkyManager::getRainRipplesEnabled` is where that is decided.
         TEST_F(RtxVisibilityTest, rainRingsTheWaterUnderTheEyeAndRoughensItFarOff)
         {
             constexpr std::uint32_t size = 64;

@@ -142,11 +142,7 @@ add_component_dir (sceneutil
     detourdebugdraw navmesh agentpath animblendrules shadow mwshadowtechnique recastmesh shadowsbin osgacontroller rtt
     screencapture depth color riggeometryosgaextension extradata unrefqueue lightcommon clearcolor
     cullsafeboundsvisitor keyframe nodecallback textkeymap glextensions fog texmat material vismask
-    offscreenframing
-    )
-
-add_component_dir (bodyparts
-    slots
+    offscreenframing localtoworld
     )
 
 add_component_dir (surface
@@ -305,7 +301,7 @@ add_component_dir (esm4
 )
 
 add_component_dir (misc
-    barrier budgetmeasurement cellgrid color compression constants convert coordinateconverter display endianness float16 frameratelimiter
+    barrier budgetmeasurement color compression constants convert coordinateconverter display endianness float16 frameratelimiter
     guarded math mathutil messageformatparser notnullptr objectpool osgpluginchecker osguservalues progressreporter resourcehelpers
     rng strongtypedef thread timeconvert timer tuplehelpers tuplemeta utf8stream weakcache windows
     )
@@ -399,11 +395,7 @@ add_component_dir (fallback
     )
 
 add_component_dir (sky
-    clouds moonmodel sun skyroll timeofday
-    )
-
-add_component_dir (weather
-    downpour precipitation
+    clouds moonstate sun timeofday
     )
 
 add_component_dir (lua_ui

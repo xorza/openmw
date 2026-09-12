@@ -70,7 +70,7 @@ namespace SceneUtil
         /// **The number is the update traversal's**, because that is the only thing that reads it
         /// back. A caller with a sequence of its own — a mirror poses at numbers that are not
         /// frames — has to hand over the frame regardless, or the comparison is between two clocks.
-        void markReached(unsigned int updateTraversalNumber) { mLastReachedFrameNumber = updateTraversalNumber; }
+        void markReached(unsigned int updateTraversalNumber) { mLastCullFrameNumber = updateTraversalNumber; }
 
         void markDirty();
 
@@ -91,8 +91,7 @@ namespace SceneUtil
         ActiveType mActive;
 
         unsigned int mLastFrameNumber;
-        /// When something that draws this last reached it. See `markReached`.
-        unsigned int mLastReachedFrameNumber;
+        unsigned int mLastCullFrameNumber;
     };
 
 }

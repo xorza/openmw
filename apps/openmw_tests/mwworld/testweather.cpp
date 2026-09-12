@@ -11,16 +11,16 @@ namespace MWWorld
     {
         TEST(MWWorldWeatherTest, moonPhasesHaveMwscriptCompatibleValues)
         {
-            using Phase = Sky::MoonPhase;
+            using Phase = MWRender::MoonState::Phase;
 
-            EXPECT_EQ(Sky::phaseToInt(Phase::New), 0);
-            EXPECT_EQ(Sky::phaseToInt(Phase::WaxingCrescent), 1);
-            EXPECT_EQ(Sky::phaseToInt(Phase::WaningCrescent), 1);
-            EXPECT_EQ(Sky::phaseToInt(Phase::FirstQuarter), 2);
-            EXPECT_EQ(Sky::phaseToInt(Phase::ThirdQuarter), 2);
-            EXPECT_EQ(Sky::phaseToInt(Phase::WaxingGibbous), 3);
-            EXPECT_EQ(Sky::phaseToInt(Phase::WaningGibbous), 3);
-            EXPECT_EQ(Sky::phaseToInt(Phase::Full), 4);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::New), 0);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::WaxingCrescent), 1);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::WaningCrescent), 1);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::FirstQuarter), 2);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::ThirdQuarter), 2);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::WaxingGibbous), 3);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::WaningGibbous), 3);
+            EXPECT_EQ(MWRender::MoonState::phaseToInt(Phase::Full), 4);
         }
 
         // MASSER PHASES
@@ -45,20 +45,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 26 + 11.0f + 56.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 26 + 11.0f + 58.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(0));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(1));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(0));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(1));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(0));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(1));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(0));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(1));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesWaningGibbousToThirdQuarterAtCorrectTimes)
@@ -81,20 +79,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 28 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 29 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(1));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(2));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(1));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(2));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(1));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(2));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(1));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(2));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesThirdQuarterToWaningCrescentAtCorrectTimes)
@@ -117,20 +113,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 31 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 32 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(2));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(3));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(2));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(3));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(2));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(3));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(2));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(3));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesWaningCrescentToNewAtCorrectTimes)
@@ -153,20 +147,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 34 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 35 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(3));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(4));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(3));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(4));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(3));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(4));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(3));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(4));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesNewToWaxingCrescentAtCorrectTimes)
@@ -189,20 +181,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 37 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 38 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(4));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(5));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(4));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(5));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(4));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(5));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(4));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(5));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesWaxingCrescentToFirstQuarterAtCorrectTimes)
@@ -225,20 +215,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 41 + 2.0f + 56.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 41 + 2.0f + 58.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(5));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(6));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(5));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(6));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(5));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(6));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(5));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(6));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesFirstQuarterToWaxingGibbousAtCorrectTimes)
@@ -261,20 +249,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 44 + 5.0f + 56.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 44 + 5.0f + 58.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(6));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(7));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(6));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(7));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(6));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(7));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(6));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(7));
         }
 
         TEST(MWWorldWeatherTest, masserPhasesWaxingGibbousToFullAtCorrectTimes)
@@ -297,20 +283,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 47 + 8.0f + 56.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 47 + 8.0f + 58.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(7));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(0));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(7));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(0));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(7));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(0));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(7));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(0));
         }
 
         // SECUNDA PHASES
@@ -335,20 +319,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 26 + 14.0f + 18.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 26 + 14.0f + 20.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(0));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(1));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(0));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(1));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(0));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(1));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(0));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(1));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesWaningGibbousToThirdQuarterAtCorrectTimes)
@@ -371,20 +353,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 28 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 29 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(1));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(2));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(1));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(2));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(1));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(2));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(1));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(2));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesThirdQuarterToWaningCrescentAtCorrectTimes)
@@ -407,20 +387,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 31 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 32 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(2));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(3));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(2));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(3));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(2));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(3));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(2));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(3));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesWaningCrescentToNewAtCorrectTimes)
@@ -443,20 +421,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 34 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 35 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(3));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(4));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(3));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(4));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(3));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(4));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(3));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(4));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesNewToWaxingCrescentAtCorrectTimes)
@@ -479,20 +455,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 37 + 23.0f + 59.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 38 + 0.0f + 1.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(4));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(5));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(4));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(5));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(4));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(5));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(4));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(5));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesWaxingCrescentToFirstQuarterAtCorrectTimes)
@@ -515,20 +489,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 41 + 3.0f + 30.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 41 + 3.0f + 32.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(5));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(6));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(5));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(6));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(5));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(6));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(5));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(6));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesFirstQuarterToWaxingGibbousAtCorrectTimes)
@@ -551,20 +523,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 44 + 7.0f + 6.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 44 + 7.0f + 8.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(6));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(7));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(6));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(7));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(6));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(7));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(6));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(7));
         }
 
         TEST(MWWorldWeatherTest, secundaPhasesWaxingGibbousToFullAtCorrectTimes)
@@ -587,20 +557,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 47 + 10.0f + 42.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 47 + 10.0f + 44.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_EQ(beforeState.mPhase, static_cast<Sky::MoonPhase>(7));
-            EXPECT_EQ(afterState.mPhase, static_cast<Sky::MoonPhase>(0));
-            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(7));
-            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<Sky::MoonPhase>(0));
+            EXPECT_EQ(beforeState.mPhase, static_cast<MWRender::MoonState::Phase>(7));
+            EXPECT_EQ(afterState.mPhase, static_cast<MWRender::MoonState::Phase>(0));
+            EXPECT_EQ(beforeStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(7));
+            EXPECT_EQ(afterStatePostLoop.mPhase, static_cast<MWRender::MoonState::Phase>(0));
         }
 
         // OFFSETS
@@ -625,20 +593,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 32 + 3.0f + 15.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 32 + 3.0f + 17.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_LE(beforeState.mAlpha, 0.0f);
-            EXPECT_GT(afterState.mAlpha, 0.0f);
-            EXPECT_LE(beforeStatePostLoop.mAlpha, 0.0f);
-            EXPECT_GT(afterStatePostLoop.mAlpha, 0.0f);
+            EXPECT_LE(beforeState.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterState.mMoonAlpha, 0.0f);
+            EXPECT_LE(beforeStatePostLoop.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterStatePostLoop.mMoonAlpha, 0.0f);
         }
 
         TEST(MWWorldWeatherTest, moonWithLowIncrementShouldApplyIncrementOffsetAfterCycle)
@@ -661,20 +627,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 31 + 1.0f + 43.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 31 + 1.0f + 45.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_LE(beforeState.mAlpha, 0.0f);
-            EXPECT_GT(afterState.mAlpha, 0.0f);
-            EXPECT_LE(beforeStatePostLoop.mAlpha, 0.0f);
-            EXPECT_GT(afterStatePostLoop.mAlpha, 0.0f);
+            EXPECT_LE(beforeState.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterState.mMoonAlpha, 0.0f);
+            EXPECT_LE(beforeStatePostLoop.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterStatePostLoop.mMoonAlpha, 0.0f);
         }
 
         TEST(MWWorldWeatherTest, masserShouldApplyIncrementOffsetAfterCycle)
@@ -697,20 +661,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 28 + 1.0f + 1.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 28 + 1.0f + 3.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_LE(beforeState.mAlpha, 0.0f);
-            EXPECT_GT(afterState.mAlpha, 0.0f);
-            EXPECT_LE(beforeStatePostLoop.mAlpha, 0.0f);
-            EXPECT_GT(afterStatePostLoop.mAlpha, 0.0f);
+            EXPECT_LE(beforeState.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterState.mMoonAlpha, 0.0f);
+            EXPECT_LE(beforeStatePostLoop.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterStatePostLoop.mMoonAlpha, 0.0f);
         }
 
         TEST(MWWorldWeatherTest, secundaShouldApplyIncrementOffsetAfterCycle)
@@ -733,20 +695,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 27 + 2.0f + 3.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 27 + 2.0f + 5.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_LE(beforeState.mAlpha, 0.0f);
-            EXPECT_GT(afterState.mAlpha, 0.0f);
-            EXPECT_LE(beforeStatePostLoop.mAlpha, 0.0f);
-            EXPECT_GT(afterStatePostLoop.mAlpha, 0.0f);
+            EXPECT_LE(beforeState.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterState.mMoonAlpha, 0.0f);
+            EXPECT_LE(beforeStatePostLoop.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterStatePostLoop.mMoonAlpha, 0.0f);
         }
 
         TEST(MWWorldWeatherTest, moonWithIncreasedSpeedShouldApplyIncrementOffsetAfterCycle)
@@ -769,20 +729,18 @@ namespace MWWorld
             timeStampBeforePostLoop += (24.0f * 28 + 1.0f + 12.0f / 60.0f);
             timeStampAfterPostLoop += (24.0f * 28 + 1.0f + 14.0f / 60.0f);
 
-            Sky::MoonModel moon = Sky::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset,
-                speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
+            MWWorld::MoonModel moon = MWWorld::MoonModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish,
+                axisOffset, speed, dailyIncrement, fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle);
 
-            Sky::MoonMoment beforeState = moon.at(timeStampBefore.getDay(), timeStampBefore.getHour());
-            Sky::MoonMoment afterState = moon.at(timeStampAfter.getDay(), timeStampAfter.getHour());
-            Sky::MoonMoment beforeStatePostLoop
-                = moon.at(timeStampBeforePostLoop.getDay(), timeStampBeforePostLoop.getHour());
-            Sky::MoonMoment afterStatePostLoop
-                = moon.at(timeStampAfterPostLoop.getDay(), timeStampAfterPostLoop.getHour());
+            MWRender::MoonState beforeState = moon.calculateState(timeStampBefore);
+            MWRender::MoonState afterState = moon.calculateState(timeStampAfter);
+            MWRender::MoonState beforeStatePostLoop = moon.calculateState(timeStampBeforePostLoop);
+            MWRender::MoonState afterStatePostLoop = moon.calculateState(timeStampAfterPostLoop);
 
-            EXPECT_LE(beforeState.mAlpha, 0.0f);
-            EXPECT_GT(afterState.mAlpha, 0.0f);
-            EXPECT_LE(beforeStatePostLoop.mAlpha, 0.0f);
-            EXPECT_GT(afterStatePostLoop.mAlpha, 0.0f);
+            EXPECT_LE(beforeState.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterState.mMoonAlpha, 0.0f);
+            EXPECT_LE(beforeStatePostLoop.mMoonAlpha, 0.0f);
+            EXPECT_GT(afterStatePostLoop.mMoonAlpha, 0.0f);
         }
     }
 }

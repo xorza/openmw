@@ -22,14 +22,14 @@ namespace Rtx
     struct Sun
     {
         /// Where the sun stands, unit — and so `-mPosition` is where its light travels.
-        /// `Sky::SunPlacement::mPosition` is what this is read from and says why it is kept through
+        /// `MWRender::WorldState::mSunPosition` is what this is read from and says why it is kept through
         /// a night that has no sun in it.
         osg::Vec3f mPosition{ 0.0f, 0.0f, 1.0f };
 
         /// Irradiance on a surface square to it, linear.
         ///
         /// **Zero exactly when there is no sun**, which is the invariant the whole type exists for,
-        /// and `Sky::SunPlacement::mShare` is where that invariant is argued: this is the same
+        /// and `Sky::sunShareAt` is where that invariant is argued: this is the same
         /// question one layer down, so what is nothing there is nothing here. Everything the sun
         /// does is gated on this one test, so a sun cannot shadow without being drawn or be drawn
         /// without lighting.
@@ -37,8 +37,8 @@ namespace Rtx
 
         /// What the disc is painted with, linear — **not the hue of `mIrradiance`.** The colour a
         /// weather gives its sunlight is the sky's as much as the sun's, which is why it is blue at
-        /// night; the disc has its own, and `Sky::sunDiscAt` is where it comes from. The weather's
-        /// own glare is folded in, so an overcast sun is a paler one.
+        /// night; the disc has its own, and `MWWorld::WeatherManager::calculateResult` is where it comes from. The
+        /// weather's own glare is folded in, so an overcast sun is a paler one.
         osg::Vec3f mDiscColour{ 1.0f, 1.0f, 1.0f };
     };
 }

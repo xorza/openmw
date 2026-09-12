@@ -14,7 +14,7 @@
 #include <vector>
 
 #include <components/esm/exteriorcelllocation.hpp>
-#include <components/misc/cellgrid.hpp>
+#include <components/misc/constants.hpp>
 
 namespace osg
 {
@@ -120,6 +120,8 @@ namespace MWWorld
         float mPredictionTime;
         float mLowestPoint;
 
+        int mHalfGridSize = Constants::CellGridRadius;
+
         osg::Vec3f mLastPlayerPos;
 
         std::vector<ESM::RefNum> mPagedRefs;
@@ -131,9 +133,7 @@ namespace MWWorld
         void insertCell(CellStore& cell, Loading::Listener* loadingListener,
             const DetourNavigator::UpdateGuard* navigatorUpdateGuard);
 
-        /// The square of cells this scene holds, and the one thing both answers about it come from:
-        /// which cells are loaded, and what rectangle the terrain is told. See `Misc::CellGrid`.
-        Misc::CellGrid mGrid;
+        osg::Vec2i mCurrentGridCenter;
 
         // Load and unload cells as necessary to create a cell grid with "X" and "Y" in the center
         void changeCellGrid(const osg::Vec3f& pos, ESM::ExteriorCellLocation playerCellIndex, bool changeEvent = true);

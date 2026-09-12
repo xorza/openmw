@@ -33,7 +33,7 @@ namespace MWWorld
             mMeshCache[stat.mId] = Misc::ResourceHelpers::correctMeshPath(model);
         }
 
-        for (const ESM::Static& stat : content.get<ESM::Static>())
+        for (const ESM::Static& stat : content.mStatics)
         {
             const VFS::Path::NormalizedView model = stat.mModel.getNormalized();
             if (!model.value().starts_with(prefix))

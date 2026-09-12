@@ -8,11 +8,9 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
-#include <components/esm3/loadcell.hpp>
-#include <components/sky/moonmodel.hpp>
-#include <components/sky/skyroll.hpp>
-
 #include "weatherresult.hpp"
+#include <components/esm3/loadcell.hpp>
+#include <components/sky/moonstate.hpp>
 
 namespace osg
 {
@@ -30,11 +28,6 @@ namespace Terrain
 {
     class ObjectStorage;
     class World;
-}
-
-namespace Weather
-{
-    class Precipitation;
 }
 
 namespace MWRender
@@ -82,14 +75,6 @@ namespace MWRender
     /// conversion belongs to whoever is doing the converting.
     struct WorldState
     {
-        /// Built around the roll it turns, which is the one member that carries a policy: whether
-        /// the clouds keep the world's clock. Everything else is written by whichever setter knows
-        /// it.
-        explicit WorldState(const Sky::SkyRoll& roll)
-            : mSkyRoll(roll)
-        {
-        }
-
         /// Where the sun is drawn, which is not where its light comes from whenever
         /// `match sunlight to sun` is off.
         osg::Vec4f mSunPosition;
@@ -133,27 +118,34 @@ namespace MWRender
         /// before the weather's glare is taken off it.
         float mNightFade = 0.0f;
 
-        /// What the cloud deck is lit by, before `Sky::cloudColour` lifts it.
+        /// What the cloud deck is lit by, before `SkyManager::setWeather` lifts it by an eighth.
         ///
         /// **The weather's own fog colour and not `mAir`'s.** The air a ray crosses is the fog
         /// manager's, which knows about being underwater and about a room; the deck is lit by what
         /// the weather said, which is the same number the harness reads out of the content files.
         osg::Vec4f mCloudFog;
 
-        /// What the weather drops, or null where nothing has built it yet.
+        /// What the weather drops: the rain box and the driven effect, or null where there is none.
         ///
-        /// **A node rather than a description**, unlike everything else here. The rest of this
+        /// **Nodes rather than a description**, unlike everything else here. The rest of this
         /// structure is numbers because the two renderers reach them by different routes; the
-        /// precipitation is one `osgParticle` system that both walk, so what is carried is where to
-        /// find it. `Weather::Precipitation` says why it is not the sky manager's.
-        Weather::Precipitation* mPrecipitation = nullptr;
+        /// precipitation is `osgParticle` systems the sky manager builds and both renderers walk,
+        /// so what is carried is where to find them. Both are camera-relative and a walk stands
+        /// them at the eye.
+        osg::Node* mRain = nullptr;
+        osg::Node* mWeatherEffect = nullptr;
 
-        /// How far the cloud deck has scrolled and the star sphere has rolled.
-        ///
-        /// **Advanced by the sky manager and read here**, because both renderers turn the same sky:
-        /// the deck runs on the weather's own speed and the stars come round once every four days,
-        /// and neither is a thing the hour of the day can be asked for.
-        Sky::SkyRoll mSkyRoll;
+        /// How much of what is falling rings the water, nought to one — the precipitation's alpha
+        /// where its kind makes ripples, nought where it does not. `Water::setRainIntensity` takes
+        /// the same number.
+        float mRainOnWater = 0.0f;
+
+        /// How far the cloud deck has scrolled, in texture units, and how far the star sphere has
+        /// rolled, in radians. **Advanced by the sky manager and read here**, because both renderers
+        /// turn the same sky: the deck runs on the weather's own speed and the stars come round once
+        /// every four days, and neither is a thing the hour of the day can be asked for.
+        float mCloudScroll = 0.0f;
+        float mStarRoll = 0.0f;
 
         /// Includes the night-eye effect, because that is where it has already been added — and, in
         /// a room, the lift `configureAmbient` gives it. `mRoom` is the record.
@@ -243,9 +235,9 @@ namespace MWRender
         /// What the weather itself records blowing at, before the gust the engine wanders about it.
         ///
         /// **Not `mWindSpeed`, and the two are eight times apart.** That one is what the drops are
-        /// leant by, so it is the gust — `Weather::gustSpeed` multiplies the record by eight and
-        /// caps it at seventy. This is the record, which is the number the content files state, and
-        /// the two paths have to stand in one air.
+        /// leant by, so it is the gust — `MWWorld::WeatherManager::calculateWindSpeed` multiplies
+        /// the record by eight and caps it at seventy. This is the record, which is the number the
+        /// content files state, and the two paths have to stand in one air.
         float mBaseWindSpeed = 0.0f;
 
         /// Masser and Secunda, as the weather system last settled them.
@@ -254,7 +246,7 @@ namespace MWRender
         /// of the ray tracer's types: none of that code is built at all with the option off, and
         /// this is a header the rasterizer reads. An alpha of nothing is a moon that is not drawn,
         /// which is what a value-initialised pair says before the weather system has spoken.
-        Sky::MoonMoment mMoons[2] = {};
+        Sky::MoonState mMoons[2] = {};
 
         /// Which way each of the two cloud decks is driven.
         ///

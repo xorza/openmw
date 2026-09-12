@@ -13,7 +13,6 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
-#include <components/sky/moonmodel.hpp>
 
 #include "../weatherresult.hpp"
 
@@ -110,6 +109,9 @@ namespace MWRender
         META_Node(MWRender, CameraRelativeTransform)
 
         const osg::Vec3f& getLastViewPoint() const;
+
+        /// For a renderer that runs no cull traversal to set it from.
+        void setLastViewPoint(const osg::Vec3f& viewPoint) { mViewPoint = viewPoint; }
 
         bool computeLocalToWorldMatrix(osg::Matrix& matrix, osg::NodeVisitor* nv) const override;
 
@@ -208,7 +210,7 @@ namespace MWRender
         ~Moon();
 
         void adjustTransparency(const float ratio) override;
-        void setState(const Sky::MoonMoment state);
+        void setState(const MoonState state);
         void setAtmosphereColor(const osg::Vec4f& color);
         void setColor(const osg::Vec4f& color);
 
@@ -216,10 +218,10 @@ namespace MWRender
 
     private:
         Type mType;
-        Sky::MoonPhase mPhase;
+        MoonState::Phase mPhase;
         osg::ref_ptr<MoonUpdater> mUpdater;
 
-        void setPhase(Sky::MoonPhase phase);
+        void setPhase(const MoonState::Phase& phase);
     };
 
     class RainCounter : public osgParticle::ConstantRateCounter

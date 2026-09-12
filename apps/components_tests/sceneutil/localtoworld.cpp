@@ -8,11 +8,11 @@
 #include <osg/PositionAttitudeTransform>
 #include <osg/Transform>
 
-#include <components/weather/precipitation.hpp>
+#include <components/sceneutil/localtoworld.hpp>
 
 #include "../rtx/allocations.hpp"
 
-namespace Weather
+namespace SceneUtil
 {
     namespace
     {
@@ -59,15 +59,16 @@ namespace Weather
 
         /// `localToWorldOf` answers what `getWorldMatrices` answers for its first path.
         ///
-        /// **The whole of why the walk may replace the call.** `WrapAroundOperator` asks this of
-        /// every particle system on every frame, and the OSG call builds a vector of node paths and
-        /// a vector of matrices to answer it — so the walk exists to give the same matrix out of
-        /// storage the caller already has. A difference between the two is a different rainstorm in
-        /// the renderer nobody is looking at, which is exactly the kind this fork must not cause.
+        /// **The whole of why the walk may replace the call.** The weather's wrap-around operator
+        /// asks this of every particle system on every frame, and the OSG call builds a vector of
+        /// node paths and a vector of matrices to answer it — so the walk exists to give the same
+        /// matrix out of storage the caller already has. A difference between the two is a
+        /// different rainstorm in the renderer nobody is looking at, which is exactly the kind this
+        /// fork must not cause.
         ///
         /// Every shape the chain above a particle system can take, and two it cannot: a scale, and a
         /// transform that ignores its parents outright.
-        TEST(WeatherPrecipitationTest, theWalkAnswersWhatOsgAnswersForTheFirstPath)
+        TEST(SceneUtilLocalToWorldTest, theWalkAnswersWhatOsgAnswersForTheFirstPath)
         {
             osg::ref_ptr<osg::Node> alone = new osg::Node;
             {
@@ -85,7 +86,7 @@ namespace Weather
                 EXPECT_EQ(frames.mWalked, frames.mOsg) << "a group above";
             }
 
-            // A translation, which is what both hosts put above `Precipitation`.
+            // A translation, which is what the sky puts above the weather.
             osg::ref_ptr<osg::MatrixTransform> moved = new osg::MatrixTransform(osg::Matrix::translate(1.0, 2.0, 3.0));
             osg::ref_ptr<osg::Node> underMoved = new osg::Node;
             moved->addChild(underMoved);
@@ -156,7 +157,7 @@ namespace Weather
         /// down, and a cull visitor is a cast to `osgUtil::CullVisitor` of something that is not
         /// one. Neither is hypothetical — the mirror calls itself a cull visitor for as long as it
         /// steps a particle system, and this walk runs from inside that step.
-        TEST(WeatherPrecipitationTest, theWalkHandsEveryTransformAVisitorAndNeverACullOne)
+        TEST(SceneUtilLocalToWorldTest, theWalkHandsEveryTransformAVisitorAndNeverACullOne)
         {
             osg::ref_ptr<RecordsTheVisitor> above = new RecordsTheVisitor;
             osg::ref_ptr<RecordsTheVisitor> below = new RecordsTheVisitor;
@@ -182,7 +183,7 @@ namespace Weather
         /// answers it out of one matrix on the stack.
         ///
         /// Warmed up first, because the first of anything legitimately allocates.
-        TEST(WeatherPrecipitationTest, walkingTheChainDoesNotTouchTheHeap)
+        TEST(SceneUtilLocalToWorldTest, walkingTheChainDoesNotTouchTheHeap)
         {
             osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform(osg::Matrix::translate(1.0, 2.0, 3.0));
             osg::ref_ptr<osg::PositionAttitudeTransform> aimed = new osg::PositionAttitudeTransform;

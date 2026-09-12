@@ -14,9 +14,7 @@ file(GLOB UNITTEST_SRC_FILES
 
     mwdialogue/testkeywordsearch.cpp
 
-    mwrender/readworld.cpp
     mwrender/stage.cpp
-    mwrender/worldmirror.cpp
 
     mwgui/tooltips.cpp
     mwgui/weightedsearch.cpp
@@ -37,6 +35,15 @@ if (MSVC)
         PROPERTIES
         COMPILE_OPTIONS /cgthreads1
     )
+endif()
+
+if (OPENMW_RTX)
+    set(RTX_TEST_FILES
+        mwrender/readworld.cpp
+        mwrender/worldmirror.cpp
+    )
+    list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})
+    set_source_files_properties(${RTX_TEST_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
 endif()
 
 source_group(apps\\openmw-tests FILES ${UNITTEST_SRC_FILES})

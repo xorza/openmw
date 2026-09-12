@@ -4,27 +4,21 @@
 
 #include <osg/Matrixf>
 
-#include <components/weather/precipitation.hpp>
-
 #include "sceneextractor.hpp"
 #include "shaders/scene.h"
 
 namespace Rtx
 {
-    float rainOnWater(const Weather::Precipitation* fall)
+    void mirrorPrecipitation(SceneExtractor& extractor, osg::Node* fall, const osg::Vec3f& eye, const bool underwater,
+        const std::size_t frameNumber)
     {
-        return fall != nullptr && fall->ripplesEnabled() ? fall->getPrecipitationAlpha() : 0.0f;
-    }
-
-    void mirrorPrecipitation(SceneExtractor& extractor, Weather::Precipitation* fall, const std::size_t frameNumber)
-    {
-        if (fall == nullptr || fall->isUnderwater())
+        if (fall == nullptr || underwater)
             return;
 
         // **The same mask as everything else, because there is nothing here to select.** The walk
         // starts at the precipitation node, so the subtree is already chosen; a mask is only ever
         // excluding what a renderer draws for itself, and none of that is under here.
-        extractor.extract(*fall->getNode(), osg::Matrixf::translate(fall->getEye()), 0, frameNumber);
+        extractor.extract(*fall, osg::Matrixf::translate(eye), 0, frameNumber);
     }
 
     Shaders::CloudDeck noDeck()

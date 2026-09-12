@@ -13,28 +13,14 @@
 #include "skybuilder.hpp"
 #include "skylight.hpp"
 
-namespace Weather
+namespace osg
 {
-    class Precipitation;
+    class Node;
 }
 
 namespace Rtx
 {
     class SceneExtractor;
-
-    /// How hard a fall of weather rains on the water, from nought to one.
-    ///
-    /// **The precipitation's own alpha where its kind rings the surface, and nought where it does
-    /// not.** `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does
-    /// and snow settles, off the ini's own `Rain Ripples` and `Snow Ripples`.
-    ///
-    /// **The same number the rasterizer hands its water, and not the same expression.**
-    /// `SkyManager::getRainRipplesEnabled` asks this with the sky's own switch in front of it, which
-    /// changes no answer: `setEnabled(false)` clears the downpour in the same call, and an interior
-    /// is the only thing that turns the sky off.
-    ///
-    /// @param fall what is falling, or null for a world with no weather over it.
-    float rainOnWater(const Weather::Precipitation* fall);
 
     /// Walks what the weather drops, which is a second root to whoever mirrors the world.
     ///
@@ -47,18 +33,19 @@ namespace Rtx
     /// **Stood at the eye the drops were driven with**, because that is the one place the box
     /// travels nowhere: every step of that eye is taken back out of the drops again, so a sprite's
     /// own travel between two frames is its fall and the reprojection can be handed it as such. The
-    /// rasterizer stands the box at the camera it draws from, and the game hands this the same eye
-    /// — `Weather::Conditions::mEye` says where.
+    /// rasterizer stands the box at the camera it draws from, and `eye` is that camera's.
     ///
-    /// **Nothing falls where the eye is under water, and stopping it is not hiding it.**
-    /// `Weather::Precipitation` freezes the drops where they stand and leaves what to draw to
-    /// whoever is drawing: the rasterizer answers by not culling the subtree and a ray tracer by not
-    /// walking it. Walked anyway, the drops the surface was crossed with hang in the air, frozen,
-    /// for as long as the eye stays under it.
+    /// **Nothing falls where the eye is under water, and stopping it is not hiding it.** The sky
+    /// manager freezes the drops where they stand and leaves what to draw to whoever is drawing:
+    /// the rasterizer answers by not culling the subtree and a ray tracer by not walking it. Walked
+    /// anyway, the drops the surface was crossed with hang in the air, frozen, for as long as the
+    /// eye stays under it.
     ///
-    /// @param fall what is falling, or null for a world with no weather over it.
+    /// @param fall what is falling — the sky manager's rain box or its driven effect — or null for
+    ///        a world with nothing of that kind over it.
     /// @param frameNumber the frame the walk belongs to, as `SceneExtractor::extractWorld` takes it.
-    void mirrorPrecipitation(SceneExtractor& extractor, Weather::Precipitation* fall, std::size_t frameNumber);
+    void mirrorPrecipitation(
+        SceneExtractor& extractor, osg::Node* fall, const osg::Vec3f& eye, bool underwater, std::size_t frameNumber);
 
     /// The deck and the star field a world with no sky has: nothing to draw, which the shader reads
     /// off the texture slot before it samples anything.
@@ -98,7 +85,7 @@ namespace Rtx
         /// The weather's `Glare_View`, which is what keeps the stars in under an overcast.
         float mGlare = 1.0f;
 
-        /// How far the star sphere has turned and the deck has scrolled — `Sky::SkyRoll`'s two.
+        /// How far the star sphere has turned and the deck has scrolled — the sky manager's two clocks.
         float mStarRoll = 0.0f;
 
         /// Where the sky's own sheets sit in the scene's texture table.

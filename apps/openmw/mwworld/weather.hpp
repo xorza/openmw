@@ -12,9 +12,6 @@
 
 #include <components/esm/refid.hpp>
 #include <components/fallback/fallback.hpp>
-#include <components/sky/clouds.hpp>
-#include <components/sky/moonmodel.hpp>
-#include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
 
 #include "../mwbase/soundmanager.hpp"
@@ -51,7 +48,7 @@ namespace MWWorld
     struct Moon
     {
         std::string_view mName;
-        Sky::MoonPhase mPhase;
+        MWRender::MoonState::Phase mPhase;
         unsigned int mPhaseValue;
         float mAlpha;
     };
@@ -67,8 +64,10 @@ namespace MWWorld
     class Weather
     {
     public:
+        static osg::Vec3f defaultDirection();
+
         Weather(const ESM::RefId id, const int scriptId, const std::string& name, float stormWindSpeed, float rainSpeed,
-            float dlFactor, float dlOffset);
+            float dlFactor, float dlOffset, const std::string& particleEffect);
 
         ESM::RefId mId;
         int mScriptId;
@@ -89,6 +88,9 @@ namespace MWWorld
 
         // Color modulation for the sun itself during sunset
         osg::Vec4f mSunDiscSunsetColor;
+
+        // Used by scripts to animate signs, etc based on the wind (GetWindSpeed)
+        float mWindSpeed;
 
         // Cloud animation speed multiplier
         float mCloudSpeed;
@@ -112,18 +114,36 @@ namespace MWWorld
 
         std::array<ESM::RefId, 4> mThunderSoundID;
 
-        /// What this weather drops, how hard, and how fast the wind drives it.
-        ///
-        /// **Read once, by `Weather::downpourAt`, and never spelled out here.** The dozen keys
-        /// behind it used to be read in this constructor and again in that function, which is how
-        /// the wind came to reach the drops through a rule only one of the two applied.
-        ///
-        /// `mIsStorm` in it is also what makes a character shield their eyes and walk slower into
-        /// it (`fStromWalkMult`), and what turns the clouds to come off Red Mountain.
-        ::Weather::Downpour mDownpour;
+        // Is this an ash storm / blight storm? If so, the following will happen:
+        // - The particles and clouds will be oriented so they appear to come from the Red Mountain.
+        // - Characters will animate their hand to protect eyes from the storm when looking in its direction (idlestorm
+        // animation)
+        // - Slower movement when walking against the storm (fStromWalkMult)
+        bool mIsStorm;
+
+        // How fast does rain travel down?
+        // In Morrowind.ini this is set globally, but we may want to change it per weather later.
+        float mRainSpeed;
+
+        // How often does a new rain mesh spawn?
+        float mRainEntranceSpeed;
+
+        // Maximum count of rain particles
+        int mRainMaxRaindrops;
+
+        // Radius of rain effect
+        float mRainDiameter;
 
         // Transition threshold to spawn rain
         float mRainThreshold;
+
+        // Height of rain particles spawn
+        float mRainMinHeight;
+        float mRainMaxHeight;
+
+        std::string mParticleEffect;
+
+        std::string mRainEffect;
 
         osg::Vec3f mStormDirection;
 
@@ -175,6 +195,40 @@ namespace MWWorld
         std::vector<uint8_t> mChances;
 
         void chooseNewWeather();
+    };
+
+    /// A class that acts as a model for the moons.
+    class MoonModel
+    {
+    public:
+        MoonModel(const std::string& name);
+        MoonModel(float fadeInStart, float fadeInFinish, float fadeOutStart, float fadeOutFinish, float axisOffset,
+            float speed, float dailyIncrement, float fadeStartAngle, float fadeEndAngle,
+            float moonShadowEarlyFadeAngle);
+
+        MWRender::MoonState calculateState(const TimeStamp& gameTime) const;
+
+    private:
+        float mFadeInStart;
+        float mFadeInFinish;
+        float mFadeOutStart;
+        float mFadeOutFinish;
+        float mAxisOffset;
+        float mSpeed;
+        float mDailyIncrement;
+        float mFadeStartAngle;
+        float mFadeEndAngle;
+        float mMoonShadowEarlyFadeAngle;
+
+        float angle(int gameDay, float gameHour) const;
+        float moonPhaseHour(int gameDay) const;
+        float moonRiseHour(int gameDay) const;
+        float rotation(float hours) const;
+        MWRender::MoonState::Phase phase(const TimeStamp& gameTime) const;
+        bool isVisible(int gameDay, float gameHour) const;
+        float shadowBlend(float angle) const;
+        float hourlyAlpha(float gameHour) const;
+        float earlyMoonShadowAlpha(float angle) const;
     };
 
     /// Interface for weather settings
@@ -271,8 +325,8 @@ namespace MWWorld
         Sky::TimeOfDayInterpolator<float> mUnderwaterFog;
 
         std::vector<Weather> mWeatherSettings;
-        Sky::MoonModel mMasser;
-        Sky::MoonModel mSecunda;
+        MoonModel mMasser;
+        MoonModel mSecunda;
 
         float mWindSpeed;
         float mCurrentWindSpeed;
@@ -298,9 +352,8 @@ namespace MWWorld
         MWBase::Sound* mRainSound{ nullptr };
         ESM::RefId mPlayingRainSoundID;
 
-        /// The model a storm drives past the eye comes from `Weather::stormEffect`, which is where
-        /// that table lives now that a harness with no weather system reads it too.
-        void addWeather(const std::string& name, float dlFactor, float dlOffset);
+        void addWeather(
+            const std::string& name, float dlFactor, float dlOffset, const std::string& particleEffect = "");
 
         void importRegions();
 
