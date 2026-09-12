@@ -33,18 +33,11 @@ namespace Rtx
     };
 
     /// A read-only walk over a model as the loader built it, for a thread that is not the frame's.
-    ///
-    /// **Not `MirrorTraversal`, because that one writes.** The frame's walk steps every sequence and
-    /// particle system it meets and runs every state-set controller it finds, which is right for a
-    /// clone the game owns and wrong for a template: a template is shared with every clone the game
-    /// will make and with the game's own preloader, and a walk of one from another thread may write
-    /// nothing into it. What this reads is what stands still — the same drawables, the same state
-    /// sets and the same transforms a clone carries, since `SceneUtil::CopyOp` shares all three —
-    /// so a mesh read here is the mesh the frame's walk finds under the clone.
-    ///
-    /// **The rules of descent are the frame walk's for what stands still.** A switch is honoured, a
-    /// sequence is walked at the frame it stands on rather than stepped, an LOD is walked whole, and
-    /// the mask keeps the walk out of what the loader hid. Nothing is stepped, nothing is animated.
+    /// Not `MirrorTraversal`, because that one steps sequences and runs controllers, and a
+    /// template is shared with every clone and the preloader, so a walk from another thread may
+    /// write nothing into it. `SceneUtil::CopyOp` shares the drawables, state sets and transforms,
+    /// so a mesh read here is the mesh the frame's walk finds under the clone. A sequence is
+    /// walked at the frame it stands on, an LOD whole.
     class TemplateWalk final : public osg::NodeVisitor
     {
     public:

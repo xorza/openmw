@@ -20,28 +20,20 @@ namespace Rtx
         std::uint64_t mSize = 0;
 
         /// What the driver says this process may have of it, and what it says the process already
-        /// holds — both nought where the driver will not say.
-        ///
-        /// **A budget is not the heap.** It moves with what else is running, and it is the figure a
-        /// residency decision is made against; the heap's size is only its ceiling.
+        /// holds — both nought where the driver will not say. A budget moves with what else is
+        /// running, and is the figure a residency decision is made against.
         std::uint64_t mBudget = 0;
         std::uint64_t mHeld = 0;
 
         /// What the renderer's allocator asked this heap for, and what the resources inside those
-        /// allocations occupy.
-        ///
-        /// **The gap between them is the price of suballocating**, and it is the figure that says
-        /// whether a block ought to be given back rather than kept.
+        /// allocations occupy. The gap is the price of suballocating.
         std::uint64_t mReserved = 0;
         std::uint64_t mLive = 0;
 
         std::uint32_t mBlocks = 0;
 
-        /// Whether the device reads this heap and the host writes into it directly.
-        ///
-        /// **The one heap a card without resizable BAR keeps small** — a couple of hundred
-        /// megabytes — and so the one a run has to be measured against before it is called
-        /// portable.
+        /// Whether the device reads this heap and the host writes into it directly: the one heap
+        /// a card without resizable BAR keeps at a couple of hundred megabytes.
         bool mHostVisible = false;
     };
 
@@ -56,14 +48,9 @@ namespace Rtx
         std::array<HeapUse, sMaxHeaps> mHeaps{};
         std::uint32_t mHeapCount = 0;
 
-        /// What the renderer put in memory the host writes into and the device reads.
-        ///
-        /// **The figure a card without resizable BAR runs out of, and one no heap can state.** This
-        /// box's video memory is a single 16 GiB heap that is host-visible throughout, so every
-        /// image lands in the same heap as the geometry and the heap's own line says nothing about
-        /// either. A Turing card keeps that memory in a heap of its own of a couple of hundred
-        /// megabytes, and what has to fit there is exactly this — which is a property of the memory
-        /// type asked for, not of the heap it came out of.
+        /// What the renderer put in memory the host writes into and the device reads: the figure
+        /// a card without resizable BAR runs out of, and one no heap line can state on a box whose
+        /// whole 16 GiB is host-visible. A property of the memory type asked for, not of the heap.
         std::uint64_t mHostWrittenReserved = 0;
         std::uint64_t mHostWrittenLive = 0;
     };

@@ -14,10 +14,6 @@ namespace Rtx
             { 0.0f, 0.0f, 1.0f, 0.0f } } };
 
         /// `transform` with its translation taken `drop` units down the world's up axis.
-        ///
-        /// The translation is the world position of the placement's origin whatever the rest of the
-        /// matrix says, so subtracting from it lowers the instance in the world and not along some
-        /// axis of its own.
         osg::Matrixf loweredBy(const osg::Matrixf& transform, float drop)
         {
             osg::Matrixf lowered = transform;
@@ -68,13 +64,9 @@ namespace Rtx
                 = instance.mMaterial == sNoIndex ? Material::Traversed{} : materials[instance.mMaterial].getTraversed();
             const bool water = worn.mKind == MaterialKind::Water;
 
-            // **Here because this is the one funnel.** `WATER_TIE_BREAK` says why the sea is dropped
-            // at all; it is dropped here rather than wherever any one sea is made because every
-            // water surface in the project reaches the device through this line — the game's
-            // mirrored ocean, the harness's own plane, and the sheets the tests place — and a
-            // tie-break that some of them missed would be worse than none.
-            //
-            // On the placement rather than the mesh, so it holds however the surface was authored.
+            // Here because this is the one funnel every water surface reaches the device through;
+            // `WATER_TIE_BREAK` says why the sea is dropped at all. On the placement rather than the
+            // mesh, so it holds however the surface was authored.
             const osg::Matrixf placement
                 = water ? loweredBy(instance.mTransform, Shaders::WATER_TIE_BREAK) : instance.mTransform;
 
@@ -97,31 +89,19 @@ namespace Rtx
         }
 
         /// Gives `record` the motion of a slot that stood somewhere else last frame, and leaves a
-        /// slot that stood where it stands — a fade, a placement made this frame — still.
-        ///
-        /// **The scene says what moved rather than every record being asked.** Comparing each
-        /// placement against where it was costs sixteen floats per instance per frame to discover
-        /// that a world of statics is still a world of statics; the walk that placed them already
-        /// knew, and this is where it is spent instead.
-        ///
-        /// **The inverse is taken here and never on the device.** A shader that inverted a transform
-        /// per hit would do it a million times a frame for an answer that changes once an instance.
-        ///
-        /// **Built from the placements the scene gave rather than the dropped ones**, and the sea's
-        /// drop falls out of the answer rather than being ignored by it: this is
-        /// `inverse(current) * previous`, so a translation applied to both cancels — but only while
-        /// the placement carries no rotation, which the sea's does not and a rotating one would.
+        /// slot that stood where it stands still. The inverse is taken here and never on the
+        /// device, which would do it a million times a frame. Built from the placements the scene
+        /// gave rather than the dropped ones: `inverse(current) * previous` cancels a translation
+        /// applied to both, while the placement carries no rotation, which the sea's does not.
         void moveRecord(const SceneDesc& scene, const Index slot, InstanceRecord& record)
         {
             const MeshInstance& instance = scene.placements().getAll()[slot];
             if (!instance.isPlaced())
                 return;
 
-            // **A slot can be on the list without having moved**: one just placed, or one that
-            // faded, has a previous transform that is where it already is. It keeps the identity
-            // outright rather than an inverse times itself — `inverse(T) * T` is the identity in
-            // arithmetic and not in floats, and a few ulps of a six-figure world coordinate is a
-            // fraction of a pixel of drift under a static surface.
+            // A slot can be on the list without having moved — just placed, or faded — and keeps
+            // the identity outright: `inverse(T) * T` is a few ulps of a six-figure coordinate in
+            // floats, which is a fraction of a pixel of drift under a static surface.
             const osg::Matrixf& previous = scene.placements().getPrevious()[slot];
             if (previous == instance.mTransform)
                 return;

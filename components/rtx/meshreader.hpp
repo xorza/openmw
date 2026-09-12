@@ -25,12 +25,9 @@ namespace SceneUtil
 namespace Rtx
 {
     /// What of a drawable there is to mirror: the geometry its triangles and attributes are read
-    /// from, and what poses it, where something does.
-    ///
-    /// A skinned body's geometry is its **source** — the bind pose, which is what a pose is
-    /// computed from on the device — and a morphed face's is its source too, with the base target
-    /// standing in for its positions. Neither is the double-buffered copy a cull writes, which
-    /// nothing here runs any more.
+    /// from, and what poses it. A skinned body's geometry is its source — the bind pose, which a
+    /// pose is computed from on the device — and so is a morphed face's, with the base target for
+    /// its positions. Neither is the double-buffered copy a cull writes, which nothing runs here.
     struct DrawableRead
     {
         const osg::Geometry* mGeometry = nullptr;
@@ -39,25 +36,18 @@ namespace Rtx
         const SceneUtil::MorphGeometry* mMorph = nullptr;
     };
 
-    /// Reads what a drawable is, in one virtual call for nearly everything in a cell.
-    ///
-    /// Nearly everything in a cell is an `osg::Geometry` and answers in one virtual call. A skinned
-    /// body and a morphed face are not: each is an `osg::Drawable` over a source geometry, and the
-    /// source is what this reads. **A rig no update traversal has resolved is read as it stands.**
-    /// Its bones are what `RigGeometry::updateBounds` finds under the update traversal, and a rig
-    /// with none has nothing to be posed against; the rasterizer draws that rig in its bind pose,
-    /// and so does this. A morph with no target past its base has nothing to move either, and is a
-    /// static mesh whose positions are the base.
+    /// Reads what a drawable is, in one virtual call for nearly everything in a cell. A skinned
+    /// body and a morphed face are an `osg::Drawable` over a source geometry, and the source is
+    /// what this reads. A rig no update traversal resolved is read as it stands, because its bones
+    /// are what `RigGeometry::updateBounds` finds, and the rasterizer draws it in its bind pose
+    /// too. A morph with no target past its base is a static mesh whose positions are the base.
     DrawableRead readDrawable(const osg::Drawable& drawable, NodeKind kind);
 
     /// A morph's base target, which `MorphGeometry::cull` reads its positions from.
     std::span<const osg::Vec3f> morphBase(const SceneUtil::MorphGeometry& morph);
 
-    /// What one drawable's triangles come to once read and folded.
-    ///
-    /// **Spans and not copies**, into the geometry's own arrays and into the reader's scratch:
-    /// valid until the reader reads again, and for as long as the geometry stands. A caller that
-    /// keeps a reading past either copies it.
+    /// What one drawable's triangles come to once read and folded: spans into the geometry's own
+    /// arrays and into the reader's scratch, valid until the reader reads again.
     struct MeshReading
     {
         /// The vertices, and the triangles the fold kept. An attribute the geometry carries none
@@ -70,24 +60,16 @@ namespace Rtx
         double mFoldMs = 0.0;
     };
 
-    /// Turns a drawable into a `MeshReading`.
-    ///
-    /// **The half of a mesh's arrival that reads and folds, apart from the half that inserts.** The
-    /// mirror does both on the frame for a drawable the walk has just met; a ring preparing cells
-    /// ahead of the eye does the first on a thread of its own and hands the frame the second — and
-    /// what a shape is has to be one answer wherever it is asked, so this is the one place it is.
-    ///
-    /// **Not thread-safe, and one instance a thread.** Everything it keeps is scratch it overwrites.
+    /// Turns a drawable into a `MeshReading`: the half of a mesh's arrival that reads and folds,
+    /// apart from the half that inserts, because the ring does the first on a thread of its own
+    /// and what a shape is has to be one answer. Not thread-safe, and one instance a thread.
     class MeshReader
     {
     public:
-        /// Reads `read` into `into`.
+        /// Reads `read` into `into`. Throws where a morph's base is not the length of its source,
+        /// which is a content file naming a face this cannot pose.
         ///
-        /// Throws where a morph's base is not the length of its source, which is a content file
-        /// naming a face this cannot pose.
-        ///
-        /// @return false where the drawable holds no triangle to read, which is a drawable that
-        ///         mirrors nothing.
+        /// @return false where the drawable holds no triangle to read.
         bool read(const DrawableRead& read, MeshReading& into);
 
     private:

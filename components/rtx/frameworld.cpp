@@ -102,13 +102,9 @@ namespace Rtx
         constants.mFogUniform = air.mUniform;
         constants.mFogLift = air.mLift;
 
-        // **On the deck's own heading, because there is one wind over a landscape.** The deck of the
-        // weather that is here rather than the one arriving: the reference this follows holds one
-        // heading for the whole sky, and an air that turned with a transition would read as two.
-        //
-        // **Swapped back, because the deck holds a turn and not a direction.** `mBearing` is the
-        // cosine and sine of the rotation from north, which for a unit `(x, y)` is `(y, x)` — so
-        // north was reaching the air as east.
+        // On the deck's own heading, because there is one wind over a landscape and an air that
+        // turned with a transition would read as two. Swapped, because `mBearing` is the cosine
+        // and sine of the rotation from north, which for a unit `(x, y)` is `(y, x)`.
         const osg::Vec2f heading(constants.mClouds.mBearing.y(), constants.mClouds.mBearing.x());
         constants.mFogWind = heading * air.mWind;
 

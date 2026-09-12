@@ -25,17 +25,10 @@ namespace Rtx
 {
     struct Shading;
 
-    /// Turns the particle systems a walk met into the scene's sprites.
-    ///
-    /// **A particle system carries no triangles at all**, so nothing here reaches an acceleration
-    /// structure: what leaves is a run of discs the trace composites against the primary ray. That
-    /// is why the emitters are resolved on their own rather than beside the meshes — the two share
-    /// the sweep and nothing else.
-    ///
-    /// **The engine's own simulation, read where it stands.** OpenMW runs `osgParticle` under the
-    /// update traversal, so by the time the mirror walks the graph a flame is a list of positions,
-    /// sizes and colours. Re-deriving that from the `NiParticleSystemController` would be a second
-    /// implementation of the same content, free to disagree with the one the game is running.
+    /// Turns the particle systems a walk met into the scene's sprites: a run of discs the trace
+    /// composites against the primary ray, resolved apart from the meshes because a particle
+    /// system carries no triangles. The engine's own simulation, read where it stands, because a
+    /// second implementation of `NiParticleSystemController` is free to disagree with the game's.
     class EmitterResolver
     {
     public:
@@ -89,11 +82,9 @@ namespace Rtx
         SceneDesc& mScene;
         const MirrorPass& mPass;
 
-        /// Which textures each particle system draws with.
-        ///
-        /// **This entry is the reference**, and not a note about one: a sprite's texture hangs off
-        /// no material, so the scene is told to hold it when the emitter is first met and to let go
-        /// when the sweep loses it. It saves a path hash per emitter per frame as well.
+        /// Which textures each particle system draws with. This entry is the reference: a sprite's
+        /// texture hangs off no material, so the scene holds it from first meeting until the sweep
+        /// loses the emitter.
         Identity<const osg::Drawable, HeldSprite> mHeld{ mPass };
 
         /// Refilled per emitter and never freed: a cell's plumes are hundreds of discs apiece.

@@ -50,12 +50,8 @@ namespace Rtx
             return total;
         }
 
-        /// A repeatable value in `[0, 1]` for a lattice point, with the point taken modulo `period`.
-        ///
-        /// **The modulo is the whole of what makes the tile wrap.** A lattice that ran on past the
-        /// last texel would give the far face a different value from the near one, and a field laid
-        /// down every tile would then show a seam at every tile boundary. All three axes, so the
-        /// volume wraps upwards as well as sideways.
+        /// A repeatable value in `[0, 1]` for a lattice point, with the point taken modulo `period`
+        /// on all three axes, which is what makes the tile wrap without a seam.
         float valueAt(int x, int y, int z, int period, std::uint32_t seed)
         {
             const auto wrap = [period](int v) { return static_cast<std::uint32_t>(wrapped(v, period)); };
@@ -73,12 +69,8 @@ namespace Rtx
         }
 
         /// Trilinear value noise at `at`, on a lattice that repeats every `period` cells along every
-        /// axis.
-        ///
-        /// **Value noise and not gradient noise, because this is the field the renderer this is
-        /// ported from draws its fog with.** Its `fog_noise` is exactly this — a hashed value at each
-        /// corner, blended with a smoothstep so the lattice does not show as a grid of creases — and
-        /// what the fog looks like is mostly what this looks like.
+        /// axis — the reference renderer's own `fog_noise`, smoothstepped so the lattice does not
+        /// show as a grid of creases.
         float noiseAt(const osg::Vec3f& at, int period, std::uint32_t seed)
         {
             const int x0 = static_cast<int>(std::floor(at.x()));
@@ -115,19 +107,11 @@ namespace Rtx
         }
 
         /// Stretches `field` about its own mean until what a sampler reads from it has the spread
-        /// every level shares.
-        ///
-        /// **Measured through the sampler and not off the texels, because the two are not the same
-        /// field.** A trilinear tap between eight texels hands back values that cluster nearer the
-        /// mean than any of the eight, so a level whose *texels* carry one spread presents a
-        /// narrower one to every march — narrower the fewer texels it has, until a coverage band cut
-        /// for the full level clears half as much at the top of the chain. Sixty-four taps a texel
-        /// stand for the continuous field here, and since the tap is linear, stretching the texels
-        /// stretches what it reads by exactly the same factor.
-        ///
-        /// Clamped, because eight bits hold `[0, 1]` and a field normalised to a standard deviation
-        /// has a tail past four of them. `theTailTheStorageCannotHoldIsNegligible` is what says the
-        /// tail is small enough for that to cost nothing.
+        /// every level shares. Measured through the sampler and not off the texels, because a
+        /// trilinear tap clusters nearer the mean than the texels do — narrower the fewer texels a
+        /// level has, until a coverage band cut for the full level clears half as much at the top
+        /// of the chain. Clamped, because eight bits hold `[0, 1]`;
+        /// `theTailTheStorageCannotHoldIsNegligible` says what that costs.
         void normalise(std::vector<float>& field, int size)
         {
             constexpr std::array<float, 4> taps{ 0.125f, 0.375f, 0.625f, 0.875f };
@@ -288,11 +272,8 @@ namespace Rtx
             .mExtinction = fogExtinction(depth, reach),
             .mUniform = 0.0f,
 
-            // **The same record read a second time, and deliberately.** `fogExtinction` reads it as
-            // the view-range ramp the original engine wrote it as, and takes a half-life off it;
-            // this reads it as what the field is called — a *depth* — and takes a layer height. A
-            // weather with more fog has fog that reaches higher, so the two readings agree about
-            // which way each weather moves and disagree only about the curve.
+            // The same record read a second time: `fogExtinction` reads it as the view-range ramp
+            // and takes a half-life, this reads it as a *depth* and takes a layer height.
             .mLift = fogLift(depth, wind),
             .mWind = wind,
             .mEdge = reach,

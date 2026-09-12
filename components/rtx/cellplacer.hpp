@@ -20,12 +20,9 @@ namespace Rtx
     struct PreparedCell;
 
     /// Where the cells the ring holds stand: which of their placements are in the top level, by
-    /// the rings and the size rule, and how their ground shades, by the grid.
-    ///
-    /// **The placement half of the cell ring, apart from the policy that decides which cells are
-    /// held.** `CellRing` decides what is prepared and adopted; this decides what of it stands, and
-    /// owns the counts of what does. The ground's rows are adopted here too, because the ground is
-    /// the one thing this stands that no model was read for.
+    /// the rings and the size rule, and how their ground shades, by the grid. `CellRing` decides
+    /// what is prepared and adopted; this decides what of it stands. The ground's rows are adopted
+    /// here too, because the ground is the one thing this stands that no model was read for.
     class CellPlacer
     {
     public:
@@ -40,12 +37,9 @@ namespace Rtx
         void setMinSize(float minSize) { mMinSize = minSize; }
 
         /// What the game says of one reference, which the content files cannot: a script has
-        /// disabled it, or enabled it again.
-        ///
-        /// **Applied to the cells `held` at once**, because `place` walks only what the size rule
-        /// changed since the last frame and a disabled reference inside what it admits would
-        /// otherwise stand until the eye moved. Remembered for the cells not yet held, which
-        /// arrive with the flag set.
+        /// disabled it, or enabled it again. Applied to the cells `held` at once, because `place`
+        /// walks only what the size rule changed since the last frame. Remembered for the cells not
+        /// yet held, which arrive with the flag set.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled, std::span<HeldCell> held);
 
         /// Adopts a cell's ground into the scene, on rows held on the scene, and holds its textures

@@ -77,11 +77,9 @@ namespace Rtx
 #else
         const bool wantDebugUtils = options.mValidation;
 #endif
-        // **What the device half of swapchain maintenance rests on.** A present fence is the only
-        // thing that says the presentation engine has finished with an image, and the device
-        // extension that provides one requires these alongside it — the second because the first is
-        // an extension of the capability query rather than of the surface. Taken where the loader
-        // has both, so a driver without them presents as before.
+        // What the device half of swapchain maintenance rests on: a present fence is the only
+        // thing that says the presentation engine has finished with an image. Taken where the
+        // loader has both, so a driver without them presents as before.
         mSurfaceMaintenance = !options.mSurfaceExtensions.empty()
             && hasInstanceExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME)
             && hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
@@ -101,11 +99,9 @@ namespace Rtx
         {
             const std::string missing = std::string(sValidationLayer) + " or " + VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
-            // **A run that asked for validation and cannot have it fails, rather than reporting
-            // nothing.** The messenger is the only way a message reaches this side, so without it
-            // `takeValidationErrors` comes back empty and a gate reads that as a clean pass. A build
-            // that merely switched the layers on by default still warns: a developer with no layers
-            // installed has a renderer to run, and no claim resting on them.
+            // A run that asked for validation and cannot have it fails rather than reporting
+            // nothing, or a gate reads an empty `takeValidationErrors` as a clean pass. A build
+            // that merely switched the layers on by default still warns.
             if (options.mDemanded)
                 throw Unsupported("Vulkan validation was asked for and " + missing + " is missing");
 
@@ -164,13 +160,9 @@ namespace Rtx
             {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);
 
-                // **Without this, synchronization validation cannot see a compute shader's accesses
-                // at all**, and every pass this renderer has is a compute dispatch reading and
-                // writing images through descriptors. The layer leaves it off because attributing an
-                // access to a resource a set merely *holds* can name a hazard on one the shader
-                // never touched; what it buys is the whole class it is being asked about: with the
-                // cascade's barriers taken out, five runs of a doll write five different pictures,
-                // and the layer reports nothing until this is set.
+                // Without this, synchronization validation cannot see a compute shader's accesses at
+                // all: with the cascade's barriers taken out, five runs of a doll write five
+                // different pictures and the layer reports nothing until this is set.
                 turnOn("syncval_shader_accesses_heuristic");
             }
 
@@ -178,25 +170,13 @@ namespace Rtx
             {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
 
-                // What GPU-assisted validation does about reads past the end of a buffer.
-                //
-                // **Its own instrumentation is what makes it unaffordable here**, and it says so:
-                // the layer warns that a shader with this many storage buffers "will be very slow to
-                // compile and runtime performance may also be slow", and points at this setting.
-                // Left alone it is worse than slow — a window under GPU-AV loses the device inside
-                // half a minute.
-                //
-                // Turning it on hands the same job to the hardware's own robust buffer access, which
-                // returns zero for a read past the end instead of instrumenting every access to
-                // catch it. What is given up is the *report*; what is kept is everything else GPU-AV
-                // checks, including what a ray query does with its own arguments — which is what it
-                // caught here first.
-                //
-                // **The scene's tables are pointers, and robustness does not reach a pointer**, so
-                // the layer instruments each of those reads whatever this says — a shot's pipelines
-                // and its frames both take about twice as long under the layers as they would with
-                // the tables as descriptors. A shot completes and reports nothing, so that is the
-                // price of GPU-AV here and not a reason for a switch.
+                // Hands reads past the end of a buffer to the hardware's own robust buffer access
+                // rather than GPU-AV's instrumentation, which the layer itself warns is very slow
+                // with this many storage buffers — a window under it loses the device inside half a
+                // minute. What is given up is the report; what is kept is everything else GPU-AV
+                // checks, including a ray query's own arguments. The scene's tables are pointers,
+                // which robustness does not reach, so a shot still takes twice as long under the
+                // layers.
                 turnOn("gpuav_force_on_robustness");
             }
 
@@ -235,13 +215,9 @@ namespace Rtx
 
         checkVkSupport(vkCreateInstance(&createInfo, nullptr, &mHandle), "vkCreateInstance");
 
-        // **A constructor that throws runs no destructor**, and this throw does not take the process
-        // with it: `createVulkanRenderer` catches it and hands the caller a reason instead. So
-        // anything after a successful create cleans up before it rethrows, or the instance outlives
-        // every reference to it.
-        //
-        // What a caller makes of that reason is its own business, and none of them falls back to
-        // another renderer: the game names it and stops, the harness prints it and exits.
+        // A constructor that throws runs no destructor, and this throw is caught and reported
+        // rather than ending the process, so anything after a successful create cleans up before it
+        // rethrows.
         try
         {
             if (validation)

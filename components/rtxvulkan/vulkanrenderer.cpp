@@ -82,13 +82,9 @@ namespace Rtx
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
 
-        /// The display pass's own description of the frame.
-        ///
-        /// **The camera is the trace's basis on the picture's grid.** `rayAt` divides by the camera's
-        /// own extent, so handing it the output's is what turns an output pixel into the ray it
-        /// shows — and the jitter goes, because a jitter is what lets several traced frames average
-        /// into one and this pass draws once. The spread angle comes down with the pixel: a pixel of
-        /// the picture subtends what one of the trace's did, times how much smaller it is.
+        /// The display pass's own description of the frame: the trace's basis on the picture's
+        /// grid, because `rayAt` divides by the camera's own extent. The jitter goes, because this
+        /// pass draws once, and the spread angle comes down with the pixel.
         Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, std::uint32_t width,
             std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
         {
@@ -462,11 +458,9 @@ namespace Rtx
             mDevice, setup, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures, graveyard);
 
         // Built once and kept, because building one compiles every kernel the trace can ever need
-        // — 6.3 s on a cold cache, measured. Nothing about the pass depends on the scene: every
-        // texture array declares the same bindless layout sized to its maximum, and identically
-        // defined layouts are compatible, so a set from a later array binds against the pipeline
-        // layout the first one produced. A doll can be the first thing this renderer ever builds,
-        // and the pass belongs to neither scene.
+        // — 6.3 s on a cold cache, measured. Every texture array declares the same bindless
+        // layout, and identically defined layouts are compatible, so the pass belongs to neither
+        // scene.
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
@@ -499,14 +493,9 @@ namespace Rtx
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
         // An arrival does not wait for the frames in flight: what arrives is written into room no
-        // frame holds — a block is only appended to, `growTo` buries a displaced buffer so an
-        // address handed out stays good, and a run an arrival fills is one no placed instance
-        // names. The writes ride the placement's submit and end in the barrier `orderStagedWrites`
-        // records.
-        //
-        // It opens the frame it lands in, so that its builds have a zone: `beginFrame` clears the
-        // timer, so a zone opened before it would be forgotten. A picture inside the interface
-        // opens no frame and is not timed.
+        // frame holds, and the writes end in the barrier `orderStagedWrites` records. It opens
+        // the frame it lands in, because `beginFrame` clears the timer and a zone opened before
+        // it would be forgotten.
         GpuTimer* timer = nullptr;
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
@@ -793,11 +782,9 @@ namespace Rtx
             gui.mGui.mGraveyard.clear();
         }
 
-        // **After the clear and before anything is handed over, which is what both halves of it
-        // want.** A texture given back was drawn with as recently as the interface still on the
-        // queue, and this frame's fence is the first one that says every one of those draws has
-        // finished; the staging turns on the same signal, for the reason `GuiTextures::mStaging`
-        // gives.
+        // After the clear and before anything is handed over: this frame's fence is the first
+        // that says every draw with a texture given back has finished, and the staging turns on
+        // the same signal.
         mGuiTextures.startFrame(gui.mGui.mGraveyard);
 
         gui.mGui.mGraveyard.bury(
@@ -869,28 +856,17 @@ namespace Rtx
         assert(camera.mCamera.mWidth == mFrame.getWidth() && camera.mCamera.mHeight == mFrame.getHeight()
             && "the camera has to be built for the render extent; ask getExtents");
 
-        // **Coverage and an upscaler do not meet, and the interface says so rather than the code
-        // noticing.** `traceGuiTexture` is where a picture that stops where nothing was hit is
-        // traced — "not the frame's chain", as `Renderer::traceGuiTexture` puts it, with nothing
-        // upscaling. This path carries coverage through the alpha of `direct` and the composite, and
-        // then hands the frame to NGX, which writes the upscaled image itself and was never given
-        // `pInAlpha`: what came back would be the feature's alpha rather than the frame's. It is one
-        // everywhere today because nothing asks for the other thing here.
+        // Coverage and an upscaler do not meet: NGX writes the upscaled image itself and was never
+        // given `pInAlpha`, so a picture that stops where nothing was hit is `traceGuiTexture`'s.
         assert((camera.mTransparentBackground == 0 || mUpscaling.mMode == Upscale::Off)
             && "a frame that stops where nothing was hit belongs to traceGuiTexture, which does not upscale");
 
         // The frame `placeScene` opened, or a new one where nothing was placed.
         FrameRecord& frame = mRing.begin();
 
-        // **How long since the last one, which a motion vector cannot say.** A vector carries a
-        // distance; how fast that was depends on the time it took, and the upscaler tunes how hard
-        // it denoises against exactly that. The exposure adapts over it too.
-        //
-        // **Taken off the wall only where the caller has no schedule**, which is a played session
-        // and a test driving this directly. A run that steps its world by the frame index and reads
-        // the clock for this is a run whose pictures depend on how fast it drew them —
-        // `Rtx::FrameClock` is what states the step where a run states one, and the only thing a
-        // game-side caller fills this from.
+        // How long since the last one, which the upscaler tunes its denoising against and the
+        // exposure adapts over. Off the wall only where the caller has no schedule, because a run
+        // that reads the clock for this is a run whose pictures depend on how fast it drew them.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         const float sinceLastMs = options.mSinceLast.has_value()
             ? *options.mSinceLast * 1000.0f
@@ -920,11 +896,9 @@ namespace Rtx
             mSum = std::make_unique<Image>(mDevice, mFrame.getWidth(), mFrame.getHeight(),
                 VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "sum");
 
-        // **A history is worthless after a jump no motion vector can describe.** A zero basis catches
-        // the frames that have no past at all — a resize, a rebuild, the first one — and nothing
-        // caught the rest: walking through a door left the previous camera intact and a reprojection
-        // fetched one room onto another. The stale flags are the other half, and they are the signal
-        // the renderer was already being sent.
+        // A history is worthless after a jump no motion vector can describe: walking through a
+        // door once left the previous camera intact and a reprojection fetched one room onto
+        // another.
         FrameHistory history(mPreviousCamera.mCamera.mForward.length2() <= 0.0f, mAirStale, mDenoiserStale);
 
         GpuTimer& timer = frame.mTimer;
@@ -952,12 +926,9 @@ namespace Rtx
                     fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
                 Use::sComputeReadWrite);
 
-        // **What the bin inside the recording writes may still be being traced.**
-        // `Renderer::renderFrame` promises a frame that needs no placement before it, and two of
-        // those in a row bin into the copy the one placement handed out — over the sprites the first
-        // is reading, and over the report it is still writing. `placeScene` waits the same way
-        // before it writes the other copy; on the ordinary path of a placement per frame this has
-        // already been waited and costs a compare.
+        // What the bin inside the recording writes may still be being traced: two frames with no
+        // placement between them bin into the one copy. On the ordinary path this was waited by
+        // `placeScene` and costs a compare.
         if (mWorld.mReadBy[mWorld.mSlot.get()] != sNeverRead)
             mRing.finishThrough(mWorld.mReadBy[mWorld.mSlot.get()]);
 
@@ -1051,12 +1022,9 @@ namespace Rtx
             toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
         timer.close(commands);
 
-        // **Submitted and not waited for.** The fence is what the frame after next waits on
-        // before it writes over this frame's copy of the tables, and `finishFrame` is where the
-        // count and the report come back — a frame late, which is the point.
-        // **What the trace summed, read on the host once this frame's fence has been waited on.**
-        // A fence's access scope is the device's, so the counters need a dependency of their own —
-        // recorded here, where every pass that could have added to them has been.
+        // Submitted and not waited for: `finishFrame` brings the count and the report back a
+        // frame late. A fence's access scope is the device's, so the counters need a dependency
+        // of their own, recorded here after every pass that could have added to them.
         if (mCountHits || mCountCrossings)
             frame.mHitCount.orderForHostRead(commands);
 
@@ -1149,22 +1117,15 @@ namespace Rtx
 
         const VisibilityInputs inputs = describeInputs(traced, &mView.getFogVolume(), camera.mRayMask);
 
-        // **The scene's own, filled here rather than by the caller.** A doll and a map tile are
-        // handed constants that describe a camera, and whether the scene behind that camera holds a
-        // cloud is this renderer's to answer. It is the only one of `sampleCamera`'s fields a
-        // picture wants: nothing jitters one, nothing upscales one, and there is no frame before it
-        // to reproject against. Copied because the caller's block is theirs.
+        // The scene's own, filled here rather than by the caller, because whether the scene behind
+        // a camera holds a cloud is this renderer's to answer. The only one of `sampleCamera`'s
+        // fields a picture wants. Copied because the caller's block is theirs.
         Shaders::VisibilityConstants sampled = camera;
         sampled.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
-        // **Recorded into a batch that rides the next submit, and waited for by nobody here.** What
-        // the picture reads is the copy its scene's last placement wrote, which the next placement
-        // of that scene waits for through `mReadBy`; what it writes is its own chain, the texture,
-        // and a counter nothing reads. Several pictures in one frame are several batches, carried
-        // in the order they were recorded, and each begins by discarding the chain's images against
-        // everything before it on the queue.
-        //
-        // **Not counted, and not timed.** The hit count and the frame report are the frame's.
+        // Recorded into a batch that rides the next submit, and waited for by nobody here: the
+        // next placement of this scene waits through `mReadBy`, and what it writes nothing else
+        // reads. Not counted and not timed, because the hit count and the report are the frame's.
         Batch trace(mPool);
         {
             const VkCommandBuffer commands = trace.getCommands();
@@ -1188,14 +1149,9 @@ namespace Rtx
                     .mTarget = mViewTarget.get(),
                 });
 
-            // **One, and measured off nothing.** A picture inside the interface is looked at beside
-            // the widgets around it, and an exposure that drifted with what the doll was wearing
-            // would make the same armour a different brightness in two windows. Out of a buffer of
-            // its own, for what `ExposurePass::getPictureExposure` says writing it over the frame's
-            // cost.
-            //
-            // **And no lens.** A map tile is a diagram, neither it nor a doll is a frame the pyramid
-            // was built over, and `TonePass::record` reads a null one as no veil.
+            // One, and measured off nothing, or the same armour would be a different brightness
+            // in two windows; out of its own buffer, for what `ExposurePass::getPictureExposure`
+            // says. And no lens, because a map tile is a diagram.
             mTone->record(commands, mView.getColour(), mExposure.getPictureExposure(),
                 channels.get(Channel::StarsShown), nullptr, inputs.mTextures, *mViewTarget,
                 toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
@@ -1310,13 +1266,10 @@ namespace Rtx
         std::vector<std::uint8_t> bytes;
         image.read(mPool, VK_IMAGE_LAYOUT_GENERAL, bytes);
 
-        // **A caller asked for floats, and not every channel is stored as one.** Every format the
-        // renderer reads back is named, and one that is not is a throw rather than a `memcpy` —
-        // which is how the motion channels came back as pairs of halves read as one number apiece
-        // the day they narrowed, and only because one test happened to read one of them.
-        //
-        // Tested on the format rather than on a macro, because several macros across three headers
-        // name each of these.
+        // Every format the renderer reads back is named, and one that is not is a throw rather
+        // than a `memcpy`, which is how the motion channels came back as pairs of halves the day
+        // they narrowed. Tested on the format, because several macros across three headers name
+        // each of these.
         switch (image.getFormat())
         {
             // A mask holds a yes or a no in a byte, so what comes back is widened rather than

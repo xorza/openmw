@@ -20,15 +20,9 @@ namespace Rtx
     namespace
     {
         /// The weights of one blend map, as floats in row order, appended to `weights`.
-        ///
-        /// `ESMTerrain` builds these as one byte per texel in `GL_ALPHA`, which is a kilobyte for a
-        /// cell; widening them costs a few kilobytes a cell and saves requiring 8-bit storage of the
-        /// device for the sake of it.
-        ///
-        /// **That one format is read along the row, and everything else asks `getColor`.**
-        /// `getColor` decides on the pixel format and the data type per texel and builds a `Vec4` to
-        /// hand back one component of it. A blend map in any other format is a mod's or a test's,
-        /// and the slow path is both what serves it and what the fast path is checked against.
+        /// `ESMTerrain` builds these as one byte per texel in `GL_ALPHA`, which is read along the
+        /// row; any other format is a mod's or a test's and asks `getColor` per texel, which is
+        /// also what the fast path is checked against.
         void readMask(const osg::Image& image, std::vector<float>& weights)
         {
             if (image.getPixelFormat() == GL_ALPHA && image.getDataType() == GL_UNSIGNED_BYTE)
@@ -128,12 +122,9 @@ namespace Rtx
         }
         else
         {
-            // **A cell with no land record is a plane at the default height**, which is what the
-            // storage answers for any point in it — and a plane is four corners, not a grid of
-            // them. Every cell of the reach has a bed under its sea this way, where the quad tree
-            // stands nothing past the active grid and the grid's own fallback stands the whole
-            // grid. An ESM4 world has no default height: `fillVertexBuffers` zeroes the positions
-            // there, which is no ground at all.
+            // A cell with no land record is a plane at the default height, which is four corners
+            // and not a grid, so every cell of the reach has a bed under its sea. An ESM4 world has
+            // no default height: `fillVertexBuffers` zeroes the positions there.
             if (mEsm4)
                 return;
 

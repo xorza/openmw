@@ -20,12 +20,9 @@ namespace Rtx
 {
     namespace
     {
-        /// Somewhere NGX may write its own files.
-        ///
-        /// **Not the same thing as where its feature libraries live**, which is the mistake to make:
-        /// this is a writable directory of NGX's own, and the libraries are found through the search
-        /// list in `NVSDK_NGX_FeatureCommonInfo`. Handing it the library directory instead fails at
-        /// `Init` with `FAIL_InvalidParameter`, which names no parameter.
+        /// Somewhere NGX may write its own files — not where its feature libraries live, which
+        /// are found through `NVSDK_NGX_FeatureCommonInfo`. Handing it the library directory fails
+        /// at `Init` with `FAIL_InvalidParameter`, which names no parameter.
         const wchar_t* dataPath()
         {
             static const std::wstring path = [] {
@@ -126,12 +123,9 @@ namespace Rtx
         common.LoggingInfo.MinimumLoggingLevel = loggingLevel();
         common.LoggingInfo.DisableOtherLoggingSinks = false;
 
-        // NVIDIA's handle on an application, for their own telemetry and driver overrides.
-        //
-        // **A GUID, and parsed as one.** The driver checks the shape and nothing else: a readable
-        // name here comes back from `Init` as `FAIL_InvalidParameter`, which names no parameter and
-        // writes nothing to the log. This one is this fork's own rather than borrowed, and the
-        // engine is `CUSTOM` because OpenMW is not one of the engines NVIDIA knows.
+        // NVIDIA's handle on an application, for their own telemetry and driver overrides. A GUID
+        // and parsed as one: a readable name comes back from `Init` as `FAIL_InvalidParameter`.
+        // This fork's own, and the engine is `CUSTOM` because OpenMW is not one NVIDIA knows.
         const NVSDK_NGX_Result started = NVSDK_NGX_VULKAN_Init_with_ProjectID("c541dbdf-6e4f-4476-ad27-15d2b4a231f4",
             NVSDK_NGX_ENGINE_TYPE_CUSTOM, "0.52", dataPath(), instance, device.getPhysicalDevice().getHandle(), mDevice,
             vkGetInstanceProcAddr, vkGetDeviceProcAddr, &common, NVSDK_NGX_Version_API);

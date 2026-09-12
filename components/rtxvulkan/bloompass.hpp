@@ -16,25 +16,13 @@ namespace Rtx
 {
     class Device;
 
-    /// What a lens does with the light that reached it: the frame's own brightness, spread.
-    ///
-    /// **A pyramid of halvings and doublings, which is Jorge Jimenez's** — *Next Generation Post
-    /// Processing in Call of Duty: Advanced Warfare*, and what every engine that looks right has
-    /// run since. Each level halves the one above it through a thirteen-tap kernel, then each is
-    /// spread back into the one above it through a nine-tap tent and mixed rather than added. The
-    /// result is a blur far wider than any single kernel, at a cost that is a third of the frame's
-    /// pixels in total, and with none of the banding a stack of Gaussians leaves between its taps.
-    ///
-    /// **No threshold, so there is nothing to pop.** Bloom is not an effect that bright things
-    /// have; it is what every surface does on the way through a lens, and a threshold is a
-    /// brightness at which the veil switches on. `BLOOM_STRENGTH` is the whole of the dial.
-    ///
-    /// **This builds the pyramid and `TonePass` spreads it**, so nothing here writes the frame.
-    /// Everything before the display pass is the trace's own answer — which is what
-    /// `FrameImage::Composite` is copied out of and what every measurement in the suite is taken on —
-    /// and a veil written back over it would be a reading nobody could hand compute. Handing the
-    /// finest level to the pass that is already reading every pixel also saves a full-resolution
-    /// pass of its own.
+    /// What a lens does with the light that reached it: the frame's own brightness, spread through
+    /// Jorge Jimenez's pyramid (*Next Generation Post Processing in Call of Duty: Advanced
+    /// Warfare*) — a thirteen-tap halving per level and a nine-tap tent back up, mixed rather than
+    /// added, for a third of the frame's pixels and none of a Gaussian stack's banding. No
+    /// threshold, because a threshold is a brightness at which the veil switches on. This builds
+    /// the pyramid and `TonePass` spreads it, so `FrameImage::Composite` stays the trace's own
+    /// answer that a measurement can hand-compute.
     class BloomPass
     {
     public:
@@ -49,8 +37,7 @@ namespace Rtx
         /// Builds the pyramid out of `frame`, leaving `frame` as it found it.
         ///
         /// @param frame the finished frame in linear radiance, in `VK_IMAGE_LAYOUT_GENERAL`, at the
-        ///        extent `resize` was told. Sampled only, which is why it needs
-        ///        `VK_IMAGE_USAGE_SAMPLED_BIT`.
+        ///        extent `resize` was told, with `VK_IMAGE_USAGE_SAMPLED_BIT`.
         void record(VkCommandBuffer commands, const Image& frame) const;
 
         /// The finest level, which after `record` holds the blur of every level under it — or null

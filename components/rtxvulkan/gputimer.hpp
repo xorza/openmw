@@ -16,21 +16,12 @@ namespace Rtx
 {
     class Device;
 
-    /// Timestamps written into the command stream, so a frame can say where its device time went.
-    ///
-    /// **A wall clock around a submit measures one number for eight pieces of work.** The frame is a
-    /// ray tracing dispatch, a wavelet, a composite, an upscaler and two tone passes, and the
-    /// placement before it is two acceleration-structure builds in two more submits — all of which
-    /// the CPU sees as "the queue was busy". These are what each of them cost.
-    ///
-    /// **Both ends wait for everything.** A timestamp is written when prior commands have reached
-    /// the stage named, and the stage here is every one of them: so a zone begins when the work
-    /// before it has finished and ends when its own has, which is a span that cannot overlap its
-    /// neighbours. That would distort a renderer whose passes overlap; this one puts a full barrier
-    /// between every pass already, so there is nothing to distort.
-    ///
-    /// Zones may span several command buffers — the placement records two submits of its own before
-    /// the frame's — because each reserves and resets only the pair of queries it writes.
+    /// Timestamps written into the command stream, so a frame can say where its device time went,
+    /// where a wall clock around a submit measures one number for eight pieces of work. Both ends
+    /// wait for every stage, so a zone cannot overlap its neighbours — which would distort a
+    /// renderer whose passes overlap, and this one puts a full barrier between every pass already.
+    /// Zones may span several command buffers, because each reserves and resets only the pair of
+    /// queries it writes.
     class GpuTimer
     {
     public:
@@ -42,22 +33,15 @@ namespace Rtx
         /// Forgets the last frame's zones. Whatever is opened after this is one report.
         void beginFrame();
 
-        /// Opens a zone. `name` is stored rather than copied, so it must outlive the frame — which a
-        /// literal does and nothing else here is.
-        ///
-        /// Also names the region for a capture, where the build and the instance carry the labels:
-        /// the same bracket serves an external profiler, which is where the counters a timestamp
-        /// cannot give you live.
+        /// Opens a zone. `name` is stored rather than copied, so it must outlive the frame. Also
+        /// names the region for a capture, where the build and the instance carry the labels.
         void open(VkCommandBuffer commands, std::string_view name);
 
         /// Closes the zone `open` started. Every open is closed before the next is opened.
         void close(VkCommandBuffer commands);
 
-        /// What the zones measured, in the order they were opened.
-        ///
-        /// The caller has waited for every submit the zones were recorded into — which this renderer
-        /// does by construction, since each of the three fences before returning. Valid until the
-        /// next `beginFrame`.
+        /// What the zones measured, in the order they were opened. The caller waited for every
+        /// submit the zones were recorded into. Valid until the next `beginFrame`.
         std::span<const GpuSpan> resolve();
 
     private:
@@ -83,12 +67,9 @@ namespace Rtx
         std::size_t mOpen = 0;
     };
 
-    /// Brackets a piece of work where there is a timer to bracket it with.
-    ///
-    /// **Two paths record the same commands and only one of them is a frame.** A scene arriving
-    /// builds every structure from scratch and a picture inside the interface traces its own camera;
-    /// neither is counted, and zones opened there would land in whichever frame report came next. So
-    /// the caller passes what it has, which is sometimes nothing.
+    /// Brackets a piece of work where there is a timer to bracket it with. A scene arriving and a
+    /// picture inside the interface record the same commands and are not frames, so zones opened
+    /// there would land in whichever frame report came next.
     inline void openZone(GpuTimer* timer, VkCommandBuffer commands, std::string_view name)
     {
         if (timer != nullptr)

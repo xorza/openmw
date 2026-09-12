@@ -14,12 +14,9 @@ namespace Rtx
     namespace
     {
         /// The channel being blended, the four the frame describes it with, the three a history
-        /// arrives in, the two of those this pass writes back, and the blend the cascade reads. All
-        /// storage images, all pushed.
-        ///
-        /// **Eleven and not twelve, because the mean goes out through the cascade.** The first
-        /// wavelet level writes the history this reads next frame — SVGF's feedback, and
-        /// `atrous.comp` says what it is worth.
+        /// arrives in, the two of those this pass writes back, and the blend the cascade reads.
+        /// Eleven and not twelve, because the first wavelet level writes the history this reads
+        /// next frame — SVGF's feedback.
         constexpr std::size_t sBindingCount = 11;
 
         constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings

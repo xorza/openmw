@@ -20,11 +20,8 @@ namespace Rtx
         std::uint32_t mHeight = 0;
     };
 
-    /// The shape of a chain of mip levels: where each one sits and how big it is.
-    ///
-    /// **The shape and not the texels**, because four types built the same chain of `MipLevel`s over
-    /// four different payloads — a byte a texel for an alpha, four for a colour — and each carried
-    /// its own copy of the walk and of the extent of the finest level.
+    /// The shape of a chain of mip levels: where each one sits and how big it is. The shape and not
+    /// the texels, because four payloads build the same chain.
     struct MipPyramid
     {
         std::vector<MipLevel> mLevels;
@@ -58,22 +55,14 @@ namespace Rtx
         std::size_t layOutTo1x1(std::uint32_t width, std::uint32_t height, std::size_t stride);
 
         /// Lays out one level per entry of `shape`, keeping their extents and renumbering their
-        /// offsets into a payload of `stride` bytes a texel. Answers how many bytes that needs.
-        ///
-        /// **Renumbered, because the source's offsets are in the source's payload** — a block
-        /// format's bytes, or four channels where this holds one.
+        /// offsets into a payload of `stride` bytes a texel, because the source's offsets are in
+        /// the source's payload. Answers how many bytes that needs.
         std::size_t layOutLike(std::span<const MipLevel> shape, std::size_t stride);
     };
 
-    /// Every format this renderer uploads.
-    ///
-    /// The content formats are sRGB, because that is what the files hold: Morrowind's textures were
-    /// authored and stored display-encoded, and sampling them as sRGB is what hands the shader the
-    /// linear values light transport has to be done in — free, because the hardware converts inside
-    /// the filter.
-    ///
-    /// **There is no `Undefined`.** A file this cannot read is a content error carrying a message,
-    /// not a value that travels one more step before anyone notices it.
+    /// Every format this renderer uploads. The content formats are sRGB, because the files hold
+    /// display-encoded bytes and the hardware converts inside the filter. There is no `Undefined`:
+    /// a file this cannot read is a content error carrying a message.
     enum class TextureFormat
     {
         /// BC1 with its punch-through alpha bit read. Both DXT1 spellings land here, and
@@ -87,14 +76,10 @@ namespace Rtx
         /// sRGB format would land the assertion on the far side of a transfer function.
         Rgba8Unorm,
 
-        /// Uncompressed and display-encoded, in the two channel orders a `.dds` states them in.
-        ///
-        /// **Morrowind's meshes are block-compressed to the last file and its sky is not.** The
-        /// cloud decks are 32-bit `DDPF_RGB`, which is what a texture painted for a full-screen dome
-        /// in 2002 would be, and a renderer that takes only blocks draws every weather grey. Both
-        /// orders are carried rather than one and a swizzle, because a `.dds` says which it is and
-        /// the API has a format for each — converting would mean owning a copy of a buffer this
-        /// type is defined by not owning.
+        /// Uncompressed and display-encoded, in the two channel orders a `.dds` states them in. The
+        /// cloud decks are 32-bit `DDPF_RGB`, and a renderer that takes only blocks draws every
+        /// weather grey. Both orders rather than one and a swizzle, because converting would mean
+        /// owning a copy of a buffer this type is defined by not owning.
         Rgba8Srgb,
         Bgra8Srgb,
     };
@@ -130,18 +115,14 @@ namespace Rtx
         return format != TextureFormat::Rgba8Unorm;
     }
 
-    /// A decoded texture, ready to upload and owning none of it.
-    ///
-    /// Deliberately not an `osg::Image`, and deliberately with no graphics API in it: every one of
-    /// Morrowind's textures arrives block-compressed with its mip chain already built, so an upload
-    /// is a copy and never a conversion — and it is the same copy whichever API performs it.
+    /// A decoded texture, ready to upload and owning none of it. No graphics API in it, because an
+    /// upload of a block-compressed file with its chain already built is a copy and never a
+    /// conversion.
     struct TextureData
     {
         /// Which row of the backend's texture array this is, which is the slot a material holds.
-        ///
-        /// **Carried rather than implied by position.** A slot a departing cell freed is taken over
-        /// wherever it sits, so an arrival is not a contiguous tail a backend could append, and has
-        /// to say where it belongs.
+        /// Carried rather than implied by position, because a slot a departing cell freed is taken
+        /// over wherever it sits.
         Index mSlot = 0;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
@@ -153,10 +134,7 @@ namespace Rtx
         std::span<const MipLevel> mLevels;
 
         /// The light already painted into it, as `SHADING_EXTENT` squared factors to divide out.
-        ///
-        /// Empty where nothing estimated one, which the shader reads as neutral. Described here
-        /// rather than computed by the backend for the reason the texels are: what is true of
-        /// Morrowind's content is worked out once and uploaded by whichever API is present.
+        /// Empty where nothing estimated one, which the shader reads as neutral.
         std::span<const float> mShading;
 
         /// What to call it in a capture — the file it came from. Spans storage the description's

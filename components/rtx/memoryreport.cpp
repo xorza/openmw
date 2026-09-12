@@ -6,10 +6,8 @@ namespace Rtx
 {
     namespace
     {
-        /// How far into a heap's line `reserved` begins.
-        ///
-        /// The line under the heaps is padded to it so the two figures read down the page, which
-        /// ties the two formats below together — named rather than counted a second time.
+        /// How far into a heap's line `reserved` begins, so the line under the heaps reads down
+        /// the page with it.
         constexpr int sReservedColumn = 37;
     }
 
@@ -20,10 +18,8 @@ namespace Rtx
         {
             const HeapUse& use = report.mHeaps[heap];
 
-            // **The host-visible one is named, because it is the one that runs out.** A card without
-            // resizable BAR states it at a couple of hundred megabytes beside a video memory heap
-            // of gigabytes, and a reader scanning these lines has to be able to tell which is which
-            // without adding the flags up.
+            // The host-visible one is named, because it is the one that runs out on a card without
+            // resizable BAR.
             out += std::format("  heap {}  {:<12}  {:8.1f} MiB   reserved {:7.1f}   live {:7.1f}", heap,
                 use.mHostVisible ? "host-visible" : "device-only", megabytes(use.mSize), megabytes(use.mReserved),
                 megabytes(use.mLive));

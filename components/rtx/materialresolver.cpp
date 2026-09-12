@@ -31,12 +31,9 @@ namespace Rtx
         /// `MirrorTraversal::pushShading`, which takes a reference.
         constexpr const osg::StateSet* sSea = nullptr;
 
-        /// The state-set controller on `node`, from whichever callback chain carries it.
-        ///
-        /// **Both chains, because `NifOsg` picks between them by a flag on the content.** Anything
-        /// marked `AnimFlag_AutoPlay` is hung from a cull callback and everything else from an
-        /// update callback; what they animate — a flipbook, a scrolling UV, an alpha, a material
-        /// colour — is the same either way.
+        /// The state-set controller on `node`, from whichever callback chain carries it: `NifOsg`
+        /// hangs anything marked `AnimFlag_AutoPlay` from a cull callback and everything else from
+        /// an update callback.
         SceneUtil::StateSetUpdater* findUpdater(osg::Node& node)
         {
             for (osg::Callback* chain : { node.getCullCallback(), node.getUpdateCallback() })
@@ -88,15 +85,10 @@ namespace Rtx
 
         if (held.mStateSet == nullptr)
         {
-            // **A copy of what the node already wears, and a shallow one.** `applyCull` starts from
-            // an empty state set and lets the rasterizer's state stack supply everything it does
-            // not itself write — which a mirror reading one state set per surface cannot do, so a
-            // fire would lose its material along with its animation. Shallow because an updater
-            // that means to write an attribute makes itself a private copy in `setDefaults`, which
-            // is the contract `applyUpdate` already rests on.
-            //
-            // The node's own is read rather than created: `getOrCreateStateSet` would leave an
-            // empty one behind on a node that had none, and the walk above would then push it over
+            // A shallow copy of what the node already wears: `applyCull` starts from an empty state
+            // set and lets the rasterizer's state stack supply the rest, so a fire would lose its
+            // material along with its animation. Read rather than created, because
+            // `getOrCreateStateSet` would leave an empty one on a node that had none, pushed over
             // the material a parent was contributing.
             const osg::StateSet* base = node.getStateSet();
             held.mStateSet = base != nullptr ? new osg::StateSet(*base, osg::CopyOp::SHALLOW_COPY) : new osg::StateSet;
@@ -129,20 +121,10 @@ namespace Rtx
 
     MaterialResolver::Resolved MaterialResolver::resolveWater()
     {
-        // **One material for the sea, and what identifies it is the state set it has not got.**
-        // Water has no albedo — what it looks like is what is behind and above it, worked out from
-        // the world position — so there is nothing on a state set worth reading, and reading one is
-        // actively wrong twice over.
-        //
-        // `MWRender::Water` animates its surface with a `SceneUtil::StateSetUpdater`, which swaps
-        // the node's state set between two copies of its own every frame: keyed on the address, the
-        // mirror would see a new material each frame and sweep the one before it, for a surface
-        // that has not changed. And with `water shader = true` there is no state set on the node at all,
-        // because that one is pushed from a cull callback the mirror runs outside of.
-        //
-        // **In the map under `sSea` rather than beside it**, so that one sweep and one count answer
-        // for every material the walk met. A slot held outside them is a slot the survivor list has
-        // to be told about by hand.
+        // One material for the sea, identified by the state set it has not got: water has no
+        // albedo, `MWRender::Water` swaps its node's state set between two copies every frame, and
+        // with `water shader = true` there is no state set on the node at all. In the map under
+        // `sSea` rather than beside it, so that one sweep and one count answer for every material.
         if (const Index held = reuse(sSea); held != sNoIndex)
             return Resolved{ .mIndex = held, .mKey = sSea };
 
@@ -357,11 +339,8 @@ namespace Rtx
     void MaterialResolver::retireHolds()
     {
         // The walk's own hold on every image a material is read from, given back the same way.
-        //
-        // **Most of these are met once.** A material a controller does not rewrite is resolved from
-        // its cached entry and never read again, so the images behind it go stale on the frame after
-        // they arrived — and the material's own reference is what keeps their slots. What settles
-        // here is the animated materials, which are the ones the map exists for.
+        // Most are met once and go stale on the frame after they arrived; what settles here is the
+        // animated materials.
         mTextureOf.retire([this](const HeldTexture& held) { mScene.textures().drop(held.mIndex); });
 
         // What `animate` keeps. Swept beside everything else because it is keyed on a node the graph

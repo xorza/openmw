@@ -18,23 +18,17 @@ namespace Rtx
 {
     namespace
     {
-        /// The uniform scale a placement carries, as the length of its first basis row.
-        ///
-        /// A sprite's size is in the particle system's own coordinates — `LOCAL_COORDINATES` is what
-        /// `NifOsg` sets — so the quad the rasterizer would draw is scaled by the modelview along
-        /// with everything else. Morrowind scales references uniformly, so one number says it.
+        /// The uniform scale a placement carries, as the length of its first basis row: a sprite's
+        /// size is in the particle system's own coordinates, and Morrowind scales references
+        /// uniformly.
         float scaleOf(const osg::Matrixf& place)
         {
             return osg::Vec3f(place(0, 0), place(0, 1), place(0, 2)).length();
         }
 
-        /// `axis` turned by the rotation one particle carries.
-        ///
-        /// **The rasterizer's own matrix, composed the way it composes it.** `osgParticle` turns
-        /// both of a quad's axes by `Matrix::makeRotate(angle.x, X, angle.y, Y, angle.z, Z)` before
-        /// it draws them, and `Weather::RainShooter` is what leans a raindrop into the wind that
-        /// way. Built from the three angles here rather than derived from the wind, so the ray
-        /// tracer cannot lean a drop differently from the renderer beside it.
+        /// `axis` turned by the rotation one particle carries, composed the way `osgParticle`
+        /// composes it — `Matrix::makeRotate(angle.x, X, angle.y, Y, angle.z, Z)` — so a raindrop
+        /// leans into the wind exactly as the rasterizer leans it.
         osg::Vec3f leant(const osg::Vec3f& axis, const osg::Vec3f& angle)
         {
             if (angle == osg::Vec3f())
@@ -53,11 +47,8 @@ namespace Rtx
     {
         ExtractionStats& stats = mPass.getStats();
 
-        // **One question and one count, because both ways of answering no cost the same.** A
-        // particle's whole silhouette is its texture's alpha, so an emitter this cannot name a
-        // sprite for draws nothing — not a white disc, which is what sampling nothing would give
-        // it. Nothing describing the system and a description naming no diffuse map end in the same
-        // place, and a count of only the first reports a share of the plumes that went missing.
+        // One question and one count, because a particle's whole silhouette is its texture's alpha
+        // and an emitter this cannot name a sprite for draws nothing.
         Surface::Material described;
         const osg::Image* sprite
             = describeSurface(shading, described) ? described.getTexture(Surface::TextureRole::Diffuse) : nullptr;
@@ -68,13 +59,9 @@ namespace Rtx
             return;
         }
 
-        // **Registered the first time the emitter is seen, and not the first time it has a
-        // particle alive.** The texture array is uploaded when the scene is built; a flame that was
-        // empty at load and lights up two hundred frames later would otherwise add a texture on a
-        // frame that only re-places what is already there, and index past the array it is sampling.
-        //
-        // Kept in a map of its own because nothing else can speak for it when the scene is swept: a
-        // sprite's texture is on no material, and an emitter is not in the scene between frames.
+        // Registered the first time the emitter is seen and not the first time it has a particle
+        // alive, or a flame that lights up two hundred frames later would add a texture on a frame
+        // that only re-places. In a map of its own, because a sprite's texture is on no material.
         const auto [known, arrived] = mHeld.reach(&particles);
         if (arrived)
         {
@@ -123,14 +110,9 @@ namespace Rtx
 
         const float scale = scaleOf(place);
 
-        // **Which way the quad faces, and `osgParticle` offers two answers.** A `BILLBOARD` system's
-        // axes are the screen's and are recomputed into view space every frame, which is a disc
-        // facing the eye and needs nothing carried across. A `FIXED` one's are used exactly as they
-        // were authored, so its quad hangs in the world at an orientation of its own — and that is
-        // the mode Morrowind's rain is built on: an X axis squashed to a tenth against a Y pointing
-        // straight down is a falling streak rather than a round drop.
-        //
-        // **Both axes or neither**, because one of them alone describes no plane.
+        // Which way the quad faces: a `BILLBOARD` system's is a disc facing the eye, and a `FIXED`
+        // one's hangs in the world as authored, which is how Morrowind's rain is a falling streak.
+        // Both axes or neither, because one alone describes no plane.
         const bool oriented = particles.getParticleAlignment() == osgParticle::ParticleSystem::FIXED
             && particles.getAlignVectorX().length2() > 0.0f && particles.getAlignVectorY().length2() > 0.0f;
 
@@ -171,21 +153,17 @@ namespace Rtx
                 continue;
 
             // `getCurrentColor`'s alpha and `getCurrentAlpha` are two separate ramps and the
-            // rasterizer multiplies them. OpenMW's `ParticleColorAffector` writes the record's
-            // colour ramp into the first with its alpha forced to one and the alpha into the
-            // second, so in this content the product is the second — and multiplying both is what
-            // keeps that a fact about the data rather than an assumption in the reader.
+            // rasterizer multiplies them; `ParticleColorAffector` forces the first to one, and
+            // multiplying both keeps that a fact about the data.
             const osg::Vec4f colour = particle->getCurrentColor();
             const float alpha = colour.a() * particle->getCurrentAlpha();
             if (!(alpha > 0.0f))
                 continue;
 
-            // **Both ends through the same matrix, and the difference taken here.** `place` is where
-            // the emitter stands *now*; a system carried by an actor moved between the two frames and
-            // this does not know by how much, so what comes out is the particle's own travel and not
-            // its travel plus its emitter's. For rain, snow and ash — which are placed in the world
-            // and not on anybody — the two are the same thing, and those are the populations that
-            // cross a frame fast enough for the difference to be the picture.
+            // Both ends through the same matrix, so what comes out is the particle's own travel and
+            // not its emitter's too. For rain, snow and ash the two are the same thing, and those
+            // are the populations that cross a frame fast enough for the difference to be the
+            // picture.
             const osg::Vec3f stood = particle->getPosition() * place;
             const osg::Vec3f came = particle->getPreviousPosition() * place;
 

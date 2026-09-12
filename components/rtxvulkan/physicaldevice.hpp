@@ -13,14 +13,9 @@
 namespace Rtx
 {
     /// A physical device that qualified, what it reported about itself, and what this renderer
-    /// decided from that.
-    ///
-    /// **This asks the device and `DeviceProfile` decides.** Every query is here so nothing asks
-    /// twice; every judgement is there so a test can make one about a card nobody here owns.
-    ///
-    /// Selection is deliberately unforgiving: a device that lacks a required extension or feature is
-    /// rejected with that name in the message rather than silently demoted to a lesser path. There
-    /// is no lesser path.
+    /// decided from that. This asks the device and `DeviceProfile` decides, so a test can judge a
+    /// card nobody here owns. A device that lacks a required extension or feature is rejected
+    /// with that name in the message. There is no lesser path.
     class PhysicalDevice
     {
     public:

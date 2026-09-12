@@ -20,38 +20,22 @@ namespace Rtx
     class GBuffer;
 
     /// The denoiser's temporal half: this frame's bounce averaged with what the same surface gave on
-    /// the frames before it.
-    ///
-    /// **The wavelet behind it is the second half of a denoiser, and this is the first.** Five
-    /// spatial levels blurring a single sample per pixel is where the field started and not where
-    /// it settled: SVGF, A-SVGF, ReLAX and ReBLUR are all a temporal accumulator with a cascade
-    /// attached, and the cascade is there to fill in where the accumulator was rejected rather than
-    /// to do the averaging itself. An average over frames is where the estimator's error actually
-    /// falls, and the variance it produces on the way is what lets the cascade finally stop at an
-    /// edge in the light.
-    ///
-    /// **It runs exactly when the wavelet does.** Ray Reconstruction accumulates over frames itself,
-    /// so a frame it is handed must not have been accumulated already — `Reconstruction::resolve`
-    /// answers with one denoiser or the other and never both, and this belongs to the one.
+    /// the frames before it. SVGF, A-SVGF, ReLAX and ReBLUR are all a temporal accumulator with a
+    /// cascade attached, and the cascade fills in where the accumulator was rejected rather than
+    /// doing the averaging itself. It runs exactly when the wavelet does, because Ray
+    /// Reconstruction accumulates over frames itself.
     class AccumulatePass
     {
     public:
         AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        /// Makes room for a frame this size, if the last one was not. Before the first frame.
-        ///
-        /// **A resize is a reset**, because a history at the old size describes pixels that are no
-        /// longer where it says. The caller is expected to have waited for anything still reading
-        /// the old images.
+        /// Makes room for a frame this size, if the last one was not. A resize is a reset. The
+        /// caller has waited for anything still reading the old images.
         void resize(std::uint32_t width, std::uint32_t height);
 
         /// Blends the buffer's indirect channel with the history, and leaves this frame's moments
-        /// and its blend where the cascade can read them.
-        ///
-        /// **Into an image of this pass's own, and not back over the channel it read.** The cascade
-        /// overwrites its own input as it ping-pongs, so written back the trace's answer survives
-        /// only as long as nothing filters the frame — which makes `Channel::Indirect` two different
-        /// things and ties the two passes to one format. `getBlended` is where the blend is.
+        /// and its blend (`getBlended`) where the cascade can read them — into an image of this
+        /// pass's own, or `Channel::Indirect` would mean two different things.
         ///
         /// @param far the frame's far plane, which this turns into a storage scale rather than
         ///        writing a depth against. `AccumulateConstants::mDistanceScale` says why it is a
@@ -68,26 +52,17 @@ namespace Rtx
         /// cascade consumes it immediately and the history the next frame needs is `mColour`.
         const Image& getBlended() const;
 
-        /// Where the cascade's first level writes the mean this pass will read next frame.
-        ///
-        /// **Handed out rather than written here.** SVGF feeds the first wavelet level's output back
-        /// as the history, so what carries forward is the filtered light and not the one sample this
-        /// pass blended into it — and the write lands on the cascade, which is bound by the work per
-        /// tap, instead of on this pass, which is bound by its bytes. Only valid after `record`,
-        /// which is what picks the half of the pair the next frame will read.
+        /// Where the cascade's first level writes the mean this pass will read next frame — SVGF's
+        /// feedback, so what carries forward is the filtered light. Only valid after `record`.
         const Image& getHistory() const;
 
     private:
         const Device& mDevice;
         ComputePipeline mPipeline;
 
-        /// **Two of each, because this frame reads what the last one wrote and writes what the next
-        /// one will read.** A single set would be a pixel averaging with itself.
-        ///
-        /// The mean, written by the cascade rather than here; the surface that mean belongs to, so
-        /// a reprojection can ask whether it is still looking at the same thing; and the two moments
-        /// of its luminance, which is where the variance comes from and where the frame count sits.
-        /// Null until `resize`.
+        /// Two of each, because this frame reads what the last one wrote: the mean, written by the
+        /// cascade; the surface it belongs to, for the reprojection; and the two moments of its
+        /// luminance, where the variance and the frame count sit. Null until `resize`.
         std::array<std::unique_ptr<Image>, 2> mColour;
         std::array<std::unique_ptr<Image>, 2> mSurface;
         std::array<std::unique_ptr<Image>, 2> mMoments;

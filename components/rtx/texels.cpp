@@ -84,10 +84,9 @@ namespace Rtx
         if (level.mWidth == 0 || level.mHeight == 0)
             return MeanTexel();
 
-        // **Never empty here**, because it is empty only for a description carrying no texels and
-        // the level above is one — so the alpha is read rather than defaulted, which is the whole
-        // difference between a star sheet worth nearly nothing and one worth the black it is
-        // painted on.
+        // Never empty here, because it is empty only for a description carrying no texels — so
+        // the alpha is read rather than defaulted, which is the difference between a star sheet
+        // worth nearly nothing and one worth the black it is painted on.
         const AlphaImage alpha(described);
 
         osg::Vec3d total;

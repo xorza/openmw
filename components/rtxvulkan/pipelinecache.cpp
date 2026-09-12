@@ -36,12 +36,9 @@ namespace Rtx
         constexpr std::string_view sPrefix = "rtx-";
         constexpr std::string_view sSuffix = ".pipelinecache";
 
-        /// How many caches other than this run's are kept, oldest first to go.
-        ///
-        /// **A bound and not a purge.** A name carries the card, the driver and the shaders it was
-        /// compiled for, so another cache is not a stale copy of this one — it is what a second card,
-        /// or the shader tree before the last edit, compiled to. Sweeping them made every switch a
-        /// cold compile; keeping them all would grow without end as drivers arrive.
+        /// How many caches other than this run's are kept, oldest first to go. A bound and not a
+        /// purge: another cache is what a second card or the shader tree before the last edit
+        /// compiled to, and sweeping them made every switch a cold compile.
         constexpr std::size_t sKeptCaches = 4;
 
         std::uint32_t readWord(std::span<const std::uint8_t> data, std::size_t at)
@@ -63,20 +60,11 @@ namespace Rtx
             }
         }
 
-        /// A number that changes when any compiled shader does, and with nothing else.
-        ///
-        /// **What makes the eviction exact.** A blob cannot be pruned entry by entry, so the only way
-        /// a stale pipeline leaves is for the whole file to be replaced — and the file is replaced
-        /// exactly when this changes, because it is what the name is built from. An edited shader
-        /// therefore costs one cold compile and leaves nothing behind, where before it left every
-        /// pipeline of every earlier edit in a file that grew until a cap threw the lot away.
-        ///
-        /// **The whole directory and not the modules a pipeline names**, because what the cache holds
-        /// is every pipeline the run built and a module none of them named this time may be named by
-        /// the next. Sorted, so the order is the directory listing's and not the filesystem's.
-        ///
-        /// Six megabytes over thirty-two files, hashed in six milliseconds. Nought where the directory
-        /// cannot be read, which is a build with no shaders and a renderer about to fail anyway.
+        /// A number that changes when any compiled shader does, and with nothing else — what makes
+        /// the eviction exact, because a blob cannot be pruned entry by entry and the file is
+        /// replaced exactly when this changes. The whole directory, sorted, because a module none
+        /// of this run's pipelines named may be named by the next. Six megabytes hashed in six
+        /// milliseconds; nought where the directory cannot be read.
         std::array<std::uint64_t, 2> digestOfShaders(const std::filesystem::path& directory)
         {
             std::error_code failed;
@@ -101,11 +89,8 @@ namespace Rtx
                 MurmurHash3_x64_128(name.data(), static_cast<int>(name.size()), digest.data(), step.data());
                 digest = step;
 
-                // **`Files::getHash` throws where a read fails**, and this one may not: it is called
-                // from a constructor whose whole contract is that a cache which cannot be built is a
-                // renderer that compiles from source. A shader that will not read is a renderer about
-                // to fail for a better reason, and the digest of what did read is a key like any
-                // other — it names a set nothing else will produce.
+                // `Files::getHash` throws where a read fails, and this one may not: a cache that
+                // cannot be built is a renderer that compiles from source.
                 try
                 {
                     const std::array<std::uint64_t, 2> content = Files::getHash(name, stream);
@@ -123,13 +108,8 @@ namespace Rtx
         }
 
         /// What this cache is called: the driver that can read it back, and the shaders it was
-        /// built from.
-        ///
-        /// **Both halves are the eviction.** Vulkan refuses a blob from another driver anyway, but a
-        /// single filename would mean every run after an update reading a file it cannot use and
-        /// overwriting it; and no part of Vulkan has an opinion about a blob full of pipelines for
-        /// shaders that no longer exist. A name carrying both means the run knows exactly one file is
-        /// live, which is what lets `sweep` remove the rest.
+        /// built from. Both halves are the eviction, so the run knows exactly one file is live and
+        /// `sweep` removes the rest.
         std::filesystem::path cachePath(const PipelineCacheSpec& spec, const VkPhysicalDeviceProperties& properties)
         {
             if (spec.mDirectory.empty())
@@ -304,15 +284,9 @@ namespace Rtx
             return;
         }
 
-        // Through a temporary, because the alternative is a process dying mid-write and leaving half
-        // a cache behind — which the next run would read, reject, and replace, so the cache would go
-        // on working exactly until something crashed once.
-        //
-        // **The temporary's name is unique and not merely temporary.** A test binary and a tool can
-        // easily be closing at the same moment, and two of them writing one path would interleave
-        // into a file with a valid header and a mixed body — which is the one kind of corruption the
-        // header check cannot catch. The rename that follows is atomic on both platforms, so the
-        // loser of a race overwrites the winner rather than tearing it.
+        // Through a temporary with a unique name: a test binary and a tool can be closing at the
+        // same moment, and two writing one path would interleave into a file with a valid header
+        // and a mixed body, which the header check cannot catch. The rename is atomic.
         std::filesystem::path partial = mPath;
         partial += "." + std::to_string(std::random_device{}()) + ".partial";
 

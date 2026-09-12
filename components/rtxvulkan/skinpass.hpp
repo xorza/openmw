@@ -15,22 +15,12 @@ namespace Rtx
     class SceneDesc;
     class SkinTables;
 
-    /// Poses every deforming mesh a slot's copies owe, on the device, ahead of the refit over them.
-    ///
-    /// **Per bone on the host and per vertex on the device.** A body skinned on the processor is
-    /// compared vertex by vertex against the pose before, copied, walked for its bounds and written
-    /// across the bus twice — positions for the refit and normals for the hit — every frame. Here
-    /// the host writes a few dozen rows per body and one dispatch per body computes the vertices
-    /// into the slot's copy of the poses and the normals, where the refit and the hit already read
-    /// them.
-    ///
-    /// **The poses' own account is what drives it.** `SlotBlocks` says which runs each copy owes; a
-    /// copy owes a mesh whose pose changed since that copy was last written, which is exactly the
-    /// set of dispatches it needs — this frame's movers and the ones the frame before last missed.
-    /// One dispatch writes both tables, so the normals keep no account of their own.
-    ///
-    /// **Shared by every scene**, like the trace: two pipelines, and nothing about them depends on
-    /// which scene they pose. What differs per scene is `SkinTables`.
+    /// Poses every deforming mesh a slot's copies owe, on the device, ahead of the refit over
+    /// them: per bone on the host and per vertex on the device, where a body skinned on the
+    /// processor was compared, copied, bounded and written across the bus twice every frame.
+    /// `SlotBlocks` says which runs each copy owes — this frame's movers and the ones the frame
+    /// before last missed — and one dispatch writes both tables. Shared by every scene; what
+    /// differs per scene is `SkinTables`.
     class SkinPass
     {
     public:
@@ -38,15 +28,10 @@ namespace Rtx
 
         /// Records `slot`'s dispatches into `commands`: every mesh `poses` owes, its rows or
         /// weights written into `tables`' copy first, and one barrier after them for the build and
-        /// the trace. True where anything was recorded.
-        ///
-        /// `poses` is indexed by `MeshRange::mBindOffset` and `normals` by the scene's own vertex
-        /// offset, because a hit reads a normal and never reads a position.
-        ///
-        /// **Into `slot`'s copy, which the caller has made sure no frame is still reading**, and
-        /// before the refit that reads what this wrote. The write-after-read against the copy's
-        /// previous reader is the fence the caller waited; the read-after-write into the refit and
-        /// the trace is the barrier here.
+        /// the trace. True where anything was recorded. `poses` is indexed by
+        /// `MeshRange::mBindOffset` and `normals` by the scene's own vertex offset, because a hit
+        /// reads a normal and never a position. The write-after-read against the copy's previous
+        /// reader is the fence the caller waited.
         bool record(VkCommandBuffer commands, const SceneDesc& scene, FrameSlot slot, SkinTables& tables,
             SlotBlocks& poses, SlotBlocks& normals, GpuTimer* timer) const;
 

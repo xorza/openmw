@@ -7,11 +7,8 @@ namespace Rtx
 {
     namespace
     {
-        /// Donelan-Banner's spread parameter, against how far above the peak a band sits.
-        ///
-        /// **Large is narrow.** The swell arrives as near-parallel trains and comes out around two
-        /// and a half; the chop well above the peak settles near four tenths, a fan wide enough that
-        /// a sum of it does not draw a grain.
+        /// Donelan-Banner's spread parameter, against how far above the peak a band sits. Large is
+        /// narrow: the swell comes out around two and a half, the chop near four tenths.
         float donelanSpread(float relative)
         {
             if (relative < 0.95f)
@@ -23,11 +20,8 @@ namespace Rtx
             return std::pow(10.0f, exponent);
         }
 
-        /// Kitaigorodskii's attenuation, which is what makes this TMA rather than JONSWAP.
-        ///
-        /// A shelf cannot carry a wave whose orbit reaches the bottom, so the spectrum is cut where
-        /// the water is too shallow for it — from nothing, through a quadratic knee, to unchanged
-        /// once the wave no longer feels the ground.
+        /// Kitaigorodskii's attenuation, which is what makes this TMA rather than JONSWAP: a shelf
+        /// cannot carry a wave whose orbit reaches the bottom.
         float getDepthFactor(float frequency, float depth)
         {
             const float scaled = frequency * std::sqrt(depth / Shaders::WATER_GRAVITY);
@@ -40,10 +34,8 @@ namespace Rtx
         }
 
         /// The TMA spectrum: JONSWAP shaped by how much of it a shelf this deep will carry.
-        ///
-        /// JONSWAP's `alpha` is left at one. It is a fetch-and-wind parameter nothing here knows and
-        /// every term in it is a constant multiplier, so it cancels — the table is scaled to a
-        /// significant height instead, which is the one number a person can picture.
+        /// JONSWAP's `alpha` is left at one, because it is a constant multiplier and the table is
+        /// scaled to a significant height instead.
         float tmaDensity(float frequency, float peak, float depth)
         {
             const float width = frequency <= peak ? 0.07f : 0.09f;

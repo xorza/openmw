@@ -20,27 +20,18 @@ namespace Rtx
 {
     namespace
     {
-        /// How many threads flatten stacks.
-        ///
-        /// **Four, because the sum reads far more than it computes.** A bake is nearly all summing
-        /// the layer stack into 512² texels, which divides across threads, and the memory contention
-        /// between them is what stops the division paying past four.
-        ///
-        /// **A quarter of the machine and never more than four**, so a smaller one keeps the cores
-        /// the frame, the cell reader and the driver are on.
+        /// How many threads flatten stacks: a quarter of the machine and never more than four,
+        /// because the sum reads far more than it computes and memory contention stops the division
+        /// paying past four.
         std::size_t bakerCount()
         {
             const unsigned int cores = std::thread::hardware_concurrency();
             return std::clamp<std::size_t>(cores / 4, 1, 4);
         }
 
-        /// The key a chunk's composite is found under.
-        ///
-        /// **The material's own slot, because one material is one chunk.** The extractor keys a
-        /// terrain material on the state set it came from, so the two are already one to one; a
-        /// material that is retired takes its composite's slot with it, and one that takes the slot
-        /// over is a different chunk asking for a different bake under the same name — which is
-        /// exactly right, because it wants the slot overwritten.
+        /// The key a chunk's composite is found under: the material's own slot, because one
+        /// material is one chunk, and one that takes the slot over is a different chunk that wants
+        /// the slot overwritten.
         void nameComposite(std::string& key, Index material)
         {
             std::array<char, 16> digits{};
@@ -235,11 +226,9 @@ namespace Rtx
 
             const Material& material = materials[asked.mMaterial];
 
-            // **What it baked has to still be what stands there.** A chunk can leave the world in
-            // the frames a composite takes, and the slot it stood in can be taken over by another;
-            // handing this to whatever holds the slot now would put one hillside's ground on
-            // another's. The layers themselves are compared and not only where they sit, because a
-            // run given back is handed out again to the next chunk that fits it.
+            // What it baked has to still be what stands there, or one hillside's ground lands on
+            // another's. The layers themselves and not only where they sit, because a run given
+            // back is handed out again.
             const bool wanted = material.mKind == MaterialKind::Terrain && material.mFlatten
                 && material.mDiffuse == sNoIndex && material.mLayers == asked.mLayers
                 && std::ranges::equal(request.mLayers, material.mLayers.in(scene.materials().getLayers()));

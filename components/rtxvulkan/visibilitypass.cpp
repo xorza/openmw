@@ -53,9 +53,6 @@ namespace Rtx
             | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
-        /// The structure, the hit counter, the frame itself, the sea and the fog's field, in the
-        /// order the shader declares them. The tables a hit reads are in `GpuTables`; the channels
-        /// the trace writes are `GBuffer`'s set.
         /// What each hit record carries: for every closest-hit shader in turn, one record per layer
         /// of the peel, which is how a shader is told which layer it stands at.
         constexpr std::size_t sHitRecordCount = Shaders::HIT_SHADER_COUNT * Shaders::HIT_RECORD_LAYERS;
@@ -66,6 +63,9 @@ namespace Rtx
             return records;
         }();
 
+        /// The structure, the hit counter, the frame itself, the sea and the fog's field, in the
+        /// order the shader declares them. The tables a hit reads are in `GpuTables`; the channels
+        /// the trace writes are `GBuffer`'s set.
         constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> sBindings = [] {
             std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> declared{};
             declared[Shaders::BIND_SCENE] = VkDescriptorSetLayoutBinding{ Shaders::BIND_SCENE,

@@ -25,20 +25,13 @@ namespace Rtx
             // be a ray tracing pipeline, because a hit object may only be traced from the ray
             // generation stage, and the shader it names may only be run from there.
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-            // **A driver floor and not a hardware one, and it is required all the same.** Hit
-            // objects are this extension's, whether or not a launch ever asks it to sort — and no
-            // launch here does. Turing answers `NONE` to the sorting hint and traces hit objects all
-            // the same, but the shaders compile to `SPV_EXT_shader_invocation_reorder`, so the
-            // device has to offer the `EXT` spelling, which arrives around driver 595 on Turing and
-            // 582 on Ada. The `NV` extension is not a substitute: it carries the `NV` SPIR-V
-            // capability, so taking it would mean a second binary of every shader that launches,
-            // and `AGENTS.md` keeps no second path.
+            // A driver floor and not a hardware one: hit objects are this extension's and no launch
+            // here sorts, but the shaders compile to `SPV_EXT_shader_invocation_reorder`, which
+            // arrives around driver 595 on Turing and 582 on Ada. The `NV` extension carries the
+            // `NV` SPIR-V capability, so taking it would mean a second binary of every shader.
             VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME,
-            // **Asking the driver what it made of a shader.** Occupancy is a register count and a
-            // workgroup size, and the register count belongs to the driver's own compiler — no
-            // offline tool has it. Required rather than optional because a device that will not say
-            // is a device this fork cannot answer 4.6 on, and a renderer that quietly reported
-            // nothing would be the fallback path this tree does not keep.
+            // Occupancy is a register count the driver's own compiler owns and no offline tool has.
+            // Required, because a renderer that quietly reported nothing would be a fallback path.
             VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME,
         };
 

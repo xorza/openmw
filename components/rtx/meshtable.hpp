@@ -18,25 +18,15 @@
 
 namespace Rtx
 {
-    /// Every mesh the scene holds, and the shared buffers its triangles live in.
-    ///
-    /// **One type, because a row and the runs behind it are one invariant.** A mesh slot is one row
-    /// and its geometry is as long as the model, so the two are freed by different mechanisms — a
-    /// free list and two allocators — and a mesh that deforms has to give its deformer back between
-    /// them.
-    ///
-    /// **The deformers are borrowed and not owned.** A rig is shared by every mesh built from one
-    /// skin, so the count lives with the table that hands rigs out; this stands one as a mesh
-    /// arrives and releases one as a mesh goes.
+    /// Every mesh the scene holds, and the shared buffers its triangles live in. One type, because
+    /// a mesh that deforms has to give its deformer back between the free list and the two
+    /// allocators. The deformers are borrowed: a rig is shared by every mesh built from one skin.
     class MeshTable : public SweptTable<MeshRange>
     {
     public:
         /// How many vertices one block of the vertex attribute buffers holds, and how many indices
-        /// one block of the index buffer does.
-        ///
-        /// **The shaders' own numbers**, because a run this places against a block is resolved back
-        /// to that block by a shader dividing by the same figure. `Shaders::VERTEX_BLOCK` says at
-        /// length what they are for.
+        /// one block of the index buffer does — the shaders' own numbers, because a shader resolves
+        /// a run back to its block by dividing by the same figure.
         static constexpr Index sVertexBlock = Shaders::VERTEX_BLOCK;
         static constexpr Index sIndexBlock = Shaders::INDEX_BLOCK;
 
@@ -45,11 +35,9 @@ namespace Rtx
         {
         }
 
-        /// Copies the vertex data into the shared buffers and returns the new mesh's index.
-        ///
-        /// Throws where the mesh is longer than a block. **Named rather than asserted**, because a
-        /// vertex count comes out of a content file and a run that straddled a block would be
-        /// written across two device allocations that are not next to each other.
+        /// Copies the vertex data into the shared buffers and returns the new mesh's index. Throws
+        /// where the mesh is longer than a block, because a vertex count comes out of a content
+        /// file.
         Index add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material);
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the
@@ -95,16 +83,9 @@ namespace Rtx
 
         DeformerTable& mDeformers;
 
-        /// Where a mesh's vertices and its indices live.
-        ///
-        /// **Runs and not slots**, which is why these are `RunBuffer`s and `mRows` is not: a mesh
-        /// slot is one row of a table, but the geometry behind it is as long as the model. A list
-        /// of slots cannot give a variable length back.
-        ///
-        /// **One buffer holds the run and three follow it.** The position, normal,
-        /// texture-coordinate and colour arrays are parallel and a vertex id indexes all four, so
-        /// the three below are as long as the positions are and are never asked an allocator's
-        /// question — `writeAttributes` is where that rule lives.
+        /// Where a mesh's vertices and its indices live — runs and not slots, because the geometry
+        /// behind a row is as long as the model. One buffer holds the run and the three parallel
+        /// attribute arrays follow it (`writeAttributes`).
         RunBuffer<osg::Vec3f> mPositions{ sVertexBlock };
         RunBuffer<std::uint32_t> mIndices{ sIndexBlock };
 

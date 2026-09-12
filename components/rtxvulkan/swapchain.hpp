@@ -13,11 +13,9 @@ namespace Rtx
 {
     class Device;
 
-    /// The images the window presents, and the two calls that hand them back and forth.
-    ///
-    /// The renderer never draws into these. It renders into an image of its own and blits, because
-    /// the format a surface offers is not one a compute shader may store to, and because every pass
-    /// after M2 wants a high-precision target that no display could show anyway.
+    /// The images the window presents, and the two calls that hand them back and forth. The
+    /// renderer renders into an image of its own and blits, because the format a surface offers is
+    /// not one a compute shader may store to.
     class Swapchain
     {
     public:
@@ -44,11 +42,8 @@ namespace Rtx
         bool surfaceIsHidden() const;
 
         /// Says how the presented image should meet the refresh, and answers whether that changed
-        /// the present mode — which is what says a rebuild is owed.
-        ///
-        /// **A setting and not a mode**, because what a surface offers is the surface's to say: two
-        /// settings collapse onto one mode where a driver is missing the other, and a caller that
-        /// spoke in Vulkan enums would have to know that to avoid rebuilding for nothing.
+        /// the present mode, which is what says a rebuild is owed. A setting and not a mode,
+        /// because two settings collapse onto one mode where a driver is missing the other.
         bool setVerticalSync(SDLUtil::VSyncMode mode);
 
         VkExtent2D getExtent() const { return mExtent; }

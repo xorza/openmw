@@ -31,11 +31,8 @@ namespace Rtx
             std::span<const osg::Vec3f> mNormals;
         };
 
-        /// The array as a `Vec3Array`, or null where it is anything else.
-        ///
-        /// **`osg::Array` states its own type in a byte**, which is what a `dynamic_cast` walks the
-        /// class hierarchy to work out — the same shape as the library-name test the walk already
-        /// makes of a drawable and of a terrain chunk before it casts either.
+        /// The array as a `Vec3Array`, or null where it is anything else. `osg::Array` states its
+        /// own type in a byte, which is what a `dynamic_cast` walks the class hierarchy to work out.
         const osg::Vec3Array* asVec3Array(const osg::Array* array)
         {
             if (array == nullptr || array->getType() != osg::Array::Vec3ArrayType)
@@ -66,11 +63,8 @@ namespace Rtx
                 return arrays;
             }
 
-            // **One normal for the whole drawable is a normal, and dropping it made the sea flat
-            // black.** `SceneUtil::createWaterGeometry` binds exactly this — a thousand vertices and
-            // one `(0, 0, 1)` — so the game's water mirrored with no normal at all, and shading a
-            // surface by a zero vector produces radiance that the frame's own exposure then reads.
-            // Everything else in the picture goes with it.
+            // One normal for the whole drawable is a normal: `SceneUtil::createWaterGeometry` binds
+            // exactly this, and dropping it made the sea flat black and took the exposure with it.
             if (normals->getBinding() != osg::Array::BIND_OVERALL)
                 return arrays;
 
@@ -89,23 +83,12 @@ namespace Rtx
             return static_cast<const osg::Vec2Array*>(array);
         }
 
-        /// A geometry's per-vertex colours, decoded into `scratch` and spanned from it.
-        ///
-        /// Empty where the geometry names none, which `MeshTable::writeAttributes` fills with
-        /// white: nothing about a vertex the content said nothing about, rather than a black one.
-        ///
-        /// **Two array types, because two loaders write it.** `NifOsg` builds a `Vec4Array` of
-        /// floats from a `NiGeometryData` and a `Vec4ubArray` of bytes from a `BSTriShape`, and
-        /// `decodeColour` answers for both. Which of them it is is a fact about the array, so it is
-        /// settled once rather than at every vertex.
-        ///
-        /// **An overall colour is spread across the vertices**, the way `readVertices` spreads an
-        /// overall normal, so that everything past this reads one array of one length.
-        ///
-        /// The alpha is not read. **Three shapes in the whole of vanilla carry one below opaque**
-        /// — ten vertices of `furn_de_table_06.nif` and twenty-seven of `in_de_shack_01.nif`, every
-        /// one of them 0.502 — and reading it would put a fetch and an interpolation on every
-        /// candidate of every shadow ray, which is the hottest loop in the trace.
+        /// A geometry's per-vertex colours, decoded into `scratch` and spanned from it. Empty where
+        /// the geometry names none. Two array types, because `NifOsg` builds a `Vec4Array` from a
+        /// `NiGeometryData` and a `Vec4ubArray` from a `BSTriShape`. An overall colour is spread
+        /// across the vertices, as `readVertices` spreads an overall normal. The alpha is not
+        /// read: three shapes in the whole of vanilla carry one below opaque, and reading it would
+        /// put a fetch on every candidate of every shadow ray.
         ///
         /// @param vertices how many the geometry holds. An array of another length is a content
         ///        file this cannot match up, and it is left out.

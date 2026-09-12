@@ -4,47 +4,27 @@
 
 namespace Rtx
 {
-    /// How long one copy of the sprite tile list is, and how much of it a bin may fill.
-    ///
-    /// **The high-water mark and both numbers taken off it, in one object.** The list is `tiles + 1`
-    /// starts and then the runs: the buffer is sized to both together, and the pass is told only the
-    /// second. Two statements of that, with the sum spelled in thirty-two bits, is a large enough
-    /// frame wrapping the length the buffer is made at while the pass keeps the capacity it is
-    /// about to write — a dispatch past the end of an allocation. One call moves the mark here and
-    /// both numbers come off it afterwards.
-    ///
-    /// **It grows and never shrinks**, so a copy settles at the busiest frame it has drawn. What a
-    /// frame the sizing misjudges costs is a slow frame and not a wrong one: the list carries its
-    /// own degenerate form — `SPRITE_LIST_UNBINNED` — the trace walks every sprite for it, and the
-    /// next frame into this copy is sized to what the device reported.
+    /// How long one copy of the sprite tile list is, and how much of it a bin may fill — both
+    /// taken off one high-water mark, because two statements of `tiles + 1` starts plus the runs
+    /// once wrapped in thirty-two bits with the pass still holding the old capacity, a dispatch
+    /// past the end of an allocation. It grows and never shrinks. A frame the sizing misjudges is
+    /// slow and not wrong: the list falls back to `SPRITE_LIST_UNBINNED`, and the next frame is
+    /// sized to what the device reported.
     class SpriteListSize
     {
     public:
-        /// The most room the runs are ever given.
-        ///
-        /// **A cap the picture does not depend on**, for the reason above: past it a frame is drawn
-        /// slow and right. What it buys is arithmetic that cannot wrap. The sum below stays far
-        /// inside the thirty-two bits the shader indexes the list with, and a report the device
-        /// wrote — the one number here that this side did not compute — cannot ask for an
-        /// allocation no card has.
-        ///
-        /// Sixteen million entries is sixty-four megabytes. Rain over Balmora measured thirty-five
-        /// entries a drop over three thousand six hundred tiles, so this is room for four hundred
-        /// thousand drops of it.
+        /// The most room the runs are ever given, so the sum cannot wrap the shader's thirty-two
+        /// bits and a report the device wrote cannot ask for an allocation no card has. Sixteen
+        /// million entries is sixty-four megabytes: room for four hundred thousand drops of the
+        /// rain over Balmora.
         static constexpr std::uint32_t sMostEntries = 16u << 20;
 
         /// What share of the frame's tiles a sprite is given room for before any bin has said what
-        /// it needs: one tile in this many.
-        ///
-        /// **A floor, under a policy that otherwise follows what the last bin reported.** A frame's
-        /// entries are what the last one's were, near enough — a storm gains its drops over seconds
-        /// and a puff rises over the same — so twice the last report covers the drift, and the floor
-        /// covers the frame nothing came before, which is a cell arriving with a storm already in
-        /// it. **As a share of the tiles and not a count**, because a sprite's rectangle grows with
-        /// the tile count: rain over Balmora measured thirty-five entries a drop over three thousand
-        /// six hundred tiles — a streak near the eye is a column of them — and a count of thirty-two
-        /// a sprite was outgrown on the first frame. One in sixty-four is fifty-six there and a
-        /// hundred and twenty-seven over the game's own frame.
+        /// it needs: one tile in this many. A floor for the frame nothing came before, under a
+        /// policy that otherwise gives twice what the last bin reported. A share and not a count,
+        /// because a sprite's rectangle grows with the tile count: rain over Balmora measured
+        /// thirty-five entries a drop over three thousand six hundred tiles, and a count of
+        /// thirty-two was outgrown on the first frame.
         static constexpr std::uint32_t sFloorShare = 64;
 
         /// Takes the frame about to be binned into account, and moves the mark where it has to.

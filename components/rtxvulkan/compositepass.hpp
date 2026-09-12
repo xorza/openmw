@@ -15,14 +15,10 @@ namespace Rtx
     class Device;
     class GBuffer;
 
-    /// Puts the trace's channels back together and hands over one frame of linear radiance.
-    ///
-    /// **One multiply and one add** — everything harder was folded into the modulation term by the
-    /// trace, which is what lets a filter sit in between knowing nothing about water or fog. It also
-    /// owns the running sum, because what a reference has to converge to is the frame as it will be
-    /// shown, filter and all.
-    ///
-    /// The display curve is not here. It is `TonePass`, after whatever upscales.
+    /// Puts the trace's channels back together and hands over one frame of linear radiance: one
+    /// multiply and one add, because the trace folded everything harder into the modulation term.
+    /// Also owns the running sum, because a reference converges to the frame as shown, filter and
+    /// all. The display curve is `TonePass`, after whatever upscales.
     class CompositePass
     {
     public:
@@ -32,8 +28,7 @@ namespace Rtx
         /// @param buffer must have been handed over, so its writes are visible to this read. Its
         ///        indirect channel is not read: `indirect` says where the bounce actually is.
         /// @param indirect the bounce to put the albedo back into — the filter's output, or the
-        ///        buffer's own channel where nothing filtered it. Whose image it is depends on how
-        ///        many wavelet levels ran, which is why it is named rather than assumed.
+        ///        buffer's own channel where nothing filtered it.
         /// @param sum the running total a reference is built out of, at least as large as
         ///        `target` and in `VK_IMAGE_LAYOUT_GENERAL`. Null where `mAccumulate` is zero, which
         ///        is every frame that is not building a reference.

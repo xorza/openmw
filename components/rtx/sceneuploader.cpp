@@ -40,11 +40,8 @@ namespace Rtx
         FrameSpend unread;
         FrameSpend& timed = spend != nullptr ? *spend : unread;
 
-        // **Whether the backend holds this scene in this slot, and appending is only allowed onto
-        // that.** An uploader is one scene's — the world's or one picture's subject's — so what it
-        // asks is whether it has handed this scene over before and whether the backend still holds
-        // the result. Appending onto a slot something else filled would begin the descriptions
-        // past the end of this scene's own table.
+        // Whether the backend holds this scene in this slot: appending onto a slot something else
+        // filled would begin the descriptions past the end of this scene's own table.
         const SceneHeld held = renderer.describeHeld(slot);
         const bool mine = mBuilt && held.mBuilt;
 
@@ -71,16 +68,9 @@ namespace Rtx
         const SceneDesc& tables = scene;
 
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
-        // texture. **Which is a cell change and a load, not a frame** — a door opening moves
-        // instances the walk already knows.
-        //
-        // **A revision and not a set of table sizes**, because walking across a cell boundary loses
-        // one cell as it gains another: a scene that ends the frame the same size it started is
-        // exactly the case a size comparison misses, and the structures it kept describe geometry
-        // that has gone.
-        //
-        // A frame that only finished a bake has no new geometry and a new texture, which is an
-        // arrival for everything below even though nothing was walked.
+        // texture, which is a cell change and not a frame. A revision and not a set of table sizes,
+        // because a crossing loses one cell as it gains another. A frame that only finished a bake
+        // is an arrival for everything below even though nothing was walked.
         const bool arrived = !mine || tables.getStructureRevision() != held.mStructureRevision || baked > 0;
 
         if (!arrived)
@@ -104,14 +94,8 @@ namespace Rtx
         }
         else
         {
-            // Read only across the call below: `TextureData` carries spans into `mTextures`, and
-            // both `extendScene` and `setScene` have finished reading them when they return. What
-            // the loader holds after that is capacity for the next arrival.
-            //
-            // **The whole table where there is nothing to append to, and the arrivals
-            // otherwise.** An uploader that has not built this pair makes the array from nothing, so
-            // what it wants is the table in its own order; a frame that grew wants the slots that
-            // were written and no others, wherever in the table they sit.
+            // Read only across the call below: `TextureData` carries spans into `mTextures`. The
+            // whole table where there is nothing to append to, and the arrivals otherwise.
             if (!mine)
                 mTextures.describeAll(tables, images, composites, readings);
             else

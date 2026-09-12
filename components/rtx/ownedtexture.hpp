@@ -11,16 +11,8 @@
 namespace Rtx
 {
     /// A four-channel texture this process built and owns, which describes itself the way a file
-    /// does.
-    ///
-    /// **One type, because three builders held the same four members and wrote the same
-    /// `describe`** — `MipChain`, `SpriteLightMap` and `TerrainComposite` each carried a byte
-    /// buffer, a chain of levels, an extent and a format, and each spelled the description out
-    /// again. What differs between them is how the texels are computed, which is what each of them
-    /// still is.
-    ///
-    /// **The description spans this object's storage**, so it is valid only while this is, and only
-    /// until the next `open`.
+    /// does. The description spans this object's storage, so it is valid only while this is, and
+    /// only until the next `open`.
     class OwnedTexture
     {
     public:

@@ -26,12 +26,9 @@ namespace Rtx
             && "hit record data that does not divide into one block per record");
         const std::size_t hitRecordBytes = hitRecords == 0 ? 0 : shaders.mHitRecordData.size() / hitRecords;
 
-        // **A stage is not a group, which is what the any-hit shader and the layered records make
-        // true.** One any-hit is compiled and every hit group names it, and one closest-hit stage
-        // stands behind a run of groups, so the stages run raygen, the miss shaders, the any-hit and
-        // then the closest-hit shaders — while the groups run raygen, the miss records and the hit
-        // records, shader-major. The handles come back in group order, which is the order the table
-        // below is filled in.
+        // A stage is not a group: one any-hit is compiled and every hit group names it, and one
+        // closest-hit stage stands behind a run of groups. The handles come back in group order,
+        // which is the order the table below is filled in.
         std::vector<ShaderModule> compiled;
         compiled.reserve(1 + shaders.mMiss.size() + (anyHitWanted ? 1 : 0) + shaders.mHit.size());
 

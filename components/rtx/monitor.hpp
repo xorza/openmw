@@ -8,26 +8,12 @@
 
 namespace Rtx
 {
-    /// The lock between a frame and the workers it keeps, and the two waits across it.
-    ///
-    /// **The dance and not the data.** What a worker is handed and what it hands back differ from
-    /// one worker to the next — the cell reader takes a list that a newer list replaces, the
-    /// bakers take a queue and give back in sequence — so the containers stay with their owner.
-    /// What is the same for all of them is a mutex, a condition queue each way, and the rule that a
-    /// wait on the worker's side must be one a stop can break, and this is the one place it is
-    /// written.
-    ///
-    /// **Every operation is a template on what it runs**, so nothing here allocates and nothing
-    /// calls through a pointer. A `std::function` on the frame's path would be an allocation per
-    /// hand-over.
-    ///
-    /// **A worker that throws closes the monitor rather than ending the process.** An exception out
-    /// of a `std::jthread`'s body is a `std::terminate` that names nothing. The first one is kept,
-    /// every waiter is woken, and the frame gets it from `rethrowFailure` at a point where it can
-    /// say what happened.
-    ///
-    /// **Not a queue and not a thread pool.** `Rtx::Worker` owns the thread and the caller owns the
-    /// work.
+    /// The lock between a frame and the workers it keeps, and the two waits across it — the dance
+    /// and not the data, which stays with its owner. Every operation is a template on what it
+    /// runs, so nothing here allocates on the frame's path. A worker that throws closes the
+    /// monitor rather than ending the process: an exception out of a `std::jthread` is a
+    /// `std::terminate` that names nothing, so the first one is kept and `rethrowFailure` hands it
+    /// to the frame.
     class Monitor
     {
     public:
@@ -76,16 +62,11 @@ namespace Rtx
             return !mClosed;
         }
 
-        /// A worker's whole loop: wait for work, pick it up, do it, and again until stopped.
-        ///
-        /// **`ready` and `take` share one lock hold**, because a second worker would otherwise
-        /// empty the queue between them — and `turn` runs with the lock released, because a bake
-        /// is tens of milliseconds and holding the lock across one would put the workers in single
-        /// file.
-        ///
-        /// **A stop is answered before anything is picked up**, and not only where the queue is
-        /// empty: the wait answers what `ready` said whether or not it was stopped, so a loop that
-        /// went on from there would start one more turn that nobody is left to collect.
+        /// A worker's whole loop: wait for work, pick it up, do it, and again until stopped. `ready`
+        /// and `take` share one lock hold, or a second worker would empty the queue between them;
+        /// `turn` runs with the lock released, or a bake would put the workers in single file. A
+        /// stop is answered before anything is picked up, or one more turn would start that nobody
+        /// is left to collect.
         ///
         /// @param ready whether there is anything to do. Under the lock.
         /// @param take what to pick up. Under the same lock hold, so nothing can take it first.

@@ -35,10 +35,7 @@ namespace Rtx
             return;
 
         // Linear over the placements on the frame a surface crosses opaque, which a fade does twice
-        // in its life; the flipbooks and the scrolls that animate every frame never come here.
-        //
-        // **Here and not in the table, because the placements are not the table's.** What a
-        // material changed about traversal is the table's answer; which rows carry it is this.
+        // in its life; the flipbooks that animate every frame never come here.
         const std::span<const MeshInstance> placed = mPlacements.getAll();
         for (Index slot = 0; slot < placed.size(); ++slot)
             if (placed[slot].isPlaced() && placed[slot].mMaterial == material)
@@ -61,11 +58,8 @@ namespace Rtx
         if (sprites.empty())
             return;
 
-        // **A quad's reach is its own diagonal, not its size.** An eye-facing sprite is a disc of
-        // `mRadius`; an oriented one is a rectangle as long as its axis and as wide as `width`, and
-        // a rain streak ten times as tall as it is wide would be cut off by a sphere measured on the
-        // width. The two are perpendicular wherever the march looks at the quad, because the width
-        // is swung about the axis — so the corner is the diagonal of the two lengths.
+        // A quad's reach is its own diagonal: a rain streak ten times as tall as it is wide would
+        // be cut off by a sphere measured on the width.
         const auto spanOf = [width](const Sprite& sprite) {
             assert((width > 0.0f) == (sprite.mAxis.length2() > 0.0f)
                 && "an emitter and its sprites disagree about whether the quads hang in the world");
@@ -113,14 +107,9 @@ namespace Rtx
 
     void SceneDesc::orderLights()
     {
-        // **A total order and not a distance**, so that two lights the walk could hand over either
-        // way round come out the same way round every time. Position separates all but the lamps
-        // standing in one another, and what they carry separates those.
-        //
-        // **Tied and not built**, because a sort of a cell's three hundred lamps compares thousands
-        // of times and a tuple of references copies none of them. `osg::Vec3f` orders itself
-        // lexicographically on x, y and z, which is what makes the two vectors here the same order
-        // as their six components spelled out.
+        // A total order, so that two lights the walk could hand over either way round come out the
+        // same way round every time. Tied and not built, because a tuple of references copies
+        // nothing over thousands of comparisons.
         std::sort(mLights.begin(), mLights.end(), [](const Light& a, const Light& b) {
             return std::tie(a.mPosition, a.mIntensity, a.mReach, a.mSourceRadius, a.mClearance)
                 < std::tie(b.mPosition, b.mIntensity, b.mReach, b.mSourceRadius, b.mClearance);
@@ -143,33 +132,19 @@ namespace Rtx
         const std::size_t keptMeshes = mMeshes.mark(meshes);
         const std::size_t keptMaterials = mMaterials.mark(materials);
 
-        // **The ordinary frame leaves here**: a table with as many survivors as live entries has
-        // nothing to free, and what it paid for the answer is the marking above.
-        //
-        // **Asked of the marks and not of the span's length.** Those two agree only while the keep
-        // set names each survivor once, which is a property of the identity map that fills it rather
-        // than of this call — so a second way of collecting survivors cannot get it wrong.
+        // The ordinary frame leaves here. Asked of the marks and not of the span's length, which
+        // agree only while the keep set names each survivor once.
         if (keptMeshes == mMeshes.getLiveCount() && keptMaterials == mMaterials.getLiveCount())
             return false;
 
         const std::size_t freedMeshes = mMeshes.sweep();
         const std::size_t freedMaterials = mMaterials.sweep();
 
-        // **The per-frame lists are left as the walk left them.** Emptying them here read as "the
-        // walk that comes next refills them", and that walk is the *next frame's* — one frame after
-        // the picture this one is about to hand over, so a caller that uploads in between drew a
-        // frame with no lights, sprites or emitters in it at all.
-        //
-        // Nothing in them can be stale either: a sweep is only sound straight after a walk of the
-        // whole world (`SceneExtractor::retire`), so what is in them came from nodes that walk met —
-        // the survivors, by the same marking this frees against.
-        //
-        // **Neither is a structure change, and neither is a shading change.** Nothing arrived and
-        // nothing moved: the structures built from these indices are still correct, they simply
-        // describe geometry nothing stands on any more, and the top level a frame rebuilds anyway is
-        // what stops them being traced. A freed material's row, layers and masks are read by nothing
-        // either, so no table has to be written for them — the next thing to land in the slot or the
-        // run is what names it.
+        // The per-frame lists are left as the walk left them: the walk that would refill them is
+        // the next frame's, and nothing in them can be stale after a walk of the whole world.
+        // Neither is a structure change nor a shading change: the structures still describe
+        // geometry nothing stands on, and the top level a frame rebuilds anyway stops them being
+        // traced.
         return freedMeshes > 0 || freedMaterials > 0;
     }
 

@@ -25,21 +25,11 @@ namespace Rtx
         bool empty() const { return mRun.empty(); }
     };
 
-    /// Room for bottom-level acceleration structures, as a list of buffers nothing ever moves.
-    ///
-    /// **One buffer sized to the scene is what made a cell arriving rebuild the world.** A structure
-    /// lives at an offset in a buffer and is only valid while that buffer is; sizing the buffer to
-    /// the scene meant a scene that grew got a new one, and every structure in it had to be created
-    /// and built again. Here the buffers are only ever added to the list, so a structure made in one
-    /// outlives every later arrival.
-    ///
-    /// **A `RunAllocator` over each block, in units of the structure alignment.** A released mesh
-    /// gives its run back and the next structure that fits takes it, which is the same "slots, not
-    /// compaction" rule the scene itself is built on — nothing is moved, so nothing is renumbered.
-    ///
-    /// **A room is given back through a `Graveyard` and never straight to `give`.** A frame that
-    /// traced the structure standing in it may still be on the queue when the mesh it belonged to
-    /// goes, so what says the room is free again is the fence of the frame that buried it.
+    /// Room for bottom-level acceleration structures, as a list of buffers nothing ever moves: one
+    /// buffer sized to the scene is what made a cell arriving rebuild the world. A `RunAllocator`
+    /// over each block, in units of the structure alignment. A room is given back through a
+    /// `Graveyard` and never straight to `give`, because a frame that traced the structure may
+    /// still be on the queue.
     class StructureStorage
     {
     public:
@@ -56,10 +46,8 @@ namespace Rtx
 
         /// Room for a structure of `bytes`, taken from the first block that has it.
         ///
-        /// @param least how large to make a new block where none of the existing ones can hold it.
-        ///        A load knows the whole scene's total and asks for it, so a cell's structures land
-        ///        in one allocation; an arrival asks for nothing in particular and gets a block big
-        ///        enough for itself.
+        /// @param least how large to make a new block where none of the existing ones can hold it:
+        ///        a load asks for the whole scene's total, an arrival for nothing in particular.
         StructureRoom take(const Device& device, VkDeviceSize bytes, VkDeviceSize least);
 
         /// Gives a structure's room back, and gives the block to the device where that was the last
@@ -73,12 +61,8 @@ namespace Rtx
         /// How much storage exists, which is what the device was asked for.
         VkDeviceSize getBytes() const;
 
-        /// What the structures standing in it occupy.
-        ///
-        /// **The pair is the question once anything is compacted.** A tight copy gives the loose
-        /// room it stood in back, and a block is returned whole or not at all — so the room asked
-        /// for stops being the room used, and a single figure would report either the saving or the
-        /// reservation and never both.
+        /// What the structures standing in it occupy, beside the room asked for, because the two
+        /// part company once anything is compacted.
         VkDeviceSize getLiveBytes() const;
 
     private:

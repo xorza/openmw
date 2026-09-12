@@ -10,43 +10,27 @@
 
 namespace Rtx
 {
-    /// Far enough to cross any cell. A primary ray that reaches this has left the world.
-    ///
-    /// **One number for every camera in the fork, because it is not only a cost.** It is the sun's
-    /// shadow-ray reach, the distance an unbounded water path is written off at, and what the depth
-    /// buffer encodes against — so a harness that traced to a different one measured a different
-    /// frame from the game and could not be read against it. The largest exterior view in the game
-    /// is a few tens of thousands of units, which this clears by an order of magnitude.
+    /// Far enough to cross any cell. One number for every camera in the fork, because it is also
+    /// the sun's shadow-ray reach and what the depth buffer encodes against, so a harness that
+    /// traced to a different one measured a different frame from the game.
     constexpr float sFarPlane = 200000.0f;
 
     /// Constants for a pinhole camera at `origin` looking `along`, which need not be a unit vector.
-    ///
-    /// The world's up is +Z, as Morrowind has it. A camera with no direction to look along, or one
-    /// pointed straight up or straight down, has no basis; both throw `Error`. These arrive from a
-    /// command line, so they are input rather than a contract, and the alternative to a message is a
-    /// normalised zero vector quietly filling the image with NaN.
+    /// The world's up is +Z. A zero direction, or one straight up or down, throws `Error`: these
+    /// arrive from a command line, so they are input and not a contract.
     Shaders::VisibilityConstants makeCameraAlong(const osg::Vec3f& origin, const osg::Vec3f& along,
         float verticalFovDegrees, std::uint32_t width, std::uint32_t height, float far);
 
-    /// The same, from a point to look at rather than a direction.
-    ///
-    /// **Not what a camera far from the origin should use.** A direction recovered by subtracting
-    /// two world points carries their rounding: a float ulp out where Morrowind's cells are is a
-    /// hundredth of a unit, so two points a unit apart name a direction that is a fifth of a degree
-    /// out and that changes every time the eye moves. Anything holding a view matrix has the
-    /// direction already and should hand it over; a target is for a viewpoint written down in a
-    /// file, where it is exact because it never moves.
+    /// The same, from a point to look at rather than a direction — for a viewpoint written down in
+    /// a file, and not for a moving eye: a float ulp where Morrowind's cells are is a hundredth of
+    /// a unit, so two points a unit apart name a direction a fifth of a degree out.
     Shaders::VisibilityConstants makeCamera(const osg::Vec3f& origin, const osg::Vec3f& target,
         float verticalFovDegrees, std::uint32_t width, std::uint32_t height, float far);
 
-    /// A camera from a view matrix — the world-to-eye transform anything holding a viewpoint
-    /// already has, in OpenSceneGraph's convention: row vectors, and an eye space looking down its
-    /// own -Z.
-    ///
-    /// **The basis comes out of the matrix rather than from the world's up.** `makeCameraAlong` has
-    /// no roll to work from and so takes it from the world, which leaves it with no answer at all
-    /// for a camera looking straight down — and straight down is what a map is. Throws `Error` for
-    /// a matrix that cannot be inverted or whose basis has collapsed.
+    /// A camera from a view matrix in OpenSceneGraph's convention: row vectors, and an eye space
+    /// looking down its own -Z. The basis comes out of the matrix rather than from the world's up,
+    /// which is what lets a map look straight down. Throws `Error` for a matrix that cannot be
+    /// inverted or whose basis collapsed.
     Shaders::VisibilityConstants makeCameraFromView(const osg::Matrixf& view, float verticalFovDegrees,
         std::uint32_t width, std::uint32_t height, float near, float far);
 
@@ -56,15 +40,9 @@ namespace Rtx
     Shaders::VisibilityConstants makeOrthographicCameraFromView(const osg::Matrixf& view, float worldWidth,
         float worldHeight, std::uint32_t width, std::uint32_t height, float near, float far);
 
-    /// Where inside its pixel frame `index` should sample, in pixels and centred on zero.
-    ///
-    /// **A low-discrepancy sequence and not a random one.** What an upscaler reconstructs from is
-    /// the set of sub-pixel positions a few frames covered between them, so the positions have to
-    /// spread evenly over the pixel rather than clump the way random draws do. Halton in bases two
-    /// and three is what everything that does this uses, and its first terms are worth knowing:
-    /// base two runs 1/2, 1/4, 3/4, 1/8, and base three 1/3, 2/3, 1/9.
-    ///
-    /// The result is in the image's axes — x right, y down — because that is what the shader adds
-    /// it to.
+    /// Where inside its pixel frame `index` should sample, in pixels and centred on zero, in the
+    /// image's axes. Halton in bases two and three — 1/2, 1/4, 3/4, 1/8 and 1/3, 2/3, 1/9 —
+    /// because an upscaler reconstructs from the positions a few frames covered between them, and
+    /// random draws clump.
     osg::Vec2f haltonJitter(std::uint32_t index);
 }

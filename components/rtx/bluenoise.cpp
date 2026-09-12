@@ -16,11 +16,9 @@ namespace Rtx
         constexpr std::size_t sExtent = Shaders::BLUE_NOISE_EXTENT;
         constexpr std::size_t sCount = sExtent * sExtent;
 
-        /// Width of the Gaussian the cluster and void measure is taken with, in pixels.
-        ///
-        /// Ulichney's figure. It sets what "near" means: too tight and a position stops seeing past
-        /// its immediate neighbours, which leaves clumps at the scale it cannot see; too wide and
-        /// every position looks alike and the search has nothing left to choose by.
+        /// Width of the Gaussian the cluster and void measure is taken with, in pixels —
+        /// Ulichney's figure. Too tight leaves clumps at the scale it cannot see; too wide and every
+        /// position looks alike.
         constexpr float sSigma = 1.5f;
 
         /// How far the Gaussian is carried before it is dropped, in pixels.
@@ -37,12 +35,8 @@ namespace Rtx
         /// dense enough to say where the rest should go.
         constexpr std::size_t sInitialOnes = sCount / 10;
 
-        /// The pattern being ranked and the field saying where its ones are crowded.
-        ///
-        /// **The field is carried rather than recomputed.** Every step moves one pixel and then asks
-        /// the whole tile which position is now the most crowded; rebuilding the field each time
-        /// would make this cubic in the pixel count, where updating it over the Gaussian's own
-        /// support and scanning once leaves it quadratic.
+        /// The pattern being ranked and the field saying where its ones are crowded. The field is
+        /// carried rather than recomputed, which keeps the search quadratic rather than cubic.
         struct Field
         {
             std::vector<float> mKernel;
@@ -97,23 +91,16 @@ namespace Rtx
                 return found;
             }
 
-            /// Put the pattern and its field back to a state they were both in at once.
-            ///
-            /// The two have to agree or every search after them is answering about a tile that is
-            /// not there. `set` is what normally keeps them in step; this is the one place that
-            /// rewinds, and it takes them together so that it cannot rewind one of them.
+            /// Put the pattern and its field back to a state they were both in at once, so that a
+            /// rewind cannot rewind one of them.
             void restore(const std::vector<std::uint8_t>& ones, const std::vector<float>& energy)
             {
                 mOnes = ones;
                 mEnergy = energy;
             }
 
-            /// The hole with the least: where the next sample goes.
-            ///
-            /// **The same rule serves past half full**, where the zeros are the minority and it is
-            /// their tightest cluster that wants breaking up. Every position on a torus sees the same
-            /// total Gaussian, so the zeros' own field is that constant minus this one — and its
-            /// largest value is exactly this one's smallest.
+            /// The hole with the least: where the next sample goes. The same rule serves past half
+            /// full, because the zeros' own field is a constant minus this one.
             std::size_t largestVoid() const
             {
                 std::size_t found = 0;
@@ -129,15 +116,10 @@ namespace Rtx
             }
         };
 
-        /// Void-and-cluster: one mask, as the order in which its pixels would be filled in.
-        ///
-        /// Ulichney 1993. The rank of a pixel is how many others come before it, so thresholding the
-        /// tile anywhere leaves a pattern with no clumps and no holes at that level — which is the
-        /// property that makes it useful as an offset per pixel rather than merely as a texture.
-        ///
-        /// Three passes over one starting arrangement: settle it, rank its members downward by
-        /// pulling the tightest cluster apart, then rank everything else upward by filling the
-        /// largest void. `seed` is what makes the channels differ.
+        /// Void-and-cluster (Ulichney 1993): one mask, as the order in which its pixels would be
+        /// filled in, so thresholding the tile anywhere leaves a pattern with no clumps and no holes.
+        /// Three passes over one starting arrangement: settle it, rank its members downward, then
+        /// rank everything else upward. `seed` is what makes the channels differ.
         std::vector<std::uint32_t> rankMatrix(std::uint32_t seed)
         {
             Field field;

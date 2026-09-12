@@ -91,13 +91,9 @@ namespace Rtx
         mTexCoords.resize(reach);
         mColours.resize(reach);
 
-        // **Filled where the mesh brought none**, rather than left holding whatever the slot's last
-        // tenant had. A reused slot is the only way that could happen and it would light a surface
-        // by somebody else's normals, or paint it with somebody else's colour.
-        //
-        // What stands for nothing differs by attribute: a zero normal says "use the triangle's
-        // plane" and a white colour says "no tint", because one is read and the other is
-        // multiplied.
+        // Filled where the mesh brought none, or a reused slot lights a surface by its last
+        // tenant's normals. A zero normal says "use the triangle's plane" and a white colour says
+        // "no tint", because one is read and the other is multiplied.
         const auto fill = [&](auto& into, const auto& brought, const auto& nothing) {
             const auto at = into.begin() + range.mVertices.mOffset;
             if (brought.empty())
@@ -146,12 +142,10 @@ namespace Rtx
     std::size_t MeshTable::sweep()
     {
         const std::size_t freed = mRows.sweep([this](const Index index, MeshRange& range) {
-            // **The slot stays where it is and only its geometry goes back.** Nothing is moved down
-            // over it, so every index above this one still means what it meant — which is the whole
-            // point, because each of them names a bottom-level acceleration structure that would
-            // otherwise have to be built again. The room the geometry occupied returns to the
-            // allocators, which merge it with whatever it touches: a cell arrived as thousands of
-            // runs laid end to end and it leaves as the one hole it came as.
+            // The slot stays where it is and only its geometry goes back, because every index
+            // above it names a bottom-level acceleration structure that would otherwise be built
+            // again. The allocators merge the room with whatever it touches, so a cell leaves as
+            // the one hole it came as.
             mPositions.release(range.mVertices);
             mIndices.release(range.mIndices);
             mDeformers.release(range);

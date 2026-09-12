@@ -18,27 +18,13 @@ namespace Rtx
     class Batch;
     class Device;
 
-    /// One table of fixed-size elements, kept as a list of separate buffers of a fixed count each.
-    ///
-    /// **What makes a scene appendable.** A table sized to the scene has to be made again when the
-    /// scene grows, and everything already built from it — an acceleration structure holds the
-    /// address of the vertices it was built from — is then pointing at memory that has moved. A
-    /// block is allocated once at its full size and never reallocated, so every address handed out
-    /// stays good and a cell arriving adds a block rather than replacing the world.
-    ///
-    /// **Full blocks even where the scene stops part way into the last one**, which is the whole of
-    /// what the paragraph above buys: a block cut to what is currently in it would have to be made
-    /// again the moment anything more arrived. The slack is bounded by one block per table.
-    ///
-    /// **Device memory, written through the batch a load is already recording.** These hold the
-    /// bulk of a world — most of what a cell puts on the device — and the memory the host writes
-    /// into directly is a couple of hundred megabytes on a card without resizable BAR, so a table
-    /// that lived there would run a cell out of room. The copy costs a load what a load already
-    /// pays: the bytes are staged into the same blocks every texture upload uses, and the barrier
-    /// `writeGeometry` ends in is what orders them against the build that reads them.
-    ///
-    /// `Rtx::SceneDesc` never lets a mesh's run straddle a block, so `addressOf` on a run's first
-    /// element covers the whole run.
+    /// One table of fixed-size elements, kept as a list of separate buffers of a fixed count each,
+    /// so a cell arriving adds a block and every address already built into an acceleration
+    /// structure stays good. Full blocks even where the scene stops part way, or the last would be
+    /// made again on the next arrival. Device memory, staged through the batch a load is already
+    /// recording, because the memory the host writes into directly is a couple of hundred
+    /// megabytes on a card without resizable BAR. `Rtx::SceneDesc` never lets a mesh's run
+    /// straddle a block, so `addressOf` on a run's first element covers the whole run.
     class BlockedBuffer
     {
     public:

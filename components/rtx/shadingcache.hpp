@@ -9,23 +9,16 @@ namespace Rtx
 {
     struct TextureData;
 
-    /// The painted light of each texture that has been estimated, kept by the file it came from.
-    ///
-    /// **Estimating one reads every texel of a texture's largest level**, and the same handful of
-    /// ground textures make every chunk of a region — so a caller that estimates per chunk would
-    /// read the same megabyte once per chunk it bakes, which is a real share of a crossing's CPU.
-    ///
-    /// **Not the same cache as the texture builder's, and it should not become one.** That one
-    /// keeps a description per live slot and drops it when the slot goes; this one is keyed on a
-    /// path and lives as long as its owner, because what it answers outlives any slot — a chunk
-    /// baked from a ground texture no slot names any more is still a chunk.
+    /// The painted light of each texture that was estimated, kept by the file it came from,
+    /// because estimating one reads every texel of the largest level and the same handful of
+    /// ground textures make every chunk of a region. Not the texture builder's cache, which drops
+    /// a description with its slot: a chunk baked from a ground texture no slot names any more is
+    /// still a chunk.
     class ShadingCache
     {
     public:
         /// The estimate for `texture`, made once for each `file` and made afresh for every texture
-        /// that names none.
-        ///
-        /// The reference is good until the next call that names no file.
+        /// that names none. The reference is good until the next call that names no file.
         const ShadingMap& estimate(const TextureData& texture, const std::string& file)
         {
             if (file.empty())

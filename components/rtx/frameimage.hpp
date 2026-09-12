@@ -13,12 +13,9 @@
 
 namespace Rtx
 {
-    /// One of the images the trace writes and everything after it reads.
-    ///
-    /// **The shader's own numbering, and not a second list beside it.** The bindings are
-    /// `CHANNEL_*` from `shaders/gbuffer.h`, so a value here is the binding — and a channel added
-    /// to the shader without a case here is a build failure rather than a read of whichever image
-    /// happened to sit at that number.
+    /// One of the images the trace writes and everything after it reads, numbered by the
+    /// shader's own `CHANNEL_*` from `shaders/gbuffer.h`, so a channel added to the shader without
+    /// a case here is a build failure.
     enum class Channel : std::uint32_t
     {
         Direct = Shaders::CHANNEL_DIRECT,
@@ -44,13 +41,8 @@ namespace Rtx
         return static_cast<std::uint32_t>(channel);
     }
 
-    /// What a capture and a dump call each channel, and the one place they are written.
-    ///
-    /// **One table, because this enum was spelled three times**: here, in a list of every value and
-    /// in a switch that named them. `Rtx::NamedEnum` derives the walk and the printable list from
-    /// the names, so a channel added to the shader cannot reach one of the three and miss another.
-    ///
-    /// In binding order, which is what `values()` then hands a walk that wants them all.
+    /// What a capture and a dump call each channel, and the one place they are written, in
+    /// binding order, which is what `values()` then hands a walk that wants them all.
     inline constexpr NamedEnum<Channel, sChannelCount> sChannels{ { {
         { Channel::Direct, "g-direct" },
         { Channel::Indirect, "g-indirect" },
@@ -76,11 +68,9 @@ namespace Rtx
         return sChannels.name(channel);
     }
 
-    /// The two images a frame carries that are not channels of the trace's g-buffer.
-    ///
-    /// **Named apart, because they are not written by the trace and have no binding.** The
-    /// composite's output is the frame every channel was gathered to make, and the accumulation is
-    /// the wavelet's own blend — which a frame no wavelet reconstructed does not have at all.
+    /// The two images a frame carries that are not channels of the trace's g-buffer and have no
+    /// binding: the composite's output, and the wavelet's own blend, which a frame no wavelet
+    /// reconstructed does not have at all.
     enum class FrameImage
     {
         /// What the composite drew, which is the picture.
@@ -121,12 +111,9 @@ namespace Rtx
         Rgb = 3,
     };
 
-    /// The frame as an `osg::Image` of the size and the format asked for, or null where there is
-    /// nothing to give.
-    ///
-    /// **Nearest, and resampled here rather than by `osg::Image::scaleImage`**, which is
-    /// `gluScaleImage` — a GL call, and on this path there is no context to make it in. A save asks
-    /// for its thumbnail at a hundred pixels across, where a box filter rounds to the same texels.
+    /// The frame as an `osg::Image` of the size and the format asked for, resampled nearest here
+    /// because `osg::Image::scaleImage` is `gluScaleImage` and there is no GL context on this
+    /// path.
     ///
     /// @return null where either extent is zero or `frame.mPixels` is shorter than the frame it
     ///         claims to be, because a picture of part of a frame is worse than none.

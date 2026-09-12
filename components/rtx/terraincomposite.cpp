@@ -17,11 +17,8 @@ namespace Rtx
     namespace
     {
         /// A bilinear tap along one axis: the two rows or columns it falls between, and how far it
-        /// is from the first towards the second.
-        ///
-        /// **Texel centres sit at half-integers**, so the footprint starts half a texel back. That is
-        /// the one rule the mask lookup and the diffuse fetch below have to agree on: half a texel of
-        /// drift between them puts a ground type's blend somewhere its mask never said.
+        /// is from the first towards the second. Texel centres sit at half-integers, which the mask
+        /// lookup and the diffuse fetch have to agree on.
         struct Tap
         {
             std::uint32_t mFirst = 0;
@@ -29,11 +26,9 @@ namespace Rtx
             float mAcross = 0.0f;
         };
 
-        /// Where `at` lands on a grid of `size`, with both neighbours held inside it.
-        ///
-        /// **Clamped at the grid's edges where every other texture in this scene repeats.** A mask
-        /// is a few dozen texels across and states the whole chunk; wrapping it would blend the far
-        /// side of the chunk into the near one, which is a ground type appearing where it is not.
+        /// Where `at` lands on a grid of `size`, with both neighbours held inside it. Clamped where
+        /// every other texture repeats, because a mask states the whole chunk and wrapping it would
+        /// blend the far side into the near one.
         Tap clampedTap(float at, std::uint32_t size)
         {
             const float texel = at * static_cast<float>(size) - 0.5f;
@@ -112,15 +107,9 @@ namespace Rtx
         }
 
         /// Decodes the two levels of a layer's diffuse whose texels are the size of a composite
-        /// texel, which is all of it the bake will ever read.
-        ///
-        /// **A point sample of a tiling texture is noise at this scale.** A chunk several cells
-        /// across tiles its ground hundreds of times, so one output texel covers hundreds of input
-        /// ones; reading the finest level picks an arbitrary one of them and the chunk comes out
-        /// speckled rather than the colour the ground averages to.
-        ///
-        /// The level is constant across the whole composite because the transform is, which is what
-        /// makes decoding it once possible at all.
+        /// texel, which is all of it the bake will ever read: one output texel covers hundreds of
+        /// input ones, and the finest level would come out speckled. The level is constant across
+        /// the composite because the transform is.
         void prepare(const CompositeLayer& layer, std::uint32_t extent, Ground& into)
         {
             into.reuse();
@@ -151,12 +140,8 @@ namespace Rtx
         }
 
         /// Marks in `covered` the mask columns that hold anything on either row of `down`, and says
-        /// whether any does.
-        ///
-        /// **What keeps nine ground types from costing nine mask lookups a texel.** A chunk several
-        /// cells across carries every ground type in them and each covers a corner of it, so most
-        /// of the stack is absent from most of any row of it — and a column pair that is empty is a
-        /// weight of exactly nought, which is the case the sum below already drops.
+        /// whether any does — what keeps nine ground types from costing nine mask lookups a texel,
+        /// since each covers a corner of the chunk.
         bool coveredColumns(const CompositeLayer& layer, const Tap& down, std::vector<std::uint8_t>& covered)
         {
             covered.resize(layer.mMaskWidth);
@@ -175,12 +160,9 @@ namespace Rtx
             return any != 0;
         }
 
-        /// One channel of light, as the byte a backend uploads.
-        ///
-        /// **Rounded here rather than through `std::lround`**, which is a libm call no compiler
-        /// inlines and which a chain reaches a million times. `toEncoded` clamps to the unit range,
-        /// so the value is inside `[0, 255]` — where the whole part and the remainder are both
-        /// exact, and the two roundings agree bit for bit.
+        /// One channel of light, as the byte a backend uploads. Rounded here rather than through
+        /// `std::lround`, a libm call a chain reaches a million times; inside `[0, 255]` the two
+        /// roundings agree bit for bit.
         std::byte encodeByte(float linear)
         {
             const float value = toEncoded(linear) * 255.0f;
@@ -212,13 +194,9 @@ namespace Rtx
         scratch.mCoarser.reserve(texels);
         scratch.mLight.assign(texels, osg::Vec3f());
 
-        // **A layer at a time, and a row of it at a time.** Every tap down the V axis — the mask's
-        // row pair, each diffuse level's row pair — belongs to the row rather than to the texel,
-        // and a row a layer is absent from is a row of it with nothing to sum. Walking the stack
-        // outermost is what lets both be answered once instead of a quarter of a million times.
-        //
-        // **The stack has to stay in its own order**, because a float sum is the order it was added
-        // in: this reaches one texel layer by layer, exactly as a loop over the texels would.
+        // A layer at a time, and a row of it at a time, so every tap down the V axis is answered
+        // once instead of a quarter of a million times. The stack stays in its own order, because
+        // a float sum is the order it was added in.
         for (std::size_t index = 0; index < layers.size(); ++index)
         {
             const Ground& ground = scratch.mGrounds[index];

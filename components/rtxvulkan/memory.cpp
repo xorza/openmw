@@ -14,20 +14,13 @@ namespace Rtx
 {
     namespace
     {
-        /// The smallest block a pool starts with, and the largest it grows one to.
-        ///
-        /// **A pool doubles until it reaches the ceiling.** A pool that stands two kilobytes should
-        /// not reserve the whole ceiling for them, and a pool that stands a cell's textures — tens
-        /// of megabytes — should reach them in a handful of calls rather than in dozens.
-        /// Doubling from the floor is what answers both: 8, 16, 32, then 64 for ever after.
+        /// The smallest block a pool starts with, and the largest it grows one to, doubling between:
+        /// 8, 16, 32, then 64 for ever after.
         constexpr VkDeviceSize sSmallestBlock = 8 * 1024 * 1024;
         constexpr VkDeviceSize sLargestBlock = 64 * 1024 * 1024;
 
-        /// The pool a resource of `type` and `tiling` comes out of, and the type it was made from.
-        ///
-        /// **One number, because a block names its pool and nothing else about it.** Written here
-        /// rather than at the two places that pack and unpack it, so a report reading a block's type
-        /// back cannot disagree with what `take` put in.
+        /// The pool a resource of `type` and `tiling` comes out of, and the type it was made from,
+        /// packed and unpacked in one place.
         std::uint32_t poolOf(std::uint32_t type, Tiling tiling)
         {
             return 2 * type + (tiling == Tiling::Linear ? 0u : 1u);
@@ -38,11 +31,9 @@ namespace Rtx
             return pool / 2;
         }
 
-        /// How many pages a resource of `size` needs, given where its `alignment` may push it.
-        ///
-        /// A page boundary is already a multiple of every alignment up to a page, so only a coarser
-        /// one costs anything: the range has to hold the resource wherever inside it the alignment
-        /// lands, which is at most a page short of one whole alignment further on.
+        /// How many pages a resource of `size` needs, given where its `alignment` may push it: only
+        /// an alignment coarser than a page costs anything, at most a page short of one whole
+        /// alignment.
         std::uint32_t pagesFor(VkDeviceSize size, VkDeviceSize alignment)
         {
             assert(

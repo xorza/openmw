@@ -9,13 +9,8 @@
 namespace Rtx
 {
     /// Values given back whole and taken again, so that what a row's vectors grew is room the next
-    /// row refills.
-    ///
-    /// **For a row held by value in a table that moves it**, which `Spares` cannot be: that one
-    /// hands out stable addresses and keeps every object it ever made, where a `SortedRows` row is
-    /// moved into and out of its table and is nobody's address. What is kept here is the row's
-    /// buffers and not the row — a `take` is a moved-from value the caller fills, and a `give` is a
-    /// value the caller has emptied.
+    /// row refills — for a row held by value in a table that moves it, where `Spares` hands out
+    /// stable addresses.
     template <class T>
     class Recycled
     {
@@ -39,18 +34,9 @@ namespace Rtx
         std::vector<T> mSpare;
     };
 
-    /// Objects lent out and given back, and never freed while this stands.
-    ///
-    /// **What lets a loader read a cell into buffers the last cell grew.** An object given back
-    /// keeps whatever room its vectors reached, so the next `take` refills that room rather than
-    /// going to the heap for it — which is the rule every loader in this renderer keeps, and the
-    /// one a reader on its own thread would otherwise break once per cell and once per model.
-    ///
-    /// **Addresses are stable.** Each object lives where it was made, so a pointer handed to
-    /// another thread stays good until the object is given back — which is what makes a raw
-    /// pointer, and not a shared one, the right thing to hand over.
-    ///
-    /// Not thread-safe: one owner, on one thread.
+    /// Objects lent out and given back, and never freed while this stands, so a loader reads a
+    /// cell into buffers the last cell grew. Addresses are stable, which is what makes a raw
+    /// pointer the right thing to hand another thread. Not thread-safe: one owner, on one thread.
     template <class T>
     class Spares
     {
@@ -85,12 +71,9 @@ namespace Rtx
         std::vector<T*> mSpare;
     };
 
-    /// Puts `object` back to its default while keeping the room its buffers grew.
-    ///
-    /// **Every field not named here is reset, and only a buffer needs naming.** A `reuse()` written
-    /// as a list of fields resets a new field only if its author remembers; this one resets a new
-    /// scalar for free, and a buffer forgotten is a buffer that reallocates, which the allocation
-    /// test sees.
+    /// Puts `object` back to its default while keeping the room its buffers grew. Every field not
+    /// named is reset, so a new scalar is reset for free and a buffer forgotten reallocates, which
+    /// the allocation test sees.
     template <class T, class... Buffers>
     void reuseKeeping(T& object, Buffers T::*... buffers)
     {
@@ -107,11 +90,8 @@ namespace Rtx
         object = std::move(fresh);
     }
 
-    /// A list consumed from the front in the order it was filled.
-    ///
-    /// **Emptied once it is drained and never before**, so a route allocates for it only while it
-    /// grows, and what is left in it is never moved. Beside `Pool` and `Spares` because it is the
-    /// same kind of thing: a container with one rule about when its room goes back.
+    /// A list consumed from the front in the order it was filled, emptied once it is drained and
+    /// never before, so what is left in it is never moved.
     template <class T>
     struct Backlog
     {
@@ -135,15 +115,9 @@ namespace Rtx
         }
     };
 
-    /// Entries reused across arrivals: as deep as the most one arrival ever wanted, and never freed.
-    ///
-    /// **Refilled rather than emptied**, because what an entry holds is room the heap gave it. An
-    /// entry handed out again writes into whatever the last one grew, so an arrival pays for that
-    /// room once for the life of the run rather than on the frame a cell lands.
-    ///
-    /// **`next` and `keep` are two calls because a caller may not want what it built.** A chain
-    /// built over a texture that already carried one is empty and is left for the next arrival, so
-    /// what says an entry is in use is the caller and not the handing out.
+    /// Entries reused across arrivals: as deep as the most one arrival ever wanted, and never
+    /// freed. `next` and `keep` are two calls because a caller may not want what it built: a chain
+    /// built over a texture that already carried one is left for the next arrival.
     template <class T>
     class Pool
     {

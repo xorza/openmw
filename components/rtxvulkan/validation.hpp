@@ -15,10 +15,8 @@ namespace Rtx
         std::string mText;
 
         /// The thread this message is filed under: the one that made the call, or the one
-        /// `AdoptedThread` names in its place.
-        ///
-        /// The test binary runs tests in parallel against one shared log, so without this the first
-        /// test to provoke an error would fail every test that collected after it.
+        /// `AdoptedThread` names in its place. The test binary runs tests in parallel against one
+        /// shared log, so the first error would otherwise fail every test that collected after it.
         std::thread::id mThread;
     };
 
@@ -34,13 +32,9 @@ namespace Rtx
         Abort,
     };
 
-    /// Thread-safe sink for validation errors.
-    ///
-    /// Printing to stderr is not enough for tests: a render that emits validation errors and still
-    /// produces plausible pixels would otherwise pass.
-    ///
-    /// **Errors only.** Warnings are logged but not stored — nothing reads them, and a long session
-    /// would otherwise accumulate them without bound.
+    /// Thread-safe sink for validation errors, because a render that emits them and still draws
+    /// plausible pixels would otherwise pass a test. Warnings are logged and not stored: nothing
+    /// reads them, and a long session would accumulate them without bound.
     class ValidationLog
     {
     public:
@@ -57,14 +51,9 @@ namespace Rtx
         /// Called from the Vulkan debug callback, on whichever thread it fires.
         void recordError(std::string&& text);
 
-        /// Appends the errors raised by Vulkan calls made on the calling thread, and removes them.
-        ///
-        /// **Taken rather than read, and under the one lock.** A message arriving between a read and
-        /// a separate clear is a message nobody ever sees, and a collector that reads without
-        /// removing hands the same error to the next caller as well.
-        ///
-        /// The text only: which thread a message was filed under is how this log finds it, and no
-        /// caller has anything to do with the answer.
+        /// Appends the errors raised by Vulkan calls made on the calling thread, and removes them
+        /// under the one lock, because a message arriving between a read and a separate clear is a
+        /// message nobody ever sees.
         void takeErrorsOnThisThread(std::vector<std::string>& out);
 
         void clear();
@@ -75,13 +64,9 @@ namespace Rtx
         std::vector<ValidationMessage> mErrors;
     };
 
-    /// Files this thread's validation errors under `owner` for as long as it stands.
-    ///
-    /// **What keeps a worker's mistake with the caller that started it.** Pipeline compilation runs
-    /// a thread per core and the layers report on whichever thread made the call, so an error raised
-    /// inside a worker is filed under a thread nobody ever collects from. The log is filed by thread
-    /// at all because the test binary runs tests in parallel against one shared log, so the answer
-    /// is to move the message rather than to stop filing.
+    /// Files this thread's validation errors under `owner` for as long as it stands. Pipeline
+    /// compilation runs a thread per core and the layers report on whichever thread made the call,
+    /// so an error raised inside a worker would be filed under a thread nobody collects from.
     class AdoptedThread
     {
     public:

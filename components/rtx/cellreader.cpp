@@ -90,11 +90,9 @@ namespace Rtx
         };
 
         /// The reference's own space to the world's, composed as `SceneUtil::PositionAttitudeTransform`
-        /// composes the one the game stands a clone under: scaled, then turned, then moved.
-        ///
-        /// **The paging's own quaternion**, axis by negated axis: Morrowind's angles turn the other
-        /// way about each axis, and the order they are applied in — Z first — is the content's, so
-        /// what stands here is what `createChunk` stood.
+        /// composes the one the game stands a clone under: scaled, then turned, then moved. The
+        /// paging's own quaternion, axis by negated axis and Z first, so this stands what
+        /// `createChunk` stood.
         osg::Matrixf transformOf(const Terrain::PagedCellRef& ref)
         {
             const osg::Quat attitude = osg::Quat(ref.mRotation.z(), osg::Vec3f(0.0f, 0.0f, -1.0f))

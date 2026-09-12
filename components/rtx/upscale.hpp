@@ -11,21 +11,14 @@
 
 namespace Rtx
 {
-    /// How the frame gets from the size it is traced at to the size it is shown at.
-    ///
-    /// **A quality level rather than a ratio**, because the ratio is the upscaler's to choose: what
-    /// to render at for a given output is asked of it, and the answer has changed between versions
-    /// of the network.
-    ///
-    /// Each backend reads this as whatever its platform offers — Ray Reconstruction on Vulkan. A
-    /// build without one refuses anything but `Off` rather than quietly ignoring it.
+    /// How the frame gets from the size it is traced at to the size it is shown at — a quality
+    /// level rather than a ratio, because the ratio is the upscaler's to choose. A build without an
+    /// upscaler refuses anything but `Off`.
     enum class Upscale
     {
-        /// Trace and present at the same size, with no upscaler in the frame at all. What every test
-        /// and every reference render uses, because a converged average is of the trace and not of
-        /// a network's opinion of it.
-        ///
-        /// **Reachable by name and offered by no menu**, for the reason `sUpscaleMenu` gives.
+        /// Trace and present at the same size, with no upscaler in the frame at all — what every
+        /// test and every reference render uses. Reachable by name and offered by no menu
+        /// (`sUpscaleMenu`).
         Off,
 
         /// A third of the output's width and height, so a ninth of its pixels — 1280×720 internal
@@ -65,19 +58,9 @@ namespace Rtx
     }
 
     /// The modes a menu offers, in the order it lists them: fewest pixels traced first, every pixel
-    /// last, and each of them denoised.
-    ///
-    /// **Not every mode**, which is what the name says and the entries below leave out.
-    ///
-    /// **One list, because two menus offer it.** The launcher and the game's own settings window
-    /// each turn a position in a list into a mode and back, and a list stated twice is two of them
-    /// the moment a mode is added.
-    ///
-    /// **`Off` is not among them, and that is the whole of what the list decides.** Ray
-    /// Reconstruction is this renderer's denoiser and not an upscaler bolted on to one, so turning
-    /// it off does not trade sharpness for speed — it hands the frame to the wavelet filter instead
-    /// and the picture is worse in every way. The mode stays reachable by name, for a reference
-    /// render and for telling the two denoisers apart, and nobody is offered it in a menu.
+    /// last, and each of them denoised. One list, because the launcher and the settings window both
+    /// offer it. `Off` is not among them: Ray Reconstruction is this renderer's denoiser, so
+    /// turning it off hands the frame to the wavelet filter and the picture is worse in every way.
     inline constexpr std::array sUpscaleMenu{ Upscale::UltraPerformance, Upscale::Performance, Upscale::Balanced,
         Upscale::Quality, Upscale::Dlaa };
 
@@ -111,9 +94,6 @@ namespace Rtx
 
     /// Where the mode `name` spells sits in the menu — nothing where it spells no mode at all, and
     /// nothing where it spells one the menu does not offer.
-    ///
-    /// **Both menus ask exactly this**, of the same setting, and each answering it for itself was
-    /// three lines of the same two questions in two files.
     inline std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
     {
         if (const std::optional<Upscale> mode = upscaleNamed(name))

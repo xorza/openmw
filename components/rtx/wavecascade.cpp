@@ -11,13 +11,8 @@ namespace Rtx
 {
     namespace
     {
-        /// Two uniform numbers in `(0, 1)` from a grid index, and the same two every time.
-        ///
-        /// **A sea has to be the same sea twice.** A cell reloaded, a screenshot taken again, or a
-        /// test run on another machine all have to draw the same water, so the Gaussians below come
-        /// off a hash of where they sit rather than out of a generator with a history.
-        ///
-        /// Wang's integer hash, which is enough for amplitudes nobody looks at individually.
+        /// Two uniform numbers in `(0, 1)` from a grid index, and the same two every time, so a
+        /// screenshot taken again draws the same water. Wang's integer hash.
         std::uint32_t scramble(std::uint32_t seed)
         {
             seed = (seed ^ 61u) ^ (seed >> 16u);
@@ -27,12 +22,9 @@ namespace Rtx
             return seed ^ (seed >> 15u);
         }
 
-        /// A pair of standard normals, by Box-Muller off two hashes.
-        ///
-        /// **The whole of what makes a spectrum a sea rather than a shape.** An amplitude drawn at
-        /// its expected value everywhere gives a surface whose every wave crests together, which is
-        /// a pond in a cartoon; a Gaussian one gives the Rayleigh-distributed crest heights real
-        /// water has, and the spectrum then states the *variance* rather than the surface.
+        /// A pair of standard normals, by Box-Muller off two hashes — what makes a spectrum a sea
+        /// rather than a shape: an amplitude drawn at its expected value everywhere gives a surface
+        /// whose every wave crests together.
         osg::Vec2f gaussians(std::uint32_t index)
         {
             // Away from zero on both, because the logarithm below is the one thing that cannot take
@@ -46,11 +38,9 @@ namespace Rtx
             return osg::Vec2f(radius * std::cos(angle), radius * std::sin(angle));
         }
 
-        /// How fast the dispersion relation carries a wavenumber into a frequency, `dw/dk`.
-        ///
-        /// **The Jacobian that turns a spectrum over frequency into one over wavevectors**, which is
-        /// what a grid needs and what a list of bands never did. Differentiating
-        /// `w^2 = g k tanh(k h)` gives it in closed form, so nothing here is a difference.
+        /// How fast the dispersion relation carries a wavenumber into a frequency, `dw/dk` — the
+        /// Jacobian that turns a spectrum over frequency into one over wavevectors, in closed form
+        /// from `w^2 = g k tanh(k h)`.
         float groupSlope(const SeaState& sea, float wavenumber)
         {
             const float depth = wavenumber * sea.mDepth;
@@ -60,11 +50,8 @@ namespace Rtx
             return Shaders::WATER_GRAVITY * (tanh + depth * (1.0f - tanh * tanh)) / (2.0f * frequency);
         }
 
-        /// Donelan-Banner's density at an angle off the wind, normalised over the circle.
-        ///
-        /// `getSpread` states the width of a `sech^2`, and a grid arrives with the angle already
-        /// rather than with a share of the energy to place — so what it needs is the density itself,
-        /// over the `2 tanh(s pi) / s` that shape covers.
+        /// Donelan-Banner's density at an angle off the wind, normalised over the circle: a
+        /// `sech^2` of the width `getSpread` states, over the `2 tanh(s pi) / s` it covers.
         float spreadAt(float spread, float angle)
         {
             const float shape = 1.0f / std::cosh(spread * angle);
@@ -118,11 +105,9 @@ namespace Rtx
 
                     const float frequency = sea.getFrequency(wavenumber);
 
-                    // **Spread about +X, which is the sea's own frame and never the wind's.** Which
-                    // way the wind blows changes with the weather and turns through a transition,
-                    // and a spectrum built for one heading would be rebuilt for the next. The
-                    // shader turns the tiles by the frame's `mSeaHeading` where it samples them
-                    // instead, and a turn there costs a rotation rather than a transform.
+                    // Spread about +X, the sea's own frame and never the wind's, because the wind
+                    // turns through a transition; the shader turns the tiles by `mSeaHeading` where
+                    // it samples them.
                     const float angle = std::atan2(wavevector.y(), wavevector.x());
 
                     // The spectrum over wavevectors: the density over frequency, carried across by
@@ -134,30 +119,20 @@ namespace Rtx
                     const std::size_t at
                         = static_cast<std::size_t>(row) * cascade.mGrid + static_cast<std::size_t>(column);
 
-                    // **Half the density into each of the two Gaussians**, which is what makes the
-                    // pair a circular complex normal: the real and imaginary parts are independent
-                    // and equally strong, so the phase is uniform and the amplitude Rayleigh.
-                    //
-                    // And a share of the density per tile, because every tile carries the whole
-                    // spectrum: independent draws of a fraction of the variance sum to one draw of
-                    // all of it, which is what lets two periods stand in for none.
+                    // Half the density into each of the two Gaussians, which makes the pair a
+                    // circular complex normal, and a share of the density per tile, because
+                    // independent draws of a fraction of the variance sum to one draw of all of it.
                     const float share = 1.0f / static_cast<float>(Shaders::WAVE_CASCADES);
                     const float scale = std::sqrt(0.5f * share * density * step * step);
 
-                    // **A whole stream apart per tile, not a tile's worth.** The two grids are
-                    // different sizes, so offsetting by a count would have the second tile draw the
-                    // first's numbers wherever the two ran into each other — and two tiles carrying
-                    // the same draws are one tile with the energy split, which is the one thing
-                    // having two of them is for.
+                    // A whole stream apart per tile, because two tiles carrying the same draws are
+                    // one tile with the energy split.
                     const std::uint32_t stream = static_cast<std::uint32_t>(index) * 0x51ed270bu;
                     cascade.mAmplitudes[at] = gaussians(stream + static_cast<std::uint32_t>(at)) * scale;
                     cascade.mFrequencies[at] = frequency;
 
-                    // **Twice, because a wavevector and its opposite both carry it.** The field is
-                    // `h0(k) e^{iwt} + conj(h0(-k)) e^{-iwt}`, and the two draws are independent, so
-                    // the mean square of the sum is the sum of the two mean squares. Parseval then
-                    // makes the surface's variance twice this sum — which is the convention
-                    // `wavecompose.comp` is written against, and why no scale stands between them.
+                    // Twice, because a wavevector and its opposite both carry it and the two draws
+                    // are independent — the convention `wavecompose.comp` is written against.
                     variance += 2.0f * cascade.mAmplitudes[at].length2();
                 }
         }
@@ -186,18 +161,11 @@ namespace Rtx
             const float step = Shaders::TAU / cascade.mExtent;
             const int half = static_cast<int>(cascade.mGrid) / 2;
 
-            // One power response per axis index per level, because the chain is separable and a
-            // wavevector reads two of its entries. Written out rather than evaluated inside the sum,
-            // which would be five million sines a tile.
-            //
-            // **Two filters and not one: the level, and the tap that reads it.** A level is the mean
-            // of `n` point samples, so its transfer is Dirichlet's kernel — and then `textureLod`
-            // reconstructs between those samples bilinearly, which is a second filter and a large
-            // one. Over tap positions spread evenly through a texel the interpolation passes
-            // `(2 + cos(k w)) / 3` of a frequency's power, where `w` is the level's own texel width:
-            // one at the long end and a third at its Nyquist. Left out, this table would stand at
-            // four thirds of what the shader reads in the shallows and nearly three times it in deep
-            // water, and the caustic's fold with it.
+            // One power response per axis index per level, because the chain is separable; written
+            // out rather than evaluated inside the sum, which would be five million sines a tile.
+            // Two filters: Dirichlet's kernel for the level, and `(2 + cos(k w)) / 3` for the
+            // bilinear tap that reads it — left out, this table would stand at nearly three times
+            // what the shader reads in deep water.
             std::vector<float> power(Shaders::WAVE_LEVELS * cascade.mGrid);
             for (std::size_t level = 0; level < Shaders::WAVE_LEVELS; ++level)
             {

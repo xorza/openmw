@@ -52,11 +52,9 @@ namespace Rtx
 
         VkInstance getHandle() const { return mHandle; }
 
-        /// Null unless validation was requested and the layer was present.
-        ///
-        /// Mutable through a const instance on purpose: the log is a sink the debug callback writes
-        /// to from whichever thread made the offending call, and that is not a property of the
-        /// instance the way its handle is.
+        /// Null unless validation was requested and the layer was present. Mutable through a
+        /// const instance, because the debug callback writes it from whichever thread made the
+        /// offending call.
         ValidationLog* getValidationLog() const { return mValidationLog.get(); }
 
         /// Whether `VK_KHR_surface_maintenance1` was loaded, which the device's swapchain half needs

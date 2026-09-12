@@ -16,17 +16,11 @@ namespace Rtx
     class Device;
     class GBuffer;
 
-    /// The denoiser: a few edge-stopping wavelet levels over the indirect channel.
-    ///
-    /// **One bounce per pixel is an unbiased estimate and a terrible picture.** The average of
-    /// enough of them is the answer, and there is no time for enough of them, so the samples that
-    /// exist are borrowed sideways from neighbours that are looking at the same surface. What makes
-    /// that legitimate is the demodulation the trace already did: this filters light, and the
-    /// texture it lands on is multiplied back in afterwards, unblurred.
-    ///
-    /// It touches nothing else. The sky, water and everything the fog laid over the frame were
-    /// resolved into `direct` by the trace and pass this by, which is why the filter needs to know
-    /// nothing about any of them.
+    /// The denoiser: a few edge-stopping wavelet levels over the indirect channel, borrowing
+    /// samples sideways from neighbours on the same surface because there is no time for enough
+    /// bounces per pixel. Legitimate because the trace demodulated: this filters light, and the
+    /// texture is multiplied back in afterwards. The sky, water and fog were resolved into
+    /// `direct` and pass this by.
     class AtrousPass
     {
     public:
@@ -38,24 +32,17 @@ namespace Rtx
         /// and the caller is expected to have waited for anything still reading the old one.
         void resize(std::uint32_t width, std::uint32_t height);
 
-        /// Runs every level and returns the channel the result ended up in.
+        /// Runs every level and returns the channel the result ended up in, because the levels
+        /// alternate and a copy back would be bandwidth spent on tidiness.
         ///
-        /// **Returned rather than promised**, because the levels alternate and where they finish
-        /// depends on how many there are. The alternative is a full-frame copy to put the answer
-        /// back where the caller assumed it would be, which is bandwidth spent on tidiness.
-        ///
-        /// @param buffer must have been handed over, so the trace's writes are visible here. Only
-        ///        the guide and the depth are read from it — the light being filtered comes in
-        ///        through `blended`.
-        /// @param blended what the accumulator made of this frame's bounce, which is the first
-        ///        level's input and the scratch's partner for every level after it. Written by the
-        ///        odd-numbered levels.
-        /// @param moments what the accumulator in front of this measured: the estimator's own
-        ///        variance, which is what turns a difference in brightness into an edge or into
-        ///        noise. A pixel with no history carries one, and one means "filter widely".
-        /// @param history what the first level writes and the second reads, and so what the
-        ///        accumulator finds as its mean next frame. `AccumulatePass::getHistory` says why
-        ///        the feedback belongs here.
+        /// @param buffer handed over, so the trace's writes are visible. Only the guide and the
+        ///        depth are read from it.
+        /// @param blended what the accumulator made of this frame's bounce: the first level's
+        ///        input, written by the odd-numbered levels.
+        /// @param moments the estimator's own variance, which turns a difference in brightness into
+        ///        an edge or into noise. A pixel with no history carries one, which filters widely.
+        /// @param history what the first level writes and the accumulator finds as its mean next
+        ///        frame. `AccumulatePass::getHistory` says why the feedback belongs here.
         /// @param camera the one the frame was traced with; the edge tests rebuild its rays.
         const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended, const Image& moments,
             const Image& history, const Shaders::Camera& camera) const;

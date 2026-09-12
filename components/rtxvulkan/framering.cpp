@@ -111,11 +111,9 @@ namespace Rtx
 
         ++mFinished;
 
-        // **What the ring can hold is what a report stays valid for.** `FrameResult::mGpu` is a
-        // span into the frame's own timer, good until that slot comes round and resolves again —
-        // which is `sFrameSlots` finishes away. A report nothing has collected by then would hand
-        // back zones belonging to a later frame, so the oldest goes. A caller that asks once a
-        // frame never reaches this: it leaves at most one here.
+        // `FrameResult::mGpu` is a span into the frame's own timer, good until that slot resolves
+        // again `sFrameSlots` finishes away, so a report nothing collected by then goes rather
+        // than hand back a later frame's zones.
         if (mReports.size() >= sFrameSlots)
             mReports.erase(mReports.begin());
 

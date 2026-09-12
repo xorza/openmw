@@ -18,11 +18,8 @@ namespace Rtx
             return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
         }
 
-        /// The two hundred and fifty-six answers there are, worked out once.
-        ///
-        /// **Built on the first ask rather than at namespace scope**, so that no order between
-        /// translation units can put a reader before it: `terraincomposite.cpp` holds its one shared
-        /// shading map the same way and for the same reason.
+        /// The two hundred and fifty-six answers there are, worked out on the first ask so that no
+        /// order between translation units can put a reader before it.
         const std::array<float, 256>& ofByte()
         {
             static const std::array<float, 256> sMade = [] {
@@ -39,19 +36,11 @@ namespace Rtx
 
     float toLinear(float encoded)
     {
-        // **The table where the value did arrive as a stored byte, and the curve where it did not.**
-        // Nearly everything the content states is `k / 255` — a light's colour, a weather record's,
-        // a decoded block's texel — and `std::pow` is a libm call no compiler inlines, which a
-        // light's colour would otherwise cost three of a frame for a value its record states once.
-        //
-        // **The byte is recovered and then divided back, which is what makes this exact rather than
-        // a guess.** The table is built from `k / 255.0f` and the comparison is that same
-        // expression, so a value that passes it *is* the table's own input and the answer is the
-        // same number. A value that is not one of the 256 — a negative light's colour, an endpoint
-        // some other arithmetic produced — fails it and takes the curve.
-        //
-        // The bounds are asked first so that a NaN, which every comparison refuses, never reaches
-        // the conversion to an integer.
+        // The table where the value arrived as a stored byte, because nearly everything the
+        // content states is `k / 255` and `std::pow` is a libm call no compiler inlines. Exact
+        // rather than a guess, because the comparison is the same `k / 255.0f` the table was
+        // built from, and anything else takes the curve. The bounds are asked first so that a NaN
+        // never reaches the conversion to an integer.
         if (encoded > 0.0f && encoded <= 1.0f)
         {
             const auto byte = static_cast<std::uint8_t>(encoded * 255.0f + 0.5f);

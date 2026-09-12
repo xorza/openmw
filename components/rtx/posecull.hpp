@@ -10,28 +10,13 @@
 
 namespace Rtx
 {
-    /// A cull traversal that culls nothing and draws nothing.
-    ///
-    /// **For the one thing left that answers only to an `osgUtil::CullVisitor`.**
-    /// `SceneUtil::RigGeometry` and `SceneUtil::MorphGeometry` skin inside `accept`, by casting the
-    /// visitor to one and writing the pose into a copy of their own — and an intersection test reads
-    /// that copy. The frame poses nothing this way any more: the mirror hands bone rows to the device
-    /// and the device computes the vertices. What still needs the drawable's own copy posed is
-    /// `OffscreenTrace::pick`, once per click, and this is what it poses with.
-    ///
-    /// **What it is not is a rendering cull.** Culling is off, because a ray tracer decides what
-    /// exists and the answer is everything; the drawables it reaches are dropped rather than binned.
-    /// Nor is it something for a whole graph to be walked with: `Terrain::TerrainDrawable::cull`
-    /// puts the chunk in a render bin and never applies it, so the ground would simply disappear,
-    /// and terrain LOD would be chosen from an eye point such a walk has no business having.
-    ///
-    /// A real `CullVisitor` rather than something claiming to be one: those casts are unchecked, and
-    /// a plain visitor with its type set to `CULL_VISITOR` is wrong in the way that runs correctly
-    /// on an untextured test quad.
-    ///
-    /// Whoever uses it owes it a frame stamp and a traversal number — the first because
-    /// `SceneUtil::FrameTimeSource` reads the simulation time off it without checking there is one,
-    /// the second because a skeleton will not move its bones for a number it has already seen.
+    /// A cull traversal that culls nothing and draws nothing, for the one thing left that answers
+    /// only to an `osgUtil::CullVisitor`: `SceneUtil::RigGeometry` and `SceneUtil::MorphGeometry`
+    /// skin inside `accept` by casting the visitor to one, and `OffscreenTrace::pick` reads that
+    /// posed copy once per click. Not for a whole graph: `Terrain::TerrainDrawable::cull` puts the
+    /// chunk in a render bin and never applies it. A real `CullVisitor`, because those casts are
+    /// unchecked. Whoever uses it owes it a frame stamp — `SceneUtil::FrameTimeSource` reads the
+    /// simulation time off it unchecked — and a traversal number a skeleton has not seen.
     class PoseCull : public osgUtil::CullVisitor
     {
     public:
@@ -56,15 +41,10 @@ namespace Rtx
         /// The pose is read off the drawable afterwards, so there is nothing to do with it here.
         void apply(osg::Drawable&) override {}
 
-        /// **Everything but a particle simulation**, which this is a real cull visitor for and so
-        /// would otherwise run.
-        ///
-        /// `osgParticle` hangs emission and integration off the cull traversal and keeps a
-        /// once-per-frame guard, and a `_t0`, per processor. Two visitors stepping the same emitter
-        /// on two clocks does not step it twice — it steps it on whichever wrote that guard last,
-        /// and the frame the clocks change hands is a `_t0` from one of them differenced against a
-        /// simulation time from the other. `SceneExtractor` owns the one emitter clock in
-        /// this renderer, so posing keeps its hands off them.
+        /// Everything but a particle simulation, which a real cull visitor would otherwise run:
+        /// `osgParticle` keeps a once-per-frame guard and a `_t0` per processor, so two visitors
+        /// on two clocks difference a `_t0` from one against a time from the other.
+        /// `SceneExtractor` owns the one emitter clock in this renderer.
         void apply(osg::Node& node) override
         {
             const NodeKind kind = mKinds.of(node);

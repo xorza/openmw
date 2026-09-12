@@ -14,12 +14,9 @@ namespace Rtx
 {
     class Image;
 
-    /// Everything one evaluation reads, and the one image it writes.
-    ///
-    /// **Every image must have been created with `VK_IMAGE_USAGE_SAMPLED_BIT`.** DLSS samples its
-    /// inputs; one it cannot sample reads as zero, NGX returns success and the validation layers say
-    /// nothing, so the whole frame comes back black with nothing pointing at the cause. `record`
-    /// asserts it rather than leaving it to be found.
+    /// Everything one evaluation reads, and the one image it writes. Every image must have been
+    /// created with `VK_IMAGE_USAGE_SAMPLED_BIT`, or it reads as zero with NGX returning success
+    /// and the layers silent; `record` asserts it.
     struct DlssInputs
     {
         /// The trace's radiance at render resolution, **undenoised**. Ray Reconstruction is the
@@ -54,13 +51,9 @@ namespace Rtx
         /// carry no motion of their own.
         const Image& mParticleMask;
 
-        /// The layer the eye sees the frame through, its coverage and its own motion.
-        ///
-        /// **The one part of the frame that has a second motion vector and can say so.** Composited
-        /// into the colour, a raindrop and the wall behind it share one vector and one depth;
-        /// handed over here, the upscaler reprojects each by its own. `GBuffer::getTransparency`
-        /// says how the three are formed and `DlssPass::record` why they are not the colour pair
-        /// that measured worse.
+        /// The layer the eye sees the frame through, its coverage and its own motion — the one
+        /// part of the frame with a second motion vector, so a raindrop and the wall behind it are
+        /// reprojected each by its own.
         const Image& mTransparency;
         const Image& mTransparencyOpacity;
         const Image& mTransparencyMotion;
@@ -76,11 +69,8 @@ namespace Rtx
         /// was given.
         osg::Vec2f mJitter;
 
-        /// How long since the previous frame, in milliseconds, or nought where there was none.
-        ///
-        /// The header's own words: it "helps in determining the amount to denoise or anti-alias
-        /// based on the speed of the object from motion vector magnitudes and fps as determined by
-        /// this delta". A motion vector says how far something went and not how fast.
+        /// How long since the previous frame, in milliseconds, or nought where there was none: a
+        /// motion vector says how far something went and not how fast.
         float mFrameDeltaMs = 0.0f;
 
         /// Whether the previous frame is worth anything. True after a jump no motion vector can
@@ -88,23 +78,16 @@ namespace Rtx
         bool mReset = false;
     };
 
-    /// DLSS Ray Reconstruction, built for one pair of resolutions.
-    ///
-    /// **The feature and the parameter map it was built from are one thing.** That map is not the
-    /// capability map NGX answers questions from — it is allocated per feature, it has to outlive
-    /// the feature, and the two are released together and in that order.
-    ///
-    /// Sized at construction, so a resolution change means a new one.
+    /// DLSS Ray Reconstruction, built for one pair of resolutions. The parameter map it was built
+    /// from is allocated per feature, has to outlive it, and is released after it.
     class DlssPass
     {
     public:
-        /// Builds Ray Reconstruction to take `render` and produce `output`.
+        /// Builds Ray Reconstruction to take `render` and produce `output`. Throws `Error` where NGX
+        /// will not build it.
         ///
-        /// @param commands must be recording, and must be submitted and waited on before the first
-        ///        evaluation: NGX uploads the network's weights here. Once per resolution, not once
-        ///        per frame.
-        ///
-        /// Throws `Error` where NGX will not build it.
+        /// @param commands must be recording, and submitted and waited on before the first
+        ///        evaluation: NGX uploads the network's weights here.
         DlssPass(const Dlss& ngx, VkCommandBuffer commands, VkExtent2D render, VkExtent2D output, Upscale upscale,
             Preset preset);
         ~DlssPass();

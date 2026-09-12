@@ -24,11 +24,8 @@ namespace Rtx
     {
         const FogNoise noise = bakeFogNoise();
 
-        // **Every level uploaded rather than halved from the one above.** A chain `buildMips` made
-        // would be the mean of what is over it and nothing else, and this field's levels are each
-        // stretched back to one spread — `bakeFogNoise` says why that is what a coverage band needs.
-        // It could not make one for a volume in any case. Seventy-three kilobytes cross the bus once
-        // for the life of the device.
+        // Every level uploaded rather than halved from the one above, because each is stretched
+        // back to one spread (`bakeFogNoise`). Seventy-three kilobytes, once.
         std::vector<VkBufferImageCopy> regions;
         regions.reserve(Shaders::FOG_FIELD_LEVELS);
         for (std::uint32_t level = 0; level < Shaders::FOG_FIELD_LEVELS; ++level)
@@ -45,15 +42,9 @@ namespace Rtx
 
     namespace
     {
-        /// Half floats, and the range is what makes them enough.
-        ///
-        /// **Nothing here holds a quantity that grows.** A point's scattering is a radiance the
-        /// weather sets and its extinction is per world unit; the sun's is a product of
-        /// transmittances, so it never leaves the unit interval — the irradiance and the phase that
-        /// would take it anywhere else are exactly the two factors the trace puts back. The
-        /// integrated pair is bounded by the transmittance beside it. So the argument `GBuffer`
-        /// makes for full floats on a channel a reference accumulates a thousand frames into does
-        /// not reach here: nothing sums these.
+        /// Half floats, because nothing here holds a quantity that grows and nothing sums these:
+        /// the sun's is a product of transmittances, and the integrated pair is bounded by the
+        /// transmittance beside it.
         constexpr VkFormat sFormat = FOG_VOLUME_FORMAT;
 
         /// `TRANSFER_DST` because the constructor empties every one of these, which is what a
@@ -189,14 +180,9 @@ namespace Rtx
             vkUpdateDescriptorSets(device.getHandle(), sBindings, writes.data(), 0, nullptr);
         }
 
-        // **Emptied and in `GENERAL` from the moment they exist**, which `createTargets` says of
-        // the frame's own targets for the same reason. `begin` does not discard the point pair,
-        // so the first frame after this reads a history nothing has written — and what an image
-        // holds when it is made is whatever was last in that memory. That read was safe only
-        // while every resource had a `vkAllocateMemory` of its own and the driver handed back
-        // zeroed pages. Over a suballocator's range it is a departed image's bits instead, and
-        // what the frame draws is then a radiance nothing accounts for. Nothing scattered is the
-        // one history a first frame can reproject.
+        // Emptied and in `GENERAL` from the moment they exist: `begin` does not discard the point
+        // pair, so the first frame reads a history nothing has written, and over a suballocator's
+        // range that is a departed image's bits rather than the driver's zeroed pages.
         pool.submitAndWait([&](VkCommandBuffer commands) {
             constexpr VkClearColorValue nothing{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
             constexpr VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
@@ -218,11 +204,8 @@ namespace Rtx
     {
         const std::size_t written = writtenAt(frame);
 
-        // **Discarded, because every texel of it is written before any is read.** Keeping what the
-        // frame before last left here would cost a decompress and buy nothing. The other half of the
-        // pair is this frame's history and survives, one loop down. The first thing that touches any
-        // of these is a compute pass writing it — `depthTaken`, `scattered` and `handOver` order
-        // every read after that, the trace's included.
+        // Discarded, because every texel of it is written before any is read; the other half of
+        // the pair is this frame's history and survives, one loop down.
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mAir, &mAirSunward, &mSlice,
                  &mSliceSunward, &mColumnDepth, &mColumnMoons })
@@ -253,11 +236,9 @@ namespace Rtx
     {
         const std::size_t written = writtenAt(frame);
 
-        // **`GENERAL` to `GENERAL`, which is what a barrier between two passes over one image is**:
-        // the layout is right for both accesses already — `BloomPass` says why these are never moved
-        // to a read-only one — so what this orders is the writes against the reads and nothing
-        // else. **Against the trace as well as the integrate pass**, because a puff of smoke reads
-        // two of these at a point: `puffLight` says which and why.
+        // `GENERAL` to `GENERAL`, so what this orders is the writes against the reads and nothing
+        // else. Against the trace as well as the integrate pass, because a puff of smoke reads two
+        // of these at a point (`puffLight`).
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
             barriers.add(image->describeTransition(Use::sComputeWrite,

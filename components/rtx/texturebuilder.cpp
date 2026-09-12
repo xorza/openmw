@@ -47,12 +47,9 @@ namespace Rtx
         {
             switch (format)
             {
-                // Both DXT1 spellings reach `ImageFormat::Bc1`, and it lands on the format that
-                // reads the alpha bit. A BC1 block is punch-through whenever its first endpoint
-                // sorts below its second, which is how every mask in the game is stored; almost
-                // none of Morrowind's files set `DDPF_ALPHAPIXELS`, so believing the header would
-                // decode that bit as opaque black and leave every canopy a solid card. The bytes
-                // are identical either way — this only chooses whether the bit is looked at.
+                // Both DXT1 spellings land on the format that reads the alpha bit: every mask in the
+                // game is a punch-through BC1 block, and almost none of Morrowind's files set
+                // `DDPF_ALPHAPIXELS`, so believing the header would leave every canopy a solid card.
                 case ImageFormat::Bc1:
                     return TextureFormat::Bc1RgbaSrgb;
                 case ImageFormat::Bc2:
@@ -81,16 +78,10 @@ namespace Rtx
             return std::nullopt;
         }
 
-        /// What a texture that could not be read is drawn as.
-        ///
-        /// **Mid grey and not magenta.** A live graph's unreadable textures are mostly things that
-        /// were never files — a composite map, a render target — and painting the ground magenta
-        /// would be shouting about a case the count in `getUnreadable` already reports, at the price
-        /// of the picture nobody can then judge.
-        ///
-        /// One BC1 block: both endpoints the same grey, so every one of its sixteen texels is too,
-        /// and the first endpoint does not sort below the second, so it is opaque rather than
-        /// punch-through.
+        /// What a texture that could not be read is drawn as: mid grey and not magenta, because a
+        /// live graph's unreadable textures are mostly things that were never files, and
+        /// `getUnreadable` already reports them. One opaque BC1 block with both endpoints the same
+        /// grey.
         TextureData standIn(std::vector<MipLevel>& levels)
         {
             // 0x8410 is RGB565 for (16, 16, 16) out of (31, 63, 31) — a touch above half, which is
@@ -172,13 +163,9 @@ namespace Rtx
             if (scene.textures().isFree(slot))
                 continue;
 
-            // Already decoded and still resident: the scene manager keeps image data on the CPU
-            // after apply, so this is a cache hit and a memcpy rather than a second decode.
-            //
             // A slot this renderer made rather than opened has no file to be asked for, and the
             // entry still has to exist because the description below is built from it. A composite
-            // the queue has not finished is passed over the same way: nothing points at a baked slot
-            // until it has bytes, so there is nothing here to describe yet.
+            // the queue has not finished is passed over the same way.
 
             osg::ref_ptr<const osg::Image> image;
             Index light = sNoIndex;
@@ -235,12 +222,8 @@ namespace Rtx
             levels += kept.mImage != nullptr ? kept.mImage->getNumMipmapLevels() : 1u;
         mLevels.reserve(levels);
 
-        // **What the assertion below is taken against.** The reserve is computed by the loop above
-        // and the table is filled by the one below, through branches that push a different number
-        // of levels each — so the two agree by argument and nothing checked it. A growth is the
-        // failure, and a growth is exactly what moves the capacity.
-        //
-        // The assert is the only reader, so a release build has none.
+        // What the assertion below is taken against: the reserve and the fill agree by argument
+        // through branches that push a different number of levels each, and a growth is the failure.
         [[maybe_unused]] const std::size_t reserved = mLevels.capacity();
 
         mDescriptions.reserve(mKept.size());
@@ -297,12 +280,8 @@ namespace Rtx
                 ++mUnreadable;
 
                 // Named rather than tallied, because a count says a texture is grey and nothing
-                // about which one. On the frame a cell arrives, which is a load and not a frame
-                // path.
-                //
-                // **Whichever of the two named the slot**, or a composite that could not be
-                // flattened reports itself as a file with no name — the one thing that would not
-                // help in finding it.
+                // about which one. Whichever of the two named the slot, or a composite that could
+                // not be flattened reports itself as a file with no name.
                 const std::string_view baked = scene.textures().getBaked()[kept.mSlot];
                 Log(Debug::Warning) << "Texture \""
                                     << (baked.empty() ? scene.textures().getPaths()[kept.mSlot].value() : baked)

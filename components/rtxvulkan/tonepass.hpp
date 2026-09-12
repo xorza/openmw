@@ -17,14 +17,9 @@ namespace Rtx
     class Device;
 
     /// Scene-referred radiance to bytes a display understands, and the sky's own points over it.
-    ///
-    /// **The last pass, and the only one that knows what a display is.** Everything before it works
-    /// in linear radiance — including the upscaler, which reconstructs from several frames of it —
-    /// so the curve runs once, at the end, over whatever resolution the frame reached by then.
-    ///
-    /// **Which is also the only place a point source can be drawn.** A star is sub-pixel and high
-    /// contrast, and a temporal upscaler is built to remove exactly that; the resolution the frame
-    /// is shown at is the last one in the frame, so this pass has it and no other does.
+    /// The last pass and the only one that knows what a display is, so the curve runs once over
+    /// whatever resolution the frame reached. Also the only place a point source can be drawn,
+    /// because a temporal upscaler is built to remove exactly a sub-pixel high-contrast star.
     /// `ToneConstants::mStars` carries the measurements.
     class TonePass
     {
@@ -42,15 +37,12 @@ namespace Rtx
         ///        `VK_IMAGE_LAYOUT_GENERAL`, at the extent the trace ran at. `GBuffer::getStarsShown`
         ///        says why this pass cannot work it out for itself.
         /// @param textures the scene's texture descriptor set, bound as set one.
-        /// @param constants how much of the target to encode from its top-left corner — the whole of
-        ///        it for a frame, and a corner of it for a picture inside the interface, which fills
-        ///        as much of a texture as its widget is currently wide — beside the camera on that
-        ///        grid, the trace's own extent, and the star field to draw. **Taken by value and
-        ///        completed here**: the lens is settled from `bloom` rather than asked of the
-        ///        caller, so no caller can hand over a strength with no pyramid behind it.
+        /// @param constants how much of the target to encode from its top-left corner — a corner
+        ///        of it for a picture inside the interface — beside the camera, the trace's extent
+        ///        and the star field. Taken by value and completed here from `bloom`, so no caller
+        ///        can hand over a strength with no pyramid behind it.
         /// @param bloom the pyramid's finest level, in `VK_IMAGE_LAYOUT_GENERAL`, or null where
-        ///        nothing built one — a doll and a map tile, and a frame too small to halve.
-        ///        `ToneConstants::mBloom` is set from this and is what the shader tests.
+        ///        nothing built one — a doll, a map tile, a frame too small to halve.
         /// @param target the displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.
         void record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
             const Image* bloom, VkDescriptorSet textures, const Image& target, Shaders::ToneConstants constants) const;

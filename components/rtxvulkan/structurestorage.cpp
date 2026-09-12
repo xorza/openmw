@@ -79,16 +79,10 @@ namespace Rtx
         Block& block = mBlocks[room.mBlock];
         block.mRuns.release(room.mRun);
 
-        // **A block that empties goes back to the device, one at a time and never a sweep.**
-        // Compaction is what leaves whole blocks empty: a structure copied tight gives the loose
-        // room it stood in back, and a block holding nothing else has nothing left to hold.
-        //
-        // **A block empties only where everything in it could leave**, so what a caller mixes into
-        // one block decides whether this ever fires: a structure that is refitted rather than
-        // replaced stays for the life of its mesh and pins the block it sits in.
-        //
-        // **The last one standing stays**, so a scene that empties and fills does not give its only
-        // block back and ask for another on the next arrival.
+        // A block that empties goes back to the device, one at a time and never a sweep. A
+        // refitted structure stays for the life of its mesh and pins its block. The last one
+        // standing stays, so a scene that empties and fills does not ask for it back on the next
+        // arrival.
         if (block.mRuns.getEnd() == 0 && countLive() > 1)
         {
             block.mBuffer = Buffer();

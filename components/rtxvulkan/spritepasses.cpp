@@ -40,22 +40,18 @@ namespace Rtx
 
         const std::uint32_t tiles = Shaders::spriteTilesIn(bin.mCamera.mWidth, bin.mCamera.mHeight);
 
-        // **The one place the list's length and the capacity the shader is told meet.** The starts
-        // are `tiles + 1` entries and the runs are `mCapacity` more, and a buffer shorter than their
-        // sum is three dispatches writing past the end of it — where a capacity honestly smaller
-        // than the runs need is only a slow frame. `Rtx::SpriteListSize` makes both numbers out of
-        // one, and a caller that took them from two would be caught here.
+        // The one place the list's length and the capacity the shader is told meet: a buffer
+        // shorter than their sum is three dispatches writing past the end of it, where a capacity
+        // smaller than the runs need is only a slow frame.
         assert(list.getSize() >= (VkDeviceSize{ tiles } + 1 + bin.mCapacity) * sizeof(std::uint32_t)
             && "a sprite list shorter than its starts and its capacity together");
 
         openZone(timer, commands, "sprites");
 
-        // **Behind everything the queue has done to this copy of the tables.** What last touched
-        // them is the frame before last's bin and trace, or a picture's inside the interface, and
-        // both are finished — the caller waited the fence — but a wait on the host is not a
-        // dependency on the queue, and the layers say so: a fill two frames apart is a write after
-        // a write with nothing ordering it. Sourced at every command, which is what the frame's
-        // own first transitions already wait for, so this costs nothing the frame was not paying.
+        // Behind everything the queue did to this copy of the tables: the caller waited the fence,
+        // but a wait on the host is not a dependency on the queue, and the layers flag a fill two
+        // frames apart as an unordered write after a write. Costs nothing the frame's own first
+        // transitions were not paying.
         handOver(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
             VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
             VK_PIPELINE_STAGE_2_CLEAR_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,

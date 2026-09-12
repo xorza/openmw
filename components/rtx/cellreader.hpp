@@ -27,29 +27,11 @@ namespace Rtx
     class ContentSource;
 
     /// Reads one cell — its ground and its paged references — into a `PreparedCell`, on whichever
-    /// thread owns this.
-    ///
-    /// **What `Terrain::ObjectPaging::createChunk` reads, and none of what it merges.** The forty
-    /// lines of that function that read records are the seam `Terrain::ObjectStorage` already is,
-    /// and the rules it applies to a reference before a chunk stands it — the hidden marker, the
-    /// model a record names — are applied here to the same references. What it does with them
-    /// afterwards, merging every static of a kind into one geometry, is what a ray tracer has no use
-    /// for: a top level takes a thousand instances of one bottom level as one entry apiece. The
-    /// ground is `GroundReader`'s, read off the same land records the quad tree's chunks were.
-    ///
-    /// **A model is read once and lent to every cell that names it, and so is an image.** Every
-    /// reference of a model across every cell this reads points at one `PreparedModel`, which
-    /// holds a count of the cells lent it; every image a model or a cell's ground names is one
-    /// `PreparedTexture`, counted the same way. A lend is a cell's and not the frame's, because
-    /// the frame cannot know what this has lent since it last looked: it gives a cell's lends back
-    /// when it lets the cell go, and a model whose last lend is back is refilled for the next one,
-    /// so a long walk across the world reads into the buffers its first cells grew.
-    ///
-    /// **The frame keeps a count of its own beside this one** — `CellHolds` — and the two are two
-    /// facts. This counts what was lent, cells the frame has not seen included; that counts what
-    /// the frame holds.
-    ///
-    /// **Not thread-safe, and one instance a thread.** Everything it keeps is scratch and a lender.
+    /// thread owns this: what `Terrain::ObjectPaging::createChunk` reads through
+    /// `Terrain::ObjectStorage`, and none of what it merges. A model is read once and lent to
+    /// every cell that names it, and so is an image; a lend is a cell's and not the frame's,
+    /// because the frame cannot know what this has lent since it last looked, and `CellHolds`
+    /// counts what the frame holds beside it. Not thread-safe, and one instance a thread.
     class CellReader
     {
     public:
@@ -117,11 +99,8 @@ namespace Rtx
             const osg::Image* operator()(const PreparedTexture* held) const { return held->mImage.get(); }
         };
 
-        /// Every model lent, sorted by path, and every image lent, sorted by address.
-        ///
-        /// **Sorted and searched rather than keyed**, for the reason `DistantLights` keeps its cells
-        /// so: an insert shifts a few hundred pointers on a thread with time to spare, and a lookup
-        /// costs no node and no string.
+        /// Every model lent, sorted by path, and every image lent, sorted by address — searched
+        /// rather than keyed, because a lookup then costs no node and no string.
         SortedRows<PreparedModel*, std::string_view, PathOf> mByPath;
         SortedRows<PreparedTexture*, const osg::Image*, ImageOf> mByImage;
     };

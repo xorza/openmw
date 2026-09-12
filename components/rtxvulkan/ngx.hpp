@@ -12,11 +12,8 @@
 
 namespace Rtx
 {
-    /// NGX's own name for a result code, with the code after it.
-    ///
-    /// **Asked rather than switched on.** The SDK defines several dozen codes as a bitfield —
-    /// success is `0x1` and every failure carries `0xBAD00000` with the reason in its low bits — and
-    /// it names them all, including ones this build has not been told about.
+    /// NGX's own name for a result code, with the code after it. Asked rather than switched on,
+    /// because the SDK names codes this build was not told about.
     inline std::string describeNgxResult(NVSDK_NGX_Result result)
     {
         // `wchar_t` is 32 bits here, not the 16 it is on Windows, which is what truncates every one
@@ -29,17 +26,10 @@ namespace Rtx
         return text;
     }
 
-    /// The quality level an upscale setting is, as NGX numbers them.
-    ///
-    /// **`Off` is refused rather than answered.** It is the absence of an upscaler and not a mode of
-    /// one, so there is no quality level it names; the renderer answers it by building no feature at
-    /// all, and anything that got here holding it has already decided to build one. Grouping it with
-    /// `Performance` for the sake of a total switch made a contradiction into the fastest, softest
-    /// mode this renderer has — quietly, and on the path a frame budget is measured against.
-    ///
-    /// Thrown rather than asserted because it is a cold path: the feature is built once, and a build
-    /// that got the mode wrong should say so on every machine rather than only where a developer
-    /// left the asserts in.
+    /// The quality level an upscale setting is, as NGX numbers them. `Off` is refused rather than
+    /// answered, because grouping it with `Performance` once made a contradiction into the
+    /// fastest, softest mode this renderer has, on the path a frame budget is measured against.
+    /// Thrown rather than asserted because the feature is built once, on every machine.
     inline NVSDK_NGX_PerfQuality_Value ngxQualityOf(Upscale upscale)
     {
         switch (upscale)
@@ -61,14 +51,9 @@ namespace Rtx
         throw Error("Ray Reconstruction was asked to build for an upscale mode that is the absence of one");
     }
 
-    /// The network a preset selects, as NGX numbers them.
-    ///
-    /// **Ray Reconstruction's own enum, and not super-resolution's.** `nvsdk_ngx_defs_dlssd.h`
-    /// retires A through C and names D and E; the enum of the same shape in `nvsdk_ngx_defs.h`
-    /// retires D as well and names J through M. They are different networks reached through
-    /// different parameters, and a value from one handed to the other is a preset the library does
-    /// not recognise — which it answers by reverting to the default, silently, which is the state
-    /// this exists to leave.
+    /// The network a preset selects, as NGX numbers them — Ray Reconstruction's own enum in
+    /// `nvsdk_ngx_defs_dlssd.h`, and not super-resolution's in `nvsdk_ngx_defs.h`, which names
+    /// different networks and answers a value from the other by reverting to the default silently.
     inline NVSDK_NGX_RayReconstruction_Hint_Render_Preset ngxPresetOf(Preset preset)
     {
         switch (preset)
@@ -84,14 +69,8 @@ namespace Rtx
         return NVSDK_NGX_RayReconstruction_Hint_Render_Preset_Default;
     }
 
-    /// Which parameter carries the preset hint for a quality level.
-    ///
-    /// **One hint per quality level, because NGX keeps one network per level.** The feature is built
-    /// for exactly one of them, so exactly one of these is worth setting; setting the rest would be
-    /// stating a preference about features this renderer never creates.
-    ///
-    /// `Off` is refused here too, for the reason `ngxQualityOf` gives: a preset hint for a feature
-    /// that is not being built names a network nothing will run.
+    /// Which parameter carries the preset hint for a quality level — one per level, because NGX
+    /// keeps one network per level. `Off` is refused here too, for the reason `ngxQualityOf` gives.
     inline const char* ngxPresetParameterOf(Upscale upscale)
     {
         switch (upscale)

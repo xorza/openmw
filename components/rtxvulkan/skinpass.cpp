@@ -44,10 +44,8 @@ namespace Rtx
     bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, SkinTables& tables,
         SlotBlocks& poses, SlotBlocks& normals, GpuTimer* const timer) const
     {
-        // **Owed to every copy, and paid to this one.** A mesh that moved this frame reaches this
-        // copy now and the other on the frame after next; a mesh that moved last frame and stands
-        // still now is still owed here, or this copy would carry a pose two frames old the next
-        // time it was traced.
+        // Owed to every copy, and paid to this one: a mesh that moved last frame and stands still
+        // now is still owed here, or this copy would carry a pose two frames old.
         poses.write(scene.meshes().getDeformed());
 
         // One pipeline bound at a time, and a bind only where the kind changes: a crowd is one

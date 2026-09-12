@@ -14,11 +14,9 @@ namespace Rtx
 {
     namespace
     {
-        /// How many cells past the reach are prepared before they can be seen.
-        ///
-        /// **One, which at the island route's speed is most of a second and at a walk is four.** A
-        /// cell's ground and models are adopted and its structures built while it is still a cell
-        /// away from being placed, so the frame it crosses into the reach owes only its placements.
+        /// How many cells past the reach are prepared before they can be seen: one, which at the
+        /// island route's speed is most of a second, so the frame a cell crosses into the reach owes
+        /// only its placements.
         constexpr int sPreparedBand = 1;
 
         /// The order the prepared ring's missing cells are read in: nearest first, then a fixed
@@ -125,14 +123,10 @@ namespace Rtx
             for (PreparedModel* model : cell->mModels)
                 ++mHolds.know(*model).mHanded;
 
-            // **The switch is a setting the game can move while it runs**, and a cell the thread
-            // read under the other answer is read again rather than stood as it was.
-            //
-            // **And a cell already in the list is given straight back.** `ask` skips what is held
-            // and what is handed, but a cell the reader is part-way through is neither — so a
-            // list that replaces the one it was working through names that cell again, and the
-            // reader hands over two copies of it. `sift` is what turns away the other cell this
-            // must not adopt.
+            // The switch is a setting the game can move while it runs, and a cell read under the
+            // other answer is read again. A cell the reader is part-way through is neither held nor
+            // handed, so a replacing list names it again and the reader hands over two copies;
+            // `sift` turns the second away.
             if (cell->mStatics != mStatics || handed(cell->mCell))
                 discard(*cell);
             else
@@ -182,13 +176,9 @@ namespace Rtx
 
     void CellRing::waitForNext(const osg::Vec2i& eye, const int band)
     {
-        // A cell read under the other answer to the statics switch is discarded rather than kept,
-        // so a wait that found one has not found what it waited for.
-        //
-        // **And a cell of the band that left is not one either.** The reader is part-way through
-        // the list the eye's last place asked for, so the first thing it hands over after a move is
-        // usually a cell nothing wants any more; adopting it would build and free a mesh for a
-        // cell that never stood.
+        // A cell read under the other answer to the statics switch, or one of a band that left, is
+        // not what the wait waited for: the first thing the reader hands over after a move is
+        // usually a cell nothing wants any more.
         while (mHanded.empty())
         {
             // **Given up on where the reader has gone**, which is a reader that threw. Waiting on

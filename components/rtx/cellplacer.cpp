@@ -75,11 +75,8 @@ namespace Rtx
 
     bool CellPlacer::wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground, const WorldAround& around)
     {
-        // **A stack is flattened outside the active grid, and a single layer is never.** Inside
-        // the grid the ground is near enough that the sharpness of a live stack is worth its cost
-        // per hit, which is the rule the quad tree reached at about a cell out; a single layer is
-        // already a single fetch, and flattening one would only resample a tiling texture into
-        // something coarser than its file.
+        // A stack is flattened outside the active grid, where the quad tree flattens too, and a
+        // single layer is never, because it is already a single fetch.
         return ground.mLayers > 1 && !inActiveGrid(cell, around);
     }
 

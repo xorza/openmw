@@ -32,14 +32,9 @@ namespace Rtx
             osg::Vec3f mDirection{ 0.0f, 0.0f, 1.0f };
             float mAngularRadius = 0.0f;
 
-            /// How far its texture coordinates run, along each axis separately.
-            ///
-            /// **What tells a field from a patch is that a field repeats in *both* directions.** A
-            /// sheet laid once across a piece of sky stays inside about one tile in at least one of
-            /// them — Morrowind's constellations overshoot to one and a half across their long axis
-            /// and half a tile across their short one — where the field runs four tiles by two.
-            /// Measuring the two together, or against the origin, puts a constellation over the
-            /// whole sky.
+            /// How far its texture coordinates run, along each axis separately, because what tells
+            /// a field from a patch is that a field repeats in *both* directions: a constellation
+            /// overshoots to one and a half tiles on its long axis, where the field runs four by two.
             osg::Vec2f mUvSpan;
 
             /// Texture units of sheet per radian of sky, taken over every edge and reduced to the
@@ -64,19 +59,10 @@ namespace Rtx
             bool mDefined = false;
         };
 
-        /// How much sheet one radian is worth, along each edge of a drawable's triangles.
-        ///
-        /// **Against the two angles the unwrap is written in, and not against the arc between them**,
-        /// which is the difference between measuring what the mesh does and measuring something
-        /// else. A cylindrical unwrap advances its texture evenly in azimuth and in elevation; the
-        /// *arc* the same step of azimuth covers shrinks as `cos(elevation)`, so dividing by it reads
-        /// the rate as steeper the higher up the dome it is asked, and the answer comes out a fifth
-        /// too large. What the shader consumes is the angles, so what this measures is the angles.
-        ///
-        /// **And along one triangle's edges rather than every pair of its vertices**, because the
-        /// answer is a local one: two vertices on opposite sides of a dome are a wrap apart in
-        /// azimuth and say nothing about a rate. `osg::TriangleIndexFunctor` walks whichever
-        /// primitive set the file happened to use, which is what keeps this from caring.
+        /// How much sheet one radian is worth, along each edge of a drawable's triangles — against
+        /// the two angles the unwrap is written in and not the arc between them, which shrinks as
+        /// `cos(elevation)` and reads a fifth too large. Along a triangle's edges, because the rate
+        /// is local and two vertices across a dome are a wrap apart.
         struct EdgeRates
         {
             const osg::Vec2Array* mCoords = nullptr;
@@ -174,12 +160,9 @@ namespace Rtx
 
                 layer.mUvSpan = highest - lowest;
 
-                // **The rate the unwrap runs at, along the mesh's own edges.** A span over an extent
-                // would be thrown by the seam vertices a dome carries, which hold a duplicated
-                // coordinate at the same place in the sky; and any two vertices at all would be
-                // worse, because texture per radian is a *local* quantity — a pair across the dome
-                // has a coordinate distance that is not its angle times anything. An edge is the
-                // shortest baseline the mesh offers, which is the one the rate is defined on.
+                // The rate the unwrap runs at, along the mesh's own edges: a span over an extent
+                // would be thrown by a dome's seam vertices, and an edge is the shortest baseline
+                // the mesh offers.
                 std::vector<Bearing> bearings;
                 bearings.reserve(directions.size());
                 for (const osg::Vec3f& towards : directions)
@@ -316,12 +299,9 @@ namespace Rtx
                 .mAngularRadius = layer.mAngularRadius,
             };
 
-            // **A cap of half-angle `t` is `1 - cos(t)` of a hemisphere**, which is the share of the
-            // sky's mean this patch's own mean speaks for. Overlaps are counted twice and patches
-            // below the horizon counted at all, both of which the three nebulae do a little of —
-            // this is the sky's mean to first order and it is spent out of the weather's own ambient
-            // either way, so what it can be wrong about is where a night's light comes from rather
-            // than how much of it there is.
+            // A cap of half-angle `t` is `1 - cos(t)` of a hemisphere, which is the share of the
+            // sky's mean this patch speaks for. Overlaps are counted twice, which is the sky's mean
+            // to first order and spent out of the weather's own ambient either way.
             sky.mGlow += meanTexel(*layer.mImage).mColour
                 * (Shaders::NEBULA_RADIANCE * (1.0f - std::cos(layer.mAngularRadius)));
         }

@@ -30,15 +30,9 @@ namespace Rtx
         Blend mBlend = Blend::Over;
     };
 
-    /// The GUI, over the finished picture.
-    ///
-    /// **After tone mapping and before present**, which makes it the only pass here working in
-    /// display-referred colour. MyGUI picked its colours and drew its atlases looking at a monitor;
-    /// putting them through a curve meant for radiance is how a menu comes out grey.
-    ///
-    /// **The only triangles in this backend.** Everything that makes the picture is dispatched, and
-    /// this is not an exception to that so much as an admission that a font atlas is not something
-    /// to trace.
+    /// The GUI, over the finished picture — after tone mapping, because MyGUI picked its colours
+    /// looking at a monitor and a curve meant for radiance turns a menu grey. The only triangles
+    /// in this backend, because a font atlas is not something to trace.
     class GuiPass
     {
     public:

@@ -27,11 +27,8 @@ namespace Rtx
         /// couple of hundred, and a worldspace will not reach this.
         constexpr std::uint32_t sMaxTextures = 4096;
 
-        /// The one place a `TextureFormat` becomes Vulkan's.
-        ///
-        /// Every case is sRGB, and `TextureFormat` says why: the files hold display-encoded bytes
-        /// and the hardware converts them in the filter, which is what hands the shader linear
-        /// values for free.
+        /// The one place a `TextureFormat` becomes Vulkan's. Every case is sRGB: the files hold
+        /// display-encoded bytes and the hardware converts them in the filter.
         VkFormat toVulkanFormat(TextureFormat format)
         {
             switch (format)
@@ -66,15 +63,9 @@ namespace Rtx
         constexpr VkShaderStageFlags sStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR
             | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
 
-        /// The layout every array declares, which is the same layout whatever the scene holds.
-        ///
-        /// **Sized to the maximum and not to the scene, because a pipeline outlives a cell.** Two
-        /// set layouts are compatible only where they are identically defined, so a layout that
-        /// counted the scene's textures made every cell's array incompatible with the pipeline
-        /// layout built from the last one's — and a renderer that keeps its pass across scenes, as
-        /// this one does because building one compiles a shader, would bind a set the pipeline
-        /// cannot accept. What the maximum costs is a few hundred kilobytes of pool, paid
-        /// once.
+        /// The layout every array declares, sized to the maximum and not to the scene, because a
+        /// pipeline outlives a cell and two set layouts are compatible only where they are
+        /// identically defined. The maximum costs a few hundred kilobytes of pool, paid once.
         SetLayout makeLayout(const Device& device)
         {
             const std::array<VkDescriptorSetLayoutBinding, 2> bindings{
@@ -85,14 +76,9 @@ namespace Rtx
             };
 
             // Partially bound because a scene with fewer textures than the array can hold leaves the
-            // tail unwritten, and a shader that never indexes there must not be told it is an error.
-            //
-            // **Update after bind, because an arrival writes this set while work that named it is
-            // still on the queue.** A cell landing writes the slots it brought, and a bake recorded
-            // a moment earlier is bound to the same set — legal here because a descriptor may be
-            // written after the bind as long as no pending command reads that descriptor, and a
-            // slot nothing has described is a slot no material names. Without it the bake had to
-            // read through a set and a pool of its own, made and buried per arrival.
+            // tail unwritten. Update after bind, because an arrival writes this set while work that
+            // named it is still on the queue — legal as long as no pending command reads that
+            // descriptor, and a slot nothing has described is a slot no material names.
             constexpr VkDescriptorBindingFlags sBound
                 = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
             constexpr std::array<VkDescriptorBindingFlags, 2> flags{ sBound, sBound };

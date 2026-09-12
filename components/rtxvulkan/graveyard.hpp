@@ -16,15 +16,10 @@ namespace Rtx
     class CommandPool;
     class Device;
 
-    /// What a frame in flight may still be reading, held until its fence says it has stopped.
-    ///
-    /// **Two frames in flight means nothing is destroyed when it is let go.** A texture the scene
-    /// dropped, a structure a departed mesh gave back, a table made again because it grew, the
-    /// staging an upload read from — each is named by a command buffer the queue may not have
-    /// reached yet, and destroying it there is a use after free the driver may or may not survive.
-    /// So everything on the frame path buries what it is finished with here, under the frame that
-    /// is being recorded, and that frame's fence is what empties it: by the time it has signalled,
-    /// every earlier submit on the queue has finished too.
+    /// What a frame in flight may still be reading, held until its fence says it has stopped:
+    /// everything on the frame path buries what it is finished with here, because a command buffer
+    /// the queue may not have reached yet names it, and by the time the recording frame's fence
+    /// signals every earlier submit has finished too.
     class Graveyard
     {
     public:

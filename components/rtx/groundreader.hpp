@@ -22,19 +22,9 @@ namespace Rtx
     class ContentSource;
 
     /// Reads one cell's ground off the land records into a `PreparedGround`, on whichever thread
-    /// owns this.
-    ///
-    /// **What `Terrain::ChunkManager::createChunk` reads, for a chunk one cell wide at full
-    /// detail, and none of what it builds around it.** The heights, the normals and the blend maps
-    /// come from `Terrain::Storage` exactly as they do for the quad tree's chunks — the two calls
-    /// are documented for a background thread — and the triangulation and the corners are
-    /// `Terrain::BufferCache`'s own, for a chunk with no neighbour at another level, because every
-    /// cell here is at one level. What a chunk gets beyond that — passes, a composite map camera, a
-    /// cluster-culling callback — is a rasterizer's, and the layer transforms those passes carried
-    /// are derived here instead.
-    ///
-    /// **Not thread-safe, and one instance a thread.** Everything it keeps is scratch, and the two
-    /// shapes a cell can take.
+    /// owns this: what `Terrain::ChunkManager::createChunk` reads from `Terrain::Storage` and
+    /// `Terrain::BufferCache` for a chunk one cell wide at full detail, and none of the passes
+    /// and cameras it builds around it. Not thread-safe, and one instance a thread.
     class GroundReader
     {
     public:
@@ -50,12 +40,8 @@ namespace Rtx
 
         /// Cell texture coordinates to a layer's blend map, for a map of `tileCount` tiles a side
         /// doubled to match the original game's: what `BlendmapTexMat` attaches, as `uv * xy + zw`.
-        ///
-        /// **Derived, because the class that states it is private to `material.cpp`.** That one
-        /// composes a scale of `n / (n + 1)` about the centre with a nudge of a quarter texel, up in
-        /// one axis and down in the other, "to look like vanilla"; the same composition is written
-        /// out here and the numbers it reaches are asserted by a test, so a change there is a
-        /// failure here rather than a drift.
+        /// Derived, because the class that states it is private to `material.cpp`, and a test
+        /// asserts the numbers so a change there is a failure here rather than a drift.
         static osg::Vec4f maskTransform(int tileCount);
 
     private:

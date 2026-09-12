@@ -15,23 +15,16 @@
 namespace Rtx
 {
     /// What skins one bind pose: a run word per vertex and the influences the runs name, laid in the
-    /// scene's shared tables. `Shaders::GpuInfluence` says what a run is.
-    ///
-    /// **Shared by every mesh built from one skin**, because that is what the content shares:
-    /// `SceneUtil::RigGeometry` copies keep one `InfluenceData` between them, and a body part worn by
-    /// a hundred people is one rig here and a hundred meshes. A rig outlives its last mesh by one
-    /// sweep and goes with it.
+    /// scene's shared tables. Shared by every mesh built from one skin, because
+    /// `SceneUtil::RigGeometry` copies keep one `InfluenceData` between them. A rig goes with its
+    /// last mesh.
     struct Rig
     {
         /// One run word per vertex this rig skins.
         Run mRuns;
 
-        /// The influences those runs name.
-        ///
-        /// **Never empty, and that is why the run is kept rather than the count.** An allocator
-        /// hands out no run of nothing, so a mesh whose every vertex follows no bone still holds one
-        /// influence it never reads — and a stored count of nought would have the upload and the
-        /// release disagree with what was taken.
+        /// The influences those runs name. Never empty, because an allocator hands out no run of
+        /// nothing, which is why the run is kept rather than the count.
         Run mInfluences;
 
         /// Rows one pose of this rig takes, which is what every mesh on it is given.
@@ -54,17 +47,11 @@ namespace Rtx
         Index getVertexCount() const { return mTargetCount > 0 ? mOffsets.mCount / mTargetCount : 0; }
     };
 
-    /// What poses the meshes that deform: the rigs, the morphs, and the pose each mesh on one holds.
-    ///
-    /// **One type, because a deformer and the poses standing on it are one invariant.** A rig is
-    /// shared by every mesh built from one skin and goes with the last of them, so the count, the
-    /// runs behind it and the rows each mesh was given have to be released in one order, across six
-    /// allocators and two free lists. The count is the one `SlotRows` keeps: a mesh standing on a
-    /// rig is one hold on its row, and the last hold given back is what frees it.
-    ///
-    /// **The mesh's own fields stay on the mesh.** Which deformer poses it, where its rows sit and
-    /// whether it has been posed are facts about the mesh, so every call here takes the
-    /// `MeshRange` rather than four indices copied out of it.
+    /// What poses the meshes that deform: the rigs, the morphs, and the pose each mesh on one
+    /// holds. One type, because a rig's count, the runs behind it and the rows each mesh was given
+    /// have to be released in one order across six allocators. A mesh standing on a rig is one
+    /// hold on its row. Every call takes the `MeshRange`, because which deformer poses a mesh is
+    /// the mesh's own fact.
     class DeformerTable
     {
     public:
@@ -112,11 +99,8 @@ namespace Rtx
         std::span<const Shaders::GpuBone> getMeshBones(const MeshRange& range) const;
         std::span<const float> getMeshWeights(const MeshRange& range) const;
 
-        /// Settles what `release` took out of the arrivals, so they can be read again.
-        ///
-        /// **Called where a sweep ends and nowhere else**, because a sweep is the only thing that
-        /// releases a deformer. `SlotSet::remove` leaves its list holding the slot until a pass
-        /// settles it, which is what makes a sweep of thousands one pass rather than thousands.
+        /// Settles what `release` took out of the arrivals, so they can be read again. Called where
+        /// a sweep ends, which is the only thing that releases a deformer.
         void compact();
 
         void clearArrivals();
@@ -133,26 +117,16 @@ namespace Rtx
         RunBuffer<Shaders::GpuBone> mBones;
         RunBuffer<float> mWeights;
 
-        /// Which rig and morph slots have been written since the last `clearArrivals`.
-        ///
-        /// **Sets and not lists**, because a deformer that arrives and is released inside one sweep
-        /// must leave. Taking it out of a list is a scan and a shift of the whole list per released
-        /// rig, on the frame a cell leaves; a set marks a byte and settles the lot in one pass.
-        ///
-        /// **`SlotSet` and not `SlotChanges`**, because there is no freed list to keep: a rig's
-        /// storage is a run in a shared buffer, so `SkinTables::writeRigs` never has to be told one
-        /// went — the next rig to land in the run is what writes it again.
+        /// Which rig and morph slots have been written since the last `clearArrivals`. Sets, because
+        /// a deformer that arrives and is released inside one sweep must leave; `SlotSet` and not
+        /// `SlotChanges`, because a rig's storage is a run in a shared buffer and nothing has to be
+        /// told one went.
         SlotSet mArrivedRigs;
         SlotSet mArrivedMorphs;
 
         /// Where each deforming mesh's vertices sit among the deforming meshes alone, which is what
-        /// both a bind table and a pose table are indexed by.
-        ///
-        /// **Blocked like the scene's own vertices**, because a backend holds the poses in a table
-        /// blocked the same way: a pose that straddled a block would be a run split across two
-        /// allocations, and the address handed to a refit covers one. The tail of a block too short
-        /// for the next body is a hole like any other, and a block is a quarter of a million
-        /// vertices against a body's couple of thousand.
+        /// both a bind table and a pose table are indexed by. Blocked like the scene's own vertices,
+        /// because the address handed to a refit covers one allocation.
         RunAllocator mBindRuns{ Shaders::VERTEX_BLOCK };
     };
 }

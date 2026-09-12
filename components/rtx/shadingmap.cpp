@@ -15,11 +15,9 @@ namespace Rtx
 {
     namespace
     {
-        /// How many times the grid is box blurred.
-        ///
-        /// Three passes of a box are a close enough Gaussian for anything this coarse, and cost
-        /// three adds a cell against an exponential's exp. What matters is that the estimate stays
-        /// smooth: a correction with an edge in it would put that edge into the frame.
+        /// How many times the grid is box blurred: three passes are a close enough Gaussian for
+        /// anything this coarse, and a correction with an edge in it would put that edge into the
+        /// frame.
         constexpr int sBlurPasses = 3;
 
         /// What one block or one texel contributes: the sum of its colours in linear light, and
@@ -58,11 +56,8 @@ namespace Rtx
         }
 
         /// Reads the largest level of `texture` once, handing `sink` each block or texel along with
-        /// where its centre lands.
-        ///
-        /// Block-compressed formats are read through their palettes rather than decompressed: a
-        /// block's sum is its palette weighted by how many texels chose each entry, which is
-        /// arithmetic on eight bytes and needs no decoder.
+        /// where its centre lands. Block-compressed formats are read through their palettes: a
+        /// block's sum is its palette weighted by how many texels chose each entry.
         template <class Sink>
         void readTexels(const TextureData& texture, const Sink& sink)
         {
@@ -151,11 +146,8 @@ namespace Rtx
                 ++sampled;
             }
 
-        // **A texture that counted nothing is content, not a broken contract.** `blockSum` refuses
-        // a transparent texel because a transparent texel is not a colour, so a BC1 cutout whose
-        // every texel picks the transparent entry resolves no cell at all. A sheet with no colour
-        // in it has no painted light to divide out, which is what the map that changes nothing
-        // says.
+        // A texture that counted nothing is content, not a broken contract: `blockSum` refuses a
+        // transparent texel, so a BC1 cutout whose every texel is transparent resolves no cell.
         if (sampled == 0)
         {
             mValues.fill(1.0f);

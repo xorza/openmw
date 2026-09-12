@@ -57,15 +57,10 @@ namespace Rtx
             return VK_PRESENT_MODE_FIFO_KHR;
         }
 
-        /// The present mode a vertical sync setting asks for.
-        ///
-        /// **Mailbox is what `Disabled` means here and not immediate.** Immediate tears, and the
-        /// setting a player reaches for when they turn vsync off is latency rather than a torn
-        /// frame — mailbox keeps the newest frame and drops the rest, which is the same answer with
-        /// the tearing taken out. Immediate stands behind it for a surface with no mailbox.
-        ///
-        /// `Adaptive` is FIFO that gives up and tears when a frame misses its refresh, which is
-        /// exactly what the rasterizer's adaptive vsync does through SDL.
+        /// The present mode a vertical sync setting asks for. `Disabled` is mailbox and not
+        /// immediate, because what a player turning vsync off reaches for is latency and not a
+        /// torn frame; immediate stands behind it for a surface with no mailbox. `Adaptive` is
+        /// FIFO that tears when a frame misses its refresh, as the rasterizer's does through SDL.
         VkPresentModeKHR presentModeFor(VkPhysicalDevice device, VkSurfaceKHR surface, SDLUtil::VSyncMode mode)
         {
             switch (mode)
@@ -150,11 +145,8 @@ namespace Rtx
         if ((capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0)
             throw Unsupported("this surface will not take a transfer, and the frame reaches it as a blit");
 
-        // **Opaque, and refused rather than substituted.** What the alpha of a presented frame
-        // means is the compositor's to decide, and the other modes decide it differently — a frame
-        // whose alpha this renderer never set would be blended by one of them against whatever
-        // stands behind the window. Every surface this fork has met offers opaque, so one that does
-        // not is a case to look at rather than to guess at.
+        // Opaque, and refused rather than substituted: the other modes blend a frame whose alpha
+        // this renderer never set against whatever stands behind the window.
         if ((capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) == 0)
             throw Unsupported("this surface offers no opaque composite alpha, and the frame carries no alpha to blend");
 

@@ -19,13 +19,9 @@ namespace Rtx
 {
     namespace
     {
-        /// Whether this camera has a sea to synthesise.
-        ///
-        /// **The shader's own test**, so the two cannot disagree: a cell with no water carries a
-        /// level of minus infinity, every "how deep" comes out never positive, and nothing samples
-        /// the wave tiles — which is what makes not building them for that trace free. Every
-        /// interior is such a frame, and the synthesis was a fifth of a millisecond of device time
-        /// in each of them.
+        /// Whether this camera has a sea to synthesise — the shader's own test, so the two cannot
+        /// disagree. Every interior is such a frame, and the synthesis was a fifth of a millisecond
+        /// of device time in each of them.
         bool hasSea(const Shaders::VisibilityConstants& camera)
         {
             return !std::isinf(camera.mWaterLevel);
@@ -72,11 +68,8 @@ namespace Rtx
     const Image& TraceChain::recordDenoise(const VkCommandBuffer commands, const Shaders::Camera& camera,
         const float far, const bool historyLost, GpuTimer* const timer)
     {
-        // **The temporal half first, and the cascade is what fills in where it was rejected.**
-        // The accumulator replaces the trace's single sample with the mean of the frames this
-        // surface has been seen over, and hands on the variance of that mean — which is what
-        // lets the levels below stop at an edge in the light rather than only at an edge in the
-        // geometry.
+        // The temporal half first: the accumulator hands on the variance of its mean, which is
+        // what lets the levels below stop at an edge in the light and not only in the geometry.
         openZone(timer, commands, "accumulate");
         const Image& moments = mAccumulate.record(commands, *mChannels, camera, far, historyLost);
         const Image& blended = mAccumulate.getBlended();
@@ -104,12 +97,9 @@ namespace Rtx
     {
         assert(isBuilt() && "a trace into a chain that has no extent");
 
-        // Both written whole before anything reads them, so neither needs its contents carried over
-        // from the last time. **But the last frame may still be reading them** — the curve's output
-        // is what the interface draws over and the presenter blits, the colour is what an upscaler
-        // and the curve read — so the discard is sourced at everything before it on the queue rather
-        // than at the top of the pipe, which would wait for nothing. A picture rides the queue behind
-        // the picture before it and is ordered against it by the same scope.
+        // Both written whole before anything reads them, but the last frame may still be reading
+        // them, so the discard is sourced at everything before it on the queue rather than at the
+        // top of the pipe, which would wait for nothing.
         for (const Image* image : { static_cast<const Image*>(mColour.get()), what.mTarget })
             image->transition(commands,
                 ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,

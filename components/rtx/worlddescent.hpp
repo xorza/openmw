@@ -9,31 +9,16 @@
 
 namespace Rtx
 {
-    /// Descends into the children of `node` that are in the world, handing each to `visitor`.
-    ///
-    /// **Three node types in this tree choose among their children, and they get three answers.**
-    /// A switch is honoured. A sequence is honoured, and `stepSequence` decides whether its clock
-    /// runs first. An LOD is not honoured at all, because a ray is owed the finest child a node has
-    /// rather than the one a distance test picked for an eye. That is the whole of the decision, and
-    /// it is why both walks stay in `TRAVERSE_ALL_CHILDREN`: the one mode that would answer the
-    /// first two also answers the third, and it answers it wrongly.
-    ///
-    /// **Both walks in this renderer need all three**, and they differ only in that step — which is
-    /// what made this one rule written twice, in two files, with a fourth line between them.
-    ///
-    /// **`osg::Switch`**: its `traverse` visits every child under `TRAVERSE_ALL_CHILDREN`, so a
-    /// branch that is switched off is mirrored anyway. `MWRender`'s `DayNightCallback` leaves the
-    /// night lamp traced at noon and the day mesh traced at midnight, both at once, and a harvested
-    /// plant is traced through the unharvested one it replaced. This is geometry and not only light.
-    ///
-    /// **`osg::Sequence`**: `NifOsg` builds one for every `NiFltAnimationNode`, which is Morrowind's
-    /// flipbook — a fire, a forge, a lava flow. Under `TRAVERSE_ALL_CHILDREN` every frame of it is
-    /// traced at once and in the same place, and its clock never moves. Whichever frame it stands on
-    /// is walked here, and the clock is `stepSequence`'s to run.
+    /// Descends into the children of `node` that are in the world, handing each to `visitor`. A
+    /// switch is honoured, or `DayNightCallback` leaves the night lamp traced at noon and a
+    /// harvested plant traced through the one it replaced. A sequence — `NiFltAnimationNode`, a
+    /// fire or a forge — is honoured at the frame it stands on, or every frame of it is traced at
+    /// once. An LOD is not, because a ray is owed the finest child and not the one a distance test
+    /// picked. That is why both walks stay in `TRAVERSE_ALL_CHILDREN` and share this one rule.
     ///
     /// @param stepSequence run on a sequence before its frame is read. The mirror runs the
-    ///        flipbook's clock here, because that clock lives in a traversal this renderer does not
-    ///        run; a template's clock is nobody's to run, so that walk passes one that does nothing.
+    ///        flipbook's clock here, because it lives in a traversal this renderer does not run;
+    ///        a template's clock is nobody's to run.
     template <class StepSequence>
     void descendInWorld(osg::Node& node, const NodeKind kind, osg::NodeVisitor& visitor, StepSequence stepSequence)
     {

@@ -123,15 +123,10 @@ namespace Rtx
     {
         releaseImageSync();
 
-        // **Rebuilt with the swapchain, because the image count is the surface's to decide.** A
-        // recreate can come back with a different number, and a vector sized to the old one is then
-        // indexed past its end — which hands `vkQueueSubmit2` a semaphore made of whatever was next
-        // on the heap. The layers say so at once; with them off it is a frozen window and an empty
-        // log.
-        //
-        // **Before the buffers are handed out again**, and the reason is not tidiness: a recording
-        // that blitted from the renderer's target still names it, and the caller is about to destroy
-        // that target and make a new one at the new size.
+        // Rebuilt with the swapchain, because a recreate can come back with a different image count
+        // and a vector sized to the old one hands `vkQueueSubmit2` a semaphore off the heap. Before
+        // the buffers are handed out again, because a recording that blitted from the renderer's
+        // target still names it.
         mPool->reset();
 
         // **Freed and not merely reset.** `vkResetCommandPool` returns what a buffer recorded; the
@@ -207,11 +202,9 @@ namespace Rtx
         if (!mSwapchain->setVerticalSync(mode))
             return;
 
-        // The same three calls `rebuild` makes, for the same reason: a present mode is a property
-        // of the swapchain object, so changing it means a new one and every frame in flight has to
-        // be done with the old one first. Not `rebuild` itself, because that clears the staleness —
-        // and a window that changed size while the mode was being set still owes a rebuild at the
-        // extent this one does not know.
+        // The same three calls `rebuild` makes, because a present mode is a property of the
+        // swapchain object. Not `rebuild` itself, because that clears a staleness a window that
+        // changed size meanwhile still owes.
         mDevice.waitIdle();
         mSwapchain->recreate(getExtent());
         remakeImageSync();

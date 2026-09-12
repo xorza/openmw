@@ -10,12 +10,9 @@
 
 namespace Rtx
 {
-    /// What put a frame's indirect light back together.
-    ///
-    /// **Three states and not two flags**, because two flags are not independent: an upscaler
-    /// denoises for itself, so asking for the wavelet as well is a contradiction that resolves
-    /// silently. A frame is reconstructed by one of these or by none of them, and which one is a
-    /// thing a run can be asked.
+    /// What put a frame's indirect light back together — three states and not two flags, because
+    /// an upscaler denoises for itself and asking for the wavelet as well is a contradiction that
+    /// resolves silently.
     enum class Denoiser
     {
         /// The raw bounce, as the trace wrote it. What a converged reference is built from, because
@@ -43,13 +40,10 @@ namespace Rtx
         return sDenoiserNames.name(denoiser);
     }
 
-    /// Which network Ray Reconstruction runs.
-    ///
-    /// **Named for the letters NVIDIA uses**, because that is what a driver release note and a bug
-    /// report will say. Ray Reconstruction keeps its own set, distinct from super-resolution's — the
-    /// vendored `nvsdk_ngx_defs_dlssd.h` retires A through C and names D and E, where the
-    /// super-resolution enum in `nvsdk_ngx_defs.h` retires D as well and names J through M. Reading
-    /// one for the other selects a network that does not exist and is reverted to the default.
+    /// Which network Ray Reconstruction runs, named for the letters NVIDIA uses. Ray Reconstruction
+    /// keeps its own set, distinct from super-resolution's: `nvsdk_ngx_defs_dlssd.h` names D and E,
+    /// where `nvsdk_ngx_defs.h` names J through M, and reading one for the other selects a network
+    /// that does not exist.
     enum class Preset
     {
         /// Whatever the installed feature library picks, which has changed between SDK versions and
@@ -85,22 +79,15 @@ namespace Rtx
         return sPresetNames.named(name);
     }
 
-    /// What the upscaler is built with, decided once per set of targets.
-    ///
-    /// **One struct, because the two are one decision.** The
-    /// mode says whether an upscaler runs and at what ratio; the preset says which network it runs.
-    /// Neither changes per frame — a feature is created per resolution with both — so they travel
-    /// together from the profile to the renderer's options to the renderer itself, and a frame
-    /// reads what the renderer holds.
+    /// What the upscaler is built with, decided once per set of targets: the mode says whether an
+    /// upscaler runs and at what ratio, and the preset which network it runs. A feature is created
+    /// per resolution with both.
     struct Upscaling
     {
         Upscale mMode = Upscale::Off;
 
-        /// Which network to pin, where one runs at all.
-        ///
-        /// **Pinned rather than left to the library**, which is what makes two runs comparable: the
-        /// default has changed between SDK versions and again between the convolutional and
-        /// transformer models, so a frame reconstructed under it is a frame nobody can reproduce.
+        /// Which network to pin, where one runs at all. Pinned rather than left to the library,
+        /// whose default has changed between SDK versions, so that two runs are comparable.
         Preset mPreset = Preset::D;
 
         bool operator==(const Upscaling& other) const = default;
@@ -118,17 +105,10 @@ namespace Rtx
         bool operator==(const ReconstructionRequest& other) const = default;
     };
 
-    /// What actually reconstructs a frame, worked out once from what was asked of it.
-    ///
-    /// **A rule in two expressions in the middle of the frame path answers nobody.**
-    /// `filtering = mFilter && !upscaling` and `jitter = mJitter || upscaling` are correct and are
-    /// invisible: two command-line switches mean nothing unless a third is set a particular way,
-    /// and no run says which of the two denoisers produced the picture it is being judged on. Both
-    /// halves of that are the same defect — a decision taken where it cannot be reported.
-    ///
-    /// So it is taken here instead, once, by a function of its inputs and nothing else. The renderer
-    /// drives the frame from what this says, and a report prints the same value, so the two cannot
-    /// come apart.
+    /// What actually reconstructs a frame, worked out once from what was asked of it, by a
+    /// function of its inputs and nothing else: the renderer drives the frame from what this says
+    /// and a report prints the same value, where `mFilter && !upscaling` in the middle of the
+    /// frame path answered nobody.
     struct Reconstruction
     {
         Denoiser mDenoiser = Denoiser::None;
@@ -140,12 +120,9 @@ namespace Rtx
         /// Whether the primary ray moved inside its pixel this frame.
         bool mJitter = false;
 
-        /// The wavelet was wanted and did not run, because an upscaler denoises for itself.
-        ///
-        /// **Not an error, and not silence either.** `FrameOptions::mFilter` is on by default, so
-        /// this is true of nearly every upscaled frame and means only "the switch did not decide".
-        /// What turns it into something worth saying is a caller that knows the switch was given
-        /// outright, which is the caller's to know and not this struct's.
+        /// The wavelet was wanted and did not run, because an upscaler denoises for itself. True of
+        /// nearly every upscaled frame, since `FrameOptions::mFilter` is on by default; worth saying
+        /// only to a caller that knows the switch was given outright.
         bool mFilterSuppressed = false;
 
         /// The frame jittered although nothing asked it to, because an upscaler always jitters:
@@ -153,11 +130,9 @@ namespace Rtx
         /// sample.
         bool mJitterForced = false;
 
-        /// Whether the wavelet ran over the indirect channel.
-        ///
-        /// **One comparison, because two things turn on it.** The backend records the accumulator
-        /// and the cascade where this holds, and `FrameImage::Accumulated` exists only where it did —
-        /// so a second spelling of it is a frame that filtered and a channel that disagrees.
+        /// Whether the wavelet ran over the indirect channel — one comparison, because the backend
+        /// records the accumulator where this holds and `FrameImage::Accumulated` exists only where
+        /// it did.
         bool filtered() const { return mDenoiser == Denoiser::Wavelet; }
 
         /// The whole of the rule, and the only copy of it.

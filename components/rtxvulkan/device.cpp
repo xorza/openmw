@@ -265,16 +265,10 @@ namespace Rtx
         checkVk(mFunctions.mGetPipelineExecutableProperties(mHandle, &asked, &executables, nullptr),
             "vkGetPipelineExecutablePropertiesKHR");
 
-        // **Silence and "nothing to say" are different answers, and this is the second.** NVIDIA's
-        // compiler reports no executable at all for a ray tracing pipeline, where it reports one for
-        // every compute pipeline in this renderer — so the trace's register count, which is what an
-        // occupancy figure is made of, is not a number this device will give. Said once per pipeline
-        // rather than left as a missing line, because a reader otherwise cannot tell it from a call
-        // nobody made.
-        //
-        // **And no internal representation for any pipeline**, asked with the capture flag set: the
-        // driver answers with a count of nought, so which load a kernel compiled to is not a question
-        // this extension can put to it. Nsight Graphics is where that is read.
+        // Said once per pipeline rather than left as a missing line: NVIDIA's compiler reports no
+        // executable at all for a ray tracing pipeline, and no internal representation for any, so
+        // a reader could not otherwise tell it from a call nobody made. Nsight Graphics is where
+        // that is read.
         if (executables == 0)
         {
             Log(Debug::Verbose) << "pipeline " << name << ": the driver reports no executable";

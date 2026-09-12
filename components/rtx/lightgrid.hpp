@@ -14,27 +14,12 @@ namespace Rtx
 {
     struct Light;
 
-    /// Which lamps can reach where.
-    ///
-    /// **A shading point should not have to ask every lamp in the cell whether it is near.** Walking
-    /// them all costs the same whether one contributes or none do, and the fog made that
-    /// unaffordable rather than merely wasteful: a surface asks once per hit where a march asks
-    /// twenty-four times per pixel, sky included, and a town's lamps walked that way are several
-    /// times the trace that lights them.
-    ///
-    /// A uniform grid, in **world space** rather than screen space, because a reflection or a bounce
-    /// lands where no pixel is looking. Each cell's lamps are a run of the `RunList`, keyed by the
-    /// cell's flat index.
-    ///
-    /// A lamp is binned into every cell its **reach** touches rather than the one cell it stands in,
-    /// which is what makes the lookup complete: a cell's list is every lamp that could light it, so
-    /// the shader's own distance test is a refinement and never a correction.
-    ///
-    /// **The grid covers what the lamps reach, and takes no bounds from anyone.** Handed the scene's
-    /// instead, it would end where the geometry does — and a lamp near the edge reaches past that,
-    /// so a fog step in the air above a cell would be handed an empty list and lose it. Sized to the
-    /// union of the reaches, a position outside the grid is one no lamp can light, and empty is the
-    /// right answer rather than a missing one.
+    /// Which lamps can reach where: a uniform grid in world space, because a bounce lands where no
+    /// pixel is looking, and a fog march asking every lamp twenty-four times a pixel was several
+    /// times the trace. A lamp is binned into every cell its reach touches, so the shader's own
+    /// distance test is a refinement and never a correction. The grid covers what the lamps reach
+    /// and takes no bounds from the scene, so a fog step in the air above a cell is not handed an
+    /// empty list.
     class LightGrid
     {
     public:
@@ -47,17 +32,9 @@ namespace Rtx
         /// Bins `lights`, for a caller that has them at construction.
         explicit LightGrid(std::span<const Light> lights) { rebuild(lights); }
 
-        /// Bins `lights` into the list this already has.
-        ///
-        /// **What a frame uses, and the constructor above is not.** Rebinding must not go back to
-        /// the allocator: assigning a freshly built grid over this one threw away the list's vectors
-        /// and made them again, on every frame that moved.
-        ///
-        /// **And a world whose lamps have not moved is not binned again.** Everything this reads of
-        /// a light is where it stands and how far it reaches, so the grid is a function of that
-        /// sequence and of nothing else — a lamp that only flickered has the same grid, and
-        /// Morrowind's lamps flicker on nearly every frame. A compare of a few kilobytes against a
-        /// bin of every light.
+        /// Bins `lights` into the list this already has, without going back to the allocator, and
+        /// not at all where the lamps have not moved: a lamp that only flickered has the same grid,
+        /// and Morrowind's lamps flicker on nearly every frame.
         void rebuild(std::span<const Light> lights);
 
         /// The corner cell zero starts at, and how many cells the grid is across.
@@ -72,13 +49,9 @@ namespace Rtx
         const RunList& getList() const { return mList; }
 
     private:
-        /// Whether `lights` stands exactly where the last binning's did, so the list still describes
-        /// it.
-        ///
-        /// **Element-wise and never as a set**, which is what makes it exact: entry `i` of the list
-        /// names light `i`, so what has to hold is that light `i` is still at the position and the
-        /// reach it was binned at. Two lamps that swapped places are caught, and a lamp that only
-        /// changed colour is not — which is right, because the grid never read its colour.
+        /// Whether `lights` stands exactly where the last binning's did, element-wise, because
+        /// entry `i` of the list names light `i`. A lamp that only changed colour is not caught,
+        /// because the grid never read its colour.
         bool standsWhereItWas(std::span<const Light> lights) const;
 
         osg::Vec3f mOrigin;

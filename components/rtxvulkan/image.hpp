@@ -44,12 +44,9 @@ namespace Rtx
         /// The view a sampler reads, which covers every level.
         VkImageView getView() const { return mView.get(); }
 
-        /// The view a storage descriptor takes, which is the first level alone.
-        ///
-        /// **Vulkan will not let a storage image name a chain**, so an image with one is written
-        /// through a second view of its own — and an image without one hands back the only view it
-        /// has, so nothing that never asked for levels has anything to know about this. An image
-        /// with a chain and no storage usage has none either: nothing may name it there.
+        /// The view a storage descriptor takes, which is the first level alone, because Vulkan will
+        /// not let a storage image name a chain. An image without a chain hands back the only view
+        /// it has.
         VkImageView getStorageView() const
         {
             return mStorageView.get() != VK_NULL_HANDLE ? mStorageView.get() : mView.get();
@@ -59,11 +56,8 @@ namespace Rtx
         VkFormat getFormat() const { return mFormat; }
         std::uint32_t getMipLevels() const { return mMipLevels; }
 
-        /// What this image was created able to do, which is not always what a reader assumes.
-        ///
-        /// **Kept so a mismatch can be asserted rather than looked at.** An image handed to
-        /// something that samples it, without `VK_IMAGE_USAGE_SAMPLED_BIT`, reads as zero — no
-        /// error, no validation message, just a black frame with nothing pointing at the cause.
+        /// What this image was created able to do, kept so a mismatch can be asserted: an image
+        /// sampled without `VK_IMAGE_USAGE_SAMPLED_BIT` reads as zero with no validation message.
         VkImageUsageFlags getUsage() const { return mUsage; }
 
         /// The same dependency as `transition`, for a caller collecting a run of them into one
@@ -73,24 +67,15 @@ namespace Rtx
         /// Moves every level of the image from one use to the next, recording into `commands`.
         void transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const;
 
-        /// Fills every level below the first by halving the one above it, in `VK_FILTER_LINEAR`.
-        ///
-        /// **A box filter, which is what a moment wants.** A level of this chain is the mean of the
-        /// four texels over it, so a channel carrying a square averages to a mean square and the
-        /// difference of the two is the variance the level threw away. A wider or a sharper kernel
-        /// would be a better picture and a worse statistic.
-        ///
-        /// Takes the whole image in `VK_IMAGE_LAYOUT_GENERAL` with the first level written and the
-        /// rest holding nothing, and leaves it in `VK_IMAGE_LAYOUT_GENERAL` ordered against a
-        /// sampled read. Needs `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` and `VK_IMAGE_USAGE_TRANSFER_DST_BIT`.
+        /// Fills every level below the first by halving the one above it, in `VK_FILTER_LINEAR` —
+        /// a box filter, which is what a moment wants: a channel carrying a square averages to a
+        /// mean square. Takes and leaves the image in `VK_IMAGE_LAYOUT_GENERAL`, ordered against a
+        /// sampled read. Needs both transfer usage bits.
         void buildMips(VkCommandBuffer commands) const;
 
         /// Copies one level to host memory, one texel's bytes per pixel, tightly packed, row by row.
-        ///
-        /// **Left in the layout it was handed**, because reading an image is not a change to it and
-        /// a caller that had to know a read moved it is one that would forget.
-        ///
-        /// Submits and waits, so it belongs to a screenshot rather than to a frame.
+        /// Left in the layout it was handed. Submits and waits, so it belongs to a screenshot
+        /// rather than to a frame.
         void read(
             CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level = 0) const;
 
@@ -133,30 +118,16 @@ namespace Rtx
         std::uint32_t mTexelBytes = 0;
     };
 
-    /// A one-texel image for a binding a shader declares and a branch never reads.
-    ///
-    /// **A descriptor has to point somewhere.** A caller that bound the real thing regardless would
-    /// carry a full-size image for a binding nothing looks at — sixteen bytes a pixel of the frame.
-    /// Laid out here once and then never moved again, because a bound image has to be in the
-    /// layout its descriptor names whether the shader reads it or not.
-    ///
-    /// **What it is laid out for follows from `usage`**, because a storage image is read as one
-    /// access and a sampled image as the other, and no caller has ever wanted the pair to disagree.
-    ///
-    /// Submits and waits, so it belongs to a pass's construction rather than to a frame.
+    /// A one-texel image for a binding a shader declares and a branch never reads, because a
+    /// descriptor has to point somewhere and the real thing would be sixteen bytes a pixel of the
+    /// frame. Laid out once by `usage` and never moved again. Submits and waits, so it belongs to a
+    /// pass's construction rather than to a frame.
     Image makeStandIn(
         const Device& device, CommandPool& pool, VkFormat format, VkImageUsageFlags usage, std::string_view name);
 
-    /// A run of image dependencies emitted as one command.
-    ///
-    /// **One `vkCmdPipelineBarrier2` for a handover, not one per image.** The G-buffer's fourteen
-    /// channels change state together twice a frame, and a `transition` apiece is twenty-eight
-    /// commands where two would say the same thing — which is what NVIDIA's own guidance says to
-    /// group. A batch that fills up emits what it holds and carries on, so a caller never has to
-    /// know how many it is about to add.
-    ///
-    /// **No allocation, because this is a frame path.** The longest run in this renderer is the
-    /// G-buffer's channels; the array is sized for that and flushing covers anything longer.
+    /// A run of image dependencies emitted as one `vkCmdPipelineBarrier2`: the G-buffer's fourteen
+    /// channels change state together twice a frame. No allocation, because this is a frame path;
+    /// a batch that fills up emits what it holds and carries on.
     class Barriers
     {
     public:

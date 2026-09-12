@@ -38,12 +38,9 @@ namespace Rtx
 
     void ExposurePass::beforeWrite(VkCommandBuffer commands) const
     {
-        // **Against the previous frame and not this one.** A window keeps two frames in flight and
-        // there is one set of these buffers, so the measurement about to overwrite them may start
-        // while the curve reading them for the frame before is still running. A barrier orders
-        // against everything already submitted to the queue, which is the whole of what a
-        // write-after-read needs; nothing has to be made visible. The frame before's own clear and
-        // update are in the source scope too, because a write after a write is a hazard of its own.
+        // Against the previous frame and not this one: two frames in flight share one set of these
+        // buffers, so the measurement about to overwrite them may start while the curve reading
+        // them is still running. An execution dependency is all a write-after-read needs.
         const std::array<VkBufferMemoryBarrier2, 2> barriers{
             VkBufferMemoryBarrier2{
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,

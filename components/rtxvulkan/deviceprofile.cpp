@@ -46,10 +46,8 @@ namespace Rtx
             return missing;
         }
 
-        /// The largest heap holding a memory type a `Buffer::hostWritten` could come out of.
-        ///
-        /// The largest and not the sum, because a buffer goes in one heap: two apertures of 128 MiB
-        /// hold no scene a single 256 MiB one would not.
+        /// The largest heap holding a memory type a `Buffer::hostWritten` could come out of — the
+        /// largest and not the sum, because a buffer goes in one heap.
         VkDeviceSize hostWrittenBytes(const VkPhysicalDeviceMemoryProperties& memory)
         {
             VkDeviceSize most = 0;
@@ -116,10 +114,8 @@ namespace Rtx
             return profile;
         }
 
-        // **Nothing here stages, so a device the host cannot write into cannot run this at all.**
-        // How much room there is behind the type is a different question, and one this answers
-        // rather than refuses: every card this fork targets offers the type, and the ones without
-        // resizable BAR offer a couple of hundred megabytes of it.
+        // Nothing here stages, so a device the host cannot write into cannot run this at all. How
+        // much room there is behind the type is answered rather than refused.
         if (profile.mHostWrittenBytes == 0)
         {
             profile.mObstacle = "no memory type the host writes into and the device reads";

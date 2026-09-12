@@ -29,11 +29,8 @@ namespace Rtx
         constexpr VkBufferUsageFlags sSpriteListUsage
             = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-        /// What a material's vertex-colour mode is worth to the shader: one bit, or none.
-        ///
-        /// The mode does not survive the trip, for the reason `GpuMaterial::mAlphaCutoff` gives:
-        /// what the shader does is a `mix` against a weight, and the host is what settles which of
-        /// the two colours the weight picks.
+        /// What a material's vertex-colour mode is worth to the shader: one bit, or none. The
+        /// shader does a `mix` against a weight, and the host settles which colour the weight picks.
         std::uint32_t vertexColourFlag(const Surface::VertexColour colour)
         {
             switch (colour)
@@ -154,11 +151,9 @@ namespace Rtx
         mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
 
-        // **Every table exists from here, whether or not anything has been written to it.** A frame
-        // carries the address of all of them and the shader reaches all of them; what fills one is a
-        // later call that a frame may never make — a scene with no sprites never bins any, and the
-        // tiles were then bound as nothing at all. Growing on write cannot carry that guarantee,
-        // because the write is exactly what does not happen.
+        // Every table exists from here, whether or not anything is written to it: a frame carries
+        // the address of all of them, and a scene with no sprites never bins any, so the tiles were
+        // once bound as nothing at all.
         graveyard.bury(growTo(mMeshes, device, 0, sTableUsage));
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
         {
@@ -268,12 +263,9 @@ namespace Rtx
 
         const auto count = static_cast<std::uint32_t>(sprites.size());
 
-        // **Before the bin and after the write**, because the bin reads a sprite's position and the
-        // trace reads its layers, and both read the table this fills in. The sprites go over
-        // unshaded and come back shaded in place.
-        //
-        // Scratch for the two depth orders, one key a sprite a light. Nothing reads it after the
-        // dispatch and nothing carries it between frames, so it is sized and forgotten.
+        // Before the bin and after the write, because the bin reads a sprite's position and the
+        // trace reads its layers, and both read the table this shades in place. The depth-order
+        // scratch is one key a sprite a light, read by nothing after the dispatch.
         reserve(tables.mSpriteOrder, VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t),
             placing.mGraveyard);
 

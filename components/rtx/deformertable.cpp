@@ -19,11 +19,9 @@ namespace Rtx
             return influence.mBone < boneCount;
         }) && "an influence naming a bone the rig has not got");
 
-        // **A rig with no influence at all still takes a run of one**, because an allocator hands
-        // out no run of nothing and a backend addresses the run whether or not it is read: a mesh
-        // whose every vertex follows no bone is the zero matrix everywhere, as the rasterizer has
-        // it. Zeroed rather than left as the last tenant wrote it, so two runs that reach here
-        // agree on bytes nothing reads — which the scene digest hashes whole.
+        // A rig with no influence at all still takes a run of one, because a backend addresses the
+        // run whether or not it is read. Zeroed rather than left as the last tenant wrote it, so
+        // the scene digest, which hashes whole, agrees between two runs.
         const Run words = mRuns.allocate(runs);
         const Run shares = influences.empty() ? mInfluences.allocateZeroed(1) : mInfluences.allocate(influences);
 
@@ -54,11 +52,9 @@ namespace Rtx
 
     namespace
     {
-        /// Writes `pose` over `held` where the two differ, and says whether they did.
-        ///
-        /// **Compared rather than trusted**, because the walk poses every rig it meets and cannot
-        /// know which of them the engine animated. A first pose always counts: what the slot held
-        /// before it is nothing a pose can equal.
+        /// Writes `pose` over `held` where the two differ, and says whether they did. Compared
+        /// rather than trusted, because the walk poses every rig it meets and cannot know which of
+        /// them the engine animated.
         template <class T>
         bool takePose(std::span<const T> pose, std::span<T> held, bool posed)
         {

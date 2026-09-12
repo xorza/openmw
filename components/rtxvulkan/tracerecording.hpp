@@ -17,12 +17,9 @@ namespace Rtx
     class SpriteBinPass;
     class SpriteShadePass;
 
-    /// What one camera's trace records against, and what makes this trace different from the other.
-    ///
-    /// **The recording's own context and not the renderer's**, for the reason `Placing` gives. Two
-    /// cameras record one chain — a frame, and a picture inside the interface — and what they share
-    /// is this list rather than an object. Nothing here is held: every field is per-call data, so
-    /// naming them costs `TraceChain` no member and no lifetime.
+    /// What one camera's trace records against, and what makes this trace different from the
+    /// other: a frame and a picture inside the interface record one chain, and what they share is
+    /// this list rather than an object. Nothing here is held.
     struct TraceRecording
     {
         /// The passes every trace runs, whichever camera it is for. Borrowed from the renderer,

@@ -44,11 +44,8 @@ namespace Rtx
         std::span<const VkVertexInputBindingDescription> mVertexBindings;
         std::span<const VkVertexInputAttributeDescription> mVertexAttributes;
 
-        /// The format of the one colour attachment.
-        ///
-        /// **Dynamic rendering, so there is no render pass and no framebuffer.** The pipeline is
-        /// told what it will be drawing into and the recording says which image that is — which is
-        /// the difference between an object per target size and one for the run.
+        /// The format of the one colour attachment. Dynamic rendering, so there is no render pass
+        /// and no framebuffer, and one object serves every target size.
         VkFormat mColourFormat = VK_FORMAT_UNDEFINED;
 
         Blend mBlend = Blend::None;
@@ -60,14 +57,9 @@ namespace Rtx
         std::string_view mName;
     };
 
-    /// A graphics pipeline and the layout it is addressed through.
-    ///
-    /// **The two are one object because they fail as one**, for the reason `ComputePipeline` gives.
-    ///
-    /// **The first thing in this backend that is not compute.** Everything that makes the picture is
-    /// dispatched — the trace, the denoiser, exposure, the curve, the composite. This exists because
-    /// a GUI is triangles over a finished frame and there is nothing to be gained by tracing a font
-    /// atlas.
+    /// A graphics pipeline and the layout it is addressed through, one object for the reason
+    /// `ComputePipeline` gives. The one thing in this backend that is not compute, because there
+    /// is nothing to be gained by tracing a font atlas.
     class GraphicsPipeline
     {
     public:

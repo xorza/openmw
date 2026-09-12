@@ -6,14 +6,9 @@
 
 namespace Rtx
 {
-    /// Everything a run decides once about how the picture is made.
-    ///
-    /// **One bag, and not a settings category, a command-line record and an option struct per
-    /// host.** Split that way, every field is spelled three times and the harness hands its half
-    /// across through the settings singleton, which is a message passed through a global.
-    ///
-    /// Nothing here changes while a run is being made, which is why a frame reads what it was handed
-    /// rather than asking the registry per knob per frame.
+    /// Everything a run decides once about how the picture is made, in one bag for both hosts.
+    /// Nothing here changes while a run is being made, so a frame reads what it was handed rather
+    /// than asking the registry per knob per frame.
     struct RenderProfile
     {
         /// What the upscaler is built with. Carried whole into `RendererOptions`.

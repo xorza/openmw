@@ -15,15 +15,9 @@ namespace Rtx
 {
     namespace
     {
-        /// How many bytes one texel takes, for the formats this renderer makes images in.
-        ///
-        /// **A read-back has to know, and only the format does.** Nothing here is multi-planar, so
-        /// this is the whole of the question — and a format that reaches here unlisted is a new one
-        /// somebody added without saying how large it is.
-        ///
-        /// **Nought for a block format**, whose texels have no size of their own: what a content
-        /// texture holds is four-by-four blocks, and nothing reads one of those back. `read` is
-        /// where that is said.
+        /// How many bytes one texel takes, for the formats this renderer makes images in, because
+        /// a read-back has to know. Nought for a block format, whose texels have no size of their
+        /// own and which nothing reads back.
         std::uint32_t texelBytesOf(VkFormat format)
         {
             switch (format)

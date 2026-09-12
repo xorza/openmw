@@ -6,40 +6,20 @@
 namespace Rtx
 {
     /// Milliseconds between two readings of the steady clock, which is what every timed figure in
-    /// this fork is.
-    ///
-    /// **One spelling.** `std::chrono::duration<double, std::milli>(to - from).count()` says
-    /// nothing a reader needs and hides which way round the subtraction goes.
-    ///
-    /// **Beside the clock rather than beside the report it feeds.** A backend times a wait and the
-    /// game times a walk; neither of them summarises a run, and neither should reach the report to
-    /// subtract two time points.
+    /// this fork is. Beside the clock and not beside the report, because a backend timing a wait
+    /// should not reach the report to subtract two time points.
     inline double since(std::chrono::steady_clock::time_point from, std::chrono::steady_clock::time_point to)
     {
         return std::chrono::duration<double, std::milli>(to - from).count();
     }
 
-    /// How long a frame stands for, and what time it is once it has.
-    ///
-    /// **One clock for a run, because a run that reads two cannot repeat itself.** How far the
-    /// simulation steps, how long the renderer is told the frame took, and what OpenMW ages its
-    /// caches and its preloads by are three questions with one answer, and three reads of
-    /// `[RTX] fixed step` each falling back to a clock of its own are three answers.
-    ///
-    /// **What a second clock costs.** `MWWorld::Scene` reads the reference time eight times, and two
-    /// of those decide rather than expire — `SceneManager::checkLoaded` says whether an object's
-    /// mesh is already in hand, and `CellPreloader::isTerrainLoaded` says whether a grid change may
-    /// go ahead. Two runs of one build on two clocks are handed different worlds, a few placements
-    /// and a texture apart.
-    ///
-    /// **A step, or the wall.** A measured run states how long every frame stands for and this
-    /// counts them, so what ages is the frame index. A played session states nothing, so it is
-    /// handed what the wall said and the time it reports is the wall's — a stall should age a
-    /// player's caches, and it should not age a benchmark's.
-    ///
-    /// **What this does not answer is how long since the last *traced* frame.** A loading screen
-    /// drives frames that draw no world, so the interval a motion vector belongs to is not this
-    /// step. `Rtx::FrameOptions::mSinceLast` says who measures that where no run states one.
+    /// How long a frame stands for, and what time it is once it has. One clock for a run, because
+    /// a run that reads two cannot repeat itself: `SceneManager::checkLoaded` and
+    /// `CellPreloader::isTerrainLoaded` decide by the reference time, so two runs on two clocks
+    /// are handed different worlds. A measured run states a step and what ages is the frame
+    /// index; a played session is handed the wall, so a stall ages a player's caches and not a
+    /// benchmark's. How long since the last *traced* frame is `Rtx::FrameOptions::mSinceLast`,
+    /// because a loading screen drives frames that draw no world.
     class FrameClock
     {
     public:

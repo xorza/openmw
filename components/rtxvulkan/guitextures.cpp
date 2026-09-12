@@ -90,11 +90,9 @@ namespace Rtx
         if (region.mWidth == 0 || region.mHeight == 0)
             return;
 
-        // **The two transitions are what order this against the write before it.** Copies into one
-        // image are otherwise unordered within a submit, and a picture written twice in a frame —
-        // the whole surface and then a corner of it — would land in whichever order the device
-        // chose. The barriers chain: this copy's leading barrier waits on the sampling stage the
-        // previous copy's trailing barrier released to.
+        // The two transitions are what order this against the write before it: copies into one
+        // image are otherwise unordered within a submit, and a picture written twice in a frame
+        // would land in whichever order the device chose.
         const Image& image = *mImages[slot.get()];
         const VkCommandBuffer commands = mBatch.getCommands();
 
@@ -179,11 +177,9 @@ namespace Rtx
     {
         assert(holds(slot) && "a slot given back twice");
 
-        // **Put aside rather than destroyed, so giving a texture back costs no submit.** A clear or
-        // a copy recorded against this image has not run yet, and destroying it under a recorded
-        // command is a use after free; flushing here instead would put a round trip on every window
-        // that closes, and a load closes a great many. What was drawn with it is on the queue too,
-        // which is why the wait that frees it is a frame's and not this class's — see `startFrame`.
+        // Put aside rather than destroyed, because a copy recorded against this image may not have
+        // run, and a flush here would put a round trip on every window that closes. The wait that
+        // frees it is a frame's — see `startFrame`.
         mRetired.push_back(std::move(mImages[slot.get()]));
         mFree.free(slot.get());
 

@@ -61,12 +61,9 @@ namespace Rtx
             };
         }
 
-        /// A viewpoint before anything has described the world over it.
-        ///
-        /// **One statement for the three builders**, because what each of them leaves for
-        /// `describeWorld` to overwrite has to be one answer. `Shaders::VisibilityConstants` is a
-        /// header `glslc` reads as well, so it can hold no default member initialisers of its own
-        /// and the defaults have to live on this side.
+        /// A viewpoint before anything has described the world over it, one statement for the
+        /// three builders. `Shaders::VisibilityConstants` is a header `glslc` reads as well, so it
+        /// can hold no default member initialisers of its own.
         Shaders::VisibilityConstants beforeWorld(const osg::Vec3f& origin, float near, float far)
         {
             return Shaders::VisibilityConstants{

@@ -13,62 +13,30 @@
 
 namespace Rtx
 {
-    /// sRGB's transfer function, and its inverse clamped to the unit range.
-    ///
-    /// **Whatever is averaged is averaged between these two.** A weighted sum of stored bytes is not
-    /// the encoding of the weighted sum: half of one ground type and half of another meet at 188 in
-    /// light and at 128 in bytes, and the second is every blend between two types coming out muddy.
-    ///
-    /// **One curve for everything the content hands over**, whether it arrives as a texel, as a
-    /// weather record's colour or as a lamp's. Every one of them is display-encoded, and a second
-    /// spelling of the same three constants is a second idea of what a stored byte is worth.
-    ///
-    /// **A value that is one of the 256 is answered from the table below whichever overload is
-    /// called.** The float one recovers the byte and divides it back before it believes it, so what
-    /// it hands back for `k / 255` is the table's own entry and not an approximation of it; a value
-    /// that fails that comparison takes the curve. So a caller need not know which kind it holds to
-    /// keep `std::pow` off a frame — only to be sure the two answers agree, which is what recovering
-    /// the byte exactly is for.
+    /// sRGB's transfer function, and its inverse clamped to the unit range. Whatever is averaged is
+    /// averaged between these two: half of one ground type and half of another meet at 188 in light
+    /// and at 128 in bytes. One curve for everything the content hands over — a texel, a weather's
+    /// colour, a lamp's. A value that is one of the 256 is answered from the table below whichever
+    /// overload is called: the float one recovers the byte first, so the two answers agree.
     float toLinear(float encoded);
     float toEncoded(float linear);
 
-    /// The same for a stored byte.
-    ///
-    /// **The two hundred and fifty-six answers there are, worked out once.** Where a value did
-    /// arrive as a stored byte, the argument to the curve above is `k / 255` — so a table over `k`
-    /// is not an approximation of that curve, it is the same number for every input it can be
-    /// given. A 512-square chain asks two million times, and `std::pow` is a libm call no compiler
-    /// inlines.
-    ///
-    /// **The byte the caller already holds, and so no recovery at all.** This is the overload to
-    /// reach for where the type says what the value is; the float one is for a value whose kind the
-    /// caller does not know.
+    /// The same for a stored byte: the two hundred and fifty-six answers there are, worked out
+    /// once, because a 512-square chain asks two million times and `std::pow` is a libm call.
     float toLinear(std::uint8_t encoded);
 
     /// The same over the three channels of a colour, which is how most of them arrive.
     osg::Vec3f toLinear(const osg::Vec3f& encoded);
 
-    /// A colour as the content files store one, decoded.
-    ///
-    /// Morrowind's colours are display-encoded, and the light transport downstream is linear. The
-    /// two differ most in the middle, so mid grey is where a renderer that skips this is most
-    /// obviously wrong and where a test pins it.
-    ///
-    /// **The one crossing, and every colour entering this renderer takes it.** The game states a
-    /// colour in four components — a `Vec4f`, four bytes, or a packed word — and the trace holds
-    /// three in light, so the narrowing and the decode are one step. Writing that narrowing by hand
-    /// is the mistake this exists to stop — a particle's ramp reaching the sprite table in the
-    /// space the file wrote it — and `Surface::Colour` gives the description a type a renderer
-    /// cannot copy out of.
+    /// A colour as the content files store one, decoded — the one crossing, and every colour
+    /// entering this renderer takes it: the game states four components and the trace holds three
+    /// in light, so the narrowing and the decode are one step, and a particle's ramp cannot reach
+    /// the sprite table in the space the file wrote it.
     osg::Vec3f decodeColour(std::uint32_t packed);
 
-    /// The same decode, for a colour something else has already unpacked to `[0, 1]`.
-    ///
-    /// **What the game hands over is display-encoded too.** OpenMW's own renderer works in that
-    /// space from end to end and never converts, so every colour read off a light, a fog, the sky
-    /// or a model's vertex is the file's own number divided by 255 — and a ray tracer that took it
-    /// as linear would be as wrong there as it would be reading the record itself. The alpha is
-    /// dropped: nothing downstream has a use for it.
+    /// The same decode, for a colour something else has already unpacked to `[0, 1]`. What the
+    /// game hands over is display-encoded too: OpenMW's own renderer never converts. The alpha is
+    /// dropped.
     osg::Vec3f decodeColour(const osg::Vec4f& encoded);
 
     /// The same again, for the four bytes `NifOsg` and `Terrain` write a vertex colour as.
@@ -78,14 +46,9 @@ namespace Rtx
     osg::Vec3f decodeColour(const Surface::Colour& encoded);
 
     /// The colour half of one block-compressed block: four colours and the texels that chose them.
-    ///
-    /// **Eight bytes, and every block-compressed format this renderer reads ends in them.** BC1 is
-    /// these alone; BC2 and BC3 put eight bytes of alpha in front and leave this unchanged. So one
-    /// reader serves all three, and anything that wants a block's colours — an average to divide
-    /// out, a thumbnail to look at — asks it rather than carrying its own copy of the rule.
-    ///
-    /// The colours are as stored, which is display-encoded for every content format: whoever wants
-    /// linear light converts, and whoever wants to write a PNG does not.
+    /// Eight bytes that every block-compressed format this renderer reads ends in — BC2 and BC3 put
+    /// eight bytes of alpha in front — so one reader serves all three. The colours are as stored,
+    /// display-encoded.
     struct ColourBlock
     {
         /// In index order. The fourth is meaningless where `mCutout` is set.

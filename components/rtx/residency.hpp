@@ -31,13 +31,10 @@ namespace Resource
 
 namespace Rtx
 {
-    /// Where a cell's content is read from, by path: a model's template, and an image.
-    ///
-    /// **An interface, so that a ring can be handed a model by a test that has no loader.** The
-    /// game answers out of `Resource::SceneManager`, whose template is the one node every clone of
-    /// the model is copied from — and so the one whose drawables the frame's walk will find — and
-    /// whose image cache hands one object to a template and to whoever asks for the path, which is
-    /// what lets a reading made against the one be found by the other.
+    /// Where a cell's content is read from, by path: a model's template, and an image. An
+    /// interface, so that a ring can be handed a model by a test that has no loader. The game
+    /// answers out of `Resource::SceneManager`, whose template is the one node every clone is copied
+    /// from and whose image cache hands one object to a template and to whoever asks for the path.
     class ContentSource
     {
     public:
@@ -68,12 +65,9 @@ namespace Rtx
         Resource::SceneManager& mScenes;
     };
 
-    /// Where the world's cells are read from: the content, and which worldspace of it.
-    ///
-    /// **One value, because it is one question.** These are exactly `CellReader`'s arguments, and a
-    /// change to any of them is a reader that has to be built again — so they are compared as one
-    /// rather than field by field at the call that asks. The frame states it once, inside
-    /// `WorldAround`, and every residency reads the same one.
+    /// Where the world's cells are read from: the content, and which worldspace of it — exactly
+    /// `CellReader`'s arguments, compared as one because a change to any of them is a reader that
+    /// has to be built again.
     struct CellWorld
     {
         /// What the content files say stands where, or null for a world with none.
@@ -96,18 +90,10 @@ namespace Rtx
         bool operator==(const CellWorld& other) const = default;
     };
 
-    /// What a residency may do inside the walk that asks it.
-    ///
-    /// **One object, because the walk is what a residency is inside.** The rows a residency stands
-    /// are adopted through the mirror's own resolvers, under the identity the walk would find a
-    /// clone's mesh under, so that a mesh both stand is one mesh. As public methods of
-    /// `SceneExtractor` these would be calls that only mean anything inside a walk in front of every
-    /// other reader of that class.
-    ///
-    /// **An adoption is a hold, and a release gives it back.** A count on the entry says once what
-    /// re-stamping every adopted entry on every walk would say each frame: the sweep keeps a held
-    /// entry whatever its stamp, and a residency keeps the drawable and the state set it adopted
-    /// under — which it has anyway — to release by.
+    /// What a residency may do inside the walk that asks it: adopt rows through the mirror's own
+    /// resolvers, under the identity the walk would find a clone's mesh under, so that a mesh both
+    /// stand is one mesh. An adoption is a hold and a release gives it back, so the sweep keeps a
+    /// held entry whatever its stamp.
     class SceneAdopter
     {
     public:
@@ -136,11 +122,8 @@ namespace Rtx
         SceneAdopter() = default;
     };
 
-    /// Where the eye stands and how much world there is around it.
-    ///
-    /// **A value and not a set of setters.** Both residencies read all of these, and told them one
-    /// call at a time the reach is measured twice on every frame and a fact added to the pair has
-    /// to be remembered twice. The world itself is one value inside it, for the same reason.
+    /// Where the eye stands and how much world there is around it, as one value both residencies
+    /// read.
     struct WorldAround
     {
         /// What is read and where from. A world with no storage is a world with none.
@@ -163,15 +146,9 @@ namespace Rtx
         bool mOutdoors = true;
     };
 
-    /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.
-    ///
-    /// **What this renderer stands for itself, and the content files state.** A walk of the graph
-    /// finds what the game stood: the active cells' objects and actors. The distance is nobody's
-    /// node — `CellRing` stands its ground off the land records and its statics as instances of
-    /// their templates, and `DistantLights` stands the lamps of cells the paging leaves dark, which
-    /// have no node in either renderer because `LIGH` is not a paged type. Each is asked, inside the
-    /// walk, for what it stands; the abstraction is here because the extractor may be handed none,
-    /// which is every scene that is not a world.
+    /// What a walk of the scene graph cannot reach, offered to the walk that asks for it: the
+    /// distance is nobody's node. `CellRing` stands its ground and statics, and `DistantLights`
+    /// the lamps of cells the paging leaves dark, because `LIGH` is not a paged type.
     class Residency
     {
     public:

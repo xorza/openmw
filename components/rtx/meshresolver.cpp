@@ -33,14 +33,9 @@ namespace Rtx
                 : 0;
         }
 
-        /// The box a drawable's own bound reaches, in its own space.
-        ///
-        /// **The sphere and not the box, because that is the one a rig keeps.** `RigGeometry::
-        /// updateBounds` writes its sphere straight into the drawable and marks it computed, and
-        /// leaves the box to be recomputed from a callback that answers nothing — so asking for the
-        /// box would overwrite what the update worked out from the bone spheres. A sphere is a
-        /// looser box than the vertices would give, and it is the game's own number: the pose is on
-        /// the device and there are no vertices here to walk.
+        /// The box a drawable's own bound reaches, in its own space — off the sphere, because
+        /// `RigGeometry::updateBounds` writes its sphere straight into the drawable and asking for
+        /// the box would overwrite what it worked out from the bone spheres.
         osg::BoundingBoxf reachOf(const osg::Drawable& drawable)
         {
             const osg::BoundingSphere& sphere = drawable.getBound();
@@ -74,16 +69,11 @@ namespace Rtx
                 return mesh;
             }
 
-            // **What says the slot still fits, and it has to be asked.** The drawable is the same
-            // object — the map owns its key, so it cannot be a different one wearing the same
-            // address — but a deforming drawable is a shell over a source geometry the engine may
-            // replace, and a rig re-pointed at a longer mesh is the same rig. Posing that into the
-            // old slot is not a wrong pose: the slot is a run inside one shared vertex buffer, and
-            // the kernel would write past it over the meshes that follow.
-            //
-            // Where the source, the kind or the skin differs the entry is wrong rather than stale,
-            // so it goes and the geometry is mirrored afresh. The slot it abandons keeps the epoch
-            // it had and the next sweep takes it.
+            // What says the slot still fits, and it has to be asked: a deforming drawable is a
+            // shell over a source geometry the engine may replace, and a rig re-pointed at a longer
+            // mesh posed into the old slot would write past it over the meshes that follow. Where
+            // the source, the kind or the skin differs the entry goes and the geometry is mirrored
+            // afresh.
             const std::size_t vertices
                 = read.mDeform == Deform::Morph ? morphBase(*read.mMorph).size() : vertexCountOf(geometry);
 
@@ -310,11 +300,9 @@ namespace Rtx
                 return known->second.mIndex;
         }
 
-        // Every target's offsets laid end to end, the base's included as a run of zeroes so the
-        // table's target `k` is the drawable's target `k` and a weight indexes both the same way.
-        // `MorphGeometry::cull` reads target `k` as `offsets[k][vertex]` for every `k` past the
-        // base; a target shorter than the base is read as far as it goes and the rest left alone,
-        // which a zero past its end is.
+        // Every target's offsets laid end to end, the base's included as a run of zeroes so a
+        // weight indexes the table and the drawable the same way. A target shorter than the base
+        // is read as far as it goes, which a zero past its end is.
         mOffsetScratch.assign(vertices * targets.size(), osg::Vec3f());
         for (std::size_t target = 1; target < targets.size(); ++target)
         {
@@ -336,15 +324,10 @@ namespace Rtx
         const std::span<SceneUtil::Bone* const> bones = rig.getBones();
         assert(bones.size() == skin.mBones.size());
 
-        // `RigGeometry::cull`'s arithmetic, row for row: each bone's inverse bind by its
-        // skeleton-space matrix, and the skin's transform after the blend — composed into every
-        // bone here, which is the same product because the blend is linear and the transform is
-        // affine. A bone the skeleton has not got contributes nothing, as it does there.
-        //
-        // **From the matrices the update traversal left.** `RigGeometry::updateBounds` runs
-        // `Skeleton::updateBoneMatrices` under it for every active skeleton and on the first frame
-        // regardless, and a skeleton it skipped is one whose bones did not move — so what is here
-        // is this frame's pose or the last one, and either is what the rasterizer would show.
+        // `RigGeometry::cull`'s arithmetic, row for row, with the skin's transform composed into
+        // every bone, which is the same product because the blend is linear and the transform
+        // affine. From the matrices the update traversal left: a skeleton it skipped is one whose
+        // bones did not move.
         osg::Matrixf transform = skin.mTransform;
         if (const osg::RefMatrix* skinToSkel = rig.getSkinToSkelMatrix())
             transform = (*skinToSkel) * skin.mTransform;
@@ -385,11 +368,9 @@ namespace Rtx
 
     void MeshResolver::retireDeformers()
     {
-        // **A rig and a morph are swept on the meshes' stamp and not on a use count of their own.**
-        // Each is shared by every drawable that carries it, so what says one is gone is that no mesh
-        // named it this epoch — which the scene decides for itself by counting uses. What is swept
-        // here is only this mirror's hold on the data, and the two agree because a rig is stamped
-        // exactly where a mesh on it is met.
+        // A rig and a morph are swept on the meshes' stamp and not on a use count of their own;
+        // the scene counts uses for itself, and the two agree because a rig is stamped exactly
+        // where a mesh on it is met.
         mRigs.retire();
         mMorphs.retire();
     }

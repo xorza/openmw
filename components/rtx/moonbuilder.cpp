@@ -32,12 +32,8 @@ namespace Rtx
             return Fallback::Map::getFloat("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field));
         }
 
-        /// The same, refusing a reading of nought.
-        ///
-        /// **`Fallback::Map` answers an allowed key nobody planted with a silent zero**, and both
-        /// readings below are held for the life of the process — so a moon asked for before the
-        /// settings were read would leave every sky after it wrong, with nothing to say why. None of
-        /// the quantities this guards is one a moon can have at nought.
+        /// The same, refusing a reading of nought: `Fallback::Map` answers an allowed key nobody
+        /// planted with a silent zero, and both readings below are held for the life of the process.
         float requireSetting(Moon moon, std::string_view field)
         {
             const float value = setting(moon, field);
@@ -80,27 +76,17 @@ namespace Rtx
             return moon == Moon::Masser ? sMasser : sSecunda;
         }
 
-        /// This moon's colour, on a scale where Masser's luminance is one.
-        ///
-        /// **The difference in brightness is kept and only the level is taken out.** Secunda's
-        /// portrait averages two and a half times Masser's, and that is a fact about the two bodies
-        /// rather than an accident of the art — a pale moon reflects more of the same sunlight than
-        /// a dark red one.
+        /// This moon's colour, on a scale where Masser's luminance is one: Secunda's portrait
+        /// averages two and a half times Masser's, and a pale moon reflects more of the same
+        /// sunlight than a dark red one.
         osg::Vec3f tintOf(Moon moon)
         {
             return (moon == Moon::Masser ? sMasserFace : sSecundaFace) / sMasserLuma;
         }
 
-        /// What a full moon of this size delivers to a surface facing it, before its own tint.
-        ///
-        /// **A disc of geometric albedo `p` and half-angle `t` under irradiance `E` delivers
-        /// `E * p * sin(t)^2`.** Which is `L * pi * sin(t)^2` for a disc of radiance `L`, with
-        /// `L = E * p / pi` for the Lambertian body a full moon is — so the light is the sun, the
-        /// albedo and the sky the moon covers, and nothing else. `Shaders::MOON_ALBEDO` carries why
-        /// none of the three is a number this renderer chose.
-        ///
-        /// Taken from the angle rather than from the `Size` setting behind it, so that a moon hung
-        /// at a distance of its own would still come out right.
+        /// What a full moon of this size delivers to a surface facing it, before its own tint: a
+        /// disc of geometric albedo `p` and half-angle `t` under irradiance `E` delivers
+        /// `E * p * sin(t)^2`. Taken from the angle rather than from the `Size` setting behind it.
         float deliveredBy(Moon moon)
         {
             const float sine = std::sin(angularRadiusOf(moon));
@@ -108,18 +94,11 @@ namespace Rtx
             return Shaders::DAYLIGHT * Shaders::MOON_ALBEDO * sine * sine;
         }
 
-        /// How much light a moon at `phaseAngle` sends, against a full one.
-        ///
-        /// **The measured law rather than the geometry, and the two differ by a factor of five.**
-        /// The lit share of a disc is `(1 + cos a) / 2`, which makes a half moon half of a full one.
-        /// The moon is not: its surface is rough enough to shadow itself everywhere but at
-        /// opposition. Allen's fit to the observations — `dm = 0.026|a| + 4e-9 a^4`, with `a` in
-        /// degrees — puts a half moon at 0.09 of full, which is what photometry finds, and its
-        /// quartic term is the opposition surge that makes the last nights before full so much
-        /// brighter than the rest.
-        ///
-        /// Folded through the cosine, because a moon three quarters round its cycle is as lit as one
-        /// a quarter round it. Which limb keeps the light is the disc's business and not the light's.
+        /// How much light a moon at `phaseAngle` sends, against a full one — the measured law and
+        /// not the geometry, which differ by a factor of five because the surface shadows itself
+        /// everywhere but at opposition. Allen's fit, `dm = 0.026|a| + 4e-9 a^4` in degrees, puts a
+        /// half moon at 0.09 of full. Folded through the cosine, because which limb keeps the light
+        /// is the disc's business.
         float phaseLaw(float phaseAngle)
         {
             const float from = std::acos(std::clamp(std::cos(phaseAngle), -1.0f, 1.0f));

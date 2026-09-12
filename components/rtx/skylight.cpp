@@ -33,27 +33,15 @@ namespace Rtx
             "Blizzard",
         };
 
-        /// How much of the hour's own darkness the exposure keeps, as a power of the light it gives.
-        ///
-        /// **Two stops and four fifths between a clear noon and a clear midnight**: the two are 8.90
-        /// stops apart in what they deliver — 8.03 against 0.0168, by luminance — and `0.314` of
-        /// that is 2.79.
-        ///
-        /// Under three rather than the four and a half the literature fits to real scenes, because
-        /// there is no absolute luminance scale here to hang a published curve on: noon to midnight
-        /// is five hundred to one in this renderer where the world's is a hundred million to one.
-        /// What buys the rest of a night is a different lever from exposure — a Purkinje shift
-        /// raises what is dark while it desaturates it, where every exposure lever moves the whole
-        /// frame at once.
+        /// How much of the hour's own darkness the exposure keeps, as a power of the light it
+        /// gives: two stops and four fifths between a clear noon and a clear midnight, which are
+        /// 8.90 stops apart by luminance. Under three rather than the literature's four and a half,
+        /// because noon to midnight is five hundred to one in this renderer where the world's is a
+        /// hundred million to one; the rest of a night is a Purkinje shift's to buy.
         constexpr float sHourStops = 0.314f;
 
-        /// A sun out of a weather's reading and however much of the disc the asker can see.
-        ///
-        /// **The ground's share and a layer's are the same sun**, which is what makes this one
-        /// function: a cloud deck stands above the ground's horizon and keeps the sun after it has
-        /// set down here, and everything else about it is the same — the same place, and the
-        /// content's own sunset colour, which is keyed on the hour rather than on how much air the
-        /// beam crossed.
+        /// A sun out of a weather's reading and however much of the disc the asker can see — the
+        /// ground's share and a cloud deck's are the same sun at the same place and colour.
         Sun sunAbove(const SkyReading& sky, float share)
         {
             return Sun{
@@ -68,19 +56,14 @@ namespace Rtx
             };
         }
 
-        /// Rayleigh optical depth at the zenith, at the three sRGB primaries.
-        ///
-        /// `0.008569 λ^-4` with its usual correction, at 600, 550 and 450 nanometres — which is near
-        /// enough to where the primaries sit. **Aerosol is left out**: how thick the haze is belongs
-        /// to a weather rather than to the air, and a number for it here would be one nobody
-        /// measured.
+        /// Rayleigh optical depth at the zenith, at the three sRGB primaries: `0.008569 λ^-4` with
+        /// its usual correction, at 600, 550 and 450 nanometres. Aerosol is left out, because how
+        /// thick the haze is belongs to a weather.
         const osg::Vec3f sAirDepth(0.0683f, 0.0973f, 0.2213f);
 
-        /// How far the world curves under that layer — the Earth's own radius, in world units.
-        ///
-        /// **Not `CloudShell::mCurvature`, which is a shape fit and not a planet.** That is `k · h`
-        /// off Morrowind's cap and comes to 0.0575; read as `h / R` it is a world 128 times too
-        /// small, and the dip below would come out at 27 degrees rather than a fraction of one.
+        /// How far the world curves under that layer — the Earth's own radius, in world units. Not
+        /// `CloudShell::mCurvature`, which is a shape fit off Morrowind's cap and read as `h / R`
+        /// is a world 128 times too small.
         const float sWorldRadius = 6371000.0f * Constants::UnitsPerMeter;
     }
 
@@ -113,11 +96,9 @@ namespace Rtx
     SkyBudget skyBudget(
         const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& sheets, const osg::Vec3f& ambient)
     {
-        // What a uniform sky would have to be to deliver what this gradient does. `skyGradient` runs
-        // linearly in `sin(elevation)`, so the cosine-weighted integral over the hemisphere comes to
-        // `pi * (horizon / 3 + 2 * zenith / 3)` — two thirds of the sky an up-facing surface sees is
-        // nearer the zenith than the horizon, and this is that in closed form. The sheets are already
-        // a mean over the hemisphere and need no such weighting.
+        // What a uniform sky would have to be to deliver what this gradient does: linear in
+        // `sin(elevation)`, its cosine-weighted integral over the hemisphere is
+        // `pi * (horizon / 3 + 2 * zenith / 3)`. The sheets are already a mean over the hemisphere.
         const osg::Vec3f carried = horizon / 3.0f + zenith * (2.0f / 3.0f) + sheets;
 
         const osg::Vec3f fill(std::max(ambient.x() - carried.x(), 0.0f), std::max(ambient.y() - carried.y(), 0.0f),
@@ -131,19 +112,12 @@ namespace Rtx
         const osg::Vec3f irradiance = sky.mSunColour * Shaders::DAYLIGHT;
         const float share = std::clamp(sky.mSunShare, 0.0f, 1.0f);
 
-        // **The share taken this way is a dusk's, because that is the only hour a sun has light to
-        // spread and no direction to spread it from.** It is nothing at noon, where the direct term carries all of
-        // it, and nothing at night, where there is no sun to take a direction away from — peaking
-        // where the disc straddles the horizon and the sky in front of it is the brightest thing in
-        // the frame. `2 * s * (1 - s)` is that, and the two puts a dusk at a half at the half-set
-        // point.
-        //
-        // **The shape that suggests itself is `1 - share`, and it is largest where there is no sun.**
-        // Morrowind leaves a blue in the sun's slot all night — `Sun_Night_Color`, which is the
-        // original engine's stand-in for moonlight — and spreading that as an ambient came to six
-        // times the night ambient the weather itself records, flat, with no direction and no shadow
-        // in it. This renderer traces the moons, so keeping it is the moon counted twice and a night
-        // that does not read as one.
+        // The share taken this way is a dusk's — nothing at noon, where the direct term carries all
+        // of it, and nothing at night, where there is no sun to take a direction from — and
+        // `2 * s * (1 - s)` puts a dusk at a half at the half-set point. Not `1 - share`, which is
+        // largest where there is no sun: `Sun_Night_Color` is the original engine's stand-in for
+        // moonlight, spread as an ambient it came to six times the night ambient the weather
+        // records, and this renderer traces the moons.
         const float dusk = 2.0f * share * (1.0f - share);
 
         Skylight light{

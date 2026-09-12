@@ -8,26 +8,17 @@
 
 namespace
 {
-    /// How many cells the grid may hold, and how many lamp entries across all of them.
-    ///
-    /// **Two budgets, and the second is not implied by the first.** A wide exterior overruns the
-    /// cell count while its lamps are ordinary; one lamp with an enormous reach overruns the entry
-    /// count while the grid is still small, because it lands in every cell it touches. Doubling the
-    /// cell until both fit is what makes either recoverable.
+    /// How many cells the grid may hold, and how many lamp entries across all of them. Two
+    /// budgets, because a wide exterior overruns the first and one lamp with an enormous reach
+    /// overruns the second, and doubling the cell until both fit recovers either.
     constexpr std::size_t sMaxCells = 65536;
     constexpr std::size_t sMaxEntries = 262144;
 
-    /// The side a grid starts at, in world units — a quarter of a terrain tile.
-    ///
-    /// **About half a lamp's reach, because the list is what a point pays for.** A lamp is binned
-    /// into every cell its reach touches, so a cell of side `c` lists every lamp within `reach + c`
-    /// of it along each axis: a box of `(2 reach + 2 c)^3` around the sphere of `4/3 pi reach^3`
-    /// that can light a point in it. Morrowind's reaches run 256 to 640 units once `makeLight` has
-    /// stretched them. At one tile a point in the Guild of Mages weighed twenty-one lamps for the
-    /// one or two that reached it, and at a quarter tile it weighs twelve; at an eighth the entries
-    /// grow eightfold for one lamp fewer. An exterior overruns the cell budget at this size and
-    /// doubles back to a tile, which is where its lists were short already — a mean of two lamps a
-    /// cell at Seyda Neen.
+    /// The side a grid starts at, in world units — a quarter of a terrain tile, about half a
+    /// lamp's reach, because a cell of side `c` lists every lamp within `reach + c` of it. At one
+    /// tile a point in the Guild of Mages weighed twenty-one lamps for the one or two that reached
+    /// it, and at a quarter tile it weighs twelve; at an eighth the entries grow eightfold for one
+    /// lamp fewer. An exterior overruns the cell budget at this size and doubles back to a tile.
     constexpr float sFirstCell = 256.0f;
 
     /// The cells a sphere of `reach` about `centre` touches, as a half-open box of cell coordinates.
@@ -117,12 +108,8 @@ namespace Rtx
         mOrigin = bounds.valid() ? bounds._min : osg::Vec3f();
         const osg::Vec3f extent = bounds.valid() ? bounds._max - bounds._min : osg::Vec3f();
 
-        // The cell doubles until the grid fits both budgets. Counting the entries needs the size
-        // the count is against, so each candidate is sized and then measured.
-        //
-        // **It ends because doubling shrinks both.** Every axis falls to a single cell once the cell
-        // outgrows the extent, which is one cell holding one entry per lamp — inside both budgets
-        // for any scene with fewer lamps than the entry budget allows.
+        // The cell doubles until the grid fits both budgets. It ends because every axis falls to
+        // a single cell once the cell outgrows the extent, which is one entry per lamp.
         for (float cell = sFirstCell;; cell *= 2.0f)
         {
             mInverseCell = 1.0f / cell;

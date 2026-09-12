@@ -84,11 +84,9 @@ namespace Rtx
         Graveyard nothing(mDevice, mPool);
         describe(SeaState{}, nothing);
 
-        // **Every tile in the layout the trace binds it in, from the first frame.** A frame with no
-        // water in it synthesises nothing and binds the tiles anyway, because the shader declares
-        // them; an image that was never transitioned is in no layout at all, and a descriptor
-        // naming it as `GENERAL` is an error whether or not a ray ever samples it. Synthesising
-        // once here is what moves them, and leaves a sea rather than nothing in them.
+        // Every tile in the layout the trace binds it in, from the first frame: a frame with no
+        // water synthesises nothing and binds the tiles anyway, and a descriptor naming an image
+        // that was never transitioned is an error whether or not a ray samples it.
         mPool.submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
     }
 
@@ -130,11 +128,8 @@ namespace Rtx
             // The synthesis is a dispatch and the trace that samples what it left is a launch.
             .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
 
-            // **Written as well as read, because the transform runs in place.** Each of the six
-            // passes over a field reads it and writes it back, so what follows one is a write after
-            // a write as much as a read after one — and a dependency naming only the read leaves the
-            // two writes unordered against each other. The execution order held either way, which is
-            // why nothing was ever seen to go wrong.
+            // Written as well as read, because the transform runs in place and a dependency naming
+            // only the read leaves the two writes unordered.
             .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
         };
         const VkDependencyInfo dependency{

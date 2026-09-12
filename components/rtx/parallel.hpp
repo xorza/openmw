@@ -11,31 +11,16 @@
 namespace Rtx
 {
     /// Runs `body(index)` for every index below `count`, over as many threads as there is work for,
-    /// and comes back when the last of them is done.
-    ///
-    /// **One shot, and nothing like `Rtx::Worker`.** A worker is a thread that outlives the call
-    /// that started it and waits on a channel. This is a loop whose turns happen to be able to run
-    /// beside each other, so there is no stop token, no queue and nothing to join later.
-    ///
-    /// **An index and not a share each.** A hand takes the next index whenever it is free, so a
-    /// turn that costs ten times its neighbour delays nothing but itself. Every hand runs the same
-    /// loop and the atomic is the whole of the sharing.
-    ///
-    /// **The first exception and not the last**, so what is rethrown names what actually went wrong
-    /// rather than whichever hand finished after it. Every index is still attempted: a turn that
-    /// threw stops that turn and not the run, because a caller that asked for a batch wants to know
-    /// about the batch.
-    ///
-    /// **Each hand gets its own copy of both callables**, which is the contract the standard's own
-    /// parallel algorithms keep and what lets a caller pass a body with state of its own. One
-    /// object invoked from every thread at once is a data race the compiler has nothing to say
-    /// about: today's callers all pass lambdas whose `operator()` is const, and the next one need
-    /// not.
+    /// and comes back when the last of them is done. One shot, unlike `Rtx::Worker`. A hand takes
+    /// the next index whenever it is free, so a turn that costs ten times its neighbour delays
+    /// nothing but itself. The first exception is rethrown and every index is still attempted,
+    /// because a caller that asked for a batch wants to know about the batch. Each hand gets its
+    /// own copy of both callables, as the standard's parallel algorithms do, so a body with state
+    /// of its own is not a data race.
     ///
     /// @param equip what each hand holds for as long as it runs, built on that hand's own thread
-    ///        and destroyed there. The Vulkan backend files a validation message under the thread
-    ///        that asked for the work this way — the layers report on the calling thread, and a
-    ///        message left filed under a hand is one nobody collects.
+    ///        and destroyed there — how the Vulkan backend files a validation message under the
+    ///        thread that asked for the work.
     template <class Equip, class Body>
     void runInParallel(const std::size_t count, Equip equip, Body body)
     {

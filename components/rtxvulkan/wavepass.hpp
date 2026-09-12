@@ -25,22 +25,11 @@ namespace Rtx
     class Device;
 
     /// The sea, synthesised into textures a trace reads: one tile a cascade, three textures a tile.
-    ///
-    /// **A frame turns the phases and inverse-transforms them, and that is all it does.** The
-    /// amplitudes are drawn once for a sea state — a spectrum evaluation and a Gaussian draw for
-    /// every wavevector — and `h(k, t)` is `h0(k)` times a rotation, so what a frame owes is one
-    /// pass over each grid and three transforms.
-    ///
-    /// **What comes out is a height field and its first two derivatives**, because the normal is the
-    /// gradient of the surface and the caustics are its curvature: two fields sampled apart would
-    /// put the light where the surface is not. Beside them ride the second moments — the elevation
-    /// squared, the mean square slope and the squared trace of the curvature — which a mip chain
-    /// turns into what a ray cone could not resolve.
-    ///
-    /// **And the chain is why the textures are mipped rather than filtered by hand.** A level is the
-    /// mean of the four texels over it, so the level a cone reaches carries the mean of what it
-    /// covers and the mean of its square, and the difference of the two is the variance that was
-    /// averaged away. That is LEAN mapping, and it costs one fetch that was happening anyway.
+    /// A frame turns the phases and inverse-transforms them, and that is all it does. What comes
+    /// out is a height field and its first two derivatives, because the normal is the gradient and
+    /// the caustics are the curvature, with the second moments beside them: a mip level carries the
+    /// mean of what it covers and the mean of its square, and the difference is the variance that
+    /// was averaged away — LEAN mapping, for one fetch that was happening anyway.
     class WavePass
     {
     public:
@@ -48,19 +37,15 @@ namespace Rtx
         ///        can arrive at any time.
         WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
 
-        /// Draws the amplitudes for a sea state, replacing whatever was drawn before.
-        ///
-        /// Submits and waits. Does nothing where the sea is the one already described, which is what
-        /// makes it safe to call from every scene placement.
+        /// Draws the amplitudes for a sea state, replacing whatever was drawn before. Submits and
+        /// waits. Does nothing where the sea is the one already described.
         /// @param graveyard where the spectrum this replaces goes. A frame in flight may still be
         ///        synthesising from it, which is what a weather turning the wind makes happen.
         void describe(const SeaState& sea, Graveyard& graveyard);
 
-        /// Turns the phases to `seconds` and rebuilds every texture and every level from them.
-        ///
-        /// Leaves each texture in `VK_IMAGE_LAYOUT_GENERAL`, ordered against a sampled read — which
-        /// is also where a frame that records nothing finds them, holding whatever sea was last
-        /// synthesised. A cell with no water never samples them, so it need not synthesise them.
+        /// Turns the phases to `seconds` and rebuilds every texture and every level from them,
+        /// leaving each in `VK_IMAGE_LAYOUT_GENERAL` ordered against a sampled read. A cell with no
+        /// water never samples them, so it need not synthesise them.
         void record(VkCommandBuffer commands, float seconds) const;
 
         /// Linear, mipmapped and wrapping — a tile lays the same water down every `getExtent` units,
@@ -83,11 +68,8 @@ namespace Rtx
             return sWaveTiles[cascade].mExtent / static_cast<float>(sWaveTiles[cascade].mGrid);
         }
 
-        /// What `Rtx::waveSlope` made of the sea last described.
-        ///
-        /// Held rather than fetched: it is the same number the coarsest level of every curvature
-        /// chain carries, and a shader that read it there would spend two fetches at every step of a
-        /// march for a value that is the same at all of them.
+        /// What `Rtx::waveSlope` made of the sea last described, held rather than fetched from the
+        /// coarsest level at every step of a march.
         float getSlope() const { return mSlope; }
 
         /// What `Rtx::waveCurvature` made of the sea last described, held for the same reason.

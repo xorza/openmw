@@ -22,22 +22,12 @@ namespace Rtx
         MorphGeometry,
     };
 
-    /// Answers what kind a node is by its class, learning each class once.
-    ///
-    /// **Keyed on the pair of literals `META_Object` answers with**, `libraryName()` and
-    /// `className()`, which are one string literal per class — so a pair names a dynamic type
-    /// exactly, and a node met again costs two pointer compares rather than the casts `learn` took
-    /// the first time. A subclass has a pair of its own and is learned as what it derives from,
-    /// which is what makes the `static_cast` in `as` sound.
-    ///
-    /// **The pointers are a cache key and not a claim about the class.** Two equal pointers name
-    /// one literal and so one class, which is all the hit path relies on. A class that answers
-    /// with a second copy of its literal — another object file's, a plugin's — misses, goes
-    /// through `learn` again, and takes a second row or a count in `getOverflow`; nothing is
-    /// classified wrongly, only twice.
-    ///
-    /// **One per walking thread.** The table is written on a miss, so a classifier is owned by the
-    /// visitor that asks it and shared with nothing on another thread.
+    /// Answers what kind a node is by its class, learning each class once. Keyed on the pair of
+    /// literals `META_Object` answers with, so a node met again costs two pointer compares rather
+    /// than the casts `learn` took; a subclass has a pair of its own and is learned as what it
+    /// derives from, which is what makes the `static_cast` in `as` sound. The pointers are a
+    /// cache key and not a claim: a second copy of a literal misses and is classified twice, never
+    /// wrongly. One per walking thread, because the table is written on a miss.
     class NodeKinds
     {
     public:

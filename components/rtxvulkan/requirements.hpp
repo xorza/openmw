@@ -10,24 +10,16 @@
 
 namespace Rtx
 {
-    /// The Vulkan version the renderer is written against.
-    ///
-    /// A floor, not a negotiation. The target is Ada-class NVIDIA, which has been shipping 1.4 for
-    /// a long time, and push descriptors alone — core in 1.4 — are worth it: per-pass bindings with
-    /// no descriptor set to allocate is one fewer thing standing between a frame and zero
-    /// allocations.
+    /// The Vulkan version the renderer is written against — a floor, not a negotiation, and push
+    /// descriptors alone, core in 1.4, are worth it.
     inline constexpr std::uint32_t sApiVersion = VK_API_VERSION_1_4;
 
     /// A packed Vulkan version as `major.minor.patch`.
     std::string versionString(std::uint32_t version);
 
-    /// Every feature structure the renderer touches, chained by the constructor.
-    ///
-    /// One type serves both directions: `vkGetPhysicalDeviceFeatures2` fills it in with what a
-    /// device offers, and `VkDeviceCreateInfo::pNext` reads it as what the renderer is asking for.
-    /// They cannot drift apart, which is the whole point.
-    ///
-    /// Non-copyable because the `pNext` pointers refer to its own members.
+    /// Every feature structure the renderer touches, chained by the constructor. One type serves
+    /// both directions — what a device offers and what the renderer asks for — so they cannot
+    /// drift apart. Non-copyable because the `pNext` pointers refer to its own members.
     struct DeviceFeatures
     {
         DeviceFeatures();
@@ -82,22 +74,13 @@ namespace Rtx
         /// The largest record index a hit object may name, which `openmw-rtxtool info` prints.
         VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT mInvocationReorder{};
 
-        /// The device's heaps and memory types. **Its own query and not part of the chain above**,
-        /// because Vulkan states them through `vkGetPhysicalDeviceMemoryProperties` rather than
-        /// through `pNext`.
-        ///
-        /// **Read once for the device that is chosen, and read from here by everything after.**
-        /// What a device's memory is does not change while it is plugged in, and `findMemoryType`
-        /// runs on every allocation the renderer makes — a query apiece for an answer settled
-        /// before the window existed.
+        /// The device's heaps and memory types, read once for the device that is chosen, because
+        /// `findMemoryType` runs on every allocation the renderer makes.
         VkPhysicalDeviceMemoryProperties mMemory{};
     };
 
-    /// A feature the renderer will not start without, and how to reach it in the chain.
-    ///
-    /// The accessor exists so one table drives both directions: reading it off a queried
-    /// `DeviceFeatures` says whether a device qualifies, and writing it into a fresh one asks for
-    /// exactly the set that was checked.
+    /// A feature the renderer will not start without, and how to reach it in the chain, so one
+    /// table both checks a device and asks for exactly the set that was checked.
     struct RequiredFeature
     {
         std::string_view mName;
@@ -117,9 +100,7 @@ namespace Rtx
     void requestRequiredFeatures(DeviceFeatures& features);
 
     /// Appends the name of each required feature `supported` lacks. Nothing is appended when the
-    /// device qualifies.
-    ///
-    /// `supported` is taken by mutable reference because the table reaches its fields through one
-    /// accessor that both directions share; nothing is written.
+    /// device qualifies. `supported` is mutable because the table's accessor serves both
+    /// directions; nothing is written.
     void findMissingFeatures(DeviceFeatures& supported, std::vector<std::string_view>& missing);
 }

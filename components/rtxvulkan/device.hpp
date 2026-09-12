@@ -17,11 +17,9 @@ namespace Rtx
     class PipelineCache;
     struct PipelineCacheSpec;
 
-    /// Entry points that come from the required extensions rather than from core Vulkan.
-    ///
-    /// Resolved once at device creation and missing-checked there, so a driver that advertises an
-    /// extension it cannot actually dispatch fails at startup instead of at the first frame that
-    /// needed it.
+    /// Entry points that come from the required extensions rather than from core Vulkan, resolved
+    /// and checked once at device creation, so a driver that advertises an extension it cannot
+    /// dispatch fails at startup.
     struct DeviceFunctions
     {
         PFN_vkGetAccelerationStructureBuildSizesKHR mGetAccelerationStructureBuildSizes = nullptr;
@@ -66,51 +64,29 @@ namespace Rtx
         const PhysicalDevice& getPhysicalDevice() const { return mPhysicalDevice; }
         const DeviceFunctions& getFunctions() const { return mFunctions; }
 
-        /// Where every buffer's and every image's memory comes from.
-        ///
-        /// **One suballocator for the device and not one allocation per resource.** A cell brings a
-        /// few hundred textures and each is two images, so an allocation apiece is a call into the
-        /// kernel apiece for memory the driver then rounds up to its own granularity.
-        ///
-        /// Not const although the device is: handing out a range is what this is for, and every
-        /// resource that asks holds the device by const reference.
-        ///
-        /// Out of line because the allocator is only forward-declared here.
+        /// Where every buffer's and every image's memory comes from: one suballocator for the
+        /// device, where an allocation per resource is a kernel call apiece for a cell's several
+        /// hundred images. Not const although the device is, because every resource that asks holds
+        /// the device by const reference.
         MemoryAllocator& getMemory() const;
 
         /// Whether `vkQueuePresentKHR` may be handed a fence it signals when the presentation
-        /// engine has finished with an image.
-        ///
-        /// **The only thing that says so.** A queue-idle proves the queue is empty, not that the
-        /// compositor has let go, so a presenter without this retires its semaphores against a wait
-        /// the specification does not promise covers them.
+        /// engine has finished with an image — the only thing that says so, since a queue-idle
+        /// proves the queue is empty and not that the compositor has let go.
         bool hasPresentFences() const { return mPresentFences; }
 
         /// Handed to every `vkCreate*Pipelines` on this device, so that a shader is compiled once
         /// per change rather than once per pipeline.
-        ///
-        /// Out of line because the cache is only forward-declared here: it carries `<filesystem>`,
-        /// and this header is included by two dozen others that have no use for it.
         VkPipelineCache getPipelineCache() const;
 
         /// Logs what the driver's compiler made of `pipeline` — registers a thread, spills, shared
-        /// memory a block, or whatever else it chose to report.
-        ///
-        /// **An occupancy figure is a register count and a workgroup size**, and the register count
-        /// exists only inside the driver: no offline compiler has it, because the allocation is the
-        /// driver's — which is what lets an occupancy figure be had here with no external profiler.
-        ///
-        /// **Here rather than on either pipeline class**, because it is the device's compiler being
-        /// asked and both classes ask it: the entry points are already members, and a copy apiece
-        /// would be two places for the format switch to fall behind a driver.
+        /// memory a block. The register count exists only inside the driver, which is what lets an
+        /// occupancy figure be had here with no external profiler.
         void reportPipeline(VkPipeline pipeline, std::string_view name) const;
 
-        /// Whether a name handed to `setName` or `beginLabel` reaches anything at all.
-        ///
-        /// **What a caller asks before it builds one.** `setName` compiles to nothing in release,
-        /// but the string a caller concatenates out of a slot number or a path does not — so a
-        /// release run that builds one spends a heap allocation per texture on a name nothing can
-        /// read. Constant and not a device query, because the naming is decided at compile time.
+        /// Whether a name handed to `setName` or `beginLabel` reaches anything at all — what a
+        /// caller asks before it builds one, or a release run spends a heap allocation per texture
+        /// on a name nothing can read.
         static constexpr bool wantsNames()
         {
 #ifdef OPENMW_RTX_DEBUG_NAMES
@@ -135,11 +111,7 @@ namespace Rtx
         }
 
         /// Opens a named region in `commands`, so a capture shows what each stretch of the frame is.
-        ///
-        /// **The half of a performance picture a timestamp cannot give you.** A number says the
-        /// trace cost six milliseconds; an external profiler says which of its rays missed cache,
-        /// and it can only say so about a region somebody named. Compiled to nothing in release, for
-        /// the reason `setName` gives.
+        /// Compiled to nothing in release.
         void beginLabel([[maybe_unused]] VkCommandBuffer commands, [[maybe_unused]] std::string_view name) const
         {
 #ifdef OPENMW_RTX_DEBUG_NAMES
@@ -167,13 +139,9 @@ namespace Rtx
             return mGetDeviceFaultInfo != nullptr;
         }
 
-        /// What the device says about why it was lost, as lines for the message that reports it —
-        /// the driver's description, every address it faulted at and how precisely it knows, and
-        /// whatever the vendor adds. Nothing where the driver offers no `VK_EXT_device_fault`.
-        ///
-        /// **After a loss and never before**: the extension forbids the question of a device that is
-        /// still answering, so the `checkVk` and `awaitVk` that take a device are what ask it, and
-        /// only when the result was `VK_ERROR_DEVICE_LOST`.
+        /// What the device says about why it was lost, as lines for the message that reports it.
+        /// Nothing where the driver offers no `VK_EXT_device_fault`. After a loss and never before,
+        /// because the extension forbids the question of a device that is still answering.
         std::string describeFault() const;
 
     private:

@@ -7,15 +7,9 @@
 
 namespace Rtx
 {
-    /// What one walk is: which sweep stamps it, and where its counts go.
-    ///
-    /// **Borrowed by every resolver**, so a pass is one state rather than four copies free to fall
-    /// behind each other. The epoch was already shared for that reason, and the counts are the
-    /// other half of the same fact — what this pass met, as against what the last one did.
-    ///
-    /// **Borrowed `const`, because only the extractor moves a pass on.** A resolver reads the epoch
-    /// and writes the counts through it, and neither advancing the sweep nor repointing the counts
-    /// is a resolver's to do.
+    /// What one walk is: which sweep stamps it, and where its counts go. Borrowed `const` by every
+    /// resolver, so a pass is one state rather than four copies free to fall behind each other,
+    /// and only the extractor moves a pass on.
     struct MirrorPass
     {
         std::uint64_t mEpoch = 0;
@@ -31,21 +25,12 @@ namespace Rtx
         }
     };
 
-    /// The numbers mirror walks run at, and the rule that they only ever go up.
-    ///
-    /// **A state-set controller, an `osg::Sequence`, and — under the pick's own cull — both deforming
-    /// drawables refuse to run for a traversal number they have already seen.** So a walk's number
-    /// is not a label but a claim: this frame is newer than the last.
-    ///
-    /// This fork has two things that walk — the world, once a frame, and a traced view whenever its
-    /// subject changes — and they must not be two sequences. A subtree reached by both would be run
-    /// by whichever got there first and frozen for the other, and nothing states that no subtree is
-    /// shared: `NpcAnimation` merely happens to clone a `RigGeometry` per instance. One counter, and
-    /// the hazard cannot arise.
-    ///
-    /// **Not the frame number**, which a walk also carries and which means something else — which of
-    /// a `SceneUtil::LightSource`'s two buffers update has just written. A doll redrawn twice in one
-    /// frame needs two traversal numbers and one light buffer.
+    /// The numbers mirror walks run at, and the rule that they only ever go up: a state-set
+    /// controller, an `osg::Sequence` and both deforming drawables refuse to run for a traversal
+    /// number they already saw. The world's walk and a traced view's must not be two sequences,
+    /// because a subtree reached by both would be frozen for whichever got there second. Not the
+    /// frame number, which says which of a `SceneUtil::LightSource`'s two buffers update wrote: a
+    /// doll redrawn twice in one frame needs two traversal numbers and one light buffer.
     class Traversals
     {
     public:

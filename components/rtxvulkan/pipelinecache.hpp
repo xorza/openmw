@@ -23,22 +23,11 @@ namespace Rtx
         std::filesystem::path mShaderDirectory;
     };
 
-    /// A `VkPipelineCache` that outlives the process, kept in a file in the user's cache directory.
-    ///
-    /// **Creating a pipeline is compiling a program**, and this renderer's is one large ray-query
-    /// shader. Keeping the result means an edited shader is compiled once rather than once per
-    /// process that runs it: the driver keys its entries on the module, so a change misses and is
-    /// built afresh, which is exactly the behaviour wanted.
-    ///
-    /// **Worth measuring before believing, because a driver may already be doing it.** This one
-    /// does, so a warm run gains a few per cent and not the order of magnitude the idea invites.
-    /// Where it shows is the first run after a shader edit, and in not depending on a driver
-    /// choosing to keep something it is not obliged to.
-    ///
-    /// **Nothing here is allowed to fail loudly.** The cache is an optimisation over a renderer that
-    /// works without it: a directory that cannot be made or written, a half-written file, a cache
-    /// from another machine — each of them means compiling from scratch and nothing worse, so each
-    /// is swallowed rather than thrown.
+    /// A `VkPipelineCache` that outlives the process, kept in a file in the user's cache directory,
+    /// so an edited shader is compiled once rather than once per process. The driver already keeps
+    /// its own, so a warm run gains a few per cent; where this shows is the first run after an
+    /// edit. Nothing here is allowed to fail loudly: a cache that cannot be read or written means
+    /// compiling from scratch and nothing worse.
     class PipelineCache
     {
     public:
@@ -53,34 +42,17 @@ namespace Rtx
         /// "no cache" — so a caller passes this without asking whether it worked.
         VkPipelineCache getHandle() const { return mHandle.get(); }
 
-        /// The most a blob may hold before a run throws it away and starts one again.
-        ///
-        /// **A backstop and not the eviction, which the name is.** A blob is monolithic and Vulkan
-        /// offers no way to drop one entry of it, so what stops this growing is that the file is
-        /// named for the shaders as well as the driver — an edit starts a new one and `sweep`
-        /// removes what it started from. What is left for a cap to catch is one build accumulating
-        /// entries within its own lifetime, and a file that is not a cache at all.
-        ///
-        /// **Well clear of the largest live set, because firing is the failure.** Once the name is
-        /// the eviction, a cap that trips on a working cache does not save space — it throws away a
-        /// cache that was doing its job, every run, for ever. One shader generation's set is tens
-        /// of megabytes for the test suite and about double that once `shot` has added its own
-        /// extents and upscaler to the same file, so a cap near that is one more host away from
-        /// tripping; a file whose name carries no digest grows without bound.
+        /// The most a blob may hold before a run throws it away and starts one again — a backstop
+        /// and not the eviction, which the name is. Well clear of the largest live set, because a
+        /// cap that trips on a working cache throws it away every run for ever: one shader
+        /// generation's set is tens of megabytes, about double once `shot` has added its extents.
         static constexpr std::size_t sMostBytes = std::size_t{ 256 } << 20;
 
         /// Whether a stored blob is one this driver wrote, and one small enough to go on keeping.
-        ///
-        /// **Checked here as well as by the driver.** Handing a blob to `vkCreatePipelineCache` is
-        /// handing it untrusted data — the file may be a truncated write from a process that died,
-        /// or one a cache cleaner half-removed — and while the specification requires the
-        /// implementation to validate the header, four comparisons are cheaper than relying on every
-        /// driver to have got that right. The driver has no opinion at all about the second half:
-        /// a blob past `sMostBytes` is refused here and nowhere else.
-        ///
-        /// Public because it is the one part of this worth testing without a file: an offset off by
-        /// four would reject every blob the driver ever wrote, and the only symptom would be a cache
-        /// that silently never hit.
+        /// Checked here as well as by the driver, because the file is untrusted data and four
+        /// comparisons are cheaper than relying on every driver. Public because an offset off by
+        /// four would reject every blob the driver ever wrote, with no symptom but a cache that
+        /// never hit.
         static bool accepts(std::span<const std::uint8_t> blob, const VkPhysicalDeviceProperties& properties);
 
     private:
@@ -89,16 +61,10 @@ namespace Rtx
         /// it anyway.
         void write() const;
 
-        /// Removes every other pipeline cache of this renderer's in the same directory.
-        ///
-        /// **This is the eviction.** The name carries the driver and the shaders, so anything else
-        /// under `rtx-` is a cache for a driver this machine no longer runs or for shaders this
-        /// build no longer has, and left alone a machine keeps one blob per combination it has ever
-        /// run. What it costs is a driver rollback, or a jump back to an older build, compiling
-        /// from source once.
-        ///
-        /// A partial write another process has in flight is swept too, and that process then fails
-        /// to save its cache. The window is one rename wide and the cost is one compile.
+        /// Removes every other pipeline cache of this renderer's in the same directory — the
+        /// eviction, since anything else under `rtx-` is for a driver or shaders this build no
+        /// longer has. A driver rollback compiles from source once; so does a process whose partial
+        /// write is swept in the one-rename window.
         void sweep() const;
 
         VkDevice mDevice = VK_NULL_HANDLE;

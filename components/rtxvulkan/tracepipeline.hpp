@@ -33,39 +33,24 @@ namespace Rtx
         std::uint32_t mHitRecordsPerShader = 1;
 
         /// What each hit record carries after its handle, one block per record in record order,
-        /// every block the same size — or nothing, where a record is its handle alone. The shader a
-        /// record names reads its block through `shaderRecordEXT`.
-        ///
-        /// **Data in the record and not in the payload**, because a record is read by the shader the
-        /// hit object names, whatever sorted the threads in between. `Shaders::HitRecord` says what
-        /// the trace found out about the payload.
+        /// every block the same size — or nothing. In the record and not in the payload, because a
+        /// record is read by the shader the hit object names, whatever sorted the threads between.
         std::span<const std::byte> mHitRecordData;
 
         /// The one any-hit shader every hit group names, or nothing where traversal has no
-        /// candidate to ask about.
-        ///
-        /// **One and not one per group, because the question is the same one.** Whether a candidate
-        /// landed on the material or in a hole is a fact about that surface and not about what will
-        /// shade it, so a hit group's closest-hit shader is what varies and this is what does not.
+        /// candidate to ask about. One and not one per group, because whether a candidate landed in
+        /// a hole is a fact about the surface and not about what will shade it.
         std::filesystem::path mAnyHit;
     };
 
-    /// A ray tracing pipeline and the shader binding table a launch reads it out of.
-    ///
-    /// **A launch and not a dispatch, because of what a hit object is.** One executed in a ray
-    /// generation shader runs a shader picked by traversal rather than by a branch — so the
-    /// divergent half of a trace becomes one small program per kind of hit instead of one kernel
-    /// holding the union of all of them, each carrying only its own live state.
-    ///
-    /// Nothing recurses: the shaders a launch invokes trace again with inline ray queries, which
-    /// cost the pipeline's own stack nothing.
-    ///
-    /// `ComputePipeline` is the same object for a dispatch, and the two share `PipelineLayout`.
+    /// A ray tracing pipeline and the shader binding table a launch reads it out of. A launch and
+    /// not a dispatch, because a hit object runs a shader picked by traversal rather than by a
+    /// branch, so the divergent half of a trace becomes one small program per kind of hit. Nothing
+    /// recurses: the shaders a launch invokes trace again with inline ray queries.
     class TracePipeline
     {
     public:
-        /// Nothing passed outlives the call: every span and path is read into Vulkan's own copies or
-        /// into this object's table here.
+        /// Nothing passed outlives the call.
         ///
         /// @param bindings set zero, which every binding declares every stage of this pipeline in.
         /// @param laterSets layouts bound after set zero. A pipeline layout has to name every set it

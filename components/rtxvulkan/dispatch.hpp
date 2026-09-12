@@ -26,11 +26,8 @@ namespace Rtx
         return VkDescriptorSetLayoutBinding{ slot, type, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
     }
 
-    /// `Count` bindings of one type, numbered from zero.
-    ///
-    /// **A loop and not a list**, because a list of eleven identical lines is one nobody reads and
-    /// one a reader cannot check. Every pass whose set is uniform takes this; a pass that mixes
-    /// descriptor types builds its own list out of `computeBinding`.
+    /// `Count` bindings of one type, numbered from zero. A pass that mixes descriptor types builds
+    /// its own list out of `computeBinding`.
     template <std::size_t Count>
     constexpr std::array<VkDescriptorSetLayoutBinding, Count> computeBindings(VkDescriptorType type)
     {
@@ -67,16 +64,9 @@ namespace Rtx
         };
     }
 
-    /// A write per image, binding `i` from image `i`.
-    ///
-    /// **The whole set for a pass whose descriptors are all storage images**, and the first `n` of
-    /// one whose are not — `TonePass` fills its buffer and its sampler itself. `images` has to
+    /// A write per image, binding `i` from image `i`, each taking the type its own binding was
+    /// declared with, so a binding that changes kind cannot be a silent mismatch. `images` has to
     /// outlive the writes, as `imageWrite` says.
-    /// One write per image, each taking the type its own binding was declared with.
-    ///
-    /// **The layout decides the type, not the call site.** A pass whose bindings are not all one
-    /// kind — a sampler in and a storage image out — otherwise names the type twice, and a binding
-    /// that later changes kind is then a silent mismatch rather than a compile error.
     template <std::size_t Count>
     std::array<VkWriteDescriptorSet, Count> imageWrites(const std::array<VkDescriptorImageInfo, Count>& images,
         const std::array<VkDescriptorSetLayoutBinding, Count>& bindings)
@@ -99,10 +89,6 @@ namespace Rtx
     }
 
     /// Orders one dispatch's writes against what reads or writes them next.
-    ///
-    /// **One statement, because two passes had the same one written out.** A compute pass between
-    /// two others is nothing but a barrier, a dispatch and a barrier, and the barrier is five lines
-    /// of structure setup that says one thing.
     inline void handOver(VkCommandBuffer commands, VkPipelineStageFlags2 from, VkAccessFlags2 wrote,
         VkPipelineStageFlags2 to, VkAccessFlags2 reads)
     {

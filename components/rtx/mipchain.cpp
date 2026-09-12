@@ -70,14 +70,10 @@ namespace Rtx
                 into[3] = static_cast<std::byte>(mAlpha.at(0, x, y));
             }
 
-        // **Each level from the one above it, with the colours weighed by the alpha they carry.** A
-        // texel nothing painted has no colour to average in — a punch-through block stores black
-        // there — so an even mean draws a dark rim round every leaf and every drop as the chain goes
-        // down. Where a whole quad of them is empty there is nothing to weigh, and the even mean is
-        // the only answer left.
-        //
-        // In light and not in bytes, for the reason `Rtx::toLinear` gives: the mean of two stored
-        // bytes is not the byte of their mean.
+        // Each level from the one above it, with the colours weighed by the alpha they carry,
+        // because a punch-through block stores black where nothing was painted and an even mean
+        // draws a dark rim round every leaf. In light and not in bytes, because the mean of two
+        // stored bytes is not the byte of their mean.
         for (std::uint32_t at = 1; at < mTexture.getShape().getLevelCount(); ++at)
         {
             const MipLevel above = mTexture.getShape().getLevel(at - 1);

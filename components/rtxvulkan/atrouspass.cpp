@@ -13,14 +13,9 @@ namespace Rtx
     namespace
     {
         /// The channel coming in, the channel going out, the two that say where the edges in the
-        /// surface are — normals from the guide, distances from the depth — and the one that says
-        /// where the edges in the light are. All pushed.
-        ///
-        /// **Sampled on the four this pass only reads, storage on the one it writes.** A
-        /// twenty-five tap gather wants the texture unit and its cache, and only a
-        /// `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE` reaches it, which is a few per cent of the cascade. An
-        /// image bound here as sampled and elsewhere as storage is legal from `VK_IMAGE_LAYOUT_GENERAL`,
-        /// which is the layout every one of these is already in.
+        /// surface are and the one that says where the edges in the light are. All pushed. Sampled
+        /// on the four this pass only reads, because a twenty-five tap gather wants the texture
+        /// unit's cache — a few per cent of the cascade — and legal from `VK_IMAGE_LAYOUT_GENERAL`.
         constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
             computeBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
             computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
@@ -34,35 +29,17 @@ namespace Rtx
         /// leave the other frame's access uncovered.
         constexpr VkAccessFlags2 sReads = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
-        /// **Three ways of feeding this pass the same taps more cheaply, and none of them pays.**
-        /// Written down because each looks obviously right on paper.
-        ///
-        /// *A shared-memory tile, and Dolp's permutation to make every level fit one.* The pass
-        /// costs the same per level whatever the stride: at step one an 8x8 group's taps cover a
-        /// few dozen distinct texels and every one is an L1 hit, and at step sixteen nothing is
-        /// reused at all. There is no locality for a tile to recover, and no reason for the
-        /// permutation that exists to make one possible.
-        ///
-        /// *One geometry channel instead of the guide and the depth.* Neutral, for tens of
-        /// megabytes and a fork in `GBuffer`'s gate.
-        ///
-        /// *Packing that channel to eight bytes.* Worse: the octahedral decode's `normalize` over
-        /// the 125 taps costs more than one fewer fetch is worth.
-        ///
-        /// What the pass does spend is work rather than a data path — the two `exp` and the guide
-        /// tap, where `pow(dot, 128)` costs nothing. **A profiler is what the next attempt should
-        /// start from**, and `ncu` is not installed on this box.
+        /// Three ways of feeding this pass the same taps more cheaply were measured and none pays:
+        /// a shared-memory tile with Dolp's permutation, because the pass costs the same per level
+        /// whatever the stride and there is no locality to recover; one geometry channel instead of
+        /// the guide and the depth, neutral; packing it to eight bytes, worse, because the
+        /// octahedral `normalize` over 125 taps costs more than a fetch. What the pass spends is
+        /// the two `exp` and the guide tap. A profiler is what the next attempt should start from.
 
         /// How sharply a tap's normal has to agree with the centre's, and how far off its plane it
-        /// may sit.
-        ///
-        /// The exponent is SVGF's own; the sigma is not, because the test it scales is not SVGF's
-        /// either — that paper divides by a depth gradient and this measures a distance off a
-        /// plane, so two is a figure in pixel footprints rather than in its units.
-        ///
-        /// Both are here rather than in a setting because nothing yet knows what to set them to:
-        /// the reference mode is what will say, and a dial offered before then is a dial nobody can
-        /// turn on evidence.
+        /// may sit. The exponent is SVGF's own; the sigma measures a distance off a plane in pixel
+        /// footprints where the paper divides by a depth gradient. Not a setting, because the
+        /// reference mode is what will say what to set them to.
         constexpr float sNormalPower = 128.0f;
         constexpr float sPlaneSigma = 2.0f;
 
@@ -113,11 +90,9 @@ namespace Rtx
             .mLuminanceSigma = sLuminanceSigma,
         };
 
-        // **Three images take turns and not two, because the first level's answer is kept.** What
-        // it writes is the mean the accumulator reads next frame — SVGF's feedback — so the level
-        // after it reads that image and the levels after that leave it alone, ping-ponging between
-        // the blend and the scratch. Nothing is copied and nothing is written twice: the history is
-        // where one level's output and the next one's input already meet.
+        // Three images take turns and not two, because the first level's answer is the mean the
+        // accumulator reads next frame — SVGF's feedback — so the levels after it ping-pong between
+        // the blend and the scratch and leave it alone.
         const Image* source = &blended;
         const Image* target = &history;
 
@@ -161,11 +136,9 @@ namespace Rtx
             target = pass == 0 ? &blended : (source == &blended ? mScratch.get() : &blended);
         }
 
-        // **The cascade hands over what it wrote, because nothing after it does.** The levels order
-        // themselves against each other and the last one ordered itself against nothing — so the
-        // composite dispatch that reads this result ran beside the dispatch still writing it. Two
-        // runs of one doll wrote different bytes over a thousand of its pixels, by a level or two
-        // apiece, which is what a compute read that overtook part of a compute write looks like.
+        // The cascade hands over what it wrote, because nothing after it does: with the last level
+        // ordered against nothing, the composite ran beside the dispatch still writing it, and two
+        // runs of one doll wrote different bytes over a thousand of its pixels.
         source->transition(commands, Use::sComputeWrite,
             ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads });
 

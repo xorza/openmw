@@ -27,13 +27,9 @@ namespace Rtx
 {
     namespace
     {
-        /// Where a storm drives, as the pair a rotation about the zenith is written with.
-        ///
-        /// **A swap and not an angle.** The engine turns its cloud mesh from due north onto the
-        /// storm's direction, and turning a crossing back by that angle wants its cosine and its
-        /// sine — which for a unit `(x, y)` measured from north are `y` and `x`. A direction nobody
-        /// set is zero rather than north, and comes out as a sheet with no size, so the shader is
-        /// given north instead.
+        /// Where a storm drives, as the pair a rotation about the zenith is written with: for a unit
+        /// `(x, y)` measured from north the cosine and the sine are `y` and `x`. A direction nobody
+        /// set is zero rather than north, so the shader is given north instead.
         osg::Vec2f bearingOf(const osg::Vec3f& storm)
         {
             const osg::Vec2f flat(storm.y(), storm.x());
@@ -86,12 +82,9 @@ namespace Rtx
             if (sheet.empty())
                 continue;
 
-            // **The name the content records is not the name the archive holds.** `Morrowind.ini`
-            // spells every deck `.tga` and every one of them ships as `.dds`, so a name joined to
-            // `textures/` by hand resolves for the eight weathers whose shipped fallback was already
-            // corrected and for neither of the two an importer writes — an ash storm and a blight
-            // storm with no deck at all, in silence. `correctTexturePath` is the
-            // same question `mwrender/gl/sky.cpp` asks of the same name.
+            // `Morrowind.ini` spells every deck `.tga` and every one ships as `.dds`, so a name
+            // joined by hand leaves the two weathers an importer writes with no deck, in silence.
+            // `correctTexturePath` is the same question `mwrender/gl/sky.cpp` asks.
             const VFS::Path::Normalized path
                 = Misc::ResourceHelpers::correctTexturePath(VFS::Path::toNormalized(sheet), vfs);
             if (!vfs.exists(path))
@@ -151,11 +144,8 @@ namespace Rtx
         const float scroll = clouds.mScroll;
         const std::uint32_t slot = textures.cloudsOf(weather);
 
-        // **Written so a NaN lands on nought, which `std::clamp` does not do.** The blend comes off a
-        // content file by way of a division, and a content file is untrusted: `clamp` compares and
-        // hands back what it was given when both comparisons fail, so a NaN goes straight through it
-        // and on into a `mix` that blacks out the sky. Asking whether it is inside the range instead
-        // of whether it is outside is the whole of the difference.
+        // Written so a NaN lands on nought, which `std::clamp` does not do: the blend comes off a
+        // content file by way of a division, and a NaN through `clamp` blacks out the sky.
         const float mixed = blend > 0.0f ? (blend < 1.0f ? blend : 1.0f) : 0.0f;
 
         // **The level the sheet is read against crosses with the sheet, and falls back the way it

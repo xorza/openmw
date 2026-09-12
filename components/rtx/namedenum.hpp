@@ -11,24 +11,15 @@
 
 namespace Rtx
 {
-    /// One enum's spellings, and the only place they are written.
-    ///
-    /// **A table rather than a switch beside an if-chain.** An enum spelled by that pair states its
-    /// strings twice, and the list of them is then restated a third time in an option's help, a
-    /// fourth in a runtime error and a fifth in `settings-default.cfg`. Two of those copies drifted:
-    /// `--upscale` offered five of the six modes it accepts, and a second option three of its four.
-    /// What a table adds over the pair is that the printable list is derived as well, so no prose
-    /// can name a mode the parser has stopped taking or miss one it has gained.
+    /// One enum's spellings, and the only place they are written, with the printable list derived
+    /// from it: `--upscale` once offered five of the six modes it accepts.
     template <class Enum, std::size_t N>
     struct NamedEnum
     {
         std::array<std::pair<Enum, std::string_view>, N> mNames;
 
-        /// How `value` is spelled, or empty for a value this does not name.
-        ///
-        /// **Empty rather than the first spelling.** Every table below covers its whole enum, so
-        /// neither answer is reachable — and of the two, a name that is visibly missing beats one
-        /// that is quietly wrong.
+        /// How `value` is spelled, or empty for a value this does not name, because a name that
+        /// is visibly missing beats one that is quietly wrong.
         constexpr std::string_view name(Enum value) const
         {
             for (const auto& [held, spelling] : mNames)
@@ -38,11 +29,8 @@ namespace Rtx
             return {};
         }
 
-        /// The value `spelling` names, or nothing where it names none of them.
-        ///
-        /// **Nothing rather than a default.** A setting file and a command line both reach these,
-        /// and silently running a mode nobody asked for is how a typo becomes a measurement of
-        /// something else.
+        /// The value `spelling` names, or nothing where it names none of them, because a typo
+        /// silently running a default is a measurement of something else.
         constexpr std::optional<Enum> named(std::string_view spelling) const
         {
             for (const auto& [value, held] : mNames)
@@ -52,11 +40,8 @@ namespace Rtx
             return std::nullopt;
         }
 
-        /// The value `spelling` names, refusing anything else with every spelling this does take.
-        ///
-        /// **Both hosts ask it here**, so a name the game rejects and one the harness rejects are
-        /// answered by one sentence — and by one that offers the modes rather than only naming the
-        /// typo.
+        /// The value `spelling` names, refusing anything else with every spelling this does take,
+        /// for both hosts.
         ///
         /// @param what the noun the message calls this, as "an upscale mode".
         Enum require(std::string_view spelling, std::string_view what) const

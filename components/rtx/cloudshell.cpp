@@ -24,12 +24,8 @@ namespace Rtx
     namespace
     {
         /// Every vertex of the mesh, placed where the graph puts it, beside the sheet coordinate it
-        /// carries.
-        ///
-        /// **Placed, because the vanilla cap is not where its vertices say.** Its `NiTriShape` sits
-        /// fifteen units below its `NiNode`, which is a twentieth of the height everything else here
-        /// is a ratio against — and whether the loader leaves that as a transform or folds it into
-        /// the array is the scene manager's business rather than this reader's.
+        /// carries. Placed, because the vanilla cap's `NiTriShape` sits fifteen units below its
+        /// `NiNode` — a twentieth of the height everything else is a ratio against.
         class ShellReader : public osg::NodeVisitor
         {
         public:
@@ -56,11 +52,8 @@ namespace Rtx
                     mPlaced.push_back(placed.preMult((*vertices)[i]));
                     mCoords.push_back((*coords)[i]);
 
-                    // **`ModVertexAlphaVisitor::Clouds`, applied here rather than read.** It writes
-                    // by vertex index and nothing in the file records what it wrote, so the only way
-                    // to know what the engine fades a mesh by is to run its rule over the same mesh.
-                    // A file it makes nonsense of is one this makes the same nonsense of, which is
-                    // the whole point of copying the rule instead of guessing at its intent.
+                    // `ModVertexAlphaVisitor::Clouds`, applied here rather than read: it writes by
+                    // vertex index and nothing in the file records what it wrote.
                     mAlphas.push_back(i >= 49 && i <= 64 ? 0.0f
                             : i >= 33 && i <= 48         ? Shaders::CLOUD_RING_ALPHA
                                                          : 1.0f);
@@ -81,13 +74,9 @@ namespace Rtx
             double mCurvature = 0.0;
         };
 
-        /// The one every vertex agrees on, or nothing where they described no layer at all.
-        ///
-        /// **Least squares over `z = h - k r²` rather than the apex and one ring.** A cap the artist
-        /// closed by hand has no vertex exactly at the middle to read a height off, and any single
-        /// ring taken as the curvature is one ring's rounding error. Over Morrowind's own cap the fit
-        /// lands within 2.4% of where each of its four rings actually is, which is nearer than the
-        /// rings are to a circle.
+        /// The one every vertex agrees on, or nothing where they described no layer at all. Least
+        /// squares over `z = h - k r²`, because a cap closed by hand has no vertex at the middle;
+        /// over Morrowind's own cap the fit lands within 2.4% of each of its four rings.
         std::optional<Sagitta> fitSurface(const std::vector<osg::Vec3f>& placed)
         {
             double count = 0.0;
@@ -110,11 +99,9 @@ namespace Rtx
                 weighted += radius * z;
             }
 
-            // **A mesh whose vertices all stand at one radius says nothing about how a layer falls
-            // away**, and asking anyway divides by the nothing they disagree about. Cauchy-Schwarz
-            // puts this ratio in `[0, 1]`, so what it measures is the share of the spread in `r²`
-            // that is real disagreement — and a thousandth of a radius, squared, is where rounding
-            // stops being distinguishable from a ring.
+            // A mesh whose vertices all stand at one radius says nothing about how a layer falls
+            // away. Cauchy-Schwarz puts this ratio in `[0, 1]`, and a thousandth of a radius,
+            // squared, is where rounding stops being distinguishable from a ring.
             const double spread = count * quartic - squared * squared;
             if (!(spread > 1.0e-6 * count * quartic))
                 return std::nullopt;
@@ -134,13 +121,8 @@ namespace Rtx
         }
 
         /// How much sheet a unit of ground is worth, signed by which way up the sheet is laid, or
-        /// nothing where the coordinates described no map.
-        ///
-        /// **The whole map is fitted and then reduced to one signed rate.** What a sheet of tiling
-        /// cloud is laid at is the only part of an unwrap anyone can see, and how far it is turned is
-        /// not, since a turned tiling is the same tiling. So the two-by-two the vertices describe is
-        /// taken for its determinant: the area one unit of ground covers, and the sign that says
-        /// whether the sheet was laid face up.
+        /// nothing where the coordinates described no map: the determinant of the two-by-two the
+        /// vertices describe, because a turned tiling is the same tiling.
         std::optional<double> fitSheet(const std::vector<osg::Vec3f>& placed, const std::vector<osg::Vec2f>& coords)
         {
             double middleX = 0.0;
@@ -208,12 +190,8 @@ namespace Rtx
 
     namespace
     {
-        /// The three radii the engine's fade turns on, in the units the vertices were modelled in.
-        ///
-        /// **Reduced from the alpha it paints rather than from the ring count.** What matters is
-        /// where each alpha level stops, and a level's outer edge is the furthest vertex carrying
-        /// it — so a mesh whose rings are not circles, or whose rows the rule splits differently,
-        /// still comes out as the fade the rasterizer would draw.
+        /// The three radii the engine's fade turns on, in the units the vertices were modelled in,
+        /// reduced from the alpha it paints rather than from the ring count.
         osg::Vec3f fadeRadii(const std::vector<osg::Vec3f>& placed, const std::vector<float>& alphas)
         {
             osg::Vec3f reach;

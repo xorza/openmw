@@ -20,38 +20,24 @@ namespace Rtx
         = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     /// One mesh's triangles as the builder takes them, out of addresses a caller worked out.
-    ///
-    /// **`maxVertex` is guarded, because a freed slot has no vertices.** A slot the scene has
-    /// taken back keeps its index and its room and holds a count of zero until something fits
-    /// into it; subtracting one there wraps, and the driver is handed four billion vertices.
-    ///
-    /// **Opaque as built**, and overridden per instance where a material says otherwise: opacity
-    /// is a property of the material and a mesh does not carry one, so the top-level flags are
-    /// the only place the question can be answered exactly.
+    /// `maxVertex` is guarded, because a freed slot holds a count of zero and subtracting one
+    /// there hands the driver four billion vertices. Opaque as built and overridden per instance,
+    /// because opacity is the material's and a mesh does not carry one.
     VkAccelerationStructureGeometryKHR describeTriangles(
         const MeshRange& mesh, VkDeviceAddress positions, VkDeviceAddress indices);
 
-    /// Orders a build after the trace before it on the queue, which may still be reading what
-    /// the build is about to write.
-    ///
-    /// **A barrier and not a fence.** With two frames in flight the trace has not finished when
-    /// the next placement is recorded, and a top level or a refit built over a structure a ray is
-    /// walking is a torn structure. An execution dependency is all a write-after-read needs.
+    /// Orders a build after the trace before it on the queue, which with two frames in flight may
+    /// still be walking the structure the build is about to write. A barrier and not a fence,
+    /// because an execution dependency is all a write-after-read needs.
     void barrierBeforeBuild(VkCommandBuffer commands);
 
     /// Everything between a build and whatever reads the structure it wrote.
     void barrierAfterBuild(VkCommandBuffer commands);
 
-    /// The scratch one run of structure builds is described in.
-    ///
-    /// **Members and not locals, because Vulkan keeps the addresses.** A build info holds
-    /// `pGeometries` as a pointer and a range is handed over by address, so both have to outlive the
-    /// loop that filled them — and a cell arriving must not allocate four vectors to say so.
-    ///
-    /// **Two passes, because `sizeTo` is what makes the first one possible.** A vector grown while a
-    /// pointer already points into it moves its storage, so every geometry is placed before any
-    /// build info names one. `BottomLevelStore::build` and `SceneAcceleration::prepareRefit` are
-    /// each written that way, and this is where the rule is stated rather than in both of them.
+    /// The scratch one run of structure builds is described in. Members and not locals, because a
+    /// build info holds `pGeometries` by pointer and a cell arriving must not allocate four vectors.
+    /// Every geometry is placed by `sizeTo` before any build info names one, because a vector
+    /// grown while a pointer points into it moves its storage.
     struct StructureBuildBatch
     {
         std::vector<VkAccelerationStructureGeometryKHR> mGeometries;
@@ -60,13 +46,9 @@ namespace Rtx
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRanges;
         std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRangePointers;
 
-        /// Room for `count` descriptions, each one cleared, and an empty list of range pointers.
-        ///
-        /// **Cleared and not merely sized**, because a filler may skip an entry — a mesh with no
-        /// triangles is described by nobody — and what is left behind is then the previous run's.
-        ///
-        /// The pointers are pushed rather than sized, because how many there are is what a filler
-        /// decides: every entry for a refit, and only what was really built otherwise.
+        /// Room for `count` descriptions, each one cleared because a filler may skip a mesh with
+        /// no triangles, and an empty list of range pointers, because how many there are is what
+        /// the filler decides.
         void sizeTo(std::size_t count)
         {
             mGeometries.assign(count, VkAccelerationStructureGeometryKHR{});

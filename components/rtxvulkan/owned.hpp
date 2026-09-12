@@ -6,20 +6,12 @@
 
 namespace Rtx
 {
-    /// A Vulkan handle the device destroys, and the device it belongs to.
+    /// A Vulkan handle the device destroys, and the device it belongs to: the one place
+    /// `vkDestroyX(device, handle, allocator)` is spelled, so the classes holding one default their
+    /// moves. `CI/check_rtx_handles.sh` is what makes the next class adopt it, and names the calls
+    /// this shape cannot take.
     ///
-    /// **The one place `vkDestroyX(device, handle, allocator)` is spelled.** A class that holds one
-    /// and writes a move constructor, a move assignment and a `destroy` by hand is twenty lines
-    /// with one name changed in them, and one that forgets the exchange in its move leaks whatever
-    /// the source still held. A member that empties itself is what lets those classes default
-    /// their moves and say nothing at all.
-    ///
-    /// **`CI/check_rtx_handles.sh` is what makes the next class adopt it**, because saying so here
-    /// did not: a class that spelled the call itself cost a destructor and a `const Device&` member
-    /// that existed only so that destructor could reach the device, and nothing asked. The script
-    /// names the calls this shape cannot take, and why each cannot.
-    ///
-    /// @tparam Destroy the function that ends it, which every one of these spells the same way.
+    /// @tparam Destroy the function that ends it.
     template <class Handle, auto Destroy>
     class Owned
     {

@@ -18,23 +18,13 @@ namespace Rtx
     class Graveyard;
 
     /// What one scene's deforming meshes are posed from: their bind poses, their rigs and morphs,
-    /// and the rows and weights a frame writes.
-    ///
-    /// **The bind poses live here and not in the shared vertex blocks**, because those blocks are the
-    /// pose's destination: a skinned mesh's run in a slot's copy of the positions and the normals is
-    /// what the kernel writes and what the refit and the hit then read. What it reads from has to be
-    /// somewhere the frame never writes, and it is a few bodies' worth against a cell — so it is a
-    /// table of the deforming meshes alone, indexed by `MeshRange::mBindOffset`.
-    ///
-    /// **Plain buffers, grown by doubling and rewritten whole when they grow.** Nothing keeps an
-    /// address into these across a frame: the kernel is handed each run's address in its push
-    /// constants, so a table that moved is a table handed over at its new address. A growth is an
-    /// arrival, which waits every frame out first.
-    ///
-    /// **The rows and the weights are per frame in flight and never rewritten on growth.** A
-    /// mesh's rows are written and read in the same placement — `SkinPass::record` writes them and
-    /// dispatches — so a copy holds nothing a later frame reads, and the copy the other frame is
-    /// reading is the other slot's.
+    /// and the rows and weights a frame writes. The bind poses live here and not in the shared
+    /// vertex blocks, because those blocks are the pose's destination and what it reads from has
+    /// to be somewhere the frame never writes — a table of the deforming meshes alone, indexed by
+    /// `MeshRange::mBindOffset`. Plain buffers grown by doubling, because the kernel is handed each
+    /// run's address in its push constants and a growth is an arrival, which waits every frame
+    /// out. The rows and the weights are per frame in flight and never rewritten on growth,
+    /// because `SkinPass::record` writes and reads them in one placement.
     class SkinTables
     {
     public:
@@ -42,12 +32,8 @@ namespace Rtx
         SkinTables(const Device& device, const SceneDesc& scene, std::uint32_t slots, Graveyard& graveyard);
 
         /// Takes in what the scene says arrived: the bind poses of the deforming meshes, the rigs
-        /// and the morphs.
-        ///
-        /// **Safe with frames in flight.** A table this grows is remade by `growTo`, which buries
-        /// the buffer it displaced — so a dispatch already recorded keeps reading the address it was
-        /// handed — and what is written into a table that stayed is a run the arrival was just
-        /// given. `CI/check_rtx_validation.sh` is what says so.
+        /// and the morphs. Safe with frames in flight, because `growTo` buries the buffer it
+        /// displaced and a table that stayed is written only at a run the arrival was just given.
         void extend(const SceneDesc& scene, Graveyard& graveyard);
 
         /// Writes `mesh`'s rows into `slot`'s copy and returns where they landed, for the dispatch

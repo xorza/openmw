@@ -23,53 +23,34 @@ namespace Rtx
     class GpuTimer;
     struct TraceRecording;
 
-    /// Everything one camera's trace writes, at one extent.
-    ///
-    /// **One chain, however many cameras have one.** A colour image, a `GBuffer`, a `FogVolume`, an
-    /// accumulator and a filter are sized together and recorded together, so a second camera that
-    /// spelled them out again would be a second place for a barrier to go missing from. `record` is
-    /// the other half of that: the sequence is written here rather than once per camera.
-    ///
-    /// What differs between two of these is what the caller hands in: the extent, what may be done
-    /// with the composite's image afterwards, and whether the chain is sized exactly or grown to
-    /// fit.
-    ///
-    /// **Neither the frame's presented pair nor a picture's byte target is here.** Those are what
-    /// becomes of a finished picture rather than what a trace writes into, and the two differ in
-    /// kind: a present reads its image across a submit, so a frame needs two of them and a picture
-    /// needs one.
+    /// Everything one camera's trace writes, at one extent — one chain however many cameras have
+    /// one, so a barrier cannot go missing from a second copy. What differs between two of these
+    /// is what the caller hands in: the extent, what may be done with the composite's image
+    /// afterwards, and whether the chain is sized exactly or grown to fit. What becomes of a
+    /// finished picture — the frame's presented pair, a picture's byte target — is not here.
     class TraceChain
     {
     public:
         /// The passes are built here and the images are not: nothing has an extent until `resize`
         /// or `grow` is called.
         ///
-        /// @param channels, fog the layouts every `GBuffer` and every `FogVolume` here is shaped
-        ///        by, which outlive this because the trace's pipeline names them when it is built.
-        /// @param colourUsage what the composite's output has done to it besides being written. An
-        ///        upscaler samples a frame's and a measurement copies it out, and nothing but the
-        ///        tone curve reads a picture's.
-        /// @param colourName what a capture and a validation message call that image, which is how
-        ///        two chains are told apart in both.
+        /// @param channels, fog the layouts every `GBuffer` and every `FogVolume` here is shaped by.
+        /// @param colourUsage what the composite's output has done to it besides being written: an
+        ///        upscaler samples a frame's and a measurement copies it out.
+        /// @param colourName what a capture and a validation message call that image.
         TraceChain(const Device& device, CommandPool& pool, const SetLayout& channels, const SetLayout& fog,
             const std::filesystem::path& shaders, VkImageUsageFlags colourUsage, std::string_view colourName);
 
-        /// Builds the chain at exactly this extent, whatever it was before.
-        ///
-        /// The caller is expected to have waited for anything still reading what this replaces.
+        /// Builds the chain at exactly this extent, whatever it was before. The caller has waited
+        /// for anything still reading what this replaces.
         ///
         /// @param layers whether anything reads the layer the eye sees through, which `GBuffer`
         ///        answers with three channels or with three stand-ins.
         void resize(std::uint32_t width, std::uint32_t height, bool layers);
 
         /// Makes the chain at least this big, keeping whatever extent it already reached on either
-        /// axis. Nothing where it already `holds` the size.
-        ///
-        /// **Grown and never shrunk**, because there are three or four picture sizes in the whole
-        /// game and every pass takes the extent it is dispatched over: a smaller picture uses a
-        /// corner of a larger one's images rather than rebuilding them. Each axis goes to the
-        /// larger of what was there and what is wanted, so a wide picture after a tall one does not
-        /// throw the tall one's height away and build it again next time.
+        /// axis. Nothing where it already `holds` the size. Grown and never shrunk, because a
+        /// smaller picture uses a corner of a larger one's images rather than rebuilding them.
         void grow(std::uint32_t width, std::uint32_t height, bool layers);
 
         /// The extent the images are at, which is what a dispatch over the whole of one covers.
@@ -102,26 +83,15 @@ namespace Rtx
         const Image& getBlended() const { return mAccumulate.getBlended(); }
 
         /// Records one camera's whole trace, from the discards it opens with to the barrier after
-        /// the composite.
+        /// the composite. What the caller keeps is what a frame has and a picture has not — the
+        /// frame ring, the upscaler, the lens, the measured exposure and the display curve.
         ///
-        /// **One statement of the chain, because there are two cameras and one chain.** The frame
-        /// and the pictures inside the interface each spelled the sequence out, and a barrier is
-        /// exactly the kind of step that goes missing from the second copy.
-        ///
-        /// **What the caller keeps is what a frame has and a picture has not** — the frame ring, the
-        /// upscaler, the lens, the measured exposure and the display curve. `TraceRecording` is
-        /// everything the sequence itself needs, and every field of it is per-call.
-        ///
-        /// @return the composite's output, which is `getColour()` — answered so that a caller reads
-        ///         what this wrote rather than reaching for the image and hoping it is the one.
+        /// @return the composite's output, which is `getColour()`.
         const Image& record(VkCommandBuffer commands, const TraceRecording& what);
 
     private:
-        /// The bounce resolved: the temporal mean, and then the cascade over it.
-        ///
-        /// **The barrier between them is the reason this is one call.** Two compute dispatches are
-        /// unordered inside a command buffer, so the cascade reads what the accumulator wrote only
-        /// where something says so.
+        /// The bounce resolved: the temporal mean, and then the cascade over it, with the barrier
+        /// between them that makes this one call.
         ///
         /// @param timer null where the run is not being timed, which a picture is not.
         const Image& recordDenoise(
