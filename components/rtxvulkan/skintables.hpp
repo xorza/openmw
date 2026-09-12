@@ -38,8 +38,7 @@ namespace Rtx
     class SkinTables
     {
     public:
-        /// @param slots how many frames may be posing this scene at once: `sFrameSlots` for the
-        ///        world, one for a picture inside the interface.
+        /// @param slots how many frames may be posing this scene at once.
         SkinTables(const Device& device, const SceneTables& scene, std::uint32_t slots, Graveyard& graveyard);
 
         SkinTables(const SkinTables&) = delete;

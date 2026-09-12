@@ -92,7 +92,12 @@ namespace MWRender
 
         // What is left of the two is the world's own water, and it is the sea.
         mExtractor.setWaterMask(SceneUtil::Mask_Water);
-        mExtractor.setFirstPersonMask(SceneUtil::Mask_FirstPerson);
+
+        // The roots the game marks, so a camera's cull mask can keep or leave out what stands
+        // under them — `rayMaskOf` is the other half.
+        mExtractor.setClassMask(Rtx::InstanceClass::Actor, SceneUtil::Mask_Actor | SceneUtil::Mask_Player);
+        mExtractor.setClassMask(Rtx::InstanceClass::Effect, SceneUtil::Mask_Effect);
+        mExtractor.setClassMask(Rtx::InstanceClass::FirstPerson, SceneUtil::Mask_FirstPerson);
     }
 
     void WorldMirror::attach(Resource::ResourceSystem& resources)

@@ -42,8 +42,8 @@ namespace MWRender
     /// The few live links a traced view keeps to the renderer that made it.
     ///
     /// **An interface and not the renderer**, because a view is the one thing that needs a link
-    /// back — it is drawn on a frame later than the one that asked for it — and these five calls
-    /// are the whole of what it needs.
+    /// back — it is drawn on a frame later than the one that asked for it — and these calls are
+    /// the whole of what it needs.
     class ViewHost
     {
     public:
@@ -55,15 +55,20 @@ namespace MWRender
         /// The backend a view traces into, and reads a picture back out of.
         virtual Rtx::Renderer& getBackend() = 0;
 
-        /// Whether the world has reached the backend yet, so a picture traced against it would be a
-        /// picture of something.
-        virtual bool hasScene() const = 0;
-
         /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
         virtual std::optional<PoseMoment> describePose() = 0;
 
-        /// Draws `view` on the next frame that has a world in it.
-        virtual void deferRedraw(TracedView& view) = 0;
+        /// Draws `view` in the next frame's window — after the world's placement and before its
+        /// trace, where the copy of the tables a picture of the world reads is the frame's own.
+        ///
+        /// **Every picture, and not the ones asked before there was a world.** Drawn where asked, a
+        /// picture recorded the frame's trace's neighbour while a placement could still follow it,
+        /// and made a wait of every one of them. Asked twice in one frame is drawn once.
+        virtual void redraw(TracedView& view) = 0;
+
+        /// Draws what `redraw` queued, now. For the harness, whose stop stands outside any frame
+        /// and writes the picture before the next one.
+        virtual void flushRedraws() = 0;
 
         /// Takes a view off that list, because it is going away.
         virtual void forgetView(TracedView& view) = 0;

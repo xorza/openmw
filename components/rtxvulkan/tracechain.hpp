@@ -67,14 +67,14 @@ namespace Rtx
         void resize(std::uint32_t width, std::uint32_t height, bool layers);
 
         /// Makes the chain at least this big, keeping whatever extent it already reached on either
-        /// axis, and answers whether anything was built.
+        /// axis. Nothing where it already `holds` the size.
         ///
         /// **Grown and never shrunk**, because there are three or four picture sizes in the whole
         /// game and every pass takes the extent it is dispatched over: a smaller picture uses a
         /// corner of a larger one's images rather than rebuilding them. Each axis goes to the
         /// larger of what was there and what is wanted, so a wide picture after a tall one does not
         /// throw the tall one's height away and build it again next time.
-        bool grow(std::uint32_t width, std::uint32_t height, bool layers);
+        void grow(std::uint32_t width, std::uint32_t height, bool layers);
 
         /// The extent the images are at, which is what a dispatch over the whole of one covers.
         /// Nought until the first `resize` or `grow`.
@@ -83,6 +83,12 @@ namespace Rtx
 
         /// Whether the images exist, which is the same question as whether the extent is set.
         bool isBuilt() const { return mColour != nullptr; }
+
+        /// Whether a picture this big fits what is built, which is what `grow` would leave alone.
+        bool holds(std::uint32_t width, std::uint32_t height) const
+        {
+            return isBuilt() && width <= mWidth && height <= mHeight;
+        }
 
         /// The composite's output: one picture in linear radiance, before anything upscales it and
         /// before the display curve.

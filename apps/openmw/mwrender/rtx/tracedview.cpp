@@ -1,9 +1,9 @@
 #include "tracedview.hpp"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstring>
 #include <optional>
+#include <span>
 
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
@@ -12,6 +12,7 @@
 #include <components/myguiplatform/picture.hpp>
 #include <components/myguirtx/texture.hpp>
 
+#include "raymask.hpp"
 #include "viewhost.hpp"
 
 namespace MWRender
@@ -33,11 +34,12 @@ namespace MWRender
             const std::uint32_t width = static_cast<std::uint32_t>(spec.mWidth);
             const std::uint32_t height = static_cast<std::uint32_t>(spec.mHeight);
             Rtx::Renderer& renderer = host.getBackend();
+            const std::uint32_t rays = rayMaskOf(spec.mMask);
 
             if (spec.mFromWorld)
-                return Rtx::OffscreenTrace(renderer, width, height);
+                return Rtx::OffscreenTrace(renderer, width, height, rays);
 
-            return Rtx::OffscreenTrace(renderer, width, height, spec.mScene, spec.mMask, &traversals);
+            return Rtx::OffscreenTrace(renderer, width, height, rays, spec.mScene, spec.mMask, &traversals);
         }
     }
 
@@ -97,20 +99,14 @@ namespace MWRender
     {
         // Whatever is in the copy is a picture of the last redraw, and this is a new one.
         mCopyIsCurrent = false;
+        mRedrawPending = true;
 
-        if (mTrace.isOfWorld())
-        {
-            // **Asked for before there is a world, every time a game starts.** A cell asks for its
-            // map tile as it loads, which is the frame before the one that first mirrors it; the
-            // tile is drawn when there is something to draw it against rather than left blank until
-            // the local map happens to ask again.
-            if (!mHost.hasScene())
-            {
-                mHost.deferRedraw(*this);
-                return;
-            }
-        }
-        else
+        mHost.redraw(*this);
+    }
+
+    void TracedView::draw()
+    {
+        if (!mTrace.isOfWorld())
         {
             const std::optional<PoseMoment> moment = mHost.describePose();
             if (!moment.has_value())
@@ -120,18 +116,8 @@ namespace MWRender
                 return;
         }
 
-        mTrace.traceInto(mSlot);
-
-        if (!mKeepCopy)
-            return;
-
-        // **The whole texture and not the extent**, because the copy is what the global map paints
-        // a cell from and a cell is the whole tile. The read is the only time a picture inside the
-        // interface comes back to main memory, which is why it is asked for rather than always done.
-        mHost.getBackend().readGuiTexture(mSlot, mPixels);
-        std::memcpy(mCopy->data(), mPixels.data(), std::min<std::size_t>(mPixels.size(), mCopy->getTotalSizeInBytes()));
-
-        mCopyIsCurrent = true;
+        mRedrawPending = false;
+        mTrace.traceInto(mSlot, mKeepCopy);
     }
 
     void TracedView::keepCopy()
@@ -145,8 +131,20 @@ namespace MWRender
         std::memset(mCopy->data(), 0, mCopy->getTotalSizeInBytes());
     }
 
-    const osg::Image* TracedView::getCopy() const
+    const osg::Image* TracedView::getCopy()
     {
+        // Nothing while the redraw is queued and not yet recorded: the backend would hand over the
+        // copy the last trace left, which landed, as if it were this one's.
+        if (mCopy == nullptr || mRedrawPending)
+            return nullptr;
+
+        // **The whole texture and not the extent**, because the copy is what the global map paints
+        // a cell from and a cell is the whole tile. Taken straight into the image the caller is
+        // handed, the first time it is asked for after the trace that made it has landed.
+        if (!mCopyIsCurrent)
+            mCopyIsCurrent = mHost.getBackend().takeGuiCopy(
+                mSlot, std::span<std::uint8_t>(mCopy->data(), mCopy->getTotalSizeInBytes()));
+
         return mCopyIsCurrent ? mCopy.get() : nullptr;
     }
 

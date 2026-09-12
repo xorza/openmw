@@ -63,6 +63,7 @@ set(RTX_FILES
     imageformat.cpp
     imageformat.hpp
     index.hpp
+    instanceclass.hpp
     instancecounts.hpp
     instancerecord.cpp
     instancerecord.hpp

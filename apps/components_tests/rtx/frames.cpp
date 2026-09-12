@@ -54,7 +54,7 @@ namespace Rtx
             /// instance rows and the top level.
             void moveTo(float away)
             {
-                mScene.moveInstance(mInstance, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
+                mScene.placements().move(mInstance, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
                 mRenderer->placeScene(Rtx::SceneSlot::world(), mScene.getTables(), SeaState{});
             }
 
@@ -123,7 +123,7 @@ namespace Rtx
                 Testing::poseByOneBone(mScene, arrived, osg::Matrixf::identity());
             }
 
-            mScene.moveInstance(mInstance, osg::Matrixf::translate(0.0f, -1000.0f, 0.0f));
+            mScene.placements().move(mInstance, osg::Matrixf::translate(0.0f, -1000.0f, 0.0f));
             mRenderer->extendScene(Rtx::SceneSlot::world(), mScene.getTables(), {}, SeaState{});
 
             mRenderer->renderFrame(ahead(), FrameOptions{});
@@ -195,6 +195,57 @@ namespace Rtx
             EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a placement came back as a frame of its own";
         }
 
+        /// A picture inside the interface adds nothing to the frame's count, wherever between two
+        /// frames it is traced.
+        ///
+        /// The picture is of the same wall from the same eye, so counted it would double the hits
+        /// of whichever frame's buffer it landed in.
+        TEST_F(RtxFramesTest, aPictureInsideTheInterfaceIsNotCountedWithTheFrame)
+        {
+            const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
+
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            mRenderer->traceGuiTexture(texture, ahead(), GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize });
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the frame before the picture";
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the frame after it";
+
+            mRenderer->dropGuiTexture(texture);
+        }
+
+        /// A picture's copy arrives with the frame that carried it and never sooner, and a drain
+        /// lands it at once.
+        ///
+        /// The trace rides the next submit, which is the frame after it; the copy is readable once
+        /// that frame has been finished — two frames on, on the game's own cadence — and
+        /// `finishGuiTraces` is the harness's way of not waiting for that.
+        TEST_F(RtxFramesTest, aPicturesCopyArrivesWithTheFrameThatCarriedIt)
+        {
+            const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
+            std::vector<std::uint8_t> copy(std::size_t{ sSize } * sSize * 4);
+
+            mRenderer->traceGuiTexture(
+                texture, ahead(), GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mReadBack = true });
+            EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "recorded and carried by nothing yet";
+
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "carried, and the frame is in flight";
+
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            EXPECT_EQ(finishedHits(), sEveryPixel);
+            EXPECT_TRUE(mRenderer->takeGuiCopy(texture, copy)) << "the frame that carried it is finished";
+            EXPECT_EQ(copy[3], 255) << "the wall, opaque, at the first pixel";
+
+            mRenderer->traceGuiTexture(
+                texture, ahead(), GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mReadBack = true });
+            EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "a new trace is a new wait";
+            mRenderer->finishGuiTraces();
+            EXPECT_TRUE(mRenderer->takeGuiCopy(texture, copy)) << "drained";
+
+            mRenderer->dropGuiTexture(texture);
+        }
+
         /// A row appended while one copy of the rows was in flight reaches the other copy whole.
         ///
         /// **The copy that was not placed when the scene grew is smaller than the mirror**, and its
@@ -217,7 +268,7 @@ namespace Rtx
             // round again is reclaimed with its numbers.
             EXPECT_EQ(finishedHits(), sEveryPixel) << "the first wall, before anything moved";
 
-            mScene.moveInstance(arrived, osg::Matrixf::identity());
+            mScene.placements().move(arrived, osg::Matrixf::identity());
             mRenderer->placeScene(Rtx::SceneSlot::world(), mScene.getTables(), SeaState{});
             mRenderer->renderFrame(ahead(), FrameOptions{});
 

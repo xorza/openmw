@@ -47,6 +47,11 @@ namespace SceneUtil
     class AsyncScreenCaptureOperation;
 }
 
+namespace MyGUIRtx
+{
+    class RenderManager;
+}
+
 namespace MWRender
 {
     class TracedView;
@@ -146,9 +151,9 @@ namespace MWRender
         /*internal:*/
 
         Rtx::Renderer& getBackend() override { return *mRenderer; }
-        bool hasScene() const override { return mHasScene; }
         std::optional<PoseMoment> describePose() override;
-        void deferRedraw(TracedView& view) override;
+        void redraw(TracedView& view) override;
+        void flushRedraws() override;
         void forgetView(TracedView& view) override;
 
     private:
@@ -207,8 +212,9 @@ namespace MWRender
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
 
-        /// Draws whatever asked before there was a world to draw it against.
-        void drawDeferredViews();
+        /// Draws the pictures asked for since the last frame, every subject's and up to
+        /// `sWorldViewsPerFrame` of the world's, and answers how long that took.
+        double drawViews();
 
         Stage& mStage;
 
@@ -233,13 +239,27 @@ namespace MWRender
         /// `attachWorld`.
         Resource::ResourceSystem* mResources = nullptr;
 
-        /// Pictures that asked to be drawn before it had. Raw pointers because the caller owns
-        /// every view; `forgetView` is what keeps that sound.
+        /// Pictures asked for and not yet drawn, in the order asked. Raw pointers because the
+        /// caller owns every view; `forgetView` is what keeps that sound.
         std::vector<TracedView*> mDeferred;
 
         /// The list a flush walks, swapped out of `mDeferred` so a redraw cannot grow what is being
         /// iterated. Kept rather than made, because this sits on the frame path.
         std::vector<TracedView*> mDrawing;
+
+        /// How many pictures of the world one frame draws; the rest wait for the next.
+        ///
+        /// **Frames cost the same as each other, and a fresh load asks for nine map tiles at
+        /// once.** A cell crossing asks for a row of three, which is one frame at this. A picture
+        /// of a subject is never held back: the doll is looked at the frame it is asked for.
+        static constexpr std::uint32_t sWorldViewsPerFrame = 3;
+
+        /// MyGUI's backend, which `createGuiPlatform` makes and the window manager owns.
+        ///
+        /// **Kept from the making and not looked up a frame**, and never null where a frame runs:
+        /// the window manager is made before the first frame and unmade after the last, and it is
+        /// what draws every GUI there is.
+        MyGUIRtx::RenderManager* mGui = nullptr;
 
         MyGUIPlatform::Picture mFrozenFrame{ "frozen frame" };
 

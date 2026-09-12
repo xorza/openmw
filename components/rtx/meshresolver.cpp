@@ -288,7 +288,8 @@ namespace Rtx
             }
         }
 
-        known->second.mIndex = mScene.addRig(mRunScratch, mInfluenceScratch, static_cast<Index>(skin->mBones.size()));
+        known->second.mIndex
+            = mScene.deformers().addRig(mRunScratch, mInfluenceScratch, static_cast<Index>(skin->mBones.size()));
         return known->second.mIndex;
     }
 
@@ -325,7 +326,7 @@ namespace Rtx
             std::copy_n(offsets->begin(), count, mOffsetScratch.begin() + target * vertices);
         }
 
-        known->second.mIndex = mScene.addMorph(mOffsetScratch, static_cast<Index>(targets.size()));
+        known->second.mIndex = mScene.deformers().addMorph(mOffsetScratch, static_cast<Index>(targets.size()));
         return known->second.mIndex;
     }
 

@@ -390,6 +390,11 @@ namespace Rtx::Shaders
         /// takes it back, and the frames it takes it back from are most of the game.
         uint mMediumInFrame;
 
+        /// Which classes of instance this camera draws — the rasterizer's cull mask, in the bits
+        /// `scene.h` names. The eye's rays cast with it whole and every other ray with
+        /// `solidMask` of it; `MASK_PARTICLE` in it is whether the sprites are drawn at all.
+        uint mRayMask;
+
         /// How many columns and rows of froxels stand in front of the camera.
         ///
         /// **The froxel grid, said once, where three shaders asked the driver for it.** `puffLight`
@@ -402,7 +407,9 @@ namespace Rtx::Shaders
         ///
         /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
         /// pad the middle of a struct two languages have to agree on, and the offset asserted below
-        /// pins where it landed.
+        /// pins where it landed. Everything above it is four-aligned and sums to a multiple of
+        /// eight, so nothing is padded; a field added above has to keep it so, or take the four
+        /// bytes a pad would leave.
         GpuTables mTables;
     };
 

@@ -36,11 +36,12 @@ namespace Rtx
             return pixels;
         }
 
-        /// The red and green of one texel of a result.
+        /// The red and green of one texel of a result, at whichever stride its format has.
         std::pair<std::uint8_t, std::uint8_t> at(const osg::Image& image, int x, int y)
         {
             const std::uint8_t* row = image.data(0, y);
-            return { row[x * 4], row[x * 4 + 1] };
+            const int stride = image.getPixelFormat() == GL_RGB ? 3 : 4;
+            return { row[x * stride], row[x * stride + 1] };
         }
 
         /// The whole frame comes back at the frame's own extents, and the row order is the only
@@ -106,6 +107,26 @@ namespace Rtx
             ASSERT_NE(bottom, nullptr);
             EXPECT_EQ(at(*bottom, 0, 0), (std::pair<std::uint8_t, std::uint8_t>{ 0, 2 }));
             EXPECT_EQ(at(*bottom, 1, 1), (std::pair<std::uint8_t, std::uint8_t>{ 2, 0 }));
+
+            // Three channels: the same texels, packed three bytes apart with the alpha dropped, in
+            // a row of six bytes and not eight.
+            const osg::ref_ptr<osg::Image> thumbnail = frameImage(frame, 2, 2, RowOrder::BottomFirst, Channels::Rgb);
+            ASSERT_NE(thumbnail, nullptr);
+            EXPECT_EQ(thumbnail->getPixelFormat(), GL_RGB);
+            EXPECT_EQ(thumbnail->getRowSizeInBytes(), 6u);
+            EXPECT_EQ(at(*thumbnail, 0, 0), (std::pair<std::uint8_t, std::uint8_t>{ 0, 2 }));
+            EXPECT_EQ(at(*thumbnail, 1, 0), (std::pair<std::uint8_t, std::uint8_t>{ 2, 2 }));
+            EXPECT_EQ(at(*thumbnail, 1, 1), (std::pair<std::uint8_t, std::uint8_t>{ 2, 0 }));
+            const std::uint8_t* const second = thumbnail->data(0, 1);
+            ASSERT_NE(second, nullptr);
+            EXPECT_EQ(second[2], 0) << "blue, and not the alpha that stood after it";
+
+            // And at the frame's own size, where four channels take the row-copy path and three
+            // cannot.
+            const osg::ref_ptr<osg::Image> whole = frameImage(frame, 4, 4, RowOrder::TopFirst, Channels::Rgb);
+            ASSERT_NE(whole, nullptr);
+            EXPECT_EQ(whole->getRowSizeInBytes(), 12u);
+            EXPECT_EQ(at(*whole, 3, 3), (std::pair<std::uint8_t, std::uint8_t>{ 3, 3 }));
         }
 
         /// Nothing to give is null, not a picture of part of a frame.

@@ -465,6 +465,8 @@ namespace Rtx
         inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
         described.mTables.mBlueNoise = mBlueNoise.getDeviceAddress();
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
+        if (inputs.mSpriteList != 0)
+            described.mTables.mSpriteTileList = inputs.mSpriteList;
 
         // **Nothing addressed here may be nothing, and every address must be what its reference
         // claims.** A descriptor bound as a null handle cost this renderer a device with no message;

@@ -21,10 +21,10 @@ namespace Sky
         constexpr float sTau = 6.283185307179586f;
     }
 
-    void SkyRoll::advance(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds)
+    void SkyRoll::advance(float seconds, float cloudSpeed, float timeScale)
     {
         float scrolled = seconds * cloudSpeed / sCloudSpeedScale;
-        if (timescaleClouds)
+        if (mTimescaleClouds)
             scrolled *= timeScale / sSecondsPerMinute;
 
         // `fmod` rather than one subtraction, which is what the engine does: a frame long enough to
@@ -39,8 +39,8 @@ namespace Sky
 
     SkyRoll SkyRoll::after(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds)
     {
-        SkyRoll roll;
-        roll.advance(seconds, cloudSpeed, timeScale, timescaleClouds);
+        SkyRoll roll(timescaleClouds);
+        roll.advance(seconds, cloudSpeed, timeScale);
         return roll;
     }
 }

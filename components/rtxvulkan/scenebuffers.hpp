@@ -38,9 +38,7 @@ namespace Rtx
     class SceneBuffers
     {
     public:
-        /// @param slots how many frames may be tracing this scene at once: `sFrameSlots` for the
-        ///        world, and one for a picture inside the interface, which is traced and waited for
-        ///        before anything else touches it.
+        /// @param slots how many frames may be tracing this scene at once.
         SceneBuffers(const Device& device, Batch& batch, const SceneTables& scene,
             std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
 

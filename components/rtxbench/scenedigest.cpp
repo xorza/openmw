@@ -209,7 +209,7 @@ namespace Rtx
             Digest placement;
             placement.add(std::span<const float>(instance.mTransform.ptr(), 16));
             placement.add(instance.mOpacity);
-            placement.add(instance.mFirstPerson);
+            placement.add(static_cast<std::uint32_t>(instance.mClass));
             addMaterial(placement, scene, instance.mMaterial);
             addMesh(placement, scene, instance.mMesh);
             whole.add(placement);

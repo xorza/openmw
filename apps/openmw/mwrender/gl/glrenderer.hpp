@@ -2,6 +2,7 @@
 #define GAME_RENDER_GL_GLRENDERER_H
 
 #include <memory>
+#include <optional>
 
 #include <osg/ref_ptr>
 
@@ -151,6 +152,11 @@ namespace MWRender
         /// rather than defaulted, because somebody else chose them.
         unsigned int mShownUpdateMask = 0;
         unsigned int mShownCullMask = 0;
+
+        /// What the compile operation spent per frame before a loading screen widened it, for the
+        /// same reason: upstream restored what it found and not a default. Empty while nothing is
+        /// widened, and the first `setPreparationBudget` of a screen is the one that fills it.
+        std::optional<PreparationBudget> mRestingBudget;
 
         /// Writes `mask` to the master camera and to the stereo pair, which are no-ops in mono.
         void cull(unsigned int mask);

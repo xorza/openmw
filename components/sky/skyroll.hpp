@@ -10,6 +10,15 @@ namespace Sky
     /// sky manager, which is where they still would be if only one renderer needed them.
     struct SkyRoll
     {
+        /// @param timescaleClouds `Weather_Timescale_Clouds`: whether the deck moves on the world's
+        ///        clock or on the player's. Off, a cloud crosses the sky at the same rate whether an
+        ///        hour of game time takes a minute or an afternoon. **Read once, here**: it is a
+        ///        fallback-map lookup by string, and a frame has no business making one.
+        explicit SkyRoll(bool timescaleClouds)
+            : mTimescaleClouds(timescaleClouds)
+        {
+        }
+
         /// The deck's scroll along the cloud texture's `v`, wrapped into `[0, 4)`.
         ///
         /// Four rather than one because that is the range the engine's own texture matrix runs over,
@@ -27,10 +36,7 @@ namespace Sky
         ///        between a still overcast and a scudding storm.
         /// @param timeScale how many game seconds a real one is worth, which the stars always follow
         ///        and the clouds follow only where the content asks them to.
-        /// @param timescaleClouds `Weather_Timescale_Clouds`: whether the deck moves on the world's
-        ///        clock or on the player's. Off, a cloud crosses the sky at the same rate whether an
-        ///        hour of game time takes a minute or an afternoon.
-        void advance(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds);
+        void advance(float seconds, float cloudSpeed, float timeScale);
 
         /// Where both stand `seconds` after a standing start, on the same terms.
         ///
@@ -40,5 +46,8 @@ namespace Sky
         /// wants one answer whatever order it drew them in. Both rolls are linear in time, so this
         /// is that answer.
         static SkyRoll after(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds);
+
+    private:
+        bool mTimescaleClouds;
     };
 }

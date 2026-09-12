@@ -87,9 +87,7 @@ namespace Rtx
                 // meets it exactly as it did and one more ray can ask for it alone. Everything that
                 // reads a row's mask tests the bit it wants rather than the whole word, which is
                 // what makes a second bit free to ride here.
-                .mMask = (water                          ? Shaders::MASK_WATER
-                                 : instance.mFirstPerson ? Shaders::MASK_FIRST_PERSON
-                                                         : Shaders::MASK_SOLID)
+                .mMask = (water ? Shaders::MASK_WATER : classBit(instance.mClass))
                     | (worn.mMedium ? Shaders::MASK_MEDIUM : 0u),
 
                 .mCutout = worn.mCutout,

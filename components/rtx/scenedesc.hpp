@@ -86,19 +86,6 @@ namespace Rtx
         Index addMesh(const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None,
             Index deformer = sNoIndex, Index material = sNoIndex);
 
-        /// Copies a skin's runs and influences into the shared tables and returns the rig's index.
-        ///
-        /// `runs` is one word per vertex, `Shaders::RUN_COUNT_BITS` says how it is packed, and every
-        /// run it names must lie inside `influences`; every `GpuInfluence::mBone` must be under
-        /// `boneCount`. Contracts on the caller, asserted.
-        Index addRig(
-            std::span<const std::uint32_t> runs, std::span<const Shaders::GpuInfluence> influences, Index boneCount);
-
-        /// Copies a morph's offsets — `targets` targets of `offsets.size() / targets` vertices each,
-        /// laid end to end — into the shared table and returns the morph's index. `targets` must be
-        /// at least one and divide `offsets.size()`.
-        Index addMorph(std::span<const osg::Vec3f> offsets, Index targets);
-
         /// Poses one skinned mesh: its bone rows, and the box the pose reaches.
         ///
         /// **What a skinned body is, and the whole of what the host says about one per frame.** Its
@@ -121,8 +108,6 @@ namespace Rtx
         /// ignored, which is how `SceneUtil::MorphGeometry` numbers them.
         void poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds);
 
-        Index addMaterial(const Material& material);
-
         /// Rewrites a material in place, keeping its slot and everything standing on it.
         ///
         /// **For shading that animates rather than for a mistake.** A `NifOsg` flipbook, UV, alpha
@@ -142,72 +127,7 @@ namespace Rtx
         /// placements nothing.
         void setMaterial(Index material, const Material& what);
 
-        /// Copies `weights` into the shared mask table and returns where they landed.
-        ///
-        /// One float per weight rather than the byte the source holds: a mask is a few hundred
-        /// texels and a whole cell's worth is tens of kilobytes, which is not worth requiring
-        /// 8-bit storage of the device for.
-        ///
-        /// The whole run comes back, so a layer gives back exactly what it took rather than what
-        /// its two sides multiply to.
-        Run addMask(std::span<const float> weights);
-
-        /// Copies a material's layers into the shared layer table and returns where they landed.
-        ///
-        /// **All of them at once, because a run is allocated as a run.** They were appended one at
-        /// a time when the table only ever grew and a material took whatever length the table
-        /// happened to be at; a run that can be given back has to be asked for by length.
-        Run addLayers(std::span<const MaterialLayer> layers);
-
         void addLight(const Light& light);
-
-        /// Returns the slot of an image this renderer made, adding it only if `key` is not known.
-        ///
-        /// **A texture with no file behind it, which the table has to be able to hold.** A composite
-        /// baked for a distant terrain chunk is an image nothing can open: the bytes belong to
-        /// whatever made it, and what the scene keeps is the slot, because a slot is what a material
-        /// points at and what a backend uploads into. Two chunks that would bake the same image must
-        /// find the same slot, which is what `key` is for and why it has to be stable across frames.
-        ///
-        /// The same slots, the same free list and the same reference counting as a file's — this is a
-        /// second way in and not a second table. `holdTexture` and `dropTexture` do not care which
-        /// kind a slot is.
-        Index addBakedTexture(std::string_view key);
-
-        /// Returns the index of `path`, adding it only if it is not already known.
-        ///
-        /// **The slot is live from here**, before anything names it, and stays live until the last
-        /// thing that named it lets go. A caller that adds a texture and then puts it on no material
-        /// and takes no hold of it keeps that slot for the rest of the scene, which is a caller
-        /// asking for a texture it did not want.
-        Index addTexture(VFS::Path::NormalizedView path);
-
-        /// Names a texture for something no material can speak for, and stops.
-        ///
-        /// **A particle emitter's sprite, and nothing else so far.** An emitter is a placement — it
-        /// is thrown away and rebuilt every frame — so the texture it draws with hangs off no
-        /// material and no table the scene owns; whatever recognises the emitter between frames is
-        /// what has to hold it. The alternative was a keep set handed over on every sweep, which
-        /// could only be looked at on the frames a mesh or a material also died.
-        ///
-        /// `sNoIndex` is allowed and does nothing, so a caller need not test what it got.
-        void holdTexture(Index texture);
-
-        /// Gives back one `holdTexture`. The slot is freed here where nothing else names it.
-        void dropTexture(Index texture);
-
-        /// Takes and gives back one hold on a mesh or a material row, which keeps it through every
-        /// `release` between.
-        ///
-        /// **For a row the walk will never name.** A residency that adds a row straight to the scene
-        /// — a cell's ground, which has no drawable and no state set — is the only thing that knows
-        /// the row is alive, and this is how it says so. The row goes on the first `release` after
-        /// the last hold is given back, whatever else that release found: `hasDroppedHolds` is what
-        /// tells a caller gated on the identity maps that it owes one.
-        void holdMesh(Index mesh);
-        void dropMesh(Index mesh);
-        void holdMaterial(Index material);
-        void dropMaterial(Index material);
 
         /// Whether a hold on a mesh or a material went to nought since the last `release`.
         bool hasDroppedHolds() const;
@@ -217,40 +137,9 @@ namespace Rtx
         /// **The slot is the placement's name for as long as it stands.** It is the custom index a
         /// hit reads back, the row a shader looks its material up in, and — because it outlives the
         /// walk that made it — what lets a mirror move a placement instead of rebuilding the list
-        /// it was in. A slot freed by `dropInstance` is handed out again; one that is still standing
-        /// never is.
+        /// it was in. A slot freed by `placements().drop` is handed out again; one that is still
+        /// standing never is.
         Index addInstance(const MeshInstance& instance);
-
-        /// Moves the placement in `slot`, and says whether that changed anything.
-        ///
-        /// A transform equal to the one already there is not a move: it writes nothing, records
-        /// nothing, and leaves the slot reporting no motion. That is the ordinary case — most of a
-        /// world stands still — and making it the cheap one is the point of addressing placements
-        /// by slot at all.
-        bool moveInstance(Index slot, const osg::Matrixf& transform);
-
-        /// Fades the placement in `slot`.
-        ///
-        /// Separate from `moveInstance` because the two are separate facts: an actor fading on the
-        /// spot has not moved, and an actor walking is not fading. A fade that changed the number
-        /// joins `getMoved` all the same, because it is a row to rewrite — the opacity a shader
-        /// reads and the translucency traversal is told — and its previous transform stays equal to
-        /// its current one, so it carries no motion.
-        void fadeInstance(Index slot, float opacity);
-
-        /// Empties `slot`. Its index is not reused until the next `addInstance` asks for one.
-        ///
-        /// The slot joins `getMoved`: a backend has to write its row inactive, or the structure
-        /// goes on tracing what stood there.
-        void dropInstance(Index slot);
-
-        /// Ends a frame's placement: what moved becomes where things were.
-        ///
-        /// **Costs what moved and not what stands.** Only a slot that reported a move can have a
-        /// previous transform that differs from its current one, so only those have to be caught
-        /// up — which is what makes a world of fifty thousand placements and three hundred movers
-        /// cost three hundred. What was moved becomes `getSettled`, and `getMoved` starts empty.
-        void advancePlacement();
 
         /// Appends one particle system's live sprites, and the emitter that names them.
         ///
@@ -275,7 +164,7 @@ namespace Rtx
         ///
         /// **Textures are not swept here and are not named here.** A material freed below gives back
         /// what it named on its way out, which is the same thing `setMaterial` does when a shading
-        /// animation stops naming an image and the same thing `dropTexture` does for an emitter's
+        /// animation stops naming an image and the same thing `TextureTable::drop` does for an emitter's
         /// sprite. Sweeping them instead meant asking on the frames a mesh or a material happened to
         /// die as well, and a texture that stopped being named on any other frame was never noticed.
         ///
@@ -298,12 +187,25 @@ namespace Rtx
         /// and emitters.
         ///
         /// **Placements are not among them.** They are addressed by slot and reconciled in place —
-        /// `addInstance` for one that has appeared, `moveInstance` for one that has shifted,
-        /// `dropInstance` for one that has gone — because a slot index is what a hit reads back and
+        /// `addInstance` for one that has appeared, `placements().move` for one that has shifted,
+        /// `placements().drop` for one that has gone — because a slot index is what a hit reads back and
         /// because a world of fifty thousand placements of which three hundred move should cost
         /// three hundred. Everything above is small enough per frame that rebuilding it is cheaper
         /// than reconciling it.
         void clearPlacement();
+
+        /// The tables, for whoever builds the scene to write straight into.
+        ///
+        /// **Only what crosses tables stays on this class** — `addMesh` and `addInstance` for the
+        /// asserts they make between two tables, the poses and `setMaterial` for what they hand
+        /// on to the placements, the sweep, the lights and the emitters. Everything that reads or
+        /// writes one table is asked of that table: a forwarder is a second place a reader has to
+        /// look for the same answer.
+        MeshTable& meshes() { return mMeshTable; }
+        MaterialTable& materials() { return mMaterialTable; }
+        TextureTable& textures() { return mTextures; }
+        PlacementTable& placements() { return mPlacements; }
+        DeformerTable& deformers() { return mDeformers; }
 
         /// The read side, for whoever is handed the scene rather than building it. `SceneTables`
         /// says what a reader may do with it.

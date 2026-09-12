@@ -208,6 +208,7 @@ namespace MWRender
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
         , mNavigator(navigator)
+        , mWorld(Sky::SkyRoll(Sky::timescaleClouds()))
         , mNightEyeFactor(0.f)
         // TODO: Near clip should not need to be bounded like this, but too small values break OSG shadow calculations
         // CPU-side. See issue: #6072
@@ -817,8 +818,8 @@ namespace MWRender
             // That manager belongs to one of the two renderers and is built lazily, so a ray-traced
             // frame that asked it how far the clouds had scrolled was asking something that might
             // never have been created — and got a nought that never moved.
-            mWorld.mSkyRoll.advance(dt, mCloudSpeed,
-                MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale(), Sky::timescaleClouds());
+            mWorld.mSkyRoll.advance(
+                dt, mCloudSpeed, MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale());
             mSky->setRoll(mWorld.mSkyRoll);
 
             mSky->update();

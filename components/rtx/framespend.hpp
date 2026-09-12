@@ -40,7 +40,7 @@ namespace Rtx
     /// the island route, perf reads the trace call at nine microseconds a frame and the wall clock
     /// reads it at a hundred and eighty.
     ///
-    /// **Together they close the frame.** `Frame` less `Finish`, `Walk`, `Place`, `Trace`,
+    /// **Together they close the frame.** `Frame` less `Finish`, `Walk`, `Place`, `Views`, `Trace`,
     /// `Present` and `Update` is under 0.05 ms at every place that stands still: what is left is the
     /// window's extent being handed over, the sweep, and the frame's own record. A row that does
     /// not close is a stretch nobody has named, which is what these were added to find.
@@ -60,6 +60,10 @@ namespace Rtx
         Textures,
         Upload,
         Trace,
+
+        /// The pictures inside the interface drawn this frame — a doll's walk and placement, a map
+        /// tile's recording — which stand between the placement and the trace.
+        Views,
         Present,
         Update,
     };
@@ -70,7 +74,7 @@ namespace Rtx
     /// twelve kept level by hand, so a row added to the enum reached a report only if somebody
     /// wrote it out twice more. `Rtx::NamedEnum` says at length why an enum states its spellings
     /// once.
-    inline constexpr NamedEnum<Timing, 12> sTimings{ { {
+    inline constexpr NamedEnum<Timing, 13> sTimings{ { {
         { Timing::Frame, "frame" },
         { Timing::Finish, "finish" },
         { Timing::Wait, "wait" },
@@ -81,6 +85,7 @@ namespace Rtx
         { Timing::Textures, "textures" },
         { Timing::Upload, "upload" },
         { Timing::Trace, "trace" },
+        { Timing::Views, "views" },
         { Timing::Present, "present" },
         { Timing::Update, "update" },
     } } };

@@ -2,8 +2,11 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
+#include <span>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -460,6 +463,104 @@ namespace Rtx::Testing
             // fern's 28.28 still does not — so the threshold is lowered instead.
             mRing.setMinSize(0.001f);
             EXPECT_EQ(walk(mWalked++).mDistantStatics, 2u) << "at 20.48 both clear";
+        }
+
+        /// What the size rule admits is a prefix of the cell's placements, largest first, and a
+        /// walk touches only what crossed the prefix's end since the last one. A disabled
+        /// reference leaves and returns the moment the script says so, and one disabled before its
+        /// cell is held arrives that way.
+        ///
+        /// Five trees of one sheet at scales five to one, so their radii are 424.26 times each —
+        /// 2121.3, 1697.1, 1272.8, 848.5 and 424.3. The eye stands half a cell in and cell 3 begins
+        /// two and a half cells away, 20480 units, so a setting of `t / 20480` is a threshold of
+        /// `t`: 1000 admits three, 600 admits four, 400 all five.
+        TEST_F(RtxCellRingTest, theSizeRuleAdmitsAPrefixAndAToggleLandsAtOnce)
+        {
+            constexpr float sDistance = 2.5f * sCellSize;
+
+            for (std::uint32_t scale = 5; scale >= 1; --scale)
+                mStorage.mPlaced.push_back(Placed{ .mCell = osg::Vec2i(3, 0),
+                    .mModel = "tree.nif",
+                    .mRefNum = ESM::RefNum{ scale, 0 },
+                    .mPosition = osg::Vec3f(3.5f * sCellSize, 0.5f * sCellSize, 100.0f * static_cast<float>(scale)),
+                    .mScale = static_cast<float>(scale) });
+            const Placed elsewhere{ .mCell = osg::Vec2i(3, 1),
+                .mModel = "tree.nif",
+                .mRefNum = ESM::RefNum{ 6, 0 },
+                .mPosition = osg::Vec3f(3.5f * sCellSize, 1.5f * sCellSize, 0.0f),
+                .mScale = 5.0f };
+            mStorage.mPlaced.push_back(elsewhere);
+
+            // Every placed slot's height, which names the tree standing in it: the template's lift
+            // of five is scaled with the reference, so a tree at scale `s` stands at `105 s`.
+            const auto standing = [this] {
+                std::vector<std::pair<std::size_t, float>> slots;
+                const std::span<const MeshInstance> all = mScene.getTables().mPlacements.getAll();
+                for (std::size_t slot = 0; slot < all.size(); ++slot)
+                    if (all[slot].isPlaced())
+                        slots.emplace_back(slot, all[slot].mTransform.getTrans().z());
+                return slots;
+            };
+            const auto heights = [](const std::vector<std::pair<std::size_t, float>>& slots) {
+                std::vector<float> lifted;
+                for (const auto& [slot, height] : slots)
+                    if (height > 50.0f)
+                        lifted.push_back(height);
+                std::sort(lifted.begin(), lifted.end());
+                return lifted;
+            };
+            const auto trees = [](std::initializer_list<int> scales) {
+                std::vector<float> lifted;
+                for (const int scale : scales)
+                    lifted.push_back(105.0f * static_cast<float>(scale));
+                return lifted;
+            };
+            // Whether every slot of `before` still stands with the same tree in it.
+            const auto keeps = [](const std::vector<std::pair<std::size_t, float>>& before,
+                                   const std::vector<std::pair<std::size_t, float>>& after) {
+                return std::all_of(before.begin(), before.end(),
+                    [&](const auto& was) { return std::find(after.begin(), after.end(), was) != after.end(); });
+            };
+
+            mRing.setReferenceEnabled(ESM::RefNum{ 6, 0 }, false);
+            mRing.setMinSize(1000.0f / sDistance);
+            start();
+
+            EXPECT_EQ(fill().mDistantStatics, 3u)
+                << "the three largest, and the disabled one in the next cell arrived out";
+            const auto three = standing();
+            EXPECT_EQ(heights(three), trees({ 3, 4, 5 }));
+
+            mRing.setMinSize(600.0f / sDistance);
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 4u) << "the fourth clears 600";
+            const auto four = standing();
+            EXPECT_TRUE(keeps(three, four)) << "one add and no drop: the three stand where they stood";
+            EXPECT_EQ(heights(four), trees({ 2, 3, 4, 5 }));
+
+            mRing.setMinSize(1000.0f / sDistance);
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 3u);
+            EXPECT_TRUE(keeps(three, standing())) << "one drop and no add";
+
+            // A script disables the tree at scale four, inside the prefix: gone before any walk.
+            mRing.setReferenceEnabled(ESM::RefNum{ 4, 0 }, false);
+            EXPECT_EQ(heights(standing()), trees({ 3, 5 }));
+            mRing.setReferenceEnabled(ESM::RefNum{ 4, 0 }, true);
+            EXPECT_EQ(heights(standing()), trees({ 3, 4, 5 }));
+
+            // And the tree at scale one, outside it: nothing changes now, and when the threshold
+            // falls to admit all five it is the one still kept out.
+            mRing.setReferenceEnabled(ESM::RefNum{ 1, 0 }, false);
+            EXPECT_EQ(heights(standing()), trees({ 3, 4, 5 }));
+            mRing.setMinSize(400.0f / sDistance);
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 4u) << "four of five, the disabled one skipped";
+            EXPECT_EQ(heights(standing()), trees({ 2, 3, 4, 5 }));
+            mRing.setReferenceEnabled(ESM::RefNum{ 1, 0 }, true);
+            EXPECT_EQ(heights(standing()), trees({ 1, 2, 3, 4, 5 })) << "enabled inside the prefix, at once";
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 5u) << "and the walk keeps it";
+
+            // The tree in the next cell was disabled before its cell was held; enabled, it stands.
+            mRing.setReferenceEnabled(ESM::RefNum{ 6, 0 }, true);
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 6u);
         }
 
         /// A model the frame lets go of and a delivered cell names again inside the same settled

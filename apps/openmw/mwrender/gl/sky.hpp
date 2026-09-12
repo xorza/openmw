@@ -158,8 +158,9 @@ namespace MWRender
 
         bool mIsStorm;
 
-        /// How far the deck has scrolled and the stars have turned, as handed down.
-        Sky::SkyRoll mRoll;
+        /// How far the deck has scrolled and the stars have turned, as handed down. Never advanced
+        /// here, so the clock it is built on is nobody's.
+        Sky::SkyRoll mRoll{ false };
 
         // particle system rotation is independent of cloud rotation internally
         osg::Vec3f mStormDirection;

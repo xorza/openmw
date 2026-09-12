@@ -347,7 +347,7 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.getTables().mPlacements.getPlacedCount(), 2u);
             EXPECT_EQ(mScene.getTables().mPlacements.getAll().size(), 2u);
 
-            mScene.advancePlacement();
+            mScene.placements().advance();
             EXPECT_EQ(walk(*root).mInstances, 2u);
             EXPECT_TRUE(mScene.getTables().mPlacements.getMoved().empty())
                 << "an unchanged graph reported a placement moving";
@@ -374,7 +374,7 @@ namespace Rtx::Testing
             // And they keep their own histories. Moving one must leave the other reporting nothing —
             // sharing a slot would have the still one inherit the mover's previous transform and
             // smear across the frame.
-            mScene.advancePlacement();
+            mScene.placements().advance();
             mExtractor.extract(*shared, osg::Matrixf::translate(11.0f, 0.0f, 0.0f), 1);
             mExtractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
 

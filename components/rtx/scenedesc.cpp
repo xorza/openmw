@@ -16,17 +16,6 @@ namespace Rtx
         return mMeshTable.add(arrays, shape, deform, deformer, material);
     }
 
-    Index SceneDesc::addRig(
-        std::span<const std::uint32_t> runs, std::span<const Shaders::GpuInfluence> influences, Index boneCount)
-    {
-        return mDeformers.addRig(runs, influences, boneCount);
-    }
-
-    Index SceneDesc::addMorph(std::span<const osg::Vec3f> offsets, Index targets)
-    {
-        return mDeformers.addMorph(offsets, targets);
-    }
-
     void SceneDesc::poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds)
     {
         assert(mesh < mMeshTable.size());
@@ -39,11 +28,6 @@ namespace Rtx
         assert(mesh < mMeshTable.size());
         if (mDeformers.poseMorph(mMeshTable.getRows()[mesh], weights))
             mMeshTable.notePosed(mesh, bounds);
-    }
-
-    Index SceneDesc::addMaterial(const Material& material)
-    {
-        return mMaterialTable.add(material);
     }
 
     void SceneDesc::setMaterial(Index material, const Material& what)
@@ -62,49 +46,9 @@ namespace Rtx
                 mPlacements.rewrite(slot);
     }
 
-    void SceneDesc::holdTexture(Index texture)
-    {
-        mTextures.hold(texture);
-    }
-
-    void SceneDesc::dropTexture(Index texture)
-    {
-        mTextures.drop(texture);
-    }
-
-    void SceneDesc::holdMesh(Index mesh)
-    {
-        mMeshTable.hold(mesh);
-    }
-
-    void SceneDesc::dropMesh(Index mesh)
-    {
-        mMeshTable.drop(mesh);
-    }
-
-    void SceneDesc::holdMaterial(Index material)
-    {
-        mMaterialTable.hold(material);
-    }
-
-    void SceneDesc::dropMaterial(Index material)
-    {
-        mMaterialTable.drop(material);
-    }
-
     bool SceneDesc::hasDroppedHolds() const
     {
         return mMeshTable.hasDroppedHolds() || mMaterialTable.hasDroppedHolds();
-    }
-
-    Run SceneDesc::addMask(std::span<const float> weights)
-    {
-        return mMaterialTable.addMask(weights);
-    }
-
-    Run SceneDesc::addLayers(std::span<const MaterialLayer> layers)
-    {
-        return mMaterialTable.addLayers(layers);
     }
 
     void SceneDesc::addLight(const Light& light)
@@ -160,37 +104,12 @@ namespace Rtx
         mSprites.insert(mSprites.end(), sprites.begin(), sprites.end());
     }
 
-    Index SceneDesc::addTexture(VFS::Path::NormalizedView path)
-    {
-        return mTextures.add(path);
-    }
-
-    Index SceneDesc::addBakedTexture(std::string_view key)
-    {
-        return mTextures.addBaked(key);
-    }
-
     Index SceneDesc::addInstance(const MeshInstance& instance)
     {
         assert(instance.mMesh < mMeshTable.size());
         assert(instance.mMaterial == sNoIndex || instance.mMaterial < mMaterialTable.size());
 
         return mPlacements.add(instance);
-    }
-
-    void SceneDesc::fadeInstance(Index slot, float opacity)
-    {
-        mPlacements.fade(slot, opacity);
-    }
-
-    bool SceneDesc::moveInstance(Index slot, const osg::Matrixf& transform)
-    {
-        return mPlacements.move(slot, transform);
-    }
-
-    void SceneDesc::dropInstance(Index slot)
-    {
-        mPlacements.drop(slot);
     }
 
     void SceneDesc::orderLights()
@@ -207,11 +126,6 @@ namespace Rtx
             return std::tie(a.mPosition, a.mIntensity, a.mReach, a.mSourceRadius, a.mClearance)
                 < std::tie(b.mPosition, b.mIntensity, b.mReach, b.mSourceRadius, b.mClearance);
         });
-    }
-
-    void SceneDesc::advancePlacement()
-    {
-        mPlacements.advance();
     }
 
     void SceneDesc::clearPlacement()

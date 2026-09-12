@@ -141,9 +141,14 @@ namespace Rtx
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
+        , mNoSprites(Buffer::hostWritten(mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
+        , mViewCounts(Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice, mPool)
     {
+        // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
+        mNoSprites.clear();
+
         // Before the first targets, because what to trace at is its answer and not ours.
         if (mUpscaling.mMode != Upscale::Off)
             startUpscaler();
@@ -360,17 +365,18 @@ namespace Rtx
     }
 
     VisibilityInputs VulkanRenderer::describeInputs(
-        const ViewScene& held, const FrameSlot slot, const FogVolume* const volume) const
+        const ViewScene& held, const FogVolume* const volume, const std::uint32_t rayMask) const
     {
         return VisibilityInputs{
             .mScene = held.mAcceleration->getTopLevel(),
             .mBuffers = held.mBuffers.get(),
-            .mSlot = slot,
+            .mSlot = held.mSlot,
             .mIndexBlocks = held.mAcceleration->getIndexBlocks(),
             .mTextures = held.mTextures->getSet(),
             .mWaves = &mWaves,
             .mFog = &mFog,
             .mFogVolume = volume,
+            .mSpriteList = (rayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.getDeviceAddress(),
             .mWater = held.mAcceleration->getInstanceCounts().mWater > 0,
         };
     }
@@ -411,8 +417,10 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
 
         // **Nothing may be in flight over what is about to go.** A rebuild is a load, and a load
-        // waits: for the frames tracing the old scene, and for a placement the frame being recorded
-        // may have submitted without a fence of its own.
+        // waits: for a picture recorded against the old scene and not yet carried, for the frames
+        // tracing it, and for a placement the frame being recorded may have submitted without a
+        // fence of its own.
+        mPool.finishDeferred();
         mDevice.waitIdle();
         mRing.finishAll();
         mRing.emptyGraveyards();
@@ -438,11 +446,11 @@ namespace Rtx
             // vector, which would point at where something stood in a world that is no longer there.
             mSum.reset();
             mPreviousCamera = Shaders::VisibilityConstants{};
-
-            // The copies are new and alike, so nothing has read either.
-            mWorldSlot = FrameSlot{};
-            mReadBy.fill(sNeverRead);
         }
+
+        // The copies are new and alike, so nothing has read either.
+        held.mSlot = FrameSlot{};
+        held.mReadBy.fill(sNeverRead);
 
         // Made here for the same reason a frame's are: both of the two below want them, and this is
         // the only place that knows both.
@@ -453,8 +461,6 @@ namespace Rtx
         // would be hundreds for a town.
         Batch setup(mPool);
 
-        // The world is traced by two frames at once and so keeps two copies of what a frame writes;
-        // a picture inside the interface is traced and waited for, and keeps one.
         Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
 
         // **The world's, because there is one sea and every scene traces it.** A doll and a map tile
@@ -462,11 +468,13 @@ namespace Rtx
         // of those redraw the spectrum would put the interface's water under the world.
         if (slot.isWorld())
             mWaves.describe(sea, graveyard);
-        const std::uint32_t slots = slot.isWorld() ? sFrameSlots : 1;
 
-        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, slots);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords, slots, graveyard);
-        held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, slots, graveyard);
+        // **Every scene is traced by two frames at once**, the doll's included: a picture inside the
+        // interface rides the frame it was asked on, and the next frame may place it again while
+        // that one is still tracing.
+        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, sFrameSlots);
+        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords, sFrameSlots, graveyard);
+        held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, sFrameSlots, graveyard);
 
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.mTextures.getPaths().size()), textures, graveyard);
@@ -643,23 +651,40 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
 
-        // **A picture inside the interface is placed into the trace's submit and waited for once.**
-        // It has one copy of everything and no ring: it is neither timed nor allowed to open the
-        // frame's report.
-        //
-        // **Deferred and not submitted here**, so the trace that follows carries both. A doll pays
-        // this pair on every equipment change and on every mouse move of a race preview's drag,
-        // and the trace is already paying one round trip through the driver. What orders the two is the barrier `place`
-        // ends in, which is what orders a deferred arrival against the world's placement in the same way. A placement
-        // with no trace after it rides whichever submit comes next, and `GuiTextures::finish` drains what is left.
+        // **The copy this placement writes is the one the last frame did not trace**, and whatever
+        // frame last traced it is waited for here. Usually that frame has long since signalled —
+        // the CPU is a frame ahead and no more — and the wait is a comparison; when the GPU is
+        // behind, this is where the CPU stands still, which is the right place. The other copy and
+        // not a parity of its own, because a frame need not place: two traces of one placement read
+        // the same copy twice, and the next placement has to go where neither of them is.
+        const FrameSlot into = held.mSlot.next();
+        if (held.mReadBy[into.get()] != sNeverRead)
+        {
+            // **A picture recorded this frame and carried by nothing yet reads this copy too**, and
+            // the ring cannot wait for a frame that was never submitted. Two placements of one
+            // scene inside one frame is the only way here, which a game never takes.
+            if (held.mReadBy[into.get()] >= mRing.getRecording())
+                mPool.finishDeferred();
+
+            mRing.finishThrough(held.mReadBy[into.get()]);
+        }
+
+        // **A picture inside the interface is placed into a batch that rides the next submit.** It
+        // is neither timed nor allowed to open the frame's report, and the trace that follows it is
+        // deferred the same way, so the two go to the queue in order in one call. What orders the
+        // pair is the barrier `place` ends in, which is what orders a deferred arrival against the
+        // world's placement in the same way.
         if (!slot.isWorld())
         {
-            Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
-
             Batch placement(mPool);
-            recordPlacement(
-                mSkinPass, held, scene, Placing{ .mCommands = placement.getCommands(), .mGraveyard = graveyard });
+            recordPlacement(mSkinPass, held, scene,
+                Placing{
+                    .mCommands = placement.getCommands(),
+                    .mSlot = into,
+                    .mGraveyard = mRing.recording().mWorld.mGraveyard,
+                });
             placement.defer();
+            held.mSlot = into;
             return;
         }
 
@@ -672,20 +697,9 @@ namespace Rtx
         // first and any on which the weather turned the wind.
         mWaves.describe(sea, frame.mWorld.mGraveyard);
 
-        // **The copy this placement writes is the one the last frame did not trace**, and whatever
-        // frame last traced it is waited for here. Usually that frame has long since signalled —
-        // the CPU is a frame ahead and no more — and the wait is a comparison; when the GPU is
-        // behind, this is where the CPU stands still, which is the right place. The other copy and
-        // not a parity of its own, because a frame need not place: two traces of one placement read
-        // the same copy twice, and the next placement has to go where neither of them is.
-        const FrameSlot into = mWorldSlot.next();
-        if (mReadBy[into.get()] != sNeverRead)
-            mRing.finishThrough(mReadBy[into.get()]);
-
-        // **The placement's own submit, without a fence and without a wait.** A picture inside the
-        // interface traced before this frame's trace needs the top level to have reached the queue;
-        // the frame's fence, later on the queue, covers this submit too. Nothing recorded is
-        // nothing submitted, which is every frame of a standing camera in an empty place.
+        // **The placement's own submit, without a fence and without a wait.** The frame's fence,
+        // later on the queue, covers this submit too. Nothing recorded is nothing submitted, which
+        // is every frame of a standing camera in an empty place.
         const VkCommandBuffer placement = mRing.takePlaceCommands(frame);
         mPool.begin(placement);
 
@@ -700,7 +714,7 @@ namespace Rtx
         else
             checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
 
-        mWorldSlot = into;
+        held.mSlot = into;
 
         readPlacedStats(held);
     }
@@ -934,9 +948,7 @@ namespace Rtx
         // The count is an atomic sum over the frame, so it starts each one at nothing — and it is
         // not started at all where the trace was specialized to write nothing into it, which is the
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
-        // this is the write a frame that never reads it was still paying for. Here and not where
-        // the frame opened, because a picture inside the interface traced between the two adds to
-        // whichever buffer it is handed.
+        // this is the write a frame that never reads it was still paying for.
         if (mCountHits || mCountCrossings)
             *static_cast<FrameCounts*>(frame.mHitCount.map()) = FrameCounts{};
 
@@ -948,7 +960,7 @@ namespace Rtx
 
         const Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);
 
-        const VisibilityInputs inputs = describeInputs(mWorld, mWorldSlot, &mFrame.getFogVolume());
+        const VisibilityInputs inputs = describeInputs(mWorld, &mFrame.getFogVolume(), camera.mRayMask);
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum == nullptr;
@@ -994,8 +1006,8 @@ namespace Rtx
         // is reading, and over the report it is still writing. `placeScene` waits the same way
         // before it writes the other copy; on the ordinary path of a placement per frame this has
         // already been waited and costs a compare.
-        if (mReadBy[mWorldSlot.get()] != sNeverRead)
-            mRing.finishThrough(mReadBy[mWorldSlot.get()]);
+        if (mWorld.mReadBy[mWorld.mSlot.get()] != sNeverRead)
+            mRing.finishThrough(mWorld.mReadBy[mWorld.mSlot.get()]);
 
         // **Ray Reconstruction is itself the denoiser**, and handing it a frame the wavelet already
         // blurred is asking it to recover what was thrown away — which is why `resolve` never
@@ -1096,7 +1108,7 @@ namespace Rtx
         if (mCountHits || mCountCrossings)
             frame.mHitCount.orderForHostRead(commands);
 
-        mReadBy[mWorldSlot.get()] = mRing.getRecording();
+        mWorld.mReadBy[mWorld.mSlot.get()] = mRing.getRecording();
         mRing.submit(frame);
 
         // What the next frame reprojects against, and the camera as the caller gave it: a jitter is
@@ -1133,7 +1145,10 @@ namespace Rtx
             && "a scene given back twice");
 
         // **What a picture's placement buried is this scene's**, and the frame it was buried under
-        // need never be traced — so it is given back here rather than to a scene that has gone.
+        // need never be traced — so it is given back here rather than to a scene that has gone. A
+        // picture of it recorded this frame and not yet carried goes first, or it would be carried
+        // over a scene that no longer exists.
+        mPool.finishDeferred();
         mDevice.waitIdle();
         mRing.finishAll();
         mRing.emptyGraveyards();
@@ -1144,8 +1159,16 @@ namespace Rtx
 
     void VulkanRenderer::growViewTargets(std::uint32_t width, std::uint32_t height)
     {
-        if (!mView.grow(width, height, false))
+        if (mView.holds(width, height))
             return;
+
+        // **The one drain a picture still pays, and only the first picture of a new size pays it.**
+        // A picture recorded and not yet carried, or carried and not yet finished, names the images
+        // about to be replaced.
+        mPool.finishDeferred();
+        mRing.finishAll();
+
+        mView.grow(width, height, false);
 
         mViewTarget = std::make_unique<Image>(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
@@ -1170,19 +1193,9 @@ namespace Rtx
         // nothing upscales one, so nothing would read the layer it handed over.
         assert(camera.mLayerCompositedAfter == 0 && "a picture inside the interface hands its layer to nobody");
 
-        // **Every frame in flight first.** A picture of the world binds the world's tables and
-        // bins its sprites into them, and the frame that last traced them may still be reading;
-        // a picture of a subject has tables of its own, but the pass, the sea and the fog below
-        // are the frame's neighbours. A stall here is a picture's cost and not a frame's.
-        mRing.finishAll();
-
         ViewScene& traced = sceneAt(options.mScene);
 
-        // A doll and a map trace the same shader, so they need the same list — against their own
-        // camera, which is not the frame's.
-        const FrameSlot slot = options.mScene.isWorld() ? mWorldSlot : FrameSlot{};
-
-        const VisibilityInputs inputs = describeInputs(traced, slot, &mView.getFogVolume());
+        const VisibilityInputs inputs = describeInputs(traced, &mView.getFogVolume(), camera.mRayMask);
 
         // **The scene's own, filled here rather than by the caller.** A doll and a map tile are
         // handed constants that describe a camera, and whether the scene behind that camera holds a
@@ -1192,11 +1205,17 @@ namespace Rtx
         Shaders::VisibilityConstants sampled = camera;
         sampled.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
-        // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
-        // picture drawn between two of them would overwrite both. The buffer is still bound because
-        // the shader writes it whatever anyone does with the number, and it is the frame's, which
-        // `renderFrame` zeroes before it counts.
-        mPool.submitAndWait([&](VkCommandBuffer commands) {
+        // **Recorded into a batch that rides the next submit, and waited for by nobody here.** What
+        // the picture reads is the copy its scene's last placement wrote, which the next placement
+        // of that scene waits for through `mReadBy`; what it writes is its own chain, the texture,
+        // and a counter nothing reads. Several pictures in one frame are several batches, carried
+        // in the order they were recorded, and each begins by discarding the chain's images against
+        // everything before it on the queue.
+        //
+        // **Not counted, and not timed.** The hit count and the frame report are the frame's.
+        Batch trace(mPool);
+        {
+            const VkCommandBuffer commands = trace.getCommands();
             const GBuffer& channels = mView.getChannels();
 
             // A doll and a map tile are one frame with no frame before them, so every history says
@@ -1213,7 +1232,7 @@ namespace Rtx
                     .mGraveyard = &mRing.recording().mWorld.mGraveyard,
                     .mAsked = camera,
                     .mSampled = sampled,
-                    .mCounts = &mRing.recording().mHitCount,
+                    .mCounts = &mViewCounts,
                     .mTarget = mViewTarget.get(),
                 });
 
@@ -1262,7 +1281,30 @@ namespace Rtx
                 vkCmdCopyImage(commands, mViewTarget->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                     into.getHandle(), layout, 1, &region);
             });
-        });
+
+            if (options.mReadBack)
+                mGuiTextures.readBackWith(texture, commands, mRing.getRecording(), mRing.recording().mWorld.mGraveyard);
+        }
+        trace.defer();
+
+        // **Conservative where it is not exact.** The batch rides the next submit this pool makes,
+        // which is this frame's or an earlier one's GUI; a later frame's fence covers either by
+        // queue order.
+        traced.mReadBy[traced.mSlot.get()] = mRing.getRecording();
+    }
+
+    bool VulkanRenderer::takeGuiCopy(const GuiSlot texture, const std::span<std::uint8_t> into)
+    {
+        return mGuiTextures.takeCopy(texture, into, mRing.getFinished());
+    }
+
+    void VulkanRenderer::finishGuiTraces()
+    {
+        // Both, because a picture is in one of two places: recorded and carried by nothing, or
+        // carried by a frame still in flight.
+        mPool.finishDeferred();
+        mRing.finishAll();
+        mGuiTextures.landTraces();
     }
 
     void VulkanRenderer::readGuiTexture(const GuiSlot texture, std::vector<std::uint8_t>& pixels)

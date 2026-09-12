@@ -208,7 +208,7 @@ namespace Rtx::Testing
             constexpr std::size_t centre = centreValueOf(size);
 
             SceneDesc scene;
-            scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("cloud.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
@@ -267,7 +267,7 @@ namespace Rtx::Testing
             constexpr std::size_t centre = centreValueOf(size);
 
             SceneDesc scene;
-            scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("cloud.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
@@ -327,7 +327,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 32;
 
             SceneDesc scene;
-            scene.addTexture(VFS::Path::NormalizedView("white.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("white.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -400.0f), .mIndices = sQuadIndices }) });

@@ -94,10 +94,10 @@ namespace Rtx::Testing
 
             void letGo()
             {
-                mScene.dropInstance(mSlot);
+                mScene.placements().drop(mSlot);
                 mSlot = sNoIndex;
-                mScene.dropMesh(mMesh);
-                mScene.dropMaterial(mMaterial);
+                mScene.meshes().drop(mMesh);
+                mScene.materials().drop(mMaterial);
             }
 
             Index getMesh() const { return mMesh; }
@@ -111,12 +111,12 @@ namespace Rtx::Testing
                     osg::Vec3f(0.0f, 1.0f, 0.0f) };
                 const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
-                mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
+                mMaterial = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain });
                 mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle }, FoldedShape{},
                     Deform::None, sNoIndex, mMaterial);
                 mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
-                mScene.holdMesh(mMesh);
-                mScene.holdMaterial(mMaterial);
+                mScene.meshes().hold(mMesh);
+                mScene.materials().hold(mMaterial);
 
                 ++stats.mMeshesAdded;
                 ++stats.mMaterialsAdded;
@@ -398,40 +398,64 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.getTables().mMeshes.getRows()[2].mVertices.mCount, 6u);
         }
 
-        /// Everything under the node the caller calls first person is placed for the eye alone.
+        /// Everything under a root the caller names a class is placed as that class, and the
+        /// innermost named root stands for the path.
         ///
-        /// The game marks the root of the player's arms and not their drawables, so the mark is
-        /// carried down the subtree: a quad under the marked group takes `MASK_FIRST_PERSON`, and
-        /// one beside it — with the mask every drawable is born with — stays solid. Read by the
-        /// water's rule, no bit outside the named one, so the all-ones default never matches.
-        TEST_F(RtxSceneExtractorTest, whatStandsUnderTheFirstPersonRootIsPlacedForTheEyeAlone)
+        /// The game marks the root of an actor, an effect or the player's arms and not their
+        /// drawables, so the mark is carried down the subtree: a quad under the arms' group takes
+        /// `MASK_FIRST_PERSON`, one under the actor's takes `MASK_ACTOR`, one under an effect hung
+        /// on that actor takes `MASK_EFFECT` — the class a camera with no `Mask_Effect` leaves out
+        /// — and one beside them all, with the mask every drawable is born with, stays static.
+        /// Read by the water's rule, no bit outside the named one, so the all-ones default never
+        /// matches.
+        TEST_F(RtxSceneExtractorTest, whatStandsUnderANamedRootIsPlacedAsItsClass)
         {
             constexpr osg::Node::NodeMask sFirstPerson = 1u << 9;
+            constexpr osg::Node::NodeMask sActor = 1u << 3;
+            constexpr osg::Node::NodeMask sPlayer = 1u << 4;
+            constexpr osg::Node::NodeMask sEffect = 1u << 1;
 
             osg::ref_ptr<osg::Group> arms = new osg::Group;
             arms->setNodeMask(sFirstPerson);
             arms->addChild(makeQuad());
 
+            osg::ref_ptr<osg::Group> effect = new osg::Group;
+            effect->setNodeMask(sEffect);
+            effect->addChild(makeQuad());
+
+            osg::ref_ptr<osg::Group> actor = new osg::Group;
+            actor->setNodeMask(sPlayer);
+            actor->addChild(makeQuad());
+            actor->addChild(effect);
+
             osg::ref_ptr<osg::Group> root = new osg::Group;
             root->addChild(arms);
+            root->addChild(actor);
             root->addChild(makeQuad());
 
-            mExtractor.setFirstPersonMask(sFirstPerson);
+            mExtractor.setClassMask(Rtx::InstanceClass::FirstPerson, sFirstPerson);
+            mExtractor.setClassMask(Rtx::InstanceClass::Actor, sActor | sPlayer);
+            mExtractor.setClassMask(Rtx::InstanceClass::Effect, sEffect);
             walk(*root);
 
             std::vector<Rtx::InstanceRecord> records;
             Rtx::makeInstanceRecords(mScene.getTables(), records);
 
-            ASSERT_EQ(records.size(), 2u);
+            ASSERT_EQ(records.size(), 4u);
             EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_FIRST_PERSON) << "under the arms' root";
-            EXPECT_EQ(records[1].mMask, Rtx::Shaders::MASK_SOLID) << "beside it";
+            EXPECT_EQ(records[1].mMask, Rtx::Shaders::MASK_ACTOR) << "under the player's root";
+            EXPECT_EQ(records[2].mMask, Rtx::Shaders::MASK_EFFECT) << "the effect on the player, innermost";
+            EXPECT_EQ(records[3].mMask, Rtx::Shaders::MASK_STATIC) << "beside them";
 
-            // And a caller that names no mask — the harness — places the same graph as solid twice.
+            // And a caller that names no class — the harness — places the same graph as static
+            // four times.
             Rtx::SceneDesc unnamed;
             SceneExtractor silent(unnamed);
             silent.extract(*root, osg::Matrixf::identity(), 0);
             Rtx::makeInstanceRecords(unnamed.getTables(), records);
-            EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_SOLID);
+            ASSERT_EQ(records.size(), 4u);
+            for (const Rtx::InstanceRecord& record : records)
+                EXPECT_EQ(record.mMask, Rtx::Shaders::MASK_STATIC);
         }
 
         /// A material and the texture behind it go when the last thing wearing them does.

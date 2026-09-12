@@ -48,11 +48,11 @@ namespace Rtx
             Model made;
             made.mMesh = scene.addMesh(
                 MeshArrays{ .mPositions = positions, .mNormals = normals, .mTexCoords = uvs, .mIndices = indices });
-            made.mTexture = scene.addTexture(texture);
+            made.mTexture = scene.textures().add(texture);
 
             Rtx::Material material;
             material.mDiffuse = made.mTexture;
-            made.mMaterial = scene.addMaterial(material);
+            made.mMaterial = scene.materials().add(material);
             scene.addInstance(Rtx::MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
 
             return made;
@@ -269,7 +269,7 @@ namespace Rtx
 
             Rtx::SceneDesc scene;
             const Rtx::Index bake
-                = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
+                = scene.textures().addBaked(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
 
             SceneTextures described;
             described.describeAll(scene.getTables(), images);

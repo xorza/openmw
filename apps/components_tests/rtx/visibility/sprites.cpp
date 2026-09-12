@@ -56,7 +56,7 @@ namespace Rtx::Testing
 
             const auto sprited = [&](bool lidded, Source source) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 1> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false);
@@ -131,7 +131,7 @@ namespace Rtx::Testing
 
             const auto boxedAt = [&](float half) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 1> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false);
@@ -199,7 +199,7 @@ namespace Rtx::Testing
 
                 if (sprited)
                 {
-                    const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                    const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                     const std::array<Sprite, 1> sprites{ Sprite{
                         .mPosition = osg::Vec3f(0.0f, 0.0f, height), .mRadius = 60.0f, .mAlpha = 1.0f } };
                     scene.addEmitter(sprites, cut, false);
@@ -252,7 +252,7 @@ namespace Rtx::Testing
 
             const auto glowing = [&](std::size_t count) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::vector<Sprite> flames(
                     count, Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f });
                 scene.addEmitter(flames, cut, true);
@@ -303,7 +303,7 @@ namespace Rtx::Testing
 
             const auto drawn = [&](const osg::Vec3f& axis) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 1> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = radius, .mAxis = axis, .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, true, width);
@@ -384,7 +384,7 @@ namespace Rtx::Testing
 
             const auto lit = [&](const osg::Vec3f& axis) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 1> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAxis = axis, .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false, 0.25f);
@@ -452,7 +452,7 @@ namespace Rtx::Testing
 
             const auto green = [&](float width) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
                     .mRadius = 60.0f,
                     .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f),
@@ -508,9 +508,9 @@ namespace Rtx::Testing
                 const std::array<TextureData, 2> textures{ describeTexel(half), describeTexel(through) };
 
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const Index bake
-                    = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("sprite.dds")));
+                    = scene.textures().addBaked(SpriteLightMap::keyFor(VFS::Path::NormalizedView("sprite.dds")));
                 const std::array<Sprite, 1> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false, 0.0f, bake);
@@ -570,7 +570,7 @@ namespace Rtx::Testing
 
             const auto lit = [&](bool shaded) {
                 SceneDesc scene;
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 std::vector<Sprite> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
                 if (shaded)
@@ -620,7 +620,7 @@ namespace Rtx::Testing
             const std::span<const TextureData> textures(&ladder.mData, 1);
 
             SceneDesc scene = makeFlooded(4000.0f, 40.0f);
-            const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+            const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
             const std::array<Sprite, 1> sprites{ Sprite{
                 .mPosition = osg::Vec3f(-80.0f, 0.0f, 200.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
             scene.addEmitter(sprites, cut, false);
@@ -679,7 +679,7 @@ namespace Rtx::Testing
             const std::span<const TextureData> textures(&sheet.mData, 1);
 
             SceneDesc scene = makeFlooded(4000.0f, 40.0f);
-            const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+            const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
             const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f),
                 .mRadius = 40.0f,
                 .mAlpha = 1.0f,
@@ -715,7 +715,7 @@ namespace Rtx::Testing
             // **The parameter has to matter**, or this measures a coincidence: the same frame with a
             // particle that did not move writes the surface's nought instead.
             SceneDesc still = makeFlooded(4000.0f, 40.0f);
-            const Index cutAgain = still.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+            const Index cutAgain = still.textures().add(VFS::Path::NormalizedView("sprite.dds"));
             const std::array<Sprite, 1> stopped{ Sprite{
                 .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
             still.addEmitter(stopped, cutAgain, false);
@@ -731,7 +731,7 @@ namespace Rtx::Testing
             // and the rule that only asked about coverage left its glow reprojected as the water
             // under it. It owns the pixel by outshining what the layer left instead.
             SceneDesc flame = makeFlooded(4000.0f, 40.0f);
-            const Index cutFlame = flame.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+            const Index cutFlame = flame.textures().add(VFS::Path::NormalizedView("sprite.dds"));
             const std::array<Sprite, 1> burning{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f),
                 .mRadius = 40.0f,
                 .mAlpha = 1.0f,

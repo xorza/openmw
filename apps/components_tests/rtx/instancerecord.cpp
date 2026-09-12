@@ -49,17 +49,17 @@ namespace Rtx
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
-            const Index cutout = scene.addMaterial(Material{
-                .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/leaf.dds")),
+            const Index cutout = scene.materials().add(Material{
+                .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("textures/leaf.dds")),
                 .mAlphaRef = 0.5f,
                 .mAlphaMode = Surface::AlphaMode::Cutout,
             });
-            const Index glass = scene.addMaterial(Material{
+            const Index glass = scene.materials().add(Material{
                 .mOpacity = 0.5f,
                 .mAlphaMode = Surface::AlphaMode::Blend,
             });
-            const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
-            const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
+            const Index sea = scene.materials().add(Material{ .mKind = MaterialKind::Water });
+            const Index ground = scene.materials().add(Material{ .mKind = MaterialKind::Terrain });
 
             const Index leaf = scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::translate(1.0f, 0.0f, 0.0f), .mMesh = mesh, .mMaterial = cutout });
@@ -92,8 +92,8 @@ namespace Rtx
             const Transform3x4 still = toTransform3x4(osg::Matrixf::identity());
 
             // A move: the motion appears on the frame of the move and goes on the frame after.
-            scene.advancePlacement();
-            scene.moveInstance(leaf, osg::Matrixf::translate(1.0f, 0.0f, 5.0f));
+            scene.placements().advance();
+            scene.placements().move(leaf, osg::Matrixf::translate(1.0f, 0.0f, 5.0f));
             updateInstanceRecords(scene.getTables(), kept, changed);
             expectSame(kept, scene, "moved");
             EXPECT_FALSE(kept[leaf].mMotion == still) << "a mover carried no motion";
@@ -101,19 +101,19 @@ namespace Rtx
             // its move: a slot in both lists is a row written twice, which costs one row twice.
             EXPECT_EQ(changed, (std::vector<Index>{ leaf, pane, water, chunk, leaf })) << "the slots written, in order";
 
-            scene.advancePlacement();
+            scene.placements().advance();
             updateInstanceRecords(scene.getTables(), kept, changed);
             expectSame(kept, scene, "settled");
             EXPECT_TRUE(kept[leaf].mMotion == still) << "the frame after a move carried the motion on";
             EXPECT_EQ(changed, (std::vector<Index>{ leaf })) << "a settling slot is a row a backend rewrites";
 
             // A fade re-classes the row and moves nothing.
-            scene.fadeInstance(leaf, 0.5f);
+            scene.placements().fade(leaf, 0.5f);
             updateInstanceRecords(scene.getTables(), kept, changed);
             expectSame(kept, scene, "faded");
             EXPECT_TRUE(kept[leaf].mTranslucent);
             EXPECT_TRUE(kept[leaf].mMotion == still);
-            scene.advancePlacement();
+            scene.placements().advance();
 
             // A material crossing opaque re-classes the placement wearing it.
             Material solid = scene.getTables().mMaterials.getRows()[glass];
@@ -122,14 +122,14 @@ namespace Rtx
             updateInstanceRecords(scene.getTables(), kept, changed);
             expectSame(kept, scene, "re-classed");
             EXPECT_FALSE(kept[pane].mTranslucent) << "a pane gone opaque still stops traversal to ask";
-            scene.advancePlacement();
+            scene.placements().advance();
 
             // A drop empties the row; the slot taken over is a new row, and the table grows past it.
-            scene.dropInstance(pane);
+            scene.placements().drop(pane);
             updateInstanceRecords(scene.getTables(), kept, changed);
             expectSame(kept, scene, "dropped");
             EXPECT_FALSE(kept[pane].mPlaced);
-            scene.advancePlacement();
+            scene.placements().advance();
 
             ASSERT_EQ(
                 scene.addInstance(MeshInstance{

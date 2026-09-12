@@ -44,18 +44,18 @@ namespace Rtx
             images.hold(over, makeGround());
 
             std::array<MaterialLayer, 2> layers{};
-            layers[0].mDiffuse = scene.addTexture(under);
-            layers[1].mDiffuse = scene.addTexture(over);
-            layers[1].mMask = scene.addMask(weights);
+            layers[0].mDiffuse = scene.textures().add(under);
+            layers[1].mDiffuse = scene.textures().add(over);
+            layers[1].mMask = scene.materials().addMask(weights);
             layers[1].mMaskWidth = 2;
             layers[1].mMaskHeight = 2;
 
             Material material;
             material.mKind = MaterialKind::Terrain;
             material.mFlatten = true;
-            material.mLayers = scene.addLayers(layers);
+            material.mLayers = scene.materials().addLayers(layers);
 
-            return scene.addMaterial(material);
+            return scene.materials().add(material);
         }
 
         /// Which frame a composite lands on is the schedule's answer and never a baker's.

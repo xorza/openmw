@@ -72,6 +72,14 @@ namespace Rtx
         /// outlives all of them.
         const FogVolume* mFogVolume = nullptr;
 
+        /// The sprite tiles' list to read in place of the slot's, or nought to read the slot's.
+        ///
+        /// **For a camera that draws no sprites**, which binned none: the slot's list holds whatever
+        /// the last bin into it left, sized for another camera, and the shader reads the list before
+        /// it reads anything else. An empty list is two words — `SPRITE_LIST_UNBINNED` and a count
+        /// of nought — and one buffer of them serves every extent.
+        VkDeviceAddress mSpriteList = 0;
+
         /// Whether the eye can meet water in this scene.
         ///
         /// **The scene's answer and not the camera's**, which is why it is here: the frame's own

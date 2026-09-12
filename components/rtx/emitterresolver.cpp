@@ -79,17 +79,17 @@ namespace Rtx
         if (arrived)
         {
             const VFS::Path::Normalized path(sprite->getFileName());
-            known->second.mIndex = mScene.addTexture(path);
+            known->second.mIndex = mScene.textures().add(path);
 
             // The bake is keyed on the file, so two emitters drawing with one texture share one
             // bake, and it is made when the texture is opened for upload — `SceneTextures`.
-            known->second.mLighting = mScene.addBakedTexture(SpriteLightMap::keyFor(path));
+            known->second.mLighting = mScene.textures().addBaked(SpriteLightMap::keyFor(path));
 
             // **Held, because nothing else can name them.** An emitter is a placement and is thrown
             // away every frame, so this entry is the only lasting thing that says the sprite is in
             // use; the scene frees the slots when the sweep below lets go of them.
-            mScene.holdTexture(known->second.mIndex);
-            mScene.holdTexture(known->second.mLighting);
+            mScene.textures().hold(known->second.mIndex);
+            mScene.textures().hold(known->second.mLighting);
         }
 
         // **Noted now and read when the walk is over.** Whether this system has been integrated
@@ -222,8 +222,8 @@ namespace Rtx
         // an emitter leaving enough to free its textures — a frame where no mesh and no material
         // died is exactly the frame the mirror's sweep returns from without looking.
         mHeld.retire([this](const HeldSprite& held) {
-            mScene.dropTexture(held.mIndex);
-            mScene.dropTexture(held.mLighting);
+            mScene.textures().drop(held.mIndex);
+            mScene.textures().drop(held.mLighting);
         });
     }
 }

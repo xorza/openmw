@@ -88,6 +88,10 @@ namespace Rtx
                 // layer of no height at all rather than an absence of one. `describeWorld` overwrites
                 // this with what the cell's own weather stands its fog up to.
                 .mFogLift = 1.0f,
+
+                // Every class, until a camera with a cull mask of its own says which it draws. The
+                // harness's and the tests' cameras never do.
+                .mRayMask = Shaders::MASK_EVERY_CLASS,
             };
         }
 

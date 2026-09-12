@@ -224,7 +224,6 @@ namespace Rtx
         held.mDropped = false;
         held.mCell = cell.mCell;
         held.mStatics = cell.mStatics;
-        held.mPlacements.clear();
         held.mModels.clear();
 
         // **Emptied and kept, not reset**, so the texture list a spare cell grew is room the next
@@ -245,20 +244,7 @@ namespace Rtx
             held.mModels.push_back(model);
         }
 
-        for (const PreparedRef& ref : cell.mRefs)
-        {
-            const PreparedModel& model = *cell.mModels[ref.mModel];
-            const CellHolds::HeldModel& adopted = mHolds.knownOf(model);
-
-            for (std::size_t at = 0; at < adopted.mParts.size(); ++at)
-                held.mPlacements.push_back(Placement{
-                    .mMesh = adopted.mParts[at].mMesh,
-                    .mMaterial = adopted.mParts[at].mMaterial,
-                    .mTransform = model.mParts[at].mLocal * ref.mTransform,
-                    .mRadius = ref.mRadius,
-                    .mRefNum = ref.mRefNum,
-                });
-        }
+        mPlacer.adoptPlacements(cell, held, mHolds);
 
         mCells.insert(std::move(held));
 
@@ -297,6 +283,11 @@ namespace Rtx
         cell.mPlacements.clear();
         cell.mModels.clear();
         mSpareCells.give(std::move(cell));
+    }
+
+    void CellRing::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled)
+    {
+        mPlacer.setReferenceEnabled(refnum, enabled, std::span<HeldCell>(mCells.begin(), mCells.end()));
     }
 
     void CellRing::dropPlacements()

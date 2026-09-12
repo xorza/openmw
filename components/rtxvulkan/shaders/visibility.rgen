@@ -49,10 +49,6 @@ layout(location = RTX_PAYLOAD) rayPayloadEXT VisibilityPayload answer;
 /// the execute runs, and this is how small.
 layout(location = RTX_TRAVERSAL_PAYLOAD) rayPayloadEXT uint traversed;
 
-/// Which rays the eye casts. The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says
-/// why nothing else does.
-const uint EYE_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
-
 /// What the media in front of a point along the ray scattered in, and what they let through.
 struct MediumAhead
 {
@@ -134,7 +130,7 @@ void main()
     hitObjectEXT found;
     {
         const Ray ray = rayAt(frame.mCamera, vec2(pixel));
-        RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, EYE_MASK, 0u)
+        RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, frame.mRayMask, 0u)
     }
 
     // **Read back rather than carried across.** The hit object holds the ray it was traced with, so
@@ -214,7 +210,7 @@ void main()
 
         // The layer this trace is for, which on the last one the budget allows is the record that
         // says whatever it finds is to be shaded as a solid.
-        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, EYE_MASK, layer + 1u)
+        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, frame.mRayMask, layer + 1u)
 
         origin = hitObjectGetWorldRayOriginEXT(found);
         direction = hitObjectGetWorldRayDirectionEXT(found);

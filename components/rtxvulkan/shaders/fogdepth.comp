@@ -60,9 +60,12 @@ void main()
     // **`mFar` on a miss and not the fog's reach**, because that is what a ray that hit nothing
     // carries to the fog: the march clamps it to the reach, and a froxel past it is one no pixel
     // reads.
+    //
+    // **And the eye's own mask, whole**, because what the column measures is where the eye's view
+    // of the air ends, and what the eye cannot meet does not end it.
     const Cone cone = coneAt(frame.mCamera);
     const float surface
-        = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, FOG_COLUMN_MASK, true);
+        = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, frame.mRayMask, true);
 
     imageStore(fogColumnDepth, column, vec4(surface, 0.0, 0.0, 0.0));
 

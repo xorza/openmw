@@ -49,8 +49,8 @@ namespace Rtx
         /// medium and the layer decision are already in it. What the composite covers is its extent.
         Shaders::VisibilityConstants mSampled;
 
-        /// What the trace sums its census into. The frame's, always: a picture drawn between two
-        /// frames is not counted, and the buffer is bound because the shader writes it regardless.
+        /// What the trace sums its census into: the frame's own, or for a picture inside the
+        /// interface one nothing reads — the buffer is bound because the shader writes it regardless.
         const Buffer* mCounts = nullptr;
 
         /// What the display curve will write into, discarded beside the chain's colour because both

@@ -121,7 +121,7 @@ namespace Rtx
 
     MaterialResolver::Entry MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
     {
-        const Index index = mScene.addMaterial(material);
+        const Index index = mScene.materials().add(material);
         ++mPass.getStats().mMaterialsAdded;
 
         return mMaterials.add(key, Known{ .mIndex = index });
@@ -241,11 +241,11 @@ namespace Rtx
             return known->second.mIndex;
         }
 
-        const Index index = mScene.addTexture(VFS::Path::Normalized(image->getFileName()));
+        const Index index = mScene.textures().add(VFS::Path::Normalized(image->getFileName()));
 
         // **Held, because this entry is the reference.** `mTextureOf` says why a slot the map names
         // has to be one nothing else can hand out.
-        mScene.holdTexture(index);
+        mScene.textures().hold(index);
         mTextureOf.add(image, HeldTexture{ { .mIndex = index }, std::nullopt });
 
         return index;
@@ -351,7 +351,7 @@ namespace Rtx
         // its cached entry and never read again, so the images behind it go stale on the frame after
         // they arrived — and the material's own reference is what keeps their slots. What settles
         // here is the animated materials, which are the ones the map exists for.
-        mTextureOf.retire([this](const HeldTexture& held) { mScene.dropTexture(held.mIndex); });
+        mTextureOf.retire([this](const HeldTexture& held) { mScene.textures().drop(held.mIndex); });
 
         // What `animate` keeps. Swept beside everything else because it is keyed on a node the graph
         // can drop, and because a state set held past its node holds the textures in it alive too.

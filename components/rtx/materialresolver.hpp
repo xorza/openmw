@@ -214,7 +214,7 @@ namespace Rtx
         /// **What stops a texture's name being built again every frame.** A material a controller
         /// rewrites is read again on every frame it is met, and reading one asks for up to four
         /// textures. Asking by path builds a `VFS::Path::Normalized` that dies at the end of the
-        /// call, because `SceneDesc::addTexture` takes a view: four strings off the heap per
+        /// call, because `TextureTable::add` takes a view: four strings off the heap per
         /// animated material per frame.
         ///
         /// **This entry is a reference, like the emitter resolver's holds.** A slot whose last

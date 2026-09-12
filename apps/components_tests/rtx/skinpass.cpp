@@ -66,7 +66,7 @@ namespace Rtx
             // One bone over the whole quad, every weight one.
             const std::array oneRuns{ run(0, 1), run(0, 1), run(0, 1), run(0, 1) };
             const std::array oneInfluence{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-            const Index oneBone = scene.addRig(oneRuns, oneInfluence, 1);
+            const Index oneBone = scene.deformers().addRig(oneRuns, oneInfluence, 1);
 
             // Two bones, and the third vertex a blend of them: a quarter of the first and three
             // quarters of the second.
@@ -76,13 +76,13 @@ namespace Rtx
                 Shaders::GpuInfluence{ .mBone = 0, .mWeight = 0.25f },
                 Shaders::GpuInfluence{ .mBone = 1, .mWeight = 0.75f },
             };
-            const Index twoBones = scene.addRig(twoRuns, twoInfluences, 2);
+            const Index twoBones = scene.deformers().addRig(twoRuns, twoInfluences, 2);
 
             // Two targets over the quad: the base's zeroes and a unit lift.
             std::array<osg::Vec3f, 8> offsets{};
             for (std::size_t at = 4; at < 8; ++at)
                 offsets[at] = osg::Vec3f(0.0f, 0.0f, 1.0f);
-            const Index lift = scene.addMorph(offsets, 2);
+            const Index lift = scene.deformers().addMorph(offsets, 2);
 
             const std::array sideways{
                 osg::Vec3f(1.0f, 0.0f, 0.0f),

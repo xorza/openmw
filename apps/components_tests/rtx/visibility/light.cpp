@@ -284,11 +284,11 @@ namespace Rtx::Testing
                 SceneDesc scene;
                 const Index mesh = scene.addMesh(
                     MeshArrays{ .mPositions = positions, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-                scene.addTexture(VFS::Path::NormalizedView("white.dds"));
-                scene.addTexture(VFS::Path::NormalizedView("green.dds"));
-                scene.addTexture(VFS::Path::NormalizedView("red.dds"));
+                scene.textures().add(VFS::Path::NormalizedView("white.dds"));
+                scene.textures().add(VFS::Path::NormalizedView("green.dds"));
+                scene.textures().add(VFS::Path::NormalizedView("red.dds"));
 
-                const Index material = scene.addMaterial(Material{
+                const Index material = scene.materials().add(Material{
                     .mDiffuse = diffuse,
                     .mEmissive = emissiveMap,
                     .mEmissiveColour = emissiveColour,
@@ -377,8 +377,8 @@ namespace Rtx::Testing
                 SceneDesc scene = makeWall();
                 const Index mesh = scene.addMesh(
                     MeshArrays{ .mPositions = masked, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-                const Index material = scene.addMaterial(Material{
-                    .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("mask.dds")),
+                const Index material = scene.materials().add(Material{
+                    .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("mask.dds")),
                     .mAlphaRef = alphaRef,
                     .mAlphaMode = mode,
                 });
@@ -627,7 +627,7 @@ namespace Rtx::Testing
                 Material material;
                 if (masked)
                 {
-                    material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("sheet.dds"));
+                    material.mDiffuse = scene.textures().add(VFS::Path::NormalizedView("sheet.dds"));
                     material.mAlphaMode = Surface::AlphaMode::Cutout;
                     material.mAlphaRef = 0.5f;
                 }
@@ -636,7 +636,7 @@ namespace Rtx::Testing
                     .mMesh = scene.addMesh(
                         MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices },
                         FoldedShape{ .mSheet = sheet }),
-                    .mMaterial = scene.addMaterial(material) });
+                    .mMaterial = scene.materials().add(material) });
 
                 if (lamp)
                     scene.addLight(Light{
@@ -1019,7 +1019,7 @@ namespace Rtx::Testing
                 // the share below is the geometry's and not the sheet's edge.
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, z), .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(glowing) });
+                    .mMaterial = scene.materials().add(glowing) });
 
                 return scene;
             };

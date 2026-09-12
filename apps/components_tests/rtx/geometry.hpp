@@ -110,7 +110,7 @@ namespace Rtx::Testing
     {
         const std::vector<std::uint32_t> runs(vertices, 1u);
         const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-        return scene.addRig(runs, influences, 1);
+        return scene.deformers().addRig(runs, influences, 1);
     }
 
     /// Poses `mesh`, a mesh on a one-bone rig, by `bone`, with the box its bind pose reaches

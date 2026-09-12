@@ -62,13 +62,12 @@ namespace Rtx
         mFilter.resize(mWidth, mHeight);
     }
 
-    bool TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const bool layers)
+    void TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const bool layers)
     {
-        if (isBuilt() && width <= mWidth && height <= mHeight)
-            return false;
+        if (holds(width, height))
+            return;
 
         resize(std::max(mWidth, width), std::max(mHeight, height), layers);
-        return true;
     }
 
     const Image& TraceChain::recordDenoise(const VkCommandBuffer commands, const Shaders::Camera& camera,
@@ -110,8 +109,8 @@ namespace Rtx
         // from the last time. **But the last frame may still be reading them** — the curve's output
         // is what the interface draws over and the presenter blits, the colour is what an upscaler
         // and the curve read — so the discard is sourced at everything before it on the queue rather
-        // than at the top of the pipe, which would wait for nothing. A picture's caller has drained
-        // the queue before it records, so the wider scope costs it nothing and is the one both use.
+        // than at the top of the pipe, which would wait for nothing. A picture rides the queue behind
+        // the picture before it and is ordered against it by the same scope.
         for (const Image* image : { static_cast<const Image*>(mColour.get()), what.mTarget })
             image->transition(commands,
                 ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -130,14 +129,16 @@ namespace Rtx
 
         // **The sprite tiles are screen space, so they belong to the camera and not to the scene.**
         // Binned on the device, into the copy this trace is about to read, and ahead of that trace.
-        what.mBuffers->binSprites(*what.mSpriteShade, *what.mSpriteBin, what.mAsked.mOrigin, what.mAsked.mCamera,
-            what.mAsked.mSunPosition,
-            Placing{
-                .mCommands = commands,
-                .mSlot = what.mInputs.mSlot,
-                .mTimer = what.mTimer,
-                .mGraveyard = *what.mGraveyard,
-            });
+        // Not at all for a camera handed a list of its own, which is the one that draws none.
+        if (what.mInputs.mSpriteList == 0)
+            what.mBuffers->binSprites(*what.mSpriteShade, *what.mSpriteBin, what.mAsked.mOrigin, what.mAsked.mCamera,
+                what.mAsked.mSunPosition,
+                Placing{
+                    .mCommands = commands,
+                    .mSlot = what.mInputs.mSlot,
+                    .mTimer = what.mTimer,
+                    .mGraveyard = *what.mGraveyard,
+                });
 
         mChannels->begin(commands);
         what.mVisibility->record(

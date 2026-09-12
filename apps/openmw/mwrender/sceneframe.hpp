@@ -82,6 +82,14 @@ namespace MWRender
     /// conversion belongs to whoever is doing the converting.
     struct WorldState
     {
+        /// Built around the roll it turns, which is the one member that carries a policy: whether
+        /// the clouds keep the world's clock. Everything else is written by whichever setter knows
+        /// it.
+        explicit WorldState(const Sky::SkyRoll& roll)
+            : mSkyRoll(roll)
+        {
+        }
+
         /// Where the sun is drawn, which is not where its light comes from whenever
         /// `match sunlight to sun` is off.
         osg::Vec4f mSunPosition;

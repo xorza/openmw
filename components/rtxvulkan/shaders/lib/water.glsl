@@ -103,7 +103,7 @@ struct WaterPath
 WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uint seed)
 {
     const Surface hit
-        = trace(origin, direction, WATER_BIAS, footprint, coneAt(frame.mCamera).mSpread + 2.0 * lobe, MASK_SOLID);
+        = trace(origin, direction, WATER_BIAS, footprint, coneAt(frame.mCamera).mSpread + 2.0 * lobe, solidMask(frame.mRayMask));
 
     WaterPath path;
     path.mPosition = hit.mPosition;

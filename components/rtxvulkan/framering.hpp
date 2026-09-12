@@ -146,6 +146,9 @@ namespace Rtx
         /// How many frames have been submitted, which is the number the next one will carry.
         std::uint64_t getRecording() const { return mFrame; }
 
+        /// Every frame below this has been waited for.
+        std::uint64_t getFinished() const { return mFinished; }
+
         /// The frame being recorded, begun if it was not: the frame that last used its slot is
         /// waited for, its fence reset, its timer and hit count cleared.
         FrameRecord& begin();

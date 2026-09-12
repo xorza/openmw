@@ -27,21 +27,24 @@ namespace Rtx
         }
     }
 
-    OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height)
+    OffscreenTrace::OffscreenTrace(
+        Renderer& renderer, std::uint32_t width, std::uint32_t height, const std::uint32_t rayMask)
         : mRenderer(renderer)
         , mWidth(width)
         , mHeight(height)
+        , mRayMask(rayMask)
     {
         mOptions.mWidth = width;
         mOptions.mHeight = height;
         mOptions.mScene = SceneSlot::world();
     }
 
-    OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, osg::Node& subject,
-        osg::Node::NodeMask mask, Traversals* traversals)
+    OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height,
+        const std::uint32_t rayMask, osg::Node& subject, osg::Node::NodeMask mask, Traversals* traversals)
         : mRenderer(renderer)
         , mWidth(width)
         , mHeight(height)
+        , mRayMask(rayMask)
     {
         mSubject = std::make_unique<Subject>(traversals);
 
@@ -125,6 +128,7 @@ namespace Rtx
         camera.mSunIrradiance = mSun.mIrradiance;
         camera.mAmbient = mAmbient;
         camera.mTransparentBackground = mTransparent ? 1 : 0;
+        camera.mRayMask = mRayMask;
 
         return camera;
     }
@@ -188,9 +192,11 @@ namespace Rtx
         return subject.mScene->getTables().mPlacements.getPlacedCount() > 0;
     }
 
-    void OffscreenTrace::traceInto(const GuiSlot texture)
+    void OffscreenTrace::traceInto(const GuiSlot texture, const bool readBack)
     {
-        mRenderer.traceGuiTexture(texture, describeCamera(), mOptions);
+        GuiTraceOptions options = mOptions;
+        options.mReadBack = readBack;
+        mRenderer.traceGuiTexture(texture, describeCamera(), options);
     }
 
     bool OffscreenTrace::pick(float x, float y, osg::NodePath& hit) const

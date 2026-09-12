@@ -1,6 +1,7 @@
 #include "cellplacer.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <span>
 
 #include <components/surface/vertexcolour.hpp>
@@ -33,15 +34,34 @@ namespace Rtx
         }
     }
 
-    void CellPlacer::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled)
+    void CellPlacer::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled, const std::span<HeldCell> held)
     {
         const auto at = std::lower_bound(mDisabled.begin(), mDisabled.end(), refnum);
-        const bool held = at != mDisabled.end() && *at == refnum;
+        const bool known = at != mDisabled.end() && *at == refnum;
 
-        if (enabled && held)
+        if (enabled && known)
             mDisabled.erase(at);
-        else if (!enabled && !held)
+        else if (!enabled && !known)
             mDisabled.insert(at, refnum);
+
+        // Every cell, because which one holds the reference is not said; a script's toggle is rare
+        // enough that the walk is cheaper than an index kept for it.
+        for (HeldCell& cell : held)
+            for (std::size_t slot = 0; slot < cell.mPlacements.size(); ++slot)
+            {
+                Placement& placement = cell.mPlacements[slot];
+                if (placement.mRefNum != refnum)
+                    continue;
+
+                placement.mDisabled = !enabled;
+                if (slot >= cell.mShown)
+                    continue;
+
+                if (enabled && placement.mSlot == sNoIndex)
+                    addSlot(placement);
+                else if (!enabled)
+                    dropSlot(placement);
+            }
     }
 
     bool CellPlacer::inActiveGrid(const osg::Vec2i& cell, const WorldAround& around)
@@ -77,12 +97,12 @@ namespace Rtx
         for (const PreparedLayer& layer : ground.mLayers)
         {
             MaterialLayer row;
-            row.mDiffuse = mScene.addTexture(layer.mTexture->mPath);
+            row.mDiffuse = mScene.textures().add(layer.mTexture->mPath);
             row.mDiffuseTransform = layer.mDiffuseTransform;
 
             if (!layer.mWeights.empty())
             {
-                row.mMask = mScene.addMask(layer.mWeights.in(std::span<const float>(ground.mWeights)));
+                row.mMask = mScene.materials().addMask(layer.mWeights.in(std::span<const float>(ground.mWeights)));
                 row.mMaskWidth = layer.mMaskWidth;
                 row.mMaskHeight = layer.mMaskHeight;
                 row.mMaskTransform = layer.mMaskTransform;
@@ -109,8 +129,8 @@ namespace Rtx
         // where `Terrain::ChunkManager` states the same thing for the rasterizer's chunks.
         material.mVertexColour = Surface::VertexColour::Tint;
         if (!mLayerScratch.empty())
-            material.mLayers = mScene.addLayers(mLayerScratch);
-        stands.mMaterial = mScene.addMaterial(material);
+            material.mLayers = mScene.materials().addLayers(mLayerScratch);
+        stands.mMaterial = mScene.materials().add(material);
 
         // A heightfield is neither a sheet nor closed, and no fold is needed to say so.
         stands.mMesh = mScene.addMesh(MeshArrays{ .mPositions = ground.mPositions,
@@ -122,11 +142,70 @@ namespace Rtx
 
         // **Held on the scene, because no drawable and no state set will ever name them.** The
         // sweep keeps a held row, and `dropGround` is what lets go.
-        mScene.holdMesh(stands.mMesh);
-        mScene.holdMaterial(stands.mMaterial);
+        mScene.meshes().hold(stands.mMesh);
+        mScene.materials().hold(stands.mMaterial);
 
         ++stats.mMeshesAdded;
         ++stats.mMaterialsAdded;
+    }
+
+    void CellPlacer::adoptPlacements(const PreparedCell& cell, HeldCell& held, CellHolds& holds)
+    {
+        held.mPlacements.clear();
+        held.mShown = 0;
+
+        for (const PreparedRef& ref : cell.mRefs)
+        {
+            const PreparedModel& model = *cell.mModels[ref.mModel];
+            const CellHolds::HeldModel& adopted = holds.knownOf(model);
+            const bool disabled = isDisabled(ref.mRefNum);
+
+            for (std::size_t at = 0; at < adopted.mParts.size(); ++at)
+                held.mPlacements.push_back(Placement{
+                    .mMesh = adopted.mParts[at].mMesh,
+                    .mMaterial = adopted.mParts[at].mMaterial,
+                    .mTransform = model.mParts[at].mLocal * ref.mTransform,
+                    .mRadius = ref.mRadius,
+                    .mRefNum = ref.mRefNum,
+                    .mDisabled = disabled,
+                });
+        }
+
+        // Largest first, once, so the size rule's answer is a prefix on every walk after this.
+        // Stable, so equal radii keep the order the references were read in and two runs of one
+        // walk place the same slots.
+        std::stable_sort(held.mPlacements.begin(), held.mPlacements.end(),
+            [](const Placement& larger, const Placement& smaller) { return larger.mRadius > smaller.mRadius; });
+    }
+
+    void CellPlacer::addSlot(Placement& placement)
+    {
+        placement.mSlot = mScene.addInstance(MeshInstance{
+            .mTransform = placement.mTransform,
+            .mMesh = placement.mMesh,
+            .mMaterial = placement.mMaterial,
+        });
+        ++mPlaced;
+    }
+
+    void CellPlacer::dropSlot(Placement& placement)
+    {
+        if (placement.mSlot == sNoIndex)
+            return;
+
+        mScene.placements().drop(placement.mSlot);
+        placement.mSlot = sNoIndex;
+        --mPlaced;
+    }
+
+    void CellPlacer::dropSlot(HeldGround& ground)
+    {
+        if (ground.mSlot == sNoIndex)
+            return;
+
+        mScene.placements().drop(ground.mSlot);
+        ground.mSlot = sNoIndex;
+        --mGroundPlaced;
     }
 
     void CellPlacer::dropGround(HeldCell& cell, CellHolds& holds)
@@ -135,38 +214,25 @@ namespace Rtx
             return;
 
         HeldGround& ground = *cell.mGround;
-        if (ground.mSlot != sNoIndex)
-        {
-            mScene.dropInstance(ground.mSlot);
-            ground.mSlot = sNoIndex;
-            --mGroundPlaced;
-        }
+        dropSlot(ground);
 
         for (PreparedTexture* texture : ground.mTextures)
             holds.dropTexture(*texture);
 
         // The rows lose their holds, and the sweep after this walk is what frees them.
-        mScene.dropMesh(ground.mMesh);
-        mScene.dropMaterial(ground.mMaterial);
+        mScene.meshes().drop(ground.mMesh);
+        mScene.materials().drop(ground.mMaterial);
         ground.reuse();
     }
 
     void CellPlacer::dropSlots(HeldCell& cell)
     {
-        for (Placement& placement : cell.mPlacements)
-            if (placement.mSlot != sNoIndex)
-            {
-                mScene.dropInstance(placement.mSlot);
-                placement.mSlot = sNoIndex;
-                --mPlaced;
-            }
+        for (std::size_t at = 0; at < cell.mShown; ++at)
+            dropSlot(cell.mPlacements[at]);
+        cell.mShown = 0;
 
-        if (cell.mGround.has_value() && cell.mGround->mSlot != sNoIndex)
-        {
-            mScene.dropInstance(cell.mGround->mSlot);
-            cell.mGround->mSlot = sNoIndex;
-            --mGroundPlaced;
-        }
+        if (cell.mGround.has_value())
+            dropSlot(*cell.mGround);
     }
 
     void CellPlacer::place(HeldCell& cell, const WorldAround& around, const osg::Vec2i& eye, const int reach)
@@ -188,12 +254,8 @@ namespace Rtx
                 });
                 ++mGroundPlaced;
             }
-            else if (!inReach && ground.mSlot != sNoIndex)
-            {
-                mScene.dropInstance(ground.mSlot);
-                ground.mSlot = sNoIndex;
-                --mGroundPlaced;
-            }
+            else if (!inReach)
+                dropSlot(ground);
 
             // A cell crossing the grid's edge shades the other way from now on. The composite it
             // held goes with the rewrite, and one it now wants is asked for by the row.
@@ -209,31 +271,26 @@ namespace Rtx
 
         const bool shown = inReach && !inActiveGrid(cell.mCell, around);
 
-        // The paging's own rule, per reference and per frame: a reference is placed while its
-        // scaled radius clears the size threshold at the eye's distance to its cell.
+        // The paging's own rule: a reference is placed while its scaled radius clears the size
+        // threshold at the eye's distance to its cell. The placements are sorted largest first, so
+        // what clears is a prefix and where it ends is one search — and what this walk touches is
+        // what entered or left that prefix since the last one, which on a standing frame is nothing.
         const float threshold = shown ? mMinSize * distanceTo(cell.mCell, around.mEye) : 0.0f;
         const float threshold2 = threshold * threshold;
 
-        for (Placement& placement : cell.mPlacements)
-        {
-            const bool wanted
-                = shown && placement.mRadius * placement.mRadius >= threshold2 && !isDisabled(placement.mRefNum);
+        const std::span<Placement> placements = cell.mPlacements;
+        const auto clears
+            = [threshold2](const Placement& placement) { return placement.mRadius * placement.mRadius >= threshold2; };
+        const std::size_t wanted = shown
+            ? static_cast<std::size_t>(
+                std::partition_point(placements.begin(), placements.end(), clears) - placements.begin())
+            : 0;
 
-            if (wanted && placement.mSlot == sNoIndex)
-            {
-                placement.mSlot = mScene.addInstance(MeshInstance{
-                    .mTransform = placement.mTransform,
-                    .mMesh = placement.mMesh,
-                    .mMaterial = placement.mMaterial,
-                });
-                ++mPlaced;
-            }
-            else if (!wanted && placement.mSlot != sNoIndex)
-            {
-                mScene.dropInstance(placement.mSlot);
-                placement.mSlot = sNoIndex;
-                --mPlaced;
-            }
-        }
+        for (std::size_t at = cell.mShown; at < wanted; ++at)
+            if (!placements[at].mDisabled)
+                addSlot(placements[at]);
+        for (std::size_t at = wanted; at < cell.mShown; ++at)
+            dropSlot(placements[at]);
+        cell.mShown = wanted;
     }
 }

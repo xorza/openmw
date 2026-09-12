@@ -280,8 +280,8 @@ namespace Rtx
         std::size_t next = 0;
         for (const Layer& layer : read.mLayers)
         {
-            const Index slot = scene.addTexture(VFS::Path::Normalized(layer.mImage->getFileName()));
-            scene.holdTexture(slot);
+            const Index slot = scene.textures().add(VFS::Path::Normalized(layer.mImage->getFileName()));
+            scene.textures().hold(slot);
 
             if (std::min(layer.mUvSpan.x(), layer.mUvSpan.y()) > sTiledSpan)
             {
@@ -290,7 +290,7 @@ namespace Rtx
                 // sweep can never reclaim.
                 if (sky.mField != sNoIndex)
                 {
-                    scene.dropTexture(slot);
+                    scene.textures().drop(slot);
                     continue;
                 }
 
@@ -306,7 +306,7 @@ namespace Rtx
 
             if (next >= sky.mPatches.size())
             {
-                scene.dropTexture(slot);
+                scene.textures().drop(slot);
                 continue;
             }
 

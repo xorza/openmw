@@ -355,8 +355,8 @@ namespace MWRender
         /// the interface would otherwise hold one and the ray tracer answer with null. What the
         /// screen actually asks for is "spend more while I am up", and that is a number.
         ///
-        /// Nothing restores whatever the renderer chose for itself. A renderer with nothing to
-        /// prepare ignores both.
+        /// `reset` puts back what the first `set` since the last reset found, which is what the
+        /// loading screen did for itself upstream. A renderer with nothing to prepare ignores both.
         virtual void setPreparationBudget(const PreparationBudget& budget) {}
         virtual void resetPreparationBudget() {}
 

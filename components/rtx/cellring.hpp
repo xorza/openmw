@@ -109,8 +109,8 @@ namespace Rtx
         /// `CompositeQueue::setSettled` is the same rule for the ground's composites.
         void setSettled(bool settled);
 
-        /// `CellPlacer::setReferenceEnabled`.
-        void setReferenceEnabled(ESM::RefNum refnum, bool enabled) { mPlacer.setReferenceEnabled(refnum, enabled); }
+        /// `CellPlacer::setReferenceEnabled`, over the cells held.
+        void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
 
         void collect(SceneAdopter& into, ExtractionStats& stats) override;
 

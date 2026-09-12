@@ -150,9 +150,9 @@ namespace Rtx
             constexpr VFS::Path::NormalizedView stone("textures/tx_stone_01.dds");
             constexpr VFS::Path::NormalizedView wood("textures/tx_wood_01.dds");
 
-            EXPECT_EQ(scene.addTexture(stone), 0u);
-            EXPECT_EQ(scene.addTexture(wood), 1u);
-            EXPECT_EQ(scene.addTexture(stone), 0u);
+            EXPECT_EQ(scene.textures().add(stone), 0u);
+            EXPECT_EQ(scene.textures().add(wood), 1u);
+            EXPECT_EQ(scene.textures().add(stone), 0u);
             EXPECT_EQ(scene.getTables().mTextures.getPaths().size(), 2u);
         }
 
@@ -177,14 +177,14 @@ namespace Rtx
             const auto after = [&](const std::vector<Index>& order) {
                 SceneDesc scene;
                 for (const VFS::Path::NormalizedView path : named)
-                    scene.holdTexture(scene.addTexture(path));
+                    scene.textures().hold(scene.textures().add(path));
 
                 for (const Index slot : order)
-                    scene.dropTexture(slot);
+                    scene.textures().drop(slot);
 
-                return std::array<Index, 3>{ scene.addTexture(VFS::Path::NormalizedView("textures/tx_e.dds")),
-                    scene.addTexture(VFS::Path::NormalizedView("textures/tx_f.dds")),
-                    scene.addTexture(VFS::Path::NormalizedView("textures/tx_g.dds")) };
+                return std::array<Index, 3>{ scene.textures().add(VFS::Path::NormalizedView("textures/tx_e.dds")),
+                    scene.textures().add(VFS::Path::NormalizedView("textures/tx_f.dds")),
+                    scene.textures().add(VFS::Path::NormalizedView("textures/tx_g.dds")) };
             };
 
             const std::array<Index, 3> expected{ 0u, 2u, 3u };
@@ -546,15 +546,16 @@ namespace Rtx
             const std::array meshes{ quad(sNoIndex), quad(sNoIndex), quad(sNoIndex) };
             ASSERT_EQ(meshes[2], 2u);
 
-            const std::array materials{ scene.addMaterial(Material{ .mAlphaRef = 0.25f }),
-                scene.addMaterial(Material{ .mAlphaRef = 0.5f }), scene.addMaterial(Material{ .mAlphaRef = 0.75f }) };
+            const std::array materials{ scene.materials().add(Material{ .mAlphaRef = 0.25f }),
+                scene.materials().add(Material{ .mAlphaRef = 0.5f }),
+                scene.materials().add(Material{ .mAlphaRef = 0.75f }) };
             ASSERT_EQ(materials[2], 2u);
 
             const auto path = [](const char* name) { return VFS::Path::NormalizedView(name); };
-            const std::array textures{ scene.addTexture(path("textures/a.dds")),
-                scene.addTexture(path("textures/b.dds")), scene.addTexture(path("textures/c.dds")) };
+            const std::array textures{ scene.textures().add(path("textures/a.dds")),
+                scene.textures().add(path("textures/b.dds")), scene.textures().add(path("textures/c.dds")) };
             for (const Index texture : textures)
-                scene.holdTexture(texture);
+                scene.textures().hold(texture);
             ASSERT_EQ(textures[2], 2u);
 
             const auto place = [&](const Index mesh) { return scene.addInstance(MeshInstance{ .mMesh = mesh }); };
@@ -562,11 +563,11 @@ namespace Rtx
             ASSERT_EQ(placed[2], 2u);
 
             // The highest of each three first, and the lowest second.
-            scene.dropTexture(textures[2]);
-            scene.dropTexture(textures[0]);
+            scene.textures().drop(textures[2]);
+            scene.textures().drop(textures[0]);
 
-            scene.dropInstance(placed[2]);
-            scene.dropInstance(placed[0]);
+            scene.placements().drop(placed[2]);
+            scene.placements().drop(placed[0]);
 
             const std::array keepTwo{ meshes[0], meshes[1] };
             const std::array keepTwoMaterials{ materials[0], materials[1] };
@@ -576,10 +577,10 @@ namespace Rtx
             const std::array keepOneMaterial{ materials[1] };
             ASSERT_TRUE(scene.release(keepOne, keepOneMaterial));
 
-            EXPECT_EQ(scene.addTexture(path("textures/d.dds")), textures[0]) << "textures";
+            EXPECT_EQ(scene.textures().add(path("textures/d.dds")), textures[0]) << "textures";
             EXPECT_EQ(place(meshes[1]), placed[0]) << "placements";
             EXPECT_EQ(quad(sNoIndex), meshes[0]) << "meshes";
-            EXPECT_EQ(scene.addMaterial(Material{ .mAlphaRef = 0.125f }), materials[0]) << "materials";
+            EXPECT_EQ(scene.materials().add(Material{ .mAlphaRef = 0.125f }), materials[0]) << "materials";
         }
 
         /// A morphed mesh holds its base as its bind pose and its weights as its pose, and the
@@ -595,7 +596,7 @@ namespace Rtx
             for (std::size_t vertex = 4; vertex < 8; ++vertex)
                 offsets[vertex] = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
-            const Index morph = scene.addMorph(offsets, 2);
+            const Index morph = scene.deformers().addMorph(offsets, 2);
             ASSERT_EQ(scene.getTables().mDeformers.getMorphs().size(), 1u);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].mTargetCount, 2u);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].getVertexCount(), 4u);
@@ -629,7 +630,7 @@ namespace Rtx
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(scene.getTables().mDeformers.getMorphHolds(morph), 0u);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphs()[morph].getVertexCount(), 0u);
-            EXPECT_EQ(scene.addMorph(offsets, 2), morph);
+            EXPECT_EQ(scene.deformers().addMorph(offsets, 2), morph);
             EXPECT_EQ(scene.getTables().mDeformers.getMorphOffsets().size(), 8u);
         }
 
@@ -650,7 +651,7 @@ namespace Rtx
 
             // The material a mesh arrives wearing is kept as it was handed over, and a slot given
             // back forgets it with the rest of what stood there.
-            const Index worn = scene.addMaterial(Material{});
+            const Index worn = scene.materials().add(Material{});
             const Index dressed
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     Deform::None, sNoIndex, worn);
@@ -675,7 +676,7 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index glass = scene.addMaterial(Material{
+            const Index glass = scene.materials().add(Material{
                 .mOpacity = 0.5f,
                 .mAlphaMode = Surface::AlphaMode::Blend,
             });
@@ -686,17 +687,17 @@ namespace Rtx
                 << "a placement made is a row";
             EXPECT_TRUE(scene.getTables().mPlacements.getSettled().empty());
 
-            scene.advancePlacement();
+            scene.placements().advance();
             EXPECT_TRUE(scene.getTables().mPlacements.getMoved().empty());
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getSettled()), (std::vector<Index>{ one, two }))
                 << "what moved is what settles";
 
             // A fade that changes the number is a row; one that does not is nothing. And the settled
             // list is the last moved list and nothing older.
-            scene.fadeInstance(one, 0.5f);
-            scene.fadeInstance(one, 0.5f);
+            scene.placements().fade(one, 0.5f);
+            scene.placements().fade(one, 0.5f);
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getMoved()), (std::vector<Index>{ one }));
-            scene.advancePlacement();
+            scene.placements().advance();
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getSettled()), (std::vector<Index>{ one }));
 
             // A material crossing opaque re-classes every placement wearing it; a texture scrolling
@@ -710,31 +711,31 @@ namespace Rtx
             worn.mOpacity = 1.0f;
             scene.setMaterial(glass, worn);
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getMoved()), (std::vector<Index>{ one, two }));
-            scene.advancePlacement();
+            scene.placements().advance();
 
             // A move is a row and a fade in the same frame is the same row twice, which is one row
             // written twice and not a wrong one.
-            scene.moveInstance(two, osg::Matrixf::translate(0.0f, 0.0f, 5.0f));
-            scene.fadeInstance(two, 0.25f);
+            scene.placements().move(two, osg::Matrixf::translate(0.0f, 0.0f, 5.0f));
+            scene.placements().fade(two, 0.25f);
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getMoved()), (std::vector<Index>{ two, two }));
-            scene.advancePlacement();
+            scene.placements().advance();
 
             // A dropped slot is a row to write inactive, and the slot it frees is the next
             // placement's — both reported, on the frames they happen.
-            scene.dropInstance(two);
+            scene.placements().drop(two);
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getMoved()), (std::vector<Index>{ two }));
-            scene.advancePlacement();
+            scene.placements().advance();
             EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), two);
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getMoved()), (std::vector<Index>{ two }));
 
             // **An advance moves what was written into what settled, and leaves nothing behind
             // it.** A row still named as moved on the frame after it was written is a row a backend
             // writes twice, for ever.
-            scene.advancePlacement();
+            scene.placements().advance();
             EXPECT_TRUE(scene.getTables().mPlacements.getMoved().empty());
             EXPECT_EQ(sorted(scene.getTables().mPlacements.getSettled()), (std::vector<Index>{ two }));
 
-            scene.advancePlacement();
+            scene.placements().advance();
             EXPECT_TRUE(scene.getTables().mPlacements.getSettled().empty());
         }
 
@@ -761,8 +762,8 @@ namespace Rtx
                 for (Index at = 0; at < 5; ++at)
                     EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), at) << "a fresh table appends";
 
-                scene.dropInstance(first);
-                scene.dropInstance(second);
+                scene.placements().drop(first);
+                scene.placements().drop(second);
 
                 std::array<Index, 3> taken{};
                 for (Index& slot : taken)
@@ -781,12 +782,12 @@ namespace Rtx
         TEST(RtxSceneDescTest, anEmitterCarriesItsSpritesAndTheSphereThatHoldsThem)
         {
             SceneDesc scene;
-            const Index texture = scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            const Index texture = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
             // The bake of the texture's alpha sits in the same table, which is why the count of
             // textures at the end is two.
-            const Index lighting
-                = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
+            const Index lighting = scene.textures().addBaked(
+                SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
 
             const std::array sPlume{
                 Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
@@ -843,7 +844,7 @@ namespace Rtx
         TEST(RtxSceneDescTest, aFixedSpriteReachesByItsOwnAxesAndAnEyeFacingOneByItsRadius)
         {
             SceneDesc scene;
-            const Index texture = scene.addTexture(VFS::Path::NormalizedView("textures/tx_raindrop_01.dds"));
+            const Index texture = scene.textures().add(VFS::Path::NormalizedView("textures/tx_raindrop_01.dds"));
 
             // Facing the eye: a disc, and the reach is the radius.
             const std::array disc{ Sprite{ .mPosition = osg::Vec3f(), .mRadius = 10.0f } };
@@ -992,7 +993,7 @@ namespace Rtx
             const std::uint64_t structure = scene.getTables().getStructureRevision();
 
             // A texture is an upload, not a structure to build.
-            scene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
             EXPECT_EQ(scene.getTables().mMeshes.getRevision(), meshes)
                 << "a texture asked for the structures to be built again";
             EXPECT_GT(scene.getTables().getStructureRevision(), structure);
@@ -1143,10 +1144,10 @@ namespace Rtx
 
             SceneDesc mScene;
 
-            Index mGround = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_ground.dds"));
-            Index mStone = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
-            Index mSand = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_sand.dds"));
-            Index mMoss = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_moss.dds"));
+            Index mGround = mScene.textures().add(VFS::Path::NormalizedView("textures/tx_ground.dds"));
+            Index mStone = mScene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            Index mSand = mScene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            Index mMoss = mScene.textures().add(VFS::Path::NormalizedView("textures/tx_moss.dds"));
 
             Index mDropped = sNoIndex;
             Index mPlain = sNoIndex;
@@ -1163,20 +1164,22 @@ namespace Rtx
 
             ReleasedTerrain()
             {
-                const std::array droppedLayers{ MaterialLayer{
-                    .mDiffuse = mGround, .mMask = mScene.addMask(sGroundWeights), .mMaskWidth = 2, .mMaskHeight = 2 } };
-                const Rtx::Run droppedRun = mScene.addLayers(droppedLayers);
-                mDropped = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
+                const std::array droppedLayers{ MaterialLayer{ .mDiffuse = mGround,
+                    .mMask = mScene.materials().addMask(sGroundWeights),
+                    .mMaskWidth = 2,
+                    .mMaskHeight = 2 } };
+                const Rtx::Run droppedRun = mScene.materials().addLayers(droppedLayers);
+                mDropped = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
 
-                mPlain = mScene.addMaterial(Material{ .mDiffuse = mStone });
+                mPlain = mScene.materials().add(Material{ .mDiffuse = mStone });
 
-                const std::array keptLayers{
-                    MaterialLayer{
-                        .mDiffuse = mSand, .mMask = mScene.addMask(sSandWeights), .mMaskWidth = 3, .mMaskHeight = 3 },
-                    MaterialLayer{ .mDiffuse = mMoss }
-                };
-                const Rtx::Run keptRun = mScene.addLayers(keptLayers);
-                mKept = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
+                const std::array keptLayers{ MaterialLayer{ .mDiffuse = mSand,
+                                                 .mMask = mScene.materials().addMask(sSandWeights),
+                                                 .mMaskWidth = 3,
+                                                 .mMaskHeight = 3 },
+                    MaterialLayer{ .mDiffuse = mMoss } };
+                const Rtx::Run keptRun = mScene.materials().addLayers(keptLayers);
+                mKept = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
 
                 mLayersBefore = mScene.getTables().mMaterials.getLayers().size();
                 mMasksBefore = mScene.getTables().mMaterials.getMasks().size();
@@ -1212,10 +1215,10 @@ namespace Rtx
             // and four weights, which is exactly what went: both come back at zero and neither table
             // is any longer than it was.
             const std::array arrivingLayers{ MaterialLayer{ .mDiffuse = terrain.mMoss,
-                .mMask = scene.addMask(ReleasedTerrain::sGroundWeights),
+                .mMask = scene.materials().addMask(ReleasedTerrain::sGroundWeights),
                 .mMaskWidth = 2,
                 .mMaskHeight = 2 } };
-            const Rtx::Run arrivingRun = scene.addLayers(arrivingLayers);
+            const Rtx::Run arrivingRun = scene.materials().addLayers(arrivingLayers);
 
             EXPECT_EQ(arrivingLayers[0].mMask, (Rtx::Run{ .mOffset = 0, .mCount = 4 })) << "the freed mask run";
             EXPECT_EQ(arrivingRun, (Rtx::Run{ .mOffset = 0, .mCount = 1 })) << "the freed layer run";
@@ -1226,7 +1229,7 @@ namespace Rtx
 
             // The freed slot goes to the next material asked for, whatever size it is: a material is
             // one size, so there is no fit to find.
-            EXPECT_EQ(scene.addMaterial(Material{ .mDiffuse = terrain.mMoss }), terrain.mDropped);
+            EXPECT_EQ(scene.materials().add(Material{ .mDiffuse = terrain.mMoss }), terrain.mDropped);
             EXPECT_EQ(scene.getTables().mMaterials.getRows().size(), 3u);
         }
 
@@ -1259,7 +1262,7 @@ namespace Rtx
 
             // The freed slot is what the next texture takes, and the path lookup went with it: asking
             // for `tx_ground` again is a new arrival rather than a hit on a slot nothing stands in.
-            EXPECT_EQ(scene.addTexture(VFS::Path::NormalizedView("textures/tx_ground.dds")), terrain.mGround);
+            EXPECT_EQ(scene.textures().add(VFS::Path::NormalizedView("textures/tx_ground.dds")), terrain.mGround);
             EXPECT_EQ(scene.getTables().mTextures.getPaths().size(), 4u) << "the table grew past a free slot";
             EXPECT_EQ(scene.getTables().mTextures.getArrived().back(), terrain.mGround)
                 << "a slot taken over was not reported as arriving";
@@ -1279,7 +1282,7 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index first = scene.addMaterial(Material{});
+            const Index first = scene.materials().add(Material{});
 
             const std::uint64_t structure = scene.getTables().getStructureRevision();
             scene.clearArrivals();
@@ -1287,7 +1290,7 @@ namespace Rtx
             // A second material, which is what a state set with a new address comes to.
             Material other;
             other.mTwoSided = true;
-            const Index kept = scene.addMaterial(other);
+            const Index kept = scene.materials().add(other);
 
             EXPECT_EQ(scene.getTables().getStructureRevision(), structure) << "a material asked for a rebuild";
             EXPECT_EQ(sorted(scene.getTables().mMaterials.getWritten()), (std::vector<Index>{ kept }))
@@ -1314,7 +1317,7 @@ namespace Rtx
 
             // **The slot the sweep freed is taken over, and that is a row again.** A flipbook added
             // and then rewritten on one frame is one row too: the list holds each slot once.
-            EXPECT_EQ(scene.addMaterial(Material{}), first) << "a freed slot was not the one handed out";
+            EXPECT_EQ(scene.materials().add(Material{}), first) << "a freed slot was not the one handed out";
             scene.setMaterial(first, other);
             EXPECT_EQ(sorted(scene.getTables().mMaterials.getWritten()), (std::vector<Index>{ first }));
 
@@ -1336,7 +1339,7 @@ namespace Rtx
             SceneDesc scene;
 
             const std::array<float, 4> weights{ 1.0f, 0.0f, 0.0f, 1.0f };
-            const Rtx::Run mask = scene.addMask(weights);
+            const Rtx::Run mask = scene.materials().addMask(weights);
             EXPECT_EQ(mask, (Rtx::Run{ .mOffset = 0, .mCount = 4 }));
             EXPECT_EQ(runs(scene.getTables().mMaterials.getArrived().mMasks),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 0, .mCount = 4 } }));
@@ -1345,24 +1348,24 @@ namespace Rtx
                 MaterialLayer{ .mMask = mask, .mMaskWidth = 2, .mMaskHeight = 2 },
                 MaterialLayer{},
             };
-            const Rtx::Run run = scene.addLayers(layers);
+            const Rtx::Run run = scene.materials().addLayers(layers);
             EXPECT_EQ(run, (Rtx::Run{ .mOffset = 0, .mCount = 2 }));
             EXPECT_EQ(runs(scene.getTables().mMaterials.getArrived().mLayers), (std::vector<Rtx::Run>{ run }));
 
-            scene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = run });
+            scene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = run });
             scene.clearArrivals();
             EXPECT_TRUE(scene.getTables().mMaterials.getArrived().mMasks.empty());
             EXPECT_TRUE(scene.getTables().mMaterials.getArrived().mLayers.empty());
 
             // A second chunk lands past the first: its runs are its own and say where they are.
             const std::array<float, 2> more{ 0.5f, 0.5f };
-            EXPECT_EQ(scene.addMask(more), (Rtx::Run{ .mOffset = 4, .mCount = 2 }));
+            EXPECT_EQ(scene.materials().addMask(more), (Rtx::Run{ .mOffset = 4, .mCount = 2 }));
             EXPECT_EQ(runs(scene.getTables().mMaterials.getArrived().mMasks),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 4, .mCount = 2 } }));
 
             const std::array one{ MaterialLayer{
                 .mMask = Rtx::Run{ .mOffset = 4, .mCount = 2 }, .mMaskWidth = 2, .mMaskHeight = 1 } };
-            EXPECT_EQ(scene.addLayers(one), (Rtx::Run{ .mOffset = 2, .mCount = 1 }));
+            EXPECT_EQ(scene.materials().addLayers(one), (Rtx::Run{ .mOffset = 2, .mCount = 1 }));
             EXPECT_EQ(runs(scene.getTables().mMaterials.getArrived().mLayers),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 2, .mCount = 1 } }));
             scene.clearArrivals();
@@ -1371,14 +1374,14 @@ namespace Rtx
             // reads a run nothing names. The next chunk that fits lands in the hole, and that
             // arrival is what names the run again.
             const std::array<Index, 0> noMeshes{};
-            const std::array keep{ scene.addMaterial(Material{}) };
+            const std::array keep{ scene.materials().add(Material{}) };
             scene.clearArrivals();
             ASSERT_TRUE(scene.release(noMeshes, keep));
             EXPECT_TRUE(scene.getTables().mMaterials.getArrived().mMasks.empty()) << "a sweep reported a run to write";
             EXPECT_TRUE(scene.getTables().mMaterials.getArrived().mLayers.empty());
             EXPECT_TRUE(scene.getTables().mMaterials.getWritten().empty());
 
-            EXPECT_EQ(scene.addMask(weights), (Rtx::Run{ .mOffset = 0, .mCount = 4 }))
+            EXPECT_EQ(scene.materials().addMask(weights), (Rtx::Run{ .mOffset = 0, .mCount = 4 }))
                 << "the freed run was not the one handed out";
             EXPECT_EQ(runs(scene.getTables().mMaterials.getArrived().mMasks),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 0, .mCount = 4 } }));
@@ -1391,8 +1394,8 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index material = scene.addMaterial(Material{});
-            scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            const Index material = scene.materials().add(Material{});
+            scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
             const std::array meshes{ mesh };
             const std::array materials{ material };
@@ -1465,11 +1468,11 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index shared = scene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
-            const Index lone = scene.addTexture(VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            const Index shared = scene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            const Index lone = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
 
-            scene.addMaterial(Material{ .mDiffuse = shared });
-            const Index second = scene.addMaterial(Material{ .mDiffuse = shared, .mNormal = lone });
+            scene.materials().add(Material{ .mDiffuse = shared });
+            const Index second = scene.materials().add(Material{ .mDiffuse = shared, .mNormal = lone });
 
             const std::array meshes{ mesh };
             const std::array keepSecond{ second };
@@ -1499,7 +1502,7 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Index baked = scene.addBakedTexture("composite/-3,-2/2");
+            const Index baked = scene.textures().addBaked("composite/-3,-2/2");
             ASSERT_EQ(baked, 0u);
 
             // Standing, and standing is not free — the path is empty because it has none, which is
@@ -1509,22 +1512,22 @@ namespace Rtx
             EXPECT_EQ(scene.getTables().mTextures.getBaked()[baked], "composite/-3,-2/2");
 
             // The key is what makes two chunks that would bake the same image share one slot.
-            EXPECT_EQ(scene.addBakedTexture("composite/-3,-2/2"), baked) << "the same bake took a second slot";
+            EXPECT_EQ(scene.textures().addBaked("composite/-3,-2/2"), baked) << "the same bake took a second slot";
             EXPECT_EQ(scene.getTables().mTextures.getPaths().size(), 1u);
 
             // A file beside it, so the free list has to hand back the right one.
-            const Index file = scene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            const Index file = scene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
             ASSERT_EQ(file, 1u);
 
-            scene.holdTexture(baked);
-            scene.dropTexture(baked);
+            scene.textures().hold(baked);
+            scene.textures().drop(baked);
 
             EXPECT_TRUE(scene.getTables().mTextures.isFree(baked)) << "nothing names it and it is still standing";
             EXPECT_TRUE(scene.getTables().mTextures.getBaked()[baked].empty());
             EXPECT_EQ(sorted(scene.getTables().mTextures.getFreed()), (std::vector<Index>{ baked }));
 
             // And the slot comes back, to a file this time — a freed slot is a row and not a kind.
-            const Index next = scene.addTexture(VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            const Index next = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
             EXPECT_EQ(next, baked) << "the table grew past a free slot";
             EXPECT_EQ(scene.getTables().mTextures.getPaths().size(), 2u);
             EXPECT_EQ(scene.getTables().mTextures.getPaths()[next], VFS::Path::NormalizedView("textures/tx_sand.dds"));
@@ -1532,7 +1535,7 @@ namespace Rtx
                 << "the slot kept what the last tenant was";
 
             // The key is free again too, or a bake that came back would find a slot somebody else has.
-            const Index again = scene.addBakedTexture("composite/-3,-2/2");
+            const Index again = scene.textures().addBaked("composite/-3,-2/2");
             EXPECT_EQ(again, 2u) << "a key the table gave back found a slot somebody else has";
             EXPECT_FALSE(scene.getTables().mTextures.isFree(file)) << "the file beside it was never touched";
         }
@@ -1545,9 +1548,9 @@ namespace Rtx
         TEST(RtxSceneDescTest, aMaterialRewrittenGivesBackOnlyWhatItStoppedNaming)
         {
             SceneDesc scene;
-            const Index first = scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            const Index second = scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_01.dds"));
-            const Index material = scene.addMaterial(Material{ .mDiffuse = first });
+            const Index first = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            const Index second = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_01.dds"));
+            const Index material = scene.materials().add(Material{ .mDiffuse = first });
 
             scene.setMaterial(material, Material{ .mDiffuse = second });
 
@@ -1576,9 +1579,9 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index material = scene.addMaterial(Material{});
-            const Index sprite = scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            scene.holdTexture(sprite);
+            const Index material = scene.materials().add(Material{});
+            const Index sprite = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            scene.textures().hold(sprite);
 
             // The ordinary frame, where the sweep answers with two comparisons and returns.
             const std::array meshes{ mesh };
@@ -1587,13 +1590,13 @@ namespace Rtx
             EXPECT_EQ(
                 scene.getTables().mTextures.getPaths()[sprite], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
-            scene.dropTexture(sprite);
+            scene.textures().drop(sprite);
 
             EXPECT_EQ(sorted(scene.getTables().mTextures.getFreed()), (std::vector<Index>{ sprite }));
             EXPECT_TRUE(scene.getTables().mTextures.getPaths()[sprite].value().empty());
 
             // And the slot is handed out again rather than the table growing.
-            EXPECT_EQ(scene.addTexture(VFS::Path::NormalizedView("textures/tx_smoke.dds")), sprite);
+            EXPECT_EQ(scene.textures().add(VFS::Path::NormalizedView("textures/tx_smoke.dds")), sprite);
             EXPECT_EQ(scene.getTables().mTextures.getPaths().size(), 1u);
         }
 
@@ -1678,8 +1681,8 @@ namespace Rtx
 
             const Index quad
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
-            const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
+            const Index ground = scene.materials().add(Material{ .mKind = MaterialKind::Terrain });
+            const Index sea = scene.materials().add(Material{ .mKind = MaterialKind::Water });
 
             // One unit square at the origin, and a sheet ten thousand across under everything.
             scene.addInstance(
@@ -1731,7 +1734,7 @@ namespace Rtx
             const Index quad
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     Deform::Rig, Testing::addOneBoneRig(scene, 4));
-            const Index material = scene.addMaterial(Material{});
+            const Index material = scene.materials().add(Material{});
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });
 

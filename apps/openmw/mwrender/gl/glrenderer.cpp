@@ -618,6 +618,14 @@ namespace MWRender
         if (ico == nullptr)
             return;
 
+        // Once per screen: the loading screen sets this on every draw, and what is put back is
+        // what stood before the first of them.
+        if (!mRestingBudget.has_value())
+            mRestingBudget = PreparationBudget{
+                .mSecondsPerFrame = ico->getMinimumTimeAvailableForGLCompileAndDeletePerFrame(),
+                .mObjectsPerFrame = ico->getMaximumNumOfObjectsToCompilePerFrame(),
+            };
+
         ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(budget.mSecondsPerFrame);
         ico->setMaximumNumOfObjectsToCompilePerFrame(budget.mObjectsPerFrame);
     }
@@ -625,15 +633,12 @@ namespace MWRender
     void GlRenderer::resetPreparationBudget()
     {
         osgUtil::IncrementalCompileOperation* const ico = mViewer->getIncrementalCompileOperation();
-        if (ico == nullptr)
+        if (ico == nullptr || !mRestingBudget.has_value())
             return;
 
-        // **What OSG's own defaults are**, which is what this held before a loading screen widened
-        // it. Read off a fresh operation rather than remembered, so nothing has to be saved.
-        const osg::ref_ptr<osgUtil::IncrementalCompileOperation> fresh = new osgUtil::IncrementalCompileOperation;
-        ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(
-            fresh->getMinimumTimeAvailableForGLCompileAndDeletePerFrame());
-        ico->setMaximumNumOfObjectsToCompilePerFrame(fresh->getMaximumNumOfObjectsToCompilePerFrame());
+        ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(mRestingBudget->mSecondsPerFrame);
+        ico->setMaximumNumOfObjectsToCompilePerFrame(mRestingBudget->mObjectsPerFrame);
+        mRestingBudget.reset();
     }
 
     void GlRenderer::setVSync(SDLUtil::VSyncMode mode)

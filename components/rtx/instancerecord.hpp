@@ -65,9 +65,8 @@ namespace Rtx
         /// placement and not about the triangle met.
         MaterialKind mKind = MaterialKind::Surface;
 
-        /// Which rays are interested: `Shaders::MASK_SOLID`; `MASK_WATER` for a surface a shadow
-        /// ray must pass straight through; or `MASK_FIRST_PERSON` for the player's own arms, which
-        /// only the eye may meet.
+        /// Which rays are interested: the class bit `InstanceClass` gives it, or `MASK_WATER` for a
+        /// surface a shadow ray must pass straight through; `MASK_MEDIUM` beside either.
         ///
         /// Sunlight reaching a seabed has come through the surface, so a sea that occluded would
         /// black out every shallow in the game — and saying it in the mask costs traversal nothing,

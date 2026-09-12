@@ -190,11 +190,11 @@ namespace Rtx
         /// Whether this walk is running emitters and looking through everything else.
         bool mStepOnly = false;
 
-        /// How many first-person roots stand over the node being walked: everything under one is
-        /// the player's own arms. Counted down the subtree rather than read off each drawable,
+        /// The class the innermost root over the node being walked stated: everything under an
+        /// actor's root is the actor. Carried down the subtree rather than read off each drawable,
         /// because the game marks the *root* and the drawables under it wear the masks they were
-        /// authored with.
-        unsigned int mFirstPerson = 0;
+        /// authored with. Saved and restored around a descent, as `mPathHash` is.
+        InstanceClass mClass = InstanceClass::Static;
 
         osg::Matrixf mRoot;
         std::size_t mFrame = 0;
@@ -299,12 +299,13 @@ namespace Rtx
         if (const osg::StateSet* animated = mExtractor.animate(node))
             pushShading(*animated, true);
 
-        const unsigned int arms = mExtractor.isFirstPerson(node.getNodeMask()) ? 1u : 0u;
-        mFirstPerson += arms;
+        const InstanceClass outer = mClass;
+        if (const std::optional<InstanceClass> stated = mExtractor.classOf(node.getNodeMask()))
+            mClass = *stated;
 
         descend(node, kind);
 
-        mFirstPerson -= arms;
+        mClass = outer;
         mPathHash = above;
         mShading.resize(held);
     }
@@ -461,7 +462,7 @@ namespace Rtx
         if (const osg::StateSet* own = drawable.getStateSet())
             pushShading(*own, false);
 
-        mExtractor.addDrawable(drawable, identityWith(mPathHash, &drawable), mShading, placed(), mFirstPerson > 0);
+        mExtractor.addDrawable(drawable, identityWith(mPathHash, &drawable), mShading, placed(), mClass);
 
         mShading.resize(held);
     }
@@ -558,7 +559,7 @@ namespace Rtx
 
     void SceneExtractor::advance()
     {
-        mScene.advancePlacement();
+        mScene.placements().advance();
     }
 
     Retirement SceneExtractor::retire()
@@ -577,7 +578,7 @@ namespace Rtx
         // **Not run at all where every placement was reached**, which is a world that stands still —
         // see `Kept::whole`. The sweep erases nothing then, and it costs a walk of the whole map to
         // say so.
-        mPlacements.retire([this](const Known& gone) { mScene.dropInstance(gone.mIndex); });
+        mPlacements.retire([this](const Known& gone) { mScene.placements().drop(gone.mIndex); });
 
         // **Both tables or neither, and nothing at all where both stand whole.** `SceneDesc::release`
         // frees the mesh table and the material table against one pair of survivor lists, so a list
@@ -656,7 +657,7 @@ namespace Rtx
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, const std::size_t who,
-        const std::span<const Shading> shading, const osg::Matrixf& place, const bool firstPerson)
+        const std::span<const Shading> shading, const osg::Matrixf& place, const InstanceClass what)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -718,7 +719,7 @@ namespace Rtx
                 .mMesh = mesh,
                 .mMaterial = material.mIndex,
                 .mOpacity = fade,
-                .mFirstPerson = firstPerson,
+                .mClass = what,
             });
 
             mPlacements.add(who, Known{ .mIndex = slot });
@@ -726,8 +727,8 @@ namespace Rtx
         else
         {
             mPlacements.stamp(held);
-            mScene.moveInstance(held->second.mIndex, place);
-            mScene.fadeInstance(held->second.mIndex, fade);
+            mScene.placements().move(held->second.mIndex, place);
+            mScene.placements().fade(held->second.mIndex, fade);
         }
 
         ++stats.mInstances;
@@ -738,9 +739,20 @@ namespace Rtx
         return carriesOnly(mask, mWaterMask);
     }
 
-    bool SceneExtractor::isFirstPerson(osg::Node::NodeMask mask) const
+    void SceneExtractor::setClassMask(const InstanceClass what, const osg::Node::NodeMask mask)
     {
-        return carriesOnly(mask, mFirstPersonMask);
+        for (ClassMask& held : mClassMasks)
+            if (held.mClass == what)
+                held.mMask = mask;
+    }
+
+    std::optional<InstanceClass> SceneExtractor::classOf(const osg::Node::NodeMask mask) const
+    {
+        for (const ClassMask& held : mClassMasks)
+            if (carriesOnly(mask, held.mMask))
+                return held.mClass;
+
+        return std::nullopt;
     }
 
     bool SceneExtractor::carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named)

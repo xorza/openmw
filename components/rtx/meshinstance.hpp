@@ -3,6 +3,7 @@
 #include <osg/Matrixf>
 
 #include "index.hpp"
+#include "instanceclass.hpp"
 
 namespace Rtx
 {
@@ -29,9 +30,9 @@ namespace Rtx
         /// One for everything the game is not hiding, which is nearly everything.
         float mOpacity = 1.0f;
 
-        /// Whether this is the player's own arms in first person, which only the eye's ray may
-        /// meet. `Shaders::MASK_FIRST_PERSON` says why.
-        bool mFirstPerson = false;
+        /// Which class of thing this is, for a camera's cull mask to keep or leave out. The
+        /// innermost node on its path that stated a class; `Static` where none did.
+        InstanceClass mClass = InstanceClass::Static;
 
         /// Whether this slot holds anything. A dropped placement leaves its slot behind rather than
         /// closing the gap, because the slot index is what a hit reads back.

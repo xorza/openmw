@@ -150,6 +150,8 @@ namespace Rtx::Testing
         }
 
         void dropViewScene(Rtx::SceneSlot) override {}
+        bool takeGuiCopy(Rtx::GuiSlot, std::span<std::uint8_t>) override { return false; }
+        void finishGuiTraces() override {}
         void readGuiTexture(Rtx::GuiSlot, std::vector<std::uint8_t>&) override {}
         void readPixels(std::vector<std::uint8_t>&) override {}
         void readChannel(Rtx::Channel, std::vector<float>&) override {}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -24,10 +25,18 @@ namespace Rtx
         Index mMesh = sNoIndex;
         Index mMaterial = sNoIndex;
         osg::Matrixf mTransform;
+
+        /// What the size rule reads. A cell's placements are sorted by it, largest first, so what
+        /// the rule admits at any threshold is a prefix — `HeldCell::mShown`.
         float mRadius = 0.0f;
         ESM::RefNum mRefNum;
 
-        /// The slot it stands in, or none while the size rule or the ring keeps it out.
+        /// A script has disabled the reference: no slot however large it is. Set as the cell is
+        /// adopted and flipped by `CellPlacer::setReferenceEnabled`, which is what keeps it off
+        /// the walk every frame makes.
+        bool mDisabled = false;
+
+        /// The slot it stands in, or none while the size rule, a script or the ring keeps it out.
         Index mSlot = sNoIndex;
     };
 
@@ -76,7 +85,17 @@ namespace Rtx
         /// shifts the table once.
         bool mDropped = false;
 
+        /// Largest radius first, which `CellPlacer::adoptPlacements` sorts once.
         std::vector<Placement> mPlacements;
+
+        /// How many of `mPlacements` the size rule admitted on the last `CellPlacer::place`: every
+        /// placement before this stands unless a script disabled it, and none after it does.
+        ///
+        /// **What a walk touches is the two ends of this and not the vector**, which is tens of
+        /// thousands of placements a frame for a set that changes by a few when the eye moves
+        /// and by none when it stands.
+        std::size_t mShown = 0;
+
         std::vector<PreparedModel*> mModels;
 
         /// The ground, or nothing where the land names none.

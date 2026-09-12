@@ -51,9 +51,8 @@ namespace Rtx
         /// over what the frame will trace; a structure built over the bind and refitted into the
         /// pose would keep the bind's shape for the life of the mesh.
         ///
-        /// @param slots how many frames may be tracing this scene at once — `sFrameSlots` for the
-        ///        world, one for a picture inside the interface — which is how many copies there are
-        ///        of the rows and of the positions a refit reads.
+        /// @param slots how many frames may be tracing this scene at once, which is how many copies
+        ///        there are of the rows and of the positions a refit reads.
         SceneAcceleration(const Device& device, Batch& batch, const SceneTables& scene, std::uint32_t slots);
         ~SceneAcceleration();
 

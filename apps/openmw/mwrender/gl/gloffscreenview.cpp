@@ -464,7 +464,7 @@ namespace MWRender
         mNode->copyInto(*mCopy);
     }
 
-    const osg::Image* GlOffscreenView::getCopy() const
+    const osg::Image* GlOffscreenView::getCopy()
     {
         if (!mCopy || !mCopy->valid() || !mDrawOnce->isDrawDone())
             return nullptr;

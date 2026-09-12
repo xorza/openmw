@@ -26,6 +26,7 @@ namespace Resource
 namespace MWRender
 {
     class Renderer;
+    class ViewHost;
 
     /// What a frame's walk found, and what a second walk over the same graph added where a run
     /// asked for one.
@@ -76,6 +77,9 @@ namespace MWRender
         /// The seam a picture inside the interface is made through — `createOffscreenView`, and
         /// the inventory doll's preview, which takes one of these of its own.
         Renderer& mViews;
+
+        /// What draws those pictures, for a stop that wants one before the next frame.
+        ViewHost& mHost;
 
         /// The world's, or null before there is a world.
         Resource::ResourceSystem* mResources = nullptr;

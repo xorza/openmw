@@ -1,7 +1,5 @@
 #include "framecapture.hpp"
 
-#include <cstring>
-
 #include <osg/Image>
 
 #include <components/debug/debuglog.hpp>
@@ -28,27 +26,14 @@ namespace MWRender
     void FrameCapture::thumbnail(Rtx::Renderer& renderer, osg::Image& image, int width, int height)
     {
         // An out-parameter because the caller owns the image, so the shared conversion's result is
-        // moved into it rather than handed back.
+        // swapped into it rather than handed back. Three channels, for the reason `Rtx::Channels`
+        // gives.
         const osg::ref_ptr<osg::Image> taken
-            = Rtx::frameImage(read(renderer), width, height, Rtx::RowOrder::BottomFirst);
+            = Rtx::frameImage(read(renderer), width, height, Rtx::RowOrder::BottomFirst, Rtx::Channels::Rgb);
         if (taken == nullptr)
             return;
 
-        // **Three channels and not four.** The one caller writes a savegame thumbnail as a JPEG,
-        // which has no alpha to carry and whose writer refuses a four-channel image outright — an
-        // `ERROR_IN_WRITING_FILE` and a save with no picture in it, which is what the rasterizer
-        // avoids by reading its own screenshots back as `GL_RGB`.
-        image.allocateImage(width, height, 1, GL_RGB, GL_UNSIGNED_BYTE);
-
-        // Row by row, because three bytes a pixel is not a multiple of the packing: a thumbnail 518
-        // across is 1,554 bytes of picture in a 1,556-byte row.
-        for (int y = 0; y < height; ++y)
-        {
-            const std::uint8_t* from = taken->data(0, y);
-            std::uint8_t* to = image.data(0, y);
-            for (int x = 0; x < width; ++x)
-                std::memcpy(to + x * 3, from + x * 4, 3);
-        }
+        image.swap(*taken);
     }
 
     void FrameCapture::screenshot(Rtx::Renderer& renderer)

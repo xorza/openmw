@@ -59,7 +59,12 @@ namespace Rtx
         /// Nothing is mirrored for it: the frame's own walk is what puts the geometry there, so a
         /// picture taken before the first frame is a picture of nothing and the caller is what has
         /// to wait.
-        OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height);
+        ///
+        /// @param rayMask which classes the picture's camera draws, `Shaders::MASK_*` — the cull
+        ///        mask its host hands over, translated. A map tile's leaves out the actors, the
+        ///        effects and the particles, which is what makes it a chart rather than a frame from
+        ///        above.
+        OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, std::uint32_t rayMask);
 
         /// A picture of a subtree assembled for it alone.
         ///
@@ -71,8 +76,10 @@ namespace Rtx
         ///        reach would otherwise be run by whichever got there first and frozen for the
         ///        other. Left out, this keeps a sequence of its own, which is right where nothing
         ///        else walks the subject.
-        OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, osg::Node& subject,
-            osg::Node::NodeMask mask, Traversals* traversals = nullptr);
+        /// @param rayMask as above. The subject is the whole of what this scene holds, so a doll
+        ///        asks for every class.
+        OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, std::uint32_t rayMask,
+            osg::Node& subject, osg::Node::NodeMask mask, Traversals* traversals = nullptr);
 
         /// Out of line because `SceneDesc`, `SceneExtractor` and the update visitor are only forward
         /// declared here.
@@ -141,8 +148,9 @@ namespace Rtx
         ///        world when the game is paused; `posing` does not.
         bool rebuildSubject(const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images);
 
-        /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`.
-        void traceInto(GuiSlot texture);
+        /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`, and leaves a
+        /// copy for `Renderer::takeGuiCopy` where `readBack` asks for one.
+        void traceInto(GuiSlot texture, bool readBack = false);
 
         /// What is at this point of the picture, in normalised device coordinates, as the path
         /// through the subject to whatever was hit. Nothing for a picture of the world, which is
@@ -239,6 +247,7 @@ namespace Rtx
         std::uint32_t mHeight = 0;
 
         RowOrder mRowOrder = RowOrder::TopFirst;
+        std::uint32_t mRayMask = 0;
 
         /// **One value, where this was a flag beside four floats** — three of which meant nothing
         /// in whichever case the flag did not name, and all four of which the caller already held

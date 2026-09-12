@@ -1,6 +1,8 @@
 #include "guitextures.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <utility>
 
@@ -54,6 +56,7 @@ namespace Rtx
         }
 
         mImages.push_back(std::move(image));
+        mCopies.emplace_back();
         return GuiSlot::at(static_cast<std::uint32_t>(mImages.size() - 1));
     }
 
@@ -183,6 +186,58 @@ namespace Rtx
         // which is why the wait that frees it is a frame's and not this class's — see `startFrame`.
         mRetired.push_back(std::move(mImages[slot.get()]));
         mFree.free(slot.get());
+
+        // The buffer stays for whatever takes the slot next; what was in it is nobody's now.
+        Copy& copy = mCopies[slot.get()];
+        copy.mTracedOn = Copy::sNever;
+        copy.mLanded = false;
+    }
+
+    void GuiTextures::readBackWith(
+        const GuiSlot slot, const VkCommandBuffer commands, const std::uint64_t frame, Graveyard& graveyard)
+    {
+        assert(holds(slot) && "a read back of a slot nothing holds");
+
+        const Image& image = *mImages[slot.get()];
+        const VkDeviceSize bytes = image.getReadBytes();
+
+        Copy& copy = mCopies[slot.get()];
+        if (copy.mBuffer == nullptr || copy.mBuffer->getSize() < bytes)
+        {
+            if (copy.mBuffer != nullptr)
+                graveyard.bury(std::move(*copy.mBuffer));
+            copy.mBuffer = std::make_unique<Buffer>(Buffer::staging(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT));
+        }
+
+        image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, *copy.mBuffer);
+
+        copy.mTracedOn = frame;
+        copy.mLanded = false;
+    }
+
+    bool GuiTextures::takeCopy(const GuiSlot slot, const std::span<std::uint8_t> into, const std::uint64_t finished)
+    {
+        assert(holds(slot) && "a copy of a slot nothing holds");
+
+        Copy& copy = mCopies[slot.get()];
+        if (copy.mTracedOn == Copy::sNever)
+            return false;
+
+        if (!copy.mLanded && copy.mTracedOn >= finished)
+            return false;
+
+        copy.mLanded = true;
+
+        const std::size_t bytes = std::min<std::size_t>(into.size(), copy.mBuffer->getSize());
+        std::memcpy(into.data(), copy.mBuffer->writable<std::uint8_t>(0, bytes).data(), bytes);
+        return true;
+    }
+
+    void GuiTextures::landTraces()
+    {
+        for (Copy& copy : mCopies)
+            if (copy.mTracedOn != Copy::sNever)
+                copy.mLanded = true;
     }
 
     void GuiTextures::read(const GuiSlot slot, std::vector<std::uint8_t>& pixels)

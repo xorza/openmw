@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
@@ -59,6 +60,7 @@
 #include "../screenshotwriter.hpp"
 #include "../stage.hpp"
 #include "../windowsetup.hpp"
+#include "raymask.hpp"
 #include "readworld.hpp"
 #include "session.hpp"
 #include "setup.hpp"
@@ -419,8 +421,8 @@ namespace MWRender
         // **The frame's own step, and not MyGUI's timer.** That timer is a wall clock read in whole
         // milliseconds, and a hit's red overlay faded by it — so two runs of one build drew the
         // overlay at different strengths on the same frame.
-        if (MyGUIRtx::RenderManager* gui = MyGUIRtx::RenderManager::getInstancePtr())
-            gui->update(static_cast<float>(mClock.getStep()));
+        assert(mGui != nullptr && "a frame before the interface was made");
+        mGui->update(static_cast<float>(mClock.getStep()));
 
         if (!mStage.hasSceneRoot())
             return;
@@ -485,8 +487,8 @@ namespace MWRender
         // **Between the frame and the present**, because the GUI goes over the finished picture and
         // its colours are display-referred — they were picked looking at a monitor, and a tone curve
         // meant for radiance is how a menu comes out grey.
-        if (MyGUIRtx::RenderManager* gui = MyGUIRtx::RenderManager::getInstancePtr())
-            gui->collectDrawCalls();
+        assert(mGui != nullptr && "a GUI drawn before the interface was made");
+        mGui->collectDrawCalls();
     }
 
     FrameContext RtxRenderer::describeContext()
@@ -494,6 +496,7 @@ namespace MWRender
         return FrameContext{
             .mBackend = *mRenderer,
             .mViews = *this,
+            .mHost = *this,
             .mResources = mResources,
             .mSceneRoot = mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr,
             .mScene = mMirror.getScene(),
@@ -511,10 +514,15 @@ namespace MWRender
         };
     }
 
-    void RtxRenderer::deferRedraw(TracedView& view)
+    void RtxRenderer::redraw(TracedView& view)
     {
         if (std::find(mDeferred.begin(), mDeferred.end(), &view) == mDeferred.end())
             mDeferred.push_back(&view);
+    }
+
+    void RtxRenderer::flushRedraws()
+    {
+        drawViews();
     }
 
     void RtxRenderer::forgetView(TracedView& view)
@@ -526,19 +534,43 @@ namespace MWRender
         std::replace(mDrawing.begin(), mDrawing.end(), &view, static_cast<TracedView*>(nullptr));
     }
 
-    void RtxRenderer::drawDeferredViews()
+    double RtxRenderer::drawViews()
     {
-        if (mDeferred.empty())
-            return;
+        // **Asked for before there is a world, every time a game starts.** A cell asks for its map
+        // tile as it loads, which is the frame before the one that first mirrors it; the tile is
+        // drawn when there is something to draw it against rather than left blank until the local
+        // map happens to ask again.
+        if (mDeferred.empty() || !mHasScene)
+            return 0.0;
+
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 
         mDrawing.swap(mDeferred);
         mDeferred.clear();
 
+        std::uint32_t world = 0;
         for (TracedView* view : mDrawing)
-            if (view != nullptr)
-                view->redraw();
+        {
+            if (view == nullptr)
+                continue;
+
+            // Held over in the order asked, behind nothing asked since: `mDeferred` is empty until
+            // the first one is put back.
+            if (view->isOfWorld() && world == sWorldViewsPerFrame)
+            {
+                mDeferred.push_back(view);
+                continue;
+            }
+
+            if (view->isOfWorld())
+                ++world;
+
+            view->draw();
+        }
 
         mDrawing.clear();
+
+        return Rtx::since(began, std::chrono::steady_clock::now());
     }
 
     /// **The frame the trace made, on the screen, before the call that made it returns.** No
@@ -646,6 +678,7 @@ namespace MWRender
         // backend is called by this renderer's own frame instead — `updateTraversal` for the widget
         // animation and `renderFrame` for the triangles.
         auto manager = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, &images, scalingFactor);
+        mGui = manager.get();
 
         return std::make_unique<MyGUIPlatform::Platform>(std::move(manager), &vfs, resourcePath, logPath);
     }
@@ -731,11 +764,12 @@ namespace MWRender
         handOver(frame, report);
 
         // **Before the frame and after the scene**, which is the only moment both are true: a
-        // picture inside the interface traces against the world this walk has just handed over.
+        // picture inside the interface traces against the copy of the tables this walk has just
+        // handed over, and the frame's own trace is what stamps that copy as read.
         //
         // Above the eye, because a picture inside the interface brought its own: an eye the trace
         // cannot look along is no reason to leave a map tile blank.
-        drawDeferredViews();
+        report.mSpend.at(Rtx::Timing::Views) = drawViews();
 
         const std::optional<Rtx::Shaders::VisibilityConstants> constants = aim(frame);
         if (!constants.has_value())
@@ -809,8 +843,12 @@ namespace MWRender
         // cutscene, a script — and the setting only where nothing did.
         try
         {
-            return Rtx::makeCameraFromView(frame.mCamera.getViewMatrix(), frame.mEye.mFieldOfView, extents.mRenderWidth,
-                extents.mRenderHeight, sNear, Rtx::sFarPlane);
+            Rtx::Shaders::VisibilityConstants constants = Rtx::makeCameraFromView(frame.mCamera.getViewMatrix(),
+                frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
+
+            // What the game decided the eye sees, read where the rasterizer reads it.
+            constants.mRayMask = rayMaskOf(frame.mCamera.getCullMask());
+            return constants;
         }
         catch (const Rtx::Error& what)
         {

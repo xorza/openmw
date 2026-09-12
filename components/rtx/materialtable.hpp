@@ -64,9 +64,20 @@ namespace Rtx
         bool set(Index material, const Material& what);
 
         /// Copies `weights` into the shared mask table and returns where they landed.
+        ///
+        /// One float per weight rather than the byte the source holds: a mask is a few hundred
+        /// texels and a whole cell's worth is tens of kilobytes, which is not worth requiring
+        /// 8-bit storage of the device for.
+        ///
+        /// The whole run comes back, so a layer gives back exactly what it took rather than what
+        /// its two sides multiply to.
         Run addMask(std::span<const float> weights);
 
         /// Copies a material's layers into the shared layer table and returns where they landed.
+        ///
+        /// **All of them at once, because a run is allocated as a run.** They were appended one at
+        /// a time when the table only ever grew and a material took whatever length the table
+        /// happened to be at; a run that can be given back has to be asked for by length.
         Run addLayers(std::span<const MaterialLayer> layers);
 
         std::span<const Material> getRows() const { return mRows.getRows(); }

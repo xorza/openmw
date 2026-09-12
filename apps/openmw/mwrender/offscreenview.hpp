@@ -50,11 +50,11 @@ namespace MWRender
         /// left the weather's particles out of every storm.
         ///
         /// **And the two renderers read it in different places.** The rasterizer puts it on the
-        /// camera's cull mask, so it applies to every picture. A ray tracer has no cull: it applies
-        /// only where `mFromWorld` is false and there is a walk of this subtree to mask, because a
-        /// picture of the world traces against the scene the frame's own walk already built and is
-        /// masked by whatever masked that. A map tile is therefore drawn with everything the frame
-        /// holds, this field notwithstanding.
+        /// camera's cull mask, so it applies to every node of every picture. A ray tracer has no
+        /// cull: a picture of a subject masks the walk of that subtree with it, and every picture
+        /// hands it to its camera as the classes of instance its rays meet — `rayMaskOf` — so a
+        /// map tile of the world leaves out the actors, the effects and the particles the way the
+        /// rasterizer's does.
         unsigned int mMask = ~0u;
 
         SceneUtil::Framing mFraming{};
@@ -110,7 +110,10 @@ namespace MWRender
         /// That copy, or null while the most recent `redraw()` has not reached it — the drawing has
         /// not happened when `redraw()` returns, and the copy comes back after that again. Null
         /// forever where nothing asked for one.
-        virtual const osg::Image* getCopy() const = 0;
+        ///
+        /// **A pull and not a read**, which is why it is not const: the tracer takes the copy off
+        /// the device the first time it is asked for after it has arrived.
+        virtual const osg::Image* getCopy() = 0;
 
         /// What is at this point of the picture, in normalised device coordinates, as the path
         /// through the subtree to whatever was hit.

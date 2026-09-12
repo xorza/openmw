@@ -13,10 +13,12 @@
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
 #include "guiquad.hpp"
 #include "harness.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
@@ -500,6 +502,159 @@ namespace Rtx
                 << "past the sheet, and opaque";
         }
 
+        /// Two pictures of a subject scene, placed and traced twice with nothing waited between,
+        /// each show the placement they were traced after.
+        ///
+        /// **The doll's slot discipline.** A race slider drag places and traces the same scene every
+        /// frame; the second placement has to go into the copy the first trace is not reading, or
+        /// the first picture shows the second placement. Read only after both are recorded.
+        TEST_F(RtxGuiDrawTest, twoPicturesOfOneSubjectSceneEachShowTheirOwnPlacement)
+        {
+            constexpr std::uint32_t extent = 16;
+
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(100.0f).getTables(), {}, SeaState{});
+
+            SceneDesc doll = makeSheet(25.0f);
+            const SceneSlot slot = mRenderer->addViewScene();
+            mRenderer->setScene(slot, doll.getTables(), {}, SeaState{});
+
+            const GuiSlot first = mRenderer->addGuiTexture(extent, extent);
+            const GuiSlot second = mRenderer->addGuiTexture(extent, extent);
+            mHeld.push_back(first);
+            mHeld.push_back(second);
+
+            Shaders::VisibilityConstants camera = makeMapCamera(extent);
+            camera.mTransparentBackground = 1;
+            const GuiTraceOptions options{ .mWidth = extent, .mHeight = extent, .mScene = slot };
+
+            mRenderer->traceGuiTexture(first, camera, options);
+
+            ASSERT_TRUE(doll.placements().move(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
+            mRenderer->placeScene(slot, doll.getTables(), SeaState{});
+            mRenderer->traceGuiTexture(second, camera, options);
+
+            EXPECT_EQ(inTexture(first, extent, 8, 8)[3], 255) << "the sheet where it stood when the first was traced";
+            EXPECT_EQ(inTexture(second, extent, 8, 8)[3], 0) << "and gone by the second";
+
+            mRenderer->dropViewScene(slot);
+        }
+
+        /// The copy a trace leaves for the host is the texture, byte for byte, and only where one was
+        /// asked for.
+        TEST_F(RtxGuiDrawTest, aTraceLeavesTheCopyItWasAskedForAndNoOther)
+        {
+            constexpr std::uint32_t extent = 16;
+
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f).getTables(), {}, SeaState{});
+
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
+            mHeld.push_back(texture);
+
+            std::vector<std::uint8_t> copy(std::size_t{ extent } * extent * 4, 1);
+
+            const Shaders::VisibilityConstants camera = makeMapCamera(extent);
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent });
+            mRenderer->finishGuiTraces();
+            EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "nothing asked for a copy";
+
+            mRenderer->traceGuiTexture(
+                texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent, .mReadBack = true });
+            mRenderer->finishGuiTraces();
+            ASSERT_TRUE(mRenderer->takeGuiCopy(texture, copy));
+
+            mRenderer->readGuiTexture(texture, mPixels);
+            EXPECT_EQ(copy, mPixels);
+            EXPECT_EQ(Testing::rgbaAt(copy, extent, 8, 8), (std::array<std::uint8_t, 4>{ 97, 97, 97, 255 }));
+        }
+
+        /// A camera's mask is what its rays meet: a class the mask leaves out is not in the picture.
+        ///
+        /// **Coverage and not colour**, because two lit sheets of the default albedo are the same
+        /// grey. A static sheet stands to one side and an actor's to the other, over a transparent
+        /// background: `makeMapCamera` samples pixel `p` at `100 * ((p + 0.5) / 8 - 1)`, so a sheet
+        /// of fifty about x = -50 covers columns 2..5 and one about x = 50 covers 10..13. A camera
+        /// asking for every class covers both; one asking for the statics alone leaves the actor's
+        /// side at the clear colour, which is what a map tile does with the people on it.
+        TEST_F(RtxGuiDrawTest, aCameraLeavesOutTheClassesItsMaskDoesNotName)
+        {
+            constexpr std::uint32_t extent = 16;
+
+            SceneDesc scene;
+            const Index sheet = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sheetAt(25.0f, 0.0f), .mIndices = Testing::sQuadIndices });
+            scene.addInstance(
+                MeshInstance{ .mTransform = osg::Matrixf::translate(-50.0f, 0.0f, 0.0f), .mMesh = sheet });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(50.0f, 0.0f, 0.0f),
+                .mMesh = sheet,
+                .mClass = InstanceClass::Actor });
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
+
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
+            mHeld.push_back(texture);
+
+            Shaders::VisibilityConstants camera = makeMapCamera(extent);
+            camera.mTransparentBackground = 1;
+
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent });
+            EXPECT_EQ(inTexture(texture, extent, 3, 8)[3], 255) << "the static, under every class";
+            EXPECT_EQ(inTexture(texture, extent, 12, 8)[3], 255) << "the actor, under every class";
+
+            camera.mRayMask = Shaders::MASK_STATIC;
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent });
+            EXPECT_EQ(inTexture(texture, extent, 3, 8)[3], 255) << "the static, under the statics alone";
+            EXPECT_EQ(inTexture(texture, extent, 12, 8)[3], 0) << "the actor, left out";
+        }
+
+        /// A camera without `MASK_PARTICLE` bins no sprites and draws none, and reads an empty list
+        /// rather than whatever the slot's last bin left there. A camera with it bins the scene it
+        /// looks at, a subject's as much as the world's.
+        ///
+        /// A white puff hangs over the middle of the sheet, square to the sun. With the bit the
+        /// centre pixel is the puff over the sheet and not the sheet's own grey; without it the
+        /// centre is the lit sheet exactly as `aTracedPictureFillsAGuiTextureAndSaysWhereItStops`
+        /// counts it, 97 of 255. The frame between the two is what leaves a bin of the puff in the
+        /// slot's list for the second picture to ignore.
+        TEST_F(RtxGuiDrawTest, aCameraWithoutTheParticleBitDrawsNoSprites)
+        {
+            constexpr std::uint32_t extent = 16;
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> puff{ Testing::describeTexel(white) };
+
+            SceneDesc scene = makeSheet(25.0f);
+            const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
+            const std::array<Sprite, 1> sprites{ Sprite{
+                .mPosition = osg::Vec3f(0.0f, 0.0f, 50.0f), .mRadius = 30.0f, .mAlpha = 1.0f } };
+            scene.addEmitter(sprites, cut, false);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), puff, SeaState{});
+
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
+            mHeld.push_back(texture);
+
+            const Shaders::VisibilityConstants camera = makeMapCamera(extent);
+            constexpr std::array<std::uint8_t, 4> sheetLit{ 97, 97, 97, 255 };
+
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent });
+            EXPECT_NE(inTexture(texture, extent, 8, 8), sheetLit) << "the puff over the sheet";
+
+            Shaders::VisibilityConstants frame = camera;
+            frame.mCamera.mWidth = sExtent;
+            frame.mCamera.mHeight = sExtent;
+            mRenderer->renderFrame(frame, FrameOptions{});
+
+            Shaders::VisibilityConstants chart = camera;
+            chart.mRayMask &= ~Shaders::MASK_PARTICLE;
+            mRenderer->traceGuiTexture(texture, chart, GuiTraceOptions{ .mWidth = extent, .mHeight = extent });
+            EXPECT_EQ(inTexture(texture, extent, 8, 8), sheetLit) << "the sheet alone";
+
+            // The same scene as a subject, binned into its own tables and not the frame's.
+            const SceneSlot subject = mRenderer->addViewScene();
+            mRenderer->setScene(subject, scene.getTables(), puff, SeaState{});
+            mRenderer->traceGuiTexture(
+                texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent, .mScene = subject });
+            EXPECT_NE(inTexture(texture, extent, 8, 8), sheetLit) << "the puff over the subject's sheet";
+            mRenderer->dropViewScene(subject);
+        }
+
         /// A picture smaller than the texture behind it, which is the inventory doll: its window
         /// resizes and the texture does not.
         ///
@@ -618,21 +773,21 @@ namespace Rtx
 
             // Out of the camera's box of two hundred altogether, so what the placement did shows as
             // the picture emptying rather than as a sheet a pixel narrower.
-            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
+            ASSERT_TRUE(doll.placements().move(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
             mRenderer->placeScene(slot, doll.getTables(), SeaState{});
 
             EXPECT_EQ(covered(slot), 0u) << "the placement did not reach the trace";
 
             // **Two placements before one trace**, which is what a drag does. The picture is the
             // second, so a scheme that carried only the first would show the sheet back in the box.
-            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::identity()));
+            ASSERT_TRUE(doll.placements().move(0, osg::Matrixf::identity()));
             mRenderer->placeScene(slot, doll.getTables(), SeaState{});
-            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
+            ASSERT_TRUE(doll.placements().move(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
             mRenderer->placeScene(slot, doll.getTables(), SeaState{});
 
             EXPECT_EQ(covered(slot), 0u) << "the trace showed the first of two placements";
 
-            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::identity()));
+            ASSERT_TRUE(doll.placements().move(0, osg::Matrixf::identity()));
             mRenderer->placeScene(slot, doll.getTables(), SeaState{});
 
             EXPECT_EQ(covered(slot), 4u) << "a placement brought it back";

@@ -389,11 +389,6 @@ FogSources fogSourcesFrom(MoonTerms terms, float draw)
         drewMasser ? skySourceAt(SKY_SOURCE_MASSER) : skySourceAt(SKY_SOURCE_SECUNDA));
 }
 
-/// Which surfaces end a column's view of the air: everything the eye's own ray stops at, because
-/// what the column measures is where the eye's view of the air ends. What it *sees through* is not
-/// one of them — `fogdepth.comp` says why the column walks past a pane the launch would peel.
-const uint FOG_COLUMN_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
-
 /// The ray through a point `inside` the block of pixels one column of the fog volume stands for,
 /// from nought to one across the block.
 ///

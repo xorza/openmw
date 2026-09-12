@@ -61,6 +61,8 @@ namespace Rtx
     /// cannot disagree with itself.
     class VulkanRenderer final : public Renderer
     {
+        static constexpr std::uint64_t sNeverRead = ~std::uint64_t{ 0 };
+
         /// Everything one scene is traced against — the world's, or a picture's in the interface.
         ///
         /// **The same three objects and the same three branches for both**, which is what lets an
@@ -106,6 +108,19 @@ namespace Rtx
             /// Which scene's tables this was built from and at what revision of the whole
             /// structure, which is what `describeHeld` answers and an uploader appends against.
             std::uint64_t mBuiltStructure = 0;
+
+            /// Which copy of the tables the last placement wrote — what a trace of this scene reads,
+            /// and the copy the next placement leaves alone.
+            ///
+            /// **A placement's parity and not a frame's**, because a frame need not place: a test
+            /// that traces the same placement twice reads the same copy twice, and the copy a
+            /// placement is about to write is guarded by the frame that last traced it, not by the
+            /// frame count. **Per scene**, so a doll redrawn on consecutive frames places into the
+            /// copy the frame before last read, exactly as the world does.
+            FrameSlot mSlot;
+
+            /// The last frame that traced each copy, or `sNeverRead`.
+            std::array<std::uint64_t, sFrameSlots> mReadBy{ sNeverRead, sNeverRead };
         };
 
     public:
@@ -148,6 +163,8 @@ namespace Rtx
         void drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches) override;
         void traceGuiTexture(
             GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options) override;
+        bool takeGuiCopy(GuiSlot texture, std::span<std::uint8_t> into) override;
+        void finishGuiTraces() override;
         void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) override;
         void readPixels(std::vector<std::uint8_t>& pixels) override;
         void readChannel(Channel channel, std::vector<float>& values) override;
@@ -167,11 +184,11 @@ namespace Rtx
         const ViewScene& sceneAt(SceneSlot slot) const;
         ViewScene& sceneAt(SceneSlot slot);
 
-        /// What the trace reads a scene through, for whichever copy `slot` names.
+        /// What the trace reads a scene through, for the copy its last placement wrote.
         ///
         /// **One description for a frame and for a picture inside the interface.** The two differ
-        /// in the copy they read and in the fog volume they march, and in nothing else.
-        VisibilityInputs describeInputs(const ViewScene& held, FrameSlot slot, const FogVolume* volume) const;
+        /// in the fog volume they march, and in nothing else.
+        VisibilityInputs describeInputs(const ViewScene& held, const FogVolume* volume, std::uint32_t rayMask) const;
 
         /// The frame's camera as its trace will sample it: what the caller wrote, plus every field
         /// only the renderer can fill.
@@ -232,18 +249,6 @@ namespace Rtx
 
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;
-
-        /// Which copy of the world's tables the last placement wrote — what a frame traces, what
-        /// a picture inside the interface traces, and the copy the next placement leaves alone.
-        ///
-        /// **A placement's parity and not a frame's**, because a frame need not place: a test that
-        /// traces the same placement twice reads the same copy twice, and the copy a placement is
-        /// about to write is guarded by the frame that last traced it, not by the frame count.
-        FrameSlot mWorldSlot;
-
-        /// The last frame that traced each copy of the world's tables, or `sNeverRead`.
-        static constexpr std::uint64_t sNeverRead = ~std::uint64_t{ 0 };
-        std::array<std::uint64_t, sFrameSlots> mReadBy{ sNeverRead, sNeverRead };
 
         std::filesystem::path mShaderDirectory;
 
@@ -368,6 +373,15 @@ namespace Rtx
 
         /// And one for everything shaded, which runs ahead of the bin over the same tables.
         SpriteShadePass mSpriteShade;
+
+        /// An empty sprite tiles' list, for a camera that draws no sprites and so binned none.
+        /// `VisibilityInputs::mSpriteList` says why one buffer serves every extent.
+        Buffer mNoSprites;
+
+        /// What a picture inside the interface sums its census into, which nothing reads: the hit
+        /// count and the crossings are the frame's, and a picture traced beside it must not add to
+        /// them.
+        Buffer mViewCounts;
 
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.

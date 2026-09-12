@@ -622,7 +622,7 @@ namespace Rtx
                     .mMesh = scene.addMesh(
                         MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
 
-                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
 
                 // A fifth, which is under the half `puffClaim` asks for and over nothing at all.
                 const std::array<Sprite, 1> sprites{ Sprite{

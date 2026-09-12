@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -144,9 +145,9 @@ namespace Rtx
         /// How many of the sequences from `mNextTake` are old enough to collect, counted no further
         /// than `limit`.
         ///
-        /// **The whole of what a settled frame takes.** It reads the frame count and the hand-over
-        /// frames and nothing a baker touches, so what a frame collects is the schedule's answer
-        /// and the wait is only how the frame is made to agree with it.
+        /// **The whole of what a settled frame takes.** It reads the frame count and `mGivenBy`
+        /// and nothing a baker touches, so what a frame collects is the schedule's answer and the
+        /// wait is only how the frame is made to agree with it.
         std::size_t getDue(std::size_t limit) const;
 
         /// How many of the sequences from `mNextTake` have come back, counted no further than
@@ -299,11 +300,15 @@ namespace Rtx
         /// How many frames have been handed over, which is what a stack's age is measured in.
         std::size_t mFrame = 0;
 
-        /// The frame each sequence from `mNextTake` was handed over on, oldest first.
+        /// How many sequences had been handed over by the end of each of the last
+        /// `sBakeFrames + 1` frames, by the frame modulo the size. `getDue` reads the entry of
+        /// `sBakeFrames` frames ago: every sequence below it is old enough.
         ///
-        /// One entry a sequence: `gather` appends where it hands a stack over and `collect` removes
-        /// where it takes one back, so the front of this is always `mNextTake`'s.
-        std::deque<std::size_t> mQueuedAt;
+        /// **A count a frame and not a frame a stack.** The frame a stack was handed over on is
+        /// monotonic in its sequence, so the question is where the sequence handed over that
+        /// long ago stands — one number a frame, written once by `advance`, and nothing to keep in
+        /// step with `mPending` and `mDone`.
+        std::array<std::uint64_t, sBakeFrames + 1> mGivenBy{};
 
         /// Everything handed over and not yet collected, which is what `gather` checks against.
         std::vector<Asked> mAsked;

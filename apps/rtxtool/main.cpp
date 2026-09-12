@@ -92,8 +92,15 @@ namespace RtxTool
             return Debug::getRawStdout();
         }
 
+        /// What `--size` names.
+        struct Size
+        {
+            std::uint32_t mWidth = 0;
+            std::uint32_t mHeight = 0;
+        };
+
         /// Parses `WIDTHxHEIGHT`.
-        std::pair<std::uint32_t, std::uint32_t> parseSize(std::string_view text)
+        Size parseSize(std::string_view text)
         {
             const std::size_t cross = text.find('x');
             std::uint32_t width = 0;
@@ -106,7 +113,7 @@ namespace RtxTool
             if (!ok || width == 0 || height == 0)
                 throw std::runtime_error("not a size: " + std::string(text));
 
-            return { width, height };
+            return Size{ .mWidth = width, .mHeight = height };
         }
 
         /// What `--exposure` asked for: a number to hold it at, or nothing to measure it.
@@ -190,11 +197,11 @@ namespace RtxTool
         FrameRequest frameFrom(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const auto [width, height] = parseSize(variables["size"].as<std::string>());
+            const Size size = parseSize(variables["size"].as<std::string>());
 
             FrameRequest request;
-            request.mWidth = width;
-            request.mHeight = height;
+            request.mWidth = size.mWidth;
+            request.mHeight = size.mHeight;
             request.mFieldOfView = variables["fov"].as<float>();
             request.mDistantCells = variables["distant-cells"].as<float>();
             request.mDistantStatics = variables["distant-statics"].as<bool>();

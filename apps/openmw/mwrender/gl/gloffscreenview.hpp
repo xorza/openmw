@@ -47,7 +47,7 @@ namespace MWRender
         void sceneChanged() override;
         void redraw() override;
         void keepCopy() override;
-        const osg::Image* getCopy() const override;
+        const osg::Image* getCopy() override;
         bool pick(float x, float y, osg::NodePath& hit) const override;
         MyGUI::ITexture& getTexture() const override;
 

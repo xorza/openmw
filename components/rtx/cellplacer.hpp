@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include <osg/Vec2i>
@@ -39,13 +40,22 @@ namespace Rtx
         void setMinSize(float minSize) { mMinSize = minSize; }
 
         /// What the game says of one reference, which the content files cannot: a script has
-        /// disabled it, or enabled it again. Placed or dropped on the next `place`.
-        void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
+        /// disabled it, or enabled it again.
+        ///
+        /// **Applied to the cells `held` at once**, because `place` walks only what the size rule
+        /// changed since the last frame and a disabled reference inside what it admits would
+        /// otherwise stand until the eye moved. Remembered for the cells not yet held, which
+        /// arrive with the flag set.
+        void setReferenceEnabled(ESM::RefNum refnum, bool enabled, std::span<HeldCell> held);
 
         /// Adopts a cell's ground into the scene, on rows held on the scene, and holds its textures
         /// on `holds` for the frame's describe. `around` says whether it shades from its stack.
         void adoptGround(const PreparedCell& cell, HeldCell& held, CellHolds& holds, const WorldAround& around,
             ExtractionStats& stats);
+
+        /// Fills `held.mPlacements` from the cell's references, one per part of each model as
+        /// `holds` adopted it, disabled where a script said so, and sorted for `place`.
+        void adoptPlacements(const PreparedCell& cell, HeldCell& held, CellHolds& holds);
 
         /// Lets a cell's ground go: its slot, its texture holds and its rows. The sweep after this
         /// walk is what frees the rows.
@@ -65,6 +75,10 @@ namespace Rtx
     private:
         static bool inActiveGrid(const osg::Vec2i& cell, const WorldAround& around);
         bool isDisabled(ESM::RefNum refnum) const;
+
+        void addSlot(Placement& placement);
+        void dropSlot(Placement& placement);
+        void dropSlot(HeldGround& ground);
 
         /// Whether a cell's ground wants its stack flattened where the eye stands now.
         static bool wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground, const WorldAround& around);

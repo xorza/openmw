@@ -139,7 +139,7 @@ void answerWater(inout VisibilityPayload answer, Surface surface)
         return;
 
     const Surface bed = trace(
-        origin, direction, max(surface.mDistance - SHADOW_BIAS, 0.0), cone.mWidth, cone.mSpread, MASK_SOLID);
+        origin, direction, max(surface.mDistance - SHADOW_BIAS, 0.0), cone.mWidth, cone.mSpread, solidMask(frame.mRayMask));
     if (!bed.mHit)
         return;
 

@@ -145,18 +145,22 @@ namespace MWRender
         // described once when it is made. Upstream builds a camera for every tile it draws; this
         // keeps the one it has wherever the range it was built for still holds.
         if (segment.mView && (segment.mZMin != zmin || segment.mZMax != zmax))
+        {
             segment.mView.reset();
+
+            // The copy was asked of the view that has gone; the next ask has to start one afresh.
+            segment.mCopyAsked = false;
+        }
 
         if (!segment.mView)
         {
             OffscreenViewSpec spec{ *mSceneRoot };
             spec.mWidth = mMapResolution;
             spec.mHeight = mMapResolution;
-            // **The rasterizer's cull mask, and nothing to the ray tracer.** A map tile is a
-            // picture of the world, so the trace runs against the scene the frame's own walk built
-            // and this selects nothing — see `OffscreenViewSpec::mMask`. It is an inclusion mask
-            // either way, which is deliberate here: a chart wants the ground and the buildings and
-            // not the smoke over them.
+            // The rasterizer's cull mask, which the ray tracer reads as the classes its rays meet —
+            // see `OffscreenViewSpec::mMask`. An inclusion mask either way, which is deliberate
+            // here: a chart wants the ground and the buildings and not the people or the smoke over
+            // them.
             spec.mMask = Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static;
             spec.mFraming.mProjection = SceneUtil::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };

@@ -15,6 +15,7 @@
 
 namespace Rtx
 {
+    class Buffer;
     class CommandPool;
     class Device;
 
@@ -95,6 +96,15 @@ namespace Rtx
         /// Submits and waits, so it belongs to a screenshot rather than to a frame.
         void read(
             CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level = 0) const;
+
+        /// What `read` records: one level copied into `into`, a host-readable buffer of at least
+        /// `getReadBytes(level)`, ordered for the host, with the image met as `before` and left as
+        /// `after`. For a copy that rides a batch rather than a wait of its own.
+        void recordRead(VkCommandBuffer commands, const ImageUse& before, const ImageUse& after, const Buffer& into,
+            std::uint32_t level = 0) const;
+
+        /// How many bytes `read` and `recordRead` copy for `level`.
+        VkDeviceSize getReadBytes(std::uint32_t level = 0) const;
 
         /// How wide, how tall and how deep `level` is, which is the full size halved that many
         /// times and never below one texel.

@@ -57,9 +57,23 @@
 #include "../offscreenview.hpp"
 #include "../renderer.hpp"
 #include "checks.hpp"
+#include "viewhost.hpp"
 
 namespace MWRender
 {
+    namespace
+    {
+        /// Draws every picture asked for since the frame, and waits for it.
+        ///
+        /// A stop stands after the frame, and a picture is drawn inside the next one: drawn now
+        /// instead, which is a drain a stop may pay and a frame may not.
+        void drawPicturesNow(const FrameContext& context)
+        {
+            context.mHost.flushRedraws();
+            context.mBackend.finishGuiTraces();
+        }
+    }
+
     void StopWriter::write(const FrameContext& context, const FrameReport& report, const Rtx::Actions& actions,
         const StopFacts& facts, Rtx::RunRecord& record)
     {
@@ -313,6 +327,7 @@ namespace MWRender
     {
         view.keepCopy();
         view.redraw();
+        drawPicturesNow(into.mContext);
 
         const osg::Image* drawn = view.getCopy();
         if (drawn == nullptr)
@@ -350,6 +365,13 @@ namespace MWRender
         const MWWorld::Cell& cell = *player.getCell()->getCell();
 
         const osg::Image* drawn = map != nullptr ? map->getMapImage(cell.getGridX(), cell.getGridY()) : nullptr;
+        if (drawn == nullptr && map != nullptr)
+        {
+            // The first ask starts the copy; asked again after the drain, it is there.
+            drawPicturesNow(into.mContext);
+            drawn = map->getMapImage(cell.getGridX(), cell.getGridY());
+        }
+
         if (drawn == nullptr)
         {
             into.mRecord.note("no map tile is drawn for the cell the stop stands in\n");

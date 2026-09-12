@@ -238,37 +238,47 @@ namespace Rtx
                 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT });
     }
 
-    void Image::read(
-        CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
+    VkDeviceSize Image::getReadBytes(const std::uint32_t level) const
     {
         assert(level < mMipLevels && "a level this image does not hold");
         assert(mDepth == 1 && "a read hands back one slice, and a volume has more than one");
         assert(mTexelBytes > 0 && "a read of an image whose texels come in blocks");
 
-        const std::uint32_t width = getWidthAt(level);
-        const std::uint32_t height = getHeightAt(level);
-        const VkDeviceSize bytes = VkDeviceSize{ width } * height * mTexelBytes;
+        return VkDeviceSize{ getWidthAt(level) } * getHeightAt(level) * mTexelBytes;
+    }
+
+    void Image::recordRead(const VkCommandBuffer commands, const ImageUse& before, const ImageUse& after,
+        const Buffer& into, const std::uint32_t level) const
+    {
+        assert(into.getSize() >= getReadBytes(level) && "a read into a buffer too short for the level");
+
+        transition(commands, before, Use::sCopyRead);
+
+        const VkBufferImageCopy region{
+            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },
+            .imageExtent = { getWidthAt(level), getHeightAt(level), 1 },
+        };
+        vkCmdCopyImageToBuffer(
+            commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, into.getHandle(), 1, &region);
+
+        into.orderForHostRead(commands);
+        transition(commands, Use::sCopyRead, after);
+    }
+
+    void Image::read(
+        CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
+    {
+        const VkDeviceSize bytes = getReadBytes(level);
         const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
+        // **Back where it was found.** Reading an image is not a change to it, and a caller that
+        // has to know a read moved it is one that will forget: the GUI's own table is sampled
+        // straight after the global map takes a copy of a tile out of it.
         pool.submitAndWait([&](VkCommandBuffer commands) {
-            transition(commands, ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT },
-                Use::sCopyRead);
-
-            const VkBufferImageCopy region{
-                .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },
-                .imageExtent = { width, height, 1 },
-            };
-            vkCmdCopyImageToBuffer(
-                commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging.getHandle(), 1, &region);
-
-            staging.orderForHostRead(commands);
-
-            // **Back where it was found.** Reading an image is not a change to it, and a caller that
-            // has to know a read moved it is one that will forget: the GUI's own table is sampled
-            // straight after the global map takes a copy of a tile out of it.
-            transition(commands, Use::sCopyRead,
+            recordRead(commands, ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT },
                 ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT });
+                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
+                staging, level);
         });
 
         pixels.resize(bytes);

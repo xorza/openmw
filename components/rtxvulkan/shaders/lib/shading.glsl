@@ -407,7 +407,7 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // a bounce indoors is short and lands on the same few surfaces, so there is no coherence left to
     // recover. `.notes/rtx/gpu-performance.md` holds every reading since.
     const Surface hit
-        = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID);
+        = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, solidMask(frame.mRayMask));
 
     if (!hit.mHit)
         return bounceEscape(surface.mPosition, towards, weight);

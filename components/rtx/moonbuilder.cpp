@@ -135,9 +135,9 @@ namespace Rtx
         constexpr VFS::Path::NormalizedView masser("textures/tx_masser_full.dds");
         constexpr VFS::Path::NormalizedView secunda("textures/tx_secunda_full.dds");
 
-        const MoonFaces faces{ .mMasser = scene.addTexture(masser), .mSecunda = scene.addTexture(secunda) };
-        scene.holdTexture(faces.mMasser);
-        scene.holdTexture(faces.mSecunda);
+        const MoonFaces faces{ .mMasser = scene.textures().add(masser), .mSecunda = scene.textures().add(secunda) };
+        scene.textures().hold(faces.mMasser);
+        scene.textures().hold(faces.mSecunda);
         return faces;
     }
 

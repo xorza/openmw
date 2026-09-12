@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 
 #include <osg/Matrixf>
 #include <osg/Node>
@@ -44,8 +43,15 @@ namespace MWRender
         void setExtent(int width, int height) override;
         void sceneChanged() override;
         void redraw() override;
+
+        /// The drawing `redraw` asked for: the subject posed, walked and handed over, and the trace
+        /// recorded. The host calls it inside the frame's window, once there is a world.
+        void draw();
+
+        bool isOfWorld() const { return mTrace.isOfWorld(); }
+
         void keepCopy() override;
-        const osg::Image* getCopy() const override;
+        const osg::Image* getCopy() override;
         bool pick(float x, float y, osg::NodePath& hit) const override { return mTrace.pick(x, y, hit); }
         MyGUI::ITexture& getTexture() const override { return *mTexture; }
 
@@ -71,10 +77,9 @@ namespace MWRender
         /// for the rest of the session.
         bool mCopyIsCurrent = false;
 
-        /// What a read lands in before it is handed to the copy. Kept rather than made per redraw:
-        /// the local map draws a tile a cell, and a cell arriving is already the busiest frame there
-        /// is.
-        std::vector<std::uint8_t> mPixels;
+        /// Between `redraw` and the `draw` the host answers it with. `getCopy` is null throughout,
+        /// because what the backend holds until then is the trace before.
+        bool mRedrawPending = false;
 
         bool mKeepCopy = false;
     };

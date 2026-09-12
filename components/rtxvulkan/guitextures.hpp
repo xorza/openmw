@@ -145,6 +145,28 @@ namespace Rtx
         /// The whole texture in main memory, four bytes a pixel. Costs a transfer off the device.
         void read(GuiSlot slot, std::vector<std::uint8_t>& pixels);
 
+        /// Records a copy of the whole texture into a host-readable buffer kept for the slot, after
+        /// whatever `commands` already holds, and remembers that `frame` is what carries it.
+        ///
+        /// **Into the same batch as the trace that wrote the texture**, so the copy costs no submit
+        /// and no wait of its own: `takeCopy` hands the bytes over once the frame has been waited
+        /// for, which a frame is anyway two frames on. `Image::read` is a `submitAndWait`, which
+        /// the global map would pay for every cell it explores.
+        ///
+        /// @param graveyard where a buffer this replaces is buried, because a batch recorded against
+        ///        the old one may not have run.
+        void readBackWith(GuiSlot slot, VkCommandBuffer commands, std::uint64_t frame, Graveyard& graveyard);
+
+        /// Copies what `readBackWith` left for `slot` into `into`, and answers whether it did.
+        ///
+        /// **False until the frame carrying the copy is behind `finished`**, and never a wait: the
+        /// caller asks again next frame. False too where nothing was ever asked of the slot.
+        bool takeCopy(GuiSlot slot, std::span<std::uint8_t> into, std::uint64_t finished);
+
+        /// Every copy recorded so far has run — the caller drained the queue, deferred batches and
+        /// frames in flight both — so each may be taken whatever frame it was stamped with.
+        void landTraces();
+
         /// Submits what has been recorded, and what was already handed over, and waits for both.
         ///
         /// **For the two paths that take the command pool apart**, a resize and shutdown: a batch
@@ -170,6 +192,18 @@ namespace Rtx
         CommandPool& mPool;
 
         std::vector<std::unique_ptr<Image>> mImages;
+
+        /// What a trace left for the host, per slot: the buffer, and the frame whose fence says
+        /// it has arrived. `sNever` where nothing was asked.
+        struct Copy
+        {
+            static constexpr std::uint64_t sNever = ~std::uint64_t{ 0 };
+
+            std::unique_ptr<Buffer> mBuffer;
+            std::uint64_t mTracedOn = sNever;
+            bool mLanded = false;
+        };
+        std::vector<Copy> mCopies;
 
         /// The slots nothing holds. **`SlotPool` and not a list of its own**, because which free
         /// slot an arrival takes is one rule and this renderer keeps three tables by it.

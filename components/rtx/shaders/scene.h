@@ -302,13 +302,20 @@ namespace Rtx::Shaders
                 + WATER_CAUSTIC_GAIN_QUARTIC * squared * squared);
     }
 
-    /// Which instances a ray is interested in.
+    /// Which instances a ray is interested in: the instance mask, one class bit per instance and
+    /// `MASK_MEDIUM` beside it, tested against the camera's `VisibilityConstants::mRayMask`.
+    ///
+    /// **The camera's cull mask, as a ray tracer can read it.** The rasterizer draws what every
+    /// node mask on a path intersects the camera's cull mask; the local map's has no actors, no
+    /// effects and no particles in it, and the eye's has everything. Here a placement carries the
+    /// class the innermost node on its path stated — `Rtx::InstanceClass` — and a trace carries
+    /// which classes its camera draws. `MWRender::rayMaskOf` is where the one becomes the other.
     ///
     /// **Water must not cast a shadow, and the mask is how traversal is told so at no cost.** The
     /// alternative — building water non-opaque so the candidate loop can wave shadow rays past — was
     /// measured at half the frame rate, because every shadow ray crossing the sea then invokes a
     /// shader where traversal alone had been enough.
-    const uint MASK_SOLID = 0x01u;
+    const uint MASK_STATIC = 0x01u;
     const uint MASK_WATER = 0x02u;
 
     /// The player's own arms in first person: seen by the eye and by no other ray.
@@ -320,6 +327,29 @@ namespace Rtx::Shaders
     /// not, and the arms are lit and drawn like anything else while shadowing and reflecting as
     /// nothing at all.
     const uint MASK_FIRST_PERSON = 0x04u;
+
+    /// An actor or the player — `Mask_Actor | Mask_Player` — and an effect the game hung on
+    /// something, `Mask_Effect`. **One bit for the actors and the player**, because no camera in the
+    /// engine draws one without the other and the eighth bit is the last one.
+    const uint MASK_ACTOR = 0x10u;
+    const uint MASK_EFFECT = 0x20u;
+
+    /// A camera bit and never an instance's: whether this trace bins and draws the sprites. The
+    /// rasterizer's `Mask_ParticleSystem`, which a map tile's camera leaves out.
+    const uint MASK_PARTICLE = 0x40u;
+
+    /// Every class the eye can ask for. A trace with no camera of its own — the harness's, the
+    /// tests' — asks for all of them.
+    const uint MASK_EVERY_CLASS
+        = MASK_STATIC | MASK_WATER | MASK_FIRST_PERSON | MASK_ACTOR | MASK_EFFECT | MASK_PARTICLE;
+
+    /// What every ray but the eye's own casts with: what the camera draws, less the arms
+    /// (`MASK_FIRST_PERSON`), less the water (`MASK_WATER`) which shadows nothing, less the
+    /// particles, which are sprites and not instances.
+    RTX_SHADER uint solidMask(uint rayMask)
+    {
+        return rayMask & ~(MASK_FIRST_PERSON | MASK_WATER | MASK_PARTICLE);
+    }
 
     /// How many see-through surfaces the eye peels off before it draws what is under them.
     ///
@@ -345,7 +375,7 @@ namespace Rtx::Shaders
 
     /// A surface that is nowhere opaque, gathered as a depth along the ray rather than met.
     ///
-    /// **Carried beside `MASK_SOLID` and not instead of it**, because a medium is still something a
+    /// **Carried beside the class bit and not instead of it**, because a medium is still something a
     /// shadow ray is dimmed by and something the eye's traversal has to be handed so it can walk
     /// past. What this bit is for is the one ray that wants nothing else: `mediumAlong` traverses on
     /// it alone, so a cell full of shells costs that walk its own instances and no others.

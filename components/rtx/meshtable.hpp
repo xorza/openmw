@@ -75,7 +75,10 @@ namespace Rtx
         ///
         /// **For a row nothing the walk meets will name.** A cell's ground has no drawable, so no
         /// identity map holds it and a sweep would free it on the first frame; the residency that
-        /// stood it holds it instead, and lets go when the cell does.
+        /// stood it holds it instead, and lets go when the cell does. The row goes on the first
+        /// `release` after the last hold is given back, whatever else that release found:
+        /// `SceneDesc::hasDroppedHolds` is what tells a caller gated on the identity maps that it
+        /// owes one.
         void hold(Index mesh) { mRows.hold(mesh); }
         void drop(Index mesh) { mRows.drop(mesh); }
 

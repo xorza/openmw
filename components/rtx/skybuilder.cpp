@@ -97,8 +97,8 @@ namespace Rtx
             if (!vfs.exists(path))
                 continue;
 
-            loaded.mClouds[weather] = scene.addTexture(path);
-            scene.holdTexture(loaded.mClouds[weather]);
+            loaded.mClouds[weather] = scene.textures().add(path);
+            scene.textures().hold(loaded.mClouds[weather]);
 
             // **Read here and not on the frame that needs it.** Averaging a 512-square sheet is a
             // quarter of a million texels, and there are six of them; the image is the one the

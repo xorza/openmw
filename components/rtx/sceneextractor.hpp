@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -12,6 +14,7 @@
 
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
+#include "instanceclass.hpp"
 #include "materialresolver.hpp"
 #include "meshresolver.hpp"
 #include "mirrorpass.hpp"
@@ -92,15 +95,16 @@ namespace Rtx
         /// analytic sea of its own (`addWater`).
         void setWaterMask(osg::Node::NodeMask mask) { mWaterMask = mask; }
 
-        /// Names the node mask the game puts on the player's own arms in first person, by the same
-        /// rule as the water's: a node whose mask carries no bit outside this one. Everything under
-        /// such a node is placed for the eye alone — `Shaders::MASK_FIRST_PERSON` says why. The
-        /// harness names nothing here, since it never stands in first person.
-        void setFirstPersonMask(osg::Node::NodeMask mask) { mFirstPersonMask = mask; }
+        /// Names the node mask the game puts on the root of a class of thing — an actor, an effect,
+        /// the player's own arms in first person — by the same rule as the water's: a node whose
+        /// mask carries no bit outside this one. Everything under such a node is placed as that
+        /// class, for a camera's cull mask to keep or leave out (`InstanceClass`). The harness names
+        /// nothing here, so everything it walks is `Static`.
+        void setClassMask(InstanceClass what, osg::Node::NodeMask mask);
 
-        /// Whether a node carrying `mask` is the root of the player's first-person arms. Asked by
-        /// the walk at every node, which is why it is not the drawable's own question like water.
-        bool isFirstPerson(osg::Node::NodeMask mask) const;
+        /// The class a node carrying `mask` states, or nothing where it states none. Asked by the
+        /// walk at every node, which is why it is not the drawable's own question like water.
+        std::optional<InstanceClass> classOf(osg::Node::NodeMask mask) const;
 
         /// The world's clock, in seconds, which everything the graph animates is driven by.
         ///
@@ -222,7 +226,7 @@ namespace Rtx
         /// than to a caller — the visitor would only be asking the same question with less to
         /// answer it from.
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
-            const osg::Matrixf& place, bool firstPerson);
+            const osg::Matrixf& place, InstanceClass what);
 
         /// The state set a node's controllers write, or null where it has none.
         ///
@@ -287,7 +291,16 @@ namespace Rtx
         /// Which drawables are the sea. Zero means none of them, which is every caller that has not
         /// said otherwise.
         osg::Node::NodeMask mWaterMask = 0;
-        osg::Node::NodeMask mFirstPersonMask = 0;
+
+        /// The root mask of each class but `Static`, which is what a node states none of. Zero
+        /// means the class is never stated, which is every caller that has not said otherwise.
+        struct ClassMask
+        {
+            InstanceClass mClass;
+            osg::Node::NodeMask mMask = 0;
+        };
+        std::array<ClassMask, 3> mClassMasks{ ClassMask{ InstanceClass::Actor }, ClassMask{ InstanceClass::Effect },
+            ClassMask{ InstanceClass::FirstPerson } };
 
         /// Geometry no node parents, asked of every world walk. See `follow`.
         /// Refilled by `follow` every frame and never freed: two of them at most, so far.

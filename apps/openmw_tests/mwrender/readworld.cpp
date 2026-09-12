@@ -7,6 +7,7 @@
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
+#include <components/sky/skyroll.hpp>
 
 #include "apps/openmw/mwrender/rtx/readworld.hpp"
 #include "apps/openmw/mwrender/sceneframe.hpp"
@@ -20,7 +21,7 @@ namespace MWRender
         /// Noon under clear weather, wherever the caller says the player is standing.
         WorldState standingIn(const Location where)
         {
-            WorldState world;
+            WorldState world(Sky::SkyRoll(false));
             world.mLocation = where;
             world.mGameHour = 12.0f;
             world.mFogDepth = 0.69f;

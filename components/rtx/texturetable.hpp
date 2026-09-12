@@ -44,12 +44,35 @@ namespace Rtx
     {
     public:
         /// The slot for `path`, taking one where this has not met it.
+        ///
+        /// **The slot is live from here**, before anything names it, and stays live until the last
+        /// thing that named it lets go. A caller that adds a texture and then puts it on no material
+        /// and takes no hold of it keeps that slot for the rest of the scene, which is a caller
+        /// asking for a texture it did not want.
         Index add(VFS::Path::NormalizedView path);
 
-        /// The slot for a texture this renderer made, keyed by `key` rather than by a file.
+        /// The slot for a texture this renderer made, keyed by `key` rather than by a file, taking
+        /// one where `key` is not known.
+        ///
+        /// **A texture with no file behind it, which the table has to be able to hold.** A composite
+        /// baked for a distant terrain chunk is an image nothing can open: the bytes belong to
+        /// whatever made it, and what the scene keeps is the slot, because a slot is what a material
+        /// points at and what a backend uploads into. Two chunks that would bake the same image must
+        /// find the same slot, which is what `key` is for and why it has to be stable across frames.
+        ///
+        /// The same slots, the same free list and the same reference counting as a file's — this is a
+        /// second way in and not a second table. `hold` and `drop` do not care which kind a slot is.
         Index addBaked(std::string_view key);
 
-        /// Takes and gives back one name on a slot. `sNoIndex` is "none" and costs a compare.
+        /// Takes and gives back one name on a slot. `sNoIndex` is "none" and costs a compare. The
+        /// slot is freed by the `drop` after which nothing names it.
+        ///
+        /// **A particle emitter's sprite, and nothing else so far**, names a texture this way. An
+        /// emitter is a placement — it is thrown away and rebuilt every frame — so the texture it
+        /// draws with hangs off no material and no table the scene owns; whatever recognises the
+        /// emitter between frames is what has to hold it. The alternative was a keep set handed
+        /// over on every sweep, which could only be looked at on the frames a mesh or a material
+        /// also died.
         void hold(Index texture);
         void drop(Index texture);
 

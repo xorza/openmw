@@ -384,7 +384,8 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 
     rayQueryEXT query;
     rayQueryInitializeEXT(
-        query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, MASK_SOLID, from, SHADOW_BIAS, towards, distance);
+        query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, solidMask(frame.mRayMask), from, SHADOW_BIAS, towards,
+        distance);
     RTX_RESOLVE(query, towards, 0.0, through, crossed, true)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT)
@@ -430,7 +431,7 @@ float surfaceWithin(
 
 float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
 {
-    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, MASK_SOLID, false);
+    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, solidMask(frame.mRayMask), false);
 }
 
 /// How many see-through surfaces a ray crosses before the first one that stops it.
@@ -462,7 +463,8 @@ uint crossingsAlong(vec3 origin, vec3 direction, float footprint, float spread)
     float through = 1.0;
 
     rayQueryEXT query;
-    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_SOLID, origin, 0.0, direction, frame.mFar);
+    rayQueryInitializeEXT(
+        query, sceneTop, gl_RayFlagsNoneEXT, solidMask(frame.mRayMask), origin, 0.0, direction, frame.mFar);
     RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), through, crossings,
         true)
 

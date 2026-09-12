@@ -211,6 +211,13 @@ namespace Rtx
         /// What to trace against: a slot `addViewScene` gave out, or the world's for the one the
         /// frame is drawn from. A map tile is a picture of the world; a doll is not.
         SceneSlot mScene = SceneSlot::world();
+
+        /// Whether to leave a copy of the whole texture where `takeGuiCopy` can hand it to the host.
+        ///
+        /// **Asked for rather than always done**, because the copy is the one time a picture inside
+        /// the interface comes back to main memory: the global map painting a cell from the tile
+        /// the local map drew, and the harness writing a PNG.
+        bool mReadBack = false;
     };
 
     /// What a backend holds in one of its slots, as it says so itself: whether anything, at which
@@ -631,15 +638,34 @@ namespace Rtx
         /// **Not the frame's chain.** Nothing upscales, nothing averages and the exposure is fixed
         /// at one: a doll is a still picture of a subject rather than a frame in a sequence, and
         /// there is no previous one to reconstruct it from. `camera.mTransparentBackground` is what
-        /// says the picture stops where nothing was hit.
+        /// says the picture stops where nothing was hit. `camera.mRayMask` is which classes it
+        /// draws — a map tile's camera leaves out the people and the particles.
+        ///
+        /// **Recorded and not run.** The picture rides the next submit the backend makes, which in
+        /// a game is the frame's own or the interface's over it, so a picture costs the frame no
+        /// wait. What it reads of a scene is the copy that scene's last placement wrote, and the
+        /// next placement of that scene waits for the frame the picture rode.
         virtual void traceGuiTexture(
             GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
             = 0;
 
-        /// The whole of a GUI texture, four bytes a pixel, tightly packed, row zero first.
+        /// The copy the last `traceGuiTexture` with `mReadBack` left of `texture`: the whole of it,
+        /// four bytes a pixel, tightly packed, row zero first, into `into` as far as it reaches.
         ///
-        /// **Off the device and so asked for rather than always done.** The global map compositing
-        /// what the local map drew is the only caller, and it wants the tile once per cell.
+        /// **False until the copy has arrived, and never a wait.** The frame carrying the trace has
+        /// to have been finished, which a frame is two frames on; the caller asks again next frame,
+        /// as `MWRender::LocalMap::getMapImage` already does.
+        virtual bool takeGuiCopy(GuiSlot texture, std::span<std::uint8_t> into) = 0;
+
+        /// Submits every picture recorded and not yet carried, and waits for all of them, so that
+        /// every copy asked for can be taken.
+        ///
+        /// **For the harness and the tests**, which want a picture now and stand outside any
+        /// frame. A game never calls it: a drain is a picture's cost there and not a frame's.
+        virtual void finishGuiTraces() = 0;
+
+        /// The whole of a GUI texture as the device holds it, four bytes a pixel, tightly packed,
+        /// row zero first. Submits and waits: for the tests, which read what a draw wrote.
         virtual void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) = 0;
 
     protected:

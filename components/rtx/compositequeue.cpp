@@ -61,6 +61,7 @@ namespace Rtx
         ++mFrame;
 
         gather(scene.getTables(), images);
+        mGivenBy[mFrame % mGivenBy.size()] = mNextGiven;
 
         if (mSettled)
             waitFor(sCompositesPerFrame);
@@ -116,7 +117,6 @@ namespace Rtx
             Request request = mSpare.take();
             request.mAsked = wanted;
             request.mSequence = mNextGiven++;
-            mQueuedAt.push_back(mFrame);
             request.mLayers.assign(layers.begin(), layers.end());
             request.mImages.reserve(layers.size());
             request.mMaskRuns.reserve(layers.size());
@@ -154,11 +154,15 @@ namespace Rtx
 
     std::size_t CompositeQueue::getDue(const std::size_t limit) const
     {
-        std::size_t due = 0;
-        while (due < limit && due < mQueuedAt.size() && mFrame - mQueuedAt[due] >= sBakeFrames)
-            ++due;
+        if (mFrame < sBakeFrames)
+            return 0;
 
-        return due;
+        // Every sequence handed over by the end of that frame, less those taken since — which
+        // never overtakes it, because a frame takes no more than its own count of due.
+        const std::uint64_t given = mGivenBy[(mFrame - sBakeFrames) % mGivenBy.size()];
+        assert(given >= mNextTake && "more taken than were due");
+
+        return static_cast<std::size_t>(std::min<std::uint64_t>(limit, given - mNextTake));
     }
 
     std::size_t CompositeQueue::getReady(const std::size_t limit) const
@@ -209,7 +213,6 @@ namespace Rtx
             {
                 mTaken.push_back(std::move(mDone.front()));
                 mDone.pop_front();
-                mQueuedAt.pop_front();
                 ++mNextTake;
             }
         });
@@ -250,7 +253,7 @@ namespace Rtx
             nameComposite(mKey, asked.mMaterial);
 
             Material given = material;
-            given.mDiffuse = scene.addBakedTexture(mKey);
+            given.mDiffuse = scene.textures().addBaked(mKey);
             scene.setMaterial(asked.mMaterial, given);
 
             mFinished.insert_or_assign(given.mDiffuse, std::move(*baked.mComposite));

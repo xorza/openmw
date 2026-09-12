@@ -265,7 +265,7 @@ namespace Rtx::Testing
             Rtx::makeInstanceRecords(mScene.getTables(), records);
             EXPECT_FALSE(records.front().mTranslucent) << "an actor at full brightness stops every ray";
 
-            mScene.advancePlacement();
+            mScene.placements().advance();
             fade->set(0.25f);
             walk(*parent);
 
@@ -483,8 +483,8 @@ namespace Rtx::Testing
 
             ASSERT_EQ(records.size(), 3u);
             EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_WATER);
-            EXPECT_EQ(records[1].mMask, Rtx::Shaders::MASK_SOLID);
-            EXPECT_EQ(records[2].mMask, Rtx::Shaders::MASK_SOLID);
+            EXPECT_EQ(records[1].mMask, Rtx::Shaders::MASK_STATIC);
+            EXPECT_EQ(records[2].mMask, Rtx::Shaders::MASK_STATIC);
             EXPECT_NE(records[0].mMask, records[1].mMask);
         }
 

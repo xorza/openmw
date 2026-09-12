@@ -60,8 +60,8 @@ namespace Rtx
             const bool shuffled = false)
         {
             Rtx::Material material;
-            material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/box.dds"));
-            const Rtx::Index wearing = scene.addMaterial(material);
+            material.mDiffuse = scene.textures().add(VFS::Path::NormalizedView("textures/box.dds"));
+            const Rtx::Index wearing = scene.materials().add(material);
 
             const osg::Matrixf stood = osg::Matrixf::translate(10.0f, 20.0f, 30.0f);
             for (int which = 0; which < 2; ++which)
@@ -139,11 +139,11 @@ namespace Rtx
             Rtx::SceneDesc scene;
 
             Rtx::Material material;
-            material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/box.dds"));
+            material.mDiffuse = scene.textures().add(VFS::Path::NormalizedView("textures/box.dds"));
             change(material);
 
             Rtx::MeshInstance instance;
-            instance.mMaterial = scene.addMaterial(material);
+            instance.mMaterial = scene.materials().add(material);
             instance.mMesh = addBox(scene, false, instance.mMaterial);
             scene.addInstance(instance);
 

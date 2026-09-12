@@ -59,7 +59,7 @@ namespace Rtx::Testing
         water.mKind = MaterialKind::Water;
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
             .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(extent, 0.0f), .mIndices = sQuadIndices }),
-            .mMaterial = scene.addMaterial(water) });
+            .mMaterial = scene.materials().add(water) });
 
         return scene;
     }
@@ -139,7 +139,7 @@ namespace Rtx::Testing
         // A test states a pane as a colour and how much of it there is, which is the pair the
         // record states too. Linear already, so there is nothing to decode: `Rtx::decodeColour` is
         // for what a content file wrote.
-        const Index glass = scene.addMaterial(Material{
+        const Index glass = scene.materials().add(Material{
             .mDiffuseColour = osg::Vec3f(colour.r(), colour.g(), colour.b()),
             .mOpacity = colour.a(),
             .mAlphaMode = Surface::AlphaMode::Blend,
