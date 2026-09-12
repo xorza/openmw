@@ -154,9 +154,12 @@ namespace Rtx
         if (shading.empty())
             return MaterialReading{};
 
-        MaterialReading reading{ .mKey = shading.back().mStateSet, .mDescribed = findDescription(shading) };
-        if (reading.mDescribed == nullptr)
+        MaterialReading reading{ .mKey = shading.back().mStateSet };
+        if (!describeSurface(shading, reading.mDescribed.emplace()))
+        {
+            reading.mDescribed.reset();
             return reading;
+        }
 
         // **The same two facts `Material::isTranslucent` reads**, off the description they are
         // copied from, so the reader walks the texels of exactly the images `describe` would.
@@ -182,7 +185,9 @@ namespace Rtx
             mMaterials.stamp(known);
         }
         else
-            known = adopt(reading.mKey, describe(reading.mDescribed, false, reading.mDiffuseSolid));
+            known = adopt(reading.mKey,
+                describe(
+                    reading.mDescribed.has_value() ? &*reading.mDescribed : nullptr, false, reading.mDiffuseSolid));
 
         mMaterials.hold(known);
         return known->second.mIndex;
@@ -272,7 +277,13 @@ namespace Rtx
 
     Material MaterialResolver::readMaterial(std::span<const Shading> shading)
     {
-        return describe(findDescription(shading), !shading.empty() && shading.back().mAnimated, std::nullopt);
+        const bool animated = !shading.empty() && shading.back().mAnimated;
+
+        Surface::Material described;
+        if (!describeSurface(shading, described))
+            return describe(nullptr, animated, std::nullopt);
+
+        return describe(&described, animated, std::nullopt);
     }
 
     Material MaterialResolver::describe(

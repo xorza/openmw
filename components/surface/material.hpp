@@ -13,11 +13,6 @@
 #include "colour.hpp"
 #include "vertexcolour.hpp"
 
-namespace osg
-{
-    class StateSet;
-}
-
 namespace Surface
 {
     /// What a texture is for, as the content file said.
@@ -63,15 +58,14 @@ namespace Surface
 
     /// What a surface is, as the content said and before any renderer has an opinion.
     ///
-    /// **Authored where the fact is known** — `NifOsg` from the NIF properties, `Terrain` from its
-    /// texture layers, `Shader::ShaderVisitor` for the maps it discovers by filename — and hung on
-    /// the `osg::StateSet` that describes the same surface. Nothing in here was ever unavailable;
-    /// it was written into OpenGL pipeline state and read back out by whoever needed it again.
+    /// **Read off the finished `osg::StateSet`, by `describe`.** Everything here was written into
+    /// OpenGL pipeline state by whoever loaded the content — `NifOsg` from the NIF properties,
+    /// `Terrain` from its texture layers, `Shader::ShaderVisitor` for the maps it discovers by
+    /// filename — and the state set is the one place the fact is kept, whatever a controller has
+    /// done to it since.
     ///
-    /// **A value, and cheap to copy.** It is inherited down `NifOsg`'s node recursion by assignment,
-    /// which is how a texturing property on a parent reaches the shape three levels down, and it is
-    /// replaced rather than mutated wherever it is already attached — a state set can be shared by
-    /// thousands of drawables and a material edited in place would reach all of them.
+    /// **A value, and cheap to copy.** A chain of state sets is folded into one of these in order,
+    /// which is how a texturing property on a parent reaches the shape three levels down.
     struct Material
     {
         /// One texture per role, null where the content has none.
@@ -177,51 +171,6 @@ namespace Surface
     /// **A stand-in and not a capability.** The visitor runs on every model OpenMW loads and needs a
     /// number to fit texture slots into. The value decides only how many slots it is willing to use;
     /// the roles it labels them with, which is the whole of what a described surface carries, are the
-    /// same for any number this large. It sits beside `describeSurfaces` because the two are set
-    /// together, by every host that reads surfaces rather than draws them.
+    /// same for any number this large.
     constexpr int sAssumedTextureUnits = 32;
-
-    /// Whether anything in this process will read what a surface is, decided once before any content
-    /// is loaded.
-    ///
-    /// **Off unless a host says otherwise, because describing a surface costs a store per state
-    /// set.** A rasterizer draws from the state set itself and never asks what the content said, so
-    /// it would be paying an allocation per model for an answer nobody reads. `setMaterial` does
-    /// nothing while this is off, and `getMaterial` then finds nothing — which is the same answer a
-    /// state set the content pipeline never described already gives.
-    void describeSurfaces(bool describe);
-
-    /// Hangs `material` off the state set describing the same surface, replacing any already there.
-    ///
-    /// Does nothing where no host asked for descriptions.
-    ///
-    /// **Safe under `osgDB::SharedStateManager`, and not by accident.** After load, equal state sets
-    /// across every model in the cache are collapsed into one, and it compares pipeline state
-    /// without looking at what hangs off it — so two surfaces merged into one must not have had
-    /// different descriptions. They cannot: every field here is authored from a record that also
-    /// produced part of the state being compared, so state sets that compare equal describe the
-    /// same surface.
-    ///
-    /// **On the state set and not on the drawable**, because that is where the content's own
-    /// inheritance already lands: a `NiTexturingProperty` three nodes up and a `NiMaterialProperty`
-    /// on the shape both end on state sets, drawables sharing one surface share it, and everything
-    /// that resolves a drawable's appearance already walks that chain.
-    void setMaterial(osg::StateSet& stateSet, const Material& material);
-
-    /// What `setMaterial` left on this state set, or null. Does not look at parents.
-    ///
-    /// The pointer is good until the next `setMaterial` or `getWritableMaterial` on the same state
-    /// set, which is long enough for every caller: a material is read into a renderer's own form and
-    /// not held.
-    const Material* getMaterial(const osg::StateSet& stateSet);
-
-    /// The same material, ready to be written to, or null where nothing authored one.
-    ///
-    /// **This is what keeps an animated surface off the allocator.** A `NifOsg` controller rewrites
-    /// its material every frame it is applied, and replacing the whole attachment each time would be
-    /// one allocation per animated surface per frame. Where the state set is the only holder the
-    /// material is edited in place; where a copy shares it — the state set was cloned, and a
-    /// `SceneUtil::StateSetUpdater`'s scratch always starts that way — it is duplicated once and
-    /// edited in place from then on.
-    Material* getWritableMaterial(osg::StateSet& stateSet);
 }

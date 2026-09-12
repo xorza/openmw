@@ -39,13 +39,16 @@ namespace Rtx
         bool mAnimated = false;
     };
 
-    /// What the content said this surface is, taken from the nearest ancestor that said it.
+    /// What the content said this surface is, folded out of the chain of state sets in force at it.
     ///
-    /// **Nearest wins, which is what a NIF property does.** `NifOsg` stamps a complete material on
-    /// the state set it resolves each shape against, so the first one found walking back up is
-    /// already the whole answer; an ancestor's is what a shape that carries no state set of its own
-    /// inherits.
-    const Surface::Material* findDescription(std::span<const Shading> shading);
+    /// **Root first and nearest last, which is how OpenGL resolves the same chain.** A texturing
+    /// property three nodes up and a material on the shape land on two state sets and the shape
+    /// wears both; `Surface::describe` folds each in turn and the later overrides the earlier.
+    ///
+    /// @return whether any state set on the chain carried a material or a texture. False is a
+    ///         drawable that wears nothing — the sky, the water, a debug line — and `material` is
+    ///         then the defaults.
+    bool describeSurface(std::span<const Shading> shading, Surface::Material& material);
 
     /// Whether the nearest pass on the chain adds to the frame rather than covering it.
     ///

@@ -2,6 +2,8 @@
 #define OPENMW_COMPONENTS_MYGUIPLATFORM_GUIRENDERMANAGER_H
 
 #include <memory>
+#include <string>
+#include <string_view>
 
 #include <MyGUI_RenderManager.h>
 
@@ -15,8 +17,8 @@ namespace MyGUIPlatform
 
     /// MyGUI's render manager, plus the calls MyGUI does not declare and every backend needs.
     ///
-    /// **Neutral, despite where it lives**, for the reason `Picture` is: this is MyGUI's own
-    /// interface with two lifetime hooks on it, and it has no idea what draws. It exists so that one
+    /// **Neutral, despite where it lives**: this is MyGUI's own interface with two lifetime hooks
+    /// on it, and it has no idea what draws. It exists so that one
     /// `Platform` serves every backend — the log and the data manager beside it are the same either
     /// way, and it is only the render manager that is anybody's.
     class GuiRenderManager : public MyGUI::RenderManager
@@ -37,15 +39,35 @@ namespace MyGUIPlatform
         /// to whatever is finally drawing, which is this.
         virtual void setAdditiveBlend(bool additive) = 0;
 
-        /// A picture the game already holds on the device, drawn where it lies. Null where this
-        /// backend cannot draw one, and the caller then hands over the pixels instead.
+        /// A picture the game holds as an `osg::Texture2D` over an `osg::Image`, drawn from there.
         ///
-        /// **The video is the one caller.** Its decoder writes into an OSG texture and swaps the
-        /// image under it every frame, which the rasterizer draws untouched; a backend that never
-        /// opens a GL context cannot see that texture at all and is given the frame through
-        /// `Picture` instead.
+        /// **The one route from a picture in main memory to the interface.** The fog of war, the
+        /// world map, a save's thumbnail and a video frame are all `osg::Image`s the game writes and
+        /// then marks dirty, which is how upstream hands them to the rasterizer: it draws the texture
+        /// as it stands. A backend that never opens a GL context mirrors the image instead, and reads
+        /// it again whenever `osg::Image::getModifiedCount` says it changed — so a caller writes the
+        /// image the way it always did and never asks which backend it got.
+        ///
+        /// The texture and its image belong to the caller and outlive what comes back.
         virtual std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) = 0;
     };
+
+    /// `shareTexture` on whichever render manager is up, for the callers that have no handle to it.
+    inline std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture)
+    {
+        return static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance()).shareTexture(texture);
+    }
+
+    /// A name nothing else in MyGUI's texture table will have, out of `label`.
+    ///
+    /// **MyGUI keys its textures by name**, so everything that makes one needs a name of its own —
+    /// and one counter for all of them, because two makers counting separately hand out the same
+    /// name the moment they are given the same label.
+    inline std::string uniqueTextureName(std::string_view label)
+    {
+        static unsigned int next = 0;
+        return std::string(label) + " " + std::to_string(next++);
+    }
 
 }
 

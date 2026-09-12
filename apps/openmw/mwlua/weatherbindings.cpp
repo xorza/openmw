@@ -77,7 +77,7 @@ namespace
     void createFloatInterpolator(sol::state_view lua)
     {
         using Misc::FiniteFloat;
-        using T = Sky::TimeOfDayInterpolator<float>;
+        using T = MWWorld::TimeOfDayInterpolator<float>;
 
         auto interT = lua.new_usertype<T>("TimeOfDayInterpolatorFloat");
 
@@ -94,7 +94,7 @@ namespace
     void createColorInterpolator(sol::state_view lua)
     {
         using Misc::Color;
-        using T = Sky::TimeOfDayInterpolator<osg::Vec4f>;
+        using T = MWWorld::TimeOfDayInterpolator<osg::Vec4f>;
 
         auto interT = lua.new_usertype<T>("TimeOfDayInterpolatorColor");
 
@@ -112,11 +112,11 @@ namespace
 namespace sol
 {
     template <>
-    struct is_automagical<Sky::TimeOfDayInterpolator<float>> : std::false_type
+    struct is_automagical<MWWorld::TimeOfDayInterpolator<float>> : std::false_type
     {
     };
     template <>
-    struct is_automagical<Sky::TimeOfDayInterpolator<osg::Vec4f>> : std::false_type
+    struct is_automagical<MWWorld::TimeOfDayInterpolator<osg::Vec4f>> : std::false_type
     {
     };
     template <>

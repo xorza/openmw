@@ -3,9 +3,19 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/AlphaFunc>
+#include <osg/BlendFunc>
+#include <osg/Image>
+#include <osg/Matrixf>
 #include <osg/StateSet>
 #include <osg/Texture2D>
+#include <osg/Uniform>
 
+#include <components/sceneutil/material.hpp>
+#include <components/sceneutil/texmat.hpp>
+#include <components/sceneutil/texturetype.hpp>
+#include <components/shader/removedalphafunc.hpp>
+#include <components/surface/describe.hpp>
 #include <components/surface/material.hpp>
 
 namespace Surface
@@ -41,112 +51,168 @@ namespace Surface
             EXPECT_FALSE(textureRoleNamed("").has_value());
         }
 
-        TEST(SurfaceMaterialTest, aStateSetNobodyDescribedHasNoMaterial)
+        /// A state set that sets only modes and uniforms describes no surface, and leaves the
+        /// material it was folded into as it was.
+        TEST(SurfaceMaterialTest, aStateSetWithNoMaterialAndNoTextureSaysNothing)
         {
             osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
-            EXPECT_EQ(getMaterial(*state), nullptr);
-            EXPECT_EQ(getWritableMaterial(*state), nullptr);
-
-            // Something else in the container is not a material either.
-            state->getOrCreateUserDataContainer()->addUserObject(new osg::Texture2D);
-            EXPECT_EQ(getMaterial(*state), nullptr);
-        }
-
-        /// The holder sits at slot nought whatever else the container held first, and describing
-        /// turned off makes both accessors answer nothing — which is what the rasterizer's
-        /// controllers get for the description they never asked for.
-        TEST(SurfaceMaterialTest, theHolderIsFirstAndDescribingOffHidesIt)
-        {
-            osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
-            state->getOrCreateUserDataContainer()->addUserObject(new osg::Texture2D);
-            state->getOrCreateUserDataContainer()->addUserObject(new osg::Texture2D);
+            state->setMode(GL_CULL_FACE, osg::StateAttribute::OFF);
+            state->addUniform(new osg::Uniform("alpha", 0.5f));
 
             Material material;
-            material.mAlphaRef = 0.5f;
-            setMaterial(*state, material);
+            EXPECT_FALSE(describe(*state, material));
 
-            ASSERT_NE(getMaterial(*state), nullptr);
-            EXPECT_FLOAT_EQ(getMaterial(*state)->mAlphaRef, 0.5f);
-            EXPECT_EQ(state->getUserDataContainer()->getNumUserObjects(), 3u);
-
-            describeSurfaces(false);
-            EXPECT_EQ(getMaterial(*state), nullptr);
-            EXPECT_EQ(getWritableMaterial(*state), nullptr);
-            describeSurfaces(true);
-            EXPECT_NE(getWritableMaterial(*state), nullptr);
+            // What it does say still lands: the walk folds a node that only sets a mode on the way
+            // down, and a shape three nodes under it wears the mode.
+            EXPECT_TRUE(material.mTwoSided);
+            EXPECT_FLOAT_EQ(material.mOpacity, 0.5f);
         }
 
-        TEST(SurfaceMaterialTest, whatIsSetIsWhatIsRead)
+        /// A texture's role is the `TextureType` beside it or the sampler uniform naming its unit,
+        /// and a unit nothing names is not the surface's: the rasterizer's own effects bind one
+        /// that way, and a walk must not take the water's ripples for a surface.
+        TEST(SurfaceMaterialTest, aTextureIsReadByItsTypeOrItsSamplerAndAnUnnamedUnitIsNot)
         {
-            osg::ref_ptr<osg::Image> texture = new osg::Image;
+            osg::ref_ptr<osg::Image> diffuse = new osg::Image;
+            osg::ref_ptr<osg::Image> glow = new osg::Image;
+            osg::ref_ptr<osg::Image> normal = new osg::Image;
+            osg::ref_ptr<osg::Image> blend = new osg::Image;
+
+            osg::ref_ptr<osg::StateSet> unnamed = new osg::StateSet;
+            unnamed->setTextureAttributeAndModes(0, new osg::Texture2D(diffuse));
 
             Material material;
-            material.setTexture(TextureRole::Emissive, texture);
-            material.mAlphaMode = AlphaMode::Cutout;
-            material.mAlphaRef = 128.0f / 255.0f;
-            material.mTwoSided = true;
+            EXPECT_FALSE(describe(*unnamed, material));
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), nullptr);
 
             osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
-            setMaterial(*state, material);
+            state->setTextureAttributeAndModes(0, new osg::Texture2D(diffuse));
+            state->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"));
+            state->setTextureAttributeAndModes(1, new osg::Texture2D(glow));
+            state->setTextureAttribute(1, new SceneUtil::TextureType("emissiveMap"));
+            state->setTextureAttributeAndModes(2, new osg::Texture2D(normal));
+            state->addUniform(new osg::Uniform("normalMap", 2));
+            // A blend map is bound the same way and is not what the surface is made of.
+            state->setTextureAttributeAndModes(3, new osg::Texture2D(blend));
+            state->addUniform(new osg::Uniform("blendMap", 3));
 
-            const Material* read = getMaterial(*state);
-            ASSERT_NE(read, nullptr);
-            EXPECT_EQ(read->getTexture(TextureRole::Emissive), texture.get());
-            EXPECT_EQ(read->getTexture(TextureRole::Diffuse), nullptr);
-            EXPECT_EQ(read->mAlphaMode, AlphaMode::Cutout);
-            EXPECT_FLOAT_EQ(read->mAlphaRef, 128.0f / 255.0f);
-            EXPECT_TRUE(read->mTwoSided);
-            EXPECT_EQ(*read, material);
+            EXPECT_TRUE(describe(*state, material));
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), diffuse.get());
+            EXPECT_EQ(material.getTexture(TextureRole::Emissive), glow.get());
+            EXPECT_EQ(material.getTexture(TextureRole::Normal), normal.get());
+            for (const TextureRole other :
+                { TextureRole::NormalHeight, TextureRole::Specular, TextureRole::Dark, TextureRole::Detail,
+                    TextureRole::Decal, TextureRole::Gloss, TextureRole::Bump, TextureRole::Environment })
+                EXPECT_EQ(material.getTexture(other), nullptr) << textureRoleName(other);
         }
 
-        /// Setting twice replaces rather than accumulating, and does not add a second attachment.
-        TEST(SurfaceMaterialTest, describingAgainReplacesWhatWasThere)
+        /// The colours come off the material attribute, and the opacity off it too until an
+        /// `alpha` uniform animates it — unless `actorFade` stands beside that, which is the game
+        /// fading an actor and not the surface's own.
+        TEST(SurfaceMaterialTest, theColoursAreTheMaterialsAndTheOpacityFollowsTheAlphaUniform)
         {
+            osg::ref_ptr<SceneUtil::Material> colours = new SceneUtil::Material;
+            colours->setDiffuse(osg::Vec4f(0.25f, 0.5f, 0.75f, 0.5f));
+            colours->setAmbient(osg::Vec4f(0.1f, 0.2f, 0.3f, 1.0f));
+            colours->setEmission(osg::Vec4f(0.5f, 0.25f, 0.0f, 1.0f));
+            colours->setSpecular(osg::Vec4f(0.0f, 0.0f, 0.0f, 0.0f));
+            colours->setShininess(12.0f);
+            colours->setEmissiveMultiplier(2.0f);
+            colours->setVertexColorMode(SceneUtil::VertexColorModes::Emission);
+
             osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
-
-            Material first;
-            first.mAlphaRef = 0.25f;
-            setMaterial(*state, first);
-
-            Material second;
-            second.mAlphaRef = 0.75f;
-            setMaterial(*state, second);
-
-            ASSERT_NE(getMaterial(*state), nullptr);
-            EXPECT_FLOAT_EQ(getMaterial(*state)->mAlphaRef, 0.75f);
-            EXPECT_EQ(state->getUserDataContainer()->getNumUserObjects(), 1u);
-        }
-
-        /// A state set the only holder is edited in place; one a copy shares is duplicated first.
-        ///
-        /// **Both halves matter and for different reasons.** In place is what keeps an animated
-        /// surface off the allocator — a controller rewrites its material every frame it is applied.
-        /// Duplicating when shared is what stops that edit reaching every other drawable using the
-        /// same surface, which is what a shallow-copied state set means: `SceneUtil::StateSetUpdater`
-        /// starts its per-node scratch as exactly that.
-        TEST(SurfaceMaterialTest, aWriteIsInPlaceWhenNothingElseCanSeeItAndACopyWhenItCan)
-        {
-            osg::ref_ptr<osg::StateSet> original = new osg::StateSet;
+            state->setAttribute(colours);
 
             Material material;
-            material.mAlphaRef = 0.25f;
-            setMaterial(*original, material);
+            EXPECT_TRUE(describe(*state, material));
+            EXPECT_EQ(material.mDiffuseColour, (Colour{ 0.25f, 0.5f, 0.75f }));
+            EXPECT_FLOAT_EQ(material.mOpacity, 0.5f);
+            EXPECT_EQ(material.mAmbientColour, (Colour{ 0.1f, 0.2f, 0.3f }));
+            EXPECT_EQ(material.mEmissiveColour, (Colour{ 0.5f, 0.25f, 0.0f }));
+            EXPECT_EQ(material.mSpecularColour, Colour{});
+            EXPECT_FLOAT_EQ(material.mGlossiness, 12.0f);
+            EXPECT_FLOAT_EQ(material.mEmissiveMult, 2.0f);
+            EXPECT_EQ(material.mVertexColour, VertexColour::Glow);
 
-            const Material* before = getMaterial(*original);
-            ASSERT_EQ(getWritableMaterial(*original), before) << "nothing else holds it, so it is not moved";
+            // What `NifOsg::AlphaController` writes, on a state set of the traversal's own.
+            osg::ref_ptr<osg::StateSet> animated = new osg::StateSet(*state, osg::CopyOp::SHALLOW_COPY);
+            animated->addUniform(new osg::Uniform("alpha", 0.125f));
+            describe(*animated, material);
+            EXPECT_FLOAT_EQ(material.mOpacity, 0.125f);
 
-            osg::ref_ptr<osg::StateSet> copy = new osg::StateSet(*original, osg::CopyOp::SHALLOW_COPY);
-            ASSERT_EQ(getMaterial(*copy), before) << "a shallow copy is sharing the one description";
+            // What `MWRender::TransparencyUpdater` writes above a whole actor, which is a fade the
+            // walk reads for itself and not a surface's opacity.
+            osg::ref_ptr<osg::StateSet> faded = new osg::StateSet;
+            faded->addUniform(new osg::Uniform("alpha", 0.75f));
+            faded->addUniform(new osg::Uniform("actorFade", 0.5f));
+            material.mOpacity = 1.0f;
+            EXPECT_FALSE(describe(*faded, material));
+            EXPECT_FLOAT_EQ(material.mOpacity, 1.0f);
+        }
 
-            getWritableMaterial(*copy)->mAlphaRef = 0.75f;
+        /// A test is a cutout at its reference, a blend function wins over it, and the visitor's
+        /// rewrite — a `RemovedAlphaFunc` at a default threshold beside an `alphaRef` uniform —
+        /// reads the same as the attribute it replaced. `ALWAYS` is no test, which is what the
+        /// scene root wears.
+        TEST(SurfaceMaterialTest, alphaTestingAndBlendingReadAsTheLoaderWroteThem)
+        {
+            osg::ref_ptr<osg::StateSet> tested = new osg::StateSet;
+            tested->setAttributeAndModes(new osg::AlphaFunc(osg::AlphaFunc::GREATER, 128.0f / 255.0f));
 
-            EXPECT_NE(getMaterial(*copy), before) << "and writing to it moved the copy off the shared one";
-            EXPECT_FLOAT_EQ(getMaterial(*copy)->mAlphaRef, 0.75f);
-            EXPECT_FLOAT_EQ(getMaterial(*original)->mAlphaRef, 0.25f) << "the original is untouched";
+            Material material;
+            describe(*tested, material);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Cutout);
+            EXPECT_FLOAT_EQ(material.mAlphaRef, 128.0f / 255.0f);
 
-            // And the copy is now the only holder of its own, so the next write stays in place.
-            const Material* mine = getMaterial(*copy);
-            EXPECT_EQ(getWritableMaterial(*copy), mine);
+            osg::ref_ptr<osg::StateSet> visited = new osg::StateSet;
+            visited->setAttribute(Shader::RemovedAlphaFunc::getInstance(osg::AlphaFunc::GREATER),
+                osg::StateAttribute::ON | osg::StateAttribute::PROTECTED);
+            visited->addUniform(new osg::Uniform("alphaRef", 64.0f / 255.0f));
+
+            material = Material{};
+            describe(*visited, material);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Cutout);
+            EXPECT_FLOAT_EQ(material.mAlphaRef, 64.0f / 255.0f);
+
+            // Blending on top of the test: the mode says blend and the threshold survives.
+            osg::ref_ptr<osg::StateSet> blended = new osg::StateSet;
+            blended->setAttributeAndModes(new osg::BlendFunc);
+            describe(*blended, material);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Blend);
+            EXPECT_FLOAT_EQ(material.mAlphaRef, 64.0f / 255.0f);
+
+            // And a test folded in after the blend keeps the blend.
+            describe(*tested, material);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Blend);
+            EXPECT_FLOAT_EQ(material.mAlphaRef, 128.0f / 255.0f);
+
+            osg::ref_ptr<osg::StateSet> root = new osg::StateSet;
+            root->setAttribute(Shader::RemovedAlphaFunc::getInstance(GL_ALWAYS));
+            material = Material{};
+            describe(*root, material);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Opaque);
+            EXPECT_FLOAT_EQ(material.mAlphaRef, 0.0f);
+        }
+
+        /// The texture transform is the scale and offset `NifOsg::UVController` built its matrix
+        /// from, undone: scaled about the middle of the texture, then offset.
+        TEST(SurfaceMaterialTest, theTextureTransformIsUndoneToWhatTheControllerBuiltItFrom)
+        {
+            const osg::Vec3f origin(0.5f, 0.5f, 0.0f);
+            osg::Matrixf transform = osg::Matrixf::translate(origin);
+            transform.preMultScale(osg::Vec3f(2.0f, 4.0f, 1.0f));
+            transform.preMultTranslate(-origin);
+            transform.setTrans(transform.getTrans() + osg::Vec3f(-0.25f, 0.5f, 0.0f));
+
+            osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
+            state->setTextureAttributeAndModes(0, new osg::Texture2D(new osg::Image));
+            state->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"));
+            SceneUtil::setupTexMatForStateSet(*state, 0, transform);
+
+            Material material;
+            describe(*state, material);
+            EXPECT_EQ(material.mTextureScale, osg::Vec2f(2.0f, 4.0f));
+            EXPECT_EQ(material.mTextureOffset, osg::Vec2f(-0.25f, 0.5f));
         }
     }
 }

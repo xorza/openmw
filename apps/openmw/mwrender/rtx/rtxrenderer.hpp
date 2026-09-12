@@ -11,7 +11,6 @@
 
 #include <osg/ref_ptr>
 
-#include <components/myguiplatform/picture.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/renderprofile.hpp>
@@ -29,11 +28,17 @@ namespace Resource
     class ResourceSystem;
 }
 
+namespace MyGUI
+{
+    class ITexture;
+}
+
 namespace osg
 {
     class Camera;
     class FrameStamp;
     class Stats;
+    class Texture2D;
 }
 
 namespace Rtx
@@ -261,7 +266,10 @@ namespace MWRender
         /// what draws every GUI there is.
         MyGUIRtx::RenderManager* mGui = nullptr;
 
-        MyGUIPlatform::Picture mFrozenFrame{ "frozen frame" };
+        /// The frame a loading screen holds up, as the image the GUI mirrors. The texture is made
+        /// on the first freeze and the image under it swapped on every one after.
+        osg::ref_ptr<osg::Texture2D> mFrozenFrame;
+        std::unique_ptr<MyGUI::ITexture> mFrozenFrameTexture;
 
         /// Screenshots, savegame thumbnails and the frozen frame a loading screen puts up.
         ///

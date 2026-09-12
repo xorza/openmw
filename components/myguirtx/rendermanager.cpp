@@ -154,10 +154,22 @@ namespace MyGUIRtx
         mBatches.clear();
     }
 
+    std::unique_ptr<MyGUI::ITexture> RenderManager::shareTexture(osg::Texture2D& texture)
+    {
+        // Not in `mTextures`: MyGUI's table is keyed by name and this one has no name to be found
+        // under. It belongs to the caller, who is drawing something it already owns.
+        return std::make_unique<Texture>(mRenderer, texture);
+    }
+
     void RenderManager::doRender(MyGUI::IVertexBuffer* buffer, MyGUI::ITexture* texture, size_t count)
     {
-        const auto* texel = static_cast<const Texture*>(texture);
-        if (texel == nullptr || texel->getSlot().isNone() || count == 0)
+        auto* texel = static_cast<Texture*>(texture);
+        if (texel == nullptr || count == 0)
+            return;
+
+        // A mirror reads its image here, once per draw, so what the game wrote since is what is drawn.
+        texel->refresh();
+        if (texel->getSlot().isNone())
             return;
 
         const std::span<const MyGUI::Vertex> vertices = static_cast<const VertexBuffer*>(buffer)->get(count);

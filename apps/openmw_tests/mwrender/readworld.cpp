@@ -30,6 +30,7 @@ namespace MWRender
             world.mSunPosition = osg::Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
             world.mSunColour = osg::Vec4f(1.0f, 0.97f, 0.85f, 1.0f);
             world.mSunDiscColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
+            world.mSunShare = 1.0f;
 
             return world;
         }

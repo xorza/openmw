@@ -3,8 +3,6 @@
 
 #include <memory>
 
-#include <components/myguiplatform/picture.hpp>
-
 #include "windowbase.hpp"
 
 namespace MWState
@@ -56,7 +54,7 @@ namespace MWGui
 
         void fillSaveList();
 
-        MyGUIPlatform::Picture mScreenshotPicture;
+        std::unique_ptr<MyGUI::ITexture> mScreenshotTexture;
         MyGUI::ImageBox* mScreenshot;
         bool mSaving;
 

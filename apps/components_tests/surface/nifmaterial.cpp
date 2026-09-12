@@ -1,5 +1,8 @@
 #include "../nif/node.hpp"
 
+#include <osg/Drawable>
+#include <osg/StateSet>
+
 #include <components/nif/data.hpp>
 #include <components/nif/node.hpp>
 #include <components/nif/property.hpp>
@@ -7,6 +10,7 @@
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/bgsmfilemanager.hpp>
 #include <components/resource/imagemanager.hpp>
+#include <components/surface/describe.hpp>
 #include <components/surface/material.hpp>
 #include <components/vfs/manager.hpp>
 
@@ -14,6 +18,7 @@
 
 #include <initializer_list>
 #include <optional>
+#include <vector>
 
 namespace
 {
@@ -23,10 +28,11 @@ namespace
 
     constexpr VFS::Path::NormalizedView testNif("test.nif");
 
-    /// Finds the surface description the loader authored, wherever in the graph it landed.
+    /// Folds the state sets in force at the first drawable, root first, the way a walk does.
     struct FindMaterial : osg::NodeVisitor
     {
-        const Surface::Material* mFound = nullptr;
+        std::optional<Surface::Material> mFound;
+        std::vector<const osg::StateSet*> mChain;
 
         FindMaterial()
             : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
@@ -37,24 +43,40 @@ namespace
         void apply(osg::Node& node) override
         {
             if (node.getStateSet() != nullptr)
-                if (const Surface::Material* material = Surface::getMaterial(*node.getStateSet()))
-                    mFound = material;
+                mChain.push_back(node.getStateSet());
 
             traverse(node);
+
+            if (node.getStateSet() != nullptr)
+                mChain.pop_back();
+        }
+
+        void apply(osg::Drawable& drawable) override
+        {
+            if (mFound.has_value())
+                return;
+
+            Surface::Material material;
+            bool said = false;
+            for (const osg::StateSet* state : mChain)
+                said = Surface::describe(*state, material) || said;
+            if (drawable.getStateSet() != nullptr)
+                said = Surface::describe(*drawable.getStateSet(), material) || said;
+
+            if (said)
+                mFound = material;
         }
     };
 
-    /// What the loader authors in `Surface`'s terms, tested apart from what it builds in OSG's.
+    /// What the loader builds in OSG's terms, read back in `Surface`'s.
     struct SurfaceNifMaterialTest : Test
     {
         VFS::Manager mVfs;
         Resource::ImageManager mImageManager{ &mVfs, 0 };
         Resource::BgsmFileManager mMaterialManager{ &mVfs, 0 };
 
-        /// The description the loader authors for one triangle carrying `properties`, or nothing
-        /// where it authored none.
-        ///
-        /// A copy and not a pointer, because the graph the description hangs on dies with the call.
+        /// What one triangle carrying `properties` describes as, read off the state the loader
+        /// built, or nothing where it built no material and no texture.
         std::optional<Surface::Material> describeTriangle(std::initializer_list<Nif::NiProperty*> properties)
         {
             Nif::NiTriShapeData data;
@@ -79,9 +101,7 @@ namespace
 
             FindMaterial find;
             result->accept(find);
-            if (find.mFound == nullptr)
-                return std::nullopt;
-            return *find.mFound;
+            return find.mFound;
         }
     };
 
@@ -105,10 +125,12 @@ namespace
         colours.mAlpha = 0.5f;
         colours.mEmissiveMult = 2.0f;
 
+        // Testing at `GL_GREATER`, which is bits ten to twelve of the flags: a test at `GL_ALWAYS`,
+        // which is what the flags spell with those bits clear, discards nothing and is no cutout.
         Nif::NiAlphaProperty alpha;
         init(static_cast<Nif::NiObjectNET&>(alpha));
         alpha.mRecordType = Nif::RC_NiAlphaProperty;
-        alpha.mFlags = Nif::NiAlphaProperty::Flag_Testing;
+        alpha.mFlags = Nif::NiAlphaProperty::Flag_Testing | (4 << 10);
         alpha.mThreshold = 128;
 
         Nif::NiStencilProperty stencil;
@@ -121,7 +143,7 @@ namespace
         stencil.mPassAction = Nif::NiStencilProperty::Action::Keep;
 
         const std::optional<Surface::Material> found = describeTriangle({ &colours, &alpha, &stencil });
-        ASSERT_TRUE(found.has_value()) << "every shape the loader builds is described";
+        ASSERT_TRUE(found.has_value()) << "a shape with a material is described";
 
         // Alpha testing and no blending, so the surface is a cutout at the threshold over 255.
         EXPECT_EQ(found->mAlphaMode, Surface::AlphaMode::Cutout);
@@ -159,6 +181,13 @@ namespace
         using DrawMode = Nif::NiStencilProperty::DrawMode;
 
         const auto describedWith = [this](std::optional<DrawMode> drawMode) {
+            // A material, so that the shape is a surface at all: a shape with nothing but a
+            // stencil property has set a mode and described nothing.
+            Nif::NiMaterialProperty colours;
+            init(static_cast<Nif::NiObjectNET&>(colours));
+            colours.mRecordType = Nif::RC_NiMaterialProperty;
+            colours.mDiffuse = osg::Vec3f(0.5f, 0.5f, 0.5f);
+
             Nif::NiStencilProperty stencil;
             init(static_cast<Nif::NiObjectNET&>(stencil));
             stencil.mRecordType = Nif::RC_NiStencilProperty;
@@ -169,7 +198,7 @@ namespace
             stencil.mPassAction = Nif::NiStencilProperty::Action::Keep;
 
             const std::optional<Surface::Material> found
-                = drawMode.has_value() ? describeTriangle({ &stencil }) : describeTriangle({});
+                = drawMode.has_value() ? describeTriangle({ &colours, &stencil }) : describeTriangle({ &colours });
             EXPECT_TRUE(found.has_value());
             return found.has_value() && found->mTwoSided;
         };
@@ -197,12 +226,11 @@ namespace
         return keys;
     }
 
-    /// A scrolling surface says so in its description, not only in the matrix it hands OpenGL.
+    /// A scrolling surface's description follows the matrix the controller hands OpenGL.
     ///
-    /// **This is the fact a ray tracer could not see.** `UVController` wrote an `osg::TexMat` and
-    /// nothing else, so a texture animated by scrolling its UVs stood still in anything that samples
-    /// a texture rather than binding one — and there was nowhere in a material to put it, because
-    /// there was no material. The scale and the offset are the two numbers the matrix is built from.
+    /// **The two numbers come back out of the matrix.** `UVController` writes a `texMat` uniform
+    /// built from a scale about the middle of the texture and an offset, and a renderer that
+    /// samples a texture rather than binding one wants those two numbers rather than the matrix.
     TEST_F(SurfaceNifMaterialTest, aScrollingSurfaceDescribesTheTransformItAnimates)
     {
         Nif::NiUVData data;
@@ -216,14 +244,13 @@ namespace
         controller->setSource(source);
 
         osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
-        Surface::setMaterial(*state, Surface::Material{});
         controller->setDefaults(state);
         controller->apply(state, nullptr);
 
-        const Surface::Material* described = Surface::getMaterial(*state);
-        ASSERT_NE(described, nullptr);
-        EXPECT_EQ(described->mTextureScale, osg::Vec2f(2.0f, 4.0f));
-        EXPECT_EQ(described->mTextureOffset, osg::Vec2f(-0.25f, 0.5f));
+        Surface::Material described;
+        Surface::describe(*state, described);
+        EXPECT_EQ(described.mTextureScale, osg::Vec2f(2.0f, 4.0f));
+        EXPECT_EQ(described.mTextureOffset, osg::Vec2f(-0.25f, 0.5f));
     }
 
     /// Blending wins over testing, and the threshold survives for a renderer that would rather cut.
@@ -232,10 +259,16 @@ namespace
         Nif::NiAlphaProperty alpha;
         init(static_cast<Nif::NiObjectNET&>(alpha));
         alpha.mRecordType = Nif::RC_NiAlphaProperty;
-        alpha.mFlags = Nif::NiAlphaProperty::Flag_Blending | Nif::NiAlphaProperty::Flag_Testing;
+        alpha.mFlags = Nif::NiAlphaProperty::Flag_Blending | Nif::NiAlphaProperty::Flag_Testing | (4 << 10);
         alpha.mThreshold = 64;
 
-        const std::optional<Surface::Material> found = describeTriangle({ &alpha });
+        // A material as well, so that the shape is a surface: an alpha property alone is a mode.
+        Nif::NiMaterialProperty colours;
+        init(static_cast<Nif::NiObjectNET&>(colours));
+        colours.mRecordType = Nif::RC_NiMaterialProperty;
+        colours.mDiffuse = osg::Vec3f(0.5f, 0.5f, 0.5f);
+
+        const std::optional<Surface::Material> found = describeTriangle({ &colours, &alpha });
         ASSERT_TRUE(found.has_value());
         EXPECT_EQ(found->mAlphaMode, Surface::AlphaMode::Blend);
         EXPECT_FLOAT_EQ(found->mAlphaRef, 64.0f / 255.0f);

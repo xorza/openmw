@@ -1,13 +1,10 @@
 #include <components/debug/debugging.hpp>
-#include <components/fallback/fallback.hpp>
 #include <components/misc/strings/conversion.hpp>
 #include <components/settings/parser.hpp>
 #include <components/settings/values.hpp>
 #include <components/testing/util.hpp>
 
 #include <gtest/gtest.h>
-
-#include "apps/components_tests/fallbackseed.hpp"
 
 #include <filesystem>
 
@@ -26,11 +23,6 @@ int main(int argc, char* argv[])
     Settings::Manager::mUserSettings = Settings::Manager::mDefaultSettings;
 
     Settings::StaticValues::init();
-
-    // **Before any test runs, because `Fallback::Map::init` keeps whichever value arrives first.**
-    // The sky refuses to answer an hour before it has been told when the day starts, and the same
-    // seed this fork's component tests stand on is what tells it. `fallbackSeed` says the rest.
-    Fallback::Map::init(TestingOpenMW::fallbackSeed());
 
     testing::InitGoogleTest(&argc, argv);
 

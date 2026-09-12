@@ -27,6 +27,11 @@ namespace MyGUIPlatform
         mRenderManager->shutdown();
     }
 
+    GuiRenderManager* Platform::getRenderManagerPtr()
+    {
+        return mRenderManager.get();
+    }
+
     DataManager* Platform::getDataManagerPtr()
     {
         return mDataManager.get();

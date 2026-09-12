@@ -58,9 +58,9 @@ namespace Rtx
         // sprite for draws nothing — not a white disc, which is what sampling nothing would give
         // it. Nothing describing the system and a description naming no diffuse map end in the same
         // place, and a count of only the first reports a share of the plumes that went missing.
-        const Surface::Material* described = findDescription(shading);
+        Surface::Material described;
         const osg::Image* sprite
-            = described != nullptr ? described->getTexture(Surface::TextureRole::Diffuse) : nullptr;
+            = describeSurface(shading, described) ? described.getTexture(Surface::TextureRole::Diffuse) : nullptr;
 
         if (sprite == nullptr || sprite->getFileName().empty())
         {

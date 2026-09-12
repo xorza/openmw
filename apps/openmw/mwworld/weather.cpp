@@ -2,9 +2,6 @@
 
 #include <components/esm/stringrefid.hpp>
 #include <components/settings/values.hpp>
-#include <components/sky/sun.hpp>
-
-#include "../mwrender/gl/sky.hpp"
 
 #include <components/misc/rng.hpp>
 
@@ -21,6 +18,7 @@
 
 #include "../mwsound/sound.hpp"
 
+#include "../mwrender/gl/sky.hpp"
 #include "../mwrender/renderingmanager.hpp"
 
 #include "cellstore.hpp"
@@ -772,7 +770,6 @@ namespace MWWorld
         mRendering.getSkyManager()->setStormParticleDirection(mStormDirection);
 
         // disable sun during night
-        // disable sun during night
         if (time.getHour() >= mTimeSettings.mNightStart || time.getHour() <= mSunriseTime)
             mRendering.getSkyManager()->sunDisable();
         else
@@ -1227,7 +1224,7 @@ namespace MWWorld
         mResult.mDLFogFactor = current.mDL.FogFactor;
         mResult.mDLFogOffset = current.mDL.FogOffset;
 
-        Sky::WeatherSetting setting = mTimeSettings.getSetting("Sun");
+        WeatherSetting setting = mTimeSettings.getSetting("Sun");
         float preSunsetTime = setting.mPreSunsetTime;
 
         if (gameHour >= mTimeSettings.mDayEnd - preSunsetTime)
@@ -1250,10 +1247,21 @@ namespace MWWorld
         else
             mResult.mSunDiscColor = osg::Vec4f(1, 1, 1, 1);
 
-        // Nought through the night as well as through the two ramps, so that the alpha is the whole
-        // of "is there a sun": the ray tracer scales its sunlight by it, and `Sky::sunShareAt` is
-        // the one place the ramp is spelled.
-        mResult.mSunDiscColor.a() = Sky::sunShareAt(gameHour, mTimeSettings);
+        if (gameHour >= mTimeSettings.mDayEnd)
+        {
+            // sunset
+            float fade = std::min(
+                1.f, (gameHour - mTimeSettings.mDayEnd) / (mTimeSettings.mNightStart - mTimeSettings.mDayEnd));
+            fade = fade * fade;
+            mResult.mSunDiscColor.a() = 1.f - fade;
+        }
+        else if (gameHour >= mTimeSettings.mNightEnd && gameHour <= mTimeSettings.mNightEnd + mSunriseDuration / 2.f)
+        {
+            // sunrise
+            mResult.mSunDiscColor.a() = gameHour - mTimeSettings.mNightEnd;
+        }
+        else
+            mResult.mSunDiscColor.a() = 1;
 
         mResult.mStormDirection = calculateStormDirection(mResult.mParticleEffect);
     }

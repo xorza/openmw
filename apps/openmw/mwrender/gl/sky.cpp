@@ -17,6 +17,7 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
+#include <components/sceneutil/texturetype.hpp>
 #include <components/sceneutil/visitor.hpp>
 
 #include <components/resource/imagemanager.hpp>
@@ -26,7 +27,6 @@
 
 #include <components/misc/resourcehelpers.hpp>
 #include <components/stereo/stereomanager.hpp>
-#include <components/surface/material.hpp>
 
 #include <components/nifosg/particle.hpp>
 
@@ -393,6 +393,8 @@ namespace MWRender
         raindropTex->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
 
         stateset->setTextureAttribute(0, raindropTex);
+        // Named, so a renderer that reads what a surface is finds the drop's picture.
+        stateset->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"), osg::StateAttribute::ON);
         stateset->setNestRenderBins(false);
         stateset->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
         stateset->setMode(GL_CULL_FACE, osg::StateAttribute::OFF);
@@ -403,16 +405,6 @@ namespace MWRender
         mat->setDiffuse(osg::Vec4f(1, 1, 1, 1));
         mat->setVertexColorMode(SceneUtil::VertexColorModes::AmbientAndDiffuse);
         stateset->setAttributeAndModes(mat);
-
-        // **Said in `Surface`'s terms as well as OpenGL's, because this is the one drop of rain
-        // nothing loaded from a file.** Everything else the weather throws comes out of a NIF, and
-        // the content pipeline describes what it builds; this state set is assembled here, so a
-        // renderer that reads the description rather than the attribute would find a particle
-        // system with no material at all. The alpha mode is what the blend above says.
-        Surface::Material described;
-        described.setTexture(Surface::TextureRole::Diffuse, raindropTex->getImage());
-        described.mAlphaMode = Surface::AlphaMode::Blend;
-        Surface::setMaterial(*stateset, described);
 
         osgParticle::Particle& particleTemplate = mRainParticleSystem->getDefaultParticleTemplate();
         particleTemplate.setSizeRange(osgParticle::rangef(5.f, 15.f));

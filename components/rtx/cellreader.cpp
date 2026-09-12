@@ -192,7 +192,7 @@ namespace Rtx
 
         for (const PreparedPart& part : model.mParts)
         {
-            if (part.mMaterial.mDescribed == nullptr)
+            if (!part.mMaterial.mDescribed.has_value())
                 continue;
 
             for (const Surface::TextureRole role : sRoles)

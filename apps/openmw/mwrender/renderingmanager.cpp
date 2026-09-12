@@ -1,8 +1,5 @@
 #include "renderingmanager.hpp"
 
-#include <algorithm>
-#include <cmath>
-
 #include <cstdlib>
 #include <optional>
 
@@ -35,7 +32,6 @@
 
 #include <components/settings/values.hpp>
 
-#include <components/fx/stateupdater.hpp>
 #include <components/sceneutil/cullsafeboundsvisitor.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -525,17 +521,6 @@ namespace MWRender
     void RenderingManager::configureAmbient(const MWWorld::Cell& cell)
     {
         bool isInterior = !cell.isExterior() && !cell.isQuasiExterior();
-
-        // Kept as recorded, beside the lift it is about to get: a renderer that lights a room itself
-        // wants the numbers the content wrote. `describeWorld` masks it by the location.
-        if (isInterior)
-            mWorld.mRoom = ESM::Cell::AMBIstruct{
-                .mAmbient = cell.getMood().mAmbiantColor,
-                .mSunlight = cell.getMood().mDirectionalColor,
-                .mFog = cell.getMood().mFogColor,
-                .mFogDensity = cell.getMood().mFogDensity,
-            };
-
         bool needsAdjusting = false;
         needsAdjusting = isInterior && (!Settings::shaders().mClassicFalloff || Settings::shaders().mClusteredLighting);
 
@@ -570,17 +555,7 @@ namespace MWRender
         // This is total nonsense but it's what Morrowind uses
         static const osg::Vec4f interiorSunPos
             = osg::Vec4f(-1.f, osg::DegreesToRadians(45.f), osg::DegreesToRadians(45.f), 0.f);
-        mWorld.mSunPosition = interiorSunPos;
-        mWorld.mSunVector = -interiorSunPos;
-        mWorld.mSunAtNight = false;
         mSunLight->setPosition(interiorSunPos);
-
-        // **A room's sun is all there, and saying so is what stops it being the last outdoor
-        // hour's.** The weather system stops running the moment the player steps inside, so nothing
-        // else would write these again until they step out — and a renderer that scales its sunlight
-        // by the share would light an interior with whatever fraction of a sunset it walked in on.
-        mWorld.mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
-        mWorld.mSunGlare = 1.f;
     }
 
     void RenderingManager::setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis)
@@ -661,48 +636,6 @@ namespace MWRender
         mTerrain->enable(enable);
     }
 
-    void RenderingManager::setWeather(const WeatherResult& weather)
-    {
-        mSky->setWeather(weather);
-
-        // Kept apart rather than multiplied together: the alpha is how much of the sun is over the
-        // horizon and the glare is how much of it this weather lets through, and only the first of
-        // them says whether there is a sun to light anything at all.
-        // **Everything `WorldState` says about the sky is taken from here**, off the weather the
-        // world settled on, and nothing is read back out of the sky manager. It answers only when it
-        // has been created, and it is created by whichever renderer is drawing — so a ray-traced
-        // frame that asked it for the sky's colour got the black an unbuilt one starts at.
-        mWorld.mSkyColour = weather.mSkyColor;
-        mWorld.mCloudFog = weather.mFogColor;
-        mWorld.mCloudDirection = weather.mStormDirection;
-        mWorld.mNextCloudDirection = weather.mNextStormDirection;
-        mWorld.mSunDiscColour = weather.mSunDiscColor;
-        mWorld.mSunGlare = weather.mGlareView;
-        // **Nothing recorded is not a rate.** `Weather::transitionDelta` divides by
-        // `Clouds_Maximum_Percent`, which the shipped fallbacks leave at nought for ash and blight,
-        // so a transition into either hands over an infinity or a NaN. The rasterizer survives one —
-        // a NaN opacity draws nothing and the old sky stays — and a tracer mixes its whole sky by
-        // it. Nothing recorded means the deck has crossed at once.
-        mWorld.mCloudBlend
-            = std::isfinite(weather.mCloudBlendFactor) ? std::clamp(weather.mCloudBlendFactor, 0.f, 1.f) : 1.f;
-        mWorld.mNightFade = weather.mNight ? weather.mNightFade : 0.f;
-
-        // **The record and not the gust.** What this decides is how deep the fog's layer stands and
-        // how fast its field is carried, and both are the weather's settled character rather than
-        // the number the engine wanders about it. `WeatherResult::mWindSpeed` is the gust, and the
-        // rasterizer's own uniform is what wants that one.
-        mWorld.mBaseWindSpeed = weather.mBaseWindSpeed;
-    }
-
-    void RenderingManager::setMoonStates(const Sky::MoonState& masser, const Sky::MoonState& secunda)
-    {
-        mWorld.mMoons[0] = masser;
-        mWorld.mMoons[1] = secunda;
-
-        mSky->setMasserState(masser);
-        mSky->setSecundaState(secunda);
-    }
-
     void RenderingManager::setSkyEnabled(bool enabled)
     {
         mSky->setEnabled(enabled);
@@ -761,16 +694,12 @@ namespace MWRender
 
     void RenderingManager::configureFog(const MWWorld::Cell& cell)
     {
-        // **Kept as it was recorded, beside the ramp it is about to become.** A renderer whose fog
-        // is a medium has no use for a start and an end; it wants the number the content wrote.
-        mWorld.mFogDepth = cell.getMood().mFogDensity;
         mFog->configure(mViewDistance, cell);
     }
 
     void RenderingManager::configureFog(
         float fogDepth, float underwaterFog, float dlFactor, float dlOffset, const osg::Vec4f& color)
     {
-        mWorld.mFogDepth = fogDepth;
         mFog->configure(mViewDistance, fogDepth, underwaterFog, dlFactor, dlOffset, color);
     }
 
@@ -832,90 +761,6 @@ namespace MWRender
         mStage.getCamera().setClearColor(isUnderwater ? fogUnderwaterColor : fogColor);
     }
 
-    EyeState RenderingManager::describeEye() const
-    {
-        return EyeState{
-            .mNearClip = mNearClip,
-            .mViewDistance = mViewDistance,
-            .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),
-            .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
-        };
-    }
-
-    WorldState RenderingManager::describeWorld() const
-    {
-        const MWBase::World& simulation = *MWBase::Environment::get().getWorld();
-        const bool underwater = mWater->isUnderwater(mCamera->getPosition());
-
-        // The simulation's "no transition" is -1, and `WorldState` would rather say it in the type.
-        const int next = simulation.getNextWeatherScriptId();
-        const std::optional<int> nextWeather = next < 0 ? std::nullopt : std::optional(next);
-
-        // What the world settled on is already in `mWorld`, written where each part of it was
-        // decided. What is left answers per frame, so no setter can have written it.
-        WorldState described = mWorld;
-
-        described.mSunColour = mSunLight->getDiffuse();
-        described.mAmbientColour = mSunLight->getAmbient();
-        described.mNightEye = mSunLight->getAmbient() - mAmbientColor;
-
-        // **The sky manager's, and read rather than kept.** It exists under both renderers — only its
-        // nodes are built lazily — so its clock and its particle systems are the one copy of each.
-        described.mRain = mSky->getRainNode();
-        described.mWeatherEffect = mSky->getParticleNode();
-        described.mRainOnWater = mSky->getRainRipplesEnabled() ? mSky->getPrecipitationAlpha() : 0.f;
-        described.mCloudScroll = mSky->getCloudAnimationTimer();
-        described.mStarRoll = mSky->getAtmosphereNightRoll();
-
-        described.mLocation = simulation.isCellExterior() ? Location::Exterior
-            : simulation.isCellQuasiExterior()            ? Location::QuasiExterior
-                                                          : Location::Interior;
-
-        // The one place the record is masked: `configureAmbient` writes it for a room and nothing
-        // writes it for anywhere else, so the record a player walked in under is still standing
-        // after they walked out.
-        if (described.mLocation != Location::Interior)
-            described.mRoom.reset();
-
-        described.mUnderwater = underwater;
-        described.mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) };
-        described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
-
-        described.mGameHour = simulation.getTimeStamp().getHour();
-        described.mWeatherId = simulation.getCurrentWeatherScriptId();
-        described.mNextWeatherId = nextWeather;
-        described.mWeatherTransition = simulation.getWeatherTransition();
-        described.mWindSpeed = simulation.getWindSpeed();
-
-        return described;
-    }
-
-    void RenderingManager::renderFrame()
-    {
-        // **Where the eye is, told to the sky before the frame.** The cull traversal tells it the
-        // same thing under the rasterizer; a renderer that culls nothing has to say it here, or the
-        // underwater switch that freezes the rain reads the point the last cull left. Here and not
-        // in `update`, because `Camera::updateCamera` writes the view matrix from the update
-        // traversal, which runs between the two.
-        mSky->setViewPoint(mStage.getCamera().getInverseViewMatrix().getTrans());
-
-        const WorldState world = describeWorld();
-        const EyeState seenFrom = describeEye();
-
-        const SceneFrame frame{
-            .mScene = *mSceneRoot,
-            .mCamera = mStage.getCamera(),
-            .mWhen = mStage.getFrameStamp(),
-            .mWorld = world,
-            .mEye = seenFrom,
-            .mImages = *mResourceSystem->getImageManager(),
-            .mTerrain = *mTerrain,
-            .mObjectStorage = mObjectStorage,
-        };
-
-        mRenderer.renderFrame(frame);
-    }
-
     void RenderingManager::updatePlayerPtr(const MWWorld::Ptr& ptr)
     {
         if (mPlayerAnimation.get())
@@ -968,9 +813,6 @@ namespace MWRender
         mWater->setEnabled(enabled);
         mSky->setWaterEnabled(enabled);
         mStateUpdater->setWaterEnabled(mWater->isVisible());
-
-        if (PostProcessor* postProcessor = mRenderer.getPostProcessor())
-            postProcessor->getStateUpdater()->setIsWaterEnabled(enabled);
     }
 
     void RenderingManager::setWaterHeight(float height)
@@ -981,9 +823,6 @@ namespace MWRender
         mWater->setHeight(height);
         mSky->setWaterHeight(height);
         mStateUpdater->setWaterHeight(height);
-
-        if (PostProcessor* postProcessor = mRenderer.getPostProcessor())
-            postProcessor->getStateUpdater()->setWaterHeight(height);
     }
 
     void RenderingManager::screenshot(osg::Image* image, int w, int h)

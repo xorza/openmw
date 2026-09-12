@@ -4,6 +4,8 @@
 #include <string_view>
 #include <vector>
 
+#include <components/sceneutil/texmat.hpp>
+
 #include "../allocations.hpp"
 #include "fixture.hpp"
 
@@ -28,9 +30,14 @@ namespace Rtx::Testing
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
             paint(*quad->getOrCreateStateSet(), "lava.dds");
 
-            Surface::Material& described = describe(*quad->getOrCreateStateSet());
-            described.mTextureScale = osg::Vec2f(2.0f, 4.0f);
-            described.mTextureOffset = osg::Vec2f(0.25f, -0.5f);
+            // The matrix `NifOsg::UVController` builds for a scale of two by four and an offset of a
+            // quarter by minus a half.
+            const osg::Vec3f origin(0.5f, 0.5f, 0.0f);
+            osg::Matrixf transform = osg::Matrixf::translate(origin);
+            transform.preMultScale(osg::Vec3f(2.0f, 4.0f, 1.0f));
+            transform.preMultTranslate(-origin);
+            transform.setTrans(transform.getTrans() + osg::Vec3f(0.25f, -0.5f, 0.0f));
+            SceneUtil::setupTexMatForStateSet(*quad->getOrCreateStateSet(), 0, transform);
 
             osg::ref_ptr<osg::Group> root = new osg::Group;
             root->addChild(quad);
@@ -120,21 +127,19 @@ namespace Rtx::Testing
             EXPECT_TRUE(mScene.getTables().mMeshes.getRows().empty());
         }
 
-        /// A drawable that describes nothing inherits the nearest description above it.
+        /// A drawable that describes nothing inherits what the state sets above it say.
         ///
-        /// **Nearest, and whole.** A NIF property on a node applies to every shape below it until
-        /// another replaces it, so `NifOsg` resolves each shape against everything above and stamps
-        /// one complete answer. Walking back up for the first description found reproduces that,
-        /// and a drawable carrying a state set for some unrelated reason — a `CullFace` and nothing
-        /// else, which is common — does not lose the surface it inherits by having one.
+        /// **Folded down the chain, which is how OpenGL resolves it.** A NIF property on a node
+        /// applies to every shape below it until another replaces it, and a drawable carrying a
+        /// state set for some unrelated reason — a uniform and nothing else, which is common — does
+        /// not lose the surface it inherits by having one.
         TEST_F(RtxSceneExtractorTest, aDrawableWithNoDescriptionInheritsTheNearestOneAbove)
         {
             osg::ref_ptr<osg::Group> parent = new osg::Group;
             paint(*parent->getOrCreateStateSet(), "textures/tx_stone_01.dds");
 
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
-            quad->getOrCreateStateSet()->setAttributeAndModes(
-                new osg::CullFace(osg::CullFace::BACK), osg::StateAttribute::OFF);
+            quad->getOrCreateStateSet()->addUniform(new osg::Uniform("useFalloff", false));
             parent->addChild(quad);
 
             walk(*parent);
@@ -145,11 +150,8 @@ namespace Rtx::Testing
                 mScene.getTables().mTextures.getPaths()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
             EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuse, 0u);
 
-            // **The description's answer and not the drawable's pipeline state.** The quad turns
-            // culling off in its own state set and the description above it says nothing about
-            // faces, so it is single-sided: the scene root culls, and only a record that says
-            // otherwise makes a surface two-sided. Reading the mode back off the state set, as the
-            // mirror used to, would answer the other way.
+            // Nothing on the chain turned culling off, so the surface shows one face: the scene
+            // root culls, and only a record that says otherwise makes a surface two-sided.
             EXPECT_FALSE(mScene.getTables().mMaterials.getRows()[0].mTwoSided);
         }
 
@@ -167,7 +169,6 @@ namespace Rtx::Testing
                 if (blend)
                 {
                     state.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
-                    describe(state).mAlphaMode = Surface::AlphaMode::Blend;
                 }
 
                 Rtx::SceneDesc scene;
@@ -192,16 +193,16 @@ namespace Rtx::Testing
         /// **`alpha` has two writers and they mean different things.** `MWRender::TransparencyUpdater`
         /// writes it beside `actorFade` on a state set above the whole actor, which is where the
         /// distance fade, Invisibility and Chameleon all arrive. `NifOsg::AlphaController` writes it
-        /// alone, and writes the same number into the surface description as well — so a walk that
-        /// took every `alpha` it met would fade an animated surface twice. The pair is what tells
-        /// the two apart.
+        /// alone, and that one is the surface's own opacity — read into the material, and not into
+        /// the placement as well, so a walk that took every `alpha` it met would not fade an
+        /// animated surface twice. The pair is what tells the two apart.
         ///
         /// **On the placement and never on the material**, which is the half that cannot be got
         /// wrong: OpenMW's clone keeps state sets by reference, so every actor built from one body
         /// part reads one material, and a fade written there would fade all of them.
         TEST_F(RtxSceneExtractorTest, anActorsFadeRidesItsPlacementAndAModelsOwnAlphaDoesNot)
         {
-            const auto extractOne = [](float alpha, std::optional<float> actorFade) {
+            const auto extractOne = [](float alpha, std::optional<float> actorFade, float opacity) {
                 osg::ref_ptr<osg::Group> parent = new osg::Group;
                 osg::StateSet& above = *parent->getOrCreateStateSet();
                 above.addUniform(new osg::Uniform("alpha", alpha));
@@ -212,7 +213,6 @@ namespace Rtx::Testing
                 osg::StateSet& own = *quad->getOrCreateStateSet();
                 paint(own, "textures/tx_a_imperial_helmet.dds");
                 own.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
-                describe(own).mAlphaMode = Surface::AlphaMode::Blend;
                 parent->addChild(quad);
 
                 Rtx::SceneDesc scene;
@@ -224,7 +224,7 @@ namespace Rtx::Testing
 
                 // The material is asked as well, because the fade landing there instead would pass
                 // every other assertion in this test.
-                EXPECT_EQ(scene.getTables().mMaterials.getRows().front().mOpacity, 1.0f)
+                EXPECT_EQ(scene.getTables().mMaterials.getRows().front().mOpacity, opacity)
                     << "a shared material took one actor's fade";
 
                 std::vector<Rtx::InstanceRecord> records;
@@ -237,9 +237,10 @@ namespace Rtx::Testing
 
             // Halves and quarters, so the product is exact in binary and the assertion is the
             // arithmetic rather than a tolerance: this is `objects.frag`'s own `alpha * actorFade`.
-            EXPECT_EQ(extractOne(0.5f, 0.25f), 0.125f);
-            EXPECT_EQ(extractOne(1.0f, 1.0f), 1.0f) << "an actor nothing is hiding";
-            EXPECT_EQ(extractOne(0.5f, std::nullopt), 1.0f) << "a model animating its own alpha, counted once";
+            EXPECT_EQ(extractOne(0.5f, 0.25f, 1.0f), 0.125f);
+            EXPECT_EQ(extractOne(1.0f, 1.0f, 1.0f), 1.0f) << "an actor nothing is hiding";
+            EXPECT_EQ(extractOne(0.5f, std::nullopt, 0.5f), 1.0f)
+                << "a model animating its own alpha, counted once and in the material";
         }
 
         /// A placement keeps its slot while its fade changes, which is the only way a fade arrives.
@@ -298,9 +299,9 @@ namespace Rtx::Testing
                 osg::ref_ptr<osg::Geometry> quad = makeQuad();
                 osg::StateSet& state = *quad->getOrCreateStateSet();
 
-                Surface::Material& surface = describe(state);
-                surface.mEmissiveColour = Surface::Colour{ 0.5f, 0.25f, 0.0f };
-                surface.mEmissiveMult = multiplier;
+                SceneUtil::Material& surface = colours(state);
+                surface.setEmission(osg::Vec4f(0.5f, 0.25f, 0.0f, 1.0f));
+                surface.setEmissiveMultiplier(multiplier);
 
                 Rtx::SceneDesc scene;
                 SceneExtractor extractor(scene);
@@ -338,7 +339,7 @@ namespace Rtx::Testing
                     osg::Matrixf::scale(2.0f, 2.0f, 2.0f) * osg::Matrixf::translate(0.0f, 0.0f, 5.0f));
 
                 osg::ref_ptr<osg::Geometry> quad = makeQuad();
-                describe(*quad->getOrCreateStateSet()).mEmissiveColour = Surface::Colour{ 0.5f, 0.25f, 0.0f };
+                colours(*quad->getOrCreateStateSet()).setEmission(osg::Vec4f(0.5f, 0.25f, 0.0f, 1.0f));
                 root->addChild(quad);
                 if (torch)
                     root->addChild(makeLightSource(100.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f)));
@@ -359,18 +360,19 @@ namespace Rtx::Testing
             EXPECT_EQ(lit.front().mClearance, 25.0f) << "and the fitting around it a quarter";
         }
 
-        /// Two-sidedness is what the content said, not what the pipeline state happens to be.
+        /// Two-sidedness is the `GL_CULL_FACE` mode the content turned off, and one face otherwise.
         ///
-        /// **This is the fact that used to be guessed.** OpenGL culls nothing unless told to and
-        /// `NifOsg` only emitted a `CullFace` where a `NiStencilProperty` asked for one, so an
-        /// absent attribute had to be read as two-sided — which is right for a sheet of vanilla
-        /// foliage and wrong for everything under a scene root that turns culling on globally. The
-        /// description says which, and says it whether or not any state set mentions culling.
+        /// **Off and never on.** OpenGL culls nothing unless told to and the scene root turns
+        /// culling on globally, so a state set that says nothing shows one face — which is right
+        /// for everything under that root — and only a `NiStencilProperty` drawing both faces, or a
+        /// material file's flag, turns it off again.
         TEST_F(RtxSceneExtractorTest, aSurfaceIsTwoSidedWhenTheContentSaidSo)
         {
             const auto extractOne = [](bool twoSided) {
                 osg::ref_ptr<osg::Geometry> quad = makeQuad();
-                describe(*quad->getOrCreateStateSet()).mTwoSided = twoSided;
+                colours(*quad->getOrCreateStateSet());
+                if (twoSided)
+                    quad->getOrCreateStateSet()->setMode(GL_CULL_FACE, osg::StateAttribute::OFF);
 
                 Rtx::SceneDesc scene;
                 SceneExtractor extractor(scene);
@@ -404,7 +406,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, 1.0f, 0.0f),
             }));
             card->addPrimitiveSet(makeTriangles({ 0, 1, 2, 0, 2, 3, 6, 5, 4, 7, 6, 4 }));
-            describe(*card->getOrCreateStateSet());
+            colours(*card->getOrCreateStateSet());
 
             const ExtractionStats stats = walk(*card);
 
@@ -417,7 +419,7 @@ namespace Rtx::Testing
 
             // A plain quad is a quad: nothing paired, nothing dropped, not a sheet.
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
-            describe(*quad->getOrCreateStateSet());
+            colours(*quad->getOrCreateStateSet());
 
             Rtx::SceneDesc plain;
             SceneExtractor other(plain);
@@ -488,18 +490,24 @@ namespace Rtx::Testing
             EXPECT_NE(records[0].mMask, records[1].mMask);
         }
 
-        /// A controller of the shape `NifOsg` builds out of a `NiUVController`: it moves the
-        /// description's texture offset every time it is applied, and keeps everything else the
-        /// state set already says.
+        /// A controller of the shape `NifOsg` builds out of a `NiUVController`: it moves the texture
+        /// matrix every time it is applied, and keeps everything else the state set already says.
         class ScrollController : public SceneUtil::StateSetUpdater
         {
         public:
-            void setDefaults(osg::StateSet*) override {}
+            void setDefaults(osg::StateSet* stateset) override
+            {
+                SceneUtil::setupTexMatForStateSet(*stateset, 0, osg::Matrixf{});
+            }
 
             void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
             {
-                Surface::getWritableMaterial(*stateset)->mTextureOffset += osg::Vec2f(0.01f, 0.0f);
+                mOffset += 0.01f;
+                SceneUtil::setupTexMatForStateSet(*stateset, 0, osg::Matrixf::translate(mOffset, 0.0f, 0.0f));
             }
+
+        private:
+            float mOffset = 0.0f;
         };
 
         /// A mesh records the material it arrived wearing, and a hundred crates wear it once.
@@ -513,7 +521,6 @@ namespace Rtx::Testing
             osg::StateSet& state = *quad->getOrCreateStateSet();
             paint(state, "textures/tx_leaves.dds");
             state.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
-            describe(state).mAlphaMode = Surface::AlphaMode::Blend;
 
             osg::ref_ptr<osg::Group> root = new osg::Group;
             for (const float x : { 0.0f, 10.0f })
@@ -546,7 +553,6 @@ namespace Rtx::Testing
             osg::StateSet& state = *node->getOrCreateStateSet();
             paint(state, "textures/tx_banner.dds");
             state.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
-            describe(state).mAlphaMode = Surface::AlphaMode::Blend;
 
             osgUtil::UpdateVisitor update;
             update.setTraversalNumber(1);

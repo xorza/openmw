@@ -39,6 +39,7 @@ endif()
 
 if (OPENMW_RTX)
     set(RTX_TEST_FILES
+        ${CMAKE_SOURCE_DIR}/apps/components_tests/fallbackseed.cpp
         mwrender/readworld.cpp
         mwrender/worldmirror.cpp
     )

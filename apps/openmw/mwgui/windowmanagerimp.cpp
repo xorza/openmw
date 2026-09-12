@@ -6,8 +6,7 @@
 #include <filesystem>
 #include <thread>
 
-#include <osg/Camera>
-#include <osg/FrameStamp>
+#include <osgViewer/Viewer>
 
 #include <MyGUI_ClipboardManager.h>
 #include <MyGUI_FactoryManager.h>
@@ -304,7 +303,8 @@ namespace MWGui
         MyGUI::ClipboardManager::getInstance().eventClipboardRequested
             += MyGUI::newDelegate(this, &WindowManager::onClipboardRequested);
 
-        mVideoWrapper = std::make_unique<SDLUtil::VideoWrapper>(window);
+        // No viewer: the one thing it is for, the vertical sync, is asked of the renderer instead.
+        mVideoWrapper = std::make_unique<SDLUtil::VideoWrapper>(window, nullptr);
         mVideoWrapper->setGammaContrast(Settings::video().mGamma, Settings::video().mContrast);
 
         mStatsWatcher = std::make_unique<StatsWatcher>();
@@ -509,8 +509,6 @@ namespace MWGui
         mWindows.push_back(std::move(debugWindow));
         trackWindow(mDebugWindow, makeDebugWindowSettingValues());
 
-        // Built whatever the renderer turns out to be: nothing in it reaches for a shader chain
-        // until it is opened, and `togglePostProcessorHud` is what decides whether it can be.
         auto postProcessorHud = std::make_unique<PostProcessorHud>(mCfgMgr);
         mPostProcessorHud = postProcessorHud.get();
         mWindows.push_back(std::move(postProcessorHud));
@@ -1322,7 +1320,7 @@ namespace MWGui
 
         Settings::Manager::resetPendingChanges(filter);
 
-        MyGUI::RenderManager::getInstance().setViewSize(x, y);
+        mGuiPlatform->getRenderManagerPtr()->setViewSize(x, y);
 
         // scaled size
         const MyGUI::IntSize& viewSize = MyGUI::RenderManager::getInstance().getViewSize();

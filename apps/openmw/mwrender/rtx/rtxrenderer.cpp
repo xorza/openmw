@@ -22,6 +22,7 @@
 #include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/Stats>
+#include <osg/Texture2D>
 #include <osg/Timer>
 
 #include <components/debug/debuglog.hpp>
@@ -47,7 +48,6 @@
 #include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
-#include <components/surface/material.hpp>
 #include <components/terrain/chunkmanager.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -161,11 +161,6 @@ namespace MWRender
             mSession = std::make_unique<Session>(*spec.mRtx->mSession, spec.mRtx->mInto);
         else if (std::optional<Rtx::SessionRequest> setting = readSessionSetting())
             mSession = std::make_unique<Session>(std::move(*setting), nullptr);
-
-        // **Before any content is read, because it decides what reading one records.** This is the
-        // only renderer that asks what the content says a surface is, and the answer is stored on
-        // every state set as it is built — so nothing else in the process pays for it.
-        Surface::describeSurfaces(true);
 
         createWindow(spec.mResourceDir, mSession != nullptr && mSession->isHeadless());
 
@@ -289,6 +284,9 @@ namespace MWRender
         // Before the renderer, because a write still on the queue holds an image of a frame this
         // owns the memory for.
         mCapture.stop();
+
+        // Its slot is in the renderer's table, so it goes back before the table does.
+        mFrozenFrameTexture.reset();
 
         mRenderer.reset();
 
@@ -652,21 +650,27 @@ namespace MWRender
         const osg::ref_ptr<osg::Image> taken = Rtx::frameImage(
             frame, static_cast<int>(frame.mWidth), static_cast<int>(frame.mHeight), Rtx::RowOrder::BottomFirst);
 
+        if (mFrozenFrame == nullptr)
+            mFrozenFrame = new osg::Texture2D;
+
         // A full readback, which a load screen is exactly the moment to afford.
         if (taken != nullptr)
-            mFrozenFrame.set(*taken);
+            mFrozenFrame->setImage(taken);
 
-        if (mFrozenFrame.getTexture() == nullptr)
+        if (mFrozenFrame->getImage() == nullptr)
         {
             // Nothing has been presented yet, which is the very first load. Black is what a fade
             // from nothing looks like, and it is the honest picture of a world that is not there.
             osg::ref_ptr<osg::Image> black = new osg::Image;
             black->allocateImage(1, 1, 1, GL_RGB, GL_UNSIGNED_BYTE);
             std::memset(black->data(), 0, black->getTotalSizeInBytes());
-            mFrozenFrame.set(*black);
+            mFrozenFrame->setImage(black);
         }
 
-        return *mFrozenFrame.getTexture();
+        if (mFrozenFrameTexture == nullptr)
+            mFrozenFrameTexture = mGui->shareTexture(*mFrozenFrame);
+
+        return *mFrozenFrameTexture;
     }
 
     std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(osg::Group& guiRoot,

@@ -146,7 +146,7 @@ add_component_dir (sceneutil
     )
 
 add_component_dir (surface
-    alphamode colour material vertexcolour
+    alphamode colour describe material vertexcolour
     )
 
 add_component_dir (nif
@@ -359,7 +359,7 @@ add_component_dir (loadinglistener
 
 add_component_dir (myguiplatform
     myguirendermanager myguidatamanager myguiplatform myguitexture myguiloglistener additivelayer scalinglayer
-    guirendermanager picture pixels regiontexture
+    guirendermanager pixels
     )
 
 add_component_dir (widgets

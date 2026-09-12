@@ -139,14 +139,12 @@ namespace MWGui
 
             MyGUI::ImageBox* mMapWidget;
             MyGUI::ImageBox* mFogWidget;
-
             /// The local map's, not this entry's: a segment owns its picture for as long as the
             /// cell is loaded, and the widget is only shown it.
             MyGUI::ITexture* mMapTexture = nullptr;
-            MyGUI::ITexture* mFogTexture = nullptr;
+            std::unique_ptr<MyGUI::ITexture> mFogTexture;
 
-            /// Whether this entry has already asked for a fog texture and been told there is none.
-            /// Without it the answer would be asked for, and acted on, every frame.
+            /// Whether this entry has already asked for a fog texture, and been told there is none.
             bool mFogAsked = false;
             int mCellX;
             int mCellY;
@@ -311,8 +309,8 @@ namespace MWGui
         MyGUI::Widget* createMarker(const std::string& name, float x, float y, float agregatedWeight);
 
         MyGUI::ScrollView* mGlobalMap;
-        MyGUI::ITexture* mGlobalMapTexture = nullptr;
-        MyGUI::ITexture* mGlobalMapOverlayTexture = nullptr;
+        std::unique_ptr<MyGUI::ITexture> mGlobalMapTexture;
+        std::unique_ptr<MyGUI::ITexture> mGlobalMapOverlayTexture;
 
         /// Cells the player has walked into whose picture has not come back off the device yet.
         /// Drained every frame; never more than a handful long, because a cell is only entered so

@@ -43,10 +43,12 @@ namespace MyGUIPlatform
     /// a virtual call and a `Vec4f` per pixel, which is worth not paying for the case that is most
     /// of them.
     ///
-    /// **Neutral, despite where it lives**, for the same reason `Picture` is: nothing here says
-    /// what draws. Both backends widen images for MyGUI, and only one of them used to do it the
-    /// quick way.
+    /// **Neutral, despite where it lives**: nothing here says what draws, and both backends widen
+    /// images for MyGUI.
     void writeRgba(const osg::Image& image, std::uint8_t* into);
+
+    /// The same for `count` rows from `firstRow`, into `count * image.s()` pixels at `into`.
+    void writeRgbaRows(const osg::Image& image, int firstRow, int count, std::uint8_t* into);
 
     /// One texel of `image` at `u`, `v`, filtered the way a sampler set to `GL_LINEAR` and
     /// `GL_CLAMP_TO_EDGE` filters one, into `out` as four bytes.

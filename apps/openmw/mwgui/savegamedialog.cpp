@@ -20,6 +20,7 @@
 #include <components/misc/strings/format.hpp>
 #include <components/misc/strings/lower.hpp>
 #include <components/misc/timeconvert.hpp>
+#include <components/myguiplatform/guirendermanager.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -38,7 +39,6 @@ namespace MWGui
 {
     SaveGameDialog::SaveGameDialog()
         : WindowModal("openmw_savegame_dialog.layout")
-        , mScreenshotPicture("save screenshot")
         , mSaving(true)
         , mCurrentCharacter(nullptr)
         , mCurrentSlot(nullptr)
@@ -482,6 +482,7 @@ namespace MWGui
         mInfoText->setCaptionWithReplacing(text.str());
 
         // Reset the image for the case we're unable to recover a screenshot
+        mScreenshotTexture.reset();
         mScreenshot->setRenderItemTexture(nullptr);
         // The widget is Y-down, the screenshot is Y-up, so this UV is inverted
         mScreenshot->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
@@ -512,8 +513,18 @@ namespace MWGui
             return;
         }
 
-        mScreenshotPicture.set(*result.getImage());
-        mScreenshot->setRenderItemTexture(mScreenshotPicture.getTexture());
+        osg::ref_ptr<osg::Texture2D> texture(new osg::Texture2D);
+        texture->setImage(result.getImage());
+        texture->setInternalFormat(GL_RGB);
+        texture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+        texture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+        texture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
+        texture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
+        texture->setResizeNonPowerOfTwoHint(false);
+        texture->setUnRefImageDataAfterApply(true);
+
+        mScreenshotTexture = MyGUIPlatform::shareTexture(*texture);
+        mScreenshot->setRenderItemTexture(mScreenshotTexture.get());
     }
 
     ControllerButtons* SaveGameDialog::getControllerButtons()

@@ -38,6 +38,11 @@ namespace Resource
     class ResourceSystem;
 }
 
+namespace osgViewer
+{
+    class Viewer;
+}
+
 namespace ESM
 {
     struct Cell;
@@ -91,6 +96,7 @@ namespace MWRender
     class IntersectionVisitorWithIgnoreList;
 
     class EffectManager;
+    class ScreenshotManager;
     class FogManager;
     class SkyManager;
     class NpcAnimation;

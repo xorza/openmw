@@ -7,6 +7,18 @@
 
 #include <components/vfs/pathutil.hpp>
 
+namespace osgViewer
+{
+    class Viewer;
+}
+namespace osg
+{
+    class Group;
+}
+namespace Resource
+{
+    class ImageManager;
+}
 namespace MyGUI
 {
     class LogManager;
@@ -23,11 +35,8 @@ namespace MyGUIPlatform
     class DataManager;
     class LogFacility;
 
-    /// MyGUI's log, its data manager, and whichever backend draws it.
-    ///
-    /// **One of these for every renderer.** Two of the three are the same whatever draws — a log
-    /// file and a reader that goes through the VFS — so the only thing a backend brings is the
-    /// render manager, and it brings it already made.
+    /// MyGUI's log, its data manager, and whichever backend draws it, which the caller brings
+    /// already made.
     class Platform
     {
     public:
@@ -37,6 +46,8 @@ namespace MyGUIPlatform
         ~Platform();
 
         void shutdown();
+
+        GuiRenderManager* getRenderManagerPtr();
 
         DataManager* getDataManagerPtr();
 

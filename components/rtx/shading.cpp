@@ -6,17 +6,18 @@
 #include <osg/StateSet>
 #include <osg/Uniform>
 
+#include <components/surface/describe.hpp>
 #include <components/surface/material.hpp>
 
 namespace Rtx
 {
-    const Surface::Material* findDescription(std::span<const Shading> shading)
+    bool describeSurface(std::span<const Shading> shading, Surface::Material& material)
     {
-        for (auto it = shading.rbegin(); it != shading.rend(); ++it)
-            if (const Surface::Material* found = Surface::getMaterial(*it->mStateSet))
-                return found;
+        bool said = false;
+        for (const Shading& link : shading)
+            said = Surface::describe(*link.mStateSet, material) || said;
 
-        return nullptr;
+        return said;
     }
 
     bool addsLight(std::span<const Shading> shading)

@@ -2,19 +2,15 @@
 #define GAME_RENDER_GLOBALMAP_H
 
 #include <cstdint>
+#include <map>
+#include <string>
 #include <vector>
 
 #include <osg/ref_ptr>
 
-#include <components/myguiplatform/picture.hpp>
-
-namespace MyGUI
-{
-    class ITexture;
-}
-
 namespace osg
 {
+    class Texture2D;
     class Image;
 }
 
@@ -34,25 +30,13 @@ namespace MWRender
     class CreateMapWorkItem;
 
     /// The world map: the land painted from its own heightmap, and over it the pieces of it the
-    /// player has walked.
-    ///
-    /// **All of it is in main memory and none of it is rendered.** The overlay is composed out of
-    /// local map tiles, which is what it always was; the render-to-texture it used to go through
-    /// existed to do one downscale on the device, and paid for that with a camera per cell, a
-    /// shader, a second copy of the image and a read back to keep the two in step.
-    ///
-    /// **The downscale is the device's own, worked out here.** `sampleBilinear` is what a sampler
-    /// set to `GL_LINEAR` does, four texels of a fourteen-fold reduction and aliasing included, so
-    /// the map is the map the game has always shown. What moved is where the work happens, not what
-    /// a player sees.
+    /// player has walked, composited in main memory. `sampleBilinear` is what a sampler set to
+    /// `GL_LINEAR` does, so the map is the map the render-to-texture used to draw.
     class GlobalMap
     {
     public:
-        explicit GlobalMap(SceneUtil::WorkQueue* workQueue);
+        GlobalMap(SceneUtil::WorkQueue* workQueue);
         ~GlobalMap();
-
-        GlobalMap(const GlobalMap&) = delete;
-        GlobalMap& operator=(const GlobalMap&) = delete;
 
         void render();
 
@@ -74,8 +58,8 @@ namespace MWRender
         void write(ESM::GlobalMap& map);
         void read(ESM::GlobalMap& map);
 
-        MyGUI::ITexture& getBaseTexture();
-        MyGUI::ITexture& getOverlayTexture();
+        osg::ref_ptr<osg::Texture2D> getBaseTexture();
+        osg::ref_ptr<osg::Texture2D> getOverlayTexture();
 
         void ensureLoaded();
 
@@ -84,31 +68,28 @@ namespace MWRender
     private:
         struct WritePng;
 
+        osg::ref_ptr<osg::Texture2D> mBaseTexture;
+
+        // Where the land is above water: what stops an explored tile painting its cell's sea over the map's own
+        osg::ref_ptr<osg::Image> mAlphaImage;
+
+        // GPU copy of overlay, drawn from the image below; osg::Image::dirty() is what sends a change up
+        osg::ref_ptr<osg::Texture2D> mOverlayTexture;
+
+        // CPU copy of overlay
+        osg::ref_ptr<osg::Image> mOverlayImage;
+
+        // One cell's worth of composited pixels, kept so painting one allocates nothing
+        std::vector<std::uint8_t> mCellScratch;
+
         osg::ref_ptr<SceneUtil::WorkQueue> mWorkQueue;
         osg::ref_ptr<CreateMapWorkItem> mWorkItem;
         osg::ref_ptr<WritePng> mWritePng;
 
-        /// Where the land is above water. What stops an explored tile from painting its cell's sea
-        /// over the map's own; the land itself goes straight into a texture and is not kept.
-        osg::ref_ptr<osg::Image> mAlphaImage;
+        int mWidth;
+        int mHeight;
 
-        /// What the player has walked, and the only copy of it: this is what is saved.
-        osg::ref_ptr<osg::Image> mOverlayImage;
-
-        /// The two pictures the GUI shows, which is what `MyGUIPlatform::Picture` is for: making
-        /// the texture, keeping it while its shape holds, and writing part of it where the backend
-        /// can take part of one.
-        MyGUIPlatform::Picture mBase{ "global map" };
-        MyGUIPlatform::Picture mOverlay{ "global map overlay" };
-
-        /// One cell's worth of composited pixels, kept so that painting one allocates nothing and
-        /// so that a repaint that changes nothing can be recognised before the upload.
-        std::vector<std::uint8_t> mCellScratch;
-
-        int mWidth = 0;
-        int mHeight = 0;
-
-        int mMinX = 0, mMaxX = 0, mMinY = 0, mMaxY = 0;
+        int mMinX, mMaxX, mMinY, mMaxY;
     };
 
 }

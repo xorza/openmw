@@ -482,7 +482,9 @@ namespace Debug
         }
         catch (const std::exception& e)
         {
-            if (wantsFatalDialog())
+#if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))
+            if (!isatty(fileno(stdin)))
+#endif
                 SDL_ShowSimpleMessageBox(0, (std::string(appName) + ": Fatal error").c_str(), e.what(), nullptr);
 
             Log(Debug::Error) << "Fatal error: " << e.what();

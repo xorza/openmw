@@ -60,6 +60,13 @@ namespace MWWorld
         InteriorDay = 2
     };
 
+    /// The day's shape and the four-point interpolation over it, lifted to `components/sky/` so the
+    /// ray tracer can light an hour without the game. The names stay as upstream spells them.
+    using WeatherSetting = Sky::WeatherSetting;
+    using TimeOfDaySettings = Sky::TimeOfDaySettings;
+    template <typename T>
+    using TimeOfDayInterpolator = Sky::TimeOfDayInterpolator<T>;
+
     /// Defines a single weather setting (according to INI)
     class Weather
     {
@@ -75,16 +82,16 @@ namespace MWWorld
         std::string mCloudTexture;
 
         // Sky (atmosphere) color
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mSkyColor;
+        TimeOfDayInterpolator<osg::Vec4f> mSkyColor;
         // Fog color
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mFogColor;
+        TimeOfDayInterpolator<osg::Vec4f> mFogColor;
         // Ambient lighting color
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mAmbientColor;
+        TimeOfDayInterpolator<osg::Vec4f> mAmbientColor;
         // Sun (directional) lighting color
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mSunColor;
+        TimeOfDayInterpolator<osg::Vec4f> mSunColor;
 
         // Fog depth/density
-        Sky::TimeOfDayInterpolator<float> mLandFogDepth;
+        TimeOfDayInterpolator<float> mLandFogDepth;
 
         // Color modulation for the sun itself during sunset
         osg::Vec4f mSunDiscSunsetColor;
@@ -313,16 +320,16 @@ namespace MWWorld
         float mSunsetDuration;
         float mSunPreSunsetTime;
 
-        Sky::TimeOfDaySettings mTimeSettings;
+        TimeOfDaySettings mTimeSettings;
 
         // fading of night skydome
-        Sky::TimeOfDayInterpolator<float> mNightFade;
+        TimeOfDayInterpolator<float> mNightFade;
 
         float mHoursBetweenWeatherChanges;
         float mRainSpeed;
 
         // underwater fog not really related to weather, but we handle it here because it's convenient
-        Sky::TimeOfDayInterpolator<float> mUnderwaterFog;
+        TimeOfDayInterpolator<float> mUnderwaterFog;
 
         std::vector<Weather> mWeatherSettings;
         MoonModel mMasser;

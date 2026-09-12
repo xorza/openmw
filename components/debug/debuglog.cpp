@@ -10,24 +10,6 @@ static std::mutex sLock;
 Debug::Level Log::sMinDebugLevel = Debug::All;
 bool Log::sWriteLevel = false;
 
-namespace
-{
-    bool sFatalDialogs = true;
-}
-
-namespace Debug
-{
-    void setFatalDialogs(const bool allowed)
-    {
-        sFatalDialogs = allowed;
-    }
-
-    bool wantsFatalDialog()
-    {
-        return sFatalDialogs;
-    }
-}
-
 Log::Log(Debug::Level level)
     : mShouldLog(level <= sMinDebugLevel)
 {

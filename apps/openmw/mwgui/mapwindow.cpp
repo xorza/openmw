@@ -16,6 +16,7 @@
 
 #include <components/esm3/esmwriter.hpp>
 #include <components/esm3/globalmap.hpp>
+#include <components/myguiplatform/guirendermanager.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -245,7 +246,7 @@ namespace MWGui
             for (auto& entry : mMaps)
             {
                 entry.mFogWidget->setImageTexture({});
-                entry.mFogTexture = nullptr;
+                entry.mFogTexture.reset();
                 entry.mFogAsked = false;
             }
         }
@@ -464,7 +465,7 @@ namespace MWGui
             entry.mMapWidget->setRenderItemTexture(nullptr);
             entry.mFogWidget->setRenderItemTexture(nullptr);
             entry.mMapTexture = nullptr;
-            entry.mFogTexture = nullptr;
+            entry.mFogTexture.reset();
             entry.mFogAsked = false;
         };
 
@@ -640,17 +641,16 @@ namespace MWGui
             if (!entry.mFogAsked && mFogOfWarToggled && mFogOfWarEnabled)
             {
                 entry.mFogAsked = true;
-
-                if (MyGUI::ITexture* fog = mLocalMapRender->getFogOfWarTexture(entry.mCellX, entry.mCellY))
+                osg::ref_ptr<osg::Texture2D> tex = mLocalMapRender->getFogOfWarTexture(entry.mCellX, entry.mCellY);
+                if (tex)
                 {
-                    entry.mFogTexture = fog;
-                    entry.mFogWidget->setRenderItemTexture(fog);
+                    entry.mFogTexture = MyGUIPlatform::shareTexture(*tex);
+                    entry.mFogWidget->setRenderItemTexture(entry.mFogTexture.get());
                     // For inexplicable historical reasons the fog texture is Y-down so this UV is *not* inverted
                     entry.mFogWidget->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
                 }
                 else
                     entry.mFogWidget->setImageTexture("black");
-
                 needRedraw = true;
                 // Newly uncovered chunk, make sure to draw door markers right away instead of waiting for a cell
                 // transition
@@ -1338,17 +1338,17 @@ namespace MWGui
 
     void MapWindow::ensureGlobalMapLoaded()
     {
-        if (mGlobalMapTexture == nullptr)
+        if (!mGlobalMapTexture.get())
         {
             // The generated unexplored map and explored map RTT images are Y-up so the UVs are inverted
             // The unexplored map isn't saved so we *could* consider generating it the "right" way
             // but mixing conventions for map images could make things confusing
-            mGlobalMapTexture = &mGlobalMapRender->getBaseTexture();
-            mGlobalMapImage->setRenderItemTexture(mGlobalMapTexture);
+            mGlobalMapTexture = MyGUIPlatform::shareTexture(*mGlobalMapRender->getBaseTexture());
+            mGlobalMapImage->setRenderItemTexture(mGlobalMapTexture.get());
             mGlobalMapImage->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
-            mGlobalMapOverlayTexture = &mGlobalMapRender->getOverlayTexture();
-            mGlobalMapOverlay->setRenderItemTexture(mGlobalMapOverlayTexture);
+            mGlobalMapOverlayTexture = MyGUIPlatform::shareTexture(*mGlobalMapRender->getOverlayTexture());
+            mGlobalMapOverlay->setRenderItemTexture(mGlobalMapOverlayTexture.get());
             mGlobalMapOverlay->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
             // Redraw children in proper order

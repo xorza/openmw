@@ -1,26 +1,23 @@
 #include "globalmap.hpp"
 
-#include <algorithm>
-#include <cassert>
 #include <cstring>
-#include <stdexcept>
 
 #include <osg/Image>
+#include <osg/Texture2D>
 
-#include <osgDB/ReaderWriter>
-#include <osgDB/Registry>
+#include <osgDB/WriteFile>
 
-#include <MyGUI_ITexture.h>
-#include <MyGUI_RenderManager.h>
+#include <components/files/memorystream.hpp>
+#include <components/settings/values.hpp>
 
 #include <components/debug/debuglog.hpp>
-#include <components/files/memorystream.hpp>
-#include <components/misc/constants.hpp>
+
 #include <components/myguiplatform/pixels.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
+
 #include <components/sceneutil/workqueue.hpp>
-#include <components/settings/values.hpp>
+
 #include <components/vfs/pathutil.hpp>
 
 #include <components/esm3/globalmap.hpp>
@@ -71,24 +68,6 @@ namespace
 
         return converted;
     }
-
-    struct Box
-    {
-        int mLeft, mTop, mRight, mBottom;
-
-        Box(int left, int top, int right, int bottom)
-            : mLeft(left)
-            , mTop(top)
-            , mRight(right)
-            , mBottom(bottom)
-        {
-        }
-
-        bool operator==(const Box& other) const
-        {
-            return mLeft == other.mLeft && mTop == other.mTop && mRight == other.mRight && mBottom == other.mBottom;
-        }
-    };
 }
 
 namespace MWRender
@@ -113,8 +92,8 @@ namespace MWRender
 
         void doWork() override
         {
-            mBaseImage = new osg::Image;
-            mBaseImage->allocateImage(mWidth, mHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+            image->allocateImage(mWidth, mHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
 
             mAlphaImage = new osg::Image;
             mAlphaImage->allocateImage(mWidth, mHeight, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
@@ -143,7 +122,8 @@ namespace MWRender
                             // Use getColor to handle all pixel format conversions automatically
                             osg::Vec4 color = mColorLut->getColor(lutIndex, 0);
 
-                            mBaseImage->setColor(color, texelX, texelY);
+                            // Use setColor to write to output images
+                            image->setColor(color, texelX, texelY);
 
                             // Below the water line there is nothing an explored tile should be
                             // allowed to paint over.
@@ -153,11 +133,31 @@ namespace MWRender
                 }
             }
 
+            mBaseTexture = new osg::Texture2D;
+            mBaseTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+            mBaseTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+            mBaseTexture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
+            mBaseTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
+            mBaseTexture->setImage(image);
+            mBaseTexture->setResizeNonPowerOfTwoHint(false);
+
             mOverlayImage = new osg::Image;
             mOverlayImage->allocateImage(mWidth, mHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE);
             assert(mOverlayImage->isDataContiguous());
 
             memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
+
+            mOverlayTexture = new osg::Texture2D;
+            mOverlayTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+            mOverlayTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+            mOverlayTexture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
+            mOverlayTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
+            mOverlayTexture->setResizeNonPowerOfTwoHint(false);
+            mOverlayTexture->setInternalFormat(GL_RGBA);
+            // The image is the picture and is kept: what is drawn is what the game has painted, and
+            // `osg::Image::dirty` is what sends a change up.
+            mOverlayTexture->setImage(mOverlayImage);
+            mOverlayTexture->setUnRefImageDataAfterApply(false);
         }
 
         int mWidth, mHeight;
@@ -166,26 +166,34 @@ namespace MWRender
         const MWWorld::Store<ESM::Land>& mLandStore;
         osg::ref_ptr<osg::Image> mColorLut;
 
-        osg::ref_ptr<osg::Image> mBaseImage;
+        osg::ref_ptr<osg::Texture2D> mBaseTexture;
         osg::ref_ptr<osg::Image> mAlphaImage;
+
         osg::ref_ptr<osg::Image> mOverlayImage;
+        osg::ref_ptr<osg::Texture2D> mOverlayTexture;
     };
 
-    struct GlobalMap::WritePng : public SceneUtil::WorkItem
+    struct GlobalMap::WritePng final : public SceneUtil::WorkItem
     {
+        osg::ref_ptr<const osg::Image> mOverlayImage;
+        std::vector<char> mImageData;
+
         explicit WritePng(osg::ref_ptr<const osg::Image> overlayImage)
             : mOverlayImage(std::move(overlayImage))
         {
         }
 
         void doWork() override { mImageData = writePng(*mOverlayImage); }
-
-        osg::ref_ptr<const osg::Image> mOverlayImage;
-        std::vector<char> mImageData;
     };
 
     GlobalMap::GlobalMap(SceneUtil::WorkQueue* workQueue)
         : mWorkQueue(workQueue)
+        , mWidth(0)
+        , mHeight(0)
+        , mMinX(0)
+        , mMaxX(0)
+        , mMinY(0)
+        , mMaxY(0)
     {
     }
 
@@ -295,10 +303,9 @@ namespace MWRender
             std::memcpy(mOverlayImage->data(originX, originY + y),
                 mCellScratch.data() + static_cast<std::size_t>(y) * cellSize * 4, cellSize * 4);
 
-        // **The cell and not the overlay.** Eighteen pixels square against two megabytes, on the
-        // frame a cell arrives. A backend that cannot take a rectangle still gets the whole image,
-        // which is what this did unconditionally.
-        mOverlay.setRegion(*mOverlayImage, originX, originY, cellSize, cellSize);
+        // The whole image goes up on a change, since `osg::Image` has no way to say which part;
+        // once per cell ever visited. A backend that mirrors the image sends the rows that differ.
+        mOverlayImage->dirty();
         return true;
     }
 
@@ -306,9 +313,8 @@ namespace MWRender
     {
         ensureLoaded();
 
-        std::memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
-
-        mOverlay.set(*mOverlayImage);
+        memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
+        mOverlayImage->dirty();
     }
 
     void GlobalMap::write(ESM::GlobalMap& map)
@@ -330,6 +336,23 @@ namespace MWRender
 
         map.mImageData = writePng(*mOverlayImage);
     }
+
+    struct Box
+    {
+        int mLeft, mTop, mRight, mBottom;
+
+        Box(int left, int top, int right, int bottom)
+            : mLeft(left)
+            , mTop(top)
+            , mRight(right)
+            , mBottom(bottom)
+        {
+        }
+        bool operator==(const Box& other) const
+        {
+            return mLeft == other.mLeft && mTop == other.mTop && mRight == other.mRight && mBottom == other.mBottom;
+        }
+    };
 
     void GlobalMap::read(ESM::GlobalMap& map)
     {
@@ -401,6 +424,7 @@ namespace MWRender
         if (srcBox == destBox && imageWidth == mWidth && imageHeight == mHeight)
         {
             mOverlayImage = image;
+            mOverlayTexture->setImage(mOverlayImage);
         }
         else
         {
@@ -408,7 +432,7 @@ namespace MWRender
             const int srcHeight = srcBox.mBottom - srcBox.mTop;
             const int destHeight = destBox.mBottom - destBox.mTop;
 
-            std::memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
+            memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
 
             MyGUIPlatform::resampleRegion(*image,
                 MyGUIPlatform::Rect{
@@ -416,37 +440,35 @@ namespace MWRender
                 *mOverlayImage,
                 MyGUIPlatform::Rect{
                     destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
+            mOverlayImage->dirty();
         }
-
-        mOverlay.set(*mOverlayImage);
     }
 
-    MyGUI::ITexture& GlobalMap::getBaseTexture()
+    osg::ref_ptr<osg::Texture2D> GlobalMap::getBaseTexture()
     {
         ensureLoaded();
-        return *mBase.getTexture();
+        return mBaseTexture;
     }
 
-    MyGUI::ITexture& GlobalMap::getOverlayTexture()
+    osg::ref_ptr<osg::Texture2D> GlobalMap::getOverlayTexture()
     {
         ensureLoaded();
-        return *mOverlay.getTexture();
+        return mOverlayTexture;
     }
 
     void GlobalMap::ensureLoaded()
     {
-        if (!mWorkItem)
-            return;
+        if (mWorkItem)
+        {
+            mWorkItem->waitTillDone();
 
-        mWorkItem->waitTillDone();
+            mOverlayImage = mWorkItem->mOverlayImage;
+            mBaseTexture = mWorkItem->mBaseTexture;
+            mAlphaImage = mWorkItem->mAlphaImage;
+            mOverlayTexture = mWorkItem->mOverlayTexture;
 
-        const osg::ref_ptr<osg::Image> base = mWorkItem->mBaseImage;
-        mAlphaImage = mWorkItem->mAlphaImage;
-        mOverlayImage = mWorkItem->mOverlayImage;
-        mWorkItem = nullptr;
-
-        mBase.set(*base);
-        mOverlay.set(*mOverlayImage);
+            mWorkItem = nullptr;
+        }
     }
 
     void GlobalMap::asyncWritePng()

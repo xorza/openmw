@@ -30,7 +30,6 @@
 #include <components/sceneutil/util.hpp>
 #include <components/settings/settings.hpp>
 #include <components/stereo/stereomanager.hpp>
-#include <components/surface/material.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "removedalphafunc.hpp"
@@ -261,23 +260,6 @@ namespace Shader
             return name == "normalHeightMap";
     }
 
-    /// Records a map this visitor found by filename in the description the loader authored.
-    ///
-    /// **Only where there already is one.** This augments a description; it does not invent one. A
-    /// state set the content pipeline never described — the sky, the water, the GUI — would
-    /// otherwise end up with a material naming a normal map and nothing else, which is worse than
-    /// saying nothing.
-    ///
-    /// **Written through the state set being modified**, which is the one this visitor may have
-    /// cloned a moment ago. Reading from the state set it was cloned *from* would be right once and
-    /// wrong twice: a surface that gets both an automatic normal map and an automatic specular one
-    /// would have the second call overwrite what the first recorded.
-    void describeDiscovered(osg::StateSet& stateSet, Surface::TextureRole role, osg::Texture2D* texture)
-    {
-        if (Surface::Material* material = Surface::getWritableMaterial(stateSet))
-            material->setTexture(role, texture);
-    }
-
     void ShaderVisitor::applyStateSet(osg::ref_ptr<osg::StateSet> stateset, osg::Node& node)
     {
         osg::StateSet* writableStateSet = nullptr;
@@ -394,8 +376,6 @@ namespace Shader
                     writableStateSet->setTextureAttribute(unit,
                         new SceneUtil::TextureType(normalHeight ? "normalHeightMap" : "normalMap"),
                         osg::StateAttribute::ON);
-                    describeDiscovered(*writableStateSet,
-                        normalHeight ? Surface::TextureRole::NormalHeight : Surface::TextureRole::Normal, normalMapTex);
                     mRequirements.back().mTextures[unit] = "normalMap";
                     mRequirements.back().mTexStageRequiringTangents = unit;
                     mRequirements.back().mNormalHeight = normalHeight;
@@ -440,7 +420,6 @@ namespace Shader
                     writableStateSet->setTextureAttribute(unit, specularMapTex, osg::StateAttribute::ON);
                     writableStateSet->setTextureAttribute(
                         unit, new SceneUtil::TextureType("specularMap"), osg::StateAttribute::ON);
-                    describeDiscovered(*writableStateSet, Surface::TextureRole::Specular, specularMapTex);
                     mRequirements.back().mTextures[unit] = "specularMap";
                 }
             }

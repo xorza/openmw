@@ -62,7 +62,7 @@ namespace MWRender
             ? room->mLight
             : Rtx::makeSkylight(Rtx::SkyReading{
                 .mSunPosition = discAt,
-                .mSunShare = world.mSunDiscColour.a(),
+                .mSunShare = world.mSunShare,
 
                 // **The deck keeps the sun after the ground has lost it**, and the hour is what says how
                 // much of it is left — `Rtx::sunShareAloft`. The ground's own share arrives from the

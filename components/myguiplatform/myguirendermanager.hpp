@@ -15,6 +15,11 @@ namespace Shader
     class ShaderManager;
 }
 
+namespace osgViewer
+{
+    class Viewer;
+}
+
 namespace osg
 {
     class Group;
@@ -31,13 +36,10 @@ namespace MyGUIPlatform
 
     class RenderManager : public GuiRenderManager, public MyGUI::IRenderTarget
     {
+        osg::ref_ptr<osgViewer::Viewer> mViewer;
         osg::ref_ptr<osg::Group> mSceneRoot;
         osg::ref_ptr<Drawable> mDrawable;
         Resource::ImageManager* mImageManager;
-
-        /// The viewport the eye had when this was made. `initialise` is what applies it, and
-        /// every resize after that arrives through `setViewSize`.
-        MyGUI::IntSize mInitialViewSize;
 
         MyGUI::IntSize mViewSize;
         bool mUpdate;
@@ -52,15 +54,14 @@ namespace MyGUIPlatform
 
         float mInvScalingFactor;
 
-        /// `SRC_ALPHA, ONE`, made once and handed to every batch while `setAdditiveBlend` is on.
+        osg::StateSet* mInjectState;
+
+        /// `SRC_ALPHA, ONE`, made once and injected while `setAdditiveBlend` is on.
         osg::ref_ptr<osg::StateSet> mAdditiveState;
-        bool mAdditive = false;
 
     public:
-        /// @param eye only for the viewport the GUI is first sized to. Every resize after that
-        ///        arrives through `setViewSize`, so nothing here holds it.
-        RenderManager(
-            const osg::Camera& eye, osg::Group* sceneroot, Resource::ImageManager* imageManager, float scalingFactor);
+        RenderManager(osgViewer::Viewer* viewer, osg::Group* sceneroot, Resource::ImageManager* imageManager,
+            float scalingFactor);
         virtual ~RenderManager();
 
         void initialise() override;
@@ -107,6 +108,10 @@ namespace MyGUIPlatform
         void end() override;
         /** @see IRenderTarget::doRender */
         void doRender(MyGUI::IVertexBuffer* buffer, MyGUI::ITexture* texture, size_t count) override;
+
+        /** specify a StateSet to inject for rendering. The StateSet will be used by future doRender calls until you
+         * reset it to nullptr again. */
+        void setInjectState(osg::StateSet* stateSet);
 
         void setAdditiveBlend(bool additive) override;
 

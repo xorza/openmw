@@ -30,7 +30,6 @@ namespace Rtx::Testing
             state.setAttributeAndModes(new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA,
                                            additive ? osg::BlendFunc::ONE : osg::BlendFunc::ONE_MINUS_SRC_ALPHA),
                 osg::StateAttribute::ON);
-            describe(state).mAlphaMode = Surface::AlphaMode::Blend;
 
             plume.mParticles = new osgParticle::ParticleSystem;
             plume.mParticles->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);

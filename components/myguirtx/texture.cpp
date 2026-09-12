@@ -2,10 +2,12 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 #include <stdexcept>
 #include <utility>
 
 #include <osg/Image>
+#include <osg/Texture2D>
 
 #include <components/debug/debuglog.hpp>
 #include <components/myguiplatform/pixels.hpp>
@@ -40,6 +42,17 @@ namespace MyGUIRtx
         , mRenderer(renderer)
         , mImageManager(imageManager)
     {
+    }
+
+    Texture::Texture(Rtx::GuiSurface& renderer, osg::Texture2D& source)
+        : mRenderer(renderer)
+        , mImageManager(nullptr)
+        , mFormat(MyGUI::PixelFormat::R8G8B8A8)
+        , mUsage(MyGUI::TextureUsage::Static)
+        , mNumElemBytes(4)
+        , mSource(&source)
+    {
+        refresh();
     }
 
     Texture::~Texture()
@@ -174,15 +187,67 @@ namespace MyGUIRtx
         mRenderer.sendGuiTexture(mSlot);
     }
 
-    void Texture::writeRegion(
-        std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height, std::span<const std::uint8_t> rows)
+    void Texture::refresh()
     {
-        assert(mNumElemBytes == 4 && "a region write into a texture the GUI asked for fewer channels of");
-        assert(x + width <= static_cast<std::uint32_t>(mWidth) && y + height <= static_cast<std::uint32_t>(mHeight)
-            && "a region past the edge of the texture");
-        assert(rows.size() == std::size_t{ width } * height * 4 && "the region's own rows, tightly packed");
+        if (mSource == nullptr)
+            return;
 
-        mRenderer.writeGuiTexture(mSlot, Rtx::GuiRegion{ x, y, width, height }, rows);
+        const osg::Image* const image = mSource->getImage();
+        if (image == nullptr || image->s() <= 0 || image->t() <= 0)
+            return;
+
+        if (image == mSeen && image->getModifiedCount() == mSeenCount)
+            return;
+
+        // A picture of another shape is another slot: the table sizes a slot once.
+        if (mSlot.isNone() || image->s() != mWidth || image->t() != mHeight)
+        {
+            if (!mSlot.isNone())
+                mRenderer.dropGuiTexture(mSlot);
+
+            mWidth = image->s();
+            mHeight = image->t();
+            mSlot = mRenderer.addGuiTexture(static_cast<std::uint32_t>(mWidth), static_cast<std::uint32_t>(mHeight));
+            mLastSent.clear();
+        }
+
+        // The run of rows that differ from what was sent, against the image's own bytes rather
+        // than the widened ones: the comparison is over the picture as the game wrote it, and
+        // widening is paid for the rows that go. The same image with a moved count is the fog of
+        // war or the world map, written in a corner; another image under the texture is a video
+        // frame, and goes whole.
+        const std::size_t rowBytes = image->getRowSizeInBytes();
+        const std::size_t total = rowBytes * static_cast<std::size_t>(mHeight);
+        int first = 0;
+        int last = mHeight - 1;
+        if (image == mSeen && image->isDataContiguous() && mLastSent.size() == total)
+        {
+            while (
+                first <= last && std::memcmp(image->data(0, first), mLastSent.data() + rowBytes * first, rowBytes) == 0)
+                ++first;
+            while (last > first && std::memcmp(image->data(0, last), mLastSent.data() + rowBytes * last, rowBytes) == 0)
+                --last;
+        }
+
+        mSeen = image;
+        mSeenCount = image->getModifiedCount();
+
+        if (first > last)
+            return;
+
+        const std::uint32_t count = static_cast<std::uint32_t>(last - first + 1);
+        const Rtx::GuiRegion rows{ 0, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(mWidth), count };
+        MyGUIPlatform::writeRgbaRows(
+            *image, first, static_cast<int>(count), mRenderer.lendGuiTexture(mSlot, rows).data());
+        mRenderer.sendGuiTexture(mSlot);
+
+        if (image->isDataContiguous())
+        {
+            mLastSent.resize(total);
+            std::memcpy(mLastSent.data() + rowBytes * first, image->data(0, first), rowBytes * count);
+        }
+        else
+            mLastSent.clear();
     }
 
     Rtx::GuiRegion Texture::whole() const

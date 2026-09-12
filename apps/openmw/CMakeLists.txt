@@ -23,11 +23,11 @@ add_openmw_dir (mwrender
     bulletdebugdraw globalmap characterpreview camera localmap terrainstorage
     renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectstorage groundcover
     actorutil animationpriority bonegroup blendmask animblendcontroller stage renderer windowsetup
-    screenshotwriter
+    screenshotwriter describeworld
     )
 
-# The OpenGL renderer. A link boundary rather than a naming convention: what is in here is the
-# picture as OpenSceneGraph draws it, and nothing above `mwrender` reaches into it.
+# The OpenGL renderer: the picture as OpenSceneGraph draws it. The same library as `mwrender`,
+# so the directory is a convention and not a link boundary.
 add_openmw_dir (mwrender/gl
     glrenderer gloffscreenview postprocessor sky skyutil water ripples ripplesimulation precipitationocclusion
     transparentpass distortion pingpongcanvas pingpongcull luminancecalculator screenshotmanager

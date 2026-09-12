@@ -427,11 +427,6 @@ static void crash_catcher(int signum, siginfo_t* siginfo, void* /*context*/)
         kill(crash_info.pid, SIGKILL);
     }
 
-    // The harness turns these off: a box is a click between a developer and the next run, and in a
-    // loop it is the loop stopping dead. The game leaves them on, which is upstream's behaviour.
-    if (!Debug::wantsFatalDialog())
-        exit(0);
-
     // delay between killing of the crashed process and showing the message box to
     // work around occasional X server lock-up. this can only be a bug in X11 since
     // even faulty applications shouldn't be able to freeze the X server.

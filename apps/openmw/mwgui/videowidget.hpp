@@ -5,8 +5,6 @@
 
 #include <MyGUI_Widget.h>
 
-#include <components/myguiplatform/picture.hpp>
-
 namespace Video
 {
     class VideoPlayer;
@@ -63,11 +61,7 @@ namespace MWGui
 
     private:
         const VFS::Manager* mVFS;
-
-        /// The decoder's own texture, where the backend draws from one. Null where it cannot, and
-        /// `mPicture` then carries the frame instead.
-        std::unique_ptr<MyGUI::ITexture> mShared;
-        MyGUIPlatform::Picture mPicture;
+        std::unique_ptr<MyGUI::ITexture> mTexture;
         std::unique_ptr<Video::VideoPlayer> mPlayer;
     };
 

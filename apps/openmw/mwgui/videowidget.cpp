@@ -4,7 +4,6 @@
 
 #include <MyGUI_RenderManager.h>
 
-#include <osg/Image>
 #include <osg/Texture2D>
 
 #include <components/debug/debuglog.hpp>
@@ -18,7 +17,6 @@ namespace MWGui
 
     VideoWidget::VideoWidget()
         : mVFS(nullptr)
-        , mPicture("video frame")
     {
         mPlayer = std::make_unique<Video::VideoPlayer>();
         setNeedKeyFocus(true);
@@ -52,21 +50,9 @@ namespace MWGui
         if (!texture)
             return;
 
-        // **Drawn where it lies where the backend can draw it.** The decoder owns this texture and
-        // swaps the image under it as each frame is settled, so a backend that reads it needs
-        // telling once and nothing after that. One that cannot see it at all is handed the pixels,
-        // here and again every frame.
-        mShared
-            = static_cast<MyGUIPlatform::GuiRenderManager&>(MyGUI::RenderManager::getInstance()).shareTexture(*texture);
+        mTexture = MyGUIPlatform::shareTexture(*texture);
 
-        if (mShared)
-            setRenderItemTexture(mShared.get());
-        else
-        {
-            mPicture.set(*texture->getImage());
-            setRenderItemTexture(mPicture.getTexture());
-        }
-
+        setRenderItemTexture(mTexture.get());
         // Both the widget and the video frame are Y-down, so this UV is not inverted
         getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
     }
@@ -89,26 +75,11 @@ namespace MWGui
     void VideoWidget::commitFrame()
     {
         mPlayer->commitFrame();
-
-        if (mShared)
-            return;
-
-        // **A whole frame back up to the device, every frame.** MyGUI's texture interface has no
-        // way to hand over pixels other than all of them, and no way to reuse the buffer it lends
-        // out. A video is a few minutes of a game that is otherwise doing nothing, so this is the
-        // right side of that trade — but it is the reason nothing else should be drawn this way.
-        const osg::ref_ptr<osg::Texture2D> texture = mPlayer->getVideoTexture();
-        if (texture && texture->getImage() != nullptr)
-            mPicture.set(*texture->getImage());
     }
 
     void VideoWidget::stop()
     {
         mPlayer->close();
-
-        // The decoder's texture goes with the decoder's state, and this wrapper points at it.
-        setRenderItemTexture(nullptr);
-        mShared.reset();
     }
 
     void VideoWidget::pause()

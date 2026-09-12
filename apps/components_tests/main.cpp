@@ -1,14 +1,10 @@
 #include <components/debug/debugging.hpp>
-#include <components/fallback/fallback.hpp>
 #include <components/misc/strings/conversion.hpp>
 #include <components/settings/parser.hpp>
 #include <components/settings/values.hpp>
-#include <components/surface/material.hpp>
 #include <components/testing/util.hpp>
 
 #include <gtest/gtest.h>
-
-#include "fallbackseed.hpp"
 
 #include <filesystem>
 
@@ -27,14 +23,6 @@ int main(int argc, char** argv)
     Settings::Manager::mUserSettings = Settings::Manager::mDefaultSettings;
 
     Settings::StaticValues::init();
-
-    // This binary is a host that reads what the content says a surface is, and a host decides that
-    // once before anything is loaded.
-    Surface::describeSurfaces(true);
-
-    // **Before any test runs, because `Fallback::Map::init` keeps whichever value arrives first.**
-    // `fallbackSeed` says what that buys and what it costs.
-    Fallback::Map::init(TestingOpenMW::fallbackSeed());
 
     testing::InitGoogleTest(&argc, argv);
 

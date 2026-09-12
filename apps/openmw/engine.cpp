@@ -8,7 +8,6 @@
 #include <SDL.h>
 
 #include <osg/Version>
-#include <osg/ref_ptr>
 
 #include <components/debug/debuglog.hpp>
 

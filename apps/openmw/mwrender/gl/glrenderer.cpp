@@ -665,8 +665,7 @@ namespace MWRender
         Resource::ImageManager& images, Shader::ShaderManager& shaders, const VFS::Manager& vfs, float scalingFactor,
         VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
     {
-        auto manager
-            = std::make_unique<MyGUIPlatform::RenderManager>(mStage.getCamera(), &guiRoot, &images, scalingFactor);
+        auto manager = std::make_unique<MyGUIPlatform::RenderManager>(mViewer, &guiRoot, &images, scalingFactor);
         MyGUIPlatform::RenderManager& gui = *manager;
 
         auto platform = std::make_unique<MyGUIPlatform::Platform>(std::move(manager), &vfs, resourcePath, logPath);

@@ -97,11 +97,16 @@ namespace MWRender
         /// with it turns blue through every dawn and dusk. This is the game's own disc colour:
         /// white until the sun starts down, then the weather's sunset tint.
         ///
-        /// **And the alpha is the whole of "is there a sun".** It is nought all night and at the two
-        /// hours the sun is level with the horizon, ramping across dawn and dusk, and it is what a
-        /// ray tracer scales its *sunlight* by rather than only its disc: one that scaled the disc
-        /// alone had shadows swinging across a dark sky.
+        /// **The alpha is the game's disc transparency and not "is there a sun"**: it ramps across
+        /// dawn and dusk and sits at one all night with the disc hidden. `mSunShare` is the answer to
+        /// the other question.
         osg::Vec4f mSunDiscColour{ 1.0f, 1.0f, 1.0f, 0.0f };
+
+        /// How much of the sun is over the horizon, nought to one — `Sky::sunShareAt` at
+        /// `mGameHour`. Nought all night and at the two hours the sun is level with the horizon,
+        /// ramping across dawn and dusk. What a ray tracer scales its *sunlight* by rather than only
+        /// its disc: one that scaled the disc alone had shadows swinging across a dark sky.
+        float mSunShare = 0.0f;
 
         /// How much of the sun this weather lets through, which dims a disc under an overcast but
         /// says nothing about whether there is one. It is also what keeps the stars in behind one.
@@ -192,10 +197,9 @@ namespace MWRender
         /// and turns its sunlight into a directional light at a position of its choosing. A
         /// renderer that lights the room itself reads what the content files state.
         ///
-        /// **Written by `configureAmbient` when a room is entered and masked by `mLocation` in
-        /// `describeWorld`**, because nothing writes it when the player steps back out: the game
-        /// configures a room's ambient and nothing else's. A quasi-exterior has none — it has
-        /// weather, so its light is the weather's. `mFogDensity` repeats `mFogDepth` indoors.
+        /// **Read off the cell the player stands in, by `describeWorld`, and only in an
+        /// `Interior`.** A quasi-exterior has none — it has weather, so its light is the weather's.
+        /// `mFogDensity` repeats `mFogDepth` indoors.
         std::optional<ESM::Cell::AMBIstruct> mRoom;
 
         /// What `updateAmbient` added to the ambient for the Night-Eye effect, in the file's space:

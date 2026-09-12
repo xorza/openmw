@@ -9,7 +9,7 @@
 #include <MyGUI_RenderManager.h>
 #include <osg/Image>
 
-#include <components/myguiplatform/picture.hpp>
+#include <components/myguiplatform/guirendermanager.hpp>
 #include <components/myguirtx/texture.hpp>
 
 #include "raymask.hpp"

@@ -47,10 +47,12 @@
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightutil.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
+#include <components/sceneutil/texturetype.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/surface/material.hpp>
 
@@ -74,26 +76,32 @@ namespace Rtx::Testing
         return triangles;
     }
 
-    /// The description on a state set, created empty where nothing has authored one yet.
+    /// The material attribute on a state set, made where nothing has set one yet.
     ///
-    /// Every fixture here stands in for something `NifOsg` or `Terrain` built, and those author
-    /// a `Surface::Material` for everything they build — so a fixture that binds a texture or
-    /// sets a colour and describes neither is testing a state the content path cannot produce.
-    inline Surface::Material& describe(osg::StateSet& state)
+    /// Every fixture here stands in for something `NifOsg` built, and a walk reads what that built
+    /// off the state set — so a colour a test wants read goes on the attribute the loader would
+    /// have put it on.
+    inline SceneUtil::Material& colours(osg::StateSet& state)
     {
-        if (Surface::getMaterial(state) == nullptr)
-            Surface::setMaterial(state, Surface::Material{});
+        auto* material = dynamic_cast<SceneUtil::Material*>(state.getAttribute(osg::StateAttribute::MATERIAL));
+        if (material == nullptr)
+        {
+            material = new SceneUtil::Material;
+            state.setAttribute(material, osg::StateAttribute::ON);
+        }
 
-        return *Surface::getWritableMaterial(state);
+        return *material;
     }
 
-    /// Binds a texture the way a loader does: the unit for the OpenGL renderer's shaders, and
-    /// the role for everyone else.
+    /// Binds a texture the way a loader does: on the next free unit, with the type beside it that
+    /// names its role.
     inline void paint(
         osg::StateSet& state, osg::Image& image, Surface::TextureRole role = Surface::TextureRole::Diffuse)
     {
-        state.setTextureAttributeAndModes(0, new osg::Texture2D(&image), osg::StateAttribute::ON);
-        describe(state).setTexture(role, &image);
+        const unsigned int unit = static_cast<unsigned int>(state.getTextureAttributeList().size());
+        state.setTextureAttributeAndModes(unit, new osg::Texture2D(&image), osg::StateAttribute::ON);
+        state.setTextureAttribute(
+            unit, new SceneUtil::TextureType(std::string(Surface::textureRoleName(role))), osg::StateAttribute::ON);
     }
 
     /// The same for a texture that is nothing but a name, which is all a walk reads of most of
@@ -229,8 +237,7 @@ namespace Rtx::Testing
 
         void setDefaults(osg::StateSet* stateset) override
         {
-            stateset->setAttribute(new osg::Material, osg::StateAttribute::ON);
-            Surface::setMaterial(*stateset, Surface::Material{});
+            stateset->setAttribute(new SceneUtil::Material, osg::StateAttribute::ON);
 
             if (mDiffuse != nullptr)
                 paint(*stateset, *mDiffuse);
@@ -238,10 +245,7 @@ namespace Rtx::Testing
 
         void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
         {
-            const osg::Vec4f colour(mRed, 0.0f, 0.0f, 1.0f);
-            auto* colours = static_cast<osg::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
-            colours->setDiffuse(osg::Material::FRONT_AND_BACK, colour);
-            Surface::getWritableMaterial(*stateset)->mDiffuseColour = Surface::Colour{ mRed, 0.0f, 0.0f };
+            colours(*stateset).setDiffuse(osg::Vec4f(mRed, 0.0f, 0.0f, 1.0f));
         }
     };
 

@@ -8,6 +8,8 @@
 #include <osg/Node>
 #include <osg/ref_ptr>
 
+#include <components/surface/material.hpp>
+
 #include "alphaimage.hpp"
 #include "index.hpp"
 #include "mirroridentity.hpp"
@@ -24,11 +26,6 @@ namespace osg
 namespace SceneUtil
 {
     class StateSetUpdater;
-}
-
-namespace Surface
-{
-    struct Material;
 }
 
 namespace Rtx
@@ -49,8 +46,8 @@ namespace Rtx
         /// the chain was empty, which is a drawable that wears nothing.
         const osg::StateSet* mKey = nullptr;
 
-        /// What the content said, or null where nothing did.
-        const Surface::Material* mDescribed = nullptr;
+        /// What the content said, or nothing where nothing did.
+        std::optional<Surface::Material> mDescribed;
 
         /// Whether the diffuse map's alpha ever reaches solid — decided by the reader for the one
         /// kind of surface the answer changes, a translucent one, and left unset for every other.

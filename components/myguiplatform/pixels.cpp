@@ -89,15 +89,23 @@ namespace MyGUIPlatform
 
     void writeRgba(const osg::Image& image, std::uint8_t* into)
     {
-        const std::size_t count = static_cast<std::size_t>(image.s()) * image.t();
+        writeRgbaRows(image, 0, image.t(), into);
+    }
 
-        if (directFormat(image) == MyGUI::PixelFormat::R8G8B8A8 && image.getTotalSizeInBytes() == count * 4)
+    void writeRgbaRows(const osg::Image& image, const int firstRow, const int count, std::uint8_t* into)
+    {
+        assert(firstRow >= 0 && count >= 0 && firstRow + count <= image.t());
+
+        const std::size_t pixels = static_cast<std::size_t>(image.s()) * count;
+
+        if (directFormat(image) == MyGUI::PixelFormat::R8G8B8A8
+            && image.getTotalSizeInBytes() == static_cast<std::size_t>(image.s()) * image.t() * 4)
         {
-            std::memcpy(into, image.data(), count * 4);
+            std::memcpy(into, image.data(0, firstRow), pixels * 4);
             return;
         }
 
-        for (int y = 0; y < image.t(); ++y)
+        for (int y = firstRow; y < firstRow + count; ++y)
             for (int x = 0; x < image.s(); ++x, into += 4)
             {
                 const osg::Vec4f colour = image.getColor(x, y);
