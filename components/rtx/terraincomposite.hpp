@@ -59,8 +59,8 @@ namespace Rtx
     /// **DecodedLevel up front rather than a block per tap.** The level a bake reads is the one whose
     /// texels are the size of one composite texel, so for ground tiling sixty times across a chunk
     /// it is a handful of texels square — while the composite takes a quarter of a million samples
-    /// from it. Reading a compressed block at every tap made a chunk cost 56 ms; reading each level
-    /// once makes every tap an array lookup and changes not one texel of the answer.
+    /// from it. Reading a compressed block at every tap doubles what a chunk costs; reading each
+    /// level once makes every tap an array lookup and changes not one texel of the answer.
     struct DecodedLevel
     {
         std::vector<osg::Vec3f> mTexels;
@@ -138,18 +138,16 @@ namespace Rtx
     /// divided out, is weighted by its mask and only then re-encoded — the same order the shader
     /// reaches at a hit, and the reason a half-and-half blend comes out at 188 rather than 128.
     ///
-    /// **Whole, and never on the frame.** A chunk costs **27 ms** to flatten — measured over three
-    /// runs of the island route at 280-odd chunks each, nine ground types apiece against a mask 34
-    /// across — and that is a dropped frame however good the average is. Sliced sixteen rows a
-    /// frame it was a millisecond or two on every frame for twenty seconds after a load instead,
-    /// which is the other way of being on the frame. So `CompositeQueue` builds one on a thread of
-    /// its own and hands the frame the bytes; nothing here is shaped for stopping part way, and the
-    /// spans a caller passes are read inside the constructor and never again.
+    /// **Whole, and never on the frame.** A chunk takes tens of milliseconds to flatten — nine
+    /// ground types apiece against a mask 34 across — and that is a dropped frame however good the
+    /// average is. Sliced across frames it is a cost on every frame for seconds after a load
+    /// instead, which is the other way of being on the frame. So `CompositeQueue` builds one on a
+    /// thread of its own and hands the frame the bytes; nothing here is shaped for stopping part
+    /// way, and the spans a caller passes are read inside the constructor and never again.
     ///
-    /// Two changes made it that, each a measured halving: decoding every level once instead of a
-    /// compressed block at every tap, and then walking the stack a layer and a row at a time rather
-    /// than a texel at a time, which took it from 53 ms. What is left is a quarter of a million
-    /// output texels, each summing the ground types whose masks reach it.
+    /// Every level is decoded once rather than a compressed block at every tap, and the stack is
+    /// walked a layer and a row at a time rather than a texel at a time. What is left is a quarter
+    /// of a million output texels, each summing the ground types whose masks reach it.
     class TerrainComposite
     {
     public:

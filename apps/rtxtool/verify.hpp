@@ -13,16 +13,14 @@ namespace RtxTool
     /// What two renderings of one view came to.
     ///
     /// **A magnitude and not a verdict.** "Worst 2 of 255 on 5% of the pixels" is a rounding
-    /// difference and "worst 37 on 20%" is a bug, and a bare *differs* — which is all this fork had
-    /// — cost a day of bisection that reached the wrong answer twice.
+    /// difference and "worst 37 on 20%" is a bug, and a bare *differs* is a bisection that reaches
+    /// the wrong answer.
     ///
-    /// **"Worst 25 on four hundredths of a per cent", the same pixels every time, in one run of
-    /// several, was the driver and not this tree — and it is pinned now.** Addamasartus flipped
-    /// between two pictures nine hundred pixels apart with everything handed to the device hashing
-    /// the same, and Arkngthand moved 13% of its albedo by one of 255. That was the driver's second
-    /// compile of the trace pipeline, made on its own thread seconds after the first, fusing the
-    /// primary ray's sum into different multiply-adds; `rayAt` says the rest and is `precise` for it.
-    /// A run now draws one picture, and a difference this reports is a change.
+    /// **A small worst on a few pixels, the same pixels every time, in one run of several, is the
+    /// driver and not this tree — and it is pinned.** The driver's second compile of the trace
+    /// pipeline, made on its own thread seconds after the first, fuses the primary ray's sum into
+    /// different multiply-adds; `rayAt` says the rest and is `precise` for it. A run draws one
+    /// picture, and a difference this reports is a change.
     struct FrameDifference
     {
         /// The two are not the same size, so there is nothing to subtract. Also what a missing or

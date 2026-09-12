@@ -44,8 +44,8 @@
 # differing pictures means, and what to hold still to read one.
 #
 # **Naming the columns that moved is the point of the table.** "The scene differs on 64 frames" is
-# where a bisection used to start, and every step of it cost a rebuild and a run for one reading.
-# The columns answer it from the two files a single pair already wrote.
+# where a bisection starts, and every step of one costs a rebuild and a run for one reading. The
+# columns answer it from the two files a single pair already wrote.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

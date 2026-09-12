@@ -91,10 +91,9 @@ namespace Rtx
         const VkRayTracingPipelineCreateInfoKHR pipeline{
             .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
             // **Asked for and, on this driver, not answered.** NVIDIA reports one executable for
-            // every compute pipeline in this renderer and none at all for a ray tracing one, so the
-            // register count the trace was read at as a dispatch is a number this device no longer
-            // gives — `Device::reportPipeline` is where that shows. The flag stays because it costs
-            // the frame nothing and is what makes the report appear the day a driver answers.
+            // every compute pipeline in this renderer and none at all for a ray tracing one —
+            // `Device::reportPipeline` is where that shows. The flag stays because it costs the
+            // frame nothing and is what makes the report appear the day a driver answers.
             .flags = VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR,
             .stageCount = static_cast<std::uint32_t>(stages.size()),
             .pStages = stages.data(),

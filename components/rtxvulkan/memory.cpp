@@ -17,8 +17,8 @@ namespace Rtx
         /// The smallest block a pool starts with, and the largest it grows one to.
         ///
         /// **A pool doubles until it reaches the ceiling.** A pool that stands two kilobytes should
-        /// not reserve the whole ceiling for them, and a pool that stands a cell's textures — 62 MiB
-        /// at Seyda Neen, measured — should reach them in a handful of calls rather than in dozens.
+        /// not reserve the whole ceiling for them, and a pool that stands a cell's textures — tens
+        /// of megabytes — should reach them in a handful of calls rather than in dozens.
         /// Doubling from the floor is what answers both: 8, 16, 32, then 64 for ever after.
         constexpr VkDeviceSize sSmallestBlock = 8 * 1024 * 1024;
         constexpr VkDeviceSize sLargestBlock = 64 * 1024 * 1024;

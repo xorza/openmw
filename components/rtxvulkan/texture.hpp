@@ -70,8 +70,7 @@ namespace Rtx
     /// What a texture array stands: how many of its slots hold a texture, and what those come to.
     ///
     /// **One walk for both, so the two cannot disagree about which slots they counted.** A length
-    /// and a sum over what is live are different questions, and a report answering one of each is
-    /// what `SceneStats::mTextureCount` says this replaced.
+    /// and a sum over what is live are different questions — `SceneStats::mTextureCount` says why.
     struct TexturesHeld
     {
         std::uint32_t mCount = 0;
@@ -90,9 +89,9 @@ namespace Rtx
     /// it brought, and without it the arrival would need a set made and buried for itself.
     ///
     /// **The maps are an array and not a buffer**, because a map is a grid the texture unit filters:
-    /// one fetch where a shader reading one out of a buffer paid four loads and the wrap by hand,
-    /// half the memory, and no table to rewrite whole when it grows. Measured, the loads cost
-    /// nothing the trace can see, so this is the shape and not a saving. And an array of their own
+    /// one fetch where a shader reading one out of a buffer pays four loads and the wrap by hand,
+    /// half the memory, and no table to rewrite whole when it grows. The loads cost nothing the
+    /// trace can see, so this is the shape and not a saving. And an array of their own
     /// rather than slots among the textures, for the reason `texturearray.glsl` gives.
     class TextureArray
     {
@@ -119,8 +118,8 @@ namespace Rtx
         ///
         /// **This is why the set is allocated at the maximum rather than at the scene's count.**
         /// A cell arriving, or an actor walking into view with a body texture nobody has worn yet,
-        /// used to mean the whole array made again — 327 images re-uploaded, measured at 150 to 225
-        /// milliseconds, against 12 for every acceleration structure in the scene.
+        /// would otherwise mean the whole array made again — hundreds of images re-uploaded, an
+        /// order of magnitude over every acceleration structure in the scene.
         ///
         /// **By slot and not by appending**, because a slot a departing cell freed is taken over
         /// wherever it sits. A slot at the end grows the array; one inside it replaces what was

@@ -47,7 +47,7 @@ namespace Rtx
     /// stands the real objects. What a frame does is adopt at most one prepared cell and move the
     /// placements of the cells that crossed a boundary.
     ///
-    /// **Three objects, because it was three things.** This is the policy: which cells are wanted,
+    /// **Three objects, because it is three things.** This is the policy: which cells are wanted,
     /// asked for, waited on and adopted. `CellHolds` is the bookkeeping of the models and images the
     /// reader lent and the holds their adoption took. `CellPlacer` is what stands and by what rule.
     ///
@@ -103,8 +103,8 @@ namespace Rtx
         /// whether or not the walk had to wait for it.
         ///
         /// **One cell a frame either way.** Waiting for the whole band and then adopting all of it
-        /// would put a region's arrivals on one frame — about ten frames' worth of walk on the
-        /// island route — and a route that crosses nineteen times would pay it nineteen times.
+        /// would put a region's arrivals on one frame — many frames' worth of walk — at every
+        /// crossing of a route.
         ///
         /// `CompositeQueue::setSettled` is the same rule for the ground's composites.
         void setSettled(bool settled);

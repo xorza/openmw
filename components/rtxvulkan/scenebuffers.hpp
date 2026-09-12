@@ -55,11 +55,10 @@ namespace Rtx
         /// Rewrites what a moving world changes, leaving what it is made of alone.
         ///
         /// **The split is the whole point of this class having two entry points.** Rebuilding all of
-        /// it per frame was the largest single cost in the renderer — measured at twenty to
-        /// twenty-seven milliseconds on a nine-by-nine region — and almost none of it had changed:
-        /// the texture coordinates and the mesh table are what the scene is made of and only an
-        /// arrival can alter them, and the materials, the layers and the masks change by the row
-        /// and the run, which is what the scene reports and what `shade` writes.
+        /// it per frame is tens of milliseconds on a nine-by-nine region, and almost none of it has
+        /// changed: the texture coordinates and the mesh table are what the scene is made of and
+        /// only an arrival can alter them, and the materials, the layers and the masks change by
+        /// the row and the run, which is what the scene reports and what `shade` writes.
         ///
         /// What does change is where things are and what is lit. Those live in memory the host
         /// writes straight into, so this is a `memcpy` and not a staging buffer, a copy command, a

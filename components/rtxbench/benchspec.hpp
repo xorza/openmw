@@ -50,9 +50,9 @@ namespace Rtx
     ///     10s:2s          the same, after two seconds warming up
     ///     10s:2s@12000    and fly forwards at 12000 units a second while measuring
     ///
-    /// **One parser, because the two hosts used to have two.** The harness took `--seconds`,
-    /// `--warmup`, `--frames` and a route's speed as four options and the game took this string, so
-    /// a run asked for in one could not be repeated in the other without translating it by hand.
+    /// **One parser for both hosts.** Four options in the harness against this string in the game
+    /// is a run asked for in one that cannot be repeated in the other without translating it by
+    /// hand.
     struct BenchSpec
     {
         BenchSpan mRun;

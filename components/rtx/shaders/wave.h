@@ -11,10 +11,9 @@
 //
 // **A sum of plane waves is quasi-periodic, and curvature is where that shows.** The second
 // derivative weights a component by `A k²`, so the shortest few own it however the spectrum falls —
-// and a handful of plane waves crossing is a lattice, which is what a seabed drew. Measured over
-// the sixty-four-component table this replaces, the shortest band carried 40% of the curvature in
-// four directions. No allocation of sixty-four fixes that: the fix is thousands of components,
-// which is a transform.
+// and a handful of plane waves crossing is a lattice, which is what a seabed draws under one. No
+// allocation of sixty-four components fixes that: the fix is thousands of components, which is a
+// transform.
 //
 // **And it is the cheaper of the two.** A tile costs three texture fetches where the sum was
 // sixty-four sines, and the surface is read twice per water pixel — once for the normal and once for
@@ -42,8 +41,8 @@ namespace Rtx::Shaders
     ///
     /// **Two, and the reason is the tile rather than the band.** Morrowind's sea spans a factor of
     /// thirty-two in wavelength where one grid of this size spans five hundred, so splitting the
-    /// spectrum between tiles leaves every grid nearly empty — measured at fifty-six live entries
-    /// of sixteen thousand when it was tried. Both tiles carry the *whole* spectrum instead, at
+    /// spectrum between tiles leaves every grid nearly empty. Both tiles carry the *whole* spectrum
+    /// instead, at
     /// half its variance each: two independent fields of half the energy sum to one field of the
     /// full energy and the same spectrum, and their periods do not divide into one another, so the
     /// sum repeats only at a common multiple nothing looks across.

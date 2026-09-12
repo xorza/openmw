@@ -62,16 +62,14 @@ namespace Rtx
         /// **A lamp is never bare.** Morrowind's lights hang inside lanterns, sit in sconces and
         /// stand in holders, and the shadow ray this buys has to leave from somewhere on the flame
         /// without ending inside the cage around it. Aimed across the flame and stopped at the flame,
-        /// half the rays a wall sends end among that fitting and come back fully shadowed — which
-        /// took the whole lamp off those pixels and drew a black speckle over every lamp-lit surface
-        /// in the game.
+        /// half the rays a wall sends end among that fitting and come back fully shadowed, which
+        /// takes the whole lamp off those pixels and draws a black speckle over every lamp-lit
+        /// surface in the game.
         ///
-        /// Measured on the lantern above Seyda Neen's docks and in Balmora's mages guild, as the
-        /// share of a lit wall that reads far darker than its neighbours: one flame of clearance
-        /// leaves 6.6 % and 4.2 %, two leave 2.6 % and 2.4 %, three leave 1.5 % and 2.1 %, and four
-        /// leave 1.2 % and 1.8 % — which is where the black speckle is gone and only the ordinary
-        /// grain of one sample a pixel is left. The guild is brighter at every step, because what
-        /// the clearance stops charging the lamp for is its own fitting.
+        /// Four flames of clearance is where that speckle is gone and only the ordinary grain of one
+        /// sample a pixel is left, read as the share of a lit wall that is far darker than its
+        /// neighbours; a lit room is brighter at every step, because what the clearance stops
+        /// charging the lamp for is its own fitting.
         ///
         /// **What it costs is stated rather than hidden**: a real occluder standing closer than a
         /// quarter of a lamp's recorded radius stops casting a shadow from it. That is sixteen units

@@ -75,8 +75,8 @@ namespace Rtx
 
     /// **The frame the sequence stands on, and no step.** The frame's walk runs a flipbook's clock
     /// and then walks the frame it settled on; a template's clock is nobody's to run, so what a
-    /// distant fire shows is the frame its file was authored to open on — which is what the paging
-    /// this replaces showed of it too.
+    /// distant fire shows is the frame its file was authored to open on, which is what the
+    /// rasterizer's paging shows of it too.
     void TemplateWalk::descend(osg::Node& node)
     {
         descendInWorld(node, mKinds.of(node), *this, [](osg::Sequence&) {});

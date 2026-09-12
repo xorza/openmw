@@ -28,9 +28,7 @@ namespace Rtx::Shaders
     /// The wavelet's edge tests compare world positions reconstructed from the guide's distance, and
     /// a position reconstructed from a ray that differs from the one that was shaded — by the
     /// jitter, by the projection, by half a pixel — is not the position of the surface it is
-    /// filtering. The two used to be two copies of one derivation, and this struct is the evidence
-    /// that they were: every field here was in `AtrousConstants` already, copied across from
-    /// `VisibilityConstants` a frame at a time.
+    /// filtering. Two copies of one derivation, a frame at a time, is how the two come to differ.
     struct Camera
     {
         /// `mRight` and `mUp` are already scaled by the half-extents of the image plane at unit
@@ -133,9 +131,8 @@ RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
     // **The sum is written out rather than hoisted into a shared term, and that is not an
     // oversight.** Floating-point addition does not associate: `f + (a - b)` and `(f + a) - b`
     // differ in the last place, and a direction that differs in the last place is a hit a texel
-    // over once it has been carried thirty thousand units. The two copies of this derivation had
-    // already drifted that way — the trace summed left to right and the wavelet hoisted, so the
-    // positions the filter reconstructed were never quite the ones that were shaded. This is the
+    // over once it has been carried thirty thousand units — a trace that sums left to right and a
+    // wavelet that hoists never reconstruct quite the positions that were shaded. This is the
     // trace's association, because the trace is what everything else is judged against.
     //
     // **And `precise`, because the driver compiles the trace twice.** Once when the pipeline is
@@ -163,7 +160,7 @@ struct Cone
 /// **A pinhole's starts at a point and widens; a parallel projection's does neither.** Under one, a
 /// ray's cone is one pixel of the box wide for the whole of its length, and `mSpreadAngle` is
 /// nought — so a caller that reached for the angle instead would read every texture at level zero
-/// and reject every filter tap but its own, which is what a map tile used to do. Said once here
+/// and reject every filter tap but its own, which is a map tile drawn wrong. Said once here
 /// because the trace and the wavelet both ask, and a rule two shaders each state is a rule they can
 /// each get wrong.
 RTX_SHADER Cone coneAt(Camera camera)

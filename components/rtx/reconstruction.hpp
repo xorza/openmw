@@ -12,10 +12,10 @@ namespace Rtx
 {
     /// What put a frame's indirect light back together.
     ///
-    /// **Three states and not two flags**, because the two the renderer used to derive were not
-    /// independent: an upscaler denoises for itself, so asking for the wavelet as well was a
-    /// contradiction that resolved silently. A frame is reconstructed by one of these or by none of
-    /// them, and which one is a thing a run can be asked.
+    /// **Three states and not two flags**, because two flags are not independent: an upscaler
+    /// denoises for itself, so asking for the wavelet as well is a contradiction that resolves
+    /// silently. A frame is reconstructed by one of these or by none of them, and which one is a
+    /// thing a run can be asked.
     enum class Denoiser
     {
         /// The raw bounce, as the trace wrote it. What a converged reference is built from, because
@@ -87,7 +87,7 @@ namespace Rtx
 
     /// What the upscaler is built with, decided once per set of targets.
     ///
-    /// **One struct, because the two are one decision and were held apart in five places.** The
+    /// **One struct, because the two are one decision.** The
     /// mode says whether an upscaler runs and at what ratio; the preset says which network it runs.
     /// Neither changes per frame — a feature is created per resolution with both — so they travel
     /// together from the profile to the renderer's options to the renderer itself, and a frame
@@ -120,11 +120,11 @@ namespace Rtx
 
     /// What actually reconstructs a frame, worked out once from what was asked of it.
     ///
-    /// **The rule lived in two expressions in the middle of the frame path and answered nobody.**
+    /// **A rule in two expressions in the middle of the frame path answers nobody.**
     /// `filtering = mFilter && !upscaling` and `jitter = mJitter || upscaling` are correct and are
-    /// invisible: two command-line switches meant nothing unless a third was set a particular way,
-    /// and no run said which of the two denoisers had produced the picture it was being judged on.
-    /// Both halves of that are the same defect — a decision taken where it cannot be reported.
+    /// invisible: two command-line switches mean nothing unless a third is set a particular way,
+    /// and no run says which of the two denoisers produced the picture it is being judged on. Both
+    /// halves of that are the same defect — a decision taken where it cannot be reported.
     ///
     /// So it is taken here instead, once, by a function of its inputs and nothing else. The renderer
     /// drives the frame from what this says, and a report prints the same value, so the two cannot

@@ -22,12 +22,9 @@ namespace Rtx
     {
         /// How many threads flatten stacks.
         ///
-        /// **Measured, and it is the sum that decides it.** A bake is 38 ms, of which 98.6% is
-        /// summing the layer stack into 512² texels and 1.2% is decoding the levels it sums — so it
-        /// divides across threads. What stops it dividing is that the sum reads far more than it
-        /// computes: on `one-cell-walk` the same 266 bakes cost 9.0 s of thread time on one thread,
-        /// 11.0 s on four and 13.8 s on eight, and the run's worst frame went 288 ms, 221 ms, then
-        /// back up to 247 ms. Four is where the division still pays for the contention.
+        /// **Four, because the sum reads far more than it computes.** A bake is nearly all summing
+        /// the layer stack into 512² texels, which divides across threads, and the memory contention
+        /// between them is what stops the division paying past four.
         ///
         /// **A quarter of the machine and never more than four**, so a smaller one keeps the cores
         /// the frame, the cell reader and the driver are on.

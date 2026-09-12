@@ -11,14 +11,14 @@
 // What the weather's air holds at one froxel, and what lights it there.
 //
 // **A thread to a froxel, and every question asked where the answer is used.** This pass and
-// `fogintegrate.comp` are the two halves of the march `fogAlong` used to make: this one computes
-// the properties of a *point* — how much air, what reaches it, what stands in the way — and that
-// one carries the transmittance down the column, which is the only part that has to be a scan.
+// `fogintegrate.comp` are the two halves of one march: this one computes the properties of a
+// *point* — how much air, what reaches it, what stands in the way — and that one carries the
+// transmittance down the column, which is the only part that has to be a scan.
 //
-// **The split is what the estimator needed, and the thread count is what it bought.** One thread
-// to a column had a single probe answer for eight slices at once: drawn anywhere along fourteen
-// hundred units, it decided whether a lamp three hundred units across was seen, and painted that
-// coin over a block of the frame. `Rtx::FogVolume` says what that drew and what replaced it.
+// **The split is what the estimator needs, and the thread count is what it buys.** One thread to
+// a column has a single probe answer for eight slices at once: drawn anywhere along fourteen
+// hundred units, it decides whether a lamp three hundred units across is seen, and paints that
+// coin over a block of the frame.
 //
 // **Every sample is jittered inside its froxel and averaged with where it stood last frame.** That
 // pairing is the whole of what makes a grid this coarse invisible, and it is what every shipping
@@ -223,9 +223,9 @@ void main()
     // and reads the cloud deck over the point, so the air under a cloud is as dark as the ground
     // under it, and so is every puff that reads this froxel.
     //
-    // **One path and not two.** A frame with no puff in it could skip both rays below, and that was
-    // measured at 0.07 ms on an open-air view; the flag, the second history channel and the second
-    // way of forming the sun's beam it takes to save that are not worth what they cost to read.
+    // **One path and not two.** A frame with no puff in it could skip both rays below, and the
+    // flag, the second history channel and the second way of forming the sun's beam it takes to
+    // save that are not worth the little they save.
     float visible = 1.0;
     float lunar = 1.0;
     if (sources.mSunlit)

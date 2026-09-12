@@ -17,9 +17,9 @@
 // **A thread to a column, and that is the shape this half wants.** Transmittance can only be
 // carried in one order, so the sixty-four slices are a scan and not a fan-out — and carrying it is
 // what lets a slice hold the *accumulated* answer rather than its own share, so a pixel whose
-// surface stands at any depth reads one fetch and never a sum. What used to make a thread to a
-// column the wrong shape was everything else that was in this loop: the field, the walk of the
-// light grid and three shadow rays, all of them per froxel and none of them needing an order.
+// surface stands at any depth reads one fetch and never a sum. What would make a thread to a
+// column the wrong shape is everything else a march does: the field, the walk of the light grid
+// and three shadow rays, all of them per froxel and none of them needing an order.
 // `fogscatter.comp` has those, one thread to each.
 //
 // **Each slice is a sample and the air between two is the line between them**, which `FogSlice`

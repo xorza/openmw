@@ -19,17 +19,16 @@ namespace Rtx
     /// to the rows that a shared helper had no way to reach. `take`'s growth hook is what reaches
     /// them.
     ///
-    /// **And one hold count, because four of them counted holders by hand.** A texture is named by
-    /// materials, a rig by the meshes on it, a ground row by the residency that stood it; each is a
-    /// count beside the row that says whether the row may go, and each was a field of its own with
-    /// a name of its own. The count lives here, the table decides what a count of nought means.
+    /// **And one hold count.** A texture is named by materials, a rig by the meshes on it, a
+    /// ground row by the residency that stood it; each is a count beside the row that says whether
+    /// the row may go. The count lives here, the table decides what a count of nought means.
     ///
     /// **A slot is never moved and never closed up.** A mesh index names a bottom-level
     /// acceleration structure and a texture index is what a material points at, so a dropped row
     /// leaves a hole and the next arrival takes it over.
     ///
     /// **And the hole it takes is the lowest, never the last one freed.** `SlotPool` is that rule
-    /// and says what it was measured on.
+    /// and says why.
     ///
     /// **What a freed row holds is the table's business and not this one's.** A mesh row keeps the
     /// offsets its last tenant left, because a backend walks every slot and reads a count of

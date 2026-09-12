@@ -32,12 +32,11 @@
 // Only what covers and faces the eye is shaded. A flame emits and shadows nothing of its own kind,
 // and a rain streak is a thin thing seen by what passes through it.
 //
-// **This was the host's, and Vivec is what moved it.** `Rtx::SpriteShade` did the same arithmetic
-// in a loop and was 18.2% of that view's whole CPU profile in self time, 2.40 ms a frame against a
-// host frame of 6.12 and a device frame of 5.34 — the one place in the corpus where the processor,
-// not the card, decided how long a frame took. It is gone rather than kept beside this as a
-// reference: two implementations of one computation are two things to keep in step, and what a
-// layer count is belongs in one place.
+// **On the device and not the host, and Vivec is why.** The same arithmetic in a loop on the
+// processor is a fifth of a crowded view's CPU frame — the one place in the corpus where the
+// processor, not the card, decides how long a frame takes. There is no host copy kept beside this
+// as a reference: two implementations of one computation are two things to keep in step, and
+// what a layer count is belongs in one place.
 //
 // **One workgroup per emitter per light, and one lane per cell of the grid.** A sprite reads what
 // the sprites nearer the light have laid down, then every lane adds its own cell's coverage of that

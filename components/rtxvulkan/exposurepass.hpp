@@ -65,11 +65,10 @@ namespace Rtx
         /// One float holding one, which is what a picture inside the interface is mapped at.
         ///
         /// **Its own buffer, because a picture is traced between two frames and the frame's buffer
-        /// is where the eye stands.** Written into that one, a picture's one was what the next
-        /// frame's reduction read back as the brightness it had adapted to — so every local-map tile
-        /// a cell arrived with threw the adaptation away and started it again from one. Measured
-        /// over `island-crossing`: the frame's mean brightness stepped by a tenth to a fifth at
-        /// every cell boundary and drifted back between them.
+        /// is where the eye stands.** Written into that one, a picture's one is what the next
+        /// frame's reduction reads back as the brightness it had adapted to — so every local-map
+        /// tile a cell arrives with throws the adaptation away and starts it again from one, and
+        /// the frame's brightness steps at every cell boundary.
         VkBuffer getPictureExposure() const { return mPicture.getHandle(); }
 
     private:

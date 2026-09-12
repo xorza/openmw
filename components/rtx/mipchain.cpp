@@ -34,8 +34,7 @@ namespace Rtx
         // **Only a file that carried no chain at all.** Morrowind's own stop short of a single
         // texel — a 256-square texture ships six levels and ends at 8 by 8 — and that last level is
         // already the texture's own mean to within what a ray can tell. Rebuilding those would
-        // decompress the whole game to gain nothing: measured, it put the resident textures of one
-        // cell from 75 MB to 149 MB.
+        // decompress the whole game to gain nothing, and double what a cell's textures hold.
         if (described.mLevels.size() != 1)
             return;
 

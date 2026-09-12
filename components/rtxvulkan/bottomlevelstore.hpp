@@ -111,7 +111,7 @@ namespace Rtx
         /// `prepareCompaction` reads them, `mSlots` placements after the one that wrote them — asking
         /// here instead means `VK_QUERY_RESULT_WAIT_BIT`, which stands the CPU still until the builds
         /// this frame recorded have run. That is the frame a cell arrives in, and it is the one frame
-        /// that can least afford it: measured at 3.5 ms an arrival, half of what the hand-over cost.
+        /// that can least afford it.
         VkDeviceSize getCompactableBytes() const { return mCompactableTight; }
 
         /// What those same structures occupy now. The pair says what compaction has left to give
@@ -121,12 +121,11 @@ namespace Rtx
     private:
         /// What the compaction knows about the structure in a slot.
         ///
-        /// **A state per slot and a question per structure, asked once.** This used to ask about
-        /// every loose structure the scene held at every build and read the answers only when no
-        /// build followed within `mSlots` placements — so on a route that builds on every frame the
-        /// answers were never read, nothing was ever copied tight, and each build asked the device
-        /// about thousands of structures over again: eight to thirteen milliseconds of device time
-        /// on an arrival frame, in front of the trace, for two structures actually built.
+        /// **A state per slot and a question per structure, asked once.** Asking about every loose
+        /// structure the scene holds at every build, and reading the answers only when no build
+        /// follows within `mSlots` placements, is a route that builds on every frame never reading
+        /// an answer, never copying anything tight, and asking the device about thousands of
+        /// structures over again on every arrival frame, in front of the trace.
         enum class Tightness : std::uint8_t
         {
             /// No structure, or one that refits and so keeps its slack.
@@ -200,9 +199,9 @@ namespace Rtx
 
         /// Each of those structures' device address, asked for once when it was made.
         ///
-        /// **Not once per instance per frame, which is what this replaced.** A handle lasts from one
-        /// `setScene` to the next and its address with it, so a nine-by-nine exterior was making
-        /// fifty thousand driver calls a frame to be told the same fifty thousand numbers.
+        /// **Not once per instance per frame.** A handle lasts from one `setScene` to the next and
+        /// its address with it, and a nine-by-nine exterior asking per instance is fifty thousand
+        /// driver calls a frame to be told the same fifty thousand numbers.
         std::vector<VkDeviceAddress> mAddresses;
 
         std::vector<VkDeviceSize> mUpdateScratch;

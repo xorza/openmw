@@ -16,11 +16,11 @@
 // developer's machine only, because a release build has no layers to say anything at all.
 //
 // **A mask is a byte, because a yes or a no is.** `R8_UNORM` is not among the formats Vulkan
-// *requires* a device to support as a storage image, which is why this was a full float first — and
-// that was a portability argument in a renderer whose whole posture is that it targets two machines
-// and fails loudly on anything either of them cannot do. Measured on the Ada-class NVIDIA part this
-// is written against: storage and sampled, both. A device without it fails at image creation
-// naming the format, which is the answer this project gives to a missing feature everywhere else.
+// *requires* a device to support as a storage image, and a full float for its sake would be a
+// portability argument in a renderer whose whole posture is that it targets two machines and fails
+// loudly on anything either of them cannot do. The NVIDIA parts this is written against support
+// it as storage and sampled, both; a device without it fails at image creation naming the format,
+// which is the answer this project gives to a missing feature everywhere else.
 //
 // The two masks between them go from eight megabytes of render-resolution image at 1080p to two.
 //

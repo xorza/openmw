@@ -52,16 +52,15 @@ namespace Rtx
 
     /// Every distant chunk waiting for its ground to be flattened, and the threads that flatten them.
     ///
-    /// **The bake happens on no frame at all.** One costs 38 ms and a ring fill wants eighty-five;
-    /// sliced sixteen rows a frame it was a millisecond or two on every frame for twenty seconds
-    /// after a load, and the row that finished one was a spike on top of that. Threads of this
-    /// queue's own take each stack whole, and what the frame does is hand a stack over and take the
-    /// bytes back — a copy of a few hundred floats each way.
+    /// **The bake happens on no frame at all.** One is tens of milliseconds and a ring fill wants
+    /// dozens of them; sliced across frames it is a cost on every frame for seconds after a load,
+    /// and the slice that finishes one is a spike on top of that. Threads of this queue's own take
+    /// each stack whole, and what the frame does is hand a stack over and take the bytes back — a
+    /// copy of a few hundred floats each way.
     ///
-    /// **Several threads, because one is slower than the ground arrives.** A fill of eighty-five is
-    /// 3.2 s of summing behind a frame that collects two of them, and a queue that deep is one every
-    /// third chunk leaves the world before its ground comes back. What the count is measured against
-    /// is in `compositequeue.cpp`.
+    /// **Several threads, because one is slower than the ground arrives**, and a queue that deep is
+    /// one where a chunk leaves the world before its ground comes back. `bakerCount` says what
+    /// bounds the count.
     ///
     /// **Nothing is wrong while it waits.** A chunk asks by setting `Material::mFlatten` and its
     /// `mDiffuse` stays unset, which is the branch the shader already takes for every near chunk: it
@@ -92,10 +91,8 @@ namespace Rtx
         ///
         /// **A frame waits for what it collects, never for what it queued.** `sCompositesPerFrame`
         /// is what a frame takes, so two is what it waits for and the rest go on baking behind it.
-        /// Draining the queue instead put every bake of a run onto the frame thread and gave the
-        /// bakers nothing to do: measured on `one-cell-walk`, 9.9 s of bake over an 18.6 s run was
-        /// waited for to the millisecond, and one ring fill was a single 3.3 s frame. Waiting for
-        /// the two collected costs 0.14 s over the same run.
+        /// Draining the queue instead would put every bake of a run onto the frame thread and give
+        /// the bakers nothing to do.
         ///
         /// **The order is the queue's and not the bakers'.** Several threads finish out of order, so
         /// `collect` takes by the sequence a stack was handed over in and never by what came back

@@ -126,8 +126,9 @@ namespace Rtx
         ///
         /// **The entry and not only the index**, because the stamp wants the one the lookup found:
         /// a second `find` per posed part per frame is a pointer hash and a bucket walk for an
-        /// answer already in hand, and Vivec poses 332. Which of the two entries is set follows
-        /// from `DrawableRead::mDeform`, and neither is looked at while `mIndex` is `sNoIndex`.
+        /// answer already in hand, and a crowded cell poses hundreds. Which of the two entries is
+        /// set follows from `DrawableRead::mDeform`, and neither is looked at while `mIndex` is
+        /// `sNoIndex`.
         struct Held
         {
             Index mIndex = sNoIndex;

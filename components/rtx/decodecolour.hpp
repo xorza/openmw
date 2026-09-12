@@ -19,11 +19,9 @@ namespace Rtx
     /// **The one crossing, and every colour entering this renderer takes it.** The game states a
     /// colour in four components — a `Vec4f`, four bytes, or a packed word — and the trace holds
     /// three in light, so the narrowing and the decode are one step. Writing that narrowing by hand
-    /// is the mistake this exists to stop, and it was made twice: a particle's ramp reached the
-    /// sprite table in the space the file wrote it, and a material's tint and glow reached the
-    /// shader the same way. The second of those narrowed nothing at all — it copied a `Vec4f` to a
-    /// `Vec4f` — which is why `Surface::Colour` gives the description a type a renderer cannot
-    /// copy out of.
+    /// is the mistake this exists to stop — a particle's ramp reaching the sprite table in the
+    /// space the file wrote it — and `Surface::Colour` gives the description a type a renderer
+    /// cannot copy out of.
     osg::Vec3f decodeColour(std::uint32_t packed);
 
     /// The same decode, for a colour something else has already unpacked to `[0, 1]`.

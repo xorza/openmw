@@ -70,8 +70,7 @@ void main()
     imageStore(fogColumnDepth, column, vec4(surface, 0.0, 0.0, 0.0));
 
     // **And what each moon puts into this column's air**, which is the ray's angle to the moon and
-    // nothing along the ray — so it is this pass's to state once. `fogMoonTermsAlong` says what the
-    // scatter pass used to spend on it.
+    // nothing along the ray — so it is this pass's to state once, and not every froxel's.
     const MoonTerms terms = fogMoonTermsAlong(ray.mDirection);
     imageStore(fogColumnMoons, ivec3(column, 0), vec4(terms.mMasser, 0.0));
     imageStore(fogColumnMoons, ivec3(column, 1), vec4(terms.mSecunda, 0.0));

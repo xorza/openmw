@@ -14,7 +14,7 @@
 
 // What a level reads and writes, said once for both sides that have to agree.
 //
-// **The cascade's own, and no longer the trace's.** The levels ping-pong between the image the
+// **The cascade's own, and not the trace's.** The levels ping-pong between the image the
 // accumulator blended into and a scratch of this pass's own, so `CHANNEL_INDIRECT` is written once
 // by the trace and read once by whatever consumes it. That is what lets the two formats part: a
 // reference is built through that channel and never through this one.
@@ -77,10 +77,10 @@ namespace Rtx::Shaders
         /// How far a tap's brightness may differ from the centre's before it stops being the same
         /// light, in standard deviations of what the centre has been measuring.
         ///
-        /// **The term SVGF has and this cascade did not**, and the reason it did not was that there
-        /// was no history to take a variance from. With one, the filter can finally stop at an edge
-        /// in the *light* — the line where a shadow ends on a flat wall, which the normal test and
-        /// the plane test both read as one surface and blur straight through.
+        /// **The term that wants a history**, because a variance is taken from one. With it the
+        /// filter can stop at an edge in the *light* — the line where a shadow ends on a flat wall,
+        /// which the normal test and the plane test both read as one surface and blur straight
+        /// through.
         ///
         /// Scaled by the estimator's own spread, so a pixel that is still noisy filters widely and a
         /// settled one holds its detail. SVGF's own figure.

@@ -249,9 +249,9 @@ namespace Rtx
         RowOrder mRowOrder = RowOrder::TopFirst;
         std::uint32_t mRayMask = 0;
 
-        /// **One value, where this was a flag beside four floats** — three of which meant nothing
-        /// in whichever case the flag did not name, and all four of which the caller already held
-        /// as a `SceneUtil::Framing`.
+        /// **One value and not a flag beside four floats**, three of which would mean nothing in
+        /// whichever case the flag did not name, and all four of which the caller already holds as a
+        /// `SceneUtil::Framing`.
         SceneUtil::Framing mFraming;
 
         /// Where the light stands, unit — which is what the trace takes, and so already the sense

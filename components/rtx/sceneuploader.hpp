@@ -45,8 +45,8 @@ namespace Rtx
         /// How many texture slots the scene gave back, whose images the renderer was told to drop.
         ///
         /// **Not zero on a `Placed`**, which is the point of counting it: leaving a region is a frame
-        /// where nothing arrives, and waiting for the next arrival to give the memory back is what
-        /// made the island route settle at what it had visited.
+        /// where nothing arrives, and waiting for the next arrival to give the memory back is a
+        /// route settling at what it has visited.
         std::size_t mDropped = 0;
     };
 

@@ -23,8 +23,7 @@ namespace Rtx
 
         // **The same mask as everything else, because there is nothing here to select.** The walk
         // starts at the precipitation node, so the subtree is already chosen; a mask is only ever
-        // excluding what a renderer draws for itself, and none of that is under here. A
-        // set-and-restore around one walk was the shape the mistake came in.
+        // excluding what a renderer draws for itself, and none of that is under here.
         extractor.extract(*fall->getNode(), osg::Matrixf::translate(fall->getEye()), 0, frameNumber);
     }
 

@@ -11,8 +11,8 @@
 // **Two lists of the same numbers, kept in step by hand, is how a shader comes to read a table
 // nobody wrote.** The pass builds its layout and its writes by index and the shader declares each
 // binding by number; nothing but a count checked at the end connected the two, so a binding added
-// in one place and forgotten in the other was a descriptor left unwritten and a dispatch reading
-// whatever the slot held.
+// in one place and forgotten in the other is a descriptor left unwritten and a dispatch reading
+// whatever the slot holds.
 //
 // **The scene's tables are not here.** They travel as addresses in the frame block — `GpuTables` in
 // `scene.h` — so what is left to bind is what has no table to ride in: the structure, the hit

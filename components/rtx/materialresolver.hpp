@@ -171,8 +171,8 @@ namespace Rtx
         /// The scene's slot for one image, held for as long as this names it.
         Index takeTexture(const osg::Image* image);
 
-        /// Whether `image`'s alpha ever reaches solid — `reachesSolid`, measured at the first
-        /// material that asks and kept for every later one.
+        /// Whether `image`'s alpha ever reaches solid — `reachesSolid`, read at the first material
+        /// that asks and kept for every later one.
         ///
         /// **Asked only where the answer changes something**, which is a translucent material's own
         /// diffuse map: it walks every texel of the finest level, and a cell holds hundreds of

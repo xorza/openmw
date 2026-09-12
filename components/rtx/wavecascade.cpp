@@ -195,8 +195,8 @@ namespace Rtx
             // reconstructs between those samples bilinearly, which is a second filter and a large
             // one. Over tap positions spread evenly through a texel the interpolation passes
             // `(2 + cos(k w)) / 3` of a frequency's power, where `w` is the level's own texel width:
-            // one at the long end and a third at its Nyquist. Left out, this table stood at four
-            // thirds of what the shader reads in the shallows and nearly three times it in deep
+            // one at the long end and a third at its Nyquist. Left out, this table would stand at
+            // four thirds of what the shader reads in the shallows and nearly three times it in deep
             // water, and the caustic's fold with it.
             std::vector<float> power(Shaders::WAVE_LEVELS * cascade.mGrid);
             for (std::size_t level = 0; level < Shaders::WAVE_LEVELS; ++level)

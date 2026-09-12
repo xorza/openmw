@@ -19,8 +19,9 @@
 #
 # **It profiles the build `release.sh` measures, and does not have one of its own.** A profile is
 # only as good as its call graph, and a stock Release build has neither line numbers nor frame
-# pointers — so `release.sh` carries `-g1 -fno-omit-frame-pointer` instead, measured at 0.2%. A
-# second build directory would have cost nothing less and explained a frame nobody timed.
+# pointers — so `release.sh` carries `-g1 -fno-omit-frame-pointer` instead, which costs less than
+# the run-to-run spread. A second build directory would cost nothing less and explain a frame
+# nobody timed.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

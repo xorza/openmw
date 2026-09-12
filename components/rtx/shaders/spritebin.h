@@ -11,11 +11,11 @@
 
 // What bins the sprite layer into the screen's tiles on the device, as both sides see it.
 //
-// **The host used to do this, and a rainstorm is what moved it.** Every sprite was projected twice
-// on the processor, its tiles counted and then filled, and the whole list written across the bus —
-// half a millisecond of the frame's critical path over Balmora in the rain, and a cost that grew
-// with the tile count whatever the sprites did, which is what pinned the tile at sixteen pixels.
-// Here the sprites and the emitters are already on the device for the trace to read, so three
+// **On the device and not the host, and a rainstorm is why.** Binned on the processor, every
+// sprite is projected twice, its tiles counted and then filled, and the whole list written across
+// the bus — a stretch of the frame's critical path, and a cost that grows with the tile count
+// whatever the sprites do. Here the sprites and the emitters are already on the device for the
+// trace to read, so three
 // dispatches make the list where it is read: one per sprite for its tiles and their counts, one
 // over the tiles for where each run starts, and one per tile that fills its run in order.
 //
@@ -52,8 +52,8 @@ namespace Rtx::Shaders
 
     /// Lanes that share one tile in the pass that fills its run.
     ///
-    /// **One lane per tile was measured first, and it is a quarter of a millisecond.** A lane
-    /// walking every sprite alone is a chain of a load, a compare and a branch per sprite with
+    /// **Thirty-two and not one lane per tile.** A lane walking every sprite alone is a chain of a
+    /// load, a compare and a branch per sprite with
     /// nothing to hide the load's latency behind, and a frame's tiles are only a few thousand
     /// lanes — fifteen workgroups on a card with seventy-six multiprocessors. Thirty-two lanes
     /// take thirty-two sprites at a stride instead, in one coalesced load, and agree on the order

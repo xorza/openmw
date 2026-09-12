@@ -644,8 +644,8 @@ namespace RtxTool
             StagedPlace staged = stageOnePlace(command);
 
             // **Traced more than once, because one submit measures the clock and not the shader.**
-            // This machine's GPU idles at 315 MHz and ramps only under load, so the same frame from
-            // a cold start has timed anywhere between 0.37 and 2.1 ms.
+            // A GPU idles at a fraction of its clock and ramps only under load, so the same frame
+            // from a cold start times anywhere within a factor of several.
             //
             // **Accumulating replaces repeating rather than joining it.** A run that also honoured
             // the repeat default would quietly average eight frames more than it was asked for, and

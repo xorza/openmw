@@ -216,8 +216,8 @@ vec3 tangentTo(vec3 axis)
 /// and leaves nothing to weigh the sample by.
 ///
 /// @param sine the sine of the cone's half-angle: the source's radius over its distance, and for
-///        the sun a constant. Zero is a point source and returns `axis` exactly, which is what
-///        keeps a light with no size casting the edge it used to.
+///        the sun a constant. Zero is a point source and returns `axis` exactly, so a light with
+///        no size casts a hard edge.
 vec3 coneDirection(vec3 axis, float sine, vec2 u)
 {
     const float cosine = sqrt(max(1.0 - sine * sine, 0.0));

@@ -64,10 +64,10 @@ namespace Rtx
         /// staging until that submit has been waited on.
         ///
         /// **What lets an arrival ride the placement that follows it.** A cell's textures and
-        /// structures used to be a submit and a fence wait of their own, before the placement
-        /// submitted and waited again; taken here they go to the queue in that same call, ordered
-        /// ahead of it by the barriers each upload and build ends in, and the round trip they cost
-        /// is the one the placement was already paying. Ends `commands`.
+        /// structures as a submit and a fence wait of their own would be a second round trip
+        /// through the driver ahead of the placement's; taken here they go to the queue in that
+        /// same call, ordered ahead of it by the barriers each upload and build ends in. Ends
+        /// `commands`.
         void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging);
 
         /// Submits whatever was deferred and waits for it. Does nothing where nothing was deferred.
@@ -125,9 +125,10 @@ namespace Rtx
 
     /// How much staging a batch takes at a time.
     ///
-    /// **Sized so a cell's textures cost a handful of allocations and not one apiece.** Balmora
-    /// arrives with sixty-odd megabytes of them; at this size that is a few blocks where it was four
-    /// hundred buffers. An upload larger than a block is given a block of its own exactly its size,
+    /// **Sized so a cell's textures cost a handful of allocations and not one apiece.** A town
+    /// arrives with tens of megabytes of them; at this size that is a few blocks rather than
+    /// hundreds of buffers. An upload larger than a block is given a block of its own exactly its
+    /// size,
     /// so nothing is rounded up to this that does not need to be.
     inline constexpr VkDeviceSize sStagingBlock = 8 * 1024 * 1024;
 

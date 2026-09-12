@@ -12,7 +12,7 @@ namespace Rtx
 {
     namespace
     {
-        /// Full floats for the three radiance channels, and half floats were tried first.
+        /// Full floats for the three radiance channels, and not halves.
         ///
         /// **Eleven bits of mantissa is an eighth of a display byte**, which is the argument for
         /// halving fifty megabytes, and it is wrong in the one place that matters. A reference is a
@@ -23,8 +23,8 @@ namespace Rtx
         /// low-discrepancy sequence rather than a random one, so even the terms that do vary vary
         /// in a pattern the rounding follows.
         ///
-        /// Measured: the converged mean of a flat surface came out 0.096% low, against a tolerance
-        /// of 0.067% that the test derives from what the format can show. Full floats put it back.
+        /// In halves, the converged mean of a flat surface comes out low by more than the tolerance
+        /// the test derives from what the format can show; full floats put it back.
         constexpr VkFormat sRadiance = GBUFFER_RADIANCE;
 
         /// Half floats, and `gbuffer.h` has the angles the width is derived from.
@@ -46,9 +46,9 @@ namespace Rtx
         /// average does not remove. The case for is that it multiplies only the bounce, which is a
         /// small share of a frame.
         ///
-        /// Measured on a sixty-four sample reference of the mages guild, where the indirect share is
-        /// as high as this renderer gets indoors: the converged mean moved by 0.0014%, against the
-        /// 0.067% the radiance channels were put back to full floats over. Fifty times inside it.
+        /// On a converged reference of a room, where the indirect share is as high as this renderer
+        /// gets indoors, the mean moves by a fiftieth of the tolerance the radiance channels are
+        /// held to.
         constexpr VkFormat sAlbedo = GBUFFER_ALBEDO;
 
         /// Two halves, for the reason `gbuffer.h` gives.
@@ -61,11 +61,9 @@ namespace Rtx
         ///
         /// **Two channels where the upscaler's guide asks for one, and it costs nothing.** NGX reads
         /// the first and is handed the pair; splitting them would save no memory — two `R32_SFLOAT`
-        /// images are the same eight bytes a texel as one `R32G32_SFLOAT` — so the only question was
-        /// what NGX pays to sample the wider one. Timed at 1920x1080 into performance, forty frames,
-        /// the upscale zone measured 1.223, 1.228 and 1.223 ms against a single-channel depth and
-        /// 1.227, 1.221 and 1.224 ms against this one. The ranges overlap, so the packing stays and
-        /// the two answers stay together.
+        /// images are the same eight bytes a texel as one `R32G32_SFLOAT` — so the only question is
+        /// what NGX pays to sample the wider one, and the upscale zone reads the same either way.
+        /// So the packing stays and the two answers stay together.
         constexpr VkFormat sDepth = GBUFFER_DEPTH;
 
         /// Half floats for the layer the eye sees through, where the radiance channels take full
@@ -163,8 +161,8 @@ namespace Rtx
         {
             const ChannelFormat& described = formatOf(channel);
 
-            // **One texel where nothing will read the channel**, which is sixteen bytes a pixel and
-            // a measured 33.7 MiB at 1080p. The set layout keeps its fourteen bindings and the
+            // **One texel where nothing will read the channel**, which is sixteen bytes a pixel of
+            // the frame. The set layout keeps its fourteen bindings and the
             // trace keeps its fourteen declarations, so no shader knows: a store outside an image
             // is discarded by the specification, and `visibility.rgen` does not make one anyway —
             // it writes these three only under `mLayerCompositedAfter`, which is the flag this is.

@@ -173,15 +173,11 @@ namespace Rtx::Shaders
     /// spreads a star over saturates, and what shows is a hard dot. Nothing here clips, so the level
     /// has to put a star where the content puts it rather than rely on the ceiling to do it.
     ///
-    /// **Measured through the path the game ships**, which is the only place the answer is real: at
-    /// 1920 by 1080 under `--upscale quality`, on a clear midnight, this puts the brightest star at
-    /// 0.914 of the display range where 0.18 put it at 0.627. The fifth still missing is Ray
-    /// Reconstruction's — the same frame drawn without it reaches 0.973.
+    /// **Set through the path the game ships** — 1920 by 1080 under `--upscale quality`, a clear
+    /// midnight — because Ray Reconstruction takes a fifth off a star that nothing else does.
     ///
-    /// **A star is still never brighter than a full moon**, which is the rule and was the old level's
-    /// whole derivation — but it was read against Masser's *mean* texel, and a portrait's peak is
-    /// several times its mean. Masser's brightest pixel measures 0.932 in the same configuration, so
-    /// the rule holds with the bound stated where it belongs.
+    /// **A star is still never brighter than a full moon**, read against Masser's brightest texel and
+    /// not its mean: a portrait's peak is several times its mean.
     ///
     /// **It reaches what is drawn and never what lights.** A bounce that escapes takes `skyGlow`,
     /// which carries the sheets as one mean — `NightSky::mGlow` — so raising this raises that too and
@@ -194,12 +190,11 @@ namespace Rtx::Shaders
     /// in the stars: two of the three reach past a radian, so what they do is tint half the sky at a
     /// time.
     ///
-    /// **This level was set against the wrong average and the note said so.** It read
-    /// `tx_stars_nebula` at 0.052 and had this put that at 0.003, which is what `Sky_Night_Color`
-    /// decodes to — but 0.052 is the sheet's colour with its alpha ignored, and `skyPatches` draws
-    /// `rgb * a`. That mean measures 0.00199, so a nebula's average comes out at 1.2e-4 against the
-    /// night sky's 0.003: a twentieth of it rather than a match. Whether a nebula should read as the
-    /// sky it lies over is a question about the picture, and the number here answers it as a wash.
+    /// **Against the sheet's mean of `rgb * a`, which is what `skyPatches` draws**, and not its colour
+    /// with the alpha ignored: `tx_stars_nebula` averages 0.002 that way, so this puts a nebula's
+    /// average at a twentieth of what `Sky_Night_Color` decodes to. Whether a nebula should read as
+    /// the sky it lies over is a question about the picture, and the number here answers it as a
+    /// wash.
     const float NEBULA_RADIANCE = 0.06f;
 
     /// What the engine paints the second row of its cloud mesh with.
@@ -279,13 +274,9 @@ namespace Rtx::Shaders
     /// three times that, chosen against rendered frames rather than derived, because a material's
     /// one and a sprite's one are two content conventions and not one.
     ///
-    /// **A glow lights nothing, and this is the whole of what it does.** A glowing surface used to
-    /// earn a lamp of its own beside what it shows. Measured with those lamps switched off, three
-    /// frames moved by 0.5 %, 1.2 % and 2.9 % — a mushroom lost the warm ring on the ground under
-    /// its cap and kept everything else, and a guild lit by its own sconces was hard to tell apart.
-    /// What the lamps cost was a light in the grid for every glowing shape in the world, 474 of them
-    /// at Seyda Neen and 248 at Ald-Ruhn, and they were the reach that drove `LightGrid` to coarsen
-    /// its cell. Morrowind lights what it means to light with a `LIGH` record.
+    /// **A glow lights nothing, and this is the whole of what it does.** A lamp for every glowing
+    /// shape is hundreds of lights in the grid per cell, and what they buy is the warm ring under a
+    /// mushroom's cap. Morrowind lights what it means to light with a `LIGH` record.
     const float EMISSIVE_INTENSITY = 8.0f;
 
     /// What light on the far side of a leaf is worth to the side being looked at, against the same
@@ -296,8 +287,7 @@ namespace Rtx::Shaders
     /// real leaf passes about half of what it reflects, so a canopy against the sun glows through
     /// rather than going black. The same albedo on either side: what colours the light through a
     /// leaf is the leaf. Half, rather than the tenth a leaf transmits absolutely, because the term
-    /// scales the surface's own diffuse response and not the sun; the reference implementation
-    /// measured backlit foliage a quarter brighter at this value and no noisier.
+    /// scales the surface's own diffuse response and not the sun.
     ///
     /// **The far side's light is the term, and the shadow it would have cast stays whole.** What a
     /// leaf lets through to the ground under it arrives by the bounce that lands on the leaf's
@@ -313,24 +303,20 @@ namespace Rtx::Shaders
     /// drawn at `AMBIENT_EXTERIOR_RATE`.
     ///
     /// **Drawn and divided, so the estimate is unbiased by construction** rather than a guess at what
-    /// the unlit half would have said. Two frames of a thousand samples each agree exactly, which is how
-    /// that was checked. What it hands the filter is variance in the channel Ray Reconstruction
-    /// demodulates and filters hardest, which is why it is judged on a moving camera rather than a still.
+    /// the unlit half would have said. What it hands the filter is variance in the channel Ray
+    /// Reconstruction demodulates and filters hardest, which is why it is judged on a moving camera
+    /// rather than a still.
     ///
-    /// **Half the rays are not half the time, and the gap is worth knowing.** Removing the pair outright
-    /// takes the trace from 4.30 ms to 3.59 at the ship at Seyda Neen and from 3.03 to 2.77 over
-    /// Balmora; a half rate, measured interleaved against its own baseline, takes 4.35 to 4.22 and 3.13
-    /// to 3.07 — a fifth of what the gut says, where `AMBIENT_EXTERIOR_RATE` claimed half of its own.
-    /// The rays here are short: a lane that skips one does not release the warp, which runs on until the
-    /// lanes that kept theirs are done, and a hashed draw leaves no warp with thirty-two skipping lanes.
-    /// The ambient ray runs to `mFar` and is nearly all empty traversal, so halving those halves what
-    /// the device does whatever the warp is doing. **A rate is worth what the ray it drops is long.**
+    /// **Half the rays are not half the time.** The rays here are short: a lane that skips one does not
+    /// release the warp, which runs on until the lanes that kept theirs are done, and a hashed draw
+    /// leaves no warp with thirty-two skipping lanes. The ambient ray runs to `mFar` and is nearly all
+    /// empty traversal, so halving those halves what the device does whatever the warp is doing. **A
+    /// rate is worth what the ray it drops is long.**
     ///
     /// **Out of doors only, and that is not caution about the arithmetic.** A room's indirect light *is*
-    /// its lamps seen once off a wall — the interior ceiling is the larger of the two, 4.21 ms to 3.58 in
-    /// the Guild of Mages — so rating it there halves the samples of the term that carries the room,
-    /// where outside the sun has already lit everything the bounce lands on. Every interior view renders
-    /// bit-identically under this, which `verify` says.
+    /// its lamps seen once off a wall, so rating it there halves the samples of the term that carries
+    /// the room, where outside the sun has already lit everything the bounce lands on. Every interior
+    /// view renders bit-identically under this, which `verify` says.
     const float INDIRECT_LIGHT_RATE = 0.5f;
 
     /// How fast a bounce ray's cone widens, against a primary ray's.
@@ -358,50 +344,39 @@ namespace Rtx::Shaders
     /// exterior-only for the reason `AMBIENT_EXTERIOR_RATE` is: a room's escape is nothing at all, so a
     /// surface far down a hall would go dark rather than flat.
     ///
-    /// **Ground alone, because distance does not say ground and this was let loose on everything.** A
-    /// draw about a patch of open hillside reaches the sky whatever stands nearby; the same draw about
-    /// a wall spends half of itself on whatever the wall is attached to, and handing that the sky makes
-    /// it too bright by the share it should have lost. Vivec is where that showed: a canton is one face
-    /// hundreds of units tall running well past the reach, so the sphere cut through the middle of a
-    /// building and the seam swept across it as the camera moved. Twenty-three per cent of that view
-    /// differed from a frame with every bounce traced, thirteen thousand pixels of it by more than a
-    /// twentieth of the display range and the worst by three quarters of it. With the escape asked only
-    /// of ground the same view is byte-identical to that frame.
+    /// **Ground alone, because distance does not say ground.** A draw about a patch of open hillside
+    /// reaches the sky whatever stands nearby; the same draw about a wall spends half of itself on
+    /// whatever the wall is attached to, and handing that the sky makes it too bright by the share it
+    /// should have lost. A Vivec canton is one face hundreds of units tall running well past the
+    /// reach, so an escape asked of it cuts through the middle of the building and the seam sweeps
+    /// across it as the camera moves. Asked of ground alone, the view is byte-identical to one with
+    /// every bounce traced.
     ///
-    /// **What it is worth depends entirely on where the camera stands.** Measured on the `trace` zone at
-    /// 1920x1080, three alternations, against a build that traces every bounce: at eye level it is worth
-    /// nothing at all — Vivec 4.09 against 4.16 and the ship at Seyda Neen 3.84 against 3.87, both
-    /// inside the run-to-run spread — because far ground is crowded into the few rows under the horizon
-    /// and the sky above it costs no bounce. A camera looking at a cell from outside it is the other
-    /// case, and a hilltop is that camera: the island crossing runs 2.16 ms against 3.02 and the
-    /// shoreline 2.66 against 2.98. Letting objects escape as well bought a further 0.58 ms there and
-    /// cost the seam above, which is the trade this is the other side of.
+    /// **What it is worth depends entirely on where the camera stands.** At eye level nothing, because
+    /// far ground is crowded into the few rows under the horizon and the sky above it costs no bounce.
+    /// A camera looking at a cell from outside it is the other case, and a hilltop is that camera.
     const float BOUNCE_REACH = 8192.0f;
 
     /// How far a room's fill looks for what is standing over a point, in world units.
     ///
     /// **Two metres, which is the furniture and not the room.** A cell's `AMBI` ambient is a flat stand
-    /// in for every bounce the room makes, and it used to reach a point wedged under a pillow exactly as
-    /// fully as one in the middle of the floor — so white cloth lit its own contact shadow, and every
-    /// crevice next to something pale came out brighter than the surface beside it. What takes the fill
-    /// away is what is close enough to be in front of the room rather than part of it, and Morrowind's
-    /// rooms are small enough that anything further is a wall.
+    /// in for every bounce the room makes, and reaching a point wedged under a pillow as fully as one in
+    /// the middle of the floor is white cloth lighting its own contact shadow, and every crevice next to
+    /// something pale brighter than the surface beside it. What takes the fill away is what is close
+    /// enough to be in front of the room rather than part of it, and Morrowind's rooms are small enough
+    /// that anything further is a wall.
     const float ROOM_FILL_REACH = 140.0f;
 
     /// What share of exterior points are asked whether they reach the sky, the rest paying by weight.
     ///
     /// **Out of doors the ambient ray is the expensive one, by two orders of reach.** It runs to
     /// `mFar` where a room's stops at `ROOM_FILL_REACH`, and it is nearly all sky — the traversal is
-    /// spent proving that nothing is there. Removing it outright takes the exteriors suite's trace from
-    /// 30.9 ms to 26.3; a half of it measured 28.4, so this buys 2.5 ms of a 4.6 ms ceiling and no one
-    /// of the seven places came back the wrong way.
+    /// spent proving that nothing is there.
     ///
-    /// **A half and no further, because a third measured nothing.** Interleaved over the same seven
-    /// places, a third came back within 0.01 ms at four of them and 0.09 to 0.12 ms *slower* at the
-    /// other three. A rate is a per-lane skip and the ray it skips is a long one, so a warp still runs
-    /// until whichever of its thirty-two lanes kept a ray is finished — and at a third, all thirty-two
-    /// skipping is a chance in six hundred thousand. What the first halving bought is not on a curve
-    /// this can be carried further along.
+    /// **A half and no further, because a third buys nothing.** A rate is a per-lane skip and the ray
+    /// it skips is a long one, so a warp still runs until whichever of its thirty-two lanes kept a ray
+    /// is finished — and at a third, all thirty-two skipping is a chance in six hundred thousand. What
+    /// the first halving bought is not on a curve this can be carried further along.
     ///
     /// **Drawn and divided by the draw, so the estimate is unbiased by construction** rather than a
     /// guess at what the untraced half would have said. What that hands the filter is variance, which
@@ -450,10 +425,10 @@ namespace Rtx::Shaders
     /// thickens what is left by exactly as much, and neither number has to be re-tuned against the
     /// other.
     ///
-    /// **What used to stop this from shrinking was aliasing, and the mip chain answers that now.**
-    /// The field was hashed at every step, so anything finer than the step between two samples
-    /// arrived as noise and the only defence was a grain too coarse to have any. `fogFieldAt` picks a
-    /// level from the march's own stride instead, so the field is filtered rather than aliased.
+    /// **Aliasing is what would stop this from shrinking, and the mip chain answers it.** A field
+    /// hashed at every step hands anything finer than the step between two samples over as noise, and
+    /// the only defence is a grain too coarse to have any; `fogFieldAt` picks a level from the march's
+    /// own stride instead, so the field is filtered rather than aliased.
     const float FOG_GRAIN = 900.0f;
     const float FOG_TILE = FOG_GRAIN * float(FOG_FIELD_CELLS);
 
@@ -493,13 +468,10 @@ namespace Rtx::Shaders
 
     /// What a recorded `Wind Speed` of one comes to in world units a second.
     ///
-    /// **Read as a wind rather than picked, which is what it took to make an ash storm look like one.**
-    /// The renderer this is ported from first set 120, chosen so the strongest weather crossed one cell
-    /// of the coarsest noise in about nine seconds — and nine seconds to cross thirteen metres is 1.4
-    /// metres a second, which is a still afternoon rather than a storm. Twenty metres a second is a
-    /// Beaufort 8 gale, and seventy units to the metre makes that 1,400. The ten then land where their
-    /// names say: clear's 0.1 is a two-metre breeze, rain's 0.3 is six, thunderstorm's 0.5 is ten,
-    /// ashstorm's 0.8 is sixteen, and blight and blizzard blow eighteen.
+    /// **Read as a wind rather than picked, which is what it takes to make an ash storm look like one.**
+    /// Twenty metres a second is a Beaufort 8 gale, and seventy units to the metre makes that 1,400.
+    /// The ten then land where their names say: clear's 0.1 is a two-metre breeze, rain's 0.3 is six,
+    /// thunderstorm's 0.5 is ten, ashstorm's 0.8 is sixteen, and blight and blizzard blow eighteen.
     ///
     /// `mTime` runs at the clock's own rate rather than the game's thirty-times one, so this is a wind
     /// rather than a time-lapse.
@@ -513,9 +485,8 @@ namespace Rtx::Shaders
     /// which is what a valley at dawn looks like.
     ///
     /// **The band has to be cut against the field's own spread, not picked.** Averaging octaves narrows
-    /// a distribution sharply, and a threshold chosen for one octave's range clears almost everything:
-    /// the renderer this is ported from tried `0.42..1.0` and left average coverage at a third of a per
-    /// cent. This field runs mean 0.5 with a standard deviation of `FOG_FIELD_SPREAD` by construction
+    /// a distribution sharply, and a threshold chosen for one octave's range clears almost everything.
+    /// This field runs mean 0.5 with a standard deviation of `FOG_FIELD_SPREAD` by construction
     /// rather than by measurement, and it does so at every level of the chain — which is what lets one
     /// pair of numbers stand for the band at every step of a march.
     ///
@@ -685,14 +656,12 @@ namespace Rtx::Shaders
     /// game's 1,292 land cells. Half a metre is enough to hide the intersection without making the
     /// shallows look thin.
     ///
-    /// **Measured straight down, and it was measured along the refraction before.** Those are the same
-    /// number only where the bed is flat under the eye. At Seyda Neen's shore the terrain runs within a
-    /// few units of sea level for hundreds of units, so the two planes are very nearly parallel — while
-    /// the refracted ray, leaving at forty degrees off the vertical, lands far enough out to find a bed
-    /// well down. It reported deep water at a pixel with none, the fade never engaged, and what was left
-    /// was exactly the hard line this constant exists to prevent. The renderer this is ported from
-    /// found the same and says so in its §8.101, and what holds it here is
-    /// `theWaterlineIsAsDeepAsTheWaterOverItAndNotAsFarAsARayThroughItGoes`.
+    /// **Measured straight down and not along the refraction.** Those are the same number only where
+    /// the bed is flat under the eye. At Seyda Neen's shore the terrain runs within a few units of sea
+    /// level for hundreds of units, so the two planes are very nearly parallel — while the refracted
+    /// ray, leaving at forty degrees off the vertical, lands far enough out to find a bed well down:
+    /// deep water reported at a pixel with none, and the fade never engages.
+    /// `theWaterlineIsAsDeepAsTheWaterOverItAndNotAsFarAsARayThroughItGoes` holds it.
     const float WATER_SHORE_FADE = 35.0f;
 
     /// The scale of the pattern at the focus, in world units, which it grows from.
@@ -777,12 +746,10 @@ namespace Rtx::Shaders
     /// where this draws one of them. That is what puts the contrast into thin bright filaments, and this
     /// is the dial for how thin they are.
     ///
-    /// **Conservation is not what limits it any more.** Run to three, the estimator makes between 13 and
-    /// 32 per cent of light depending on how coarsely the cone reads the curvature, and `causticGain` is
-    /// the mean of exactly that divided back out. What the fold still costs is coherence: a filament is
-    /// the finest thing in the field, so it is made of the fastest-turning waves and it is what moves
-    /// first — 67 per cent of the pattern is new a twelfth of a second later, of which the sea carries
-    /// 14 points shoreward rather than replacing them.
+    /// **Conservation is not what limits it.** Whatever share of light the estimator makes at a fold,
+    /// `causticGain` is the mean of exactly that divided back out. What the fold costs is coherence: a
+    /// filament is the finest thing in the field, so it is made of the fastest-turning waves and it is
+    /// what moves first.
     const float WATER_CAUSTIC_FOLD = 3.0f;
 
     /// What share of what a stretch of water sends the sun's own beam has to be before its shaft is
@@ -791,8 +758,8 @@ namespace Rtx::Shaders
     /// **A share and not an angle, which is the same test `fogAlong` makes.** An angle sounds like the
     /// right gate — a shaft is the phase function's forward peak — but what decides whether the pattern
     /// can be *seen* is the beam against the sky scattered beside it, and that turns with the hour, the
-    /// weather and the depth. Gated at twenty-six degrees the shafts were there only when the sun was
-    /// looked straight at; against this they reach as far as they are worth reaching, which at noon in
+    /// weather and the depth. Gated at an angle the shafts are there only when the sun is looked
+    /// straight at; against this they reach as far as they are worth reaching, which at noon in
     /// clear water is past forty-five degrees and at dusk further still.
     ///
     /// **Two of them, because one drew a circle.** A march that begins at a threshold begins with a
@@ -808,10 +775,10 @@ namespace Rtx::Shaders
     /// are even rather than bunched: unlike the air, there is no density falling off with height for
     /// them to follow, and what wants resolving is spread along the whole stretch.
     ///
-    /// **Four, from eight, and the beam's body does not change.** The march is a ratio against the
-    /// same steps without the lens, so the step count cancels out of everything but the pattern's own
+    /// **Four, and the beam's body does not depend on it.** The march is a ratio against the same
+    /// steps without the lens, so the step count cancels out of everything but the pattern's own
     /// quadrature — and each step is a shadow ray, on the two rays every water pixel already traces.
-    /// `.notes/rtx/light-model-plan.md` is where halving it was measured.
+    /// `.notes/rtx/light-model-plan.md` is where the count was measured.
     const uint WATER_SHAFT_STEPS = 4u;
 
     /// How far apart the rain's impacts are, in world units: a lattice with one splash a cell.
@@ -900,9 +867,8 @@ namespace Rtx::Shaders
     /// **Sixteen is chosen for the lag and not yet measured for the noise**, and saying so is the
     /// point: it is a quarter of a second at sixty frames, which is inside what a player reads as
     /// "the light is on the wall" rather than as a fade. What it is worth against the noise wants a
-    /// sweep nobody has run: measured on the grid the filter tests use, sixteen frames take 44% of
-    /// the error the spatial cascade cannot reach, but no other count has been tried against it.
-    /// Until one is, this is a number picked from the half of the trade that can be reasoned about.
+    /// sweep nobody has run, and until one is this is a number picked from the half of the trade
+    /// that can be reasoned about.
     const float ACCUMULATE_FRAMES = 16.0f;
 
     /// How far above the running mean a sample may sit before it is taken as an outlier rather than
@@ -914,10 +880,9 @@ namespace Rtx::Shaders
     /// variance the same question has a scene-independent answer: a sample this far from what the
     /// pixel has been seeing is not what the pixel is looking at.
     ///
-    /// **Measured, with `shot --tail`**: sixteen accumulated frames take Seyda Neen's tail from 176
-    /// pixels over 0.5 to ten, and the clamp takes those ten to three. Where it declines to fire is
-    /// an interior full of lamps, because a pixel that sees a bright thing *consistently* raises the
-    /// mean to meet it and is never an outlier — which is the design working, not failing.
+    /// **Where it declines to fire is an interior full of lamps**, because a pixel that sees a bright
+    /// thing *consistently* raises the mean to meet it and is never an outlier — which is the design
+    /// working, not failing. `shot --tail` is what counts the pixels it takes.
     ///
     /// Four sigma leaves a Gaussian tail of one sample in sixteen thousand, which at sixteen frames
     /// of history is a clamp that fires on nothing that is really there.

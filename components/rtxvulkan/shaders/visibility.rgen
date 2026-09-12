@@ -227,11 +227,11 @@ void main()
         water = answer.mWater;
     }
 
-    // **What the surface is, kept apart from what the path did to it.** These two used to be one
-    // channel: the albedo was multiplied by every transmittance on the way to the eye, which is what
-    // the composite wants back and is not what an upscaler demodulates by. A foggy wall reported an
-    // albedo with the fog in it, so Ray Reconstruction divided the light by the wrong number
-    // wherever there was weather — which outdoors is nearly everywhere.
+    // **What the surface is, kept apart from what the path did to it.** An albedo multiplied by
+    // every transmittance on the way to the eye is what the composite wants back and is not what
+    // an upscaler demodulates by: a foggy wall reporting an albedo with the fog in it is Ray
+    // Reconstruction dividing the light by the wrong number wherever there is weather — which
+    // outdoors is nearly everywhere.
     vec3 transmittance = vec3(1.0);
 
     // A camera under the surface sees everything through the water in front of it, **the surface
@@ -264,8 +264,8 @@ void main()
 
     // **The stack over what it stands in front of, after the water and the air.** Both of those are
     // measured over the distance to the surface *behind* the glass, and the stack stands part of the
-    // way along that path: composited before them it was charged for the whole of it, so a lit
-    // window a few units out arrived as dim as the room two hundred units behind it.
+    // way along that path: composited before them it is charged for the whole of it, and a lit
+    // window a few units out arrives as dim as the room two hundred units behind it.
     //
     // **What each layer is charged is a prefix of the whole path, so every split is exact.** With
     // `S` for what `shaded` holds and `Llast` for what the medium in front of the last layer
@@ -294,8 +294,8 @@ void main()
     // **And the whole of the second walk is inside the test.** `mMediumInFrame` says whether
     // anything at all carries `MASK_MEDIUM`, so a cell with no cloud in it neither descends the top
     // level to find nothing nor merges a layer that holds nothing — and the merge is not free: it
-    // divides a coverage back out, which moved a level on two views that hold no medium at all.
-    // Inside the test, a frame with no cloud is the frame it was before there were any.
+    // divides a coverage back out, which moves a level on a view that holds no medium at all.
+    // Inside the test, a frame with no cloud is exactly a frame with no medium.
     //
     // **The medium's travel is filled in here**, because it is a placement's and the walk has no
     // reprojection in it. A cloud that stands still says so exactly: `movedBy` gives nothing at all
@@ -349,8 +349,8 @@ void main()
     //
     //     out = behind * (1 - opacity) + layer
     //
-    // **The layer is premultiplied and the frame is left alone**, and both halves of that were
-    // settled by measuring, because the SDK documents neither. Each form was rendered at
+    // **The layer is premultiplied and the frame is left alone**, and both halves of that are
+    // settled by measuring, because the SDK documents neither. Each form is rendered at
     // `--upscale=dlaa` — which reconstructs at the native extent, so every pixel has a counterpart —
     // and compared against the same frame at `--upscale=off`, which composites for itself and is the
     // answer. Mean absolute difference out of 255, over a chimney plume at Seyda Neen and over the
@@ -362,7 +362,7 @@ void main()
     //     straight layer, the haze in front removed 17.03   11.50
     //
     // So the upscaler multiplies nothing by the opacity it is handed: a straight colour arrives at
-    // roughly its own full strength over the frame, which drew a chimney's smoke as a hard white
+    // roughly its own full strength over the frame, which draws a chimney's smoke as a hard white
     // column against a blue sky. Premultiplied it lands on the floor the upscaler's own
     // reconstruction sets, which is as close as a handed-over layer can come.
     //
@@ -454,13 +454,12 @@ void main()
     imageStore(biasMask, at, vec4(untrusted ? 1.0 : 0.0));
 
     // **The sky moves too, and only its turn moves it.** `skyMotionOf` says why storing nothing here
-    // was a smear across every camera rotation.
+    // is a smear across every camera rotation.
     vec2 moved = hit ? motionOf(pixel, origin, direction, distance, instance) : skyMotionOf(pixel, direction);
 
-    // **The frame's own vector, always.** It used to be overwritten by whichever sprite covered the
-    // pixel most, because one vector was written per pixel and a raindrop crossing a wall had to be
-    // reprojected as something — so the wall behind it was reprojected as the raindrop instead, and
-    // `particleMask` was reduced to apologising for it. The layer below carries the sprite's own.
+    // **The frame's own vector, always.** One vector per pixel, overwritten by whichever sprite
+    // covers the pixel most, is a wall behind a raindrop reprojected as the raindrop. The layer
+    // below carries the sprite's own.
     if (!handedOver && claim.mWeight > 0.0)
         moved = puffMotionOf(pixel, claim);
 
@@ -476,13 +475,12 @@ void main()
     // so what stays in these three from the last frame that did write them is nobody's.
     if (handedOver)
     {
-        // **The alpha is the blending factor, and it was one.** The integration guide states the
-        // single-input form as "RGB premultiplied with Alpha, Alpha channel is the blending
-        // factor", so a layer handed over with an alpha of one says it covers every pixel — and
-        // where no sprite reached, the colour it covers them with is black. The picture survived
-        // that wherever the render extent was an exact fraction of the output and went black
-        // everywhere else, which is every window the upscale ratio does not divide: 5120 by 1440 at
-        // `--upscale=quality` traces 3413 by 960, and every frame of it came back black.
+        // **The alpha is the blending factor.** The integration guide states the single-input form
+        // as "RGB premultiplied with Alpha, Alpha channel is the blending factor", so a layer handed
+        // over with an alpha of one says it covers every pixel — and where no sprite reached, the
+        // colour it covers them with is black. The picture survives that wherever the render extent
+        // is an exact fraction of the output and goes black everywhere else, which is every window
+        // the upscale ratio does not divide.
         imageStore(transparency, at, vec4(transparencyLayer, opacity));
         imageStore(transparencyOpacity, at, vec4(opacity));
         const PuffClaim inLayer = layerClaim(puffs);

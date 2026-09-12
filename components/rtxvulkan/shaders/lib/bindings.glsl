@@ -118,7 +118,7 @@ layout(set = 2, binding = CHANNEL_STARS_SHOWN, GBUFFER_STARS) uniform writeonly 
 /// What the eye sees the frame through: the sprites, and the haze they stand in front of.
 ///
 /// **Premultiplied, so the composite is `layer + (1 - opacity) * behind`.** `visibility.rgen` says
-/// how that was measured, and what a straight colour drew instead.
+/// what a straight colour draws instead.
 layout(set = 2, binding = CHANNEL_TRANSPARENCY, GBUFFER_LAYER) uniform writeonly image2D transparency;
 
 /// How much of the pixel that layer covers. A flame covers nothing and still writes a radiance.
@@ -133,11 +133,10 @@ layout(set = 2, binding = CHANNEL_TRANSPARENCY_OPACITY, GBUFFER_LAYER_OPACITY) u
 /// Where the layer stood on the last frame's screen, which is not where the surface behind it stood.
 layout(set = 2, binding = CHANNEL_TRANSPARENCY_MOTION, GBUFFER_MOTION) uniform writeonly image2D transparencyMotion;
 
-// One atomic per hit on a single address, which looks like contention and measures as nothing: at
-// 3840x2160 over Seyda Neen the trace runs 0.57-0.79 ms, and a subgroup reduction in place of this
-// ran 0.65-0.78 for an identical count. Only 5.5% of rays hit, and the reduction would have cost the
-// device a subgroup-arithmetic requirement it does not otherwise need. Measure again if a pass ever
-// hits most of its pixels.
+// One atomic per hit on a single address, which looks like contention and costs nothing a subgroup
+// reduction in its place gives back: few rays hit, and the reduction would cost the device a
+// subgroup-arithmetic requirement it does not otherwise need. Measure again if a pass ever hits
+// most of its pixels.
 layout(set = 0, binding = BIND_HITS) buffer HitCount
 {
     uint hits;
@@ -157,9 +156,9 @@ layout(set = 0, binding = BIND_HITS) buffer HitCount
 // its own instead. The name and the fields are the ones the push block had, so nothing that reads
 // `camera` knows the difference.
 //
-// **Uniform and not storage**, which is worth 0.14 ms of the trace at Balmora: every pixel reads
-// half of these fields several times over, and a uniform block is promoted to a constant bank the
-// way the push constants it replaces were, where a storage buffer is a memory read like any other.
+// **Uniform and not storage**, which is worth a few per cent of the trace: every pixel reads half
+// of these fields several times over, and a uniform block is promoted to a constant bank the way a
+// push constant is, where a storage buffer is a memory read like any other.
 //
 // **Declared before the tables, because the tables are reached through it.**
 layout(set = 0, binding = BIND_FRAME, scalar) uniform Frame
@@ -349,8 +348,8 @@ GpuSprite spriteAt(uint index)
 /// One sphere and one run of sprites per particle system, indexed by `GpuSprite::mEmitter`.
 ///
 /// **No count beside it, because nothing walks these.** The buffer never shrinks, so its length
-/// outlives the cell that filled it — and since the sprite tiles replaced the loop over emitters,
-/// the only way in is from a sprite the tile named, which can only name one that is real.
+/// outlives the cell that filled it — and the only way in is from a sprite the tile named, which
+/// can only name one that is real.
 GpuEmitter emitterAt(uint index)
 {
     return EmitterTable(frame.mTables.mEmitters).at[index];
@@ -358,7 +357,7 @@ GpuEmitter emitterAt(uint index)
 
 /// The sprite tiles' list, in the light grid's shape over the screen's tiles: where each tile's run
 /// starts, then every tile's sprites run together in tile order and ascending inside each run —
-/// which is the order the march used to walk them in, and so the order they still composite in.
+/// which is the order they composite in.
 ///
 /// **Made on the device, by `SpriteBinPass`, ahead of the trace.** `spriterects.comp` says why the
 /// layer is binned per tile and the emitters are not, and `SPRITE_LIST_UNBINNED` what entry nought

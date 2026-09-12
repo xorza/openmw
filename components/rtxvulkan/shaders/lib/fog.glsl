@@ -66,10 +66,10 @@ vec2 fogFieldAt(vec3 position, float tile, float spacing, vec3 churn)
 
 /// The fog's shape at a point: one volume read at three scales, over a domain the coarsest drags.
 ///
-/// **Fetched rather than computed, which is most of what this stopped costing.** The field this
-/// replaced hashed eight lattice corners per octave and took five of those — forty hashes at every
-/// step of a twenty-four step march, measured at 2.0 ms of a 2.1 ms trace. Three fetches stand for
-/// all of it, and what they read is the same trilinear value noise the reference hashes, drawn once.
+/// **Fetched rather than computed.** A field hashed at every step is eight lattice corners per
+/// octave and five octaves — forty hashes at every step of a twenty-four step march, which is
+/// nearly the whole of a trace. Three fetches stand for all of it, and what they read is the same
+/// trilinear value noise the reference hashes, drawn once.
 ///
 /// **The three scales are the fractal**, and they are the same three the renderer this is ported
 /// from sums over a hash: amplitudes halving, frequencies stepping by `FOG_LACUNARITY`, each on
@@ -505,10 +505,9 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
 /// **Split out because the sprite march asks for the same ray at a hundred distances.** Every term
 /// here is a function of the origin and the direction alone, and one of them is an exponential.
 ///
-/// **The exponential it hoists is not what it is for.** Three interleaved pairs over Balmora in a
-/// storm put the split at 1.26 to 1.28 ms against 1.23 to 1.27 — the compiler was already lifting
-/// it out of the loop. What is left is the statement that these five terms do not vary with the
-/// span, which is the thing a reader could not see before.
+/// **The exponential it hoists is not what it is for**: the compiler already lifts it out of the
+/// loop, and the split reads the same. What it is for is the statement that these five terms do
+/// not vary with the span.
 struct FogRay
 {
     /// How far the eye stands over the fog's base, which may be under it.
@@ -818,11 +817,10 @@ vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance)
     if (waterOver(origin) > 0.0)
         return vec4(0.0, 0.0, 0.0, 1.0);
 
-    // **The volume, whatever kind of air this is.** A room used to read a closed form instead — its
-    // field is even, so the transmittance integrates exactly and only the shadow rays were left to
-    // march. What that cost was a lamp reservoir and a ray *per pixel*, where the volume walks the
-    // lamps once per froxel and hands this two fetches: 0.15 to 0.35 ms off the trace of every
-    // interior, against 0.12 to 0.16 for the volume itself.
+    // **The volume, whatever kind of air this is.** A room could read a closed form instead — its
+    // field is even, so the transmittance integrates exactly and only the shadow rays are left to
+    // march — but that is a lamp reservoir and a ray *per pixel*, where the volume walks the lamps
+    // once per froxel and hands this two fetches, which costs an interior less.
     const vec4 weather = fogVolumeAlong(pixel, direction, distance);
 
     const vec4 edge = fogEdgeAlong(origin, direction, distance);

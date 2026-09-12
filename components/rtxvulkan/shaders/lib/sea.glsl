@@ -232,10 +232,10 @@ WaterSurface waterSurfaceAt(vec2 at, float footprint)
 ///
 /// **One index of refraction and not three.** Water's runs 1.3326 to 1.3392 across the visible band
 /// by Cauchy's fit, so blue turns harder than red and a real caustic has coloured edges; the cost of
-/// drawing them would be three determinants over a Hessian that does not depend on the channel.
-/// Measured on the reference renderer at this sea state, twelve pixels in ninety thousand came out
-/// differing by more than one level. It is what would put prism edges on cusps if the surface ever
-/// got steep enough for the determinant to approach zero, and it goes in when it does.
+/// drawing them would be three determinants over a Hessian that does not depend on the channel,
+/// for a handful of pixels in a hundred thousand that differ by more than one level. It is what
+/// would put prism edges on cusps if the surface ever got steep enough for the determinant to
+/// approach zero, and it goes in when it does.
 ///
 /// @param at **where the light met the surface, and not where it landed.** The map above runs from
 ///        one to the other, so the Jacobian belongs at `p` — and the caller has `p` for nothing,

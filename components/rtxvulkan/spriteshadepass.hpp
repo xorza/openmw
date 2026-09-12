@@ -16,9 +16,9 @@ namespace Rtx
     /// Counts how many layers of its own emitter stand between each sprite and each light, on the
     /// device, ahead of the bin and the trace that read them.
     ///
-    /// **What the host did every frame, done where the sprites already are.**
-    /// `shaders/spriteshade.h` says what this computes, what it replaced and why nothing else
-    /// computes it. This is one dispatch and the barrier around it, and nothing about it depends on
+    /// **Done where the sprites already are.** `shaders/spriteshade.h` says what this computes and
+    /// why nothing else computes it. This is one dispatch and the barrier around it, and nothing
+    /// about it depends on
     /// which scene it shades — the world's and a picture's inside the interface both hand it their
     /// own tables, as they do to `SpriteBinPass`.
     class SpriteShadePass

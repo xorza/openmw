@@ -28,9 +28,9 @@ namespace Rtx
         /// still standing.** Compacting a cell in one placement would ask the storage for the whole
         /// saving on top of what it was saving, and give the old rooms back only once the frame
         /// retired — so the high-water mark would be the sum rather than the difference, and the
-        /// frame that did it would carry the whole copy. At this rate Seyda Neen's 133 MiB are
-        /// tight within twenty placements of arriving, and what is outstanding at any moment is a
-        /// block rather than a cell.
+        /// frame that did it would carry the whole copy. At this rate a cell is tight within a few
+        /// dozen placements of arriving, and what is outstanding at any moment is a block rather
+        /// than a cell.
         constexpr VkDeviceSize sCompactionPerPlacement = 8 * 1024 * 1024;
     }
 
@@ -196,9 +196,9 @@ namespace Rtx
             {
                 // **What lets the builder be asked what it would come to tight.** A structure is
                 // built loose because the builder cannot know the answer until it has finished, and
-                // this is what makes the answer askable — measured at 0.6% of the structures for the
-                // question, against the 60% `askWhatCompactionWouldSave` reports it would give back.
-                // A mesh that refits is left out: a refit writes back into the slack.
+                // this is what makes the answer askable, for a fraction of a per cent of the
+                // structure against the half `askWhatCompactionWouldSave` reports it gives back. A
+                // mesh that refits is left out: a refit writes back into the slack.
                 flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
             }
 

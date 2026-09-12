@@ -8,9 +8,8 @@ namespace Rtx
     /// Milliseconds between two readings of the steady clock, which is what every timed figure in
     /// this fork is.
     ///
-    /// **One spelling, because it was written seven times.** `std::chrono::duration<double,
-    /// std::milli>(to - from).count()` says nothing a reader needs and hides which way round the
-    /// subtraction goes; every timed stretch in this fork now reads the same way.
+    /// **One spelling.** `std::chrono::duration<double, std::milli>(to - from).count()` says
+    /// nothing a reader needs and hides which way round the subtraction goes.
     ///
     /// **Beside the clock rather than beside the report it feeds.** A backend times a wait and the
     /// game times a walk; neither of them summarises a run, and neither should reach the report to
@@ -24,16 +23,14 @@ namespace Rtx
     ///
     /// **One clock for a run, because a run that reads two cannot repeat itself.** How far the
     /// simulation steps, how long the renderer is told the frame took, and what OpenMW ages its
-    /// caches and its preloads by are three questions with one answer. They used to be three reads
-    /// of `[RTX] fixed step`, each falling back to a clock of its own: `Engine::go` took the
-    /// frame-rate limiter, `RtxRenderer::advance` took `osg::Timer` and `VulkanRenderer::renderFrame`
-    /// took `std::chrono`.
+    /// caches and its preloads by are three questions with one answer, and three reads of
+    /// `[RTX] fixed step` each falling back to a clock of its own are three answers.
     ///
-    /// **What that cost, measured.** `MWWorld::Scene` reads the reference time eight times, and two
+    /// **What a second clock costs.** `MWWorld::Scene` reads the reference time eight times, and two
     /// of those decide rather than expire — `SceneManager::checkLoaded` says whether an object's
     /// mesh is already in hand, and `CellPreloader::isTerrainLoaded` says whether a grid change may
-    /// go ahead. Two runs of one build over `island-crossing` were handed different worlds: 5,776
-    /// placed instances against 5,772, and 467 textures against 466.
+    /// go ahead. Two runs of one build on two clocks are handed different worlds, a few placements
+    /// and a texture apart.
     ///
     /// **A step, or the wall.** A measured run states how long every frame stands for and this
     /// counts them, so what ages is the frame index. A played session states nothing, so it is

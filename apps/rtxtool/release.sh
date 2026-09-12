@@ -14,8 +14,8 @@ build="$root/build-release"
 
 # **Light debug data and frame pointers, in the build the numbers are quoted from.** `-g1` is line
 # tables and nothing else — no locals, no types — so it costs nothing at runtime and a profile can
-# name a line rather than an offset. `-fno-omit-frame-pointer` measured at 0.2% here, against a
-# run-to-run spread of 2.7%, and it is what lets perf walk a stack for the price of reading it.
+# name a line rather than an offset. `-fno-omit-frame-pointer` costs less than the run-to-run
+# spread, and it is what lets perf walk a stack for the price of reading it.
 #
 # Both are on the measured build rather than on a profiling build beside it, because two binaries
 # means the profile explains a frame the benchmark did not time. Where the distribution builds its

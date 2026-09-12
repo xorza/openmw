@@ -42,9 +42,9 @@ namespace Rtx
 
     /// A cell's ground as the frame holds it: its rows, where it stands, and what shades it.
     ///
-    /// **Its own type, because the seven are empty together.** They were seven fields of the cell
-    /// and `mGroundMesh == sNoIndex` stood for all of them — one rule a reader had to know rather
-    /// than a shape that states it. `PreparedGround::mStands` says the same thing one step earlier.
+    /// **Its own type, because the seven are empty together.** Seven fields of the cell with one
+    /// of them standing for all is a rule a reader has to know rather than a shape that states it.
+    /// `PreparedGround::mStands` says the same thing one step earlier.
     struct HeldGround
     {
         /// The rows the ring holds on the scene, which no drawable and no state set will ever name.

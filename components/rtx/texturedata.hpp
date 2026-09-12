@@ -91,7 +91,7 @@ namespace Rtx
         ///
         /// **Morrowind's meshes are block-compressed to the last file and its sky is not.** The
         /// cloud decks are 32-bit `DDPF_RGB`, which is what a texture painted for a full-screen dome
-        /// in 2002 would be, and a renderer that took only blocks drew every weather grey. Both
+        /// in 2002 would be, and a renderer that takes only blocks draws every weather grey. Both
         /// orders are carried rather than one and a swizzle, because a `.dds` says which it is and
         /// the API has a format for each — converting would mean owning a copy of a buffer this
         /// type is defined by not owning.
@@ -139,9 +139,9 @@ namespace Rtx
     {
         /// Which row of the backend's texture array this is, which is the slot a material holds.
         ///
-        /// **Carried rather than implied by position.** Arrivals used to be a contiguous tail, so a
-        /// backend could append and be right; a slot a departing cell freed is taken over wherever
-        /// it sits, so an arrival has to say where it belongs.
+        /// **Carried rather than implied by position.** A slot a departing cell freed is taken over
+        /// wherever it sits, so an arrival is not a contiguous tail a backend could append, and has
+        /// to say where it belongs.
         Index mSlot = 0;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;

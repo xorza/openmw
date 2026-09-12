@@ -264,9 +264,9 @@ namespace Rtx
         // of resolutions, which is most of what it occupies.
         //
         // **And the image it writes goes with it**, which is what makes `upscaling()` the answer for
-        // both. It is sized to the output — 33 MiB at 1080p and 133 at 4K — so leaving it behind
-        // held that memory until something upscaled again, at the extent of whichever frame last
-        // did, and every frame between the two still discarded it.
+        // both. It is sized to the output — sixteen bytes a pixel — so leaving it behind would hold
+        // that memory until something upscaled again, at the extent of whichever frame last did,
+        // while every frame between the two still discarded it.
         mUpscaler.reset();
         mUpscaled.reset();
 
@@ -279,7 +279,7 @@ namespace Rtx
             // view suite and over a camera pointed at the noon sun — so a half carries it with four
             // orders of magnitude to spare, at a step of one part in two thousand where the display
             // quantizes to one in 255. Sixteen bytes a pixel of the output extent rather than
-            // thirty-two: 66 MiB at 4K rather than 133.
+            // thirty-two.
             mUpscaled = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");
 
@@ -303,9 +303,9 @@ namespace Rtx
         mPreviousCamera = Shaders::VisibilityConstants{};
 
         // **Dropped rather than resized, because most runs never make one.** Sixteen bytes a pixel
-        // is 33 MiB at 1080p and 133 MiB at 4K, and it buys a sum that neither rounds nor clips —
-        // which is worth every byte to the reference mode and nothing at all to the frame a window
-        // or a plain shot draws. The first averaging frame is what asks for it.
+        // of the output buys a sum that neither rounds nor clips — which is worth every byte to the
+        // reference mode and nothing at all to the frame a window or a plain shot draws. The first
+        // averaging frame is what asks for it.
         mSum.reset();
     }
 
@@ -639,8 +639,7 @@ namespace Rtx
         // which is why only the halves above have a command buffer and an answer about it.
         //
         // **Only what a moving world changed**, which is the instance rows and the lights.
-        // Rebuilding all of it was measured at twenty to twenty-seven milliseconds on a nine-by-nine
-        // region and was the largest single cost in the frame.
+        // Rebuilding all of it is tens of milliseconds on a nine-by-nine region.
         held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, placing.mSlot, placing.mGraveyard);
 
         return posed || built;
@@ -1328,8 +1327,8 @@ namespace Rtx
         assert(mFrame.isBuilt());
         assert(mFrame.getChannels().carries(channel) && "a channel this frame stands in for, read back as its own");
 
-        // **One lookup, where this was a switch of fourteen arms each naming its own channel back.**
-        // A channel is its binding, and the buffer is indexed by it.
+        // **One lookup and not a switch of fourteen arms.** A channel is its binding, and the buffer
+        // is indexed by it.
         readImage(mFrame.getChannels().get(channel), values);
     }
 

@@ -67,9 +67,8 @@ namespace Rtx
     ///
     /// **The parts and nothing dearer than they are.** `Rtx::digestScene` answers the other
     /// question — whether the two runs held one world or two — and it costs a walk of every triangle
-    /// of every placement: measured on `island-crossing`, a hashed run of 360 frames took 122
-    /// seconds with it against 8.6 without. `scene` and `verify` ask it once at a place, which is
-    /// where it is affordable.
+    /// of every placement, which is a hashed run taking an order of magnitude longer. `scene` and
+    /// `verify` ask it once at a place, which is where it is affordable.
     ///
     /// **A hash and not a picture**, because six hundred frames at 1920x1080 is a few hundred
     /// megabytes and the sixteen stills are kilobytes. What this answers is "did the run draw the

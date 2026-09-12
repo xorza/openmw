@@ -256,9 +256,9 @@ namespace Rtx
 
         prepareTopLevel(scene, placing.mSlot, placing.mGraveyard);
 
-        // The barrier between the refit and the top level is what the fence used to be: the top
-        // level is built over structures the refit has just rewritten, which is a dependency inside
-        // a command buffer rather than a reason to go round the driver twice.
+        // A barrier between the refit and the top level, and not a fence: the top level is built
+        // over structures the refit has just rewritten, which is a dependency inside a command
+        // buffer rather than a reason to go round the driver twice.
         barrierBeforeBuild(placing.mCommands);
         if (compacting)
             mBottomLevel.recordCompaction(placing.mCommands, placing.mTimer);

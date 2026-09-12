@@ -28,9 +28,9 @@ namespace Rtx
         /// fades one with, read off the nearest state set that carries them, or the value the chain
         /// already had where this one does not.
         ///
-        /// **Resolved as the chain is built and not per drawable.** Every drawable used to walk its
-        /// chain asking each state set for two uniforms by a `std::string` made on the spot; a
-        /// state set is asked once now, when it is pushed, and a drawable reads the answer.
+        /// **Resolved as the chain is built and not per drawable.** A state set is asked once, when
+        /// it is pushed, and a drawable reads the answer — rather than every drawable walking its
+        /// chain asking each state set for two uniforms by a `std::string` made on the spot.
         float mFade = 1.0f;
 
         /// Whether a controller rewrote this since the last frame, so the material read from it is

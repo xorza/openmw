@@ -8,11 +8,11 @@ namespace Rtx
 {
     /// A Vulkan handle the device destroys, and the device it belongs to.
     ///
-    /// **The one place `vkDestroyX(device, handle, allocator)` is spelled.** Every class that holds
-    /// one used to write the same three things by hand — a move constructor, a move assignment and a
-    /// `destroy` — which is twenty lines with one name changed in them, and a class that forgot the
-    /// exchange in its move leaked whatever the source still held. A member that empties itself is
-    /// what lets those classes default their moves and say nothing at all.
+    /// **The one place `vkDestroyX(device, handle, allocator)` is spelled.** A class that holds one
+    /// and writes a move constructor, a move assignment and a `destroy` by hand is twenty lines
+    /// with one name changed in them, and one that forgets the exchange in its move leaks whatever
+    /// the source still held. A member that empties itself is what lets those classes default
+    /// their moves and say nothing at all.
     ///
     /// **`CI/check_rtx_handles.sh` is what makes the next class adopt it**, because saying so here
     /// did not: a class that spelled the call itself cost a destructor and a `const Device&` member

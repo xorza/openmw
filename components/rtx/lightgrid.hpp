@@ -19,9 +19,8 @@ namespace Rtx
     /// **A shading point should not have to ask every lamp in the cell whether it is near.** Walking
     /// them all costs the same whether one contributes or none do, and the fog made that
     /// unaffordable rather than merely wasteful: a surface asks once per hit where a march asks
-    /// twenty-four times per pixel, sky included. Measured on Balmora's twenty-six lamps, the walk
-    /// is 0.111 ms per lamp per frame at 1920x1080 — 2.9 ms on a frame that traced in 0.67 without
-    /// it.
+    /// twenty-four times per pixel, sky included, and a town's lamps walked that way are several
+    /// times the trace that lights them.
     ///
     /// A uniform grid, in **world space** rather than screen space, because a reflection or a bounce
     /// lands where no pixel is looking. Each cell's lamps are a run of the `RunList`, keyed by the
@@ -57,8 +56,8 @@ namespace Rtx
         /// **And a world whose lamps have not moved is not binned again.** Everything this reads of
         /// a light is where it stands and how far it reaches, so the grid is a function of that
         /// sequence and of nothing else — a lamp that only flickered has the same grid, and
-        /// Morrowind's lamps flicker on nearly every frame. Measured at Seyda Neen's 341 lights:
-        /// 0.081 ms a frame of binning, against a compare of five and a half kilobytes.
+        /// Morrowind's lamps flicker on nearly every frame. A compare of a few kilobytes against a
+        /// bin of every light.
         void rebuild(std::span<const Light> lights);
 
         /// The corner cell zero starts at, and how many cells the grid is across.

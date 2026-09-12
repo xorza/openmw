@@ -18,10 +18,8 @@ namespace Rtx
         ///
         /// **Sampled on the four this pass only reads, storage on the one it writes.** A
         /// twenty-five tap gather wants the texture unit and its cache, and only a
-        /// `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE` reaches it: three interleaved pairs with the
-        /// upscaler off put the cascade at 2.05 to 2.06 ms against 2.14 to 2.20 at the Balmora
-        /// mages' guild, and 1.40 to 1.42 against 1.46 to 1.50 at Seyda Neen's shore. An image
-        /// bound here as sampled and elsewhere as storage is legal from `VK_IMAGE_LAYOUT_GENERAL`,
+        /// `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE` reaches it, which is a few per cent of the cascade. An
+        /// image bound here as sampled and elsewhere as storage is legal from `VK_IMAGE_LAYOUT_GENERAL`,
         /// which is the layout every one of these is already in.
         constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
             computeBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
@@ -36,28 +34,24 @@ namespace Rtx
         /// leave the other frame's access uncovered.
         constexpr VkAccessFlags2 sReads = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
-        /// **Three ways of feeding this pass the same taps more cheaply, and all three measured
-        /// nothing.** Written down because each looks obviously right on paper.
+        /// **Three ways of feeding this pass the same taps more cheaply, and none of them pays.**
+        /// Written down because each looks obviously right on paper.
         ///
-        /// *A shared-memory tile, and Dolp's permutation to make every level fit one.* Run at one
-        /// level through five the pass costs 0.39, 0.81, 1.16, 1.66 and 2.09 ms — flat in the
-        /// stride. At step one an 8x8 group's 1600 taps cover 144 distinct texels and every one is
-        /// an L1 hit; at step sixteen nothing is reused at all. They cost the same, so there is no
-        /// locality for a tile to recover and no reason for the permutation that exists to make
-        /// one possible.
+        /// *A shared-memory tile, and Dolp's permutation to make every level fit one.* The pass
+        /// costs the same per level whatever the stride: at step one an 8x8 group's taps cover a
+        /// few dozen distinct texels and every one is an L1 hit, and at step sixteen nothing is
+        /// reused at all. There is no locality for a tile to recover, and no reason for the
+        /// permutation that exists to make one possible.
         ///
-        /// *One geometry channel instead of the guide and the depth.* Built in full — a channel,
-        /// a gate, the trace's store, both denoiser passes — and over four interleaved pairs it
-        /// read 2.10 ms against the pair's 2.05 at the guild and 1.42 against 1.42 at Seyda Neen's
-        /// shore, for 33 MiB and a fork in `GBuffer`'s gate. Reverted.
+        /// *One geometry channel instead of the guide and the depth.* Neutral, for tens of
+        /// megabytes and a fork in `GBuffer`'s gate.
         ///
-        /// *Packing that channel to eight bytes.* Worse again: the octahedral decode's `normalize`
-        /// costs 0.13 ms over the 125 taps, which is more than one fewer fetch is worth.
+        /// *Packing that channel to eight bytes.* Worse: the octahedral decode's `normalize` over
+        /// the 125 taps costs more than one fewer fetch is worth.
         ///
-        /// What the pass does spend is work rather than a data path: removing both `exp` takes it
-        /// to 1.31 ms and removing the guide tap to 1.63, where removing `pow(dot, 128)` takes it
-        /// nowhere at all. **A profiler is what the next attempt should start from**, and `ncu` is
-        /// not installed on this box.
+        /// What the pass does spend is work rather than a data path — the two `exp` and the guide
+        /// tap, where `pow(dot, 128)` costs nothing. **A profiler is what the next attempt should
+        /// start from**, and `ncu` is not installed on this box.
 
         /// How sharply a tap's normal has to agree with the centre's, and how far off its plane it
         /// may sit.

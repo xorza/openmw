@@ -29,9 +29,8 @@ namespace Rtx
     {
         /// Appends `values` to `into` and answers the run they landed in.
         ///
-        /// **One statement, because four parts of it were the same three lines.** A run that named
-        /// where it started and a count taken from another array is exactly what `Rtx::Run` exists
-        /// to stop.
+        /// **One statement**: a run that named where it started and a count taken from another
+        /// array is exactly what `Rtx::Run` exists to stop.
         template <class T>
         Run appended(std::vector<T>& into, std::span<const T> values)
         {

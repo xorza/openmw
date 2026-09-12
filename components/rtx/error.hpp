@@ -21,11 +21,10 @@ namespace Rtx
     /// The half of `Error` that means **this machine cannot run the backend**, rather than that this
     /// code broke a contract.
     ///
-    /// **The two questions were one type, and a test suite could not tell them apart.** A machine
-    /// with no driver, no qualifying device or no DLSS legitimately skips; a format with no recorded
-    /// texel size, a shader the build did not write and a scene that outgrew its own table are
-    /// faults. `createRenderer` reported every one of them as a reason to skip, so a whole GPU
-    /// suite could report success after it ran nothing.
+    /// **Two types, so a test suite can tell the two questions apart.** A machine with no driver,
+    /// no qualifying device or no DLSS legitimately skips; a format with no recorded texel size, a
+    /// shader the build did not write and a scene that outgrew its own table are faults. One type
+    /// for both is a whole GPU suite reporting success after it ran nothing.
     ///
     /// **Thrown only where the code asked what this machine can do and was told no.** Everything
     /// after bring-up is a contract, and a contract stays `Error`, which leaves a factory as a

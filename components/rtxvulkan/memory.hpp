@@ -117,8 +117,9 @@ namespace Rtx
     public:
         /// What a range's offset and length are counted in.
         ///
-        /// Measured rather than assumed: every image this renderer creates asks for 1024-byte
-        /// alignment, and every buffer for 16, 64 or 256. So a page of 1024 is the coarsest of them,
+        /// Read off the device rather than assumed: every image this renderer creates asks for
+        /// 1024-byte alignment, and every buffer for 16, 64 or 256. So a page of 1024 is the
+        /// coarsest of them,
         /// and a resource never pays for an alignment it did not ask for. One that asks for more —
         /// which nothing on this hardware does, and which the code still has to answer — takes as
         /// many extra pages as its alignment exceeds one by.

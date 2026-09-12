@@ -94,8 +94,8 @@ void main()
 
     // **What this frame asks for, which is not yet what it gets.** Every branch below settles a
     // target and exactly one write happens after them, so the degenerate case is smoothed like any
-    // other: it used to snap a night exterior from an exposure of order tens to exactly one between
-    // two frames.
+    // other, rather than snapping a night exterior from an exposure of order tens to exactly one
+    // between two frames.
     float target;
     if (frame.mPixels <= black)
     {

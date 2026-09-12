@@ -35,8 +35,8 @@ namespace Rtx
         ///
         /// **What says whether the trace has to gather one at all.** `mediumAlong` walks the
         /// structure on a mask of its own, and where no instance carries that mask the walk still
-        /// descends the top level and finds nothing: measured at 0.02 ms of a 1.86 ms trace over
-        /// Seyda Neen. `VisibilityConstants::mMediumInFrame` is what carries this to the shader.
+        /// descends the top level and finds nothing. `VisibilityConstants::mMediumInFrame` is what
+        /// carries this to the shader.
         std::uint32_t mMedium = 0;
     };
 }

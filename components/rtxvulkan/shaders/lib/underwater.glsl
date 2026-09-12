@@ -214,8 +214,8 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
     // the step count, the jitter and the exponentials all cancel, and what is left multiplies the
     // closed form above.
     //
-    // So a ray that shows no pattern comes back with exactly `beam`, to the last bit, and the ring
-    // the gate used to draw has nothing to draw it with.
+    // So a ray that shows no pattern comes back with exactly `beam`, to the last bit, and a gate
+    // has no ring to draw.
     vec3 lit = vec3(0.0);
     vec3 plain = vec3(0.0);
     float behind = 0.0;

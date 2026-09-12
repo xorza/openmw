@@ -41,7 +41,7 @@ namespace Rtx
     /// **One call, because the shape of this walk is nobody's to choose.** Those nodes hang under
     /// the sky's camera-relative transform, which carries no translation — so their particles are
     /// placed about the origin and the eye is what stands them back in the world. Anchored, masked
-    /// and gated at the caller instead, that was four decisions a second caller could take
+    /// and gated at the caller instead, that is four decisions a second caller could take
     /// differently.
     ///
     /// **Stood at the eye the drops were driven with**, because that is the one place the box
@@ -125,14 +125,12 @@ namespace Rtx
     /// **The order is the whole of what this is for.** The stars have to be known before the sky's
     /// budget, because what the sheets add is measured out of the weather's ambient; the budget
     /// before the air, because the air is lit by the dome it stands in; and both before the deck,
-    /// which is lit by the dome and by the moons under it. Written out at each host, that order was
+    /// which is lit by the dome and by the moons under it. Written out at each host, that order is
     /// four chances for one of them to drift.
     ///
-    /// **One call, where this was a struct and a second function that copied it out field by
-    /// field.** Those twenty-odd assignments were the failure this exists to end — a field added to
-    /// one host and forgotten in the other — and a second copy of them, out of the struct and into
-    /// the constants, was the same failure one step further along. Three had already happened: the
-    /// sea's clock stood still in the game alone, both moons had to be added twice in one sitting,
-    /// and `mAir.mUniform` ran the outdoor coverage field in every interior of the game.
+    /// **One call, and not a struct a host copies out field by field.** Twenty-odd assignments per
+    /// host are a field added to one host and forgotten in the other — a sea's clock standing
+    /// still in the game alone, a moon added twice, the outdoor coverage field running in every
+    /// interior.
     float describeWorld(const WorldReading& reading, Shaders::VisibilityConstants& constants);
 }

@@ -342,11 +342,11 @@ namespace Rtx
             = [](const VkDescriptorBufferInfo& write) { return write.buffer != VK_NULL_HANDLE; };
         assert(bound(hitWrite) && bound(frameWrite) && "an input bound as nothing");
 
-        // **Appended rather than indexed.** Every one of these used to name its own slot — channels
-        // at `1 + i`, buffers at `i + 8`, then twenty-one through twenty-six by hand — so adding a
-        // channel silently moved two buffer writes on top of each other and left the new bindings
-        // unwritten. The layout said what was wrong and nothing else did. A cursor cannot make that
-        // mistake, and the count below is checked rather than maintained.
+        // **Appended rather than indexed.** Writes that each name their own slot — channels at
+        // `1 + i`, buffers at `i + 8`, the rest by hand — are a channel added silently moving two
+        // buffer writes on top of each other and leaving the new bindings unwritten, with the layout
+        // saying what was wrong and nothing else. A cursor cannot make that mistake, and the count
+        // below is checked rather than maintained.
         std::array<VkWriteDescriptorSet, sBindings.size()> writes{};
         std::uint32_t filled = 0;
 

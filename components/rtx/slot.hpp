@@ -7,9 +7,8 @@ namespace Rtx
 {
     /// Which scene a call is about: the world, or one a view asked for.
     ///
-    /// **The world is a case and not a sentinel.** It used to be `~0u` in the same value space as
-    /// the indices `addViewScene` hands out, so a caller that forgot it indexed the view table out
-    /// of range — and a scene slot, a frame slot and a GUI texture were one type between them.
+    /// **The world is a case and not a sentinel.** A `~0u` in the same value space as the indices
+    /// `addViewScene` hands out is a view table indexed out of range by a caller that forgot it.
     class SceneSlot
     {
     public:

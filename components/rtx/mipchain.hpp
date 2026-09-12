@@ -10,11 +10,11 @@ namespace Rtx
     ///
     /// **Morrowind ships five thousand textures with a chain and a hundred and eighty-seven
     /// without**, and its rain is one of the hundred and eighty-seven: `tx_raindrop_01.dds` is eight
-    /// by thirty-two with a single level. So every drop was read at its finest wherever it stood,
-    /// and its peak alpha is 0.400 where the levels it lacks hold 0.283, 0.129 and 0.068 — a storm
-    /// the rasterizer draws as a wash of grey came out as hard white marks that flickered as they
-    /// fell. The rasterizer never had to say any of this: an `osg::Texture2D` asks the driver to
-    /// generate what a file did not carry.
+    /// by thirty-two with a single level. Read at its finest wherever it stands, a drop's peak
+    /// alpha is 0.400 where the levels it lacks hold 0.283, 0.129 and 0.068 — a storm the
+    /// rasterizer draws as a wash of grey comes out as hard white marks that flicker as they fall.
+    /// The rasterizer never has to say any of this: an `osg::Texture2D` asks the driver to generate
+    /// what a file did not carry.
     ///
     /// **Decoded to loose texels rather than compressed again.** A block format cannot be filtered
     /// into another block without an encoder, and what wants this is a short list of small files —

@@ -36,8 +36,8 @@ namespace Rtx
         /// middle of everything solid the game ships.
         ///
         /// **Little of the game answers yes**, and that is the content rather than the test: a rock
-        /// is modelled as a dome with no base. Twenty-one to thirty-eight meshes of a cell's eight
-        /// hundred to fourteen hundred are closed, and 1.7% of Seyda Neen's triangles.
+        /// is modelled as a dome with no base, and a few dozen meshes of a cell's thousand are
+        /// closed.
         bool mClosed = false;
     };
 
@@ -68,15 +68,13 @@ namespace Rtx
         ///
         /// **One pass over the triangles, because a cell crossing is the cost this is on.** Every
         /// mesh a ring brings is folded as it arrives, a paged chunk is one merged geometry of every
-        /// static in it, and a camera that moves changes chunk levels every few frames — so this ran
-        /// on tens of thousands of triangles a second and was measured at an eighth of a streaming
-        /// run's whole CPU time. A spelling is looked up rather than searched for.
+        /// static in it, and a camera that moves changes chunk levels every few frames — so this
+        /// runs on tens of thousands of triangles a second and is a real share of a streaming run's
+        /// CPU time. A spelling is looked up rather than searched for.
         ///
         /// **And nothing here allocates per triangle**, which is why the table below is a flat array
-        /// of indices rather than a node-based map. A map trades the sort this replaced for a node
-        /// allocation and a free per triangle, and that is not a trade: written with
-        /// `std::unordered_map` the island route spent 2.8 s reading its rings against the sort's
-        /// 2.6, and 2.2 with the table below. Every buffer here is scratch the fold keeps and
+        /// of indices rather than a node-based map: a map is a node allocation and a free per
+        /// triangle, which is slower than a sort. Every buffer here is scratch the fold keeps and
         /// refills.
         FoldedShape fold(std::span<const osg::Vec3f> positions, std::vector<std::uint32_t>& indices);
 

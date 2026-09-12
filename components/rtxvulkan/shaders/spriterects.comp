@@ -15,12 +15,12 @@
 // swinging its width about that axis sweeps. `Rtx::SceneDesc::addEmitter` says why the emitter's
 // own sphere is the wrong granularity for this, and rain is what proved it.
 //
-// **A sphere around a quad's corners is what the capsule replaced, and rain is what it cost.** A
-// drop is a long thin streak, so that sphere was as wide as the streak is long — tens of times the
-// width — and a bound that wide crosses the eye plane for every drop falling anywhere near the
-// camera. There are no tangent lines from inside a sphere, so each of those went into every tile
-// on the screen: ninety-four drops of two thousand six hundred, and 96% of the whole list. The
-// capsule's radius is the streak's width instead of its length.
+// **A capsule and not a sphere around a quad's corners, and rain is why.** A drop is a long thin
+// streak, so that sphere is as wide as the streak is long — tens of times the width — and a bound
+// that wide crosses the eye plane for every drop falling anywhere near the camera. There are no
+// tangent lines from inside a sphere, so each of those goes into every tile on the screen, and a
+// few dozen drops are nearly the whole list. The capsule's radius is the streak's width instead
+// of its length.
 
 #include "spritebin.h"
 

@@ -20,15 +20,14 @@ namespace Rtx
     ///
     /// **One object, because the walk is what a residency is inside.** The rows a residency stands
     /// are adopted through the mirror's own resolvers, under the identity the walk would find a
-    /// clone's mesh under, so that a mesh both stand is one mesh. Every call here used to be a
-    /// public method of `SceneExtractor` with one caller, which put eleven calls that only mean
-    /// anything inside a walk in front of every other reader of that class.
+    /// clone's mesh under, so that a mesh both stand is one mesh. As public methods of
+    /// `SceneExtractor` these would be calls that only mean anything inside a walk in front of every
+    /// other reader of that class.
     ///
-    /// **An adoption is a hold, and a release gives it back.** A residency used to keep what it
-    /// adopted alive by re-stamping every entry on every walk, through this interface, from
-    /// pointers into the resolvers' maps it kept across frames. A count on the entry says the same
-    /// thing once: the sweep keeps a held entry whatever its stamp, and a residency keeps the
-    /// drawable and the state set it adopted under — which it has anyway — to release by.
+    /// **An adoption is a hold, and a release gives it back.** A count on the entry says once what
+    /// re-stamping every adopted entry on every walk would say each frame: the sweep keeps a held
+    /// entry whatever its stamp, and a residency keeps the drawable and the state set it adopted
+    /// under — which it has anyway — to release by.
     class SceneAdopter
     {
     public:
@@ -59,11 +58,9 @@ namespace Rtx
 
     /// Where the eye stands and how much world there is around it.
     ///
-    /// **A value and not a set of setters.** Both residencies read all of these, and both were
-    /// told them one call at a time at one call site — so the reach was measured twice on every
-    /// frame and a fact added to the pair had to be remembered twice. The world itself is one
-    /// value inside it, for the same reason: the ring was told three of its fields by one call and
-    /// two by another, and assembled a `CellWorld` for itself on every frame.
+    /// **A value and not a set of setters.** Both residencies read all of these, and told them one
+    /// call at a time the reach is measured twice on every frame and a fact added to the pair has
+    /// to be remembered twice. The world itself is one value inside it, for the same reason.
     struct WorldAround
     {
         /// What is read and where from. A world with no storage is a world with none.

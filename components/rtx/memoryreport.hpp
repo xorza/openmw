@@ -39,9 +39,9 @@ namespace Rtx
 
         /// Whether the device reads this heap and the host writes into it directly.
         ///
-        /// **The one heap a card without resizable BAR keeps small**, and so the one a run has to
-        /// be measured against before it is called portable: measured at 246 MiB on an RTX 2060 and
-        /// at the whole of video memory on this box.
+        /// **The one heap a card without resizable BAR keeps small** — a couple of hundred
+        /// megabytes — and so the one a run has to be measured against before it is called
+        /// portable.
         bool mHostVisible = false;
     };
 

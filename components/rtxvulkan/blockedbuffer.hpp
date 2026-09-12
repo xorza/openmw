@@ -31,11 +31,11 @@ namespace Rtx
     /// again the moment anything more arrived. The slack is bounded by one block per table.
     ///
     /// **Device memory, written through the batch a load is already recording.** These hold the
-    /// bulk of a world — 118 MiB of Seyda Neen's 184 — and the memory the host writes into directly
-    /// is a couple of hundred megabytes on a card without resizable BAR, so a table that lived there
-    /// would run a cell out of room. The copy costs a load what a load already pays: the bytes are
-    /// staged into the same blocks every texture upload uses, and the barrier `writeGeometry` ends
-    /// in is what orders them against the build that reads them.
+    /// bulk of a world — most of what a cell puts on the device — and the memory the host writes
+    /// into directly is a couple of hundred megabytes on a card without resizable BAR, so a table
+    /// that lived there would run a cell out of room. The copy costs a load what a load already
+    /// pays: the bytes are staged into the same blocks every texture upload uses, and the barrier
+    /// `writeGeometry` ends in is what orders them against the build that reads them.
     ///
     /// `Rtx::SceneDesc` never lets a mesh's run straddle a block, so `addressOf` on a run's first
     /// element covers the whole run.

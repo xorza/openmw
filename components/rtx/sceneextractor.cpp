@@ -50,6 +50,14 @@ namespace Rtx
                 system.setFreezeOnCull(false);
         }
 
+        constexpr std::size_t sPlacementBudget = 65536;
+        constexpr std::size_t sMeshBudget = 16384;
+        constexpr std::size_t sMaterialBudget = 16384;
+        constexpr std::size_t sTextureBudget = 8192;
+        constexpr std::size_t sDeformerBudget = 2048;
+        constexpr std::size_t sAnimatedBudget = 4096;
+        constexpr std::size_t sEmitterBudget = 2048;
+
         /// What identifies one placement from one frame to the next: the seed a walk starts from,
         /// and the fold each node of its path adds.
         ///
@@ -65,14 +73,6 @@ namespace Rtx
         /// **Folded on the way down rather than taken at the leaf**, which is the argument `mHere`
         /// makes for the matrix: the prefix every sibling under a node shares is worked out once as
         /// the walk enters that node, against a depth's worth per drawable.
-        constexpr std::size_t sPlacementBudget = 65536;
-        constexpr std::size_t sMeshBudget = 16384;
-        constexpr std::size_t sMaterialBudget = 16384;
-        constexpr std::size_t sTextureBudget = 8192;
-        constexpr std::size_t sDeformerBudget = 2048;
-        constexpr std::size_t sAnimatedBudget = 4096;
-        constexpr std::size_t sEmitterBudget = 2048;
-
         std::size_t identityWith(std::size_t key, const std::size_t part)
         {
             return (key ^ part) * 0x100000001b3ull;
@@ -270,8 +270,8 @@ namespace Rtx
         //
         // **The frame and not this walk's own number.** What compares against it is the update
         // traversal, whose number is the frame's; a pose number is a different sequence that only
-        // agrees with it by accident — after a savegame load it was twelve behind, which froze every
-        // actor in the pose they arrived in.
+        // agrees with it by accident, and a skeleton compared against the wrong one freezes in the
+        // pose it arrived in.
         if (auto* skeleton = as<SceneUtil::Skeleton>(kind, NodeKind::Skeleton, node))
         {
             skeleton->markReached(static_cast<unsigned int>(mFrame));
@@ -315,9 +315,8 @@ namespace Rtx
     ///
     /// **The clock lives in a traversal this renderer does not run**, which is the same statement
     /// `stepParticles` makes below, so this walk is what has to run it. `SequenceClock` makes the
-    /// claim that clock wants, and then the frame it settled on is walked by the mirror itself —
-    /// measured, because handing `Sequence::traverse` only the traversal mode leaves its frame at -1
-    /// and shows nothing.
+    /// claim that clock wants, and then the frame it settled on is walked by the mirror itself:
+    /// handing `Sequence::traverse` only the traversal mode leaves its frame at -1 and shows nothing.
     ///
     /// **Unlike a particle step, a sequence step may be taken twice.** `Sequence` reads the frame
     /// stamp's simulation time outright, so two calls at the same time settle on the same frame —
@@ -406,9 +405,7 @@ namespace Rtx
     /// `osg::computeLocalToWorld` walks a drawable's whole path back to the root and multiplies the
     /// chain again, so a product every sibling under a transform shares is rebuilt once per sibling
     /// — O(depth) per drawable, in a visitor already standing at that depth. One multiply per
-    /// transform *entered* is the same answer for a fraction of the work, and on a nine-by-nine
-    /// exterior it is the difference between 47,828 chain walks a frame and about a tenth as many
-    /// matrix multiplies.
+    /// transform *entered* is the same answer for a fraction of the work.
     ///
     /// `computeLocalToWorldMatrix` is what `computeLocalToWorld` calls on each transform it meets,
     /// so the answer is the same one: an absolute reference frame still replaces the accumulation
@@ -599,11 +596,11 @@ namespace Rtx
             mMaterials.retire(mLiveMaterials);
 
             // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the
-            // gaps renumbered every mesh and every material, so everything built from an index —
-            // which is every bottom-level acceleration structure in the world — had to be built
-            // again: nineteen of nineteen crossings on a route across Vvardenfell were full
-            // rebuilds. A slot that is freed keeps its index and its room, and the next arrival that
-            // fits takes it over. Nothing downstream is told anything, because for it nothing moved.
+            // gaps renumbers every mesh and every material, so everything built from an index —
+            // which is every bottom-level acceleration structure in the world — has to be built
+            // again on every crossing. A slot that is freed keeps its index and its room, and the
+            // next arrival that fits takes it over. Nothing downstream is told anything, because
+            // for it nothing moved.
             mScene.release(mLiveMeshes, mLiveMaterials);
 
             // Counted off the tables rather than off the maps, because a row a hold let go of was in
@@ -759,7 +756,7 @@ namespace Rtx
     {
         // **Every bit outside the named one, and not merely one inside it.** A node mask is a
         // filter over passes and its default is all ones, so `mask & named` is true for every node
-        // that never set one — which in this engine is nearly all of them, and it shaded the whole
+        // that never set one — which in this engine is nearly all of them, and would shade the whole
         // world as sea. What names the water, or the arms, is that no *other* pass may see it.
         return named != 0 && (mask & ~named) == 0;
     }

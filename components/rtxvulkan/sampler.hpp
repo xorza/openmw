@@ -18,10 +18,10 @@ namespace Rtx
     /// together: a tiling image is content and content is mipped, while a pass's own target is
     /// neither.
     ///
-    /// **Written out per class, the pair drifts where nothing decides.** A `maxLod` left at nought
-    /// reached nothing only because the images below it happened to have one level; a border colour
-    /// was set on a sampler that clamps to the edge and so never reads one. Neither was a decision,
-    /// and neither could have been argued with while the create-info sat in seven places.
+    /// **Written out per class, the pair drifts where nothing decides**: a `maxLod` left at nought
+    /// that reaches nothing only because the images below it happen to have one level, a border
+    /// colour set on a sampler that clamps to the edge and so never reads one. Neither is a
+    /// decision, and neither can be argued with while the create-info sits in seven places.
     class Sampler
     {
     public:

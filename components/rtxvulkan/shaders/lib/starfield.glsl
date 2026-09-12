@@ -59,7 +59,7 @@ vec3 starField(StarField stars, vec3 direction, float blur)
     // buffer at one, so every pixel of that blob saturates and reads as a hard dot. Nothing here
     // clips. So the crossfade from one texel to the next is steepened until it happens over a pixel
     // instead of over a texel — the hardware still filters, and what changes is where inside the quad
-    // it is asked. Measured at 1920 by 1080, that is 245 pixels over half brightness against 140.
+    // it is asked, which nearly doubles the pixels over half brightness.
     //
     // **And level zero however far the sheet is minified.** A star field is a sparse set of points,
     // and a mip level of one is those points averaged with the dark around them — one level divides

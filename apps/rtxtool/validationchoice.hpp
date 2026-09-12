@@ -27,9 +27,9 @@ namespace RtxTool
     ///
     /// **An explicit `--validation=false` turns off what was only on by default.** The two finer
     /// switches each imply the layers, and synchronization validation defaults on outside a Release
-    /// build — so refusing the layers while leaving that default standing turned nothing off at
-    /// all, and anyone who followed the tool's own advice about timing a frame measured one under
-    /// instrumentation.
+    /// build — so refusing the layers while leaving that default standing would turn nothing off
+    /// at all, and anyone who followed the tool's own advice about timing a frame would measure
+    /// one under instrumentation.
     ///
     /// A switch asked for outright still wins: `--validation=false --sync-validation` is a
     /// contradiction, and the more specific half of it is the half that meant something.

@@ -25,19 +25,18 @@ namespace Rtx::Shaders
     /// A slot of the bindless texture array that is not one.
     ///
     /// **Every slot, and not only a material's.** A cloud deck, a star sheet and a moon's face index
-    /// the same array a diffuse map does, so what stands for *nothing loaded* is the same value with
-    /// the same meaning — and it used to be that value under three names in two headers, which is a
-    /// reader having to check that they agreed.
+    /// the same array a diffuse map does, so what stands for *nothing loaded* is one value with one
+    /// meaning.
     const uint NO_TEXTURE = 0xFFFFFFFFu;
 
     /// Elements in one block of the shared vertex buffers, and of the index buffer.
     ///
     /// **What lets a device buffer be appended to instead of made again.** A buffer that is one
     /// allocation moves when it grows, and every bottom-level acceleration structure in the world
-    /// holds a device address into it — so a cell arriving rebuilt all of them. Blocked, the buffer
-    /// is a list of allocations made once at full size and never moved: growing costs one more block
-    /// and nothing already placed shifts. A shader resolves a global id with `id / BLOCK` and
-    /// `id % BLOCK`, which is a shift and a mask because both are powers of two.
+    /// holds a device address into it — so a cell arriving would rebuild all of them. Blocked, the
+    /// buffer is a list of allocations made once at full size and never moved: growing costs one
+    /// more block and nothing already placed shifts. A shader resolves a global id with `id / BLOCK`
+    /// and `id % BLOCK`, which is a shift and a mask because both are powers of two.
     ///
     /// **Bounded below by the largest run one mesh can ask for**, because a run may not straddle a
     /// block. A terrain chunk at full detail is a 65×65 grid and Morrowind's models are far smaller,
@@ -107,13 +106,11 @@ namespace Rtx::Shaders
     /// a gap.
     ///
     /// **A channel apiece, not a salt on a shared one.** Every draw a pixel makes has to be
-    /// uncorrelated with every other, and the fog's march offset and the bounce's elevation were
-    /// literally the same number until the streams were separated — a pixel whose fog started late
-    /// also bounced near its normal.
+    /// uncorrelated with every other: a fog offset and a bounce elevation drawn from one number is a
+    /// pixel whose fog starts late bouncing near its normal.
     ///
     /// **Here rather than beside the sampler**, because the count above is a promise these ids have
-    /// to keep and the two were a header apart: a second shader that drew would have had to find
-    /// this list to know which channels were already spoken for, and nothing pointed at it.
+    /// to keep.
     const uint STREAM_FOG = 0u;
     const uint STREAM_BOUNCE = 1u;
 
@@ -139,10 +136,10 @@ namespace Rtx::Shaders
     /// axis has the same value at every height, so a bank runs from the ground straight up and the
     /// air reads as a stand of pillars rather than as weather.
     ///
-    /// **One octave of eight cells, and not a stack of them.** The volume held three octaves over
-    /// two cells once, and two cells is eight gradients defining the whole coarse structure — from a
-    /// ridge that repeated as a lattice, with its planes drawn as three families of straight lines
-    /// across the valley. What makes the fog fractal is the three scales `fogShape` reads it at,
+    /// **One octave of eight cells, and not a stack of them.** Three octaves over two cells is eight
+    /// gradients defining the whole coarse structure — a ridge that repeats as a lattice, with its
+    /// planes drawn as three families of straight lines across the valley. What makes the fog
+    /// fractal is the three scales `fogShape` reads it at,
     /// which is what the renderer this is ported from does with a hash and nothing else; the volume
     /// only has to be one octave of noise that does not repeat within a view. Eight cells at four
     /// texels each is the smallest volume that is, and the beat of three scales at `FOG_LACUNARITY`
@@ -160,8 +157,7 @@ namespace Rtx::Shaders
     /// own spread narrows as the chain goes up, and a band cut against the full level's spread would
     /// clear almost nothing at the top of it.
     ///
-    /// The figure is what the field this replaced measured at, so the band and `FOG_COVERAGE` keep
-    /// the meanings they were set against.
+    /// The figure is what the band and `FOG_COVERAGE` were set against.
     const float FOG_FIELD_SPREAD = 0.1204f;
 
     /// How many scales that one tile is read at.
@@ -274,10 +270,9 @@ namespace Rtx::Shaders
     /// high. Dividing by that mean is what makes the pattern redistribute the sun exactly.
     ///
     /// **A curve and not a series, which is the whole of why this exists.** The second order of it
-    /// is `1 + f^2`, and that is what the shader charged until now — but `WATER_CAUSTIC_FOLD` of
-    /// three means `f` has an rms of three, and a second-order expansion in a quantity of order
-    /// three describes nothing. It left the bed two metres down 12 per cent dark and twenty metres
-    /// down 2 per cent bright, and no coefficient fixed both.
+    /// is `1 + f^2`, but `WATER_CAUSTIC_FOLD` of three means `f` has an rms of three, and a
+    /// second-order expansion in a quantity of order three describes nothing: it leaves the bed two
+    /// metres down dark and twenty metres down bright, and no coefficient fixes both.
     ///
     /// **It is a hump, and the shape is the ceiling meeting the fold.** Up to about one the Jensen
     /// excess wins and the mean climbs to 1.286; past that the ceiling is cutting cusps faster than
@@ -312,9 +307,9 @@ namespace Rtx::Shaders
     /// which classes its camera draws. `MWRender::rayMaskOf` is where the one becomes the other.
     ///
     /// **Water must not cast a shadow, and the mask is how traversal is told so at no cost.** The
-    /// alternative — building water non-opaque so the candidate loop can wave shadow rays past — was
-    /// measured at half the frame rate, because every shadow ray crossing the sea then invokes a
-    /// shader where traversal alone had been enough.
+    /// alternative — building water non-opaque so the candidate loop can wave shadow rays past —
+    /// costs half the frame rate, because every shadow ray crossing the sea then invokes a shader
+    /// where traversal alone was enough.
     const uint MASK_STATIC = 0x01u;
     const uint MASK_WATER = 0x02u;
 
@@ -353,10 +348,10 @@ namespace Rtx::Shaders
 
     /// How many see-through surfaces the eye peels off before it draws what is under them.
     ///
-    /// **A person is a stack and a window is not.** A pane of glass is one surface, and one layer
-    /// answered it; a cuirass over a skirt over a leg is three, so an actor the game fades —
-    /// Invisibility, Chameleon, the distance fade at the edge of `actors processing range` — showed
-    /// its nearest layer faded and every layer under it at full strength.
+    /// **A person is a stack and a window is not.** A pane of glass is one surface; a cuirass over
+    /// a skirt over a leg is three, so an actor the game fades — Invisibility, Chameleon, the
+    /// distance fade at the edge of `actors processing range` — peeled one layer deep shows its
+    /// nearest layer faded and every layer under it at full strength.
     ///
     /// **Four, because that is a dressed person and what is behind them.** The layers are peeled
     /// nearest first and the surface after the last is drawn as the solid it stands in for, so a
@@ -472,12 +467,10 @@ namespace Rtx::Shaders
 
     /// Where the lamps were binned, so a shader can find the few that reach a point.
     ///
-    /// **Carried in the frame's block, as `VisibilityConstants::mLightGrid`.** It had a storage
-    /// buffer of its own for a while, from when the frame's block was a push constant at the edge of
-    /// its 256 bytes; that block is a uniform buffer written once a frame now, and the pass already
-    /// folds the sea's tables into it from the passes that built them. A twenty-eight byte record in
-    /// a set of its own cost a descriptor, a buffer per frame in flight, and a storage read at every
-    /// lamp lookup where the constant bank serves.
+    /// **Carried in the frame's block, as `VisibilityConstants::mLightGrid`**, which is a uniform
+    /// buffer written once a frame that already folds in the sea's tables from the passes that built
+    /// them. A twenty-eight byte record in a set of its own would cost a descriptor, a buffer per
+    /// frame in flight, and a storage read at every lamp lookup where the constant bank serves.
     ///
     /// A position outside the grid is one no lamp reaches, so its cell is empty by construction
     /// rather than by clamping.
@@ -491,25 +484,22 @@ namespace Rtx::Shaders
     /// Where every table a hit reads is, as one address apiece.
     ///
     /// **In the frame block rather than in a descriptor each**, for the reason the light grid's
-    /// geometry already is: a descriptor per table was seventeen storage-buffer bindings pushed twice
-    /// a frame, and a binding the layout declared and the pass forgot was a shader reading whatever
-    /// the slot held. An address is a 64-bit integer, so the struct belongs to the scene and not to
+    /// geometry already is: a descriptor per table is seventeen storage-buffer bindings pushed twice
+    /// a frame, and a binding the layout declares and the pass forgets is a shader reading whatever
+    /// the slot holds. An address is a 64-bit integer, so the struct belongs to the scene and not to
     /// a backend: the Vulkan shader constructs a `buffer_reference` from each.
     ///
     /// **Filled by the pass and not by `describeWorld`**, the way `mWaveExtent` and `mLightGrid`
     /// are: where a table is lives with whatever placed it there, and the tables that alternate by
     /// frame slot change address every frame.
     ///
-    /// **No size beside an address.** A descriptor carried one and robust access bounded a read by
-    /// it; a pointer carries none. What stops a shader reading past a table is its count, exactly
-    /// as before, and what reports one that does is GPU-assisted validation's address table.
+    /// **No size beside an address.** A descriptor carries one and robust access bounds a read by
+    /// it; a pointer carries none. What stops a shader reading past a table is its count, and what
+    /// reports one that does is GPU-assisted validation's address table.
     ///
-    /// **What it costs, measured on the release harness against the descriptor build**: nothing on
-    /// the exteriors, and three per cent of the trace at the Balmora mages' guild — 0.04 ms — in
-    /// every one of thirteen interleaved pairs. The compute pipelines compile to byte-identical
-    /// sizes either way, so that is a load path and not an instruction count, and the driver shows
-    /// no kernel's disassembly. Accepted as the price of six bindings and of a class of mistake
-    /// gone; the power-capped card's own drift is of the same size.
+    /// **What it costs is a load path and not an instruction count** — a few per cent of an
+    /// interior's trace and nothing on the exteriors — accepted as the price of six bindings and of
+    /// a class of mistake gone.
     struct GpuTables
     {
         /// The four tables of block addresses, which a global vertex or index id is resolved
@@ -620,12 +610,9 @@ namespace Rtx::Shaders
     /// frame's extent on both sides — `spriteTilesOver` — so there is one number here and no second
     /// one to disagree with it.
     ///
-    /// **Eight was measured twice and it is a loss both times.** Against the host bin, over Balmora
-    /// at night in the rain, four times the tiles took 0.32 ms off the trace and put 2.4 ms on the
-    /// frame, because the offsets were one entry per tile written across the bus every frame.
-    /// Against the device bin the offsets cost nothing and the trace gained nothing at all — 1.10
-    /// ms at either size, since a drop's own test is cheap once the lamps are walked per emitter —
-    /// while the fill, which walks every sprite for every tile, went from 0.05 ms to 0.17.
+    /// **Eight is a loss.** A drop's own test is cheap once the lamps are walked per emitter, so
+    /// the trace gains nothing from four times the tiles, while the fill, which walks every sprite
+    /// for every tile, pays for all of them.
     const uint SPRITE_TILE = 16u;
 
     /// How many tiles cover `pixels` along one axis of the frame. The last one may be part of a tile.
@@ -653,8 +640,8 @@ namespace Rtx::Shaders
     /// **The list carries its own degenerate form, so the trace needs no second signal.** Where
     /// the runs are binned, entry nought is where the runs begin — `tiles + 1`, never nought. Where
     /// a frame's entries outgrew the buffer, `spritestarts.comp` writes nought there and the sprite
-    /// count in entry one, and the trace walks every sprite over every pixel for that frame: the
-    /// march as it was before the tiles, slow and right. The host reads what the frame needed,
+    /// count in entry one, and the trace walks every sprite over every pixel for that frame: slow
+    /// and right. The host reads what the frame needed,
     /// grows the buffer and the next frame is binned. `SceneBuffers::binSprites` says how the list
     /// is sized so that this is a rare frame and never a wrong one.
     const uint SPRITE_LIST_UNBINNED = 0u;
@@ -731,8 +718,8 @@ namespace Rtx::Shaders
         uint mEmissive;
 
         /// What the texture is tinted by. **Three channels and not the material's four**: its alpha
-        /// is `mOpacity` above, already resolved against the mode, and a second copy of it here was
-        /// a number the shader never read.
+        /// is `mOpacity` above, already resolved against the mode, and a second copy of it here would
+        /// be a number the shader never reads.
         vec3 mDiffuseColour;
 
         /// How much the surface glows regardless of what falls on it, with the material's own
@@ -750,9 +737,8 @@ namespace Rtx::Shaders
 
         /// What this material is that no number above says — `MATERIAL_MEDIUM` and nothing else yet.
         ///
-        /// **Last, so the row's every other field stays where it was.** A `vec4` is four-aligned in
-        /// scalar layout like everything else here, so this costs the row four bytes and moves
-        /// nothing.
+        /// **Last.** A `vec4` is four-aligned in scalar layout like everything else here, so this
+        /// costs the row four bytes and pads nothing.
         uint mFlags;
     };
 

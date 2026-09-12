@@ -21,8 +21,8 @@ namespace Rtx
         ///
         /// **Mixed here rather than through `Misc::hashCombine`.** That reaches `std::hash<float>`,
         /// which is `_Hash_bytes` — a byte-wise murmur over four bytes — and eighteen of those per
-        /// triangle put it at 3.7 % of a streaming route's whole CPU, more than the fold around it.
-        /// FNV over the bits and one final mix cost nine multiplies.
+        /// triangle cost more than the fold around them. FNV over the bits and one final mix cost
+        /// nine multiplies.
         ///
         /// **A zero is normalised first**, because -0 and 0 compare equal in a spelling and in an
         /// edge, and a hash that told the two apart would never find the twin.
@@ -76,18 +76,16 @@ namespace Rtx
         // closes. Nothing closes nothing, which is the third.
         //
         // **They are here for the merged terrain chunk**, which is hundreds of statics whose first
-        // grass card already passes the limit. Measured on the island route they take 1.2 to 1.9 ms
-        // off the fold's ninety-ninth percentile and two hundredths of one off its mean, which is
-        // what a saving in the tail alone looks like.
+        // grass card already passes the limit: a saving in the fold's tail alone.
         if (count == 0 || count % 2 != 0)
             return false;
 
         const std::size_t mostEdges = count * 3 / 2;
 
         // **Sized against what can be reached and not against what could be pushed.** The limit
-        // above bounds the table, so the same one entry in two costs half the slots it did when the
-        // bound was every side of every triangle — half a megabyte of the `assign` below, on a
-        // chunk of thirty thousand triangles.
+        // above bounds the table, so the same one entry in two costs half the slots a bound of
+        // every side of every triangle would — half a megabyte of the `assign` below, on a chunk of
+        // thirty thousand triangles.
         const std::size_t slots = std::bit_ceil(std::max<std::size_t>(mostEdges * 2, 16));
         const std::size_t mask = slots - 1;
 

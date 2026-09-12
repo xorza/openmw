@@ -58,11 +58,10 @@ namespace Rtx
 
     /// Whether the validation layers load without anyone asking.
     ///
-    /// **On outside a Release build**, because the alternative is what this fork once spent an
-    /// afternoon on: a window that stuttered and froze with nothing in the log, whose cause was a
-    /// ray query built with its end behind its start — undefined, silent, and named outright by
-    /// GPU-assisted validation the first time it was switched on. A rule the layers can check is one
-    /// nobody should have to think to check for.
+    /// **On outside a Release build.** A ray query built with its end behind its start is undefined
+    /// and silent — a window that stutters and freezes with nothing in the log — and GPU-assisted
+    /// validation names it outright. A rule the layers can check is one nobody should have to
+    /// think to check for.
     ///
     /// They are not free. GPU-assisted validation instruments every shader and costs roughly half
     /// the frame rate, and the layers themselves allocate on the frame path, which is why the test
@@ -254,10 +253,7 @@ namespace Rtx
         /// **So a route's figures move a little between two runs of one binary, and that is the
         /// answer rather than a fault in it.** What arrives when is the loading threads' to decide,
         /// not the frame clock's, so two runs of a place reach the same content by different orders
-        /// and leave the allocators arranged differently. Measured over five runs of `bench` at
-        /// Balmora: the instances and every texture figure agree exactly, and `mStructureBytes` and
-        /// `mTableBytes` land on one of two values 110 KiB and 132 bytes apart — 0.05% and a
-        /// millionth.
+        /// and leave the allocators arranged differently.
         std::uint64_t mStructureBytes = 0;
 
         /// What the structures occupy inside that.
@@ -281,19 +277,16 @@ namespace Rtx
         /// Every texture the renderer holds, and what those come to.
         ///
         /// **What it holds and not how long its table is.** A slot the scene gave back stays in the
-        /// table so that nothing above it is renumbered, and it stands nothing: a hundred of the
-        /// shoreline route's six hundred and seventy-two slots are empty by the end of it. Both
-        /// figures come from one walk of the array, so they cannot disagree about which slots they
-        /// counted. `Renderer::getTextureCount` is the length, and it is a different question.
+        /// table so that nothing above it is renumbered, and it stands nothing. Both figures come
+        /// from one walk of the array, so they cannot disagree about which slots they counted.
+        /// `Renderer::getTextureCount` is the length, and it is a different question.
         ///
         /// **A still is the same on two runs and a route is not, and the terrain's composites are
         /// why.** `Rtx::CompositeQueue` bakes a distant chunk's layer stack on a thread of its own
         /// and a hand-over takes two of the finished ones, so how many have landed when a run ends
-        /// is the baker's answer rather than the frame index's. Measured over six runs of the
-        /// shoreline route: the same five hundred and thirty content textures every time, and
-        /// thirty-four to thirty-six composites at 1.34 MiB apiece. `CompositeQueue::setSettled`
-        /// takes the baker's timing out of that count, which is why a run that has to compare
-        /// itself asks for it.
+        /// is the baker's answer rather than the frame index's. `CompositeQueue::setSettled` takes
+        /// the baker's timing out of that count, which is why a run that has to compare itself asks
+        /// for it.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
     };
@@ -388,11 +381,8 @@ namespace Rtx
 
         /// What a run decided once, and what this frame stands for.
         ///
-        /// **Made and not filled in field by field.** Two of the fields above are a
-        /// `RenderProfile`'s, and the one call site that wrote them out one at a time carried the
-        /// exposure and dropped the filter, the jitter and the accumulation — three switches a
-        /// player and the harness could both ask for and neither could get. A field the profile
-        /// gains reaches a frame here or nowhere.
+        /// **Made and not filled in field by field**, so a field the profile gains reaches a frame
+        /// here or nowhere.
         ///
         /// @param accumulate how many frames have gone into the running sum, which is the schedule's
         ///        to count rather than the profile's: a warm-up is not averaged in.
@@ -460,9 +450,8 @@ namespace Rtx
 
         /// What put this frame back together, as the renderer resolved it.
         ///
-        /// **Reported by the thing that did it.** The alternative was for a caller to work the same
-        /// rule out a second time from what it had asked for, which is two copies of a rule that had
-        /// already been wrong once by being invisible.
+        /// **Reported by the thing that did it**, rather than worked out a second time by a caller
+        /// from what it asked for.
         Reconstruction mReconstruction;
     };
 
@@ -499,10 +488,9 @@ namespace Rtx
 
         /// The same scene with more in it: geometry and textures appended, nothing renumbered.
         ///
-        /// **What a cell arriving costs, and it must not be what `setScene` costs.** Rebuilding
-        /// measured at 12 ms for every acceleration structure in the scene and **150 to 225 ms for
-        /// the texture array**, because the array was made again from nothing whenever one body
-        /// texture appeared. Appending leaves every image where it is.
+        /// **What a cell arriving costs, and it must not be what `setScene` costs.** A rebuild is
+        /// every acceleration structure and the whole texture array made again; appending leaves
+        /// every image where it is.
         ///
         /// `arrived` describes the textures the scene has gained since the last call, in scene
         /// order and starting at the count this already holds — never the whole table, or the
@@ -632,8 +620,7 @@ namespace Rtx
         ///
         /// **The pictures inside the interface**: a map tile, the inventory doll, the race preview.
         /// They go straight into the table the GUI draws from, so a picture the interface shows
-        /// never comes back to main memory — `readGuiTexture` is there for the one caller that
-        /// needs a copy, and pays for it.
+        /// never comes back to main memory unless `GuiTraceOptions::mReadBack` asks for a copy.
         ///
         /// **Not the frame's chain.** Nothing upscales, nothing averages and the exposure is fixed
         /// at one: a doll is a still picture of a subject rather than a frame in a sequence, and

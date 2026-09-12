@@ -10,10 +10,9 @@
 // What the game says is over the world: the weather it is, the deck and the sheets that are drawn,
 // the discs that are drawn and light, and the gradient behind all of them.
 //
-// **Split from `visibility.h` because two passes want this and not the frame.** The tone pass draws
-// the stars and the fog's set names one layer a source, and each reached the whole frame
-// description for one struct — `VisibilityConstants` is eleven hundred bytes, and `tone.comp`
-// declared a 64-bit extension it makes no use of to get at `StarField`.
+// **Apart from `visibility.h` because two passes want this and not the frame.** The tone pass draws
+// the stars and the fog's set names one layer a source, and neither wants the whole frame
+// description — eleven hundred bytes and a 64-bit extension — for one struct.
 
 #ifdef RTX_HOST
 namespace Rtx::Shaders
@@ -194,21 +193,15 @@ namespace Rtx::Shaders
         uint mTexture;
     };
 
-    /// One of the two moons, as a disc a ray that reached nothing can find.
-    ///
-    /// **A disc and not a body**, for the reason the sun is: nothing puts a sphere in an
-    /// acceleration structure, so a moon is a direction with a size and a face painted across it.
-    /// What that buys is the same thing the sun's disc buys — water traces a reflection ray and
-    /// finds the moon in it for nothing, and there is one place a moon's size lives.
     /// One source in the sky as a shading point sees it: the sun, or a moon. What the eye sees of
     /// a disc is `MoonDisc`'s and the sun's own field; this is the half that lights.
     ///
-    /// **Three of them and one rule, where there were a sun block and a moon block.** A surface and
-    /// a froxel of the air weigh each by what it would deliver unshadowed, draw one, trace to it and
-    /// divide by the draw — the lamps' own estimator. In daylight the moons weigh nothing and the sun
-    /// is always drawn; at night the sun weighs nothing and the draw is between the moons; and the
-    /// hour either side of dusk spends one ray where it spent two, and carries the noise. `skySourceAt`
-    /// in `lib/lights.glsl` is where the three are read off the frame.
+    /// **Three of them and one rule.** A surface and a froxel of the air weigh each by what it would
+    /// deliver unshadowed, draw one, trace to it and divide by the draw — the lamps' own estimator.
+    /// In daylight the moons weigh nothing and the sun is always drawn; at night the sun weighs
+    /// nothing and the draw is between the moons; and the hour either side of dusk spends one ray
+    /// and carries the noise. `skySourceAt` in `lib/lights.glsl` is where the three are read off
+    /// the frame.
     struct SkySource
     {
         /// Unit, from a point toward the source.
@@ -228,6 +221,12 @@ namespace Rtx::Shaders
     const uint SKY_SOURCE_SECUNDA = 2u;
     const uint SKY_SOURCES = 3u;
 
+    /// One of the two moons, as a disc a ray that reached nothing can find.
+    ///
+    /// **A disc and not a body**, for the reason the sun is: nothing puts a sphere in an
+    /// acceleration structure, so a moon is a direction with a size and a face painted across it.
+    /// What that buys is the same thing the sun's disc buys — water traces a reflection ray and
+    /// finds the moon in it for nothing, and there is one place a moon's size lives.
     struct MoonDisc
     {
         /// Unit vector toward the moon, and the two axes its face is painted along. The face turns
@@ -281,16 +280,15 @@ namespace Rtx::Shaders
         vec3 mThroughAir;
 
         /// The painted face, in the bindless array, or `NO_TEXTURE` where none was loaded — the disc
-        /// is then its mean colour with the shading law over it, which is what a moon looked like
-        /// before the faces arrived.
+        /// is then its mean colour with the shading law over it.
         ///
         /// **The `full` portrait and only that one.** The game ships eight per moon and this draws
         /// the terminator itself, so what is wanted from the file is the maria and the silhouette —
         /// one face under eight lightings, which is what a tidally locked moon is.
         ///
         /// **The alpha is not premultiplied.** Past the edge of the painted disc the file's colour
-        /// climbs back toward the middle of its range, so a sampler that took the colour and dropped
-        /// the alpha drew a bright ring around every moon. Multiplying by it removes that and hands
+        /// climbs back toward the middle of its range, so a sampler that takes the colour and drops
+        /// the alpha draws a bright ring around every moon. Multiplying by it removes that and hands
         /// over the limb's own antialiasing for nothing.
         uint mFace;
     };

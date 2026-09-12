@@ -41,15 +41,15 @@ namespace Rtx
     {
         // **Asked of the list before the name, because nearly every state set in the world has no
         // uniform at all.** `osg::StateSet::getUniform` searches a `std::map` keyed on
-        // `std::string`, and this is called at every node and every drawable a walk enters — 0.113
-        // ms a frame at Seyda Neen, with `stl_tree.h` and `memcmp` under it. What writes the two
+        // `std::string`, and this is called at every node and every drawable a walk enters — a
+        // tree walk and a `memcmp` apiece, tens of thousands of times a frame. What writes the two
         // uniforms below is `MWRender::TransparencyUpdater`, on the handful of actors the game is
         // fading, so the empty answer is the answer almost every time and it costs one load.
         if (stateSet.getUniformList().empty())
             return inherited;
 
-        // Named once for the process. A `std::string` built for every state set of every
-        // drawable's chain, every frame, was a measurable share of the walk.
+        // Named once for the process, and not a `std::string` built for every state set of every
+        // drawable's chain, every frame.
         static const std::string sActorFade("actorFade");
         static const std::string sAlpha("alpha");
 

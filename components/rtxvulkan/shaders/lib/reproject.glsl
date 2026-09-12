@@ -165,10 +165,10 @@ vec2 mirrorMotionOf(uvec2 pixel, vec3 origin, WaterMirror mirror)
 /// Where the sky a ray found stood on the previous frame's screen, in pixels.
 ///
 /// **Infinitely far, so the eye's own walk does not carry it and its turn is the whole of it.** A
-/// miss used to store nothing here, on the reasoning that the sky does not move — which is true of
-/// walking and false of looking around, and looking around is most of what a player does. What an
-/// upscaler did with it was fetch the sky's history from the pixel it already occupies, so every
-/// turn of the head smeared it; a gradient hides that and a field of stars does not.
+/// miss that stores nothing here, on the reasoning that the sky does not move, is true of walking
+/// and false of looking around, and looking around is most of what a player does: an upscaler
+/// then fetches the sky's history from the pixel it already occupies, so every turn of the head
+/// smears it — a gradient hides that and a field of stars does not.
 ///
 /// The same reprojection a surface gets, with the translation left out: at infinity `mCameraMotion`
 /// is nothing beside the direction, and dropping it is what says so exactly rather than nearly.

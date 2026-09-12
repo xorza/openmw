@@ -62,7 +62,7 @@ namespace Rtx
 
                 // **Not every file the game ships is a block.** The sky's cloud decks are plain
                 // 32-bit `DDPF_RGB`, which is what a texture painted for a full-screen dome would
-                // be, and taking only the compressed formats drew every weather's clouds grey.
+                // be, and taking only the compressed formats would draw every weather's clouds grey.
                 case ImageFormat::Rgba8:
                     return TextureFormat::Rgba8Srgb;
                 case ImageFormat::Bgra8:
@@ -110,13 +110,6 @@ namespace Rtx
                 .mName = "unreadable",
             };
         }
-
-        /// The entry at `used` of a pool that grows and never shrinks.
-        ///
-        /// **What makes an entry the buffers the last arrival left in it.** The caller advances
-        /// `used` only for an entry it keeps, so one that came back empty is handed to the next
-        /// texture rather than held for ever. Growing moves the entries, which moves their buffers
-        /// with them — so a description already spanning one goes on pointing at the same bytes.
     }
 
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels)

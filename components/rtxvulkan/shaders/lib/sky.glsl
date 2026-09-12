@@ -52,8 +52,8 @@ vec2 cloudUvAt(vec2 crossing, vec2 bearing)
 /// through.
 ///
 /// **One reading, because two things ask for it**: what the eye finds in the deck, and what the deck
-/// leaves of a light standing over a shading point. The two used to sample the same sheet with the
-/// same blend written out twice, which is what the reference had already seen drift.
+/// leaves of a light standing over a shading point. Two samples of one sheet with one blend
+/// written out twice are two that drift.
 ///
 /// **The top mip and no cone.** A deck seen edge-on wants a level off the ray's gradient, and the
 /// gradient is what the hardware works out for itself from neighbouring lanes, which a ray tracer
@@ -170,10 +170,9 @@ vec3 cloudDeck(vec3 origin, vec3 direction, out float covered)
 /// texel; at 45 degrees they are 5% apart and at 14 degrees half again, which is a cloud low in the
 /// sky whose shadow is kilometres away and out of the frame it would have to be compared in.
 ///
-/// **Beer-Lambert and not a crossfade**, which the reference measured: mixing toward a floor by
-/// coverage saturates, and deepening that mix enough for a cirrus sky to cast anything pinned 48.5%
-/// of the sheet at one flat value. An exponential never flattens, so the pattern on the ground stays
-/// the pattern in the sky.
+/// **Beer-Lambert and not a crossfade**: mixing toward a floor by coverage saturates, and deepening
+/// that mix enough for a cirrus sky to cast anything pins half the sheet at one flat value. An
+/// exponential never flattens, so the pattern on the ground stays the pattern in the sky.
 ///
 /// `CLOUD_SHADOW_DEPTH` says why it is the alpha *over the sheet's own mean* that darkens.
 float cloudShadow(vec3 position, vec3 towards)
@@ -218,10 +217,9 @@ vec3 skyPatches(vec3 direction)
     // `patch` is a reserved word in GLSL, which is why this is not called one.
     //
     // **Not `[[unroll]]`, where every other loop over a compile-time shape is.** There is no local
-    // array here for it to take out of scratch memory, and it moves the picture: six of the 23
-    // views, up to 17 of 255 on 7 per cent of the pixels with the exposure held. With the upscaler
-    // off the same pair differs on 2845 pixels by one, so what unrolling changes is the last bit of
-    // the trace and what shows it is Ray Reconstruction.
+    // array here for it to take out of scratch memory, and it moves the picture: what unrolling
+    // changes is the last bit of the trace, and Ray Reconstruction is what shows it, on a quarter
+    // of the views.
     for (uint layer = 0u; layer < SKY_PATCH_COUNT; ++layer)
     {
         const SkyPatch sheet = frame.mSkyPatches[layer];

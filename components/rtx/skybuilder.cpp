@@ -89,8 +89,8 @@ namespace Rtx
             // **The name the content records is not the name the archive holds.** `Morrowind.ini`
             // spells every deck `.tga` and every one of them ships as `.dds`, so a name joined to
             // `textures/` by hand resolves for the eight weathers whose shipped fallback was already
-            // corrected and for neither of the two an importer writes — which came out as an ash
-            // storm and a blight storm with no deck at all, in silence. `correctTexturePath` is the
+            // corrected and for neither of the two an importer writes — an ash storm and a blight
+            // storm with no deck at all, in silence. `correctTexturePath` is the
             // same question `mwrender/gl/sky.cpp` asks of the same name.
             const VFS::Path::Normalized path
                 = Misc::ResourceHelpers::correctTexturePath(VFS::Path::toNormalized(sheet), vfs);

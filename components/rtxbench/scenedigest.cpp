@@ -363,9 +363,8 @@ namespace Rtx
         //
         // **The baked names beside the paths, because a slot is one or the other.** A texture this
         // renderer made has no path, so a column of paths alone reads every baked slot as the same
-        // empty string — and a run whose bakes landed in another order came out identical here
-        // while the materials naming them moved. Measured on `one-cell-walk`: `mDiffuse` differed
-        // on 5 frames of 6 with this column agreeing on all of them.
+        // empty string — and a run whose bakes landed in another order comes out identical here
+        // while the materials naming them move.
         const std::span<const VFS::Path::Normalized> paths = scene.mTextures.getPaths();
         const std::span<const std::string> baked = scene.mTextures.getBaked();
         assert(paths.size() == baked.size() && "a texture table whose two names disagree on how many slots it has");

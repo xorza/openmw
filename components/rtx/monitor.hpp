@@ -14,8 +14,8 @@ namespace Rtx
     /// one worker to the next — the cell reader takes a list that a newer list replaces, the
     /// bakers take a queue and give back in sequence — so the containers stay with their owner.
     /// What is the same for all of them is a mutex, a condition queue each way, and the rule that a
-    /// wait on the worker's side must be one a stop can break. That was written out twice, in two
-    /// spellings, and this is the one place it is written.
+    /// wait on the worker's side must be one a stop can break, and this is the one place it is
+    /// written.
     ///
     /// **Every operation is a template on what it runs**, so nothing here allocates and nothing
     /// calls through a pointer. A `std::function` on the frame's path would be an allocation per
@@ -69,8 +69,7 @@ namespace Rtx
         /// The frame's side: waits until `ready`.
         ///
         /// **False where the monitor closed**, which is a worker that threw or a run that is over.
-        /// A frame that waited on a worker which had gone used to wait for ever, and it was safe
-        /// only by an argument about which cells a caller could reject.
+        /// A frame that waits on a worker which has gone would otherwise wait for ever.
         template <class Ready>
         bool await(Ready ready)
         {

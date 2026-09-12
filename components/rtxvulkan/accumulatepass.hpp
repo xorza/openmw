@@ -22,9 +22,9 @@ namespace Rtx
     /// The denoiser's temporal half: this frame's bounce averaged with what the same surface gave on
     /// the frames before it.
     ///
-    /// **The wavelet behind it was the second half of a denoiser with no first half.** Five spatial
-    /// levels blurring a single sample per pixel is where the field started and not where it
-    /// settled: SVGF, A-SVGF, ReLAX and ReBLUR are all a temporal accumulator with a cascade
+    /// **The wavelet behind it is the second half of a denoiser, and this is the first.** Five
+    /// spatial levels blurring a single sample per pixel is where the field started and not where
+    /// it settled: SVGF, A-SVGF, ReLAX and ReBLUR are all a temporal accumulator with a cascade
     /// attached, and the cascade is there to fill in where the accumulator was rejected rather than
     /// to do the averaging itself. An average over frames is where the estimator's error actually
     /// falls, and the variance it produces on the way is what lets the cascade finally stop at an
@@ -51,10 +51,10 @@ namespace Rtx
         /// Blends the buffer's indirect channel with the history, and leaves this frame's moments
         /// and its blend where the cascade can read them.
         ///
-        /// **Into an image of this pass's own, and it used to be back over the channel it read.**
-        /// The cascade overwrites its own input as it ping-pongs, so the trace's answer survived
-        /// only as long as nothing filtered the frame — which made `Channel::Indirect` two different
-        /// things and tied the two passes to one format. `getBlended` is where the blend is now.
+        /// **Into an image of this pass's own, and not back over the channel it read.** The cascade
+        /// overwrites its own input as it ping-pongs, so written back the trace's answer survives
+        /// only as long as nothing filters the frame — which makes `Channel::Indirect` two different
+        /// things and ties the two passes to one format. `getBlended` is where the blend is.
         ///
         /// @param far the frame's far plane, which this turns into a storage scale rather than
         ///        writing a depth against. `AccumulateConstants::mDistanceScale` says why it is a

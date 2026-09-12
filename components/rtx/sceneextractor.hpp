@@ -161,9 +161,8 @@ namespace Rtx
         /// **The residency comes from `follow` rather than from an argument, and that is the point.**
         /// The sweep is global: anything a walk did not meet is dropped. So a frame walked by two
         /// owners, only one of which remembered to hand over what the graph does not parent, retires
-        /// the other's placements — which is how the distant ground reached the mirror on the first
-        /// frame and was swept on every one after it, leaving a town standing on open sea. Held on
-        /// the extractor, no caller can be the one that forgets.
+        /// the other's placements — the distant ground swept on every frame after the first, and a
+        /// town standing on open sea. Held on the extractor, no caller can be the one that forgets.
         ExtractionStats extractWorld(
             const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
 
@@ -317,10 +316,10 @@ namespace Rtx
 
         /// Which slot each placement holds, and when it was last met.
         ///
-        /// **This is what a slot buys.** The two maps of matrices it replaces were rebuilt every
-        /// frame — a lookup, an insert and a heap node for each of fifty thousand placements, to
-        /// carry a transform from one frame to the next that the scene can simply keep. What
-        /// remains is one lookup, and Phase 2 is about not making that either.
+        /// **One lookup a placement a frame, and the scene keeps the transform.** Two maps of
+        /// matrices rebuilt every frame would be a lookup, an insert and a heap node for each of
+        /// fifty thousand placements, to carry a transform from one frame to the next that the
+        /// scene can simply keep.
         Kept<std::unordered_map<std::size_t, Known>> mPlacements{ mPass };
 
         /// The drawables the walk met, and what poses the ones that deform.

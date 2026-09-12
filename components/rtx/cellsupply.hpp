@@ -20,10 +20,10 @@ namespace Rtx
 
     /// What the reading thread is to read next: the cells, and what to read of each.
     ///
-    /// **One value, because the two halves are one ask.** They were three pairs of members assigned
-    /// one half at a time — what the frame last asked for, what the thread has been handed, and what
-    /// it is working through — and a list that reached the thread beside the other switch is a cell
-    /// read under a rule nobody asked for.
+    /// **One value, because the two halves are one ask.** Assigned one half at a time — what the
+    /// frame last asked for, what the thread has been handed, and what it is working through — a
+    /// list that reaches the thread beside the other switch is a cell read under a rule nobody
+    /// asked for.
     struct CellRequest
     {
         std::vector<osg::Vec2i> mCells;

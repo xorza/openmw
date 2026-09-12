@@ -7,16 +7,15 @@
 // medium rather than met one surface at a time.
 //
 // **What this is for.** `meshes/f/active_blight_large.nif` is eleven alpha shells over one another,
-// and neither of its textures holds a single opaque texel: 71.8% of `tx_dagoth_cloud.dds` is partly
-// there and none of it is solid. A ray tracer that peels the nearest of those and paints the next
-// one as though it were opaque draws a cloud as a flat red sheet, which is exactly what it did.
+// and neither of its textures holds a single opaque texel. A ray tracer that peels the nearest of
+// those and paints the next one as though it were opaque draws a cloud as a flat red sheet.
 //
 // **One traversal for the whole stack.** The eye's own ray walks past every medium it meets —
 // `candidateStops` is where that is decided — so it commits the mountain behind the cloud and this
 // walk gathers what stands in front of it, on a mask no other instance carries. Re-tracing per layer
-// is the alternative: Anagnostou measures it at 9.6 to 12.1 ms in Sponza with an early-out at
-// `T < 0.05`, against 1.2 ms for the same picture alpha-blended by a rasterizer. This walk costs
-// 0.41 ms of the trace at Dagoth Ur and nothing in a cell with no cloud in it.
+// is the alternative, and Anagnostou measures it at an order of magnitude over the same picture
+// alpha-blended by a rasterizer. This walk costs a fraction of the trace under a cloud and nothing
+// in a cell with none.
 //
 // Kostas Anagnostou, *Raytraced Order Independent Transparency*:
 // https://interplayoflight.wordpress.com/2023/07/15/raytraced-order-independent-transparency/

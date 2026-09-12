@@ -88,7 +88,7 @@ namespace Rtx
     {
         const float level = (sunIrradiance + ambient) * Shaders::LUMINANCE_WEIGHTS;
 
-        // **Measured against a full sun rather than against a noon worked out here.** A clear noon
+        // **Against a full sun rather than against a noon worked out here.** A clear noon
         // delivers 8.03 where `DAYLIGHT` is 8, so the hour that needs no holding back is the one
         // that comes out at one — and no second number has to be kept in step with the first.
         return std::pow(std::min(level / Shaders::DAYLIGHT, 1.0f), sHourStops);
@@ -135,8 +135,8 @@ namespace Rtx
         // spread and no direction to spread it from.** It is nothing at noon, where the direct term carries all of
         // it, and nothing at night, where there is no sun to take a direction away from — peaking
         // where the disc straddles the horizon and the sky in front of it is the brightest thing in
-        // the frame. `2 * s * (1 - s)` is that, and the two leaves a dusk where it was: the ramp
-        // this replaces came to a half at the half-set point, and so does this.
+        // the frame. `2 * s * (1 - s)` is that, and the two puts a dusk at a half at the half-set
+        // point.
         //
         // **The shape that suggests itself is `1 - share`, and it is largest where there is no sun.**
         // Morrowind leaves a blue in the sun's slot all night — `Sun_Night_Color`, which is the

@@ -51,10 +51,9 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
 {
     vec3 radiance = vec3(0.0);
 
-    // **Drawn before anything else and out of a sequence of its own**, so that a hit which is lit
-    // draws exactly the numbers it drew before this existed — the ordering below is what keeps a
-    // lamp arriving in the next cell from moving the penumbra of the one already there, and a draw
-    // taken from that sequence would move every one of them.
+    // **Drawn before anything else and out of a sequence of its own**: the ordering below is what
+    // keeps a lamp arriving in the next cell from moving the penumbra of the one already there, and
+    // a draw taken from that sequence would move every one of them.
     float rated = 1.0;
     if (path == PATH_INDIRECT && skyLights())
     {
@@ -82,10 +81,9 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     // **The sky's sources are weighed and drawn the way the lamps are.** What each would deliver
     // unshadowed is its weight — its cosine and its irradiance, which is everything about it that can
     // be known without tracing — one is drawn in proportion, one ray goes to it, and its share is
-    // divided by the draw. In daylight the moons weigh nothing and the sun is always the draw, so a
-    // day is what it was; at night the sun weighs nothing and the draw is between the moons, which
-    // is what it was; only the hour either side of dusk spends one ray where it spent two, and the
-    // accumulator carries the noise that buys.
+    // divided by the draw. In daylight the moons weigh nothing and the sun is always the draw; at
+    // night the sun weighs nothing and the draw is between the moons; only the hour either side of
+    // dusk spends one ray on two sources, and the accumulator carries the noise that buys.
     //
     // The cosine is taken against the source's direction *in air*, which is exact for the flat bed
     // this mostly lights: refraction at a level surface moves no flux across a horizontal patch, so
@@ -106,8 +104,8 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     //
     // **A probability compared against the draw, and not a weight against a scaled draw.** The two
     // are the same until a source weighs nothing: the running share is then flat across it, and a
-    // draw under the share before it has already picked. The draw is the one the moons' pick used to
-    // take, and the ray's pair is the sun's, so every lamp draw below keeps its place.
+    // draw under the share before it has already picked. The draw is the moons' and the ray's pair
+    // is the sun's, so every lamp draw below keeps its place.
     // **The three are named and not indexed**, for the reason `SkyChoice` gives: the pick is a value
     // the compiler cannot fold, and a local array read at one is a spill. The additions below are
     // the ones the loop made, in the order it made them, so the draw picks what it always picked.
@@ -182,9 +180,8 @@ vec3 pathEnd(vec3 position, float reaching)
 /// **Reported by whatever shaded the pixel rather than guessed after it.** Ray Reconstruction
 /// separates a noisy pixel into a diffuse and a specular half using the albedos and the roughness it
 /// is handed, so those three have to describe what this renderer actually did — and only the
-/// function that did it knows. The frame used to answer with a constant roughness of one, a
-/// permanently zero specular albedo and the *flat quad's* normal for water, which is a description
-/// of a renderer nobody wrote.
+/// function that did it knows. A constant roughness of one, a permanently zero specular albedo and
+/// the *flat quad's* normal for water is a description of a renderer nobody wrote.
 struct SurfaceResponse
 {
     /// The normal the shading used, which for water is the wave's and not the plane's.
@@ -263,12 +260,11 @@ float sampledFace(float transmission, float draw, out float weight)
 /// **The lobe is the shading normal's, which is what a shading normal is for, and the triangle is
 /// what bounds it.** On this content a normal leans past its own plane often enough to matter — four
 /// hits in a hundred by more than sixty degrees — and a direction drawn past it sets off *into* the
-/// surface. Morrowind builds rooms out of sheets with no thickness, so nothing stopped such a ray:
-/// it either left the building, where a room hands nothing back and the point went dark, or it
-/// landed on the far face of the wall and handed back light the point cannot see. Measured over a
-/// converged frame of Balmora's Guild of Mages, those rays were four fifths of the mean escaped
-/// share and nineteen twentieths of the worst pixels' — 5.8% of the hemisphere at the 99th
-/// percentile against 0.4% once they stopped.
+/// surface. Morrowind builds rooms out of sheets with no thickness, so nothing stops such a ray:
+/// it either leaves the building, where a room hands nothing back and the point goes dark, or it
+/// lands on the far face of the wall and hands back light the point cannot see. Over a converged
+/// frame of a room those rays are most of the mean escaped share and nearly all of the worst
+/// pixels'.
 ///
 /// **What a caller takes from such a direction is nothing, because nothing is the answer**: what it
 /// points at is the inside of the surface. The cost is the part of the lobe that leans past the

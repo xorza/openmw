@@ -217,9 +217,9 @@ namespace Rtx
         ///
         /// **Indexed by `MeshRange::mBindOffset`, so the table is as long as the bodies rather than
         /// as long as the cell.** A static mesh has no run here at all: its vertices are a build
-        /// input that does not outlive the build, and `BottomLevelStore::build` stages it. Seyda
-        /// Neen is 138 deforming drawables of 2800, and every copy of this used to be reserved for
-        /// all of them.
+        /// input that does not outlive the build, and `BottomLevelStore::build` stages it. A cell
+        /// deforms a twentieth of its drawables, and a copy of this reserved for all of them would
+        /// be twenty times the size.
         ///
         /// **Blocked, so a scene that grows keeps the poses it was already given.** A pose is on the
         /// device and nowhere else — the host holds a bind pose and a set of bone rows — so a table
@@ -242,8 +242,8 @@ namespace Rtx
         SlotTable<VkAccelerationStructureInstanceKHR> mRowTable;
 
         /// Kept across frames and built into again, made anew only when the slot table grows
-        /// past what it was sized for. It was destroyed and created every frame, which asked the
-        /// driver for a size and a handle to build the same structure it had just thrown away.
+        /// past what it was sized for: destroyed and created every frame, it would ask the driver
+        /// for a size and a handle to build the same structure it had just thrown away.
         VkAccelerationStructureKHR mTopLevel = VK_NULL_HANDLE;
 
         /// How many rows the top level was made for, which is what its build ranges over.

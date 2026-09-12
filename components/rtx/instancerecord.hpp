@@ -70,8 +70,8 @@ namespace Rtx
         ///
         /// Sunlight reaching a seabed has come through the surface, so a sea that occluded would
         /// black out every shallow in the game — and saying it in the mask costs traversal nothing,
-        /// where building the water non-opaque so a candidate loop could wave shadow rays past was
-        /// measured at half the frame rate.
+        /// where building the water non-opaque so a candidate loop can wave shadow rays past costs
+        /// half the frame rate.
         std::uint32_t mMask = 0;
 
         /// Whether traversal must stop and ask the shader whether a hit is a hole.
@@ -119,16 +119,16 @@ namespace Rtx
     ///
     /// **What a frame costs, and it is what moved.** A record carries a matrix inverse and a
     /// nine-by-nine exterior is fifty thousand of them; building all of them again to change a
-    /// hundred was most of what placing the world cost the CPU. `records` must be what
+    /// hundred is most of what placing the world would cost the CPU. `records` must be what
     /// `makeInstanceRecords` filled for this scene, and is grown here where the scene grew — a slot
     /// that arrived is in `getMoved`.
     ///
     /// **The one place the scene's change lists are read, and so the one place their order can be
-    /// got wrong.** Every table a frame writes is derived from these records, and each used to
-    /// subscribe to `getMoved` and `getSettled` for itself — which is two subscriptions to keep in
-    /// step, in two files, with nothing saying they had to agree. They did not, and terrain stood a
-    /// frame behind for it. What comes back in `changed` is what a backend writes; whether its own
-    /// copies are then behind is `SlotTable`'s to know.
+    /// got wrong.** Every table a frame writes is derived from these records; a table subscribing
+    /// to `getMoved` and `getSettled` for itself is a second subscription to keep in step, in
+    /// another file, with nothing saying the two agree — and terrain a frame behind when they do
+    /// not. What comes back in `changed` is what a backend writes; whether its own copies are then
+    /// behind is `SlotTable`'s to know.
     ///
     /// `changed` is cleared and refilled, so a caller keeps one across frames and allocates none.
     /// A slot named twice is a row written twice, which costs a memcpy of one row.

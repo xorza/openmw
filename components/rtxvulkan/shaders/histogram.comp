@@ -12,8 +12,8 @@
 // upscales. Measuring the render-resolution frame instead reads it as darker than it is: the
 // histogram bins `log2(luminance)` per pixel, the mean of a log sits below the log of the mean by
 // roughly the variance, and attaching an upscaler turns the denoiser off — so what exposure would be
-// reading is one path-traced sample per pixel. The reference implementation measured that as a
-// uniform 2.7% bias, and the whole of the fix is which image these two passes are bound to.
+// reading is one path-traced sample per pixel — a uniform bias of a few per cent, and the whole
+// of the fix is which image these two passes are bound to.
 
 #include "colour.h"
 #include "exposure.h"

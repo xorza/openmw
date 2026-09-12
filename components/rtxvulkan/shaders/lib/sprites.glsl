@@ -118,8 +118,7 @@ vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
 /// hides less and a ray through more than one hides more, and both are `1 - (1 - a) ^ n`. A sprite's
 /// `n` is the share of its own chord the eye sees — one in the open, a sliver where the ball runs
 /// into a wall. A shell of medium's is the secant of the angle the ray crosses it at — one head on,
-/// and more at a slant. One law, and the three places that used to spell it out are the two kinds of
-/// puff and the flame between them.
+/// and more at a slant. One law for the two kinds of puff and the flame between them.
 ///
 /// `SPRITE_ALPHA_LIMIT` says why an alpha of one is not taken at its word.
 ///
@@ -366,10 +365,9 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     uint slot = unbinned ? 0u : spriteTileListAt(tile);
     const uint last = unbinned ? spriteTileListAt(1u) : spriteTileListAt(tile + 1u);
 
-    // **What the outer loop over emitters used to hold, carried across a walk that no longer has
-    // one.** The tile's sprites are in ascending index, and a sprite's index is contiguous within
-    // its emitter, so an emitter's sprites arrive consecutively and these are worked out once for
-    // each run — which is the amortisation the emitter loop was giving away for free.
+    // **Per emitter and not per sprite, across a walk with no emitter loop.** The tile's sprites
+    // are in ascending index, and a sprite's index is contiguous within its emitter, so an
+    // emitter's sprites arrive consecutively and these are worked out once for each run.
     uint held = ~0u;
     GpuEmitter emitter;
     bool missed = true;
@@ -555,7 +553,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         const vec4 texel = textureLod(textures[nonuniformEXT(emitter.mTexture)], uv, lod);
 
         // **The rim is put back on a disc and left alone on a quad.** What the taper restores is
-        // a round blob the mip chain averaged into the square it was cut to; a rain streak was
+        // a round blob the mip chain averaged into the square it was cut to; a rain streak is
         // authored as that rectangle, and tapering it would round off the drop.
         const float painted = texel.a * sprite.mAlpha * (oriented ? 1.0 : spriteTaper(radial, lod));
         if (!(painted > 0.0))

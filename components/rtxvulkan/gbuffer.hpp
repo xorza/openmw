@@ -75,10 +75,9 @@ namespace Rtx
         void handOver(VkCommandBuffer commands) const;
 
     private:
-        /// **An array and not fourteen members.** Each of them used to be named three times — once
-        /// as a member, once as an accessor, and once in a hand-written table mapping the binding
-        /// back to it — and a channel added to `channel.hpp` without the third reached its pass as
-        /// a null.
+        /// **An array and not fourteen members.** Named three times each — a member, an accessor,
+        /// and a hand-written table mapping the binding back — a channel added to `channel.hpp`
+        /// without the third reaches its pass as a null.
         std::vector<Image> mChannels;
 
         /// How many of them are the frame's own extent, which is all of them or all but the three

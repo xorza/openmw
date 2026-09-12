@@ -8,7 +8,7 @@ namespace Rtx
     /// Which thread a member belongs to, asserted rather than written down.
     ///
     /// **Every class with a worker has members it calls "the frame thread's own".** That is a
-    /// contract the code must keep, which is what an assert is for, and it was prose. A guard
+    /// contract the code must keep, which is what an assert is for and not prose. A guard
     /// remembers the thread that built it, and a method that touches what it stands for asks it
     /// first.
     ///

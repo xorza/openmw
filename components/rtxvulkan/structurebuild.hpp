@@ -34,10 +34,9 @@ namespace Rtx
     /// Orders a build after the trace before it on the queue, which may still be reading what
     /// the build is about to write.
     ///
-    /// **What the fence used to be.** With one frame in flight the trace had finished before the
-    /// next placement was recorded; with two it has not, and a top level or a refit built over
-    /// a structure a ray is walking is a torn structure. An execution dependency is all a
-    /// write-after-read needs.
+    /// **A barrier and not a fence.** With two frames in flight the trace has not finished when
+    /// the next placement is recorded, and a top level or a refit built over a structure a ray is
+    /// walking is a torn structure. An execution dependency is all a write-after-read needs.
     void barrierBeforeBuild(VkCommandBuffer commands);
 
     /// Everything between a build and whatever reads the structure it wrote.

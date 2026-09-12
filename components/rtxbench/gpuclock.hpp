@@ -19,11 +19,10 @@ namespace Rtx
     /// one moment, and a moment sampled after the frames stopped is a card already climbing back —
     /// which reads as a fast clock over frames drawn at a slower one.
     ///
-    /// **And a range of two is not a range.** The ends of a place were once the whole of this, and
-    /// two samples cannot say what the clock did between them: measured at 10 Hz through a
-    /// `seyda-neen-ship` bench the core moves 9 to 22% across the settled part of a run, while the
-    /// two ends agreed to within 2% and the row read `1890–1920 MHz`. `ClockWatch` is what samples
-    /// through the frames instead, and `mReadings` is what says whether a range was worth printing.
+    /// **And a range of two is not a range.** Two samples at the ends of a place cannot say what
+    /// the clock did between them: the core moves by a tenth or more across the settled part of a
+    /// run whose two ends agree to a few per cent. `ClockWatch` is what samples through the frames
+    /// instead, and `mReadings` is what says whether a range was worth printing.
     struct GpuClock
     {
         /// The graphics clock over every reading taken. Equal where only one was.
@@ -82,9 +81,8 @@ namespace Rtx
     /// choose between waiting and not asking.
     ///
     /// **Every reading forks this process**, and a harness with a world loaded is a large one to
-    /// fork, so the rate is what the spawn cost was measured under rather than what the card can be
-    /// asked for. At four a second the trace zone at `seyda-neen-ship` reads 1.66 to 1.68 ms over
-    /// five legs, against 1.62 to 1.67 over the sixteen taken before this existed.
+    /// fork, so the rate is what the spawn cost stays inside the run-to-run spread at, rather than
+    /// what the card can be asked for. Four a second is inside it.
     ///
     /// **One of these outlives a place**, so `start` is what forgets the last one's readings.
     class ClockWatch

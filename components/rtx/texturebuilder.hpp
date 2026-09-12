@@ -103,8 +103,8 @@ namespace Rtx
         ///
         /// **This is what stops a texture being decoded twice.** Describing reads the image and
         /// estimating its shading reads every texel of it, and a renderer that already holds three
-        /// hundred needs neither done again for them — that repeated work is the 5% of the game's
-        /// CPU that showed up as `ShadingMap` and `ColourBlock::read`.
+        /// hundred needs neither done again for them — that repeated work is a real share of the
+        /// game's CPU, under `ShadingMap` and `ColourBlock::read`.
         ///
         /// **A list and not an offset**, because a slot a departing cell freed is taken over
         /// wherever it sits: what arrived is no longer the end of the table. Each description

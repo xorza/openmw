@@ -102,10 +102,9 @@ float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point)
 
 /// Whether a candidate hit stops the ray, and what it lets past where it does not.
 ///
-/// **One load of the instance and its material, for what were three questions asked in turn.** A
-/// shadow ray used to ask whether a candidate was see-through, then — of whichever answer came
-/// back — either what it let past or whether it landed in a hole, and each of those three read the
-/// instance and the material again. They are one decision about one surface, so they are one load.
+/// **One load of the instance and its material, and not three questions asked in turn.** Whether a
+/// candidate is see-through, what it lets past and whether it landed in a hole are one decision
+/// about one surface, so they are one load.
 ///
 /// Only instances the build marked non-opaque reach this, and it marks them for three different
 /// reasons: a mask to test, a material's own alpha, and a placement the game is fading. Just the
@@ -222,16 +221,12 @@ struct Hit
 
     /// Where in the shared vertex buffers this triangle's three corners are, already global.
     ///
-    /// **Resolved inside the query and carried out, where the primitive index used to be.** The
-    /// index block has to be read there in any case, to interpolate the shading normal while the
-    /// object-to-world matrix is still in scope — and `resolve` then read the same block for the
+    /// **Resolved inside the query and carried out, rather than the primitive index.** The index
+    /// block has to be read there in any case, to interpolate the shading normal while the
+    /// object-to-world matrix is still in scope, and `resolve` would read the same block for the
     /// same three numbers. Two words more in a `Hit` against one block-table address and three
-    /// index loads on every ray that lands.
-    ///
-    /// **It measured neutral, and it is kept for the duplication and not for the time.** Three
-    /// interleaved pairs at the Balmora mages' guild and on the Seyda Neen ship: 1.45 to 1.47 ms
-    /// against 1.45 to 1.46, and 1.46 to 1.53 against 1.47 to 1.52. Either the compiler already
-    /// shared the load, or the two extra words paid for what it saved.
+    /// index loads on every ray that lands — which is neutral in time, and kept for the
+    /// duplication.
     uvec3 mCorner;
 
     vec2 mBary;
@@ -288,10 +283,9 @@ Hit committedHit(
     hit.mCrossed = triangleCross(corners, toWorld);
 
     // **The one vertex fetch a traversal does, and it is here so that the transform need not
-    // survive the call.** The test is on the mesh's own normal rather than on the transformed one,
-    // which is the decision `resolve` used to make: a mesh with no normals stores zeros, and a
-    // scale that shrank a real normal past the threshold would otherwise change which branch it
-    // took.
+    // survive the call.** The test is on the mesh's own normal rather than on the transformed one:
+    // a mesh with no normals stores zeros, and a scale that shrank a real normal past the threshold
+    // would otherwise change which branch it took.
     const GpuInstance placement = instanceAt(instance);
     hit.mCorner = triangleCorners(meshAt(placement.mMesh), primitive);
 
@@ -350,15 +344,11 @@ Hit committedHit(
 /// No cone here, so the cutout is decided at the finest mip. A shadow ray carries no footprint, and
 /// aliasing in a leaf's shadow is worth far less than aliasing on the leaf.
 ///
-/// **And handing it one was measured, and it lost.** JCGT 10(1) 2021 finds level zero slower than a
-/// cone level in every scene it tries, so the shading point's own footprint was passed down here
-/// and the whole chain — `skyVisible`, `lampVisible`, `ambientReaching` — was given a width to
-/// carry. Three interleaved pairs: neutral at the Balmora mages' guild, 0.86 against 0.88 ms at
-/// Ald-ruhn, and 1.17 against 1.29 ms at Seyda Neen's shore. The paper's finding is about the
-/// *fetch*, and this path's cost is the *level*: a width of nought is answered at once, so level
-/// zero here skips a texture-header read in `coneLod`, and a determinant and two logarithms in
-/// `coneBase`, at every candidate. What those early returns save is more than the cache gives
-/// back.
+/// **And handing it one loses.** JCGT 10(1) 2021 finds level zero slower than a cone level in every
+/// scene it tries, but the paper's finding is about the *fetch*, and this path's cost is the
+/// *level*: a width of nought is answered at once, so level zero here skips a texture-header read
+/// in `coneLod`, and a determinant and two logarithms in `coneBase`, at every candidate. What
+/// those early returns save is more than the cache gives back, on every place tried.
 ///
 /// **A ray shorter than the bias it starts past is not a ray.** A candle sitting a unit off a table
 /// asks for a shadow ray whose end is behind its own beginning, and `rayQueryInitializeEXT` with a

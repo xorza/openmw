@@ -10,9 +10,9 @@ namespace Rtx
     ///
     /// **A field a sampler reads rather than one a march computes.** Value noise off a hashed
     /// lattice costs a hash per corner, so one octave is eight of them and the stack the fog wants is
-    /// forty — paid at every step of a twenty-four step march, at every pixel. That was measured at
-    /// 2.0 ms of a 2.1 ms trace and it is why an interior branches around the field entirely. A
-    /// field drawn once costs one fetch, and the hardware does the interpolation.
+    /// forty — paid at every step of a twenty-four step march, at every pixel, which is nearly the
+    /// whole of a trace and why an interior branches around the field entirely. A field drawn once
+    /// costs one fetch, and the hardware does the interpolation.
     ///
     /// **The same noise the renderer this is ported from draws with, and nothing cleverer.** Its
     /// `fog_noise` is trilinear value noise off a hashed lattice, and what its fog looks like is

@@ -13,8 +13,7 @@ namespace Rtx
     ///
     /// **Estimating one reads every texel of a texture's largest level**, and the same handful of
     /// ground textures make every chunk of a region — so a caller that estimates per chunk would
-    /// read the same megabyte once per chunk it bakes. That repeated read is the 5% of a crossing's
-    /// CPU `texturebuilder.hpp` names.
+    /// read the same megabyte once per chunk it bakes, which is a real share of a crossing's CPU.
     ///
     /// **Not the same cache as the texture builder's, and it should not become one.** That one
     /// keeps a description per live slot and drops it when the slot goes; this one is keyed on a

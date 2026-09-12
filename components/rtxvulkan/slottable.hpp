@@ -24,13 +24,12 @@ namespace Rtx
     /// One host-side table and one device copy of it per frame in flight.
     ///
     /// **A copy is behind because something wrote a row, and for no other reason.** That sentence is
-    /// the whole of what this type exists to make true. The mechanism it replaces derived each
-    /// copy's debt from the scene's own change lists — `getMoved`, `getSettled`, `getDeformed` —
-    /// replayed at five separate sites, and correctness then rested on four things that nothing
-    /// checked: that every site subscribed to the same lists, that the lists were still current when
-    /// each site ran, that every writer settled exactly once, and that a table's growth path agreed
-    /// with its debt about when a copy had been filled whole. Each of those failed at least once,
-    /// silently, and the symptom was a frame of wrong geometry.
+    /// the whole of what this type exists to make true. A copy's debt derived from the scene's own
+    /// change lists — `getMoved`, `getSettled`, `getDeformed` — replayed at every table rests on
+    /// four things nothing checks: that every site subscribes to the same lists, that the lists are
+    /// still current when each site runs, that every writer settles exactly once, and that a
+    /// table's growth path agrees with its debt about when a copy was filled whole. Each of those
+    /// fails silently, as a frame of wrong geometry.
     ///
     /// Here there is nothing to subscribe to and no list whose lifetime matters. `write` marks the
     /// row owed by every copy; `sync` pays one copy's debt and clears it, in one loop, in one place.
@@ -131,8 +130,7 @@ namespace Rtx
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
             // **A copy made again is empty whatever the debt says**, so a growth that reallocates
-            // is itself a reason to write the whole table. That agreement between growth and debt
-            // used to be spelled out once per table, differently each time.
+            // is itself a reason to write the whole table.
             //
             // **Asked only where it does not fit**, and doubled when it is asked, so a table that
             // keeps growing is made again a logarithmic number of times rather than once an arrival.
@@ -285,8 +283,8 @@ namespace Rtx
         /// break it: an arrival fills every copy whole and then says so with `settle`, which is
         /// cheaper and clearer than naming every run it just wrote. A caller that writes through
         /// this and does not settle has left the account describing a copy that no longer matches
-        /// it, which is the whole failure this replaced. Per-frame writes go through `write` and
-        /// `sync`.
+        /// it, which is the whole failure this type exists to end. Per-frame writes go through
+        /// `write` and `sync`.
         BlockedBuffer& at(FrameSlot slot)
         {
             assert(slot.get() < mSlots);

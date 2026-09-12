@@ -54,10 +54,10 @@ namespace Rtx::Shaders
         ///
         /// **The lens is applied here because everything before this pass is the trace's own frame.**
         /// A veil written back over the radiance image would be a measurement nobody could hand
-        /// compute, and would have made `FrameImage::Composite` mean one thing with an upscaler in the
+        /// compute, and would make `FrameImage::Composite` mean one thing with an upscaler in the
         /// frame and another without one. `BloomPass` builds the pyramid and this spreads its finest
         /// level over the picture — which also saves the full-resolution pass a separate blend would
-        /// have cost.
+        /// cost.
         ///
         /// Nought is no lens, which is what a doll and a map tile are drawn with: the pyramid is the
         /// frame's and neither of those is a frame. The shader samples nothing at all where this is
@@ -67,11 +67,10 @@ namespace Rtx::Shaders
 
         /// The star field, drawn here rather than by the trace.
         ///
-        /// **A point source is what a temporal upscaler removes.** Measured on a clear midnight at
-        /// 1920 by 1080, the pixels over half brightness go 1093 drawn without one, 698 through DLAA
-        /// at the same internal resolution, and 347 at quality — a third to the network and the rest
-        /// to the resolution. No guide buffer moves it: an eye-facing normal, the bias mask over
-        /// every sky pixel, and the four before-and-after colour pairs all measure neutral or worse.
+        /// **A point source is what a temporal upscaler removes.** Through the upscaler a clear
+        /// midnight keeps a third of its bright star pixels, a third lost to the network and the rest
+        /// to the resolution, and no guide buffer moves it: an eye-facing normal, the bias mask over
+        /// every sky pixel, and the four before-and-after colour pairs all come out neutral or worse.
         /// So the field is drawn where it is shown, and the trace draws the rest of the sky — and
         /// hands this pass `GBuffer::getStarsShown`, because a moon, a deck, a pane, the water and
         /// the air all stand between the field and the eye and none of them is here.

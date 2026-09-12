@@ -136,8 +136,8 @@ namespace Rtx
         //
         // `MWRender::Water` animates its surface with a `SceneUtil::StateSetUpdater`, which swaps
         // the node's state set between two copies of its own every frame: keyed on the address, the
-        // mirror saw a new material each frame and swept the one before it, for a surface that had
-        // not changed. And with `water shader = true` there is no state set on the node at all,
+        // mirror would see a new material each frame and sweep the one before it, for a surface
+        // that has not changed. And with `water shader = true` there is no state set on the node at all,
         // because that one is pushed from a cull callback the mirror runs outside of.
         //
         // **In the map under `sSea` rather than beside it**, so that one sweep and one count answer

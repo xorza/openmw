@@ -72,9 +72,8 @@ float coneBase(vec2 uv0, vec2 uv1, vec2 uv2, SurfaceCone cone, float coneWidth)
 /// there.
 ///
 /// **One statement of a hit's place on a sheet, for every read made of that sheet.** A surface reads
-/// its albedo, its opacity and its emissive map off one transform, and each read used to work the
-/// same three transformed corners out again — the de-lighting pass a fourth time, with a comment
-/// saying why it could not be handed back. It is built once per transform and handed to every read.
+/// its albedo, its opacity and its emissive map off one transform, so the three transformed corners
+/// are worked out once per transform and handed to every read.
 struct TexturePoint
 {
     /// The hit, in the texture's own coordinates.
@@ -106,9 +105,8 @@ TexturePoint texturePoint(vec2 uv[3], vec3 weight, vec4 transform, SurfaceCone c
 /// in the texture's own resolution and one term in nothing else. A compute shader has no
 /// derivatives, so this is the only thing standing between every fetch and level zero.
 ///
-/// **The early answer is a read and not an arithmetic saving.** `lightThrough` carries the
-/// measurement: level zero on a shadow ray beat a cone level by 0.12 ms at Seyda Neen's shore, and
-/// what it saves is the texture header this reads.
+/// **The early answer is a read and not an arithmetic saving.** `lightThrough` says why a shadow
+/// ray takes level zero, and what it saves is the texture header this reads.
 float coneLod(uint slot, TexturePoint point)
 {
     if (point.mBase <= TEXTURE_FINEST_BASE)

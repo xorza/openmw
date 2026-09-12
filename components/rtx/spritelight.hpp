@@ -68,7 +68,7 @@ namespace Rtx
         ///
         /// Named for what it is rather than for its source, because the name is a view and this
         /// object is moved about in a vector: a short source path would sit inside the string
-        /// itself and the view would point at where it used to be.
+        /// itself and the view would point at where it stood before the move.
         TextureData describe() const;
 
         /// One channel of one texel of one level, all of which must be inside the image.

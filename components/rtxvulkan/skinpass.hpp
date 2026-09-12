@@ -17,12 +17,12 @@ namespace Rtx
 
     /// Poses every deforming mesh a slot's copies owe, on the device, ahead of the refit over them.
     ///
-    /// **What the host used to do per vertex, done per bone.** A skinned body was skinned on the
-    /// processor, compared vertex by vertex against the pose before, copied, walked for its bounds
-    /// and written across the bus twice — positions for the refit and normals for the hit — every
-    /// frame. Now the host writes a few dozen rows per body and one dispatch per body computes the
-    /// vertices into the slot's copy of the poses and the normals, where the refit and the hit
-    /// already read them.
+    /// **Per bone on the host and per vertex on the device.** A body skinned on the processor is
+    /// compared vertex by vertex against the pose before, copied, walked for its bounds and written
+    /// across the bus twice — positions for the refit and normals for the hit — every frame. Here
+    /// the host writes a few dozen rows per body and one dispatch per body computes the vertices
+    /// into the slot's copy of the poses and the normals, where the refit and the hit already read
+    /// them.
     ///
     /// **The poses' own account is what drives it.** `SlotBlocks` says which runs each copy owes; a
     /// copy owes a mesh whose pose changed since that copy was last written, which is exactly the

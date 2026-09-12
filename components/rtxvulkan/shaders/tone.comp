@@ -78,8 +78,8 @@ void main()
     // a cloud deck, a window pane, the water and the air all stand between the field and the eye,
     // and every one of them is the trace's — so the trace states it and this multiplies by it.
     //
-    // **After the veil and so outside it**, because the pyramid was built before this pass ran and
-    // a field drawn here was never in it. A star is a point at the resolution it is shown at, which
+    // **After the veil and so outside it**, because the pyramid is built before this pass runs and
+    // a field drawn here is never in it. A star is a point at the resolution it is shown at, which
     // is the whole reason it is drawn here at all.
     //
     // Nearest and one tap, so a star within a traced pixel of a silhouette can land on the wrong

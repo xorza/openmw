@@ -70,16 +70,16 @@ namespace Rtx
     /// **The question `digestScene` refuses, and a run has to ask both.** That one answers "is this
     /// the same cell", which is what a reference wants and what no permutation may change. These
     /// answer "is this the same buffer", which is what a repeat wants, because the buffer is what
-    /// the acceleration structures are built over. Measured on `island-crossing`, the layout
-    /// differed on 360 frames of 360 while `digestScene` matched on 299 of them.
+    /// the acceleration structures are built over — and the layout differs on every frame of a
+    /// route where `digestScene` matches on most of them.
     ///
     /// **Fields and not records, wherever a record has padding** — every table here has it but the
     /// geometry, and a `static_assert` holds the ones read whole to that. The bytes between fields
     /// are whatever the allocator left, and a hash that read them would call two identical scenes
     /// different.
     ///
-    /// **A frame pays a hash of everything it is handed**, which at that place is eighty megabytes
-    /// of geometry and moved the median frame from 36.4 ms to 57.6 ms. `bench --hashes` already
+    /// **A frame pays a hash of everything it is handed**, which is tens of megabytes of geometry
+    /// and half again on the median frame. `bench --hashes` already
     /// reads every frame back and already says its times are not comparable with a measured run's,
     /// so it is the one caller that can afford this. **Whole and not incremental**, because the
     /// tables say which meshes deformed and not which arrived, and a second idea of when a slot
@@ -95,17 +95,17 @@ namespace Rtx
     /// others' children behind it in address order — so two shapes under one placement change
     /// places from one process to the next, and the vertex runs and slot numbers follow them. Its
     /// `MergeGeometryVisitor` does the same inside a shape: the parts it folds into one geometry
-    /// are concatenated in an order that is not the file's, so the same hair came out with its
+    /// are concatenated in an order that is not the file's, so the same hair comes out with its
     /// vertices in two orders depending on nothing but the length of the working directory's name.
     /// So each placement is digested from what the picture is made of — where it stands, what it
     /// wears, and its shape as the multiset of its triangles — and the placements are summed, which
     /// no order can tell. Lights and emitters the same way.
     ///
-    /// **What that blindness cost, and why `digestLayout` stands beside it.** This was written to
-    /// name one cell one way whichever process staged it, and it does. It was also read as saying
-    /// the layout does not matter, which is false for a ray tracer: a structure is built over the
-    /// index buffer as written. Two runs whose triangles are the same in a different order draw a
-    /// foliage edge two ways, and this reported them identical while they did.
+    /// **What it is blind to, and why `digestLayout` stands beside it.** This names one cell one
+    /// way whichever process staged it, and says nothing about the layout — which does matter to a
+    /// ray tracer: a structure is built over the index buffer as written. Two runs whose triangles
+    /// are the same in a different order draw a foliage edge two ways, and this reports them
+    /// identical while they do.
     ///
     /// **Fields and not records, wherever a record has padding.** The bytes between fields are
     /// whatever the allocator left, and a hash that read them would call two identical scenes

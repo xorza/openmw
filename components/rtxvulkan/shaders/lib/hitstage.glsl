@@ -111,12 +111,12 @@ void answerSolid(inout VisibilityPayload answer, Surface surface)
 /// Fills the payload in for a water surface, and for the ground showing through its last half metre.
 ///
 /// **A pixel of water with no water under it is the ground it stands on, shaded as the ground is.**
-/// The surface fades out over the last half metre of depth, and what it used to fade toward was the
-/// bed shaded at the far end of a path — `pathEnd`, the flat ambient — where the dry pixel beside it
-/// gathers a real bounce. In fog the two are far apart: the ambient is the recorded colour and a
-/// bounce finds the sky's, so the waterline came back as a line between blue and brown however well
-/// the surface over it had been faded. So the bed the dry pixel would have found is traced and
-/// shaded the way that pixel is, and the fade mixes the two as one pixel.
+/// The surface fades out over the last half metre of depth, and fading toward the bed shaded at the
+/// far end of a path — `pathEnd`, the flat ambient — where the dry pixel beside it gathers a real
+/// bounce is a waterline drawn as a line between blue and brown however well the surface over it is
+/// faded: in fog the ambient is the recorded colour and a bounce finds the sky's. So the bed the dry
+/// pixel would have found is traced and shaded the way that pixel is, and the fade mixes the two as
+/// one pixel.
 ///
 /// **From a hair short of the surface and not a hair past it.** The waterline is where the ground
 /// crosses the plane, so along the last pixel of water the bed lies within the bias of the surface —

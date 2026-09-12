@@ -118,9 +118,9 @@ namespace Rtx
         ///
         /// **Measured through the sampler and not off the texels, because the two are not the same
         /// field.** A trilinear tap between eight texels hands back values that cluster nearer the
-        /// mean than any of the eight, so a level whose *texels* carried one spread presented a
-        /// narrower one to every march — narrower the fewer texels it had, until a coverage band cut
-        /// for the full level cleared half as much at the top of the chain. Sixty-four taps a texel
+        /// mean than any of the eight, so a level whose *texels* carry one spread presents a
+        /// narrower one to every march — narrower the fewer texels it has, until a coverage band cut
+        /// for the full level clears half as much at the top of the chain. Sixty-four taps a texel
         /// stand for the continuous field here, and since the tap is linear, stretching the texels
         /// stretches what it reads by exactly the same factor.
         ///

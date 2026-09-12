@@ -6,9 +6,9 @@
 // What kind of frame this is, told to the compiler rather than to the branch predictor.
 //
 // **The trace is occupancy-bound, so a path nothing takes still costs the pixels that take
-// another.** One kernel served an interior with no sun, no moons and no sea: the registers the
-// moons need are registers every pixel of that room did without, and taking the moons out alone was
-// measured at half a millisecond in a room no moon ray is ever traced in.
+// another.** One kernel serving an interior with no sun, no moons and no sea spends the registers
+// the moons need on every pixel of that room, and taking the moons out alone is worth a real share
+// of the trace in a room no moon ray is ever traced in.
 //
 // **Each of these stands in front of the runtime test it replaces and never in place of it.** True
 // leaves the shader exactly as it was. False is set only where the test behind it already answers

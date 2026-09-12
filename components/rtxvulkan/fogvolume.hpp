@@ -25,9 +25,9 @@ namespace Rtx
     /// answers all of them, and the trace reads one edge of the column and steps through one slice.
     ///
     /// **A room's air is drawn here too**, although its field is even and integrates in closed form.
-    /// What that form still could not do without was a lamp reservoir and a shadow ray per pixel,
-    /// and those are exactly what a froxel does once for a column — so an interior's trace lost 0.15
-    /// to 0.35 ms and this pass cost it 0.12 to 0.16. One kind of air, one place it is answered.
+    /// What that form still cannot do without is a lamp reservoir and a shadow ray per pixel, and
+    /// those are exactly what a froxel does once for a column — so this pass costs an interior less
+    /// than the closed form takes off its trace. One kind of air, one place it is answered.
     ///
     /// **Two volumes and not one, because what filters and what a pixel reads are different
     /// quantities.** A froxel's scattering and extinction are properties of the *point* — they
@@ -184,8 +184,8 @@ namespace Rtx
         ///
         /// **The half of `FogSources` that is the column's and not the froxel's.** The phase
         /// function takes the angle between the ray and the source, which is one number for the
-        /// whole ray — so the depth pass works it out once and the scatter pass reads it, where each
-        /// froxel used to evaluate one for itself per moon.
+        /// whole ray — so the depth pass works it out once and the scatter pass reads it, rather
+        /// than each froxel evaluating one for itself per moon.
         Image mColumnMoons;
 
         /// Linear on all three axes and clamped on all three: a column at the edge of the screen has

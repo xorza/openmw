@@ -192,9 +192,9 @@ namespace Rtx
         while (mHanded.empty())
         {
             // **Given up on where the reader has gone**, which is a reader that threw. Waiting on
-            // one that can hand nothing over used to be a wait with no end, and a wait that
-            // answered at once with no cell would be a spin instead. The walk adopts nothing this
-            // frame and `CellSupply::take` is where the failure is reported.
+            // one that can hand nothing over is a wait with no end, and a wait that answered at
+            // once with no cell would be a spin instead. The walk adopts nothing this frame and
+            // `CellSupply::take` is where the failure is reported.
             if (!mSupply.waitForOne())
                 return;
 

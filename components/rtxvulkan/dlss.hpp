@@ -39,11 +39,10 @@ namespace Rtx
     /// **One at a time, and the constructor refuses a second.** NGX's state is global to the
     /// process, `NVSDK_NGX_VULKAN_Shutdown` is unconditional, and the runtime belongs to the
     /// `VkDevice` it was started on — so a second of these would not coexist with the first, it
-    /// would end it. That was a real bug: `describeDevice` used to build one to ask "is Ray
-    /// Reconstruction available" and let it go again, which shut down the runtime the renderer was
-    /// still upscaling with, surfacing as `FAIL_NotInitialized` from a frame a cell load later,
-    /// pointing at nothing. `probe` is what that question asks now, and it hands back an answer
-    /// rather than a runtime.
+    /// would end it: one built to ask "is Ray Reconstruction available" and let go again shuts
+    /// down the runtime the renderer is still upscaling with, and surfaces as `FAIL_NotInitialized`
+    /// from a frame a cell load later, pointing at nothing. `probe` asks that question and hands
+    /// back an answer rather than a runtime.
     ///
     /// **Not thread safe, and every caller is on one thread**: a renderer is built before there is
     /// anything else to build one from.

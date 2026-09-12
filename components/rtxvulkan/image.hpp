@@ -69,11 +69,11 @@ namespace Rtx
         /// error, no validation message, just a black frame with nothing pointing at the cause.
         VkImageUsageFlags getUsage() const { return mUsage; }
 
-        /// Moves every level of the image to `layout`, recording into `commands`.
         /// The same dependency as `transition`, for a caller collecting a run of them into one
         /// command. Every level, as `transition` is.
         VkImageMemoryBarrier2 describeTransition(const ImageUse& from, const ImageUse& to) const;
 
+        /// Moves every level of the image from one use to the next, recording into `commands`.
         void transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const;
 
         /// Fills every level below the first by halving the one above it, in `VK_FILTER_LINEAR`.
@@ -139,8 +139,8 @@ namespace Rtx
     /// A one-texel image for a binding a shader declares and a branch never reads.
     ///
     /// **A descriptor has to point somewhere.** A caller that bound the real thing regardless would
-    /// carry a full-size image for a binding nothing looks at — sixteen bytes a pixel is 133 MiB at
-    /// 4K. Laid out here once and then never moved again, because a bound image has to be in the
+    /// carry a full-size image for a binding nothing looks at — sixteen bytes a pixel of the frame.
+    /// Laid out here once and then never moved again, because a bound image has to be in the
     /// layout its descriptor names whether the shader reads it or not.
     ///
     /// **What it is laid out for follows from `usage`**, because a storage image is read as one

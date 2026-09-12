@@ -23,9 +23,7 @@
 /// `nonuniformEXT` applied to a function *argument* decorates the argument and stops there: the
 /// chain built inside the callee comes out bare, and the driver may then read one lane's descriptor
 /// for the whole wave. That is a wrong texture on some lanes of some waves, which looks like nothing
-/// at all until it does. Measured before this rule, 28 of the 44 chains into this array were
-/// undecorated and every one of them was on the surface path; `spirv-val` passes either way and the
-/// validation layers say nothing.
+/// at all until it does; `spirv-val` passes either way and the validation layers say nothing.
 layout(set = 1, binding = 0) uniform sampler2D textures[];
 
 /// What each texture already has painted into it, `SHADING_EXTENT` squared, at the slot of the

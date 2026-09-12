@@ -41,11 +41,11 @@ namespace Rtx::Shaders
     ///
     /// **Nothing crosses the payload inwards, and this is why.** A field the launch writes into the
     /// payload before `hitObjectExecuteShaderEXT` is not what the closest-hit shader reads once a
-    /// `reorderThreadEXT` with a key stands anywhere in the launch — measured on driver 610.57.04,
-    /// where a per-pixel signature written that way arrived wrong at 99.5 per cent of pixels and the
-    /// answers written back arrived right at every one. No launch here sorts today, and the record
-    /// is what keeps that a choice: it is read by the shader the hit object names, through the index
-    /// traversal computed, whatever stands between the trace and the execute.
+    /// `reorderThreadEXT` with a key stands anywhere in the launch: on driver 610.57.04 a per-pixel
+    /// signature written that way arrives wrong at nearly every pixel, and the answers written back
+    /// arrive right. No launch here sorts, and the record is what keeps that a choice: it is read by
+    /// the shader the hit object names, through the index traversal computed, whatever stands
+    /// between the trace and the execute.
     struct HitRecord
     {
         /// Which layer of the peel the shader is standing at, counting the eye's own hit as nought.
@@ -151,7 +151,7 @@ namespace Rtx::Shaders
         /// hang off which one it is.
         ///
         /// **Whether the sky is a light at all.** A room's dome is its fog colour standing in for
-        /// the picture wherever a ray leaves the shell, and lighting anything with that drew a
+        /// the picture wherever a ray leaves the shell, and lighting anything with that draws a
         /// bright band along the foot of every wall. Nought here, and a bounce that reached nothing
         /// brings back nothing.
         ///
@@ -159,7 +159,7 @@ namespace Rtx::Shaders
         /// ambient is the sky and the ray runs to it, so anything at all takes it away. In a room
         /// the walls *make* the fill rather than block it, so only what is within
         /// `ROOM_FILL_REACH` does — a ray run out to the walls comes back blocked everywhere and
-        /// empties every interior, and occluding by nothing at all let white cloth light its own
+        /// empties every interior, and occluding by nothing at all lets white cloth light its own
         /// contact shadow.
         ///
         /// **A frame assembled by hand is a room until it says otherwise**, since nothing else in
@@ -221,10 +221,10 @@ namespace Rtx::Shaders
         /// How wide one texel of each of those tiles is, in world units, in the same order.
         ///
         /// **Handed over rather than asked of the driver.** `waveLevel` divides a footprint by this
-        /// to reach a level of the chain, and it read the grid with `textureSize` — a texture-header
-        /// fetch for a number `sWaveTiles` states at compile time, twice a cascade, in a function an
-        /// underwater pixel calls six times over. The extent above is already written from the tile
-        /// that built it, so this is the same statement one division further on.
+        /// to reach a level of the chain, and `textureSize` is a texture-header fetch for a number
+        /// `sWaveTiles` states at compile time — twice a cascade, in a function an underwater pixel
+        /// calls six times over. The extent above is already written from the tile that built it,
+        /// so this is the same statement one division further on.
         float mWaveTexel[WAVE_CASCADES];
 
         /// Root mean square slope of the whole sea, over every tile and every wavelength in them.
@@ -247,29 +247,27 @@ namespace Rtx::Shaders
         /// What share of `mWaveCurvature` a tile still resolves at a level of its chain, indexed
         /// `cascade * WAVE_LEVELS + level`.
         ///
-        /// **The fold the caustic's gain is read at, and two things were wrong with taking it off
-        /// the chain.** It was differenced per pixel — the tile's whole mean square less what the
-        /// footprint's own averaged away — so it was noisy, and its noise ran with the very
-        /// determinant it was normalising. And a chain read that way answers for the *texels*, where
-        /// what the shader sees is `textureLod` reconstructing between them: a second filter, and a
-        /// large one, that costs a quarter of the curvature in the shallows and two thirds of it in
-        /// deep water. `Rtx::waveCurvature` states both filters over the amplitudes, and the chain
-        /// this replaced has no reader left.
+        /// **The fold the caustic's gain is read at, and not one taken off the chain**, for two
+        /// reasons. Differenced per pixel — the tile's whole mean square less what the footprint's
+        /// own averages away — it is noisy, and its noise runs with the very determinant it
+        /// normalises. And a chain read that way answers for the *texels*, where what the shader
+        /// sees is `textureLod` reconstructing between them: a second filter, and a large one, that
+        /// costs a quarter of the curvature in the shallows and two thirds of it in deep water.
+        /// `Rtx::waveCurvature` states both filters over the amplitudes.
         float mWaveResolved[WAVE_CASCADES * WAVE_LEVELS];
 
         /// The cell's own ambient, linear, and what a path is terminated with.
         ///
-        /// **No longer added on top of the light that is traced, which is what it used to be.**
-        /// Morrowind's interiors were authored against a renderer with no bounce at all, so this
-        /// term stood in for every one of them; adding it to a surface that now gathers a real
-        /// hemisphere would count the same light twice. It sits one level down instead — a bounce
-        /// that lands on something is shaded with this rather than gathering a hemisphere of its
-        /// own, so it estimates the rest of a path nobody traces.
+        /// **Not added on top of the light that is traced.** Morrowind's interiors were authored
+        /// against a renderer with no bounce at all, so this term stood in for every one of them;
+        /// adding it to a surface that gathers a real hemisphere would count the same light twice.
+        /// It sits one level down instead — a bounce that lands on something is shaded with this
+        /// rather than gathering a hemisphere of its own, so it estimates the rest of a path nobody
+        /// traces.
         ///
-        /// **It is load-bearing indoors and marginal outdoors.** Measured from inside the Balmora
-        /// mages' guild, zeroing it halves the frame: 0.0033 mean luminance to 0.0016. Over Balmora
-        /// itself it is worth 1.8%, because an exterior's second bounce mostly finds sky, which is
-        /// traced for real.
+        /// **It is load-bearing indoors and marginal outdoors**: zeroing it halves an interior's
+        /// mean luminance and barely moves an exterior's, because an exterior's second bounce
+        /// mostly finds sky, which is traced for real.
         vec3 mAmbient;
 
         /// What the air between the eye and everything else scatters toward it, and how much of it
@@ -301,8 +299,8 @@ namespace Rtx::Shaders
         /// **A weather with more fog has fog that reaches higher, and the game says so.** `Land Fog
         /// Depth` is called depth for a reason: Morrowind writes 0.69 for clear and 1.9 for a foggy
         /// night, so foggy's air fills a bay where clear's lies in the hollows. Without this every
-        /// weather pooled in the same 37-metre bank, and a medium that filled the sky while doing
-        /// that was two answers to one question.
+        /// weather would pool in the same 37-metre bank, and a medium that filled the sky while
+        /// doing that is two answers to one question.
         ///
         /// `Rtx::fogLift` is what derives it, and says why the wind alone could not.
         float mFogLift;
@@ -374,20 +372,15 @@ namespace Rtx::Shaders
         /// either way, and this says whether anybody will read it: the upscaler is handed it as
         /// `pInTransparencyLayer` and composites it with a motion vector of its own, and every other
         /// path — the upscaler off, a doll, a map tile, a test that reads the frame — has nothing
-        /// that would. Those composite it in the trace instead and get the frame they always had.
-        ///
-        /// **Here because this is where the padding was.** `mTables` below is eight-aligned and
-        /// everything above is four, so both languages left four bytes idle in front of it and this
-        /// took them. The flag under it found none left and grew the struct by its own eight, which
-        /// is what the two asserts below now pin.
+        /// that would. Those composite it in the trace instead.
         uint mLayerCompositedAfter;
 
         /// Non-zero where this scene holds a surface the eye passes through — a cloud's shells.
         ///
         /// **What keeps `mediumAlong` out of every frame that has none.** The walk traverses on
         /// `MASK_MEDIUM`, and where nothing carries that bit it still descends the top level once a
-        /// pixel to find nothing: 0.02 ms of a 1.86 ms trace over Seyda Neen. One uniform branch
-        /// takes it back, and the frames it takes it back from are most of the game.
+        /// pixel to find nothing. One uniform branch takes it back, and the frames it takes it back
+        /// from are most of the game.
         uint mMediumInFrame;
 
         /// Which classes of instance this camera draws — the rasterizer's cull mask, in the bits
@@ -397,10 +390,10 @@ namespace Rtx::Shaders
 
         /// How many columns and rows of froxels stand in front of the camera.
         ///
-        /// **The froxel grid, said once, where three shaders asked the driver for it.** `puffLight`
-        /// queried the volume's size once per covering sprite, `fogVolumeAlong` once per pixel and
-        /// `fogVolumeWas` once per froxel — three `textureSize` calls for one pair of integers
-        /// `FogVolume` holds on the host and never changes within a frame.
+        /// **The froxel grid, said once.** `puffLight` reads it once per covering sprite,
+        /// `fogVolumeAlong` once per pixel and `fogVolumeWas` once per froxel, and `textureSize` is
+        /// a driver query for a pair of integers `FogVolume` holds on the host and never changes
+        /// within a frame.
         uvec2 mFogColumns;
 
         /// Where every table a hit reads is. `GpuTables` says why it rides here.
@@ -416,7 +409,7 @@ namespace Rtx::Shaders
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #ifdef RTX_HOST
-    static_assert(offsetof(VisibilityConstants, mTables) == 1008, "GpuTables must land where the padding was");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1008, "GpuTables must land eight-aligned and last");
     static_assert(sizeof(VisibilityConstants) == 1128, "VisibilityConstants must be scalar-packed on every side");
 
 #endif

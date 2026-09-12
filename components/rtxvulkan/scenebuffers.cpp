@@ -474,10 +474,9 @@ namespace Rtx
         mLightGrid.rebuild(scene.mLights);
 
         // **The tables go over as they are, empty ones included.** Something has to stand at every
-        // address the frame carries, and `growTo` is what guarantees it — each of these used to
-        // carry a one-element stand-in of its own to say the same thing, five of them, and the one
-        // table that had none is what cost a device. What stops the shader reading an empty table is
-        // its count, exactly as it always was.
+        // address the frame carries, and `growTo` is what guarantees it for all of them at once —
+        // a stand-in per table is one table without one, and that costs a device. What stops the
+        // shader reading an empty table is its count.
         const std::span<const Shaders::GpuLight> lights(mLightScratch);
         const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);

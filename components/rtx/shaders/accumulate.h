@@ -14,22 +14,23 @@
 // What each of the three histories is made of, said once for both sides that have to agree.
 //
 // **The pass's own, and not the G-buffer's.** A channel the trace writes and a history the denoiser
-// keeps share nothing but a number of bits, and these three were built from `GBUFFER_RADIANCE` and
-// `GBUFFER_GUIDE` — so narrowing a channel for the trace's sake silently narrowed a history whose
-// evidence lies somewhere else entirely, and the paragraph below is that evidence.
+// keeps share nothing but a number of bits, and a history built from `GBUFFER_RADIANCE` or
+// `GBUFFER_GUIDE` is narrowed silently whenever a channel is narrowed for the trace's sake — with
+// the evidence for the history's width lying somewhere else entirely. The paragraph below is that
+// evidence.
 //
-// **Half floats for the mean and the surface, because neither builds a reference.** What put the
-// radiance channels back to full width is an argument about rounding a term before adding it to a
+// **Half floats for the mean and the surface, because neither builds a reference.** What holds the
+// radiance channels at full width is an argument about rounding a term before adding it to a
 // thousand others. A normal is compared against a neighbour's, and a mean is a running value
-// replaced every frame rather than a thousand terms added into one. Measured across five views,
-// settled and unsettled, no pixel of the bounce reaches 32 against the 65504 a half holds.
+// replaced every frame rather than a thousand terms added into one, and no pixel of the bounce
+// comes near the 65504 a half holds.
 //
 // **What the mean pays for it is a floor on how slowly it may move.** The average is exponential
 // with `alpha = 1 / ACCUMULATE_FRAMES`, so a frame moves the stored value by a sixteenth of the
 // difference — and where that sixteenth falls under half a quantisation step it rounds back to where
 // it was. A half's step is between 2^-12 and 2^-11 of the value, so the average stalls on
-// differences under 0.4 to 0.8 per cent of it. Measured, the cascade's error against a converged
-// reference did not rise, and `filter.cpp` carries the pair.
+// differences under 0.4 to 0.8 per cent of it, which the cascade's error against a converged
+// reference does not show; `filter.cpp` carries the pair.
 //
 // **And the moments stay full floats whatever the other two do.** `E[l²] - E[l]²` is a difference of
 // two numbers that are nearly equal once a pixel has settled, and a format that rounds each of them

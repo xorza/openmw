@@ -203,10 +203,10 @@ namespace Rtx
 
         /// The same, for the pass that fills the fog volume's froxels.
         ///
-        /// **Every tuple has one, a room's included.** The closed form a room used to read instead
-        /// was a lamp reservoir and a shadow ray *per pixel*, where the volume walks the lamps once
-        /// per froxel and hands the pixel two fetches — measured at 0.15 to 0.35 ms off the trace of
-        /// every interior, against 0.12 to 0.16 for the volume itself.
+        /// **Every tuple has one, a room's included.** The closed form a room could read instead
+        /// is a lamp reservoir and a shadow ray *per pixel*, where the volume walks the lamps once
+        /// per froxel and hands the pixel two fetches — which takes more off an interior's trace
+        /// than the volume costs it.
         const ComputePipeline& scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;

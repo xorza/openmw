@@ -19,9 +19,8 @@ namespace Rtx
     /// somebody remembers to.
     ///
     /// **What stops the list being searched.** A slot is named once however many callers reach it,
-    /// and asking a vector made that N²/2 comparisons for the N movers of a crowded cell — 55,000
-    /// of them at Vivec, on every frame, for a count the cell decides rather than one this code
-    /// sets.
+    /// and asking a vector makes that N²/2 comparisons for the N movers of a crowded cell — tens
+    /// of thousands on every frame, for a count the cell decides rather than one this code sets.
     ///
     /// **One type, and everything that keeps such a list holds one.** What arrived and what went is
     /// two of these; a copy's debt is one of these beside an everything flag; a block table's owed

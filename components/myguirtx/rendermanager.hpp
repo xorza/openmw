@@ -79,8 +79,6 @@ namespace MyGUIRtx
         void registerShader(const std::string& shaderName, const std::string& vertexProgramFile,
             const std::string& fragmentProgramFile) override;
 
-        /*internal:*/
-
         /// One frame of widget animation, `step` seconds of it.
         ///
         /// **The step is the caller's, because the interface ages with everything else.** MyGUI's

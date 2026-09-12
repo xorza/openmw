@@ -240,9 +240,8 @@ Lamp lampAt(GpuLight lamp, vec3 position)
 ///
 /// A record rather than four locals because it is what would get carried, if carrying it were worth
 /// anything: a reservoir from the previous frame or from a neighbour combines with this one by the
-/// same rule that built it. **Measured before it was built and it is not worth building** — spending
-/// a shadow ray on every lamp instead of choosing one is 0.03% better at Seyda Neen's customs office
-/// and 0.32% at Wolverine Hall, and perfect selection cannot beat that.
+/// same rule that built it. **Not worth building**: spending a shadow ray on every lamp instead of
+/// choosing one is a fraction of a per cent better, and perfect selection cannot beat that.
 ///
 /// **The lamp is named and not copied.** What the one ray needs of it — where it stands, how wide
 /// it is, how far short of it to stop — is read off its row when the ray is aimed, so nine words of
@@ -400,15 +399,14 @@ void weighLamps(
 /// the same length only for the ray down the middle. Take the clearance off the distance to the
 /// centre and aim off-axis, and the ray runs *past* the source and into whatever fitting stands
 /// around it — a lantern's frame, a sconce's bracket, a candle's holder — which is the densest
-/// geometry anywhere near a lamp, and it comes back as fully shadowed. Measured against the closest
+/// geometry anywhere near a lamp, and it comes back as fully shadowed. Taken against the closest
 /// approach instead, every sampled direction ends at least the clearance away from the source
-/// whatever angle it left at, and the grazing rays that used to end inside the fitting now stop
-/// soonest of all.
+/// whatever angle it left at, and the grazing rays stop soonest of all.
 ///
 /// **The clearance and the size are two numbers because they answer two questions**, and reading one
-/// for both is what drew a black speckle over every lamp-lit wall in the game: aimed across the
-/// flame and stopped at the flame, half the rays a wall sends ended among the fitting and charged
-/// the whole lamp to the pixel. Measured on a lantern wall, 4.9 % of it speckled against 1.2 %.
+/// for both draws a black speckle over every lamp-lit wall in the game: aimed across the flame and
+/// stopped at the flame, half the rays a wall sends end among the fitting and charge the whole
+/// lamp to the pixel.
 float lampVisible(Reservoir kept, vec2 draw)
 {
     if (!(kept.mWeight > 0.0))

@@ -31,10 +31,9 @@ namespace Rtx
     /// built afresh, which is exactly the behaviour wanted.
     ///
     /// **Worth measuring before believing, because a driver may already be doing it.** This one
-    /// does: on the machine this was written on the test suite runs in 1816 ms with the cache and
-    /// 1862 ms with none at all, which is two and a half per cent and not the order of magnitude
-    /// the idea invites. Where it shows is the first run after a shader edit — 4.0 seconds against
-    /// 1.9 — and in not depending on a driver choosing to keep something it is not obliged to.
+    /// does, so a warm run gains a few per cent and not the order of magnitude the idea invites.
+    /// Where it shows is the first run after a shader edit, and in not depending on a driver
+    /// choosing to keep something it is not obliged to.
     ///
     /// **Nothing here is allowed to fail loudly.** The cache is an optimisation over a renderer that
     /// works without it: a directory that cannot be made or written, a half-written file, a cache
@@ -67,10 +66,10 @@ namespace Rtx
         ///
         /// **Well clear of the largest live set, because firing is the failure.** Once the name is
         /// the eviction, a cap that trips on a working cache does not save space — it throws away a
-        /// cache that was doing its job, every run, for ever. The measured sets on one shader
-        /// generation are 35 MiB for the test suite alone and 73 MiB once `shot` has added its own
-        /// extents and upscaler to the same file, so a cap at 96 MiB was one more host away from
-        /// tripping. Before the name carried a digest the same file reached 3.9 GiB.
+        /// cache that was doing its job, every run, for ever. One shader generation's set is tens
+        /// of megabytes for the test suite and about double that once `shot` has added its own
+        /// extents and upscaler to the same file, so a cap near that is one more host away from
+        /// tripping; a file whose name carries no digest grows without bound.
         static constexpr std::size_t sMostBytes = std::size_t{ 256 } << 20;
 
         /// Whether a stored blob is one this driver wrote, and one small enough to go on keeping.
@@ -97,9 +96,9 @@ namespace Rtx
         ///
         /// **This is the eviction.** The name carries the driver and the shaders, so anything else
         /// under `rtx-` is a cache for a driver this machine no longer runs or for shaders this
-        /// build no longer has — and nothing used to remove either, so a machine kept one blob per
-        /// combination it had ever run. What it costs is a driver rollback, or a jump back to an
-        /// older build, compiling from source once.
+        /// build no longer has, and left alone a machine keeps one blob per combination it has ever
+        /// run. What it costs is a driver rollback, or a jump back to an older build, compiling
+        /// from source once.
         ///
         /// A partial write another process has in flight is swept too, and that process then fails
         /// to save its cache. The window is one rename wide and the cost is one compile.

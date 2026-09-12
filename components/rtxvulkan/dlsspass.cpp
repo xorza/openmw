@@ -79,11 +79,9 @@ namespace Rtx
         // **What a released feature costs, which is everything it held unless this is set.** NGX
         // caches a feature's memory on release rather than freeing it, so that re-creating the same
         // one is cheap — and a renderer that follows a window through a drag creates a different one
-        // every time, so nothing is ever reused and nothing is ever given back. Measured on this
-        // card: forty rebuilds over eight extents settle three and a half gigabytes above the
-        // baseline and stay there, and forty over forty extents climb to fifteen until
-        // `vkAllocateMemory` refuses. The SDK's programming guide names both the behaviour and this
-        // hint.
+        // every time, so nothing is ever reused and nothing is ever given back — gigabytes over
+        // a drag, until `vkAllocateMemory` refuses. The SDK's programming guide names both the
+        // behaviour and this hint.
         NVSDK_NGX_Parameter_SetI(mParameters, NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
 
         // **Set on the map before the feature is built, because it is read while it is built.** The
@@ -183,12 +181,10 @@ namespace Rtx
         evaluate.pInTransparencyLayerOpacity = &layerOpacity;
         evaluate.pInTransparencyLayerMvecs = &layerMotion;
 
-        // **The four colour-pair guides are deliberately unset, and that is measured.** All of them
-        // sit in the block the header marks `/*** OPTIONAL - only for research purposes ***/`, and
-        // both pairs make the picture worse. The sprite pair nearly triples the horizontal smear
-        // down a turning camera's edge bands; the fog pair stops a lamp's highlight converging at
-        // all — over a hundred and twenty-eight frames of history it was still climbing, where with
-        // the pair unset it settles by sixty-four.
+        // **The four colour-pair guides are deliberately unset.** All of them sit in the block the
+        // header marks `/*** OPTIONAL - only for research purposes ***/`, and both pairs make the
+        // picture worse: the sprite pair nearly triples the horizontal smear down a turning
+        // camera's edge bands, and the fog pair stops a lamp's highlight converging at all.
         //
         // **Not their content.** Handing the fog pair two identical images — "the fog did nothing",
         // which cannot be wrong — fails the same way, and pointing the sprite pair's second

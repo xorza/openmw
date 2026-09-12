@@ -127,11 +127,11 @@ namespace Rtx
     /// dozen candles in it scatters far more than the recorded colour ever stood for. The two are
     /// not the same quantity, which is why matching one over-delivers the other.
     ///
-    /// **The stretch is the one number here set by eye**, and what it was set against is not:
-    /// unstretched, the air in that customs office lifts the frame's black level to 48 of 255 and
-    /// lays a grey wash over the whole room. At a stretch of ten it came to 22, which is candlelight
-    /// still hanging in the air under the chandelier and nothing on the floor beneath it, and it has
-    /// since been opened further — the room is what says whether it is far enough.
+    /// **The stretch is the one number here set by eye**, and what it is set against is not:
+    /// unstretched, the air in that customs office lifts the frame's black level by a fifth and
+    /// lays a grey wash over the whole room. Stretched, what is left is candlelight still hanging
+    /// in the air under the chandelier and nothing on the floor beneath it — the room is what says
+    /// whether it is far enough.
     ///
     /// **Nothing outdoors is stretched.** Aerial perspective does start at the eye, there is no
     /// clear zone to reproduce, and what the air scatters there is the sky — which is the colour the

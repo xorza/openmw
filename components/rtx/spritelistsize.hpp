@@ -8,10 +8,10 @@ namespace Rtx
     ///
     /// **The high-water mark and both numbers taken off it, in one object.** The list is `tiles + 1`
     /// starts and then the runs: the buffer is sized to both together, and the pass is told only the
-    /// second. Those two were three statements apart in `SceneBuffers::binSprites`, and the sum was
-    /// spelled in thirty-two bits — so a large enough frame wrapped the length the buffer was made
-    /// at while the pass kept the capacity it was about to write, which is a dispatch past the end
-    /// of an allocation. One call moves the mark here and both numbers come off it afterwards.
+    /// second. Two statements of that, with the sum spelled in thirty-two bits, is a large enough
+    /// frame wrapping the length the buffer is made at while the pass keeps the capacity it is
+    /// about to write — a dispatch past the end of an allocation. One call moves the mark here and
+    /// both numbers come off it afterwards.
     ///
     /// **It grows and never shrinks**, so a copy settles at the busiest frame it has drawn. What a
     /// frame the sizing misjudges costs is a slow frame and not a wrong one: the list carries its

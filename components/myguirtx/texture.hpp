@@ -71,11 +71,9 @@ namespace MyGUIRtx
         void setShader(const std::string& shaderName) override;
 
         /// **What MyGUI's own interface cannot ask for.** The world map paints eighteen pixels
-        /// square when a cell arrives and used to send two megabytes.
+        /// square when a cell arrives, and the whole texture is two megabytes.
         void writeRegion(std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height,
             std::span<const std::uint8_t> rows) override;
-
-        /*internal:*/
 
         /// Where this sits in the renderer's table, or nothing while it holds none.
         Rtx::GuiSlot getSlot() const { return mSlot; }

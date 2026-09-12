@@ -168,10 +168,9 @@ namespace Rtx
                 // at all**, and every pass this renderer has is a compute dispatch reading and
                 // writing images through descriptors. The layer leaves it off because attributing an
                 // access to a resource a set merely *holds* can name a hazard on one the shader
-                // never touched; what it buys is the whole class it is being asked about.
-                //
-                // Measured on a doll with the cascade's barriers taken out: five runs of five wrote
-                // five different pictures, and the layer reported nothing until this was set.
+                // never touched; what it buys is the whole class it is being asked about: with the
+                // cascade's barriers taken out, five runs of a doll write five different pictures,
+                // and the layer reports nothing until this is set.
                 turnOn("syncval_shader_accesses_heuristic");
             }
 
@@ -193,12 +192,11 @@ namespace Rtx
                 // checks, including what a ray query does with its own arguments — which is what it
                 // caught here first.
                 //
-                // **The scene's tables are pointers now, and robustness does not reach a pointer**,
-                // so the layer instruments each of those reads whatever this says. Measured at
-                // Balmora on the release harness with no cache: a shot's pipelines and scene took
-                // 45 s with the tables as descriptors and 83 s as pointers, and a frame under the
-                // layers 12 ms against 30. A shot completes and reports nothing, so that is the price
-                // of GPU-AV here and not a reason for a switch.
+                // **The scene's tables are pointers, and robustness does not reach a pointer**, so
+                // the layer instruments each of those reads whatever this says — a shot's pipelines
+                // and its frames both take about twice as long under the layers as they would with
+                // the tables as descriptors. A shot completes and reports nothing, so that is the
+                // price of GPU-AV here and not a reason for a switch.
                 turnOn("gpuav_force_on_robustness");
             }
 

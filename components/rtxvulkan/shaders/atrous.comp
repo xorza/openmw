@@ -121,8 +121,8 @@ void main()
     //
     // **A parallel projection's is a constant**, one pixel of the box wide for the whole of the
     // ray, which is the same figure the trace picks its mip level with. Reading `mSpreadAngle` for
-    // it instead lands on nought, and a footprint of nought rejects every tap but the centre — so a
-    // map tile used to run five levels of this and come out exactly as it went in.
+    // it instead lands on nought, and a footprint of nought rejects every tap but the centre — a
+    // map tile running five levels of this and coming out exactly as it went in.
     const Cone cone = coneAt(level.mCamera);
     const float footprint = max(cone.mWidth + cone.mSpread * away, 1e-4);
 

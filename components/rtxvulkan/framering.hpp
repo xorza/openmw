@@ -112,8 +112,8 @@ namespace Rtx
     /// what caps the frames in flight at the number of slots.
     ///
     /// **A report belongs to its frame and not to whichever call did the waiting.** Making room in
-    /// the ring finishes a frame, and its report used to go on the floor — so a caller asking once
-    /// a frame was answered for fewer than half of them. They queue here instead.
+    /// the ring finishes a frame, and its report queues here rather than going on the floor — or a
+    /// caller asking once a frame is answered for fewer than half of them.
     class FrameRing
     {
     public:
@@ -187,9 +187,9 @@ namespace Rtx
         const Device& mDevice;
         CommandPool& mPool;
 
-        /// **By value, because both are settled at construction and never move.** They used to be
-        /// references into the renderer's own members, which tied this ring's correctness to where
-        /// two booleans happened to live.
+        /// **By value, because both are settled at construction and never move.** References into
+        /// the renderer's own members would tie this ring's correctness to where two booleans
+        /// happen to live.
         bool mCountHits = false;
         bool mCountCrossings = false;
 
@@ -204,8 +204,8 @@ namespace Rtx
         ///
         /// **A frame's report belongs to the frame and not to whichever call did the waiting.**
         /// `beginFrame` waits a slot out when the ring is full, and the report of the frame it
-        /// waited used to go on the floor — so a caller asking once a frame was answered for fewer
-        /// than half of them, and a run's figures were a sample of whichever frames it reached.
+        /// waited goes here — or a caller asking once a frame is answered for fewer than half of
+        /// them, and a run's figures are a sample of whichever frames it reached.
         ///
         /// **Never longer than `sFrameSlots`, because that is how long a report stays true.**
         /// `FrameResult::mGpu` is a span into the frame's own timer and the slot resolves again

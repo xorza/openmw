@@ -36,9 +36,9 @@ namespace Rtx
     ///
     /// **A base and not two more members, because a base is constructed before every member of the
     /// class that carries it, whatever order those members are declared in.** `MeshTable` takes a
-    /// `DeformerTable&` and `MaterialTable` a `TextureTable&`, so as plain members these two had to
-    /// be declared before their borrowers and nothing but a comment said so — and a member moved
-    /// would have bound a reference to storage no constructor had reached.
+    /// `DeformerTable&` and `MaterialTable` a `TextureTable&`, so as plain members these two would
+    /// have to be declared before their borrowers with nothing but a comment saying so — and a
+    /// member moved would bind a reference to storage no constructor had reached.
     struct LentTables
     {
         /// What poses the deforming meshes, and the poses themselves. Its own type, for the reason
@@ -171,11 +171,11 @@ namespace Rtx
         /// Layers and masks have no keep set either: they belong to the material that owns them, so
         /// a freed material hands both runs back to their allocators on its way out. A terrain
         /// chunk's masks are tens of kilobytes and a player can cross the whole continent through
-        /// one `SceneDesc`, so leaving them to the sweep that eventually drops the material was a
+        /// one `SceneDesc`, so leaving them to the sweep that eventually drops the material is a
         /// session-long growth.
         ///
-        /// **Placements do not go**, and they no longer have to be carried anywhere either: a slot
-        /// is a name, and what it names has stopped moving.
+        /// **Placements do not go**, and nothing carries them anywhere either: a slot is a name, and
+        /// what it names has stopped moving.
         ///
         /// @param meshes every mesh to keep, each once, in any order.
         /// @param materials the same for materials.

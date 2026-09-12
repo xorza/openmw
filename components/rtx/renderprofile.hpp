@@ -8,12 +8,9 @@ namespace Rtx
 {
     /// Everything a run decides once about how the picture is made.
     ///
-    /// **One bag, where this was five.** The same switches were a settings category, a command-line
-    /// record in the harness, two option structs in the core and five loose members on the game's
-    /// renderer — and the harness carried its half across by writing the settings singleton and
-    /// letting the renderer read it back, which is a message passed through a global and every
-    /// field spelled three times. `mExposure` lost its `std::optional` shape on the way through and
-    /// was rebuilt from a sentinel on the far side.
+    /// **One bag, and not a settings category, a command-line record and an option struct per
+    /// host.** Split that way, every field is spelled three times and the harness hands its half
+    /// across through the settings singleton, which is a message passed through a global.
     ///
     /// Nothing here changes while a run is being made, which is why a frame reads what it was handed
     /// rather than asking the registry per knob per frame.
