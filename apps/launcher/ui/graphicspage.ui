@@ -221,7 +221,7 @@
         <item row="7" column="0">
          <widget class="QCheckBox" name="rayTracingCheckBox">
           <property name="toolTip">
-           <string>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</string>
+           <string>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</string>
           </property>
           <property name="text">
            <string>Experimental Ray Tracing</string>

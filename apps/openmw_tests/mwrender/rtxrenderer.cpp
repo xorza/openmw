@@ -6,7 +6,7 @@
 
 #include <osgUtil/UpdateVisitor>
 
-#include "apps/openmw/mwrender/renderer.hpp"
+#include "apps/openmw/mwrender/rtx/rtxrenderer.hpp"
 
 namespace MWRender
 {
@@ -50,7 +50,7 @@ namespace MWRender
         /// the camera carries. Accepting on the camera to get it ran every animation controller,
         /// every `LightController` and `LightManager::update` twice in the same frame, at the same
         /// traversal number.
-        TEST(MWRenderRendererTest, updatingTheEyeRunsTheCamerasCallbackAndNothingBelowIt)
+        TEST(RtxRendererTest, updatingTheEyeRunsTheCamerasCallbackAndNothingBelowIt)
         {
             Fixture fixture;
 
@@ -59,7 +59,7 @@ namespace MWRender
             ASSERT_EQ(fixture.mEye->mReached, 0u) << "the camera is not below the scene root";
 
             const osg::NodeVisitor::TraversalMode was = fixture.mUpdateVisitor->getTraversalMode();
-            updateEye(*fixture.mCamera, *fixture.mUpdateVisitor);
+            RtxRenderer::updateEye(*fixture.mCamera, *fixture.mUpdateVisitor);
 
             EXPECT_EQ(fixture.mEye->mReached, 1u) << "the eye was not updated";
             EXPECT_EQ(fixture.mWorld->mReached, 1u) << "the world was walked twice in one frame";
@@ -69,12 +69,12 @@ namespace MWRender
         /// The eye's callback belongs to `MWRender::Camera` — attached in its constructor, removed
         /// in its destructor — so a camera carrying none is a frame outside that object's life.
         /// Asking for the eye then is a no-op rather than a crash.
-        TEST(MWRenderRendererTest, updatingTheEyeOfACameraWithNoCallbackDoesNothing)
+        TEST(RtxRendererTest, updatingTheEyeOfACameraWithNoCallbackDoesNothing)
         {
             Fixture fixture;
             fixture.mCamera->removeUpdateCallback(fixture.mEye);
 
-            updateEye(*fixture.mCamera, *fixture.mUpdateVisitor);
+            RtxRenderer::updateEye(*fixture.mCamera, *fixture.mUpdateVisitor);
 
             EXPECT_EQ(fixture.mEye->mReached, 0u);
             EXPECT_EQ(fixture.mWorld->mReached, 0u);

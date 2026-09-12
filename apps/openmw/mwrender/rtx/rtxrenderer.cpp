@@ -7,10 +7,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <format>
-#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <MyGUI_ITexture.h>
@@ -48,7 +48,6 @@
 #include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
-#include <components/terrain/chunkmanager.hpp>
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/world.hpp"
@@ -139,6 +138,47 @@ namespace MWRender
             return value != nullptr && *value != '\0' && std::strcmp(value, "0") != 0;
         }
 
+    }
+
+    std::optional<double> RtxRenderer::FrameSpan::enter(const std::chrono::steady_clock::time_point now)
+    {
+        const std::optional<double> since
+            = mEntered.has_value() ? std::optional(Rtx::since(*mEntered, now)) : std::nullopt;
+        mEntered = now;
+        return since;
+    }
+
+    double RtxRenderer::FrameSpan::sinceLeft(const std::chrono::steady_clock::time_point now) const
+    {
+        return Rtx::since(mLeft, now);
+    }
+
+    double RtxRenderer::FrameSpan::takePresent()
+    {
+        return std::exchange(mPresentMs, 0.0);
+    }
+
+    std::string_view RtxRenderer::SpeedReport::addFrame(const double frameMs)
+    {
+        if (!mRate.add(frameMs))
+            return {};
+
+        const auto written = std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
+        *written.out = '\0';
+
+        return std::string_view(mTitle.data(), static_cast<std::size_t>(written.out - mTitle.data()));
+    }
+
+    bool RtxRenderer::SpeedReport::addWait(const double waitMs)
+    {
+        mSpentMs += waitMs;
+        ++mTimed;
+
+        if (mTimed < sReportEvery)
+            return false;
+
+        mReported = std::exchange(mTimed, 0);
+        return true;
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
@@ -321,14 +361,15 @@ namespace MWRender
         MWRender::setWindowIcon(*mWindow, resourceDir);
     }
 
-    TerrainPlan RtxRenderer::getTerrainPlan() const
+    void RtxRenderer::updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor)
     {
-        return TerrainPlan{
-            .mPaged = true,
-            .mChunks = false,
-            .mObjectPaging = false,
-            .mCompositeMapLevel = Terrain::sNoCompositeMap,
-        };
+        if (camera.getUpdateCallback() == nullptr)
+            return;
+
+        const osg::NodeVisitor::TraversalMode was = visitor.getTraversalMode();
+        visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_NONE);
+        camera.accept(visitor);
+        visitor.setTraversalMode(was);
     }
 
     void RtxRenderer::enableReference(const ESM::RefNum refnum, const bool enabled)
@@ -636,17 +677,23 @@ namespace MWRender
         mRenderer->setVerticalSync(mode);
     }
 
-    void RtxRenderer::setUpscale(Rtx::Upscale upscale)
+    void RtxRenderer::setUpscale(const std::string_view name)
     {
+        const std::optional<Rtx::Upscale> upscale = Rtx::sUpscaleNames.named(name);
+        if (!upscale.has_value())
+        {
+            Log(Debug::Warning) << "Ray tracing kept the upscaler it had: no mode is named \"" << name << '"';
+            return;
+        }
+
         try
         {
-            mRenderer->setUpscale(upscale);
+            mRenderer->setUpscale(*upscale);
         }
         catch (const Rtx::Error& what)
         {
-            // **Reported and then left alone.** What asks is somebody choosing from a menu, and a
-            // machine that cannot run the mode they picked is an answer rather than a fault: the
-            // renderer is still drawing under the one it had, and `getUpscale` still says which.
+            // What asks is somebody choosing from a menu, and a machine that cannot run the mode they
+            // picked is an answer rather than a fault: the renderer keeps drawing under the one it had.
             Log(Debug::Warning) << "Ray tracing kept the upscaler it had: " << what.what();
         }
     }

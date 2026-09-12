@@ -803,6 +803,7 @@
                             </Widget>
                         </Widget>
                     </Widget>
+
                     <Widget type="TabItem">
                         <Property key="Caption" value=" #{OMWEngine:Shadows} "/>
 

@@ -14,8 +14,6 @@ file(GLOB UNITTEST_SRC_FILES
 
     mwdialogue/testkeywordsearch.cpp
 
-    mwrender/renderer.cpp
-
     mwgui/tooltips.cpp
     mwgui/weightedsearch.cpp
 
@@ -39,8 +37,9 @@ endif()
 
 if (OPENMW_RTX)
     set(RTX_TEST_FILES
-        ${CMAKE_SOURCE_DIR}/apps/components_tests/fallbackseed.cpp
+        ${CMAKE_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
         mwrender/readworld.cpp
+        mwrender/rtxrenderer.cpp
         mwrender/worldmirror.cpp
     )
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})

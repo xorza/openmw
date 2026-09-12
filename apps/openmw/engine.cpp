@@ -247,8 +247,8 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
         stats->setAttribute(frameNumber, "StringRefId Count", static_cast<double>(ESM::StringRefId::totalCount()));
     }
 
-    if (Stereo::Manager* stereo = Stereo::Manager::instancePtr())
-        stereo->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
+    if (Stereo::getStereo())
+        Stereo::Manager::instance().updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
 
     mRenderer->eventTraversal();
     mRenderer->updateTraversal();
@@ -455,8 +455,8 @@ void OMW::Engine::prepareEngine()
     osg::ref_ptr<osg::Group> guiRoot = new osg::Group;
     guiRoot->setName("GUI Root");
     guiRoot->setNodeMask(MWRender::Mask_GUI);
-    if (Stereo::Manager* stereo = Stereo::Manager::instancePtr())
-        stereo->disableStereoForNode(guiRoot);
+    if (Stereo::getStereo())
+        Stereo::Manager::instance().disableStereoForNode(guiRoot);
     rootNode->addChild(guiRoot);
 
     mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, guiRoot, mResourceSystem.get(),

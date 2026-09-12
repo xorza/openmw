@@ -8,32 +8,19 @@
 
 namespace Rtx
 {
-    /// What the device's clock and power state were, as `nvidia-smi` reports them.
-    ///
-    /// **A frame time without its clock is not a number to compare.** A card under load is held at
-    /// whatever its power budget allows: this one runs about 1.8 GHz there against 2.3 GHz cool, so
-    /// the same build measures several per cent apart from one run to the next. A run that says
-    /// which clock it was taken at can be held against a run taken on another day.
-    ///
-    /// **A range and not a reading, because a card moves while a place is measured.** One sample is
-    /// one moment, and a moment sampled after the frames stopped is a card already climbing back —
-    /// which reads as a fast clock over frames drawn at a slower one.
-    ///
-    /// **And a range of two is not a range.** Two samples at the ends of a place cannot say what
-    /// the clock did between them: the core moves by a tenth or more across the settled part of a
-    /// run whose two ends agree to a few per cent. `ClockWatch` is what samples through the frames
-    /// instead, and `mReadings` is what says whether a range was worth printing.
+    /// The card's clock over a place's frames. A frame time without its clock is not a number to
+    /// compare: under load this card is held near 1.8 GHz against 2.3 GHz cool, and the same build
+    /// measures several per cent apart from one run to the next. A range and not a reading, because
+    /// a card moves while a place is measured, and `ClockWatch` samples through the frames because
+    /// two ends cannot say what the clock did between them.
     struct GpuClock
     {
         /// The graphics clock over every reading taken. Equal where only one was.
         std::uint32_t mLowestMhz = 0;
         std::uint32_t mHighestMhz = 0;
 
-        /// Every reading's core clock summed, and how many there were.
-        ///
-        /// **The mean is what a frame time is read against**, where the two ends are what says
-        /// whether the card moved at all. A leg whose mean is below its neighbours' is the leg to
-        /// repeat, and a low that only one reading of a hundred saw is noise rather than a run.
+        /// Every reading's core clock summed, and how many there were: the mean is what a frame
+        /// time is read against, and a low that one reading of a hundred saw is noise.
         std::uint64_t mSumMhz = 0;
         std::uint32_t mReadings = 0;
 
@@ -43,23 +30,18 @@ namespace Rtx
         std::uint32_t mTemperatureC = 0;
 
         /// Why the card was not running faster, as NVML's own bits, or-ed over every reading.
-        /// `describeThrottle` turns it into words.
         std::uint64_t mThrottleMask = 0;
 
-        /// False where nothing answered — no `nvidia-smi`, another vendor's device, or an answer
-        /// this cannot read. Such a run reports no clock rather than a made-up one.
+        /// False where nothing answered — no `nvidia-smi`, another vendor's device — so such a run
+        /// reports no clock rather than a made-up one.
         bool mRead = false;
 
         /// Takes `other` in: the clock spans both, and the reasons are what either saw. A reading
-        /// that answered nothing adds nothing, so a machine that answers once and then not again
-        /// still reports the once.
+        /// that answered nothing adds nothing.
         void add(const GpuClock& other);
 
-        /// One reading, with the range, the sum and the count that one reading implies.
-        ///
-        /// **Named, because five fields say "one reading" together.** The ends are that reading, the
-        /// sum is it, and the count is one — and a caller that set four of the five would report a
-        /// mean of nought over a clock it had just read.
+        /// One reading, with the range, the sum and the count that one reading implies. Named,
+        /// because a caller that set four of the five fields would report a mean of nought.
         static GpuClock reading(
             std::uint32_t coreMhz, std::uint32_t memoryMhz, std::uint32_t temperatureC, std::uint64_t throttle);
 
@@ -67,24 +49,13 @@ namespace Rtx
         std::uint32_t getMeanMhz() const { return mReadings > 0 ? static_cast<std::uint32_t>(mSumMhz / mReadings) : 0; }
     };
 
-    /// Asks the device what it is doing now, as one reading.
-    ///
-    /// **A process spawn, so it is never asked on a frame path.** A frame that waited for
-    /// `nvidia-smi` would be the worst frame of the run and would say so in the p99. `ClockWatch` is
-    /// what asks it repeatedly, on a thread of its own.
+    /// Asks the device what it is doing now, as one reading. A process spawn, so never on a frame
+    /// path: `ClockWatch` asks it repeatedly on a thread of its own.
     GpuClock readGpuClock();
 
-    /// The clock through a place's frames rather than at their ends.
-    ///
-    /// **A thread of its own, because the reading is a process spawn.** The frame path never waits
-    /// for one, which is the rule `readGpuClock` states — and what this adds is that nobody has to
-    /// choose between waiting and not asking.
-    ///
-    /// **Every reading forks this process**, and a harness with a world loaded is a large one to
-    /// fork, so the rate is what the spawn cost stays inside the run-to-run spread at, rather than
-    /// what the card can be asked for. Four a second is inside it.
-    ///
-    /// **One of these outlives a place**, so `start` is what forgets the last one's readings.
+    /// The clock through a place's frames rather than at their ends, on a thread of its own because
+    /// the reading forks this process. Four a second keeps the spawn cost inside the run-to-run
+    /// spread. One of these outlives a place, so `start` is what forgets the last one's readings.
     class ClockWatch
     {
     public:
@@ -92,29 +63,24 @@ namespace Rtx
         ~ClockWatch();
 
         /// Forgets what the last place saw and starts sampling, taking one reading straight away so
-        /// a place that ends at once still answers. Nothing at all where one is already running,
-        /// which includes forgetting: that run's readings are its own.
+        /// a place that ends at once still answers. Nothing where one is already running.
         void start();
 
         /// Stops sampling and answers everything it saw, this call's own last reading included.
         GpuClock stop();
 
-        /// How many readings the run now open has taken, which `stop` then adds its own to.
-        ///
-        /// **The number a caller waits on rather than a clock it guesses at.** A reading forks a
-        /// process, so how long a loop turn takes is the machine's to say — and a sleep chosen for
-        /// the slowest box this might run on is a wait every other box pays.
+        /// How many readings the run now open has taken: the number a caller waits on rather than
+        /// a sleep chosen for the slowest box this might run on.
         std::uint32_t getReadings();
 
     private:
-        /// The lock over `mSeen`, and nothing else: there is no channel here, because a sampler
-        /// hands nothing over until it is stopped.
+        /// The lock over `mSeen`, and nothing else: a sampler hands nothing over until stopped.
         Monitor mMonitor;
 
         /// What every reading so far came to, under the lock.
         GpuClock mSeen;
 
-        /// **Last, for the reason `Worker` gives.**
+        /// Last, for the reason `Worker` gives.
         Worker mWorker;
     };
 

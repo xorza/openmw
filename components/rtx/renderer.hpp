@@ -46,19 +46,16 @@ namespace Rtx
         /// deliberately.
         bool mAbortOnError = true;
 
-        /// Whether somebody asked for this by name, rather than a build turning it on. A run that
-        /// asked for the layers and could not have them fails naming what is missing, because
-        /// without them the log stays empty and a gate reads that as a clean pass. A build that
-        /// switched them on by default only warns.
+        /// Whether somebody asked for this by name rather than a build turning it on. A run that
+        /// demanded the layers and cannot have them fails naming what is missing, because an empty
+        /// log reads as a clean pass; a build that switched them on by default only warns.
         bool mDemanded = false;
     };
 
-    /// Whether the validation layers load without anyone asking: on outside a Release build, which
-    /// never has them, because GPU-assisted validation costs roughly half the frame rate and the
-    /// layers allocate on the frame path. `openmw-rtxtool --validation=false` turns them off in any
-    /// other build for a measurement. The build decides and no setting does, because a setting would
-    /// put a developer's diagnostic in a player's configuration file. One `PUBLIC` definition of
-    /// `openmw-rtx`'s, so the game and the harness agree.
+    /// Whether the validation layers load without anyone asking: on outside a Release build, off
+    /// there because they cost half the frame rate and allocate on the frame path. The build decides
+    /// and no setting does, because a setting would put a developer's diagnostic in a player's
+    /// configuration file.
 #ifdef OPENMW_RTX_VALIDATION_BY_DEFAULT
     inline constexpr bool sValidationByDefault = true;
 #else
@@ -85,29 +82,24 @@ namespace Rtx
         /// construction.
         Upscaling mUpscaling;
 
-        /// Where the frame is shown, or null for a renderer that only reads pixels back. An
-        /// `SDL_Window*` and not a surface, because a surface is a thing an API has: the backend
-        /// asks SDL what its instance needs and makes the surface itself. A windowed renderer sizes
+        /// Where the frame is shown, or null for a renderer that only reads pixels back. A window
+        /// and not a surface, because a surface is a thing an API has. A windowed renderer sizes
         /// itself to the window and ignores `mWidth` and `mHeight`.
         SDL_Window* mWindow = nullptr;
 
         ValidationOptions mValidation;
 
-        /// Whether the trace counts the primary rays that hit anything. On by default, and the
-        /// game is the one place that clears it: a reader who forgets this would get a silent
-        /// nought, where a writer who forgets it pays for a number nobody reads.
+        /// Whether the trace counts the primary rays that hit anything. On by default, so a reader
+        /// who forgets it gets a number rather than a silent nought; the game clears it.
         bool mCountHits = true;
 
         /// Whether the trace counts the see-through surfaces each primary ray crosses. Off by
-        /// default: it is a second traversal on every pixel, so a run that left it on would be
-        /// timing the census rather than the picture.
+        /// default, because it is a second traversal on every pixel.
         bool mCountCrossings = false;
     };
 
-    /// One vertex of the GUI, in MyGUI's own layout: a position already in clip space (MyGUI
-    /// multiplies widget pixels by the view size itself), a colour packed a byte a channel, and a
-    /// texture coordinate. MyGUI fills these by the thousand a frame, so a backend that wanted them
-    /// any other way would rewrite every batch.
+    /// One vertex of the GUI, in MyGUI's own layout: a position already in clip space, a colour
+    /// packed a byte a channel, and a texture coordinate. MyGUI fills these by the thousand a frame.
     struct GuiVertex
     {
         float mX;
@@ -121,8 +113,7 @@ namespace Rtx
         float mV;
     };
 
-    /// Trivial and twenty-four bytes, because a frame of GUI is copied out of the buffer MyGUI
-    /// filled rather than walked.
+    /// A frame of GUI is copied out of the buffer MyGUI filled rather than walked.
     static_assert(sizeof(GuiVertex) == 24, "a GUI vertex is what MyGUI writes, and the buffer is read as its own");
     static_assert(std::is_trivial_v<GuiVertex>);
 
@@ -161,22 +152,21 @@ namespace Rtx
     struct GuiTraceOptions
     {
         /// How much of the texture to fill, from its top-left corner, and what the camera must have
-        /// been built for. The rest of the texture is left at `mClear`. Routinely less than the
-        /// whole: the inventory doll's window resizes and the texture behind it does not.
+        /// been built for; the rest is left at `mClear`. The inventory doll's window resizes and the
+        /// texture behind it does not.
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
 
-        /// What the rest of the texture holds, red first. Transparent black for a picture the GUI
-        /// composites over what is behind it, which is every caller there is so far.
+        /// What the rest of the texture holds, red first: transparent black for a picture the GUI
+        /// composites over what is behind it.
         std::array<float, 4> mClear{};
 
         /// What to trace against: a slot `addViewScene` gave out, or the world's for the one the
         /// frame is drawn from. A map tile is a picture of the world; a doll is not.
         SceneSlot mScene = SceneSlot::world();
 
-        /// Whether to leave a copy of the whole texture where `takeGuiCopy` can hand it to the host.
-        /// Asked for rather than always done, because the copy is the one time a picture inside the
-        /// interface comes back to main memory.
+        /// Whether to leave a copy of the whole texture where `takeGuiCopy` can hand it to the host,
+        /// which is the one time a picture inside the interface comes back to main memory.
         bool mReadBack = false;
     };
 
@@ -190,9 +180,8 @@ namespace Rtx
         /// `SceneDesc::getStructureRevision` as it stood at the last `setScene` or `extendScene`.
         std::uint64_t mStructureRevision = 0;
 
-        /// How long the texture table is, which is where an `extendScene`'s arrivals begin. The
-        /// length and not the tally: a slot the scene gave back keeps its place and stands nothing,
-        /// and `SceneStats::mTextureCount` is how many there actually are.
+        /// How long the texture table is, which is where an `extendScene`'s arrivals begin — the
+        /// length and not the tally, which `SceneStats::mTextureCount` is.
         std::uint32_t mTextureCount = 0;
     };
 
@@ -201,30 +190,23 @@ namespace Rtx
     {
         InstanceCounts mInstances;
 
-        /// What the renderer holds in acceleration structures and in scene tables — what it holds
-        /// and not what the scene needs, which is the figure a video memory budget is spent against.
-        /// An allocator gives a block back only when it empties whole and a table stays as long as
-        /// the longest list it ever held, so both sit at the high-water mark, and a route's figures
-        /// move a little between two runs because the loading threads decide what arrives when.
+        /// What the renderer holds in acceleration structures and in scene tables: what a video
+        /// memory budget is spent against, at the high-water mark, because an allocator gives a
+        /// block back only when it empties whole.
         std::uint64_t mStructureBytes = 0;
 
-        /// What the structures occupy inside that. The two part company as soon as anything is
-        /// compacted: a structure copied tight gives its loose room back and the room is reused.
+        /// What the structures occupy inside that; a structure copied tight gives its loose room back.
         std::uint64_t mStructureLiveBytes = 0;
 
         std::uint64_t mTableBytes = 0;
 
         /// What the structures answered for and not yet copied tight would come to, or nought where
-        /// there are none and where the device would not say. Beside `mStructureBytes` because the
-        /// pair is the question: the difference is what compacting would give back.
+        /// the device would not say: the difference from `mStructureBytes` is what compacting gives.
         std::uint64_t mCompactableBytes = 0;
         std::uint64_t mCompactableNowBytes = 0;
 
-        /// Every texture the renderer holds, and what those come to — what it holds and not how
-        /// long its table is (`SceneHeld::mTextureCount`). Both figures come from one walk of the
-        /// array, so they cannot disagree about which slots they counted. A route's count depends
-        /// on how many distant chunks the baker's thread landed before the run ended, and
-        /// `CompositeQueue::setSettled` is what takes that timing out of a run that compares itself.
+        /// Every texture the renderer holds and what those come to, from one walk of the array, so
+        /// the two cannot disagree about which slots they counted.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
     };
@@ -242,10 +224,9 @@ namespace Rtx
         std::uint32_t mOutputHeight = 0;
     };
 
-    /// Whether a frame `reconstruction` put back together holds the accumulation to read. The
-    /// accumulator runs only where the wavelet does, so a frame an upscaler denoised and a frame
-    /// nothing denoised both leave `FrameImage::Accumulated` unwritten, and `readFrameImage`
-    /// asserts rather than hand back an image nobody filled, so a caller asks here first.
+    /// Whether a frame `reconstruction` put back together holds the accumulation to read: the
+    /// accumulator runs only where the wavelet does, and `readFrameImage` asserts rather than hand
+    /// back an image nobody filled.
     inline bool hasFrameImage(const Reconstruction& reconstruction, const FrameImage image)
     {
         if (image != FrameImage::Accumulated)
@@ -257,44 +238,34 @@ namespace Rtx
     /// What a frame is asked for, beyond where the camera stands.
     struct FrameOptions
     {
-        /// How many frames have gone into the running sum, this one included. Zero is no averaging.
-        /// Not a field of `camera`, because the trace does not read it: what is averaged is the
-        /// finished picture. The sum is kept in floating point rather than by averaging images
-        /// afterwards, because eight bits would round every sample and clip the sun's disc.
+        /// How many frames have gone into the running sum, this one included; zero is no averaging.
+        /// The sum is kept in floating point, because eight bits would round every sample and clip
+        /// the sun's disc.
         std::uint32_t mAccumulate = 0;
 
-        /// How long this frame stands for, in seconds, or nothing to take it off the wall clock —
-        /// the last thing in a frame that reads the wall. The eye adapts in real time and an
-        /// upscaler tunes itself against how fast a motion vector was travelled, so a game leaves
-        /// this empty. A measured run cannot: two runs of one build would adapt by different amounts
-        /// and draw different pictures. `Rtx::FrameClock` states it where a run has a schedule.
+        /// How long this frame stands for, in seconds, or nothing to take it off the wall clock. The
+        /// eye adapts and the upscaler tunes itself by it, so a measured run states it
+        /// (`Rtx::FrameClock`) or two runs of one build draw different pictures.
         std::optional<float> mSinceLast = std::nullopt;
 
-        /// What to multiply the exposure this frame measures for itself by. One leaves it alone, and
-        /// a fixed `mExposure` is not touched by it at all. The hour, which the histogram cannot see:
-        /// `Rtx::Skylight::mExposureBias` says why there is one, and an interior keeps the one here.
+        /// What to multiply the measured exposure by: the hour, which the histogram cannot see
+        /// (`Rtx::Skylight::mExposureBias`). A fixed `mExposure` is not touched by it.
         float mExposureBias = 1.0f;
 
-        /// What the frame asks of the reconstruction, before the upscaler has its say. `mJitter`
-        /// moves the primary ray inside its pixel by a Halton sequence over the frame index,
-        /// overwriting the camera's own, and is off unless something puts the frames back together:
-        /// a jittered frame on its own is the same picture sampled slightly wrong. `mFilter` runs
-        /// the denoiser over the indirect channel, and off is how the reference it is judged against
-        /// gets made, because a thousand filtered frames converge on the filter's opinion. Both are
-        /// overruled while the renderer is upscaling — `Reconstruction::resolve` is the rule.
+        /// What the frame asks of the reconstruction, before the upscaler has its say —
+        /// `Reconstruction::resolve` is the rule. Jitter is off unless something puts the frames
+        /// back together; the filter is off for a reference, because a thousand filtered frames
+        /// converge on the filter's opinion.
         ReconstructionRequest mReconstruction;
 
         /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame itself. One by default, which is what makes a pixel test possible: a measured
-        /// exposure makes every expected value depend on the whole frame's histogram, and a
-        /// converged reference wants it held still across the frames it averages. A picture wants
-        /// it measured, so the harness turns it on.
+        /// frame. One by default, because a measured exposure makes every pixel depend on the whole
+        /// frame's histogram; a picture wants it measured, so the harness turns it on.
         std::optional<float> mExposure = 1.0f;
 
-        /// What a run decided once, and what this frame stands for. Made and not filled in field by
-        /// field, so a field the profile gains reaches a frame here or nowhere. `accumulate` is the
-        /// schedule's to count rather than the profile's, because a warm-up is not averaged in, and
-        /// `sinceLast` and `exposureBias` are the two things a profile cannot know.
+        /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,
+        /// because a warm-up is not averaged in, and `sinceLast` and `exposureBias` are what a
+        /// profile cannot know.
         static FrameOptions forFrame(const RenderProfile& profile, const std::uint32_t accumulate,
             const std::optional<float> sinceLast, const float exposureBias)
         {
@@ -312,54 +283,41 @@ namespace Rtx
     /// structure build cost, which a wall clock around a submit cannot tell.
     struct GpuSpan
     {
-        /// A literal, and never a name built for the occasion, so the view outlives the span it
-        /// arrives in and `GpuBreakdown` may keep it over a whole run.
+        /// A literal, so the view outlives the span and `GpuBreakdown` may keep it over a run.
         std::string_view mName;
         double mMs = 0.0;
     };
 
     struct FrameResult
     {
-        /// Primary rays that hit something, which is what tells "the cell rendered" from "the camera
-        /// faced away from it" without anyone opening the image. Nought where
-        /// `RendererOptions::mCountHits` was cleared.
+        /// Primary rays that hit something: what tells "the cell rendered" from "the camera faced
+        /// away" without opening the image. Nought where `RendererOptions::mCountHits` was cleared.
         std::uint32_t mHits = 0;
 
-        /// See-through surfaces those rays crossed, summed over the frame — the census the peel in
-        /// `visibility.rgen` is sized against. Nought unless `RendererOptions::mCountCrossings`
-        /// asked for it.
+        /// See-through surfaces those rays crossed, summed over the frame, and the most any one ray
+        /// crossed — what the peel in `visibility.rgen` is sized against. Nought unless
+        /// `RendererOptions::mCountCrossings` asked.
         std::uint32_t mCrossings = 0;
-
-        /// The most any one of those rays crossed, which is what an ordered walk of them would have
-        /// to be sized for. A mean over a frame divides a cloud's own depth by how little of the
-        /// picture it fills.
         std::uint32_t mCrossingsMost = 0;
 
-        /// How long `finishFrame` waited for this frame's fence: what the CPU stood still for the
-        /// GPU. Nought where the frame was already finished when it was asked for.
+        /// How long `finishFrame` waited for this frame's fence; nought where it was already done.
         double mWaitMs = 0.0;
 
-        /// Where the device spent this frame, in the order the work was recorded. Empty where the
-        /// device cannot write timestamps. Borrowed from the renderer and valid until the frame
-        /// after next is finished, because a frame path that allocated a vector to report its own
-        /// cost would be measuring itself.
+        /// Where the device spent this frame, in the order the work was recorded, or empty where it
+        /// cannot write timestamps. Borrowed from the renderer and valid until the frame after next
+        /// is finished, so that reporting a frame's cost allocates nothing.
         std::span<const GpuSpan> mGpu;
 
-        /// What put this frame back together, as the renderer resolved it — reported by the thing
-        /// that did it rather than worked out a second time by a caller.
+        /// What put this frame back together, as the renderer resolved it.
         Reconstruction mReconstruction;
     };
 
     /// One traced image, whichever API produced it: what a scene is handed to, what the interface
     /// is drawn on, what produces a frame, and what a test or a harness reads back. Nothing below
-    /// this line is abstracted: buffers, images, memory, command buffers, descriptors and pipelines
-    /// belong to a backend outright, because an interface tight enough to hide those would be a
-    /// mini-Vulkan with a virtual call inside a frame. So a method here is worth a whole scene or a
-    /// whole frame, and none is reached per instance, per light or per pixel.
-    ///
-    /// `slot` says which scene throughout: the world's for the one the frame is traced against, or
-    /// a slot `addViewScene` handed out for a picture inside the interface. `SceneUploader` decides
-    /// between them once for both.
+    /// this line is abstracted — buffers, memory, command buffers and pipelines belong to a backend
+    /// outright — so a method here is worth a whole scene or a whole frame, and none is reached per
+    /// instance or per pixel. `slot` says which scene throughout: the world's, or one
+    /// `addViewScene` handed out for a picture inside the interface.
     class Renderer
     {
     public:
@@ -368,40 +326,31 @@ namespace Rtx
         Renderer(const Renderer&) = delete;
         Renderer& operator=(const Renderer&) = delete;
 
-        /// Builds everything a scene needs, replacing whatever was there. `textures` are described
-        /// rather than loaded — `SceneTextures` decodes and the backend uploads, which is what
-        /// keeps this library free of a graphics API. They are indexed by the scene's texture index
-        /// and must outlive the call.
+        /// Builds everything a scene needs, replacing whatever was there. `textures` are decoded
+        /// already and indexed by the scene's texture index, and must outlive the call.
         virtual void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) = 0;
 
-        /// The same scene with more in it: geometry and textures appended, nothing renumbered. What
-        /// a cell arriving costs, and it must not be what `setScene` costs, which is every
-        /// acceleration structure and the whole texture array made again. `arrived` describes the
-        /// textures the scene gained since the last call, starting at the count this already holds
-        /// — never the whole table, or the shading estimate is paid twice for what has not changed.
+        /// The same scene with more in it: geometry and textures appended, nothing renumbered, at
+        /// the cost of a cell and never of `setScene`. `arrived` is the textures the scene gained
+        /// since the last call, starting at the count this already holds.
         virtual void extendScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived) = 0;
 
         /// What this slot was last built from, and how far it has been extended since.
         virtual SceneHeld describeHeld(SceneSlot slot) const = 0;
 
-        /// Destroys the images of the texture slots a scene gave up, so a region walked away from
-        /// stops costing its texture memory. The slots keep their place and the array does not
-        /// shrink, because the scene's own table does not either, and a backend may leave the
-        /// descriptors naming what has gone, because no live material names a freed slot. The order
-        /// against `extendScene`'s arrivals is free, because `SceneDesc` keeps the two lists disjoint.
+        /// Destroys the images of the texture slots a scene gave up. The slots keep their place,
+        /// as they do in the scene's own table, and no live material names a freed one.
         virtual void dropTextures(SceneSlot slot, std::span<const Index> textures) = 0;
 
-        /// The same scene, with its instances and lights somewhere else and its actors in a new pose.
-        /// Rebuilds only what says where things are, plus the structure of each mesh `getDeformed`
-        /// names, because a skinned body's triangles are the same triangles and its vertices are new
-        /// ones. `scene` must be the scene `setScene` was given, re-walked after `clearPlacement`,
-        /// because the placements index into structures this already holds.
+        /// The same scene with its instances and lights somewhere else and its actors in a new
+        /// pose: rebuilds only what says where things are, plus the structure of each mesh
+        /// `getDeformed` names. `scene` must be the scene `setScene` was given, because the
+        /// placements index into structures this already holds.
         virtual void placeScene(SceneSlot slot, const SceneDesc& scene) = 0;
 
-        /// A scene of its own for a picture inside the interface to be traced against — the
-        /// inventory doll, the race preview. Not the world and not reachable from it: nothing in them
-        /// stands in a cell, they are lit by a rig of their own, and a ray the frame sends must not
-        /// find them. Slots a scene gave back are taken over before the table grows.
+        /// A scene of its own for a picture inside the interface — the inventory doll, the race
+        /// preview — which a ray the frame sends must not find. Slots given back are taken over
+        /// before the table grows.
         virtual SceneSlot addViewScene() = 0;
 
         virtual void dropViewScene(SceneSlot slot) = 0;
@@ -410,18 +359,14 @@ namespace Rtx
         /// extent, because the trace's per-pixel ray spread comes from it.
         virtual FrameExtents getExtents() const = 0;
 
-        /// A texture the GUI draws with, sized once and written whenever it changes. Its own table,
-        /// separate from the scene's: a font atlas outlives every scene the renderer is given. Slots
-        /// a texture gave back are taken over before the table grows.
+        /// A texture the GUI draws with, sized once and written whenever it changes, in a table of
+        /// its own because a font atlas outlives every scene.
         virtual GuiSlot addGuiTexture(std::uint32_t width, std::uint32_t height) = 0;
 
         /// Bytes for a rectangle of a texture, four a pixel, tightly packed, row zero first, to be
-        /// filled and then handed back with `sendGuiTexture` — what MyGUI's `lock` and `unlock`
-        /// are. A backend that lent a buffer of its own instead would put a copy in front of every
-        /// write, and a video frame would cross main memory twice. The rectangle must lie inside
-        /// the texture and only one may be lent at a time, both asserts. Write the span and do not
-        /// read it back: a backend may lend memory the device reads directly, where a read costs
-        /// far more than the write.
+        /// filled and handed back with `sendGuiTexture`: MyGUI's `lock` and `unlock`. The rectangle
+        /// must lie inside the texture and only one may be lent at a time, both asserts. Write the
+        /// span and do not read it back: a backend may lend memory the device reads directly.
         virtual std::span<std::uint8_t> lendGuiTexture(GuiSlot texture, const GuiRegion& region) = 0;
 
         /// Sends what `lendGuiTexture` handed out. The span stops being writable here.
@@ -429,119 +374,91 @@ namespace Rtx
 
         virtual void dropGuiTexture(GuiSlot texture) = 0;
 
-        /// Everything the GUI asked to draw, over the finished picture, in one call. After the frame
-        /// and before it is presented or read: the GUI's colours are display-referred, so they go on
-        /// after the tone curve, and through a curve meant for radiance a menu comes out grey.
-        /// Vertices are in clip space with +Y up, which is what MyGUI produces; a backend whose own
-        /// clip space disagrees answers that for itself.
+        /// Everything the GUI asked to draw, over the finished picture, after the tone curve because
+        /// the GUI's colours are display-referred. Vertices are in clip space with +Y up, as MyGUI
+        /// produces them.
         virtual void drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches) = 0;
 
-        /// Traces the scene from `camera` into a GUI texture rather than into the frame — a map tile,
-        /// the inventory doll, the race preview. It goes straight into the table the GUI draws from
-        /// and never comes back to main memory unless `GuiTraceOptions::mReadBack` asks for a copy.
-        /// Not the frame's chain: nothing upscales, nothing averages and the exposure is fixed at
-        /// one, because a doll is a still with no previous frame to reconstruct it from.
-        /// `camera.mTransparentBackground` says the picture stops where nothing was hit, and
-        /// `camera.mRayMask` is which classes it draws.
-        ///
-        /// Recorded and not run: the picture rides the next submit the backend makes, so it costs
-        /// the frame no wait. It reads the copy of the scene its last placement wrote, and the next
-        /// placement of that scene waits for the frame the picture rode.
+        /// Traces the scene from `camera` into a GUI texture rather than into the frame: a map
+        /// tile, the inventory doll. Not the frame's chain — nothing upscales or averages and the
+        /// exposure is one, because a still has no previous frame. Recorded and not run: the picture
+        /// rides the next submit, reads the copy of the scene its last placement wrote, and the next
+        /// placement of that scene waits for the frame it rode.
         virtual void traceGuiTexture(
             GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
             = 0;
 
-        /// The copy the last `traceGuiTexture` with `mReadBack` left of `texture`: the whole of it,
-        /// four bytes a pixel, tightly packed, row zero first, into `into` as far as it reaches.
-        /// False until the copy arrived, and never a wait: the frame carrying the trace has to be
-        /// finished, which a frame is two frames on, and the caller asks again next frame.
+        /// The copy the last `traceGuiTexture` with `mReadBack` left of `texture`, four bytes a
+        /// pixel, tightly packed, row zero first, into `into` as far as it reaches. False until the
+        /// copy arrived, which is two frames on, and never a wait.
         virtual bool takeGuiCopy(GuiSlot texture, std::span<std::uint8_t> into) = 0;
 
-        /// Submits every picture recorded and not yet carried, and waits for all of them, so that
-        /// every copy asked for can be taken. For the harness and the tests, which want a picture
-        /// now and stand outside any frame; a game never calls it.
+        /// Submits every picture recorded and not yet carried and waits for them, for a harness or a
+        /// test standing outside any frame. A game never calls it.
         virtual void finishGuiTraces() = 0;
 
-        /// Say that the next frame has no usable past: a jump no motion vector can describe — a
-        /// door, a teleport, a cut — makes every accumulated frame a lie. Not derivable from what
-        /// the renderer sees, because a world scene is built once and then grows and recycles its
-        /// slots, so a cell load looks the same as a step. Only the simulation knows. Costs one frame
-        /// of reconstruction, so it is for discontinuities and not for changes.
+        /// The next frame has no usable past: a door, a teleport, a cut. Only the simulation knows,
+        /// because a cell load looks like a step from here. Costs one frame of reconstruction.
         virtual void resetHistory() = 0;
 
-        /// Resizes the presented image. What the trace runs at follows from the upscaler, and
-        /// `Renderer::getExtents` is what says. Kept by the backend, so nothing here allocates per frame.
+        /// Resizes the presented image; what the trace runs at follows from the upscaler, and
+        /// `getExtents` says.
         virtual void resize(std::uint32_t width, std::uint32_t height) = 0;
 
         /// How hard the upscaler works, which decides what the frame is traced at. Rebuilds every
-        /// target, which is what makes it a setting and not a per-frame option; a caller holding the
-        /// old extents is holding a camera nothing will accept. Throws where the mode cannot be
-        /// reached — a build with no upscaler, or a driver that cannot run one — because that is the
-        /// answer to a setting and not a fault, so a caller that offers the mode catches it and
-        /// stays where it was.
+        /// target, so the old extents describe a camera nothing will accept. Throws where the mode
+        /// cannot be reached, and a caller that offers the mode catches it and stays where it was.
         virtual void setUpscale(Upscale upscale) = 0;
 
-        /// Which mode the frames are being traced under, which is not always the one that was asked
-        /// for: a mode this machine refused leaves the renderer where it was.
+        /// Which mode the frames are traced under, which a refused mode leaves where it was.
         virtual Upscale getUpscale() const = 0;
 
-        /// The sea every scene is traced with — `SeaState{}` until told. A settings-change call
-        /// and not a frame one: it uploads a spectrum and waits the frames in flight out first, so
-        /// a game that follows the wind calls it where the weather changes.
+        /// The sea every scene is traced with, `SeaState{}` until told. A settings-change call: it
+        /// uploads a spectrum and waits the frames in flight out first.
         virtual void setSea(const SeaState& sea) = 0;
 
-        /// How the presented image should meet the monitor's refresh. `SDLUtil::VSyncMode` because
-        /// it is the setting the game already reads. Costs a swapchain rebuild where it changes
-        /// anything, so it is a settings-change call and not a frame one.
+        /// How the presented image meets the monitor's refresh. Costs a swapchain rebuild, so a
+        /// settings-change call and not a frame one.
         virtual void setVerticalSync(SDLUtil::VSyncMode mode) = 0;
 
-        /// Traces one frame. `setScene` first, which is a contract and so an assert. Returns before
-        /// the device has drawn it, so the caller can walk and place the next one while this one is
-        /// traced; what the frame came to is read back by `finishFrame`. At most two frames are in
-        /// flight: the third waits for the first.
+        /// Traces one frame; `setScene` first, which is an assert. Returns before the device has
+        /// drawn it, so the caller can place the next one meanwhile, and `finishFrame` reads back
+        /// what it came to. At most two frames are in flight.
         virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
 
-        /// What the oldest frame nothing has asked about came to, waiting for it where it is still
-        /// in flight, or nothing where every frame drawn was reported. Called after `renderFrame`
-        /// the oldest frame in flight is the one just submitted, so the wait is that frame waited
-        /// out, which is what a screenshot and a pixel test want. Called before it, the oldest is
-        /// the frame behind and its fence has usually signalled; only that order puts two frames in
-        /// the ring. A caller that never calls it loses nothing but the numbers.
+        /// What the oldest unreported frame came to, waiting for it where it is still in flight, or
+        /// nothing where every frame drawn was reported. After `renderFrame` that is the frame just
+        /// submitted, which a screenshot wants; before it, the frame behind, whose fence has usually
+        /// signalled, which is the only order that keeps two frames in the ring.
         virtual std::optional<FrameResult> finishFrame() = 0;
 
-        /// Shows the frame `renderFrame` just produced, where this renderer was given a window.
-        /// False means the surface stopped matching the window — a resize, a monitor change, a
-        /// compositor restart — and the caller should `resize` and carry on. A renderer built without
-        /// a window has nothing to present into, which is an assert.
+        /// Shows the frame `renderFrame` just produced. False means the surface stopped matching
+        /// the window and the caller should `resize` and carry on. No window is an assert.
         virtual bool presentFrame() = 0;
 
         /// Multi-line report: the device and what it can trace with.
         virtual std::string describeDevice() const = 0;
 
-        /// Whether instrumentation is actually running, which is not the same as having asked for
-        /// it — a layer can be missing. Anything quoting a frame time has to say so.
+        /// Whether instrumentation is actually running, which a missing layer makes different from
+        /// having asked. Anything quoting a frame time has to say so.
         virtual bool isValidating() const = 0;
 
-        /// What the renderer has taken from each of the device's memory heaps. Asked once at a
-        /// place and never once a frame: it walks every allocation the backend holds. This counts
-        /// what the device gave up, where `SceneStats` counts what the scene is.
+        /// What the renderer has taken from each of the device's memory heaps. Walks every
+        /// allocation, so asked once at a place and never once a frame.
         virtual MemoryReport getMemoryReport() const = 0;
 
         /// What the world scene is made of, as the backend last placed it. Only meaningful once
         /// `Renderer::setScene` has been called for the world.
         virtual const SceneStats& getSceneStats() const = 0;
 
-        /// **What reads a frame back.** None of the five below is on a frame path: each submits a
-        /// copy and waits for it, so none is const. The harness reads the picture and its
-        /// channels, the game reads the picture for a screenshot, a thumbnail and the frame a
-        /// loading screen holds up, and the tests read all of it and the errors beside it.
+        /// What reads a frame back. None of the five below is on a frame path: each submits a copy
+        /// and waits for it, so none is const.
 
         /// Copies the traced image into `pixels`, four bytes per pixel, tightly packed.
         virtual void readPixels(std::vector<std::uint8_t>& pixels) = 0;
 
         /// Copies one of the last frame's g-buffer channels into `values`, tightly packed, widened
-        /// to floats whatever the channel holds. The frame's, and never a view scene's:
-        /// `traceGuiTexture` draws into targets of its own.
+        /// to floats whatever the channel holds. The frame's, never a view scene's.
         virtual void readChannel(Channel channel, std::vector<float>& values) = 0;
 
         /// The same for one of the two images a frame carries that no channel does: the composite's
@@ -552,9 +469,8 @@ namespace Rtx
         /// row zero first.
         virtual void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) = 0;
 
-        /// Moves whatever the API has complained about since the last call into `errors`. Draining,
-        /// not peeking, so that clearing before a test and reading after it are the same call. Empty
-        /// where nothing is instrumented.
+        /// Moves whatever the API has complained about since the last call into `errors`, so that
+        /// clearing before a test and reading after it are the same call.
         virtual void takeValidationErrors(std::vector<std::string>& errors) = 0;
 
     protected:

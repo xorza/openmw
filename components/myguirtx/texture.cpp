@@ -1,7 +1,9 @@
 #include "texture.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <utility>
@@ -10,7 +12,6 @@
 #include <osg/Texture2D>
 
 #include <components/debug/debuglog.hpp>
-#include <components/myguiplatform/pixels.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -34,6 +35,32 @@ namespace MyGUIRtx
                 default:
                     return 0;
             }
+        }
+
+        /// `count` rows of `image` from `firstRow`, into `into` as four bytes a pixel. One `memcpy`
+        /// where the image already is that, and a pixel at a time where it is not:
+        /// `osg::Image::getColor` is the only thing that reads every format OpenSceneGraph loads,
+        /// and it is a virtual call and a `Vec4f` per pixel.
+        void writeRgbaRows(const osg::Image& image, const int firstRow, const int count, std::uint8_t* into)
+        {
+            assert(firstRow >= 0 && count >= 0 && firstRow + count <= image.t());
+            const std::size_t pixels = static_cast<std::size_t>(image.s()) * count;
+            if (image.getPixelFormat() == GL_RGBA && image.getDataType() == GL_UNSIGNED_BYTE && image.isDataContiguous()
+                && image.getTotalSizeInBytes() == static_cast<std::size_t>(image.s()) * image.t() * 4)
+            {
+                std::memcpy(into, image.data(0, firstRow), pixels * 4);
+                return;
+            }
+
+            for (int y = firstRow; y < firstRow + count; ++y)
+                for (int x = 0; x < image.s(); ++x, into += 4)
+                {
+                    const osg::Vec4f colour = image.getColor(x, y);
+                    into[0] = static_cast<std::uint8_t>(std::clamp(colour.r(), 0.f, 1.f) * 255.f + 0.5f);
+                    into[1] = static_cast<std::uint8_t>(std::clamp(colour.g(), 0.f, 1.f) * 255.f + 0.5f);
+                    into[2] = static_cast<std::uint8_t>(std::clamp(colour.b(), 0.f, 1.f) * 255.f + 0.5f);
+                    into[3] = static_cast<std::uint8_t>(std::clamp(colour.a(), 0.f, 1.f) * 255.f + 0.5f);
+                }
         }
     }
 
@@ -109,10 +136,7 @@ namespace MyGUIRtx
 
         createManual(image->s(), image->t(), MyGUI::TextureUsage::Static, MyGUI::PixelFormat::R8G8B8A8);
 
-        // Widened by the same code the other backend widens with, which knows to `memcpy` the case
-        // that is most of them rather than read a `Vec4f` per pixel — and it writes each pixel once
-        // and in order, which is what the renderer's own bytes want.
-        MyGUIPlatform::writeRgba(*image, mRenderer.lendGuiTexture(mSlot, whole()).data());
+        writeRgbaRows(*image, 0, image->t(), mRenderer.lendGuiTexture(mSlot, whole()).data());
 
         mRenderer.sendGuiTexture(mSlot);
     }
@@ -237,8 +261,7 @@ namespace MyGUIRtx
 
         const std::uint32_t count = static_cast<std::uint32_t>(last - first + 1);
         const Rtx::GuiRegion rows{ 0, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(mWidth), count };
-        MyGUIPlatform::writeRgbaRows(
-            *image, first, static_cast<int>(count), mRenderer.lendGuiTexture(mSlot, rows).data());
+        writeRgbaRows(*image, first, static_cast<int>(count), mRenderer.lendGuiTexture(mSlot, rows).data());
         mRenderer.sendGuiTexture(mSlot);
 
         if (image->isDataContiguous())

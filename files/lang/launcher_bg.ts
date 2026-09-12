@@ -251,7 +251,7 @@
         <translation>Вертикална синхронизация</translation>
     </message>
     <message>
-        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
         <translation>Заменя визуализатора OpenGL с експерименталния визуализатор Vulkan с трасиране на лъчи. Изисква видеокарта NVIDIA от клас Ada.</translation>
     </message>
     <message>

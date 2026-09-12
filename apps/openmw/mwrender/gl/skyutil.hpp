@@ -13,8 +13,7 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
-
-#include "../weatherresult.hpp"
+#include <components/sky/moonstate.hpp>
 
 namespace Resource
 {
@@ -28,6 +27,64 @@ namespace MWRender
     class SunUpdater;
     class SunFlashCallback;
     class SunGlareCallback;
+
+    struct WeatherResult
+    {
+        std::string mCloudTexture;
+        std::string mNextCloudTexture;
+        float mCloudBlendFactor;
+
+        osg::Vec4f mFogColor;
+
+        osg::Vec4f mAmbientColor;
+
+        osg::Vec4f mSkyColor;
+
+        // sun light color
+        osg::Vec4f mSunColor;
+
+        // alpha is the sun transparency
+        osg::Vec4f mSunDiscColor;
+
+        float mFogDepth;
+
+        float mDLFogFactor;
+        float mDLFogOffset;
+
+        float mWindSpeed;
+        float mBaseWindSpeed;
+        float mCurrentWindSpeed;
+        float mNextWindSpeed;
+
+        float mCloudSpeed;
+
+        float mGlareView;
+
+        bool mNight; // use night skybox
+        float mNightFade; // fading factor for night skybox
+
+        bool mIsStorm;
+
+        ESM::RefId mAmbientLoopSoundID;
+        ESM::RefId mRainLoopSoundID;
+        float mAmbientSoundVolume;
+
+        std::string mParticleEffect;
+        std::string mRainEffect;
+        float mPrecipitationAlpha;
+
+        float mRainDiameter;
+        float mRainMinHeight;
+        float mRainMaxHeight;
+        float mRainSpeed;
+        float mRainEntranceSpeed;
+        int mRainMaxRaindrops;
+
+        osg::Vec3f mStormDirection;
+        osg::Vec3f mNextStormDirection;
+    };
+
+    using MoonState = Sky::MoonState;
 
     class OcclusionCallback
     {

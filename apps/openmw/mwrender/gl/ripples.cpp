@@ -14,9 +14,10 @@
 #include <components/shader/shadermanager.hpp>
 
 #include "../../mwworld/ptr.hpp"
-#include "../vismask.hpp"
 
 #include "../../mwmechanics/actorutil.hpp"
+
+#include "../vismask.hpp"
 
 namespace MWRender
 {

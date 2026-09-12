@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstring>
 
 #include <osg/Image>
 
@@ -52,70 +51,6 @@ namespace MyGUIPlatform
         }
     }
 
-    std::optional<MyGUI::PixelFormat> directFormat(const osg::Image& image)
-    {
-        if (image.getDataType() != GL_UNSIGNED_BYTE || !image.isDataContiguous())
-            return {};
-
-        switch (image.getPixelFormat())
-        {
-            case GL_LUMINANCE:
-                return MyGUI::PixelFormat::L8;
-            case GL_LUMINANCE_ALPHA:
-                return MyGUI::PixelFormat::L8A8;
-            case GL_RGB:
-                return MyGUI::PixelFormat::R8G8B8;
-            case GL_RGBA:
-                return MyGUI::PixelFormat::R8G8B8A8;
-            default:
-                return {};
-        }
-    }
-
-    std::size_t bytesPerPixel(MyGUI::PixelFormat format)
-    {
-        switch (format.getValue())
-        {
-            case MyGUI::PixelFormat::L8:
-                return 1;
-            case MyGUI::PixelFormat::L8A8:
-                return 2;
-            case MyGUI::PixelFormat::R8G8B8:
-                return 3;
-            default:
-                return 4;
-        }
-    }
-
-    void writeRgba(const osg::Image& image, std::uint8_t* into)
-    {
-        writeRgbaRows(image, 0, image.t(), into);
-    }
-
-    void writeRgbaRows(const osg::Image& image, const int firstRow, const int count, std::uint8_t* into)
-    {
-        assert(firstRow >= 0 && count >= 0 && firstRow + count <= image.t());
-
-        const std::size_t pixels = static_cast<std::size_t>(image.s()) * count;
-
-        if (directFormat(image) == MyGUI::PixelFormat::R8G8B8A8
-            && image.getTotalSizeInBytes() == static_cast<std::size_t>(image.s()) * image.t() * 4)
-        {
-            std::memcpy(into, image.data(0, firstRow), pixels * 4);
-            return;
-        }
-
-        for (int y = firstRow; y < firstRow + count; ++y)
-            for (int x = 0; x < image.s(); ++x, into += 4)
-            {
-                const osg::Vec4f colour = image.getColor(x, y);
-                into[0] = static_cast<std::uint8_t>(std::clamp(colour.r(), 0.f, 1.f) * 255.f + 0.5f);
-                into[1] = static_cast<std::uint8_t>(std::clamp(colour.g(), 0.f, 1.f) * 255.f + 0.5f);
-                into[2] = static_cast<std::uint8_t>(std::clamp(colour.b(), 0.f, 1.f) * 255.f + 0.5f);
-                into[3] = static_cast<std::uint8_t>(std::clamp(colour.a(), 0.f, 1.f) * 255.f + 0.5f);
-            }
-    }
-
     void sampleBilinear(const osg::Image& image, float u, float v, std::uint8_t (&out)[4])
     {
         filterTexel(image, Rect{ 0, 0, image.s(), image.t() }, u * static_cast<float>(image.s()) - 0.5f,
@@ -140,18 +75,5 @@ namespace MyGUIPlatform
                 filterTexel(from, source, u, v, into.data(target.mX + x, target.mY + y));
             }
         }
-    }
-
-    void gatherRegion(const osg::Image& image, const Rect& area, std::vector<std::uint8_t>& rows)
-    {
-        assert(image.isDataContiguous());
-        assert(area.mX >= 0 && area.mY >= 0 && area.mWidth >= 0 && area.mHeight >= 0);
-        assert(area.mX + area.mWidth <= image.s() && area.mY + area.mHeight <= image.t());
-
-        rows.resize(static_cast<std::size_t>(area.mWidth) * area.mHeight * 4);
-
-        for (int row = 0; row < area.mHeight; ++row)
-            std::memcpy(rows.data() + static_cast<std::size_t>(row) * area.mWidth * 4,
-                image.data(area.mX, area.mY + row), static_cast<std::size_t>(area.mWidth) * 4);
     }
 }

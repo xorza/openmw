@@ -22,39 +22,23 @@ namespace MWRender
 {
 
     /// A picture of part of the world taken somewhere other than the eye, described in numbers the
-    /// game already has.
-    ///
-    /// **Nothing here is an OpenGL decision.** Sample counts, colour formats, depth conventions,
-    /// render order, cull modes and blend functions are the renderer's, worked out from what was
-    /// asked for rather than passed down through it. A ray tracer answers the same request with
-    /// rays, and none of those words mean anything to it.
-    ///
-    /// **Every field but the reference carries its own initializer.** A caller that names some of
-    /// them and sets the rest afterwards — which `StopWriter` does, and is the readable way to fill
-    /// a nested one — reads to GCC as an accidentally short aggregate otherwise.
+    /// game already has: sample counts, formats, cull modes and blend functions are the renderer's.
+    /// Every field but the reference carries its own initializer, because a caller that names some
+    /// of them reads to GCC as a short aggregate otherwise.
     struct OffscreenViewSpec
     {
         /// The subtree to draw. Every `redraw()` updates it and then draws it, so an update
-        /// callback here is where a view that follows something inside it works out where to look
-        /// from — the only moment at which it can.
+        /// callback here is where a view that follows something inside it works out where to look.
         osg::Node& mScene;
 
         /// The image, in pixels. `setExtent` may go on to fill less of it than this.
         int mWidth = 0;
         int mHeight = 0;
 
-        /// Only the nodes these bits select; `SceneUtil::VisMask`.
-        ///
-        /// **An inclusion mask, AND-ed at every node**, so a category left out of it is dropped
-        /// wherever it appears below — which is a shape worth naming, because the same shape once
-        /// left the weather's particles out of every storm.
-        ///
-        /// **And the two renderers read it in different places.** The rasterizer puts it on the
-        /// camera's cull mask, so it applies to every node of every picture. A ray tracer has no
-        /// cull: a picture of a subject masks the walk of that subtree with it, and every picture
-        /// hands it to its camera as the classes of instance its rays meet — `rayMaskOf` — so a
-        /// map tile of the world leaves out the actors, the effects and the particles the way the
-        /// rasterizer's does.
+        /// Only the nodes these bits select (`SceneUtil::VisMask`): an inclusion mask AND-ed at
+        /// every node, so a category left out is dropped wherever it appears below. The rasterizer
+        /// puts it on the camera's cull mask; a ray tracer masks the walk of a subject with it and
+        /// hands every picture the classes its rays meet (`rayMaskOf`).
         unsigned int mMask = ~0u;
 
         SceneUtil::Framing mFraming{};
@@ -85,14 +69,9 @@ namespace MWRender
         /// Where the picture is taken from. Takes effect on the next `redraw()`.
         virtual void setView(const osg::Matrixf& view) = 0;
 
-        /// Fill only this much of the image and leave the rest at the clear colour. The inventory
-        /// doll, whose window resizes while the texture behind it does not.
-        ///
-        /// **A description and not a command**, like `setView`: it says what the next `redraw()`
-        /// should fill and does not itself draw. One renderer used to redraw here and the other did
-        /// not, so a resize repainted the doll under the rasterizer and left it stale under the ray
-        /// tracer — the kind of difference a caller cannot see and would have had to ask which
-        /// renderer it got to predict.
+        /// Fill only this much of the image and leave the rest at the clear colour: the inventory
+        /// doll, whose window resizes while the texture behind it does not. A description like
+        /// `setView`, which the next `redraw()` acts on, so both renderers repaint at the same call.
         virtual void setExtent(int width, int height) = 0;
 
         /// The subtree is not the same subtree any more — geometry added, removed or replaced,
@@ -107,25 +86,18 @@ namespace MWRender
         /// time it is drawn, so it is asked for rather than always done.
         virtual void keepCopy() = 0;
 
-        /// That copy, or null while the most recent `redraw()` has not reached it — the drawing has
-        /// not happened when `redraw()` returns, and the copy comes back after that again. Null
-        /// forever where nothing asked for one.
-        ///
-        /// **A pull and not a read**, which is why it is not const: the tracer takes the copy off
-        /// the device the first time it is asked for after it has arrived.
+        /// That copy, or null while the most recent `redraw()` has not reached it, which is frames
+        /// later; null forever where nothing asked for one. Not const, because the tracer takes the
+        /// copy off the device the first time it is asked for after it has arrived.
         virtual const osg::Image* getCopy() = 0;
 
         /// What is at this point of the picture, in normalised device coordinates, as the path
-        /// through the subtree to whatever was hit.
-        ///
-        /// **Against the drawn picture and not the current one.** Skinned geometry is
-        /// double-buffered by frame number, so a query that means "what did I click on" has to name
-        /// the frame that was drawn rather than the frame being built.
+        /// through the subtree to whatever was hit — against the drawn picture, because skinned
+        /// geometry is double-buffered by frame number.
         virtual bool pick(float x, float y, osg::NodePath& hit) const = 0;
 
-        /// What the GUI shows. **Y-up**, so the widget showing it inverts V; a renderer that would
-        /// rather write the other way round still owes this one, because the alternative is every
-        /// caller asking which renderer it got.
+        /// What the GUI shows, Y-up, so the widget showing it inverts V; a renderer that writes the
+        /// other way round owes the flip, or every caller asks which renderer it got.
         virtual MyGUI::ITexture& getTexture() const = 0;
 
     protected:

@@ -1,10 +1,7 @@
 #include "timeofday.hpp"
 
-#include <array>
-#include <cstddef>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 
 #include <components/fallback/fallback.hpp>
 
@@ -12,8 +9,6 @@ namespace Sky
 {
     namespace
     {
-        /// Linear interpolation between x and y. Two of them because a colour is four floats and a
-        /// value is one, and the ramp below is written once for both.
         float lerp(float x, float y, float factor)
         {
             return x * (1 - factor) + y * factor;
@@ -23,34 +18,6 @@ namespace Sky
         {
             return x * (1 - factor) + y * factor;
         }
-
-        /// The content's own spelling of each quantity, in enumerator order. **Sized by the count**,
-        /// so an enumerator added without a name does not compile.
-        constexpr std::array<std::string_view, sDayPhaseCount> sPhaseNames{ "Sky", "Ambient", "Fog", "Sun", "Stars" };
-    }
-
-    std::string_view nameOf(const DayPhaseOf of)
-    {
-        return sPhaseNames[static_cast<std::size_t>(of)];
-    }
-
-    std::optional<DayPhaseOf> dayPhaseOf(const std::string_view name)
-    {
-        for (std::size_t at = 0; at < sPhaseNames.size(); ++at)
-            if (sPhaseNames[at] == name)
-                return static_cast<DayPhaseOf>(at);
-
-        return std::nullopt;
-    }
-
-    void TimeOfDaySettings::addSetting(const DayPhaseOf of)
-    {
-        const std::string key = "Weather_" + std::string(nameOf(of));
-
-        setSetting(of,
-            WeatherSetting{ Fallback::Map::getFloat(key + "_Pre-Sunrise_Time"),
-                Fallback::Map::getFloat(key + "_Post-Sunrise_Time"), Fallback::Map::getFloat(key + "_Pre-Sunset_Time"),
-                Fallback::Map::getFloat(key + "_Post-Sunset_Time") });
     }
 
     TimeOfDaySettings TimeOfDaySettings::fromFallback()
@@ -64,34 +31,30 @@ namespace Sky
         settings.mDayStart = sunrise + Fallback::Map::getFloat("Weather_Sunrise_Duration");
         settings.mDayEnd = sunset;
 
-        settings.addSetting(DayPhaseOf::Sky);
-        settings.addSetting(DayPhaseOf::Ambient);
-        settings.addSetting(DayPhaseOf::Fog);
-        settings.addSetting(DayPhaseOf::Sun);
+        settings.addSetting("Sky");
+        settings.addSetting("Ambient");
+        settings.addSetting("Fog");
+        settings.addSetting("Sun");
 
+        // Morrowind handles stars settings differently for other ones
         settings.mStarsPostSunsetStart = Fallback::Map::getFloat("Weather_Stars_Post-Sunset_Start");
         settings.mStarsPreSunriseFinish = Fallback::Map::getFloat("Weather_Stars_Pre-Sunrise_Finish");
         settings.mStarsFadingDuration = Fallback::Map::getFloat("Weather_Stars_Fading_Duration");
 
-        // The stars' own window is derived rather than recorded: they begin after sunset and finish
-        // before sunrise, and the fading duration is what is left of each.
-        settings.setSetting(DayPhaseOf::Stars,
-            WeatherSetting{ settings.mStarsPreSunriseFinish,
-                settings.mStarsFadingDuration - settings.mStarsPreSunriseFinish, settings.mStarsPostSunsetStart,
-                settings.mStarsFadingDuration - settings.mStarsPostSunsetStart });
+        WeatherSetting starSetting
+            = { settings.mStarsPreSunriseFinish, settings.mStarsFadingDuration - settings.mStarsPreSunriseFinish,
+                  settings.mStarsPostSunsetStart, settings.mStarsFadingDuration - settings.mStarsPostSunsetStart };
+
+        settings.mSunriseTransitions["Stars"] = starSetting;
 
         return settings;
     }
 
     const TimeOfDaySettings& TimeOfDaySettings::shared()
     {
-        // **Refuses a day that never begins rather than holding one.** `Fallback::Map` answers an
-        // allowed key nobody planted with a silent nought, and this reading is held for the life of
-        // the process — so settings read before they were loaded would put every hour of every day
-        // after midnight, with nothing to say why the sun had gone out.
-        //
-        // `std::logic_error` and not this fork's own: nothing below `components/rtx` may reach up for
-        // it, and an ordering fault is the kind `Fallback::Map` already throws that for.
+        // Refuses a day that never begins rather than holding one: `Fallback::Map` answers a key
+        // nobody planted with a silent nought, and this reading lasts the process. A logic error,
+        // because reading settings before they are loaded is an ordering fault of the caller's.
         static const TimeOfDaySettings settings = [] {
             TimeOfDaySettings read = fromFallback();
             if (!(read.mDayEnd > read.mNightEnd))
@@ -108,7 +71,7 @@ namespace Sky
 
     template <typename T>
     T TimeOfDayInterpolator<T>::getValue(
-        const float gameHour, const TimeOfDaySettings& timeSettings, const std::string_view prefix) const
+        const float gameHour, const TimeOfDaySettings& timeSettings, const std::string& prefix) const
     {
         WeatherSetting setting = timeSettings.getSetting(prefix);
         float preSunriseTime = setting.mPreSunriseTime;

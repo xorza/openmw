@@ -70,7 +70,6 @@ namespace MWRender
 
         int getMaxTextureUnits() const override { return mMaxTextureUnits; }
 
-        TerrainPlan getTerrainPlan() const override;
         float getTerrainViewDistance(float cameraDistance, float fov) const override;
         float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }

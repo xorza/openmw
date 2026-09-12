@@ -1,4 +1,5 @@
-#pragma once
+#ifndef OPENMW_COMPONENTS_SKY_MOONSTATE_H
+#define OPENMW_COMPONENTS_SKY_MOONSTATE_H
 
 namespace Sky
 {
@@ -70,3 +71,5 @@ namespace Sky
         return MoonState::phaseToInt(phase);
     }
 }
+
+#endif

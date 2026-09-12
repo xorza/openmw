@@ -100,17 +100,15 @@ bool Launcher::GraphicsPage::loadSettings()
     if (Settings::rtx().mEnabled)
         rayTracingCheckBox->setCheckState(Qt::Checked);
 
-    // **Nothing selected where the setting names a mode this list does not offer**, which is `off`
-    // and whatever a typo made. `saveSettings` then leaves the setting alone rather than writing an
-    // offered mode over a choice somebody made by hand.
+    // Nothing selected where the setting names a mode this list does not offer, so `saveSettings`
+    // leaves a choice made by hand alone.
     const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
     rayTracingUpscaleComboBox->setCurrentIndex(offered ? static_cast<int>(*offered) : -1);
 
     rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
 
     // The settings exist in every build so a config file survives moving between them; the controls
-    // are shown dead rather than hidden, because one that silently does nothing is worse than one
-    // that says why.
+    // are shown dead, with the tooltip saying why.
     if (!Settings::sRayTracingBuilt)
     {
         const QString why = tr("This build was made without the ray tracing renderer.");

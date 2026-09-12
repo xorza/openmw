@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <memory>
 #include <utility>
@@ -89,64 +88,4 @@ namespace Rtx
         (empty(fresh.*buffers), ...);
         object = std::move(fresh);
     }
-
-    /// A list consumed from the front in the order it was filled, emptied once it is drained and
-    /// never before, so what is left in it is never moved.
-    template <class T>
-    struct Backlog
-    {
-        std::vector<T> mItems;
-        std::size_t mRead = 0;
-
-        std::size_t size() const { return mItems.size() - mRead; }
-        bool empty() const { return size() == 0; }
-        const T& at(std::size_t offset) const { return mItems[mRead + offset]; }
-        void push(const T& item) { mItems.push_back(item); }
-        void pop(std::size_t count) { mRead += count; }
-
-        /// Lets go of what was consumed, where everything was.
-        void settle()
-        {
-            if (mRead == mItems.size())
-            {
-                mItems.clear();
-                mRead = 0;
-            }
-        }
-    };
-
-    /// Entries reused across arrivals: as deep as the most one arrival ever wanted, and never
-    /// freed. `next` and `keep` are two calls because a caller may not want what it built: a chain
-    /// built over a texture that already carried one is left for the next arrival.
-    template <class T>
-    class Pool
-    {
-    public:
-        /// The entry after the last kept one, made where the pool has never been this deep.
-        T& next()
-        {
-            if (mKept == mEntries.size())
-                mEntries.emplace_back();
-
-            return mEntries[mKept];
-        }
-
-        /// Says the entry `next` handed out is in use, and gives back its index.
-        std::size_t keep()
-        {
-            assert(mKept < mEntries.size() && "an entry kept that `next` never handed out");
-            return mKept++;
-        }
-
-        /// Frees every entry, keeping its room.
-        void reset() { mKept = 0; }
-
-        T& operator[](const std::size_t at) { return mEntries[at]; }
-
-    private:
-        std::vector<T> mEntries;
-
-        /// How many of them a caller has kept, which is where `next` hands out from.
-        std::size_t mKept = 0;
-    };
 }

@@ -1,7 +1,6 @@
 #include "renderingmanager.hpp"
 
 #include <cstdlib>
-#include <optional>
 
 #include <osg/Camera>
 #include <osg/ClipControl>
@@ -16,7 +15,6 @@
 #include <osgUtil/LineSegmentIntersector>
 
 #include <components/nifosg/nifloader.hpp>
-#include <components/rtx/upscale.hpp>
 
 #include <components/debug/debuglog.hpp>
 
@@ -47,7 +45,6 @@
 
 #include <components/misc/constants.hpp>
 
-#include <components/terrain/objectpaging.hpp>
 #include <components/terrain/quadtreeworld.hpp>
 #include <components/terrain/terraingrid.hpp>
 
@@ -81,6 +78,7 @@
 #include "groundcover.hpp"
 #include "navmesh.hpp"
 #include "npcanimation.hpp"
+#include "objectpaging.hpp"
 #include "pathgrid.hpp"
 #include "recastmesh.hpp"
 #include "renderer.hpp"
@@ -330,9 +328,7 @@ namespace MWRender
                 Shader::ShaderManager::Slot::OpaqueColorTexture));
         rootNode->addCullCallback(mPerViewUniformStateUpdater);
 
-        // **The world exists now, so the renderer can build what goes in front of it.** Whether
-        // that is a shader chain, nothing at all, or something a third renderer thinks of is not a
-        // question asked here.
+        // The world exists now, so the renderer can build what goes in front of it.
         mRenderer.attachWorld(*this, *mRootNode);
 
         resourceSystem->getSceneManager()->setWeatherParticleOcclusion(Settings::shaders().mWeatherParticleOcclusion);
@@ -718,7 +714,6 @@ namespace MWRender
         if (!paused)
         {
             mEffectManager->update(dt);
-
             mSky->update(dt);
 
             const MWWorld::Ptr& player = mPlayerAnimation->getPtr();
@@ -861,7 +856,7 @@ namespace MWRender
 
         auto test = [&](const osgUtil::LineSegmentIntersector::Intersection& intersection) {
             PtrHolder* ptrHolder = nullptr;
-            std::vector<Terrain::RefnumMarker*> refnumMarkers;
+            std::vector<RefnumMarker*> refnumMarkers;
             bool hitNonObjectWorld = false;
             for (osg::Node* node : intersection.nodePath)
             {
@@ -881,8 +876,7 @@ namespace MWRender
                             ptrHolder = p;
                         }
                     }
-                    if (Terrain::RefnumMarker* r
-                        = dynamic_cast<Terrain::RefnumMarker*>(userDataContainer->getUserObject(i)))
+                    if (RefnumMarker* r = dynamic_cast<RefnumMarker*>(userDataContainer->getUserObject(i)))
                     {
                         refnumMarkers.push_back(r);
                     }
@@ -1270,35 +1264,30 @@ namespace MWRender
 
         const float lodFactor = Settings::terrain().mLodFactor;
         const bool groundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
-        const TerrainPlan plan = mRenderer.getTerrainPlan();
-        const bool paged = plan.mPaged;
+        const bool distantTerrain = Settings::terrain().mDistantTerrain;
         const double expiryDelay = Settings::cells().mCacheExpiryDelay;
-        if (!plan.mChunks)
+        if (!mRenderer.buildsTerrainChunks())
         {
-            // **A world that builds nothing**, for a renderer that stands the ground itself: the
-            // storage, the worldspace and the active grid, which is all such a renderer asks of it.
+            // The storage, the worldspace and the active grid, which is all a renderer that stands
+            // the ground itself asks of the world.
             newChunkMgr.mTerrain
                 = std::make_unique<Terrain::World>(mSceneRoot, mTerrainStorage.get(), Mask_Terrain, worldspace);
         }
-        else if (paged || groundcover)
+        else if (distantTerrain || groundcover)
         {
             const int compMapResolution = Settings::terrain().mCompositeMapResolution;
-
-            // **Whether a composite map can be made at all is the renderer's to say**, not a
-            // tuning knob's: it is a render target, and the ray tracing path initialises no OpenGL.
-            // `Terrain::sNoCompositeMap` is what that one answers, so every chunk arrives as its
-            // layer stack for that renderer to flatten however it can.
-            const float compMapLevel = plan.mCompositeMapLevel;
+            const int compMapPower = Settings::terrain().mCompositeMapLevel;
+            const float compMapLevel = static_cast<float>(std::pow(2, compMapPower));
             const int vertexLodMod = Settings::terrain().mVertexLodMod;
             const float maxCompGeometrySize = Settings::terrain().mMaxCompositeGeometrySize;
             const bool debugChunks = Settings::terrain().mDebugChunks;
             auto quadTreeWorld = std::make_unique<Terrain::QuadTreeWorld>(mSceneRoot, mRootNode, mResourceSystem,
                 mTerrainStorage.get(), Mask_Terrain, Mask_PreCompile, Mask_Debug, compMapResolution, compMapLevel,
                 lodFactor, vertexLodMod, maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
-            if (plan.mObjectPaging)
+            if (Settings::terrain().mObjectPaging)
             {
-                newChunkMgr.mObjectPaging = std::make_unique<Terrain::ObjectPaging>(mResourceSystem->getSceneManager(),
-                    mObjectStorage, worldspace, Mask_Static, Settings::terrain().mObjectPagingActiveGrid);
+                newChunkMgr.mObjectPaging
+                    = std::make_unique<ObjectPaging>(mResourceSystem->getSceneManager(), mObjectStorage, worldspace);
                 quadTreeWorld->addChunkManager(newChunkMgr.mObjectPaging.get());
                 mResourceSystem->addResourceManager(newChunkMgr.mObjectPaging.get());
             }
@@ -1445,17 +1434,8 @@ namespace MWRender
                     mAppliedShadowDefines = std::move(shadowDefines);
                 }
             }
-            // **Acted on while the game runs, unlike `RTX / enabled` beside it.** Which renderer
-            // draws is settled before the window exists; how hard its upscaler works is a pair of
-            // resolutions it can be rebuilt for. A renderer with no upscaler ignores this, and a
-            // name it cannot read leaves it where it is — `Rtx::sUpscaleNames.named` refuses rather than
-            // defaulting, for the reason it gives.
             else if (it->first == "RTX" && it->second == "upscale")
-            {
-                if (const std::optional<Rtx::Upscale> upscale
-                    = Rtx::sUpscaleNames.named(Settings::rtx().mUpscale.get()))
-                    mRenderer.setUpscale(*upscale);
-            }
+                mRenderer.setUpscale(Settings::rtx().mUpscale.get());
             else if (it->first == "Post Processing" && it->second == "enabled"
                 && mRenderer.getPostProcessor() != nullptr)
             {

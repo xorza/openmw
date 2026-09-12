@@ -35,11 +35,6 @@ namespace Rtx
             mCells.clear();
     }
 
-    void DistantLights::restart()
-    {
-        mCells.clear();
-    }
-
     osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell)
     {
         mRefScratch.clear();

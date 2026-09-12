@@ -29,13 +29,13 @@
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/windowmanager.hpp"
-#include "../vismask.hpp"
 
 #include "../../mwgui/postprocessorhud.hpp"
 
 #include "../renderbin.hpp"
-#include "../renderer.hpp"
 #include "../renderingmanager.hpp"
+#include "../sceneframe.hpp"
+#include "../vismask.hpp"
 #include "distortion.hpp"
 #include "opaqueblit.hpp"
 #include "pingpongcull.hpp"
@@ -119,12 +119,12 @@ namespace
 namespace MWRender
 {
     PostProcessor::PostProcessor(
-        RenderingManager& rendering, Renderer& renderer, osg::Group* rootNode, const VFS::Manager* vfs)
+        RenderingManager& rendering, osgViewer::Viewer* viewer, osg::Group* rootNode, const VFS::Manager* vfs)
         : osg::Group()
         , mRootNode(rootNode)
         , mHUDCamera(new osg::Camera)
         , mRendering(rendering)
-        , mRenderer(renderer)
+        , mViewer(viewer)
         , mVFS(vfs)
         , mUsePostProcessing(Settings::postProcessing().mEnabled)
         , mSamples(Settings::video().mAntialiasing)
@@ -150,7 +150,7 @@ namespace MWRender
         mHUDCamera->addChild(mCanvases[0]);
         mHUDCamera->addChild(mCanvases[1]);
         mHUDCamera->setCullCallback(new HUDCullCallback);
-        mRenderer.getCamera().addCullCallback(mPingPongCull);
+        mViewer->getCamera()->addCullCallback(mPingPongCull);
 
         // resolves the multisampled depth buffer and optionally draws an additional depth postpass
         mTransparentDepthPostPass
@@ -200,7 +200,7 @@ namespace MWRender
         distortion->setLocked(true);
         mInternalTechniques.push_back(std::move(distortion));
 
-        osg::GraphicsContext* gc = mRenderer.getCamera().getGraphicsContext();
+        osg::GraphicsContext* gc = viewer->getCamera()->getGraphicsContext();
         osg::GLExtensions* ext = gc->getState()->get<osg::GLExtensions>();
 
         mWidth = gc->getTraits()->width;
@@ -225,9 +225,10 @@ namespace MWRender
         addChild(mHUDCamera);
         addChild(mRootNode);
 
-        mRenderer.getCamera().setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT);
-        mRenderer.getCamera().getGraphicsContext()->setResizedCallback(new ResizedCallback(this));
-        mRenderer.getCamera().setUserData(this);
+        mViewer->setSceneData(this);
+        mViewer->getCamera()->setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT);
+        mViewer->getCamera()->getGraphicsContext()->setResizedCallback(new ResizedCallback(this));
+        mViewer->getCamera()->setUserData(this);
 
         setCullCallback(mStateUpdater);
 
@@ -277,26 +278,16 @@ namespace MWRender
         mStateUpdater->setWeatherTransition(world.mWeatherTransition);
         mStateUpdater->setWindSpeed(world.mWindSpeed);
 
-        // Which techniques run at all, which is this chain's own question rather than the block's.
+        // Which techniques run at all. A quasi-exterior is outside here and inside for the
+        // `isInterior` uniform above, which is why `WorldState` answers the two apart.
         mUnderwater = world.mUnderwater;
-
-        // **The same fact `setExteriorFlag` used to be told from `MWWorld::Scene`, arriving down
-        // the one channel instead.** It was a cell record read on every cell change and pushed
-        // straight into this object, which is what made the world simulation name a renderer's
-        // header. A quasi-exterior counts as outside here and as inside two lines above, which is
-        // why `WorldState` answers the two questions separately rather than handing over a flag.
         mExteriorFlag = world.isOutdoors();
-    }
-
-    size_t PostProcessor::frame() const
-    {
-        return mRenderer.getFrameStamp().getFrameNumber();
     }
 
     void PostProcessor::resize()
     {
         mHUDCamera->resize(mWidth, mHeight);
-        mRenderer.getCamera().resize(mWidth, mHeight);
+        mViewer->getCamera()->resize(mWidth, mHeight);
         if (Stereo::getStereo())
             Stereo::Manager::instance().screenResolutionChanged();
 
@@ -476,7 +467,7 @@ namespace MWRender
             mPrevNormals = mNormals;
             mPrevPassLights = mPassLights;
 
-            mRenderer.suspendDraw();
+            mViewer->stopThreading();
 
             if (mNormalsSupported)
             {
@@ -491,7 +482,7 @@ namespace MWRender
             mStateUpdater->bindPointLights(mPassLights ? mRendering.getLightRoot()->getPPLightsBuffer() : nullptr);
             mStateUpdater->reset();
 
-            mRenderer.resumeDraw();
+            mViewer->startThreading();
 
             createObjectsForFrame(frameId);
 

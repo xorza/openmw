@@ -131,8 +131,6 @@ namespace OMW
         Files::PathContainer mDataDirs;
         std::vector<std::string> mArchives;
         std::filesystem::path mResDir;
-        /// The frame, the eye and the input queue. Made before any renderer and outliving it.
-
         /// The picture, and the window it goes in. Chosen once, by name, before there is anything
         /// to draw.
         std::unique_ptr<MWRender::Renderer> mRenderer;

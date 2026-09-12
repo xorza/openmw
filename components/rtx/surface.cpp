@@ -16,7 +16,6 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/util.hpp>
 
-
 namespace Rtx
 {
     namespace

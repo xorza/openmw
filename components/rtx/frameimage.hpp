@@ -91,8 +91,7 @@ namespace Rtx
     /// Which end of the picture row zero of the result holds.
     enum class RowOrder
     {
-        /// The trace's own, and what MyGUI takes: `MyGUIPlatform::Picture` copies an image straight
-        /// into a locked texture and the interface draws it from the top down.
+        /// The trace's own, and what MyGUI takes: the interface draws a texture from the top down.
         TopFirst,
 
         /// OpenSceneGraph's, and what `osgDB`'s writers and a savegame thumbnail expect.

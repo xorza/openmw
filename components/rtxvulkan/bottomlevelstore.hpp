@@ -8,7 +8,6 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/runs.hpp>
-#include <components/rtx/scratch.hpp>
 #include <components/rtx/slots.hpp>
 
 #include "blockedbuffer.hpp"
@@ -23,6 +22,31 @@ namespace Rtx
     class Graveyard;
     class GpuTimer;
     class SceneDesc;
+
+    /// A list consumed from the front in the order it was filled, emptied once it is drained and
+    /// never before, so what is left in it is never moved.
+    template <class T>
+    struct Backlog
+    {
+        std::vector<T> mItems;
+        std::size_t mRead = 0;
+
+        std::size_t size() const { return mItems.size() - mRead; }
+        bool empty() const { return size() == 0; }
+        const T& at(std::size_t offset) const { return mItems[mRead + offset]; }
+        void push(const T& item) { mItems.push_back(item); }
+        void pop(std::size_t count) { mRead += count; }
+
+        /// Lets go of what was consumed, where everything was.
+        void settle()
+        {
+            if (mRead == mItems.size())
+            {
+                mItems.clear();
+                mRead = 0;
+            }
+        }
+    };
 
     /// One bottom-level acceleration structure per mesh, all inside a single storage buffer at
     /// offsets, and the compaction that keeps them tight: a structure is built loose, the driver is

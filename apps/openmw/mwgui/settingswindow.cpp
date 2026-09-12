@@ -324,18 +324,12 @@ namespace MWGui
         getWidget(mRayTracingRestartHint, "RayTracingRestartHint");
         getWidget(mRayTracingUnavailableHint, "RayTracingUnavailableHint");
 
-        // The renderer is a compile-time option, so a build without it shows the switch as
-        // dead rather than hiding it: a setting that silently does nothing is worse than one
-        // that says why.
+        // A build without the renderer shows the switch dead with a hint saying why, and hides the
+        // rest: a dead control with nothing to say why is worse than a missing one.
         const bool rayTracing = Settings::sRayTracingBuilt;
         mRayTracingUnavailableHint->setVisible(!rayTracing);
         mRayTracingButton->setEnabled(rayTracing);
         mRayTracingRestartHint->setVisible(rayTracing);
-
-        // **Hidden rather than shown dead, unlike the switch above and unlike the launcher's.**
-        // A dead control is only better than a missing one where it can say why it is dead, which
-        // is a tooltip the launcher has and this tab does not — and the hint below already says the
-        // build has no renderer to configure.
         for (MyGUI::Widget* widget : { static_cast<MyGUI::Widget*>(mRayTracingUpscale), mRayTracingUpscaleText,
                  mRayTracingDistantLand, mRayTracingDistantLandText })
             widget->setVisible(rayTracing);
@@ -1042,12 +1036,8 @@ namespace MWGui
 
     void SettingsWindow::updateRayTracingSettings()
     {
-        // **What the setting says and not what the renderer is running**, which are the same until a
-        // machine refuses a mode: the list is where a choice is made, and showing somebody another
-        // answer than the one they chose would hide that the choice was written down.
-        // **Nothing selected where the setting names a mode no menu offers**, which is `off` and
-        // whatever a typo made. Showing an offered mode instead would say the renderer is in one it
-        // is not, and the first thing anybody did with the list would write that untruth down.
+        // What the setting says, and nothing selected where it names a mode no menu offers: showing
+        // an offered mode instead would write it over the setting the first time the list was used.
         const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
 
         mRayTracingUpscale->setIndexSelected(offered.value_or(MyGUI::ITEM_NONE));

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef OPENMW_COMPONENTS_SCENEUTIL_OFFSCREENFRAMING_H
+#define OPENMW_COMPONENTS_SCENEUTIL_OFFSCREENFRAMING_H
 
 #include <variant>
 
@@ -78,3 +79,5 @@ namespace SceneUtil
     /// made shadows would only make it harder to read.
     FlatLight mapLight();
 }
+
+#endif

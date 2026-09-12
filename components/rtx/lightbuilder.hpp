@@ -19,83 +19,60 @@ namespace SceneUtil
 
 namespace Rtx
 {
-    /// One point light, placed in the world. Everything here is derived rather than read: a `LIGH`
-    /// record carries a colour and a radius and no intensity at all, so there is no authored value
-    /// to be faithful to. Beside `makeLight` and not in `scenedesc.hpp`, because it needs nothing
-    /// else of the scene.
+    /// One point light, placed in the world. Everything here is derived: a `LIGH` record carries a
+    /// colour and a radius and no intensity at all.
     struct Light
     {
         osg::Vec3f mPosition;
 
-        /// Radiant intensity, linear, with the colour folded in. Scaled by the square of the
-        /// recorded radius, which is what makes a lantern and a candle differ by their size.
+        /// Radiant intensity, linear, with the colour folded in, scaled by the square of the
+        /// recorded radius: what makes a lantern and a candle differ by their size.
         osg::Vec3f mIntensity;
 
-        /// How far the light reaches, beyond which it contributes exactly nothing. Not the recorded
-        /// radius: Morrowind's run 64 to 256 units in an interior, because a fixed falloff curve
-        /// lit the lamp's own post and an ambient term filled the room. Here the lamps have to be
-        /// what lights the place, so the reach is stretched while the brightness is not.
+        /// How far the light reaches, beyond which it contributes exactly nothing. Stretched from
+        /// the recorded radius, because Morrowind's ran 64 to 256 units with an ambient filling the
+        /// room, and here the lamps have to be what lights the place.
         float mReach = 0.0f;
 
-        /// How big the glowing part is, in world units — the flame rather than the room it lights.
-        /// `makeLight` derives it; zero, which a light built by hand carries, is a point. A shadow
-        /// ray opens to it, so a lamp casts a penumbra as wide as it is, and it is what stops the
-        /// falloff running away at the lamp itself.
+        /// How big the glowing part is, in world units: the flame, which a shadow ray opens to for
+        /// a penumbra as wide as it is, and what stops the falloff running away at the lamp. Zero,
+        /// which a light built by hand carries, is a point.
         float mSourceRadius = 0.0f;
 
-        /// How far short of the centre that ray stops. A lamp sits inside its own fitting — a
-        /// lantern's frame, a sconce's bracket — so a ray that runs all the way to the light ends
-        /// among that fitting and comes back fully shadowed.
+        /// How far short of the centre a shadow ray stops, because a lamp sits inside its own
+        /// fitting and a ray that runs all the way ends among it.
         float mClearance = 0.0f;
     };
 
-    /// Whether a `LIGH` reference standing in a cell casts at all — the game's rule, stated once.
-    /// `MWClass::Light::insertObjectRendering` builds no light source for a record flagged off by
-    /// default, and every other record burns where it stands, a torch on a table included:
-    /// *carryable* says what an inventory may do with it and nothing about the cell. A
-    /// `SceneUtil::LightCommon` because it is what the engine reduces both a `LIGH` and an ESM4
-    /// `LIGH` to.
+    /// Whether a `LIGH` reference standing in a cell casts at all, as the game rules it: off by
+    /// default casts nothing, and every other record burns where it stands, carryable or not.
     bool castsWherePlaced(const SceneUtil::LightCommon& record);
 
-    /// Hangs a record's light under `where`, exactly as the game hangs one on a reference. False
-    /// where the record casts nothing, so a caller can drop what it built to hold one. The one
-    /// place a `LIGH` becomes a light in a graph this renderer walks, for both routes to a lamp:
-    /// the cell the eye stands in, and the reach around it that `DistantLights` reads out of the
-    /// content files. `SceneUtil::addLight` and not `createLightSource`, so the `AttachLight` node
-    /// a model may carry is honoured; a caller with no model hands over an empty group.
-    ///
-    /// @param exterior decides the attenuation. The reach around a cell is outdoors by definition.
+    /// Hangs a record's light under `where`, exactly as the game hangs one on a reference, through
+    /// `SceneUtil::addLight` so an `AttachLight` node is honoured. False where the record casts
+    /// nothing. `exterior` decides the attenuation; the reach around a cell is outdoors by definition.
     bool standLight(osg::Group& where, const SceneUtil::LightCommon& record, bool exterior);
 
-    /// The light a `LIGH` reference casts, or nothing where it casts none — `castsWherePlaced`, and
-    /// a negative light, which *subtracts* illumination in a framebuffer and is meaningless to a
-    /// ray traced to an emitter.
+    /// The light a `LIGH` reference casts, or nothing where it casts none: `castsWherePlaced`, and a
+    /// negative light, which is meaningless to a ray traced to an emitter.
     std::optional<Light> makeLight(const SceneUtil::LightCommon& record, const osg::Vec3f& position);
 
-    /// The same light, from a colour and a radius rather than from a record — one conversion for
-    /// the two routes, so `DistantLights` reading `LIGH` records and the mirror reading
-    /// `SceneUtil::LightSource` nodes cannot disagree about how bright a candle is.
-    ///
-    /// @param colour linear. Null where a channel of it is negative.
-    /// @param radius the recorded one. Null where it is not a size a light can have.
+    /// The same light from a colour and a radius: one conversion, so `DistantLights` reading `LIGH`
+    /// records and the mirror reading `SceneUtil::LightSource` nodes cannot disagree about how
+    /// bright a candle is. Nothing where a channel of `colour` is negative or `radius` is no size a
+    /// light can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
-    /// What a light in the game's scene graph radiates this frame, in the renderer's units. The
-    /// diffuse and the ambient summed, because the content uses both: `Animation::setLightEffect`
-    /// gives a glow light a zero diffuse and a bright ambient, and
-    /// `ActorAnimation::addHiddenItemLight` adds a white ambient on top of a carried lamp's colour.
-    /// Decoded, because `SceneUtil::colourFromRGB` divides a record's bytes by 255 and stops. The
-    /// recorded colours and this frame's scalars, rather than the colours the frame was written
-    /// with: a flicker applied to display-encoded numbers arrives here raised to 2.4, which turns
-    /// an even three tenths into eight up and five down.
+    /// What a light in the game's scene graph radiates this frame, in the renderer's units: the
+    /// diffuse and the ambient summed, because the content uses both, and decoded, from the
+    /// recorded colours and this frame's scalars rather than the colours the frame was written
+    /// with, because a flicker applied to display-encoded numbers arrives raised to 2.4.
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime);
 
-    /// How much of what a light radiates is arriving at `simulationTime` seconds, as a multiplier
-    /// on its recorded colour. A `LIGH` record says *that* a light flickers or pulses and never
-    /// says how, so every number behind this is chosen in the implementation. This renderer's own
-    /// animation and not `SceneUtil::LightController`'s, which keeps a random walk's state and only
-    /// advances where an update traversal runs it. Lands in `1 +- depth`, averages exactly one over
-    /// time, and is a function of the clock and of `id` and of nothing else, so it is the same at a
-    /// given instant at any frame rate, from any renderer, however many times one frame asks.
+    /// How much of what a light radiates is arriving at `simulationTime`, as a multiplier on its
+    /// recorded colour. This renderer's own animation and not `SceneUtil::LightController`'s, which
+    /// keeps a random walk's state: a function of the clock and of `id` and of nothing else, in
+    /// `1 +- depth`, averaging one over time, the same at a given instant however many times a
+    /// frame asks.
     float lightBrightness(SceneUtil::LightController::LightType type, int id, double simulationTime);
 }

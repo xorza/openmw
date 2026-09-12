@@ -1,8 +1,6 @@
 # What this fork adds to `components-tests`, listed here so that upstream's list stays upstream's.
 # Paths are relative to `apps/components_tests`, which is where this is included from.
 set(RTX_TEST_FILES
-    fallbackseed.cpp
-    fallbackseed.hpp
     rtx/allocations.cpp
     rtx/allocations.hpp
     rtx/alphaimage.cpp
@@ -20,6 +18,7 @@ set(RTX_TEST_FILES
     rtx/dispatch.cpp
     rtx/distantlights.cpp
     rtx/dlss.cpp
+    rtx/fallbackseed.cpp
     rtx/fogbuilder.cpp
     rtx/frameclock.cpp
     rtx/frameimage.cpp

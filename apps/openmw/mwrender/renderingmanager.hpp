@@ -6,7 +6,6 @@
 #include "renderinginterface.hpp"
 #include "rendermode.hpp"
 #include "sceneframe.hpp"
-#include "weatherresult.hpp"
 
 #include <components/settings/settings.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -52,8 +51,12 @@ namespace ESM
 
 namespace Terrain
 {
-    class ObjectPaging;
     class World;
+}
+
+namespace Sky
+{
+    struct MoonState;
 }
 
 namespace Fallback
@@ -108,9 +111,11 @@ namespace MWRender
     class NavMesh;
     class ActorsPaths;
     class RecastMesh;
+    class ObjectPaging;
     class Groundcover;
     class PostProcessor;
     class Renderer;
+    struct WeatherResult;
 
     class RenderingManager : public MWRender::RenderingInterface
     {
@@ -330,7 +335,7 @@ namespace MWRender
         struct WorldspaceChunkMgr
         {
             std::unique_ptr<Terrain::World> mTerrain;
-            std::unique_ptr<Terrain::ObjectPaging> mObjectPaging;
+            std::unique_ptr<ObjectPaging> mObjectPaging;
             std::unique_ptr<Groundcover> mGroundcover;
         };
 
@@ -368,31 +373,18 @@ namespace MWRender
         std::unique_ptr<Water> mWater;
         std::unordered_map<ESM::RefId, WorldspaceChunkMgr> mWorldspaceChunks;
         Terrain::World* mTerrain;
-
         std::unique_ptr<TerrainStorage> mTerrainStorage;
-
-        // What the paging reads the world out of. Held here because every worldspace's paging
-        // borrows it, and it outlives all of them.
+        // What the paging reads the world out of; every worldspace's paging borrows it.
         ObjectStorage mObjectStorage;
-        Terrain::ObjectPaging* mObjectPaging;
+        ObjectPaging* mObjectPaging;
         Groundcover* mGroundcover;
         std::unique_ptr<SkyManager> mSky;
         std::unique_ptr<FogManager> mFog;
-
-        /// What the world has settled on, as each part of it settles.
-        ///
-        /// **The frame's own record, written where the answer is known and read once.** Every
-        /// setter writes its fields straight in, leaving `describeWorld` only what answers per
-        /// frame. A second set of members mirroring these is the obvious alternative, and its
-        /// failure mode is a fact stored and never reported.
-        ///
-        /// **What each field is stays in `WorldState`**, which both renderers read and neither
-        /// spells twice.
+        /// What the world has settled on, written by each setter where the answer is known, so
+        /// `describeWorld` reads it once and no second set of members can hold a fact never reported.
         WorldState mWorld;
-
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
-
         osg::ref_ptr<NpcAnimation> mPlayerAnimation;
         osg::ref_ptr<SceneUtil::PositionAttitudeTransform> mPlayerNode;
         std::unique_ptr<Camera> mCamera;
@@ -413,7 +405,6 @@ namespace MWRender
         float mFirstPersonFieldOfView;
         bool mUpdateProjectionMatrix = false;
         bool mNight = false;
-
         osg::Vec2f mProjectionOffset;
         const MWWorld::GroundcoverStore& mGroundCoverStore;
         std::map<std::string, std::string> mAppliedShadowDefines;

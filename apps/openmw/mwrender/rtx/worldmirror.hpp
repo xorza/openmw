@@ -143,7 +143,7 @@ namespace MWRender
 
         /// Where the ring's models and images come from: the game's own. Made where the world is
         /// attached, because that is when there is a scene manager.
-        std::unique_ptr<Rtx::SceneContent> mContent;
+        std::unique_ptr<Rtx::ContentSource> mContent;
 
         Rtx::SceneUploader mUploader;
 

@@ -251,7 +251,7 @@
         <translation></translation>
     </message>
     <message>
-        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
         <translation></translation>
     </message>
     <message>

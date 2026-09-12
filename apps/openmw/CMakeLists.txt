@@ -21,7 +21,7 @@ add_openmw_dir (mwrender
     actors objects renderingmanager animation rotatecontroller npcanimation esm4npcanimation vismask
     creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation
     bulletdebugdraw globalmap characterpreview camera localmap terrainstorage
-    renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectstorage groundcover
+    renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectpaging objectstorage groundcover
     actorutil animationpriority bonegroup blendmask animblendcontroller renderer
     describeworld
     )
@@ -171,9 +171,6 @@ if(BUILD_OPENMW)
     target_link_libraries(openmw openmw-lib)
 
 if (OPENMW_RTX)
-    # One macro gates every game-side reference to the ray tracing renderer.
-    target_compile_definitions(openmw-lib PUBLIC OPENMW_RTX)
-
     target_link_libraries(openmw-lib openmw-rtx openmw-rtx-vulkan openmw-rtx-bench openmw-myguirtx)
 endif()
 

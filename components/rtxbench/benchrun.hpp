@@ -17,78 +17,47 @@
 
 namespace Rtx
 {
-    /// One thing a run asserts about what the renderer was handed or what it drew.
-    ///
-    /// **A claim against the running game, and not against a world of the harness's own.** A staged
-    /// world reads its cells by hand, dresses its people by rules of its own and derives its sky
-    /// from the content files, so a claim proved there is a claim about a world nobody plays.
+    /// One thing a run asserts about what the renderer was handed or what it drew, of the running
+    /// game and never of a staged world, which reads its cells and dresses its people by rules of
+    /// its own.
     enum class Check
     {
-        /// A second walk over the same graph adds no mesh and no material.
-        ///
-        /// **The property the incremental mirror rests on**, and the only way to ask it is to ask
-        /// twice: the same crate met again has to resolve to the mesh already uploaded rather than
-        /// to a copy of it.
+        /// A second walk over the same graph adds no mesh and no material: the property the
+        /// incremental mirror rests on, and the only way to ask it is to ask twice.
         WalkTwice,
 
-        /// Every placement wears a material something described.
-        ///
-        /// **A canary, and it should be nought.** A placement wearing nothing is a surface the
-        /// content stated and the extractor could not read, which reaches the screen as grey.
+        /// Every placement wears a material something described. A placement wearing nothing is a
+        /// surface the extractor could not read, which reaches the screen as grey.
         SurfacesDescribed,
 
-        /// A room holds lights to cast.
-        ///
-        /// **Asked of an interior and answered yes by every exterior**, because a hillside at noon
-        /// legitimately places none. A room with lamps in it that placed none is lit by its ambient
-        /// alone, which is the failure that looks like a dark room rather than like a fault.
+        /// A room holds lights to cast. Asked of an interior and answered yes by every exterior,
+        /// because a hillside at noon places none; a room that placed none looks dark rather than
+        /// faulty.
         LightsPlaced,
 
-        /// A route crossed cell boundaries, and not every crossing had to rebuild.
-        ///
-        /// **The single most useful number a route produces.** An append builds the structures the
-        /// ring brought; a rebuild builds every structure in the scene and re-describes the whole
-        /// texture table, and the two are an order of magnitude apart.
+        /// A route crossed cell boundaries, and not every crossing had to rebuild. An append and a
+        /// rebuild are an order of magnitude apart.
         CrossingsAppend,
 
-        /// An exterior's ground reaches past the square the simulation holds.
-        ///
-        /// **The ground is nobody's node**: `Rtx::CellRing` stands it off the land records, inside
-        /// the walk, and a world whose scene stops at the active grid is one where the ring stood
-        /// nothing — which looks like a world with a short view rather than like a fault.
+        /// An exterior's ground reaches past the square the simulation holds. `Rtx::CellRing`
+        /// stands it off the land records, and a world stopping at the active grid looks like a
+        /// short view rather than a fault.
         GroundReaches,
 
-        /// Every cell of the reach stands its ground.
-        ///
-        /// **The ground is this renderer's own, off the land records, and one placement a cell.**
-        /// The game builds none for it, so a cell the ring did not stand is a hole — under the
-        /// player's feet as readily as at the horizon — and nothing else in the frame says so.
+        /// Every cell of the reach stands its ground, one placement a cell. A cell the ring did not
+        /// stand is a hole, under the player's feet as readily as at the horizon.
         GroundStands,
 
-        /// No two lights stand at the same point.
-        ///
-        /// **The lamps of the cells the paging leaves dark are read out of the content files**,
-        /// because `Terrain::pagedType` stands no `LIGH` and no walk of any graph can find one. A
-        /// cell that then loads brings its own copy of every lamp, so the reach has to stop
-        /// standing them — and a doubled lamp is twice the light with nothing to say so.
+        /// No two lights stand at the same point. The lamps of unloaded cells are read out of the
+        /// content files, and a cell that then loads brings its own copy of each.
         LightsNotDoubled,
 
-        /// Every texture the scene named could be read.
-        ///
-        /// **A canary, and it should be nought.** A texture the uploader could not read is drawn
-        /// grey, which reads as a material fault rather than as a missing file.
+        /// Every texture the scene named could be read; an unreadable one is drawn grey.
         TexturesReadable,
 
-        /// The frame was drawn from the camera the stop asked for.
-        ///
-        /// **Nothing else in a run says which camera it measured.** Every figure and every picture
-        /// is of whatever the camera turned out to be, so a camera something else moved is a whole
-        /// run measured somewhere nobody asked about — with a hit fraction and a frame time that
-        /// look perfectly reasonable. It has happened, and `MWRender::Session::aim` says how.
-        ///
-        /// Answered yes by a stop that named no camera, by a free-camera stop that gave it to the
-        /// player, and by a routed one — the first two asked for none, and the third leaves the
-        /// camera wherever the route flew it while `Stand` names only where it set off from.
+        /// The frame was drawn from the camera the stop asked for, because a camera something else
+        /// moved gives figures that look reasonable. Answered yes by a stop that named no camera,
+        /// by a free-camera stop, and by a routed one.
         CameraStands,
     };
 
@@ -98,134 +67,82 @@ namespace Rtx
     /// Every check there is, in the order they are run.
     std::span<const Check> everyCheck();
 
-    /// Where a stop stands: a place in the world, and where the eye is inside it.
-    ///
-    /// **A savegame restores what no pair of coordinates can** — the player, their equipment, the
-    /// hour, the weather and every cell the run has already loaded — so a stop that names one
-    /// stands exactly where the save left off. A cell and an eye is the other way to say it, and
-    /// the one a view file can hold.
+    /// Where a stop stands: a cell, and where the eye is inside it.
     struct Stand
     {
-        /// The cell to teleport to, as Morrowind addresses one: a pair of integers is an
-        /// exterior, anything else is an interior's name. Empty stays wherever the game already is.
-        ///
-        /// **The spelling and not an id, because the world is what turns one into the other.**
-        /// `MWBase::World::findExteriorPosition` reads both forms, resolves the cell and fills in
-        /// somewhere to stand — a `cocmarkerheading` where the content names one and the middle of
-        /// the square where it does not. That is the answer `coc` gives a player, so a stop stands
-        /// where a player typing the same word would.
+        /// The cell to teleport to, as Morrowind addresses one: a pair of integers is an exterior,
+        /// anything else is an interior's name. Empty stays wherever the game already is. The
+        /// spelling and not an id, because `MWBase::World::findExteriorPosition` is what turns one
+        /// into the other, and a stop then stands where a player typing `coc` would.
         std::string mCell;
 
-        /// Where the eye goes, and what it looks at. Both left out leaves the player where the
-        /// cell put them and their own camera alone, which is what a run measuring an ordinary
-        /// session wants.
+        /// Where the eye goes and what it looks at. Both left out leaves the player where the cell
+        /// put them and their own camera alone.
         std::optional<osg::Vec3f> mEye;
         std::optional<osg::Vec3f> mLook;
 
-        /// The point the eye faces: what `mLook` names, or due north where it names nothing and
-        /// where it names the eye itself.
-        ///
-        /// **One answer, because two things read it.** `MWRender::Session` aims the camera at it
-        /// and `Rtx::Check::CameraStands` asserts the camera reached it, and a default spelled in
-        /// both would let the check go on agreeing with a rule the session had stopped following.
-        ///
-        /// **A look at the eye is no look at all**, because a direction of no length aims nothing:
-        /// `Camera::setYaw` would be handed an `atan2(0, 0)` and the check an `acos` of a NaN.
-        ///
-        /// Only for a stand that names an eye, which is the only kind that names a camera.
+        /// The point the eye faces: `mLook`, or due north where it names nothing or the eye itself,
+        /// because a direction of no length aims nothing. One answer, because `MWRender::Session`
+        /// aims at it and `Check::CameraStands` asserts the camera reached it. Only for a stand that
+        /// names an eye.
         osg::Vec3f getLook() const;
     };
 
-    /// What the sky does at a stop.
-    ///
-    /// **Named for the stop rather than for the sky**, because `Sky` is a namespace this one is
-    /// inside the reach of: `Rtx` names `Sky::TimeOfDaySettings` and `Sky::MoonState`, and a type
-    /// called `Sky` here would take the lookup from every one of them.
-    ///
-    /// **Asked of the game's own weather system rather than derived.** A sun, an air and a set of
-    /// moons worked out from the content files at an hour is a second answer to a question
-    /// `MWWorld::WeatherManager` already answers, and the two disagree about a transition, about a
-    /// quasi-exterior's air, and about which weathers a region ever sees.
+    /// What the sky does at a stop, asked of the game's own weather system rather than derived.
+    /// Named for the stop, because `Sky` is a namespace `Rtx` names.
     struct StopSky
     {
         std::optional<float> mHour;
 
-        /// Which day of Morrowind's own calendar, counted from the one a new game begins on.
-        ///
-        /// **Only the moons read it**, and they are the reason it is separate from the hour: a
-        /// phase runs on a three-day cycle and a rise hour on a twenty-four day one, so no hour can
-        /// stand for a date.
+        /// Which day of Morrowind's calendar, counted from the one a new game begins on. Only the
+        /// moons read it: a phase runs on a three-day cycle and no hour can stand for a date.
         std::optional<int> mDay;
 
         /// A weather as the content files spell it: `Clear`, `Overcast`, `Thunderstorm`. Set
         /// immediately, so a stop stands under it from its first frame.
         std::optional<std::string> mWeather;
 
-        /// Weathers to turn the sky through while the stop runs, in order and round again.
-        ///
-        /// **A transition and not a switch**, because that is what the game does and what the
-        /// renderer has to survive: the sky blends, and the precipitation of the weather arriving
-        /// replaces the one leaving partway through — a whole emitter's meshes and textures freed
-        /// on an ordinary frame, with no cell boundary anywhere near it.
-        ///
-        /// **Asking for it stops the run being a benchmark**: no two places stand under the same
-        /// sky, so the rows are comparable with nothing.
+        /// Weathers to turn the sky through while the stop runs, in order and round again, as
+        /// transitions: what the renderer has to survive is an emitter freed on an ordinary frame.
+        /// Asking for it stops the run being a benchmark.
         std::vector<std::string> mTurnThrough;
     };
 
-    /// Where a stop flies to, and how fast.
-    ///
-    /// **A route is what puts a cell arriving into a measurement at all.** A camera standing still
-    /// measures a frame; the cost worth seeing — the ring read off the disk, the models built, the
-    /// sweep that follows the cells that left — only happens to a player who goes somewhere.
+    /// Where a stop flies to, and how fast. A route is what puts a cell arriving into a
+    /// measurement at all.
     struct Route
     {
-        /// Where the eye ends and what it looks at there. Both left out flies forwards along
-        /// whatever the stop was left facing, which is what a savegame's own heading gives.
-        ///
-        /// **Empty by their own initializer rather than by omission**, because a designated
-        /// initializer that skips a field carrying none reads to GCC as an accidentally short
-        /// aggregate — and `MWRender::readSessionSetting` builds one of these from `mSpeed` alone.
+        /// Where the eye ends and what it looks at there; both left out flies forwards. Empty by
+        /// their own initializer, because a designated initializer that skips one reads to GCC as a
+        /// short aggregate.
         std::optional<osg::Vec3f> mTo = std::nullopt;
         std::optional<osg::Vec3f> mLookTo = std::nullopt;
 
-        /// World units a second. A Morrowind exterior cell is 8,192 across, so this times the
-        /// stop's length is roughly how many boundaries get crossed.
+        /// World units a second. A Morrowind exterior cell is 8,192 across.
         float mSpeed = 0.0f;
     };
 
     /// How long a stop runs and what moves while it does.
     struct Schedule
     {
-        /// How long it runs and how much of it is thrown away first. `BenchSpec`, which is the
-        /// one spelling both the game and the harness read.
+        /// How long it runs and how much of it is thrown away first.
         BenchSpec mSpec;
 
         std::optional<Route> mRoute;
 
-        /// How many differently-seeded frames to average into one picture, or nought for none.
-        ///
-        /// **A converged reference, which is the only ground truth a sampled renderer has.** One
-        /// bounce per pixel estimates an integral without bias, so enough of them average to the
-        /// value itself. Error falls as the square root of this, so four times the frames halves
-        /// it: a hundred is a clean picture and a thousand is a reference.
+        /// How many differently-seeded frames to average into one picture, or nought for none. A
+        /// converged reference is the only ground truth a sampled renderer has: error falls as the
+        /// square root of this, a hundred is a clean picture and a thousand is a reference.
         std::uint32_t mAccumulate = 0;
 
-        /// Whether the world's clock is held still while the stop runs.
-        ///
-        /// **What a reference wants and a measurement does not.** A still frame traced many times
-        /// is the same frame, which is what makes an accumulated picture converge and a repeat time
-        /// the renderer rather than the animation. `DateTimeManager::setSimulationTimeScale` is
-        /// where it lands, so nothing in the world moves — not an actor, not a plume, not the sea.
+        /// Whether the world's clock is held still while the stop runs, so a still frame traced
+        /// many times is the same frame. `DateTimeManager::setSimulationTimeScale` is where it
+        /// lands, so nothing in the world moves.
         bool mFrozen = false;
 
-        /// Whether the player keeps their own camera and their own collision.
-        ///
-        /// **What a window is for.** A stop that pins a static camera at a view's coordinates is
-        /// taking a picture; one that hands the body back is a session somebody flies, and a view
-        /// file's coordinates are where a camera stands rather than where a body fits — so the
-        /// walls come off with it, and the body is given the stats to fly a world with
-        /// (`MWRender::Session::boostPlayer`).
+        /// Whether the player keeps their own camera and collision: a session somebody flies. A
+        /// view's coordinates are where a camera stands and not where a body fits, so the walls come
+        /// off with it.
         bool mFreeCamera = false;
     };
 
@@ -236,28 +153,20 @@ namespace Rtx
         std::filesystem::path mCapture;
 
         /// Where that frame's linear radiance goes, four floats a pixel, raw and at the render
-        /// extent. **What a measurement is taken against**, where the PNG is what a picture is
-        /// looked at as.
+        /// extent: what a measurement is taken against, where the PNG is what a picture is looked
+        /// at as.
         std::filesystem::path mDump;
 
-        /// Report the share of pixels whose accumulated bounce luminance passes each of a ladder
-        /// of thresholds, beside the frame's other figures.
-        ///
-        /// **What a firefly is counted in, and the one thing bytes cannot say.** A bright bounce is
-        /// scene-referred radiance and the display curve has spent that by the time a pixel is a
-        /// byte, so the tail is read off the channel the accumulator wrote.
+        /// Report the share of pixels whose accumulated bounce luminance passes each of a ladder of
+        /// thresholds: what a firefly is counted in, off the channel the accumulator wrote.
         bool mTail = false;
 
-        /// Whether the scene the renderer was handed is reported: what it holds, what it could
-        /// not place, and one number for the whole of it.
+        /// Whether the scene the renderer was handed is reported: what it holds, what it could not
+        /// place, and one number for the whole of it.
         bool mDigest = false;
 
         /// Whether the same graph is walked a second time, so what that added can be asked about.
-        ///
-        /// **A diagnostic and not a frame.** Nothing changes between the two walks, so every count
-        /// for new geometry should be zero — which is the property the incremental mirror rests on,
-        /// and the only way to ask it is to ask twice. It is the largest cost a frame has, so only
-        /// a stop that asked pays for it.
+        /// The largest cost a frame has, so only a stop that asked pays for it.
         bool mWalkTwice = false;
 
         /// Where every texture the scene holds is written, vanilla beside de-lit, as one sheet.
@@ -267,11 +176,8 @@ namespace Rtx
         /// frames one.
         std::filesystem::path mMapTile;
 
-        /// Whose inventory doll to write, and where, for a stop that draws one.
-        ///
-        /// **A picture of a subject and not of the world**, which is the half a frame never
-        /// exercises: the body is assembled and dressed by `MWRender::NpcAnimation`, mirrored into
-        /// a scene of its own and traced against it.
+        /// Whose inventory doll to write, and where: a picture of a subject and not of the world,
+        /// assembled by `MWRender::NpcAnimation` and traced against a scene of its own.
         struct Doll
         {
             std::string mWho;
@@ -279,17 +185,12 @@ namespace Rtx
         };
         std::optional<Doll> mDoll;
 
-        /// A word to look for among the textures the world around this place is wearing.
-        ///
-        /// **Off the scene the renderer was handed**, which is what makes it useful: what it lists
-        /// is what a frame of this place would actually trace, rather than what the content files
-        /// say stands somewhere near.
+        /// A word to look for among the textures the scene around this place is wearing — what a
+        /// frame would trace, rather than what the content files say stands near.
         std::string mFind;
 
-        /// Whether every measured frame is read back and hashed.
-        ///
-        /// **Asking for it stops the run being a benchmark**: a read back submits a copy and waits
-        /// on it, so every frame is serialised against the device and the rows measure that.
+        /// Whether every measured frame is read back and hashed, which serialises every frame
+        /// against the device and so stops the run being a benchmark.
         bool mHash = false;
 
         /// What this stop asserts. Empty for a stop that only draws.
@@ -311,20 +212,12 @@ namespace Rtx
         Actions mActions;
     };
 
-    /// A whole run, as one description.
-    ///
-    /// **Filled by a launcher and read by the renderer, and neither knows the other.** The harness
-    /// builds one out of a command line and a view file; the plain game builds one out of a single
-    /// settings string. What each does to get here is its own business; what happens after is not.
+    /// A whole run, as one description, filled by a launcher and read by the renderer.
     struct SessionRequest
     {
         std::vector<Stop> mStops;
 
-        /// Whether the run keeps its window hidden while it happens.
-        ///
-        /// **Hidden costs a present per frame and nothing else**, so a headless run is not a
-        /// different renderer — it is the same one with nobody watching. `view` is the one caller
-        /// that asks for a window.
+        /// Whether the run keeps its window hidden, which saves a present per frame and nothing else.
         bool mHeadless = true;
 
         /// Whether the run ends the session when its last stop does. False is a window somebody
@@ -344,23 +237,12 @@ namespace Rtx
         std::string mSuite;
 
         /// Whether each hand-over waits for the distant ground it queued, or nothing to let the
-        /// frame clock decide — which is what every ordinary run does.
-        ///
-        /// **The one switch a measurement needs and a picture must not have.** A settled run is
-        /// what makes two processes draw one picture, and it is also what puts
-        /// `Rtx::CompositeQueue`'s whole bake on the frame that queued it — a main thread asleep
-        /// for most of a crossing's frame, where the profile sees only the hand-over. So a run that
-        /// means to time the streaming path says so here, and
-        /// every run that compares a picture leaves it alone. `Rtx::CompositeQueue::setSettled`
-        /// says what waiting is for.
+        /// frame clock decide. Settled is what makes two processes draw one picture; a run timing
+        /// the streaming path says no (`Rtx::CompositeQueue::setSettled`).
         std::optional<bool> mSettled;
 
-        /// Which validation layers the run wants.
-        ///
-        /// **Carried here and never in a settings file**, for the reason `sValidationByDefault`
-        /// gives: a developer's diagnostic in a player's configuration is a build whose quoted
-        /// numbers were measured through the layers because somebody left a line behind. A launcher
-        /// states it on the command line for the one run it is making.
+        /// Which validation layers the run wants. Carried here and never in a settings file, for
+        /// the reason `sValidationByDefault` gives.
         ValidationOptions mValidation;
     };
 
@@ -376,13 +258,8 @@ namespace Rtx
         /// What the run printed, whole, for a launcher whose output is read rather than logged.
         std::string mReport;
 
-        /// Where the run was left, as a stop that would put a camera back there: the name, the
-        /// note and the cell of the stop that was running, and the eye, the look, the hour, the day
-        /// and the weather as the last frame found them. Nothing where no stop began.
-        ///
-        /// **What a window is for as much as the picture is.** Somebody flies to a place worth
-        /// keeping and closes the window; without this the coordinates go with it, and the view
-        /// file gains nothing.
+        /// Where the run was left, as a stop that would put a camera back there, so a place somebody
+        /// flew to and closed the window on is not lost. Nothing where no stop began.
         std::optional<Stop> mLeft;
     };
 

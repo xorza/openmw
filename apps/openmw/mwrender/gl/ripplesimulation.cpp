@@ -19,9 +19,10 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/material.hpp>
 
+#include "../vismask.hpp"
+
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/world.hpp"
-#include "../vismask.hpp"
 
 #include "../../mwmechanics/actorutil.hpp"
 

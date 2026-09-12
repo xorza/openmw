@@ -2,8 +2,6 @@
 #define OPENMW_COMPONENTS_MYGUIPLATFORM_GUIRENDERMANAGER_H
 
 #include <memory>
-#include <string>
-#include <string_view>
 
 #include <MyGUI_RenderManager.h>
 
@@ -57,18 +55,6 @@ namespace MyGUIPlatform
     {
         return static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance()).shareTexture(texture);
     }
-
-    /// A name nothing else in MyGUI's texture table will have, out of `label`.
-    ///
-    /// **MyGUI keys its textures by name**, so everything that makes one needs a name of its own —
-    /// and one counter for all of them, because two makers counting separately hand out the same
-    /// name the moment they are given the same label.
-    inline std::string uniqueTextureName(std::string_view label)
-    {
-        static unsigned int next = 0;
-        return std::string(label) + " " + std::to_string(next++);
-    }
-
 }
 
 #endif

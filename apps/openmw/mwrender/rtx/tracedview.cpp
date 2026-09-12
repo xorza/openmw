@@ -4,12 +4,12 @@
 #include <cstring>
 #include <optional>
 #include <span>
+#include <string>
 
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
 #include <osg/Image>
 
-#include <components/myguiplatform/guirendermanager.hpp>
 #include <components/myguirtx/texture.hpp>
 
 #include "rtxrenderer.hpp"
@@ -23,11 +23,6 @@ namespace MWRender
             return static_cast<std::uint8_t>(std::clamp(value, 0.f, 1.f) * 255.f + 0.5f);
         }
 
-        /// The trace behind one spec: of the world, or of the subtree the caller brought with it.
-        ///
-        /// **By value, and `Rtx::OffscreenTrace` neither copies nor moves.** Both returns are
-        /// prvalues and so is the call, so guaranteed elision constructs it straight into the member
-        /// — which is what lets the two constructors be the two kinds instead of a boolean.
         /// The spec as the trace takes it. Bottom row first, which is what
         /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for.
         Rtx::ViewRequest requestFor(const OffscreenViewSpec& spec, Rtx::Traversals& traversals)
@@ -53,8 +48,9 @@ namespace MWRender
         , mWidth(spec.mWidth)
         , mHeight(spec.mHeight)
     {
-        mTexture
-            = MyGUI::RenderManager::getInstance().createTexture(MyGUIPlatform::uniqueTextureName("rtx offscreen view"));
+        // MyGUI keys its textures by name, so each view names its own.
+        static unsigned int next = 0;
+        mTexture = MyGUI::RenderManager::getInstance().createTexture("rtx offscreen view " + std::to_string(next++));
         mTexture->createManual(
             mWidth, mHeight, MyGUI::TextureUsage::Static | MyGUI::TextureUsage::Write, MyGUI::PixelFormat::R8G8B8A8);
 

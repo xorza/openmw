@@ -181,15 +181,6 @@ namespace Rtx
             lights.collect(again, stats);
             EXPECT_EQ(storage.getReadings(), 160u) << "a cell was read a second time";
             EXPECT_EQ(again.mFound, 1u) << "what was read once was not handed over twice";
-
-            // What `restart` is for: an id counter that began again leaves every light this holds
-            // flickering at a phase from a sequence that has gone.
-            lights.restart();
-
-            CountLights afresh;
-            lights.collect(afresh, stats);
-            EXPECT_EQ(storage.getReadings(), 320u) << "a restart kept what it was told to drop";
-            EXPECT_EQ(afresh.mFound, 1u);
         }
     }
 }

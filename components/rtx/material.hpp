@@ -93,10 +93,27 @@ namespace Rtx
         /// frame and usually says exactly what it said last time.
         bool operator==(const Material& other) const = default;
 
+        /// What a blended material is tested against when it named no threshold of its own. Half,
+        /// because Morrowind's masks are painted rather than anti-aliased, so the alpha is very
+        /// nearly binary and the fringe a filter puts on it is a texel wide.
+        static constexpr float sBlendCutoff = 0.5f;
+
         /// The alpha below which a texel is a hole, or zero where the surface has none. A blended
-        /// material that never asked for a test gets a stand-in, because that is where the game
+        /// material that never asked for a test gets `sBlendCutoff`, because that is where the game
         /// keeps its foliage.
-        float getAlphaCutoff() const;
+        float getAlphaCutoff() const
+        {
+            switch (mAlphaMode)
+            {
+                case AlphaMode::Opaque:
+                    return 0.0f;
+                case AlphaMode::Cutout:
+                    return mAlphaRef;
+                case AlphaMode::Blend:
+                    return mAlphaRef > 0.0f ? mAlphaRef : sBlendCutoff;
+            }
+            return 0.0f;
+        }
 
         /// Whether traversal has to stop and ask this material whether a hit is a hole — the one
         /// predicate the build marks an instance non-opaque by and the shader tests against. A

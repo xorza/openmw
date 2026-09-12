@@ -45,13 +45,9 @@ namespace Rtx
         }
 
         /// The whole frame comes back at the frame's own extents, and the row order is the only
-        /// thing that separates the two callers.
-        ///
-        /// **Which is the whole of what a load screen and a screenshot need to be right.** The
-        /// loading screen puts this up as its backdrop through `MyGUIPlatform::Picture`, which copies
-        /// an image straight into a locked texture and draws it downwards; the screenshot goes to
-        /// `osgDB`, which reads an image upwards. One of the two is upside down if this flips for
-        /// both or for neither.
+        /// thing that separates the two callers: the loading screen draws its backdrop downwards
+        /// and `osgDB` reads a screenshot upwards, so one of the two is upside down if this flips
+        /// for both or for neither.
         TEST(RtxFrameImageTest, aFrameComesBackAtItsOwnExtentsAndOnlyTheRowOrderDiffers)
         {
             const std::vector<std::uint8_t> pixels = makeFrame(2, 2);

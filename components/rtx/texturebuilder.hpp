@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -10,7 +12,6 @@
 #include "mipchain.hpp"
 #include "prepared.hpp"
 #include "runs.hpp"
-#include "scratch.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"
 
@@ -35,6 +36,41 @@ namespace Rtx
     /// because a live scene graph names textures that were never files and a renderer that fell
     /// over on one would fall over on a cell.
     osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, VFS::Path::NormalizedView path);
+
+    /// Entries reused across arrivals: as deep as the most one arrival ever wanted, and never
+    /// freed. `next` and `keep` are two calls because a caller may not want what it built: a chain
+    /// built over a texture that already carried one is left for the next arrival.
+    template <class T>
+    class Pool
+    {
+    public:
+        /// The entry after the last kept one, made where the pool has never been this deep.
+        T& next()
+        {
+            if (mKept == mEntries.size())
+                mEntries.emplace_back();
+
+            return mEntries[mKept];
+        }
+
+        /// Says the entry `next` handed out is in use, and gives back its index.
+        std::size_t keep()
+        {
+            assert(mKept < mEntries.size() && "an entry kept that `next` never handed out");
+            return mKept++;
+        }
+
+        /// Frees every entry, keeping its room.
+        void reset() { mKept = 0; }
+
+        T& operator[](const std::size_t at) { return mEntries[at]; }
+
+    private:
+        std::vector<T> mEntries;
+
+        /// How many of them a caller has kept, which is where `next` hands out from.
+        std::size_t mKept = 0;
+    };
 
     /// Every live texture a scene names, described, and the storage those descriptions point into.
     /// Each description carries the slot it belongs to and there is not one per slot: a slot the

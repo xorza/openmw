@@ -148,7 +148,7 @@ namespace MWRender
         mScreenCaptureHandler = new osgViewer::ScreenCaptureHandler(mScreenCaptureOperation);
         mViewer->addEventHandler(mScreenCaptureHandler);
 
-        mScreenshotManager = std::make_unique<ScreenshotManager>(*this);
+        mScreenshotManager = std::make_unique<ScreenshotManager>(mViewer);
     }
 
     GlRenderer::~GlRenderer()
@@ -362,16 +362,6 @@ namespace MWRender
             0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
     }
 
-    TerrainPlan GlRenderer::getTerrainPlan() const
-    {
-        return TerrainPlan{
-            .mPaged = Settings::terrain().mDistantTerrain,
-            .mChunks = true,
-            .mObjectPaging = Settings::terrain().mObjectPaging,
-            .mCompositeMapLevel = static_cast<float>(std::pow(2, Settings::terrain().mCompositeMapLevel.get())),
-        };
-    }
-
     float GlRenderer::getTerrainViewDistance(const float cameraDistance, const float fov) const
     {
         // Since our fog is not radial yet, we should take FOV in account, otherwise terrain near viewing distance may
@@ -394,7 +384,7 @@ namespace MWRender
         // **The chain goes above the world and becomes what is traversed.** Its constructor reads
         // `GLExtensions` off the camera's graphics context, which is why no renderer without one can
         // have it and why nothing above this line decides whether to build it.
-        mPostProcessor = new PostProcessor(world, *this, &worldRoot, mResources->getVFS());
+        mPostProcessor = new PostProcessor(world, mViewer, &worldRoot, mResources->getVFS());
         setSceneRoot(*mPostProcessor);
 
         Resource::SceneManager& scene = *world.getResourceSystem()->getSceneManager();

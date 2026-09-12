@@ -41,11 +41,6 @@ namespace Rtx
         /// because a door is walked through both ways.
         void follow(const WorldAround& around) override;
 
-        /// Drops what has been read, so the next `collect` builds it again — for a host that
-        /// restarts `SceneUtil::resetLightIds`, because `Rtx::lightPhase` turns a light's id into
-        /// where its flame stands in its cycle.
-        void restart();
-
         void collect(SceneAdopter& into, ExtractionStats& stats) override;
 
     private:

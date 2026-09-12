@@ -327,7 +327,7 @@ namespace MWGui
         mGuiModeStates[GM_MainMenu] = GuiModeState(menu.get());
         mWindows.push_back(std::move(menu));
 
-        mLocalMapRender = std::make_unique<MWRender::LocalMap>(mRenderer, mRenderer.getSceneRoot());
+        mLocalMapRender = std::make_unique<MWRender::LocalMap>(mRenderer);
         auto map = std::make_unique<MapWindow>(mCustomMarkers, mDragAndDrop.get(), mLocalMapRender.get(), mWorkQueue);
         mMap = map.get();
         mWindows.push_back(std::move(map));
@@ -1727,8 +1727,7 @@ namespace MWGui
 
     bool WindowManager::isPostProcessorHudVisible() const
     {
-        // Null until `initUI`, and the clock asks whether the game is paused before then.
-        return mPostProcessorHud != nullptr && mPostProcessorHud->isVisible();
+        return mPostProcessorHud && mPostProcessorHud->isVisible();
     }
 
     bool WindowManager::isSettingsWindowVisible() const

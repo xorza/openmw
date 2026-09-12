@@ -20,8 +20,6 @@
 
 #include <osgGA/EventQueue>
 
-#include <osgUtil/UpdateVisitor>
-
 #include <components/debug/debuglog.hpp>
 #include <components/l10n/manager.hpp>
 #include <components/sceneutil/screencapture.hpp>
@@ -112,17 +110,6 @@ namespace MWRender
             camera.addChild(&root);
 
         adoptSceneRoot(root);
-    }
-
-    void updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor)
-    {
-        if (camera.getUpdateCallback() == nullptr)
-            return;
-
-        const osg::NodeVisitor::TraversalMode was = visitor.getTraversalMode();
-        visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_NONE);
-        camera.accept(visitor);
-        visitor.setTraversalMode(was);
     }
 
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec)

@@ -31,7 +31,6 @@ namespace osg
 {
     class Texture2D;
     class Image;
-    class Group;
     class Node;
 }
 
@@ -46,9 +45,7 @@ namespace MWRender
     class LocalMap
     {
     public:
-        /// @param root where the world was built; the map is a picture of what is named "Scene Root"
-        ///        inside it, which is the whole of what the map has to do with the graph.
-        LocalMap(Renderer& renderer, osg::Group& root);
+        LocalMap(Renderer& renderer);
         ~LocalMap();
 
         /**
@@ -71,17 +68,14 @@ namespace MWRender
         /// mapped.
         MyGUI::ITexture* getMapTexture(int x, int y);
 
+        osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
+
         /// The same picture in main memory, for the global map to composite into its overlay, or
         /// null while the render has not come back off the device yet — ask again next frame.
-        ///
-        /// **Asking is what starts it, which is why this is not `const`.** A copy costs a read back
-        /// off the device, and the world map wants one for the cell the player walked into: one of
-        /// the nine an arrival draws. Keeping one for every tile drawn spent that read eight times
-        /// over on pictures nothing ever looked at — measured at 1.2 ms each, on the frame a cell
-        /// arrives, which is the frame with the least room for it.
+        /// Asking is what starts the copy, which is why this is not `const`: a read back off the
+        /// device costs a millisecond on the frame a cell arrives, so only the tile the world map
+        /// asks for pays it.
         const osg::Image* getMapImage(int x, int y);
-
-        osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
 
         /**
          * Set the position & direction of the player, and returns the position in map space through the reference

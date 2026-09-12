@@ -18,7 +18,6 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/misc/rng.hpp>
 #include <components/nifosg/autotransform.hpp>
-#include <components/nifosg/nifloader.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/material.hpp>
@@ -31,7 +30,9 @@
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
 
-namespace Terrain
+#include "vismask.hpp"
+
+namespace MWRender
 {
     osg::ref_ptr<osg::Node> ObjectPaging::getChunk(float size, const osg::Vec2f& center, unsigned char /*lod*/,
         unsigned int lodFlags, bool activeGrid, const osg::Vec3f& viewPoint, bool compile)
@@ -245,7 +246,7 @@ namespace Terrain
                 : mRefnums(copy.mRefnums)
             {
             }
-            META_Object(Terrain, RefnumSet)
+            META_Object(MWRender, RefnumSet)
             std::vector<ESM::RefNum> mRefnums;
         };
 
@@ -378,14 +379,13 @@ namespace Terrain
         };
     }
 
-    ObjectPaging::ObjectPaging(Resource::SceneManager* sceneManager, const ObjectStorage& storage,
-        ESM::RefId worldspace, unsigned int nodeMask, bool pageActiveGrid)
+    ObjectPaging::ObjectPaging(
+        Resource::SceneManager* sceneManager, const Terrain::ObjectStorage& storage, ESM::RefId worldspace)
         : GenericResourceManager<ChunkId>(nullptr, Settings::cells().mCacheExpiryDelay)
-        , QuadTreeWorld::ChunkManager(worldspace)
+        , Terrain::QuadTreeWorld::ChunkManager(worldspace)
         , mSceneManager(sceneManager)
         , mStorage(&storage)
-        , mNodeMask(nodeMask)
-        , mActiveGrid(pageActiveGrid)
+        , mActiveGrid(Settings::terrain().mObjectPagingActiveGrid)
         , mDebugBatches(Settings::terrain().mDebugChunks)
         , mMergeFactor(Settings::terrain().mObjectPagingMergeFactor)
         , mMinSize(Settings::terrain().mObjectPagingMinSize)
@@ -400,14 +400,14 @@ namespace Terrain
     {
         const osg::Vec2i startCell(static_cast<int>(std::floor(center.x() - size / 2.f)),
             static_cast<int>(std::floor(center.y() - size / 2.f)));
-        std::vector<PagedCellRef> refs;
-        mStorage->collect(RefKind::Paged, size, startCell, mWorldspace, refs);
+        std::vector<Terrain::PagedCellRef> refs;
+        mStorage->collect(Terrain::RefKind::Paged, size, startCell, mWorldspace, refs);
 
         if (activeGrid && !refs.empty())
         {
             std::lock_guard<std::mutex> lock(mRefTrackerMutex);
             const std::set<ESM::RefNum>& blacklist = getRefTracker().mBlacklist;
-            std::erase_if(refs, [&](const PagedCellRef& ref) { return blacklist.contains(ref.mRefNum); });
+            std::erase_if(refs, [&](const Terrain::PagedCellRef& ref) { return blacklist.contains(ref.mRefNum); });
         }
 
         const osg::Vec2f minBound = (center - osg::Vec2f(size / 2.f, size / 2.f));
@@ -419,31 +419,25 @@ namespace Terrain
         struct InstanceList
         {
             osg::ref_ptr<const osg::Node> mTemplate;
-            std::vector<const PagedCellRef*> mInstances{};
+            std::vector<const Terrain::PagedCellRef*> mInstances{};
             AnalyzeVisitor::Result mAnalyzeResult{};
             bool mNeedCompile = false;
         };
 
-        // **In the order the references named them, and not in the order the allocator handed them
-        // out.** These were a `std::map` keyed on the template's `ref_ptr`, which orders by address:
-        // which geometries ended up adjacent in a merged drawable followed where the templates
-        // happened to be in memory, and so did how many degenerate triangles the merge left behind.
-        // The chunk was the same chunk either way, but the count of its triangles was a property of
-        // the binary rather than of the content — one unused `#include` elsewhere moved Balmora by
-        // two — and that is the number the ray tracer's harness prints as a control.
-        //
-        // `refs` is a `std::map<ESM::RefNum, ...>`, so first-encounter order is already the content's
-        // own. The map below is the dedup index and nothing else.
+        // In the order the references named them, never in the order the allocator handed the
+        // templates out: which geometries end up adjacent in a merged drawable decides the merged
+        // index buffer, and a ray tracer builds its structure over that buffer. `refs` arrives sorted
+        // by reference number, so first-encounter order is the content's own; the map is the dedup
+        // index and nothing else.
         std::vector<InstanceList> nodes;
         std::unordered_map<const osg::Node*, std::size_t> byTemplate;
         const osg::ref_ptr<RefnumSet> refnumSet = activeGrid ? new RefnumSet : nullptr;
 
-        // **What the loader hid, and asked from the loader.** A NIF loader marks two kinds of node
-        // as not-to-be-drawn — collision shapes, and anything a `VisController` may hide at runtime
-        // — with a mask its owner chose. This paging runs no such controller, so both are simply
-        // left out of the copy, and asking the loader is what keeps a second world from choosing a
-        // different bit and copying a town's collision meshes into its distant hills.
-        const auto copyMask = ~NifOsg::Loader::getHiddenNodeMask();
+        // Mask_UpdateVisitor is used in such cases in NIF loader:
+        // 1. For collision nodes, which is not supposed to be rendered.
+        // 2. For nodes masked via Flag_Hidden (VisController can change this flag value at runtime).
+        // Since ObjectPaging does not handle VisController, we can just ignore both types of nodes.
+        constexpr auto copyMask = ~Mask_UpdateVisitor;
 
         const int cellSize = getCellSize(mWorldspace);
         const float smallestDistanceToChunk = (size > 1 / 8.f) ? (size * cellSize) : 0.f;
@@ -455,9 +449,8 @@ namespace Terrain
 
         AnalyzeVisitor analyzeVisitor(copyMask);
         const float minSize = mMinSizeMergeFactor ? mMinSize * mMinSizeMergeFactor : mMinSize;
-        for (const PagedCellRef& ref : refs)
+        for (const Terrain::PagedCellRef& ref : refs)
         {
-            const float dSqr = (viewPoint - ref.mPosition).length2();
             if (size < 1.f)
             {
                 const osg::Vec3f cellPos = ref.mPosition / static_cast<float>(cellSize);
@@ -468,6 +461,7 @@ namespace Terrain
                     continue;
             }
 
+            const float dSqr = (viewPoint - ref.mPosition).length2();
             if (!activeGrid)
             {
                 std::lock_guard<std::mutex> lock(mSizeCacheMutex);
@@ -585,9 +579,9 @@ namespace Terrain
             const float minSizeMerged = minSizeMergeFactor2 > 0 ? mMinSize * minSizeMergeFactor2 : mMinSize;
 
             unsigned int numinstances = 0;
-            for (const PagedCellRef* refPtr : entry.mInstances)
+            for (const Terrain::PagedCellRef* refPtr : entry.mInstances)
             {
-                const PagedCellRef& ref = *refPtr;
+                const Terrain::PagedCellRef& ref = *refPtr;
 
                 if (!activeGrid && minSizeMerged != minSize
                     && cnode->getBound().radius2() * ref.mScale * ref.mScale
@@ -707,7 +701,7 @@ namespace Terrain
         }
 
         group->getBound();
-        group->setNodeMask(mNodeMask);
+        group->setNodeMask(Mask_Static);
         osg::UserDataContainer* udc = group->getOrCreateUserDataContainer();
         if (activeGrid)
         {
@@ -724,7 +718,7 @@ namespace Terrain
 
     unsigned int ObjectPaging::getNodeMask()
     {
-        return mNodeMask;
+        return Mask_Static;
     }
 
     namespace
@@ -773,7 +767,7 @@ namespace Terrain
     bool ObjectPaging::enableObject(
         int type, ESM::RefNum refnum, const osg::Vec3f& pos, const osg::Vec2i& cell, bool enabled)
     {
-        if (!pagedType(type, false))
+        if (!Terrain::pagedType(type, false))
             return false;
 
         {
@@ -797,7 +791,7 @@ namespace Terrain
 
     bool ObjectPaging::blacklistObject(int type, ESM::RefNum refnum, const osg::Vec3f& pos, const osg::Vec2i& cell)
     {
-        if (!pagedType(type, false))
+        if (!Terrain::pagedType(type, false))
             return false;
 
         {
@@ -849,7 +843,7 @@ namespace Terrain
                 : mOutput(output)
             {
             }
-            void operator()(ChunkId chunkId, osg::Object* obj)
+            void operator()(MWRender::ChunkId chunkId, osg::Object* obj)
             {
                 if (!std::get<2>(chunkId))
                     return;

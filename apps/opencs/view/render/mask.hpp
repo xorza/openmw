@@ -5,10 +5,9 @@ namespace CSVRender
 {
 
     /// Node masks used on the OSG scene graph in OpenMW-CS.
-    /// @note See the respective file the game and its harness share
-    /// (components/sceneutil/vismask.hpp)
+    /// @note See the respective file in OpenMW (apps/openmw/mwrender/vismask.hpp)
     /// for general usage hints about node masks.
-    /// @copydoc SceneUtil::VisMask
+    /// @copydoc MWRender::VisMask
     enum Mask : unsigned int
     {
         // elements that are part of the actual scene

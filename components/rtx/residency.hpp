@@ -24,11 +24,6 @@ namespace Terrain
     class Storage;
 }
 
-namespace Resource
-{
-    class SceneManager;
-}
-
 namespace Rtx
 {
     /// Where a cell's content is read from, by path: a model's template, and an image. An
@@ -47,22 +42,6 @@ namespace Rtx
         /// The image at `path`, or null where nothing could be read there. Safe from any thread,
         /// as the template is.
         virtual osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView path) = 0;
-    };
-
-    /// The game's content, out of its scene manager.
-    class SceneContent final : public ContentSource
-    {
-    public:
-        explicit SceneContent(Resource::SceneManager& scenes)
-            : mScenes(scenes)
-        {
-        }
-
-        osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView path) override;
-        osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView path) override;
-
-    private:
-        Resource::SceneManager& mScenes;
     };
 
     /// Where the world's cells are read from: the content, and which worldspace of it — exactly

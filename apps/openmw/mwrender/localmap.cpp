@@ -46,7 +46,7 @@ namespace
 
 namespace MWRender
 {
-    LocalMap::LocalMap(Renderer& renderer, osg::Group& root)
+    LocalMap::LocalMap(Renderer& renderer)
         : mRenderer(renderer)
         , mMapResolution(static_cast<int>(
               Settings::map().mLocalMapResolution * MWBase::Environment::get().getWindowManager()->getScalingFactor()))
@@ -56,7 +56,7 @@ namespace MWRender
         , mInterior(false)
     {
         SceneUtil::FindByNameVisitor find("Scene Root");
-        root.accept(find);
+        renderer.getSceneRoot().accept(find);
         mSceneRoot = find.mFoundNode;
         if (!mSceneRoot)
             throw std::runtime_error("no scene root found");

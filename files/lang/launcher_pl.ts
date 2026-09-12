@@ -251,7 +251,7 @@
         <translation>Synchronizacja pionowa</translation>
     </message>
     <message>
-        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
         <translation>Zastępuje renderer OpenGL eksperymentalnym rendererem Vulkan ze śledzeniem promieni. Wymaga karty graficznej NVIDIA klasy Ada.</translation>
     </message>
     <message>

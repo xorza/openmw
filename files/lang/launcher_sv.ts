@@ -183,7 +183,7 @@
         <translation>16</translation>
     </message>
     <message>
-        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
         <translation>Ersätter OpenGL-renderaren med den experimentella Vulkan-renderaren med strålspårning. Kräver ett NVIDIA-grafikkort av Ada-klass.</translation>
     </message>
     <message>

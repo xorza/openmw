@@ -3,28 +3,22 @@
 
 #include <osg/ref_ptr>
 
-namespace osg
-{
-    class Image;
-}
+#include <osgViewer/Viewer>
 
 namespace MWRender
 {
     class NotifyDrawCompletedCallback;
-    class Renderer;
 
-    /// The frame the screenshot key and the save thumbnails get: one drawn on demand, out of band,
-    /// read back off the frame buffer once the draw thread says it is there.
     class ScreenshotManager
     {
     public:
-        ScreenshotManager(Renderer& renderer);
+        ScreenshotManager(osgViewer::Viewer* viewer);
         ~ScreenshotManager();
 
         void screenshot(osg::Image* image, int w, int h);
 
     private:
-        Renderer& mRenderer;
+        osg::ref_ptr<osgViewer::Viewer> mViewer;
         osg::ref_ptr<NotifyDrawCompletedCallback> mDrawCompleteCallback;
     };
 }

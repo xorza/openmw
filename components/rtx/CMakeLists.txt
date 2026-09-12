@@ -61,7 +61,6 @@ set(RTX_FILES
     lightbuilder.cpp
     lightgrid.cpp
     lightgrid.hpp
-    material.cpp
     material.hpp
     materialresolver.cpp
     materialresolver.hpp
@@ -96,7 +95,6 @@ set(RTX_FILES
     placementtable.cpp
     placementtable.hpp
     prepared.hpp
-    posecull.hpp
     poseupdate.hpp
     reconstruction.hpp
     renderer.hpp
@@ -130,7 +128,6 @@ set(RTX_FILES
     cellsupply.cpp
     cellring.hpp
     cellsupply.hpp
-    residency.cpp
     templatewalk.cpp
     templatewalk.hpp
     terraincomposite.cpp

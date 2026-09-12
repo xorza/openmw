@@ -13,6 +13,8 @@
 #include <osg/Group>
 #include <osg/Texture2D>
 
+#include <osgViewer/Viewer>
+
 #include <components/debug/debuglog.hpp>
 #include <components/fx/stateupdater.hpp>
 #include <components/fx/technique.hpp>
@@ -23,6 +25,11 @@
 #include "transparentpass.hpp"
 
 #include <memory>
+
+namespace osgViewer
+{
+    class Viewer;
+}
 
 namespace Stereo
 {
@@ -47,7 +54,6 @@ namespace MWRender
     class PingPongCanvas;
     class TransparentDepthBinCallback;
     class DistortionCallback;
-    class Renderer;
     struct EyeState;
     struct WorldState;
 
@@ -97,7 +103,8 @@ namespace MWRender
             Status_Unchanged
         };
 
-        PostProcessor(RenderingManager& rendering, Renderer& renderer, osg::Group* rootNode, const VFS::Manager* vfs);
+        PostProcessor(
+            RenderingManager& rendering, osgViewer::Viewer* viewer, osg::Group* rootNode, const VFS::Manager* vfs);
 
         ~PostProcessor();
 
@@ -170,10 +177,8 @@ namespace MWRender
 
         bool isTechniqueEnabled(const std::shared_ptr<Fx::Technique>& technique) const;
 
-        /// This frame's world, in the spelling the chain's shaders sample.
-        ///
-        /// **A copy and not a cache.** Every value is settled somewhere in the world already, so
-        /// the only thing said here is how a shader chain spells it.
+        /// This frame's world, in the spelling the chain's shaders sample. A copy and not a cache:
+        /// every value here is settled elsewhere in the world already.
         void describe(const WorldState& world, const EyeState& eye);
 
         void toggleMode();
@@ -210,7 +215,7 @@ namespace MWRender
     private:
         void populateTechniqueFiles();
 
-        size_t frame() const;
+        size_t frame() const { return mViewer->getFrameStamp()->getFrameNumber(); }
 
         void createObjectsForFrame(size_t frameId);
 
@@ -238,7 +243,7 @@ namespace MWRender
         std::unordered_set<VFS::Path::Normalized, VFS::Path::Hash, std::equal_to<>> mTechniqueFiles;
 
         RenderingManager& mRendering;
-        Renderer& mRenderer;
+        osgViewer::Viewer* mViewer;
         const VFS::Manager* mVFS;
 
         size_t mDirtyFrameId = 0;
