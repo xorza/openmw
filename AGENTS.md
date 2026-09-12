@@ -67,9 +67,9 @@ answerable by comparison. Its workarounds do not come across either: render-bin 
 transparent pass, the distortion pass and shadow-map tuning are answered with rays. A fix for how a
 triangle got onto a screen stays behind; a decision about what the world looks like comes over.
 
-**Upstream's files are read-only.** Changes land in `components/rtx*/`, `components/surface/`,
+**Upstream's files are read-only.** Changes land in `components/rtx*/`,
 `components/myguirtx/`, `apps/rtxtool/`, `apps/openmw/mwrender/rtx/`,
-`apps/components_tests/{rtx,rtxbench,rtxtool,surface}/`, `files/rtx/` and `.notes/`, and nowhere
+`apps/components_tests/{rtx,rtxbench,rtxtool}/`, `files/rtx/` and `.notes/`, and nowhere
 else. Where the RT path cannot work without touching an upstream file, name the file and the change
 and wait for a go-ahead. Lifting shared code into `components/` so both hosts read one answer is
 allowed — `components/sky/`, `components/weather/` and `components/sceneutil/vismask.hpp` are that —
@@ -98,8 +98,7 @@ backend ever arrives.
 - `components/rtxbench/` — the instruments a measured run is taken with: a run's length, what a
   place came to, how it is printed and recorded, the card's clock, perf's fifo, a frame hash, a
   scene digest and a texture sheet. It knows nothing about a world.
-- `components/myguirtx/` — MyGUI's backend. `components/surface/` — what the content says a surface
-  is.
+- `components/myguirtx/` — MyGUI's backend.
 - `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
   `MWRender::Renderer` — the seam against `mwrender/gl/`.
 

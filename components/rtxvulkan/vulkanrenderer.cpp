@@ -13,7 +13,6 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
-#include "framehistory.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
@@ -64,13 +63,12 @@ namespace Rtx
         }
 
         /// The instance a window needs, which is the headless one plus whatever SDL asks for.
-        InstanceOptions instanceOptionsFor(const RendererOptions& options)
+        std::vector<const char*> surfaceExtensionsFor(const RendererOptions& options)
         {
-            InstanceOptions instance = toInstanceOptions(options.mValidation);
-            if (options.mWindow != nullptr)
-                instance.mSurfaceExtensions = Presenter::getInstanceExtensions(options.mWindow);
+            if (options.mWindow == nullptr)
+                return {};
 
-            return instance;
+            return Presenter::getInstanceExtensions(options.mWindow);
         }
 
         /// A swapchain is the only thing presenting adds to the device.
@@ -106,7 +104,7 @@ namespace Rtx
     }
 
     VulkanRenderer::VulkanRenderer(const RendererOptions& options)
-        : mInstance(instanceOptionsFor(options))
+        : mInstance(options.mValidation, surfaceExtensionsFor(options))
         , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()),
               PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory },
               deviceExtensionsFor(options))
@@ -221,6 +219,17 @@ namespace Rtx
         mRing.finishAll();
         mDevice.waitIdle();
         createTargets(mOutputWidth, mOutputHeight);
+    }
+
+    void VulkanRenderer::setSea(const SeaState& sea)
+    {
+        if (sea == mWaves.getSea())
+            return;
+
+        // A frame in flight may still be synthesising from the spectrum this replaces.
+        mRing.finishAll();
+        mDevice.waitIdle();
+        mWaves.describe(sea);
     }
 
     void VulkanRenderer::createTargets(std::uint32_t width, std::uint32_t height)
@@ -389,8 +398,7 @@ namespace Rtx
         return sampled;
     }
 
-    void VulkanRenderer::setScene(
-        const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea)
+    void VulkanRenderer::setScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures)
     {
         ViewScene& held = sceneAt(slot);
 
@@ -441,12 +449,6 @@ namespace Rtx
 
         Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
 
-        // The world's, because there is one sea and every scene traces it. A doll and a map tile
-        // carry a sea state of their own only because they take the same argument, and letting one
-        // of those redraw the spectrum would put the interface's water under the world.
-        if (slot.isWorld())
-            mWaves.describe(sea, graveyard);
-
         // Every scene is traced by two frames at once, the doll's included: a picture inside the
         // interface rides the frame it was asked on, and the next frame may place it again while
         // that one is still tracing.
@@ -486,8 +488,7 @@ namespace Rtx
             readStats(held);
     }
 
-    void VulkanRenderer::extendScene(
-        const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
+    void VulkanRenderer::extendScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
@@ -532,7 +533,7 @@ namespace Rtx
 
         // Always, because the top level names every instance and an arrival changed the list. It is
         // rebuilt every frame regardless, so an arrival costs it nothing.
-        placeScene(slot, scene, sea);
+        placeScene(slot, scene);
 
         // The history is kept. Nothing was renumbered, so what the last frame resolved still
         // describes the same surfaces — and throwing it away is a visible flash every time an actor
@@ -591,7 +592,7 @@ namespace Rtx
         return posed || built;
     }
 
-    void VulkanRenderer::placeScene(const SceneSlot slot, const SceneDesc& scene, const SeaState& sea)
+    void VulkanRenderer::placeScene(const SceneSlot slot, const SceneDesc& scene)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
@@ -633,10 +634,6 @@ namespace Rtx
         // report starts here and not at the trace: placing the world is the refit and the top level,
         // and a report that began at `renderFrame` would leave them out.
         FrameRecord& frame = mRing.begin();
-
-        // Does nothing where the sea is the one already drawn for, which is every frame but the
-        // first and any on which the weather turned the wind.
-        mWaves.describe(sea, frame.mWorld.mGraveyard);
 
         // The placement's own submit, without a fence and without a wait. The frame's fence,
         // later on the queue, covers this submit too. Nothing recorded is nothing submitted, which
@@ -742,12 +739,6 @@ namespace Rtx
     GuiSlot VulkanRenderer::addGuiTexture(std::uint32_t width, std::uint32_t height)
     {
         return mGuiTextures.add(width, height);
-    }
-
-    void VulkanRenderer::writeGuiTexture(
-        const GuiSlot texture, const GuiRegion& region, std::span<const std::uint8_t> rgba)
-    {
-        mGuiTextures.write(texture, region, rgba);
     }
 
     std::span<std::uint8_t> VulkanRenderer::lendGuiTexture(const GuiSlot texture, const GuiRegion& region)
@@ -898,8 +889,12 @@ namespace Rtx
 
         // A history is worthless after a jump no motion vector can describe: walking through a
         // door once left the previous camera intact and a reprojection fetched one room onto
-        // another.
-        FrameHistory history(mPreviousCamera.mCamera.mForward.length2() <= 0.0f, mAirStale, mDenoiserStale);
+        // another. Asking is what spends the denoiser's signal, and `historyRead` says whether a
+        // pass did, so a `resetHistory` before an unfiltered frame waits for the frame that can act
+        // on it.
+        const bool basisLost = mPreviousCamera.mCamera.mForward.length2() <= 0.0f;
+        const bool airLost = mAirStale || basisLost;
+        const bool historyLost = mDenoiserStale || basisLost;
 
         GpuTimer& timer = frame.mTimer;
         const VkCommandBuffer commands = frame.mWorld.mCommands;
@@ -936,6 +931,7 @@ namespace Rtx
         // blurred is asking it to recover what was thrown away — which is why `resolve` never
         // answers with both.
         const bool filtering = reconstruction.filtered();
+        bool historyRead = filtering;
 
         const GBuffer& channels = mFrame.getChannels();
 
@@ -954,8 +950,8 @@ namespace Rtx
                 .mTarget = &mTargets.current(),
                 .mSum = mSum.get(),
                 .mAccumulate = options.mAccumulate,
-                .mAirLost = history.airLost(),
-                .mHistoryLost = history.answer(filtering),
+                .mAirLost = airLost,
+                .mHistoryLost = historyLost,
                 .mFilter = filtering,
                 .mTimer = &timer,
             });
@@ -963,6 +959,7 @@ namespace Rtx
 #ifdef OPENMW_RTX_DLSS
         if (upscaling())
         {
+            historyRead = true;
             timer.open(commands, "upscale");
             mUpscaler->record(commands,
                 DlssInputs{
@@ -981,7 +978,7 @@ namespace Rtx
                     .mOutput = *mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
-                    .mReset = history.answer(),
+                    .mReset = historyLost,
                 });
 
             // What NGX recorded is its own; nothing here knows which stages it used. And the
@@ -1012,7 +1009,8 @@ namespace Rtx
         {
             // The third thing that reads a lost history, and the only one that reads it on
             // every frame: the eye has no past to adapt from either.
-            mExposure.record(commands, *shown, 0.001f * sinceLastMs, history.answer(), options.mExposureBias);
+            historyRead = true;
+            mExposure.record(commands, *shown, 0.001f * sinceLastMs, historyLost, options.mExposureBias);
         }
         timer.close(commands);
 
@@ -1041,7 +1039,7 @@ namespace Rtx
         // as long as the player stayed indoors.
         mAirStale = false;
 
-        if (history.wasAnswered())
+        if (historyRead)
             mDenoiserStale = false;
 
         return reconstruction;

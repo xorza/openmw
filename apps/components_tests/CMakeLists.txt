@@ -92,9 +92,6 @@ file(GLOB UNITTEST_SRC_FILES
 
     sceneutil/osgacontroller.cpp
 
-    surface/material.cpp
-    surface/nifmaterial.cpp
-
     bsa/testbsafile.cpp
     bsa/testcompressedbsafile.cpp
 
@@ -106,7 +103,7 @@ source_group(apps\\components-tests FILES ${UNITTEST_SRC_FILES})
 
 if (OPENMW_RTX)
     include(rtx/sources.cmake)
-    list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})
+    list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES} ${RTX_TEST_FILES_UPSTREAM})
 endif()
 
 openmw_add_executable(components-tests ${UNITTEST_SRC_FILES})

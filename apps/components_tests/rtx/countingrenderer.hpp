@@ -29,8 +29,8 @@ namespace Rtx::Testing
         /// reaches the renderer at all, and this double has no history to throw away.
         void resetHistory() override { ++mHistoryResets; }
 
-        void setScene(Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> textures,
-            const Rtx::SeaState&) override
+        void setScene(
+            Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> textures) override
         {
             ++mRebuilt;
             mDescribed = textures.size();
@@ -42,8 +42,8 @@ namespace Rtx::Testing
             heldAt(slot) = { true, scene.getStructureRevision() };
         }
 
-        void extendScene(Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> arrived,
-            const Rtx::SeaState&) override
+        void extendScene(
+            Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> arrived) override
         {
             ++mExtended;
             mDescribed = arrived.size();
@@ -61,7 +61,7 @@ namespace Rtx::Testing
             heldAt(slot).mRevision = scene.getStructureRevision();
         }
 
-        void placeScene(Rtx::SceneSlot, const Rtx::SceneDesc&, const Rtx::SeaState&) override
+        void placeScene(Rtx::SceneSlot, const Rtx::SceneDesc&) override
         {
             ++mPlaced;
             mDescribed = 0;
@@ -88,6 +88,7 @@ namespace Rtx::Testing
         void resize(std::uint32_t, std::uint32_t) override {}
         void setUpscale(Upscale upscale) override { mUpscale = upscale; }
         Upscale getUpscale() const override { return mUpscale; }
+        void setSea(const Rtx::SeaState&) override {}
         void setVerticalSync(SDLUtil::VSyncMode) override {}
         Rtx::FrameExtents getExtents() const override { return {}; }
         Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
@@ -99,7 +100,6 @@ namespace Rtx::Testing
 
         /// The GUI is not what this counts. Slots go up and nothing is drawn.
         Rtx::GuiSlot addGuiTexture(std::uint32_t, std::uint32_t) override { return Rtx::GuiSlot::at(mGuiTextures++); }
-        void writeGuiTexture(Rtx::GuiSlot, const Rtx::GuiRegion&, std::span<const std::uint8_t>) override {}
         std::span<std::uint8_t> lendGuiTexture(Rtx::GuiSlot, const Rtx::GuiRegion&) override { return {}; }
         void sendGuiTexture(Rtx::GuiSlot) override {}
         void dropGuiTexture(Rtx::GuiSlot) override {}

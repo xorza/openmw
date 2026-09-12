@@ -141,7 +141,7 @@ namespace Rtx::Testing
         const Index glass = scene.materials().add(Material{
             .mDiffuseColour = osg::Vec3f(colour.r(), colour.g(), colour.b()),
             .mOpacity = colour.a(),
-            .mAlphaMode = Surface::AlphaMode::Blend,
+            .mAlphaMode = AlphaMode::Blend,
         });
 
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
@@ -328,7 +328,8 @@ namespace Rtx::Testing
             const std::function<void()>& afterEach = {})
         {
             mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures), shot.mSea);
+            mRenderer->setSea(shot.mSea);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures));
 
             if (shot.mResetHistory)
                 mRenderer->resetHistory();

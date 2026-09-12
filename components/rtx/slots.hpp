@@ -367,38 +367,6 @@ namespace Rtx
         bool mDroppedHolds = false;
     };
 
-    /// A table `SceneDesc::release` sweeps: the rows, and the holds and the marks that decide
-    /// which of them go. What the two swept tables have in common and nothing more; the three
-    /// other tables keep `SlotRows` directly, because a texture goes the moment nothing names it, a
-    /// deformer with its last mesh, and a placement when it is dropped.
-    template <class Row>
-    class SweptTable
-    {
-    public:
-        std::size_t size() const { return mRows.size(); }
-
-        /// How many slots hold a row, which is what a sweep compares its survivors against.
-        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
-
-        std::span<const Row> getRows() const { return mRows.getRows(); }
-
-        /// Takes and gives back one hold on a row, which keeps it through every sweep between. For
-        /// a row nothing the walk meets will name: a cell's ground has no drawable, so the residency
-        /// that stood it holds it instead, and lets go when the cell does.
-        void hold(Index slot) { mRows.hold(slot); }
-        void drop(Index slot) { mRows.drop(slot); }
-
-        /// Whether a hold went to nought since the last `mark`, which is a sweep owed however whole
-        /// the identity maps stand.
-        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
-
-        /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
-        std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
-
-    protected:
-        SlotRows<Row> mRows;
-    };
-
     /// Rows kept in the order of a key taken from each, found by binary search. A type rather than
     /// a `std::lower_bound` at each site, because a search whose comparator disagreed with the
     /// insertion finds nothing and says nothing. Not a map: what these hold is walked in order every

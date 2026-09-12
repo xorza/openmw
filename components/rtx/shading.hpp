@@ -7,13 +7,10 @@ namespace osg
     class StateSet;
 }
 
-namespace Surface
-{
-    struct Material;
-}
-
 namespace Rtx
 {
+    struct SurfaceDescription;
+
     /// One state set in the chain that shades a drawable, nearest it last. Not simply a node's own,
     /// because OpenMW animates shading with a `SceneUtil::StateSetUpdater`'s state set that belongs
     /// to the traversal.
@@ -37,7 +34,7 @@ namespace Rtx
     /// root first and nearest last, which is how OpenGL resolves the same chain. False where no
     /// state set on the chain carried a material or a texture — the sky, the water, a debug line —
     /// and `material` is then the defaults.
-    bool describeSurface(std::span<const Shading> shading, Surface::Material& material);
+    bool describeSurface(std::span<const Shading> shading, SurfaceDescription& material);
 
     /// Whether the nearest pass on the chain adds to the frame rather than covering it — the
     /// nearest state set that has a blend function, because `NifOsg` puts a particle system's on

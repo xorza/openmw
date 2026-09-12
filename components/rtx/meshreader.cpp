@@ -8,6 +8,7 @@
 #include <osg/Array>
 #include <osg/Drawable>
 #include <osg/Geometry>
+#include <osg/TriangleIndexFunctor>
 
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -20,6 +21,21 @@ namespace Rtx
 {
     namespace
     {
+        struct TriangleCollector
+        {
+            std::vector<std::uint32_t>* mIndices = nullptr;
+
+            void operator()(unsigned int a, unsigned int b, unsigned int c) const
+            {
+                if (a == b || b == c || a == c)
+                    return;
+
+                mIndices->push_back(a);
+                mIndices->push_back(b);
+                mIndices->push_back(c);
+            }
+        };
+
         struct VertexArrays
         {
             std::span<const osg::Vec3f> mPositions;
@@ -165,6 +181,17 @@ namespace Rtx
         return std::span(base->asVector());
     }
 
+    bool MeshReader::collectTriangles(const osg::Geometry& geometry)
+    {
+        mIndexScratch.clear();
+
+        osg::TriangleIndexFunctor<TriangleCollector> collector;
+        collector.mIndices = &mIndexScratch;
+        geometry.accept(collector);
+
+        return !mIndexScratch.empty();
+    }
+
     bool MeshReader::read(const DrawableRead& read, MeshReading& into)
     {
         const osg::Geometry& geometry = *read.mGeometry;
@@ -190,15 +217,17 @@ namespace Rtx
         // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
         // together, so the pairs found in the bind pose are the pairs.
         const std::chrono::steady_clock::time_point folding = std::chrono::steady_clock::now();
-        const bool folded = mFold.read(geometry, arrays.mPositions, into.mShape);
+        const bool collected = collectTriangles(geometry);
+        if (collected)
+            into.mShape = mFold.fold(arrays.mPositions, mIndexScratch);
         into.mFoldMs = since(folding, std::chrono::steady_clock::now());
 
-        if (!folded)
+        if (!collected)
             return false;
 
         into.mArrays.mPositions = arrays.mPositions;
         into.mArrays.mNormals = arrays.mNormals;
-        into.mArrays.mIndices = mFold.getIndices();
+        into.mArrays.mIndices = mIndexScratch;
 
         into.mArrays.mTexCoords = {};
         const osg::Vec2Array* texCoords = asVec2Array(geometry.getTexCoordArray(0));

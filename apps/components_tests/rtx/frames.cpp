@@ -47,7 +47,7 @@ namespace Rtx
                     Deform::Rig, Testing::addOneBoneRig(mScene, 4));
                 mInstance = mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mWall });
                 Testing::poseByOneBone(mScene, mWall, osg::Matrixf::identity());
-                mRenderer->setScene(Rtx::SceneSlot::world(), mScene, {}, SeaState{});
+                mRenderer->setScene(Rtx::SceneSlot::world(), mScene, {});
             }
 
             /// Moves the wall by its instance and hands the placement over, which goes through the
@@ -55,7 +55,7 @@ namespace Rtx
             void moveTo(float away)
             {
                 mScene.placements().move(mInstance, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
-                mRenderer->placeScene(Rtx::SceneSlot::world(), mScene, SeaState{});
+                mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
             }
 
             /// Moves the wall by its pose instead, which is what a skinned body does and goes
@@ -64,7 +64,7 @@ namespace Rtx
             {
                 mScene.clearPlacement();
                 Testing::poseByOneBone(mScene, mWall, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
-                mRenderer->placeScene(Rtx::SceneSlot::world(), mScene, SeaState{});
+                mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
             }
 
             std::uint32_t finishedHits()
@@ -124,7 +124,7 @@ namespace Rtx
             }
 
             mScene.placements().move(mInstance, osg::Matrixf::translate(0.0f, -1000.0f, 0.0f));
-            mRenderer->extendScene(Rtx::SceneSlot::world(), mScene, {}, SeaState{});
+            mRenderer->extendScene(Rtx::SceneSlot::world(), mScene, {});
 
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
@@ -256,7 +256,7 @@ namespace Rtx
         {
             const Index arrived = mScene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -1200.0f, 0.0f), .mMesh = mWall });
-            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
             // Placed into the copy the first frame is not reading, while that frame is in flight.
@@ -269,7 +269,7 @@ namespace Rtx
             EXPECT_EQ(finishedHits(), sEveryPixel) << "the first wall, before anything moved";
 
             mScene.placements().move(arrived, osg::Matrixf::identity());
-            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
             EXPECT_EQ(finishedHits(), 0u) << "both walls behind the eye, in the copy that grew late";

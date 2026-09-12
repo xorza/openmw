@@ -3,10 +3,12 @@
 #include <cstddef>
 #include <memory>
 
+#include <components/esm3/refnum.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/distantlights.hpp>
 #include <components/rtx/framespend.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/residency.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -28,19 +30,7 @@ namespace Rtx
 namespace MWRender
 {
     struct SceneFrame;
-
-    /// What the mirror reads once, at construction: the two knobs the paging read for the distance's
-    /// statics, which this renderer stands itself, and how far out the world is built.
-    ///
-    /// **Read once, because a frame reads what it was handed.** The reach is one number for the
-    /// ground, the air, the distant lights and the checks; a host that asked the registry per frame
-    /// could answer it differently in each. Changing any of the three needs a restart.
-    struct MirrorSettings
-    {
-        bool mStatics = true;
-        float mMinSize = 0.0f;
-        float mReach = 0.0f;
-    };
+    struct WorldState;
 
     /// The engine's scene graph mirrored into what a ray can meet.
     ///
@@ -55,7 +45,13 @@ namespace MWRender
     class WorldMirror
     {
     public:
-        explicit WorldMirror(const MirrorSettings& settings);
+        /// Reads three settings once: the two knobs the paging read for the distance's statics,
+        /// which this renderer stands itself, and how far out the world is built.
+        ///
+        /// **Once, because a frame reads what it was handed.** The reach is one number for the
+        /// ground, the air, the distant lights and the checks; a host that asked the registry per
+        /// frame could answer it differently in each. Changing any of the three needs a restart.
+        WorldMirror();
 
         /// The resource system the sky's own meshes are loaded through, and the cell ring's models
         /// and images with them. Told once, where the world is attached.
@@ -82,8 +78,9 @@ namespace MWRender
             mRing.setSettled(settled);
         }
 
-        /// What the game says of one reference, on its way to the ring.
-        Rtx::CellRing& getRing() { return mRing; }
+        /// What the game says of one reference, which the content files cannot: a script has
+        /// disabled it, or enabled it again.
+        void setReferenceEnabled(ESM::RefNum refnum, bool enabled) { mRing.setReferenceEnabled(refnum, enabled); }
 
         /// How much world this renderer builds, in units: the ground, the air and the distant
         /// lights are all measured over it.
@@ -106,17 +103,23 @@ namespace MWRender
         /// is made against.
         void settle();
 
-        const Rtx::SceneExtractor& getExtractor() const { return mExtractor; }
-
         const Rtx::SceneDesc& getScene() const { return mScene; }
         Rtx::SceneDesc& getScene() { return mScene; }
 
         /// Where every walk that can reach one graph takes its traversal numbers from.
         Rtx::Traversals& getTraversals() { return mTraversals; }
 
-        /// What the scene holds of the dome, the clouds, the stars and the moons.
-        const Rtx::SkyContent& getSky() const { return mSkyContent; }
-        const Rtx::MoonFaces& getMoonFaces() const { return mMoonFaces; }
+        // Read by the tests and by nothing else.
+        osg::Node::NodeMask getTraversalMask() const { return mExtractor.getTraversalMask(); }
+
+        /// Turns what the game says about this frame's world into what the renderer builds a sky,
+        /// an air and a sea out of: the colours decoded, whether the cell has a sky decided, and
+        /// every reading handed to the one builder that decides what a sun, a room light, an air
+        /// and a moon may be — which is what keeps the game and the harness under the same sky.
+        /// Nothing here touches a device, and nothing here is a decision this host makes on its own.
+        ///
+        /// @param seconds the world's clock, which the sea is animated by.
+        Rtx::WorldReading readWorld(const WorldState& world, float seconds) const;
 
     private:
         /// Shared by everything that can reach one graph — the world's walk and every traced view.

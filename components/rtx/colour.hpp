@@ -9,7 +9,7 @@
 #include <osg/Vec4f>
 #include <osg/Vec4ub>
 
-#include <components/surface/material.hpp>
+#include "surface.hpp"
 
 namespace Rtx
 {
@@ -43,7 +43,7 @@ namespace Rtx
     osg::Vec3f decodeColour(const osg::Vec4ub& encoded);
 
     /// And for what a content file said a surface is, which carries its space in its type.
-    osg::Vec3f decodeColour(const Surface::Colour& encoded);
+    osg::Vec3f decodeColour(const EncodedColour& encoded);
 
     /// The colour half of one block-compressed block: four colours and the texels that chose them.
     /// Eight bytes that every block-compressed format this renderer reads ends in — BC2 and BC3 put

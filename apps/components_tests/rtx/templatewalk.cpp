@@ -1,5 +1,4 @@
 #include <cstddef>
-#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -7,6 +6,7 @@
 #include <osg/Drawable>
 #include <osg/Group>
 #include <osg/LOD>
+#include <osg/Material>
 #include <osg/MatrixTransform>
 #include <osg/Matrixf>
 #include <osg/Sequence>
@@ -14,7 +14,9 @@
 #include <osg/Switch>
 #include <osg/Vec3f>
 
-#include <components/rtx/shading.hpp>
+#include <components/rtx/prepared.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/surface.hpp>
 #include <components/rtx/templatewalk.hpp>
 
 #include "extractor/fixture.hpp"
@@ -23,34 +25,18 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// What one drawable arrived as.
-        struct Taken
-        {
-            const osg::Drawable* mDrawable = nullptr;
-            std::vector<const osg::StateSet*> mChain;
-            osg::Vec3f mOrigin;
-        };
-
-        struct Record final : TemplateSink
-        {
-            std::vector<Taken> mTaken;
-
-            void take(
-                const osg::Drawable& drawable, std::span<const Shading> shading, const osg::Matrixf& local) override
-            {
-                Taken taken{ .mDrawable = &drawable, .mOrigin = osg::Vec3f() * local };
-                for (const Shading& link : shading)
-                    taken.mChain.push_back(link.mStateSet);
-                mTaken.push_back(std::move(taken));
-            }
-        };
-
         /// The walk reaches what the frame's walk reaches of a model that stands still, and hands
         /// each drawable the chain and the transform the frame would have composed for it.
         TEST(RtxTemplateWalkTest, aTemplateIsWalkedByTheFrameWalksRulesForWhatStandsStill)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
             osg::StateSet* rootState = root->getOrCreateStateSet();
+
+            // A colour on the root, so a part read under it shows the root's state set was in
+            // force at the drawable.
+            osg::ref_ptr<osg::Material> tint = new osg::Material;
+            tint->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.25f, 0.5f, 0.75f, 1.0f));
+            rootState->setAttribute(tint);
 
             // Ten units along x, over everything below.
             osg::ref_ptr<osg::MatrixTransform> moved
@@ -89,28 +75,34 @@ namespace Rtx::Testing
             collision->setNodeMask(hidden);
             root->addChild(collision);
 
-            Record record;
+            PreparedModel model;
             TemplateWalk walk;
-            walk.walk(*root, ~hidden, record);
+            walk.read(*root, ~hidden, model);
 
-            ASSERT_EQ(record.mTaken.size(), 4u) << "the branch that is on, the frame shown, and both levels";
+            ASSERT_EQ(model.mParts.size(), 4u) << "the branch that is on, the frame shown, and both levels";
+            EXPECT_EQ(model.mPositions.size(), 16u) << "four quads' corners, appended in turn";
 
-            EXPECT_EQ(record.mTaken[0].mDrawable, on.get());
-            EXPECT_EQ(record.mTaken[0].mChain, (std::vector<const osg::StateSet*>{ rootState, onState }))
-                << "the root's state set and the drawable's own, nearest last";
-            EXPECT_EQ(record.mTaken[0].mOrigin, osg::Vec3f(10.0f, 0.0f, 0.0f)) << "moved by the transform above it";
+            EXPECT_EQ(model.mParts[0].mDrawable, on.get());
+            EXPECT_EQ(model.mParts[0].mMaterial.mKey, onState) << "held under the drawable's own state set";
+            ASSERT_TRUE(model.mParts[0].mMaterial.mDescribed.has_value());
+            EXPECT_EQ(model.mParts[0].mMaterial.mDescribed->mDiffuseColour, (EncodedColour{ 0.25f, 0.5f, 0.75f }))
+                << "and the root's state set was in force at it";
+            EXPECT_EQ(osg::Vec3f() * model.mParts[0].mLocal, osg::Vec3f(10.0f, 0.0f, 0.0f))
+                << "moved by the transform above it";
+            EXPECT_EQ(model.mParts[0].mVertices, (Rtx::Run{ .mOffset = 0, .mCount = 4 }));
 
-            EXPECT_EQ(record.mTaken[1].mDrawable, second.get()) << "the frame the sequence stands on, unstepped";
-            EXPECT_EQ(record.mTaken[1].mChain, std::vector<const osg::StateSet*>{ rootState });
+            EXPECT_EQ(model.mParts[1].mDrawable, second.get()) << "the frame the sequence stands on, unstepped";
+            EXPECT_EQ(model.mParts[1].mMaterial.mKey, rootState) << "nearest last, and the root is all there is";
+            EXPECT_EQ(model.mParts[1].mVertices, (Rtx::Run{ .mOffset = 4, .mCount = 4 }));
 
-            EXPECT_EQ(record.mTaken[2].mDrawable, near.get());
-            EXPECT_EQ(record.mTaken[3].mDrawable, far.get());
+            EXPECT_EQ(model.mParts[2].mDrawable, near.get());
+            EXPECT_EQ(model.mParts[3].mDrawable, far.get());
 
-            for (const Taken& taken : record.mTaken)
+            for (const PreparedPart& part : model.mParts)
             {
-                EXPECT_NE(taken.mDrawable, off.get()) << "a branch that is off is not in the world";
-                EXPECT_NE(taken.mDrawable, first.get()) << "a frame the flipbook is not on is not shown";
-                EXPECT_NE(taken.mDrawable, collision.get()) << "what the loader hid is not walked";
+                EXPECT_NE(part.mDrawable, off.get()) << "a branch that is off is not in the world";
+                EXPECT_NE(part.mDrawable, first.get()) << "a frame the flipbook is not on is not shown";
+                EXPECT_NE(part.mDrawable, collision.get()) << "what the loader hid is not walked";
             }
 
             // **Nothing was stepped.** A frame's walk moves a flipbook's clock; this one may not,

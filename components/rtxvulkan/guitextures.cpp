@@ -110,15 +110,6 @@ namespace Rtx
         image.transition(commands, Use::sCopyWrite, Use::sFragmentSample);
     }
 
-    void GuiTextures::write(const GuiSlot slot, const GuiRegion& region, std::span<const std::uint8_t> rgba)
-    {
-        const std::span<std::uint8_t> into = lend(slot, region);
-        assert(rgba.size() == into.size() && "the region's own rows, four bytes a pixel, tightly packed");
-
-        std::memcpy(into.data(), rgba.data(), into.size());
-        send(slot);
-    }
-
     VkDeviceSize GuiTextures::reserve(VkDeviceSize bytes)
     {
         Buffer& arena = mStaging[mArena];

@@ -112,19 +112,18 @@ namespace Rtx
         bool isValidating() const override;
         void resetHistory() override { mDenoiserStale = mAirStale = true; }
 
-        void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures,
-            const SeaState& sea) override;
-        void extendScene(
-            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea) override;
+        void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) override;
+        void extendScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived) override;
         SceneHeld describeHeld(SceneSlot slot) const override;
         void dropTextures(SceneSlot slot, std::span<const Index> textures) override;
-        void placeScene(SceneSlot slot, const SceneDesc& scene, const SeaState& sea) override;
+        void placeScene(SceneSlot slot, const SceneDesc& scene) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
         void setUpscale(Upscale upscale) override;
         Upscale getUpscale() const override { return mUpscaling.mMode; }
 
+        void setSea(const SeaState& sea) override;
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
         FrameExtents getExtents() const override;
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
@@ -135,7 +134,6 @@ namespace Rtx
         void dropViewScene(SceneSlot scene) override;
 
         GuiSlot addGuiTexture(std::uint32_t width, std::uint32_t height) override;
-        void writeGuiTexture(GuiSlot texture, const GuiRegion& region, std::span<const std::uint8_t> rgba) override;
         std::span<std::uint8_t> lendGuiTexture(GuiSlot texture, const GuiRegion& region) override;
         void sendGuiTexture(GuiSlot texture) override;
         void dropGuiTexture(GuiSlot texture) override;

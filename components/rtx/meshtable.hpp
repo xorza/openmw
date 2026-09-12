@@ -21,9 +21,19 @@ namespace Rtx
     /// Every mesh the scene holds, and the shared buffers its triangles live in. One type, because
     /// a mesh that deforms has to give its deformer back between the free list and the two
     /// allocators. The deformers are borrowed: a rig is shared by every mesh built from one skin.
-    class MeshTable : public SweptTable<MeshRange>
+    class MeshTable : protected SlotRows<MeshRange>
     {
     public:
+        /// The half of `SlotRows` a reader and a sweep use; `take`, `at` and `sweep` stay this
+        /// table's own, because a row goes only through `add` and `sweep`.
+        using SlotRows::drop;
+        using SlotRows::getLiveCount;
+        using SlotRows::getRows;
+        using SlotRows::hasDroppedHolds;
+        using SlotRows::hold;
+        using SlotRows::mark;
+        using SlotRows::size;
+
         /// How many vertices one block of the vertex attribute buffers holds, and how many indices
         /// one block of the index buffer does — the shaders' own numbers, because a shader resolves
         /// a run back to its block by dividing by the same figure.

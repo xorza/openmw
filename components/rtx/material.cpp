@@ -14,11 +14,11 @@ namespace Rtx
     {
         switch (mAlphaMode)
         {
-            case Surface::AlphaMode::Opaque:
+            case AlphaMode::Opaque:
                 return 0.0f;
-            case Surface::AlphaMode::Cutout:
+            case AlphaMode::Cutout:
                 return mAlphaRef;
-            case Surface::AlphaMode::Blend:
+            case AlphaMode::Blend:
                 return mAlphaRef > 0.0f ? mAlphaRef : sBlendCutoff;
         }
 

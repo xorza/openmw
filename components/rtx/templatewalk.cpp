@@ -1,22 +1,45 @@
 #include "templatewalk.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <span>
+#include <utility>
+#include <vector>
 
 #include <osg/Drawable>
 #include <osg/Sequence>
 #include <osg/StateSet>
 #include <osg/Transform>
 
+#include "materialresolver.hpp"
+#include "prepared.hpp"
+#include "runs.hpp"
 #include "worlddescent.hpp"
 
 namespace Rtx
 {
+    namespace
+    {
+        /// Appends `values` to `into` and answers the run they landed in. One statement, because a
+        /// run that named where it started and a count taken from another array is exactly what
+        /// `Rtx::Run` exists to stop.
+        template <class T>
+        Run appended(std::vector<T>& into, std::span<const T> values)
+        {
+            const Run run{ .mOffset = static_cast<std::uint32_t>(into.size()),
+                .mCount = static_cast<std::uint32_t>(values.size()) };
+            into.insert(into.end(), values.begin(), values.end());
+
+            return run;
+        }
+    }
+
     TemplateWalk::TemplateWalk()
         : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
     {
     }
 
-    void TemplateWalk::walk(const osg::Node& root, const osg::Node::NodeMask mask, TemplateSink& into)
+    void TemplateWalk::read(const osg::Node& root, const osg::Node::NodeMask mask, PreparedModel& into)
     {
         mInto = &into;
         mHere = osg::Matrix();
@@ -68,9 +91,36 @@ namespace Rtx
         if (const osg::StateSet* own = drawable.getStateSet())
             pushShading(*own);
 
-        mInto->take(drawable, mShading, osg::Matrixf(mHere));
+        take(drawable);
 
         mShading.resize(held);
+    }
+
+    void TemplateWalk::take(const osg::Drawable& drawable)
+    {
+        const DrawableRead read = readDrawable(drawable, mKinds.of(drawable));
+        if (read.mGeometry == nullptr)
+            return;
+
+        MeshReading reading;
+        if (!mMeshes.read(read, reading))
+            return;
+
+        PreparedModel& into = *mInto;
+
+        PreparedPart part;
+        part.mDrawable = &drawable;
+        part.mMaterial = MaterialResolver::read(mShading, mAlpha);
+        part.mLocal = osg::Matrixf(mHere);
+        part.mShape = reading.mShape;
+
+        part.mVertices = appended(into.mPositions, reading.mArrays.mPositions);
+        part.mNormals = appended(into.mNormals, reading.mArrays.mNormals);
+        part.mTexCoords = appended(into.mTexCoords, reading.mArrays.mTexCoords);
+        part.mColours = appended(into.mColours, reading.mArrays.mColours);
+        part.mIndices = appended(into.mIndices, reading.mArrays.mIndices);
+
+        into.mParts.push_back(std::move(part));
     }
 
     /// The frame the sequence stands on, and no step. The frame's walk runs a flipbook's clock

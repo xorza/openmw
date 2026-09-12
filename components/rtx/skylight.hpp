@@ -46,8 +46,8 @@ namespace Rtx
         /// and that neither host has to give.
         osg::Vec3f mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
-        /// How much of the sun is over the horizon — `Sky::sunShareAt`, which alone answers "is
-        /// there a sun".
+        /// How much of the sun is over the horizon — `sunShareAt`, which alone answers "is there
+        /// a sun".
         float mSunShare = 0.0f;
 
         /// How much of it a layer standing above the ground still has — `sunShareAloft`. A cloud
@@ -114,8 +114,33 @@ namespace Rtx
     /// the camera would cast a shadow that moved with it.
     inline constexpr float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
 
+    /// How much of the sun is over the horizon at `hour`.
+    ///
+    /// Morrowind's own two curves — linear in over the first half of the sunrise window, squared out
+    /// across the whole of dusk — with the night that the engine states separately folded in, so the
+    /// one number is true at every hour rather than at the ones the caller remembered to check.
+    ///
+    /// The same arithmetic `MWWorld::WeatherManager` runs for the disc's alpha, spelled here for
+    /// the sunlight and for the deck that keeps the sun after the ground has lost it
+    /// (`sunShareAloft`).
+    float sunShareAt(float hour, const Sky::TimeOfDaySettings& times);
+
+    /// How fast the disc's elevation changes near either end of the day, in radians per hour.
+    ///
+    /// **What a layer standing above the ground has to convert its own horizon into.** Morrowind's
+    /// sunset is a clock and not a horizon — `sunShareAt` ramps on the hour and the weather manager
+    /// puts the disc level at exactly `mNightStart` — so nothing anywhere takes an elevation, and
+    /// something that keeps the sun a fraction of a degree longer has to say how long that is in
+    /// hours instead.
+    ///
+    /// Constant, because the disc's height is `400 - |east|` and the east-west swing is linear in
+    /// the hour: the elevation runs straight into the horizon rather than curving into it, which is
+    /// the one place Morrowind's arc is kinder than a real one. Eight degrees an hour over the
+    /// shipped fourteen-hour day.
+    float sunDescentPerHour(const Sky::TimeOfDaySettings& times);
+
     /// How much of the sun a layer standing over the ground still has at `hour`. The engine's
-    /// sunset is a clock and not a horizon: `Sky::sunShareAt` ramps on the hour and the weather
+    /// sunset is a clock and not a horizon: `sunShareAt` ramps on the hour and the weather
     /// manager puts the disc level with the horizon at exactly `mNightStart`, so a layer that keeps
     /// the sun past the ground's horizon is handed a different hour instead of a lower one. The
     /// shift is the dip a layer that high sees, over the time the disc takes to fall it: 0.718

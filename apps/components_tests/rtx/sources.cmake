@@ -17,7 +17,6 @@ set(RTX_TEST_FILES
     rtx/computepipeline.cpp
     rtx/colour.cpp
     rtx/device.cpp
-    rtx/deviceprofile.cpp
     rtx/dispatch.cpp
     rtx/distantlights.cpp
     rtx/dlss.cpp
@@ -50,6 +49,7 @@ set(RTX_TEST_FILES
     rtx/offscreentrace.cpp
     rtx/worker.cpp
     rtx/parallel.cpp
+    rtx/physicaldevice.cpp
     rtx/pipelinecache.cpp
     rtx/probe.cpp
     rtx/mirroridentity.cpp
@@ -80,6 +80,8 @@ set(RTX_TEST_FILES
     rtx/spritelistsize.cpp
     rtx/statistics.hpp
     rtx/structurestorage.cpp
+    rtx/sun.cpp
+    rtx/surface.cpp
     rtx/terraincomposite.cpp
     rtx/templatewalk.cpp
     rtx/testtexture.hpp
@@ -110,7 +112,12 @@ set(RTX_TEST_FILES
     rtxtool/options.cpp
     rtxtool/run.cpp
     rtxtool/verify.cpp
-    sky/sun.cpp
     sky/timeofday.cpp
     sceneutil/localtoworld.cpp
+)
+
+# Reads a NIF through upstream's loader, whose headers are not warning-free under
+# `OPENMW_RTX_COMPILE_OPTIONS`, so it is compiled with upstream's flags.
+set(RTX_TEST_FILES_UPSTREAM
+    rtx/nifsurface.cpp
 )

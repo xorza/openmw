@@ -89,14 +89,15 @@ namespace Rtx
         TEST(RtxReconstructionTest, everyPresetAndDenoiserHasANameThatReadsBack)
         {
             for (const Preset preset : { Preset::Default, Preset::D, Preset::E })
-                EXPECT_EQ(presetNamed(presetName(preset)), preset) << "round trip through " << presetName(preset);
+                EXPECT_EQ(sPresetNames.named(sPresetNames.name(preset)), preset)
+                    << "round trip through " << sPresetNames.name(preset);
 
-            EXPECT_EQ(presetNamed("D"), std::nullopt) << "spelled as the SDK's letter and not as a capital";
-            EXPECT_EQ(presetNamed("transformer"), std::nullopt) << "refused rather than defaulted";
+            EXPECT_EQ(sPresetNames.named("D"), std::nullopt) << "spelled as the SDK's letter and not as a capital";
+            EXPECT_EQ(sPresetNames.named("transformer"), std::nullopt) << "refused rather than defaulted";
 
             // Distinct, so a report cannot say two things with one word.
-            EXPECT_NE(denoiserName(Denoiser::None), denoiserName(Denoiser::Wavelet));
-            EXPECT_NE(denoiserName(Denoiser::Wavelet), denoiserName(Denoiser::RayReconstruction));
+            EXPECT_NE(sDenoiserNames.name(Denoiser::None), sDenoiserNames.name(Denoiser::Wavelet));
+            EXPECT_NE(sDenoiserNames.name(Denoiser::Wavelet), sDenoiserNames.name(Denoiser::RayReconstruction));
         }
     }
 }

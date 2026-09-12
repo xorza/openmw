@@ -20,7 +20,6 @@
 
 namespace Rtx
 {
-    class Graveyard;
     class CommandPool;
     class Device;
 
@@ -33,15 +32,17 @@ namespace Rtx
     class WavePass
     {
     public:
-        /// @param pool used by `describe`, which is not on the frame path. Held, because a sea state
-        ///        can arrive at any time.
+        /// Draws the amplitudes of `SeaState{}` and synthesises the first frame's tiles. Submits and
+        /// waits.
         WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
 
-        /// Draws the amplitudes for a sea state, replacing whatever was drawn before. Submits and
-        /// waits. Does nothing where the sea is the one already described.
-        /// @param graveyard where the spectrum this replaces goes. A frame in flight may still be
-        ///        synthesising from it, which is what a weather turning the wind makes happen.
-        void describe(const SeaState& sea, Graveyard& graveyard);
+        /// Draws the amplitudes for another sea, replacing whatever was drawn before. Submits and
+        /// waits, and frees the spectrum it replaces, so nothing may be in flight: `Renderer::setSea`
+        /// waits the frames out first.
+        void describe(const SeaState& sea);
+
+        /// What the amplitudes were last drawn for.
+        const SeaState& getSea() const { return mSea; }
 
         /// Turns the phases to `seconds` and rebuilds every texture and every level from them,
         /// leaving each in `VK_IMAGE_LAYOUT_GENERAL` ordered against a sampled read. A cell with no
@@ -109,10 +110,7 @@ namespace Rtx
 
         std::array<Tile, Shaders::WAVE_CASCADES> mTiles;
 
-        /// What `describe` last drew for, so a placement that changed nothing about the water
-        /// redraws nothing.
         SeaState mSea;
-        bool mDrawn = false;
 
         float mSlope = 0.0f;
         WaveCurvature mCurvature;

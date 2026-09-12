@@ -2,9 +2,10 @@
 
 #include <gtest/gtest.h>
 
-#include <components/sky/sun.hpp>
+#include <components/rtx/skylight.hpp>
+#include <components/sky/timeofday.hpp>
 
-namespace Sky
+namespace Rtx
 {
     namespace
     {
@@ -14,9 +15,9 @@ namespace Sky
         /// planted before any test runs and added to by whichever of them opens the real
         /// installation — so a test reading it is reading a configuration rather than its own
         /// premise.
-        TimeOfDaySettings vanillaHours()
+        Sky::TimeOfDaySettings vanillaHours()
         {
-            TimeOfDaySettings times{};
+            Sky::TimeOfDaySettings times{};
             times.mNightEnd = 6.0f;
             times.mDayStart = 8.0f;
             times.mDayEnd = 18.0f;
@@ -36,7 +37,7 @@ namespace Sky
         /// is constant and the two ends have to agree.
         TEST(RtxSunDescentTest, theDiscFallsAtTheRateTheWeatherManagersArcWalksAt)
         {
-            const TimeOfDaySettings times = vanillaHours();
+            const Sky::TimeOfDaySettings times = vanillaHours();
             const float rate = sunDescentPerHour(times);
 
             const auto elevationAt = [&times](float hour) {
@@ -59,7 +60,7 @@ namespace Sky
             EXPECT_NEAR(osg::RadiansToDegrees(rate), 8.04f, 0.01f);
 
             // A day with no length has no rate, rather than a division by one.
-            TimeOfDaySettings still = times;
+            Sky::TimeOfDaySettings still = times;
             still.mNightStart = still.mNightEnd;
             EXPECT_EQ(sunDescentPerHour(still), 0.0f);
         }
@@ -73,7 +74,7 @@ namespace Sky
         /// halves are folded here: what is nought lights nothing, casts nothing and draws nothing.
         TEST(RtxSunShareTest, thereIsNoSunAtNightAndItLandsOnTheHorizonAtEitherEnd)
         {
-            const TimeOfDaySettings times = vanillaHours();
+            const Sky::TimeOfDaySettings times = vanillaHours();
             const float sunrise = 0.5f * (times.mDayStart - times.mNightEnd);
             const float dusk = times.mNightStart - times.mDayEnd;
             ASSERT_GT(sunrise, 0.0f);
@@ -104,7 +105,7 @@ namespace Sky
 
             // Never past one, whatever a file says the sunrise is worth. The engine's dawn ramp is
             // unbounded and it did not matter while it was only an alpha; it scales the sunlight now.
-            TimeOfDaySettings slow = times;
+            Sky::TimeOfDaySettings slow = times;
             slow.mDayStart = slow.mNightEnd + 8.0f;
             for (float hour = slow.mNightEnd; hour < slow.mNightStart; hour += 0.25f)
                 EXPECT_LE(sunShareAt(hour, slow), 1.0f) << "at hour " << hour;

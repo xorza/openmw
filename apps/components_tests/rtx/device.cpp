@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -6,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/instance.hpp>
@@ -33,7 +35,7 @@ namespace Rtx
 
             // Its own instance rather than the harness's, because what is being asserted is what an
             // unvalidated one carries — and the harness's comes with a device this does not need.
-            const Instance instance{ InstanceOptions{} };
+            const Instance instance{ ValidationOptions{}, std::span<const char* const>{} };
 
             EXPECT_EQ(instance.getValidationLog(), nullptr);
 #ifdef OPENMW_RTX_DEBUG_NAMES

@@ -45,32 +45,12 @@ namespace Rtx
     /// read.
     MeanTexel meanTexel(const osg::Image& image);
 
-    /// What OpenSceneGraph decoded a texture into — the content's own format, where
-    /// `TextureFormat` holds only the ones this renderer can take, because a file the uploader
-    /// refuses is still a file the report has to name.
-    enum class ImageFormat : std::uint8_t
-    {
-        Bc1,
-        Bc2,
-        Bc3,
-        Rgb8,
-        Rgba8,
-        Bgra8,
-        Luminance,
-        LuminanceAlpha,
-
-        /// Anything else, and there is one count of them rather than one each.
-        Unnamed,
-    };
-
-    constexpr std::size_t sImageFormatCount = static_cast<std::size_t>(ImageFormat::Unnamed) + 1;
-
     /// Which format `image` arrived in — the one place a `GLenum` decides anything, so the
     /// uploader and the report cannot disagree.
-    ImageFormat readFormat(const osg::Image& image);
+    TextureFormat readFormat(const osg::Image& image);
 
     /// What `format` is called, for a report to print.
-    std::string_view nameOf(ImageFormat format);
+    std::string_view nameOf(TextureFormat format);
 
     /// Writes tightly packed 8-bit RGBA, top row first, as a PNG. The renderer writes row zero at
     /// the top and OSG's images start at the bottom, so this flips on the way through. Throws when

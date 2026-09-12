@@ -16,13 +16,13 @@ namespace MWRender
         /// where the player stands traced a boot thirteen units from the eye.
         TEST(RtxWorldMirrorTest, thePlayerIsWalkedOnlyForACameraThatIsTheirEye)
         {
-            WorldMirror mirror(MirrorSettings{});
+            WorldMirror mirror;
 
-            const osg::Node::NodeMask playing = mirror.getExtractor().getTraversalMask();
+            const osg::Node::NodeMask playing = mirror.getTraversalMask();
             EXPECT_NE(playing & SceneUtil::Mask_Player, 0u) << "a game somebody is playing draws them";
 
             mirror.setShowsPlayer(false);
-            const osg::Node::NodeMask watching = mirror.getExtractor().getTraversalMask();
+            const osg::Node::NodeMask watching = mirror.getTraversalMask();
             EXPECT_EQ(watching & SceneUtil::Mask_Player, 0u);
 
             // **And nothing else moved with it.** The mask carries the sky, the sun, the duplicate
@@ -31,7 +31,7 @@ namespace MWRender
             EXPECT_EQ(watching, playing & ~static_cast<osg::Node::NodeMask>(SceneUtil::Mask_Player));
 
             mirror.setShowsPlayer(true);
-            EXPECT_EQ(mirror.getExtractor().getTraversalMask(), playing) << "and it comes back";
+            EXPECT_EQ(mirror.getTraversalMask(), playing) << "and it comes back";
         }
     }
 }

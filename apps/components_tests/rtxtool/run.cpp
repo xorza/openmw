@@ -19,41 +19,37 @@ namespace RtxTool
 {
     namespace
     {
-        Viewpoint makeSpot()
+        Rtx::Stop makeSpot()
         {
-            return Viewpoint{
-                .mView = "balmora-mages-guild",
+            return Rtx::Stop{
+                .mName = "balmora-mages-guild",
                 .mNote = "a guild interior, dense with clutter",
-                .mCell = "Balmora, Guild of Mages",
-                .mAt = { .mEye = osg::Vec3f(-283.29843f, -671.29584f, -580.77014f),
-                    .mLook = osg::Vec3f(503.60007f, -1265.436f, -747.46844f),
-                    .mHour = 12.0f,
-                    .mWeather = "Clear" },
+                .mStand = { .mCell = "Balmora, Guild of Mages",
+                    .mEye = osg::Vec3f(-283.29843f, -671.29584f, -580.77014f),
+                    .mLook = osg::Vec3f(503.60007f, -1265.436f, -747.46844f) },
+                .mSky = { .mHour = 12.0f, .mDay = 0, .mWeather = "Clear" },
             };
         }
 
         TEST(RtxViewpointTest, aSpotSaysWhichWayItFaces)
         {
             const auto facing = [](float x, float y, float z) {
-                Viewpoint spot;
-                spot.mAt.mEye = osg::Vec3f();
-                spot.mAt.mLook = osg::Vec3f(x, y, z);
-                return spot;
+                return Rtx::Stand{ .mEye = osg::Vec3f(), .mLook = osg::Vec3f(x, y, z) };
             };
 
             // Due north, and the one case the swapped `atan2` also gets right.
-            EXPECT_NEAR(facing(0.0f, 100.0f, 0.0f).getBearing(), 0.0f, 1e-3f);
-            EXPECT_NEAR(facing(100.0f, 100.0f, 0.0f).getBearing(), 45.0f, 1e-3f) << "north-east";
-            EXPECT_NEAR(facing(100.0f, 0.0f, 0.0f).getBearing(), 90.0f, 1e-3f) << "due east";
+            EXPECT_NEAR(bearingOf(facing(0.0f, 100.0f, 0.0f)), 0.0f, 1e-3f);
+            EXPECT_NEAR(bearingOf(facing(100.0f, 100.0f, 0.0f)), 45.0f, 1e-3f) << "north-east";
+            EXPECT_NEAR(bearingOf(facing(100.0f, 0.0f, 0.0f)), 90.0f, 1e-3f) << "due east";
             // Wrapped rather than negative: a compass has no -90.
-            EXPECT_NEAR(facing(-100.0f, 0.0f, 0.0f).getBearing(), 270.0f, 1e-3f) << "due west";
+            EXPECT_NEAR(bearingOf(facing(-100.0f, 0.0f, 0.0f)), 270.0f, 1e-3f) << "due west";
 
             // Equal parts along and up is forty-five degrees, and the sign is up rather than down.
-            EXPECT_NEAR(facing(0.0f, 100.0f, 100.0f).getClimb(), 45.0f, 1e-3f);
-            EXPECT_NEAR(facing(0.0f, 100.0f, 0.0f).getClimb(), 0.0f, 1e-3f);
-            EXPECT_NEAR(facing(0.0f, 100.0f, -100.0f).getClimb(), -45.0f, 1e-3f);
+            EXPECT_NEAR(climbOf(facing(0.0f, 100.0f, 100.0f)), 45.0f, 1e-3f);
+            EXPECT_NEAR(climbOf(facing(0.0f, 100.0f, 0.0f)), 0.0f, 1e-3f);
+            EXPECT_NEAR(climbOf(facing(0.0f, 100.0f, -100.0f)), -45.0f, 1e-3f);
             // Straight down, where the horizontal part is zero and `asin` is handed exactly -1.
-            EXPECT_NEAR(facing(0.0f, 0.0f, -100.0f).getClimb(), -90.0f, 1e-3f);
+            EXPECT_NEAR(climbOf(facing(0.0f, 0.0f, -100.0f)), -90.0f, 1e-3f);
         }
 
         /// The readable line, which is the one nobody parses and everybody reads.
@@ -66,9 +62,9 @@ namespace RtxTool
                 "Clear\n");
 
             // A quarter past five in the evening, because a decimal hour is not a time anyone reads.
-            Viewpoint evening = makeSpot();
-            evening.mAt.mHour = 17.25f;
-            evening.mAt.mWeather = "Ashstorm";
+            Rtx::Stop evening = makeSpot();
+            evening.mSky.mHour = 17.25f;
+            evening.mSky.mWeather = "Ashstorm";
             EXPECT_NE(describeSpot(evening).find("17:15, Ashstorm"), std::string::npos) << describeSpot(evening);
         }
 
@@ -84,7 +80,7 @@ namespace RtxTool
         /// to the unit is a different frame when the camera is a hand's width from a wall.
         TEST(RtxViewpointTest, theBlockItPrintsIsTheBlockTheViewFileReads)
         {
-            const Viewpoint spot = makeSpot();
+            const Rtx::Stop spot = makeSpot();
 
             const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-test.cfg";
             {
@@ -92,28 +88,28 @@ namespace RtxTool
                 out << describeSpot(spot) << describeBlock(spot);
             }
 
-            const std::vector<View> read = loadViews(file);
+            const std::vector<Rtx::Stop> read = loadViews(file);
             std::filesystem::remove(file);
 
             ASSERT_EQ(read.size(), 1u);
-            EXPECT_EQ(read.front().mName, spot.mView);
+            EXPECT_EQ(read.front().mName, spot.mName);
             EXPECT_EQ(read.front().mNote, spot.mNote);
-            EXPECT_EQ(read.front().mCell, spot.mCell);
-            ASSERT_TRUE(read.front().mOrigin.has_value());
-            ASSERT_TRUE(read.front().mTarget.has_value());
-            EXPECT_EQ(*read.front().mOrigin, spot.mAt.mEye);
-            EXPECT_EQ(*read.front().mTarget, spot.mAt.mLook);
+            EXPECT_EQ(read.front().mStand.mCell, spot.mStand.mCell);
+            ASSERT_TRUE(read.front().mStand.mEye.has_value());
+            ASSERT_TRUE(read.front().mStand.mLook.has_value());
+            EXPECT_EQ(*read.front().mStand.mEye, *spot.mStand.mEye);
+            EXPECT_EQ(*read.front().mStand.mLook, *spot.mStand.mLook);
 
             // **Clear noon writes neither condition**, so a view pasted from an ordinary window is
             // still free to be measured under whatever a run names.
-            EXPECT_FALSE(read.front().mHour.has_value()) << describeBlock(spot);
-            EXPECT_FALSE(read.front().mWeather.has_value()) << describeBlock(spot);
+            EXPECT_FALSE(read.front().mSky.mHour.has_value()) << describeBlock(spot);
+            EXPECT_FALSE(read.front().mSky.mWeather.has_value()) << describeBlock(spot);
 
             // **And anything else writes both**, because the light is most of what the frame is: a
             // block pasted from a window flown at dawn in a storm has to bring both with it.
-            Viewpoint dawn = spot;
-            dawn.mAt.mHour = 6.5f;
-            dawn.mAt.mWeather = "Thunderstorm";
+            Rtx::Stop dawn = spot;
+            dawn.mSky.mHour = 6.5f;
+            dawn.mSky.mWeather = "Thunderstorm";
 
             const std::filesystem::path second
                 = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-dawn.cfg";
@@ -122,26 +118,28 @@ namespace RtxTool
                 out << describeSpot(dawn) << describeBlock(dawn);
             }
 
-            const std::vector<View> back = loadViews(second);
+            const std::vector<Rtx::Stop> back = loadViews(second);
             std::filesystem::remove(second);
 
             ASSERT_EQ(back.size(), 1u);
-            ASSERT_TRUE(back.front().mHour.has_value());
-            EXPECT_EQ(*back.front().mHour, 6.5f);
-            ASSERT_TRUE(back.front().mWeather.has_value());
-            EXPECT_EQ(*back.front().mWeather, "Thunderstorm");
+            ASSERT_TRUE(back.front().mSky.mHour.has_value());
+            EXPECT_EQ(*back.front().mSky.mHour, 6.5f);
+            ASSERT_TRUE(back.front().mSky.mWeather.has_value());
+            EXPECT_EQ(*back.front().mSky.mWeather, "Thunderstorm");
         }
 
-        /// A window opened by `--cell` has no view to replace, so the block names one after the cell.
+        /// A window opened by `--cell` has no view to replace: `stopFor` names the stop after the
+        /// cell, and the block opens under a slug of that.
         ///
         /// It still has to load: an id the file cannot take, or a missing note line that the parser
         /// treats as a missing field, would make the printed block unpasteable in exactly the case
         /// where there is nothing to paste over.
         TEST(RtxViewpointTest, aWindowOpenedWithoutAViewStillPrintsOne)
         {
-            Viewpoint spot = makeSpot();
-            spot.mView.clear();
-            spot.mNote.clear();
+            Rtx::Stop bare = makeSpot();
+            bare.mName.clear();
+            bare.mNote.clear();
+            const Rtx::Stop spot = stopFor(bare, std::nullopt, std::nullopt, 0);
 
             const std::string block = describeBlock(spot);
             EXPECT_EQ(block.find("[balmora-guild-of-mages]"), 0u) << block;
@@ -154,13 +152,13 @@ namespace RtxTool
                 out << describeSpot(spot) << block;
             }
 
-            const std::vector<View> read = loadViews(file);
+            const std::vector<Rtx::Stop> read = loadViews(file);
             std::filesystem::remove(file);
 
             ASSERT_EQ(read.size(), 1u);
             EXPECT_EQ(read.front().mName, "balmora-guild-of-mages");
             EXPECT_EQ(read.front().mNote, "");
-            EXPECT_EQ(read.front().mCell, spot.mCell);
+            EXPECT_EQ(read.front().mStand.mCell, spot.mStand.mCell);
         }
     }
 
@@ -234,7 +232,7 @@ namespace RtxTool
         /// finds out is the one somebody started and walked away from.
         TEST(RtxBenchSuiteTest, everySuiteNamesViewsThatExist)
         {
-            const std::vector<View> views = loadViews(resources() / "views.cfg");
+            const std::vector<Rtx::Stop> views = loadViews(resources() / "views.cfg");
             const std::vector<BenchSuite> suites = loadSuites(resources() / "benches.cfg");
 
             EXPECT_NE(findSuite(suites, "default"), nullptr) << "`bench` with no arguments runs [default]";
@@ -249,7 +247,7 @@ namespace RtxTool
     namespace
     {
         /// Writes `text` to a scratch view file, reads it back, and removes the file.
-        std::vector<View> readViews(std::string_view text)
+        std::vector<Rtx::Stop> readViews(std::string_view text)
         {
             const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-route-test.cfg";
             {
@@ -273,7 +271,7 @@ namespace RtxTool
         /// which a benchmark reports as a different number rather than as an error.
         TEST(RtxViewsTest, aRouteTakesItsDestinationFromTheViewItNames)
         {
-            const std::vector<View> read = readViews(R"(
+            const std::vector<Rtx::Stop> read = readViews(R"(
 [start]
 cell = -3,-2
 pos = 100, 200, 300
@@ -288,20 +286,20 @@ look = 8292, 300, 700
 )");
 
             ASSERT_EQ(read.size(), std::size_t{ 2 });
-            const View* start = findView(read, "start");
+            const Rtx::Stop* start = findView(read, "start");
             ASSERT_NE(start, nullptr);
-            ASSERT_TRUE(start->mRoute.has_value());
+            ASSERT_TRUE(start->mSchedule.mRoute.has_value());
 
             // The destination view is resolved when the file is read, so what a route carries is
             // where it ends rather than the name of a place to look up later.
-            EXPECT_EQ(start->mRoute->mTo, osg::Vec3f(8292.0f, 200.0f, 700.0f));
-            EXPECT_EQ(start->mRoute->mLookTo, osg::Vec3f(8292.0f, 300.0f, 700.0f));
-            EXPECT_EQ(start->mRoute->mSpeed, 1500.0f);
+            EXPECT_EQ(start->mSchedule.mRoute->mTo, osg::Vec3f(8292.0f, 200.0f, 700.0f));
+            EXPECT_EQ(start->mSchedule.mRoute->mLookTo, osg::Vec3f(8292.0f, 300.0f, 700.0f));
+            EXPECT_EQ(start->mSchedule.mRoute->mSpeed, 1500.0f);
 
             // The destination is an ordinary view and goes nowhere itself.
-            const View* finish = findView(read, "finish");
+            const Rtx::Stop* finish = findView(read, "finish");
             ASSERT_NE(finish, nullptr);
-            EXPECT_FALSE(finish->mRoute.has_value());
+            EXPECT_FALSE(finish->mSchedule.mRoute.has_value());
         }
 
         /// Every way of half-writing a route is a refusal rather than a camera that stands still.
@@ -341,7 +339,7 @@ look = 8292, 300, 700
         /// difference the hour made.
         TEST(RtxViewsTest, aPlaceFixesItsConditionsAndTakesItsCameraFromWhatItIsLike)
         {
-            const std::vector<View> read = readViews(R"(
+            const std::vector<Rtx::Stop> read = readViews(R"(
 [ship]
 cell = -2,-9
 pos = 100, 200, 300
@@ -365,43 +363,43 @@ hour = 19.25
 
             // A place that fixes nothing keeps both conditions absent, which is what lets a run name
             // them.
-            const View* noon = findView(read, "ship");
+            const Rtx::Stop* noon = findView(read, "ship");
             ASSERT_NE(noon, nullptr);
-            EXPECT_FALSE(noon->mHour.has_value());
-            EXPECT_FALSE(noon->mWeather.has_value());
+            EXPECT_FALSE(noon->mSky.mHour.has_value());
+            EXPECT_FALSE(noon->mSky.mWeather.has_value());
 
-            const View* dawn = findView(read, "ship-dawn");
+            const Rtx::Stop* dawn = findView(read, "ship-dawn");
             ASSERT_NE(dawn, nullptr);
-            ASSERT_TRUE(dawn->mHour.has_value());
-            EXPECT_EQ(*dawn->mHour, 6.5f);
+            ASSERT_TRUE(dawn->mSky.mHour.has_value());
+            EXPECT_EQ(*dawn->mSky.mHour, 6.5f);
 
             // **The two conditions are independent**: an hour fixed leaves the sky free and a sky
             // fixed leaves the hour free, so a place may name either alone.
-            EXPECT_FALSE(dawn->mWeather.has_value());
+            EXPECT_FALSE(dawn->mSky.mWeather.has_value());
 
-            const View* overcast = findView(read, "ship-overcast");
+            const Rtx::Stop* overcast = findView(read, "ship-overcast");
             ASSERT_NE(overcast, nullptr);
-            ASSERT_TRUE(overcast->mWeather.has_value());
-            ASSERT_TRUE(overcast->mOrigin.has_value());
-            EXPECT_EQ(*overcast->mWeather, "Overcast");
-            EXPECT_FALSE(overcast->mHour.has_value());
-            EXPECT_EQ(*overcast->mOrigin, osg::Vec3f(100.0f, 200.0f, 300.0f));
+            ASSERT_TRUE(overcast->mSky.mWeather.has_value());
+            ASSERT_TRUE(overcast->mStand.mEye.has_value());
+            EXPECT_EQ(*overcast->mSky.mWeather, "Overcast");
+            EXPECT_FALSE(overcast->mSky.mHour.has_value());
+            EXPECT_EQ(*overcast->mStand.mEye, osg::Vec3f(100.0f, 200.0f, 300.0f));
 
             // The whole camera, taken rather than restated.
-            EXPECT_EQ(dawn->mCell, "-2,-9");
-            ASSERT_TRUE(dawn->mOrigin.has_value());
-            ASSERT_TRUE(dawn->mTarget.has_value());
-            EXPECT_EQ(*dawn->mOrigin, osg::Vec3f(100.0f, 200.0f, 300.0f));
-            EXPECT_EQ(*dawn->mTarget, osg::Vec3f(100.0f, 300.0f, 300.0f));
+            EXPECT_EQ(dawn->mStand.mCell, "-2,-9");
+            ASSERT_TRUE(dawn->mStand.mEye.has_value());
+            ASSERT_TRUE(dawn->mStand.mLook.has_value());
+            EXPECT_EQ(*dawn->mStand.mEye, osg::Vec3f(100.0f, 200.0f, 300.0f));
+            EXPECT_EQ(*dawn->mStand.mLook, osg::Vec3f(100.0f, 300.0f, 300.0f));
 
             // **What a borrower states itself is kept**, so a place may sit somewhere else under
             // the same cell and the same view of it.
-            const View* mast = findView(read, "ship-dusk-from-the-mast");
+            const Rtx::Stop* mast = findView(read, "ship-dusk-from-the-mast");
             ASSERT_NE(mast, nullptr);
-            ASSERT_TRUE(mast->mOrigin.has_value());
-            EXPECT_EQ(*mast->mOrigin, osg::Vec3f(100.0f, 200.0f, 900.0f)) << "its own position was overwritten";
-            EXPECT_EQ(*mast->mTarget, osg::Vec3f(100.0f, 300.0f, 300.0f)) << "the look it did not state";
-            EXPECT_EQ(mast->mCell, "-2,-9");
+            ASSERT_TRUE(mast->mStand.mEye.has_value());
+            EXPECT_EQ(*mast->mStand.mEye, osg::Vec3f(100.0f, 200.0f, 900.0f)) << "its own position was overwritten";
+            EXPECT_EQ(*mast->mStand.mLook, osg::Vec3f(100.0f, 300.0f, 300.0f)) << "the look it did not state";
+            EXPECT_EQ(mast->mStand.mCell, "-2,-9");
         }
 
         /// Every way of writing a condition or a likeness wrong is a refusal.
@@ -460,18 +458,18 @@ hour = 19.25
         /// file's own entry keeps its optionals, because a listing prints only what a view fixes.
         TEST(RtxViewsTest, theConditionOnTheCommandLineBeatsTheOneAPlaceFixes)
         {
-            const View entry{
+            const Rtx::Stop entry{
                 .mName = "dawn-deck",
-                .mCell = "Vivec, Foreign Quarter",
-                .mOrigin = osg::Vec3f(1.0f, 2.0f, 3.0f),
-                .mTarget = osg::Vec3f(4.0f, 5.0f, 6.0f),
-                .mHour = 6.5f,
-                .mWeather = std::string("Overcast"),
                 .mNote = "a deck at dawn",
-                .mRoute = Rtx::Route{ .mTo = osg::Vec3f(7.0f, 8.0f, 9.0f), .mLookTo = osg::Vec3f(), .mSpeed = 400.0f },
+                .mStand = { .mCell = "Vivec, Foreign Quarter",
+                    .mEye = osg::Vec3f(1.0f, 2.0f, 3.0f),
+                    .mLook = osg::Vec3f(4.0f, 5.0f, 6.0f) },
+                .mSky = { .mHour = 6.5f, .mWeather = std::string("Overcast") },
+                .mSchedule = { .mRoute
+                    = Rtx::Route{ .mTo = osg::Vec3f(7.0f, 8.0f, 9.0f), .mLookTo = osg::Vec3f(), .mSpeed = 400.0f } },
             };
 
-            const View bare{ .mCell = "-2,-9" };
+            const Rtx::Stop bare{ .mStand = { .mCell = "-2,-9" } };
 
             // Neither says anything: noon under a clear sky, which is how a picture of a place is
             // taken.
@@ -499,8 +497,8 @@ hour = 19.25
             EXPECT_EQ(settled.mName, "dawn-deck");
             EXPECT_EQ(settled.mNote, "a deck at dawn");
             EXPECT_EQ(settled.mStand.mCell, "Vivec, Foreign Quarter");
-            EXPECT_EQ(settled.mStand.mEye, entry.mOrigin);
-            EXPECT_EQ(settled.mStand.mLook, entry.mTarget);
+            EXPECT_EQ(settled.mStand.mEye, entry.mStand.mEye);
+            EXPECT_EQ(settled.mStand.mLook, entry.mStand.mLook);
             EXPECT_EQ(settled.mSky.mDay, 3);
             ASSERT_TRUE(settled.mSchedule.mRoute.has_value());
             EXPECT_EQ(settled.mSchedule.mRoute->mSpeed, 400.0f);

@@ -76,7 +76,7 @@ namespace Rtx::Testing
             poseByOneBone(scene, body, osg::Matrixf::identity());
 
             renderer->resize(size, size);
-            renderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
+            renderer->setScene(Rtx::SceneSlot::world(), scene, {});
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -96,7 +96,7 @@ namespace Rtx::Testing
                         walked += 1.0f;
                         scene.clearPlacement();
                         poseByOneBone(scene, body, osg::Matrixf::translate(0.0f, walked, 0.0f));
-                        renderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
+                        renderer->placeScene(Rtx::SceneSlot::world(), scene);
                     }
 
                     camera.mFrame = index++;

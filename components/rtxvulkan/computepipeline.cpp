@@ -5,7 +5,6 @@
 #include "device.hpp"
 #include "handles.hpp"
 #include "result.hpp"
-#include "specialization.hpp"
 
 namespace Rtx
 {

@@ -1,12 +1,27 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstdint>
+#include <cstring>
+#include <span>
 
 #include <components/rtx/renderer.hpp>
 
 namespace Rtx::Testing
 {
+    /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first: `lend` and
+    /// `send` with a copy in front of them, for a test that already holds the pixels.
+    inline void writeTexture(
+        Renderer& renderer, const GuiSlot slot, const GuiRegion& region, const std::span<const std::uint8_t> rgba)
+    {
+        const std::span<std::uint8_t> into = renderer.lendGuiTexture(slot, region);
+        assert(rgba.size() == into.size() && "the region's own rows");
+
+        std::memcpy(into.data(), rgba.data(), into.size());
+        renderer.sendGuiTexture(slot);
+    }
+
     /// A packed vertex colour, in the order MyGUI writes one: red in the low byte.
     constexpr std::uint32_t packColour(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha)
     {

@@ -22,8 +22,8 @@ add_openmw_dir (mwrender
     creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation
     bulletdebugdraw globalmap characterpreview camera localmap terrainstorage
     renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectstorage groundcover
-    actorutil animationpriority bonegroup blendmask animblendcontroller renderer windowsetup
-    screenshotwriter describeworld
+    actorutil animationpriority bonegroup blendmask animblendcontroller renderer
+    describeworld
     )
 
 # The OpenGL renderer: the picture as OpenSceneGraph draws it. The same library as `mwrender`,
@@ -37,7 +37,7 @@ add_openmw_dir (mwrender/gl
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
 if (OPENMW_RTX)
     add_openmw_dir (mwrender/rtx
-        framecapture framereport readworld rtxrenderer session stopwriter tracedview worldmirror
+        framereport rtxrenderer session stopwriter tracedview worldmirror
         )
 endif()
 

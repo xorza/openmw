@@ -145,10 +145,6 @@ add_component_dir (sceneutil
     offscreenframing localtoworld
     )
 
-add_component_dir (surface
-    describe material
-    )
-
 add_component_dir (nif
     base controller data effect extra niffile nifkey nifstream niftypes node parent particle physics property record recordptr texture
     )
@@ -386,16 +382,12 @@ add_component_dir (version
     version
     )
 
-add_component_dir (features
-    features
-    )
-
 add_component_dir (fallback
     fallback validate
     )
 
 add_component_dir (sky
-    clouds moonstate sun timeofday
+    moonstate timeofday
     )
 
 add_component_dir (lua_ui
@@ -600,9 +592,8 @@ endif()
 
 add_library(components STATIC ${COMPONENT_FILES})
 
-# **So that `Features::hasRayTracing` can answer without anything else asking.** The option is a fact
-# about the binary and every program in this tree links this library; spelling it here is what keeps
-# the launcher and the settings page from each repeating the macro.
+# `Settings::sRayTracingBuilt` reads this. The option is a fact about the binary and every program
+# in this tree links this library.
 if (OPENMW_RTX)
     target_compile_definitions(components PUBLIC OPENMW_RTX)
 endif()

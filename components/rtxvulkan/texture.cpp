@@ -44,11 +44,19 @@ namespace Rtx
                     return VK_FORMAT_R8G8B8A8_SRGB;
                 case TextureFormat::Bgra8Srgb:
                     return VK_FORMAT_B8G8R8A8_SRGB;
+
+                // Never uploaded: `describeImage` refuses them, so one arriving here is a contract
+                // broken and not a file.
+                case TextureFormat::Rgb8:
+                case TextureFormat::Luminance:
+                case TextureFormat::LuminanceAlpha:
+                case TextureFormat::Unnamed:
+                    break;
             }
 
-            // Unreachable for any value of the enumeration; a new one that forgets a case lands
-            // here rather than creating an image with a format nobody chose.
-            throw Error("unknown texture format");
+            // A format nothing above named: a new one that forgets a case lands here rather than
+            // creating an image with a format nobody chose.
+            throw Error("a texture format this renderer does not upload");
         }
 
         /// The two arrays the set holds: the textures, and their shading maps at the same slots.

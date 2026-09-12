@@ -6,16 +6,15 @@
 #include <osg/StateSet>
 #include <osg/Uniform>
 
-#include <components/surface/describe.hpp>
-#include <components/surface/material.hpp>
+#include "surface.hpp"
 
 namespace Rtx
 {
-    bool describeSurface(std::span<const Shading> shading, Surface::Material& material)
+    bool describeSurface(std::span<const Shading> shading, SurfaceDescription& material)
     {
         bool said = false;
         for (const Shading& link : shading)
-            said = Surface::describe(*link.mStateSet, material) || said;
+            said = describeStateSet(*link.mStateSet, material) || said;
 
         return said;
     }

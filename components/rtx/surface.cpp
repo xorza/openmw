@@ -1,5 +1,7 @@
-#include "describe.hpp"
+#include "surface.hpp"
 
+#include <array>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,12 +16,25 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/util.hpp>
 
-#include "material.hpp"
 
-namespace Surface
+namespace Rtx
 {
     namespace
     {
+        constexpr std::array<std::string_view, sTextureRoleCount> sRoleNames = {
+            "diffuseMap",
+            "normalMap",
+            "normalHeightMap",
+            "emissiveMap",
+            "specularMap",
+            "darkMap",
+            "detailMap",
+            "decalMap",
+            "glossMap",
+            "bumpMap",
+            "envMap",
+        };
+
         /// The three modes a NIF can state map one for one. The other three are `SceneUtil::Material`'s
         /// alone — nothing here writes them — and ambient or diffuse on its own still tints the one
         /// albedo, while a specular the renderer has not got is nothing.
@@ -41,9 +56,9 @@ namespace Surface
             return VertexColour::None;
         }
 
-        Colour stated(const osg::Vec4f& colour)
+        EncodedColour stated(const osg::Vec4f& colour)
         {
-            return Colour{ colour.r(), colour.g(), colour.b() };
+            return EncodedColour{ colour.r(), colour.g(), colour.b() };
         }
 
         /// The role a sampler uniform gives `unit`, or nothing where none names it. The terrain
@@ -78,7 +93,7 @@ namespace Surface
             return stateSet.getUniform(name);
         }
 
-        void readColours(const osg::StateAttribute& attribute, Material& material)
+        void readColours(const osg::StateAttribute& attribute, SurfaceDescription& material)
         {
             if (const auto* own = dynamic_cast<const SceneUtil::Material*>(&attribute))
             {
@@ -109,7 +124,7 @@ namespace Surface
             }
         }
 
-        void readTransform(const osg::StateSet& stateSet, const unsigned int unit, Material& material)
+        void readTransform(const osg::StateSet& stateSet, const unsigned int unit, SurfaceDescription& material)
         {
             const osg::Uniform* uniform = uniformNamed(stateSet, "texMat" + std::to_string(unit));
             if (uniform == nullptr)
@@ -130,7 +145,26 @@ namespace Surface
         }
     }
 
-    bool describe(const osg::StateSet& stateSet, Material& material)
+    void SurfaceDescription::setTexture(TextureRole role, const osg::Texture* texture)
+    {
+        mTextures[static_cast<std::size_t>(role)] = texture != nullptr ? texture->getImage(0) : nullptr;
+    }
+
+    std::string_view textureRoleName(TextureRole role)
+    {
+        return sRoleNames[static_cast<std::size_t>(role)];
+    }
+
+    std::optional<TextureRole> textureRoleNamed(std::string_view name)
+    {
+        for (std::size_t i = 0; i < sRoleNames.size(); ++i)
+            if (sRoleNames[i] == name)
+                return static_cast<TextureRole>(i);
+
+        return std::nullopt;
+    }
+
+    bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& material)
     {
         bool said = false;
 

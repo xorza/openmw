@@ -5,10 +5,10 @@
 #include <cstring>
 #include <vector>
 
+#include "computepipeline.hpp"
 #include "device.hpp"
 #include "handles.hpp"
 #include "result.hpp"
-#include "specialization.hpp"
 
 namespace Rtx
 {

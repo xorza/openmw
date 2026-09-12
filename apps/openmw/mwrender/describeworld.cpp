@@ -16,8 +16,6 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/stateupdater.hpp>
-#include <components/sky/sun.hpp>
-#include <components/sky/timeofday.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
@@ -151,9 +149,6 @@ namespace MWRender
         described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
 
         described.mGameHour = simulation.getTimeStamp().getHour();
-        // **Off the hour rather than off the disc's alpha**, which the rasterizer leaves at one all
-        // night with the disc hidden. `Sky::sunShareAt` is the one place the ramp is spelled.
-        described.mSunShare = Sky::sunShareAt(described.mGameHour, Sky::TimeOfDaySettings::shared());
         described.mWeatherId = simulation.getCurrentWeatherScriptId();
         described.mNextWeatherId = nextWeather;
         described.mWeatherTransition = simulation.getWeatherTransition();

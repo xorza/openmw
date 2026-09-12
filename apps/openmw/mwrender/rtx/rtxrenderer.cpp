@@ -32,7 +32,6 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/framespend.hpp>
@@ -58,15 +57,35 @@
 #include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
-#include "../screenshotwriter.hpp"
-#include "../windowsetup.hpp"
-#include "readworld.hpp"
 #include "session.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
 namespace MWRender
 {
+    std::uint32_t rayMaskOf(const osg::Node::NodeMask cullMask)
+    {
+        using namespace SceneUtil;
+
+        std::uint32_t mask = 0;
+        if ((cullMask & (Mask_Object | Mask_Static | Mask_Terrain | Mask_Groundcover)) != 0)
+            mask |= Rtx::Shaders::MASK_STATIC;
+        if ((cullMask & (Mask_Actor | Mask_Player)) != 0)
+            mask |= Rtx::Shaders::MASK_ACTOR;
+        if ((cullMask & Mask_Effect) != 0)
+            mask |= Rtx::Shaders::MASK_EFFECT;
+        if ((cullMask & Mask_FirstPerson) != 0)
+            mask |= Rtx::Shaders::MASK_FIRST_PERSON;
+        if ((cullMask & (Mask_Water | Mask_SimpleWater)) != 0)
+            mask |= Rtx::Shaders::MASK_WATER;
+        if ((cullMask & (Mask_ParticleSystem | Mask_WeatherParticles)) != 0)
+            mask |= Rtx::Shaders::MASK_PARTICLE;
+
+        // No `MASK_MEDIUM`: a medium is gathered by a ray that casts with that bit alone, whatever
+        // the camera, and in the eye's own mask it would meet the shells of a class left out.
+        return mask;
+    }
+
     namespace
     {
         /// What `[RTX]` says the trace is configured by, which is what a played binary runs.
@@ -123,14 +142,9 @@ namespace MWRender
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
-        : mCapture(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
+        : mScreenshotWriter(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
-        , mMirror(MirrorSettings{
-              .mStatics = Settings::terrain().mObjectPaging,
-              .mMinSize = Settings::terrain().mObjectPagingMinSize,
-              .mReach = Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance),
-          })
     {
         // **Made here, because there is no viewer to make them.** Every renderer needs the four and
         // one built on `osgViewer` gets them already wired together.
@@ -222,8 +236,8 @@ namespace MWRender
         // session runs, so it does not belong in the periodic line; what that line carries is the
         // one word a reader of any single line needs, and the rest — which network, at what pair of
         // sizes — is here, where it was chosen.
-        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::upscaleName(mProfile.mUpscaling.mMode)
-                         << ", Ray Reconstruction preset " << Rtx::presetName(mProfile.mUpscaling.mPreset);
+        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::sUpscaleNames.name(mProfile.mUpscaling.mMode)
+                         << ", Ray Reconstruction preset " << Rtx::sPresetNames.name(mProfile.mUpscaling.mPreset);
 
         // **Grass hangs off the quad tree, and this renderer has the game build none.** Its ground
         // is the cell ring's, and a quad tree beside it would build chunks nothing traces; a setting
@@ -277,7 +291,7 @@ namespace MWRender
     {
         // Before the renderer, because a write still on the queue holds an image of a frame this
         // owns the memory for.
-        mCapture.stop();
+        mScreenshotWriter->stop();
 
         // Its slot is in the renderer's table, so it goes back before the table does.
         mFrozenFrameTexture.reset();
@@ -319,7 +333,7 @@ namespace MWRender
 
     void RtxRenderer::enableReference(const ESM::RefNum refnum, const bool enabled)
     {
-        mMirror.getRing().setReferenceEnabled(refnum, enabled);
+        mMirror.setReferenceEnabled(refnum, enabled);
     }
 
     void RtxRenderer::detachWorld()
@@ -475,7 +489,6 @@ namespace MWRender
         return FrameContext{
             .mRenderer = *this,
             .mResources = mResources,
-            .mSceneRoot = hasSceneRoot() ? &getSceneRoot() : nullptr,
             .mScene = mMirror.getScene(),
             .mReach = mMirror.getReach(),
         };
@@ -493,11 +506,6 @@ namespace MWRender
     {
         if (std::find(mDeferred.begin(), mDeferred.end(), &view) == mDeferred.end())
             mDeferred.push_back(&view);
-    }
-
-    void RtxRenderer::flushRedraws()
-    {
-        drawViews();
     }
 
     void RtxRenderer::forgetView(TracedView& view)
@@ -579,14 +587,43 @@ namespace MWRender
         mSpan.leave(ended);
     }
 
+    osg::ref_ptr<osg::Image> RtxRenderer::readFrame(const int width, const int height, const Rtx::Channels channels)
+    {
+        const Rtx::FrameExtents extents = mRenderer->getExtents();
+        if (extents.mOutputWidth == 0 || extents.mOutputHeight == 0)
+            return nullptr;
+
+        mRenderer->readPixels(mReadBack);
+
+        const Rtx::TracedFrame frame{
+            .mWidth = extents.mOutputWidth,
+            .mHeight = extents.mOutputHeight,
+            .mPixels = mReadBack,
+        };
+
+        return Rtx::frameImage(frame, width > 0 ? width : static_cast<int>(frame.mWidth),
+            height > 0 ? height : static_cast<int>(frame.mHeight), Rtx::RowOrder::BottomFirst, channels);
+    }
+
     void RtxRenderer::capture(osg::Image& image, int width, int height)
     {
-        mCapture.thumbnail(*mRenderer, image, width, height);
+        const osg::ref_ptr<osg::Image> taken = readFrame(width, height, Rtx::Channels::Rgb);
+        if (taken == nullptr)
+            return;
+
+        image.swap(*taken);
     }
 
     void RtxRenderer::saveScreenshot()
     {
-        mCapture.screenshot(*mRenderer);
+        const osg::ref_ptr<osg::Image> taken = readFrame();
+        if (taken == nullptr)
+        {
+            Log(Debug::Warning) << "Ray tracing has no frame to write a screenshot from";
+            return;
+        }
+
+        (*mScreenshotWriter)(*taken, 0);
     }
 
     std::unique_ptr<OffscreenView> RtxRenderer::createOffscreenView(const OffscreenViewSpec& spec)
@@ -616,16 +653,7 @@ namespace MWRender
 
     MyGUI::ITexture& RtxRenderer::freezeFrame()
     {
-        const Rtx::TracedFrame frame = mCapture.read(*mRenderer);
-
-        // **Bottom row first, because that is what the one caller takes.** `LoadingScreen` inverts
-        // the widget's own V — `_setUVSet(0, 1, 1, 0)` — since the rasterizer's frozen frame is a
-        // copy of the framebuffer and OpenGL puts its bottom row at texel row nought. So a texture
-        // handed over in the trace's own order is one the loading screen then turns over: the world
-        // the player was in, upside down behind the progress bar, for as long as a cell took to
-        // load.
-        const osg::ref_ptr<osg::Image> taken = Rtx::frameImage(
-            frame, static_cast<int>(frame.mWidth), static_cast<int>(frame.mHeight), Rtx::RowOrder::BottomFirst);
+        const osg::ref_ptr<osg::Image> taken = readFrame();
 
         if (mFrozenFrame == nullptr)
             mFrozenFrame = new osg::Texture2D;
@@ -848,8 +876,8 @@ namespace MWRender
 
     void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report)
     {
-        const Rtx::WorldReading read = readWorld(frame.mWorld, mMirror.getSky(), mMirror.getMoonFaces(),
-            mMirror.getReach(), static_cast<float>(frame.mWhen.getSimulationTime()));
+        const Rtx::WorldReading read
+            = mMirror.readWorld(frame.mWorld, static_cast<float>(frame.mWhen.getSimulationTime()));
 
         const float exposureBias = Rtx::describeWorld(read, constants);
 
@@ -938,8 +966,8 @@ namespace MWRender
                              << scene.placements().getPlacedCount() << " instances and " << scene.emitters().size()
                              << " emitters holding " << scene.sprites().size() << " sprites at " << extents.mRenderWidth
                              << "x" << extents.mRenderHeight << ", reconstructed by "
-                             << Rtx::denoiserName(report.mReconstruction.mDenoiser) << " to " << extents.mOutputWidth
-                             << "x" << extents.mOutputHeight;
+                             << Rtx::sDenoiserNames.name(report.mReconstruction.mDenoiser) << " to "
+                             << extents.mOutputWidth << "x" << extents.mOutputHeight;
         }
     }
 }

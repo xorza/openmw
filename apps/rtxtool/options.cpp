@@ -178,7 +178,7 @@ namespace RtxTool
 
         option(sFramed, "upscale",
             bpo::value<std::string>()->default_value(
-                std::string(Rtx::upscaleName(byDefault.mProfile.mUpscaling.mMode))),
+                std::string(Rtx::sUpscaleNames.name(byDefault.mProfile.mUpscaling.mMode))),
             std::format("put DLSS Ray Reconstruction between the trace and the picture: {}. --size "
                         "is what comes out, and what gets traced is DLSS's answer for it. It "
                         "denoises for itself, so --filter stops applying. Quality by default, so a "
@@ -192,7 +192,7 @@ namespace RtxTool
 
         option(sFramed, "preset",
             bpo::value<std::string>()->default_value(
-                std::string(Rtx::presetName(byDefault.mProfile.mUpscaling.mPreset))),
+                std::string(Rtx::sPresetNames.name(byDefault.mProfile.mUpscaling.mPreset))),
             std::format("which Ray Reconstruction network to run: {}. Ray Reconstruction keeps its "
                         "own presets, and they are not super-resolution's -- A through C are retired, d is the "
                         "default transformer model and e is the latest. `default` hands the choice to the "

@@ -88,10 +88,6 @@ namespace Rtx
         std::span<const Index> getArrivedRigs() const { return mArrivedRigs.getSlots(); }
         std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs.getSlots(); }
 
-        /// How many meshes stand on a rig or a morph. Nought is a free slot.
-        std::uint32_t getRigHolds(Index rig) const { return mRigs.getHolds(rig); }
-        std::uint32_t getMorphHolds(Index morph) const { return mMorphs.getHolds(morph); }
-
         /// How many vertices the deforming meshes' bind poses take between them.
         Index getBindVertexCount() const { return mBindRuns.getEnd(); }
 
@@ -103,6 +99,10 @@ namespace Rtx
         void compact();
 
         void clearArrivals();
+        // Read by the tests and by nothing else.
+        /// How many meshes stand on a rig or a morph. Nought is a free slot.
+        std::uint32_t getRigHolds(Index rig) const { return mRigs.getHolds(rig); }
+        std::uint32_t getMorphHolds(Index morph) const { return mMorphs.getHolds(morph); }
 
     private:
         SlotRows<Rig> mRigs;

@@ -17,7 +17,6 @@
 #include "memoryreport.hpp"
 #include "mesh.hpp"
 #include "reconstruction.hpp"
-#include "renderprofile.hpp"
 #include "runs.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
@@ -373,18 +372,14 @@ namespace Rtx
         /// rather than loaded — `SceneTextures` decodes and the backend uploads, which is what
         /// keeps this library free of a graphics API. They are indexed by the scene's texture index
         /// and must outlive the call.
-        virtual void setScene(
-            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea)
-            = 0;
+        virtual void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) = 0;
 
         /// The same scene with more in it: geometry and textures appended, nothing renumbered. What
         /// a cell arriving costs, and it must not be what `setScene` costs, which is every
         /// acceleration structure and the whole texture array made again. `arrived` describes the
         /// textures the scene gained since the last call, starting at the count this already holds
         /// — never the whole table, or the shading estimate is paid twice for what has not changed.
-        virtual void extendScene(
-            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
-            = 0;
+        virtual void extendScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived) = 0;
 
         /// What this slot was last built from, and how far it has been extended since.
         virtual SceneHeld describeHeld(SceneSlot slot) const = 0;
@@ -401,7 +396,7 @@ namespace Rtx
         /// names, because a skinned body's triangles are the same triangles and its vertices are new
         /// ones. `scene` must be the scene `setScene` was given, re-walked after `clearPlacement`,
         /// because the placements index into structures this already holds.
-        virtual void placeScene(SceneSlot slot, const SceneDesc& scene, const SeaState& sea) = 0;
+        virtual void placeScene(SceneSlot slot, const SceneDesc& scene) = 0;
 
         /// A scene of its own for a picture inside the interface to be traced against — the
         /// inventory doll, the race preview. Not the world and not reachable from it: nothing in them
@@ -420,18 +415,13 @@ namespace Rtx
         /// a texture gave back are taken over before the table grows.
         virtual GuiSlot addGuiTexture(std::uint32_t width, std::uint32_t height) = 0;
 
-        /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first. `rgba` is
-        /// the region's own rows and not slices of a wider image. For a caller that already holds
-        /// the pixels; one that is about to produce them wants `lendGuiTexture` instead, which is
-        /// this without the copy in front of it.
-        virtual void writeGuiTexture(GuiSlot texture, const GuiRegion& region, std::span<const std::uint8_t> rgba) = 0;
-
-        /// Bytes for a rectangle of a texture, to be filled and then handed back with
-        /// `sendGuiTexture` — what MyGUI's `lock` and `unlock` are. A backend that lent a buffer of
-        /// its own instead would put a copy in front of every write, and a video frame would cross
-        /// main memory twice. The rectangle must lie inside the texture and only one may be lent at
-        /// a time, both asserts. Write the span and do not read it back: a backend may lend memory
-        /// the device reads directly, where a read costs far more than the write.
+        /// Bytes for a rectangle of a texture, four a pixel, tightly packed, row zero first, to be
+        /// filled and then handed back with `sendGuiTexture` — what MyGUI's `lock` and `unlock`
+        /// are. A backend that lent a buffer of its own instead would put a copy in front of every
+        /// write, and a video frame would cross main memory twice. The rectangle must lie inside
+        /// the texture and only one may be lent at a time, both asserts. Write the span and do not
+        /// read it back: a backend may lend memory the device reads directly, where a read costs
+        /// far more than the write.
         virtual std::span<std::uint8_t> lendGuiTexture(GuiSlot texture, const GuiRegion& region) = 0;
 
         /// Sends what `lendGuiTexture` handed out. The span stops being writable here.
@@ -472,10 +462,6 @@ namespace Rtx
         /// now and stand outside any frame; a game never calls it.
         virtual void finishGuiTraces() = 0;
 
-        /// The whole of a GUI texture as the device holds it, four bytes a pixel, tightly packed,
-        /// row zero first. Submits and waits: for the tests, which read what a draw wrote.
-        virtual void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) = 0;
-
         /// Say that the next frame has no usable past: a jump no motion vector can describe — a
         /// door, a teleport, a cut — makes every accumulated frame a lie. Not derivable from what
         /// the renderer sees, because a world scene is built once and then grows and recycles its
@@ -498,6 +484,11 @@ namespace Rtx
         /// Which mode the frames are being traced under, which is not always the one that was asked
         /// for: a mode this machine refused leaves the renderer where it was.
         virtual Upscale getUpscale() const = 0;
+
+        /// The sea every scene is traced with — `SeaState{}` until told. A settings-change call
+        /// and not a frame one: it uploads a spectrum and waits the frames in flight out first, so
+        /// a game that follows the wind calls it where the weather changes.
+        virtual void setSea(const SeaState& sea) = 0;
 
         /// How the presented image should meet the monitor's refresh. `SDLUtil::VSyncMode` because
         /// it is the setting the game already reads. Costs a swapchain rebuild where it changes
@@ -540,18 +531,26 @@ namespace Rtx
         /// `Renderer::setScene` has been called for the world.
         virtual const SceneStats& getSceneStats() const = 0;
 
+        /// **What reads a frame back.** None of the five below is on a frame path: each submits a
+        /// copy and waits for it, so none is const. The harness reads the picture and its
+        /// channels, the game reads the picture for a screenshot, a thumbnail and the frame a
+        /// loading screen holds up, and the tests read all of it and the errors beside it.
+
         /// Copies the traced image into `pixels`, four bytes per pixel, tightly packed.
-        /// Not const: it submits a copy and waits for it.
         virtual void readPixels(std::vector<std::uint8_t>& pixels) = 0;
 
         /// Copies one of the last frame's g-buffer channels into `values`, tightly packed, widened
         /// to floats whatever the channel holds. The frame's, and never a view scene's:
-        /// `traceGuiTexture` draws into targets of its own. Not const: it submits a copy and waits.
+        /// `traceGuiTexture` draws into targets of its own.
         virtual void readChannel(Channel channel, std::vector<float>& values) = 0;
 
         /// The same for one of the two images a frame carries that no channel does: the composite's
         /// own output, and the wavelet's accumulation. `hasFrameImage` first for the accumulation.
         virtual void readFrameImage(FrameImage image, std::vector<float>& values) = 0;
+
+        /// The whole of a GUI texture as the device holds it, four bytes a pixel, tightly packed,
+        /// row zero first.
+        virtual void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) = 0;
 
         /// Moves whatever the API has complained about since the last call into `errors`. Draining,
         /// not peeking, so that clearing before a test and reading after it are the same call. Empty

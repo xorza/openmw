@@ -1095,7 +1095,7 @@ namespace Rtx::Testing
                     .mMaterial = scene.materials().add(Material{
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                         .mOpacity = 0.5f,
-                        .mAlphaMode = Surface::AlphaMode::Blend,
+                        .mAlphaMode = AlphaMode::Blend,
                     }) });
 
                 // Half way to the glowing one at its nearest, and black, so what it puts into the

@@ -2,13 +2,11 @@
 
 #include <array>
 #include <bit>
-#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <span>
-#include <utility>
 
 #include <osg/Vec2f>
 
@@ -17,7 +15,6 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
-#include "graveyard.hpp"
 
 namespace Rtx
 {
@@ -79,10 +76,7 @@ namespace Rtx
                 mDevice, grid, grid, GBUFFER_ALBEDO, usage, std::format("wave curvature {}", index), levels);
         }
 
-        // Nothing is in flight when the pass is made, so what this replaces is a set of buffers
-        // that hold nothing — which `Graveyard::bury` takes and does nothing with.
-        Graveyard nothing(mDevice, mPool);
-        describe(SeaState{}, nothing);
+        describe(mSea);
 
         // Every tile in the layout the trace binds it in, from the first frame: a frame with no
         // water synthesises nothing and binds the tiles anyway, and a descriptor naming an image
@@ -90,11 +84,8 @@ namespace Rtx
         mPool.submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
     }
 
-    void WavePass::describe(const SeaState& sea, Graveyard& graveyard)
+    void WavePass::describe(const SeaState& sea)
     {
-        if (mDrawn && mSea == sea)
-            return;
-
         const std::array<WaveCascade, Shaders::WAVE_CASCADES> cascades = makeWaveCascades(sea);
 
         mSlope = waveSlope(cascades);
@@ -103,20 +94,14 @@ namespace Rtx
         Batch batch(mPool);
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
-            // Buried and not dropped. A frame in flight is still synthesising from the spectrum
-            // this replaces, and a weather that turns the wind is what makes that happen: assigning
-            // over these frees them where the queue has not reached the dispatch that reads them.
-            graveyard.bury(std::exchange(mTiles[index].mAmplitudes,
-                uploadBuffer(mDevice, batch, std::span<const osg::Vec2f>(cascades[index].mAmplitudes),
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)));
-            graveyard.bury(std::exchange(mTiles[index].mFrequencies,
-                uploadBuffer(mDevice, batch, std::span<const float>(cascades[index].mFrequencies),
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)));
+            mTiles[index].mAmplitudes = uploadBuffer(mDevice, batch,
+                std::span<const osg::Vec2f>(cascades[index].mAmplitudes), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            mTiles[index].mFrequencies = uploadBuffer(mDevice, batch,
+                std::span<const float>(cascades[index].mFrequencies), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         }
         batch.flush();
 
         mSea = sea;
-        mDrawn = true;
     }
 
     void WavePass::handOver(VkCommandBuffer commands) const
@@ -170,8 +155,6 @@ namespace Rtx
 
     void WavePass::record(VkCommandBuffer commands, float seconds) const
     {
-        assert(mDrawn && "a frame before any sea state was described");
-
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
             const Tile& tile = mTiles[index];

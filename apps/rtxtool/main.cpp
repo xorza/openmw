@@ -162,14 +162,14 @@ namespace RtxTool
         /// Every view a run names, settled: a condition named on the command line is every
         /// place's, and none of them keeps its own.
         std::vector<Rtx::Stop> stopsFrom(
-            const std::vector<View>& views, const bpo::variables_map& variables, const FrameRequest& frame)
+            const std::vector<Rtx::Stop>& views, const bpo::variables_map& variables, const FrameRequest& frame)
         {
             const std::optional<float> hour = hourGiven(variables);
             const std::optional<std::string> weather = weatherGiven(variables);
 
             std::vector<Rtx::Stop> stops;
             stops.reserve(views.size());
-            for (const View& view : views)
+            for (const Rtx::Stop& view : views)
                 stops.push_back(stopFor(view, hour, weather, frame.mDay));
 
             return stops;
@@ -256,8 +256,8 @@ namespace RtxTool
         /// Separated out because `Chosen` is built from it in one go below: an aggregate assembled
         /// in two stages cannot name every field in its initialiser, and the compiler is right to
         /// say so.
-        const View* findChosenView(
-            const bpo::variables_map& variables, const std::filesystem::path& resources, std::vector<View>& views)
+        const Rtx::Stop* findChosenView(
+            const bpo::variables_map& variables, const std::filesystem::path& resources, std::vector<Rtx::Stop>& views)
         {
             std::string name = variables["view"].as<std::string>();
             if (name.empty())
@@ -269,30 +269,18 @@ namespace RtxTool
             }
 
             views = loadViews(resources / "rtx" / "views.cfg");
-            const View* view = findView(views, name);
+            const Rtx::Stop* view = findView(views, name);
             if (view != nullptr)
                 return view;
 
             std::string known;
-            for (const View& candidate : views)
+            for (const Rtx::Stop& candidate : views)
                 known += "\n  " + candidate.mName + "   " + candidate.mNote;
 
             throw std::runtime_error("no view is called \"" + name + "\". These are:" + known);
         }
 
         /// The one place a command renders, and what a window would write it down as.
-        struct StagedPlace
-        {
-            Rtx::Stop mStop;
-
-            /// What the place is called, for the block `view` prints when the window closes.
-            ///
-            /// **Named here because the run cannot name it.** A view id and a cell spelling are
-            /// what the command line asked for; where the eye ends up is the game's, and
-            /// `runHosted` fills that half in.
-            Viewpoint mSpot;
-        };
-
         /// Holds `stop` still: warmed as the command line asks, then `frames` measured with the
         /// simulation stopped.
         ///
@@ -366,7 +354,7 @@ namespace RtxTool
         ///
         /// **The frame is written into the settings before the stop is made**, so a picture and the
         /// sky it was framed for are one answer.
-        StagedPlace stageOnePlace(const Command& command)
+        Rtx::Stop stageOnePlace(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
 
@@ -374,25 +362,20 @@ namespace RtxTool
             applyHostedSettings(frame);
 
             // Holds what the view below points into, for as long as this function needs it.
-            std::vector<View> views;
-            const View* found = findChosenView(variables, command.mResources, views);
-            const View view = found != nullptr ? *found : View{ .mCell = variables["cell"].as<std::string>() };
+            std::vector<Rtx::Stop> views;
+            const Rtx::Stop* found = findChosenView(variables, command.mResources, views);
+            const Rtx::Stop view
+                = found != nullptr ? *found : Rtx::Stop{ .mStand = { .mCell = variables["cell"].as<std::string>() } };
 
-            StagedPlace staged;
-            staged.mStop = stopFor(view, hourGiven(variables), weatherGiven(variables), frame.mDay);
+            Rtx::Stop staged = stopFor(view, hourGiven(variables), weatherGiven(variables), frame.mDay);
 
             // Anything given on the command line wins over the view, which is the rule `stopFor`
             // already follows for the hour and the sky.
             if (const std::optional<osg::Vec3f> origin = parseVec3(variables["pos"].as<std::string>(), "--pos"))
-                staged.mStop.mStand.mEye = origin;
+                staged.mStand.mEye = origin;
 
             if (const std::optional<osg::Vec3f> target = parseVec3(variables["look"].as<std::string>(), "--look"))
-                staged.mStop.mStand.mLook = target;
-
-            // **The raw id and not the stop's name**, which falls back to the cell: a block printed
-            // for a place opened by `--cell` opens a section named after the cell, and one for a
-            // named view replaces that view's own.
-            staged.mSpot = Viewpoint{ .mView = view.mName, .mNote = view.mNote, .mCell = view.mCell };
+                staged.mStand.mLook = target;
 
             return staged;
         }
@@ -409,11 +392,11 @@ namespace RtxTool
         template <class Fill>
         int runOnePlace(const Command& command, Fill fill)
         {
-            StagedPlace staged = stageOnePlace(command);
-            holdStill(staged.mStop, command.mVariables);
-            fill(staged.mStop.mActions);
+            Rtx::Stop staged = stageOnePlace(command);
+            holdStill(staged, command.mVariables);
+            fill(staged.mActions);
 
-            return runOneStop(command, std::move(staged.mStop));
+            return runOneStop(command, std::move(staged));
         }
 
         /// The places a profiling run visits, in the order it visits them.
@@ -422,10 +405,10 @@ namespace RtxTool
         /// written down so a run can be repeated without remembering it; a list on the command line
         /// is the same thing for one run. Neither carries coordinates: those live with the view, so
         /// the frame a picture is taken of and the frame a number is measured on stay one frame.
-        std::vector<View> chooseBenchViews(
+        std::vector<Rtx::Stop> chooseBenchViews(
             const bpo::variables_map& variables, const std::filesystem::path& resources, std::string& suiteName)
         {
-            const std::vector<View> views = loadViews(resources / "rtx" / "views.cfg");
+            const std::vector<Rtx::Stop> views = loadViews(resources / "rtx" / "views.cfg");
             const std::string named = variables["views"].as<std::string>();
 
             std::vector<std::string> wanted;
@@ -449,7 +432,7 @@ namespace RtxTool
             else
                 wanted = Rtx::splitNames(named);
 
-            const std::vector<View> chosen = chooseViews(views, wanted);
+            const std::vector<Rtx::Stop> chosen = chooseViews(views, wanted);
             if (chosen.empty())
                 throw std::runtime_error("nothing to profile: no view was named");
 
@@ -458,17 +441,17 @@ namespace RtxTool
 
         int runListViews(const std::filesystem::path& resources)
         {
-            for (const View& view : loadViews(resources / "rtx" / "views.cfg"))
+            for (const Rtx::Stop& view : loadViews(resources / "rtx" / "views.cfg"))
             {
-                out() << "  " << view.mName << "\n      " << view.mCell;
+                out() << "  " << view.mName << "\n      " << view.mStand.mCell;
 
                 // A place that fixes a condition is a different frame from the same camera at noon
                 // under a clear sky, and this listing is how a view is found.
-                if (view.mHour.has_value())
-                    out() << " at " << Rtx::describeHour(*view.mHour);
+                if (view.mSky.mHour.has_value())
+                    out() << " at " << Rtx::describeHour(*view.mSky.mHour);
 
-                if (view.mWeather.has_value())
-                    out() << " in " << *view.mWeather;
+                if (view.mSky.mWeather.has_value())
+                    out() << " in " << *view.mSky.mWeather;
 
                 out() << "\n      " << view.mNote << '\n';
             }
@@ -553,7 +536,7 @@ namespace RtxTool
             // carries state nothing below can hold still: two builds that describe the same scene
             // identically write different bytes through it, and fifteen of sixteen views once read
             // as changed by a refactor that changed nothing.
-            Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(Rtx::Upscale::Off)));
+            Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(Rtx::Upscale::Off)));
 
             const std::filesystem::path out
                 = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
@@ -636,7 +619,7 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            StagedPlace staged = stageOnePlace(command);
+            Rtx::Stop staged = stageOnePlace(command);
 
             // **Traced more than once, because one submit measures the clock and not the shader.**
             // A GPU idles at a fraction of its clock and ramps only under load, so the same frame
@@ -646,15 +629,15 @@ namespace RtxTool
             // the repeat default would quietly average eight frames more than it was asked for, and
             // a convergence ladder built on that reads as though the first frames bought nothing.
             const std::uint32_t accumulate = variables["accumulate"].as<std::uint32_t>();
-            holdStill(staged.mStop, variables,
-                accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u));
+            holdStill(
+                staged, variables, accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u));
 
-            staged.mStop.mSchedule.mAccumulate = accumulate;
-            staged.mStop.mActions.mCapture = variables["out"].as<std::string>();
-            staged.mStop.mActions.mDump = variables["dump"].as<std::string>();
-            staged.mStop.mActions.mTail = variables["tail"].as<bool>();
+            staged.mSchedule.mAccumulate = accumulate;
+            staged.mActions.mCapture = variables["out"].as<std::string>();
+            staged.mActions.mDump = variables["dump"].as<std::string>();
+            staged.mActions.mTail = variables["tail"].as<bool>();
 
-            return runOneStop(command, std::move(staged.mStop));
+            return runOneStop(command, std::move(staged));
         }
 
         /// A window on a place, with the game running behind it.
@@ -671,22 +654,22 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            StagedPlace staged = stageOnePlace(command);
+            Rtx::Stop staged = stageOnePlace(command);
 
             // **A schedule with no end, because somebody is watching.** `--frames` closes it after
             // that many, which is how the window path gets exercised by something that cannot click.
             const std::uint32_t frames = variables["frames"].as<std::uint32_t>();
-            staged.mStop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : sForever };
-            staged.mStop.mSchedule.mFreeCamera = true;
+            staged.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : sForever };
+            staged.mSchedule.mFreeCamera = true;
 
             Rtx::SessionRequest request;
-            request.mStops.push_back(std::move(staged.mStop));
+            request.mStops.push_back(std::move(staged));
             request.mHeadless = false;
             request.mQuitAtEnd = frames > 0;
             request.mValidation = validationFrom(variables);
 
-            return runHosted(variables, command.mConfig, command.mResources, frameFrom(command).mProfile,
-                std::move(request), &staged.mSpot);
+            return runHosted(
+                variables, command.mConfig, command.mResources, frameFrom(command).mProfile, std::move(request), true);
         }
 
         /// Whether a place staged this way can answer `check` at all, which is a different question

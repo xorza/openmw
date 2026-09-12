@@ -5,7 +5,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
-#include <components/surface/material.hpp>
+#include "surface.hpp"
 
 #include "runs.hpp"
 
@@ -49,13 +49,13 @@ namespace Rtx
 
         float mAlphaRef = 0.0f;
 
-        Surface::AlphaMode mAlphaMode = Surface::AlphaMode::Opaque;
+        AlphaMode mAlphaMode = AlphaMode::Opaque;
 
         /// What this surface's per-vertex colour is for — the tint that replaces `mDiffuseColour`,
         /// the glow that replaces `mEmissiveColour`, or nothing. On the material and not on the
         /// mesh, because a `NiVertexColorProperty` hangs above a shape and two shapes sharing one
         /// state set share the mode. What a mesh carries is the colours themselves.
-        Surface::VertexColour mVertexColour = Surface::VertexColour::None;
+        VertexColour mVertexColour = VertexColour::None;
 
         /// Sheet geometry lit and hit from both faces. Morrowind leans on this heavily and a ray
         /// tracer has to be told, because back-face culling is not free the way a rasterizer's is.
@@ -109,7 +109,7 @@ namespace Rtx
         /// *material's* own alpha. The two want opposite answers from traversal — a mask averaged
         /// and tested is right for the leaf, light attenuated as it passes is right for the pane
         /// and turns the leaf to gauze. Not the opposite of `isCutout`, and a pane is both.
-        bool isTranslucent() const { return mAlphaMode == Surface::AlphaMode::Blend && mOpacity < 1.0f; }
+        bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mOpacity < 1.0f; }
 
         /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
         /// Two facts and neither alone — the material's own alpha, which a leaf's does not say, and

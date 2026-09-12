@@ -44,6 +44,7 @@
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/spritelight.hpp>
+#include <components/rtx/surface.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightutil.hpp>
@@ -54,7 +55,6 @@
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/texturetype.hpp>
 #include <components/sceneutil/vismask.hpp>
-#include <components/surface/material.hpp>
 
 #include "../graphlight.hpp"
 
@@ -95,19 +95,17 @@ namespace Rtx::Testing
 
     /// Binds a texture the way a loader does: on the next free unit, with the type beside it that
     /// names its role.
-    inline void paint(
-        osg::StateSet& state, osg::Image& image, Surface::TextureRole role = Surface::TextureRole::Diffuse)
+    inline void paint(osg::StateSet& state, osg::Image& image, TextureRole role = TextureRole::Diffuse)
     {
         const unsigned int unit = static_cast<unsigned int>(state.getTextureAttributeList().size());
         state.setTextureAttributeAndModes(unit, new osg::Texture2D(&image), osg::StateAttribute::ON);
         state.setTextureAttribute(
-            unit, new SceneUtil::TextureType(std::string(Surface::textureRoleName(role))), osg::StateAttribute::ON);
+            unit, new SceneUtil::TextureType(std::string(textureRoleName(role))), osg::StateAttribute::ON);
     }
 
     /// The same for a texture that is nothing but a name, which is all a walk reads of most of
     /// them.
-    inline void paint(
-        osg::StateSet& state, std::string_view file, Surface::TextureRole role = Surface::TextureRole::Diffuse)
+    inline void paint(osg::StateSet& state, std::string_view file, TextureRole role = TextureRole::Diffuse)
     {
         osg::ref_ptr<osg::Image> image = new osg::Image;
         image->setFileName(std::string(file));

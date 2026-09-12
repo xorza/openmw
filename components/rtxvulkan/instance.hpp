@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <vector>
+#include <span>
 
 #include <vulkan/vulkan_core.h>
 
@@ -12,40 +12,15 @@
 
 namespace Rtx
 {
-    struct InstanceOptions
-    {
-        /// Load `VK_LAYER_KHRONOS_validation`. A developer feature, and treated as one: with the
-        /// layers on, `mPolicy` decides whether an error stops the process. Nobody enables this in
-        /// a run they care about the frame rate of.
-        bool mValidation = false;
-
-        /// Catch missing barriers and wrong stage masks. Costs enough to be opt-in even among
-        /// developers.
-        bool mSynchronizationValidation = false;
-
-        /// Instrument shaders to catch out-of-bounds descriptor access. Costs a great deal.
-        bool mGpuAssistedValidation = false;
-
-        ValidationPolicy mPolicy = ValidationPolicy::Abort;
-
-        /// Whether validation was asked for by name. `Rtx::ValidationOptions::mDemanded` says why.
-        bool mDemanded = false;
-
-        /// Surface extensions, when there is a window. Empty for the headless path, which is why
-        /// `openmw-rtxtool` works over ssh.
-        std::vector<const char*> mSurfaceExtensions;
-    };
-
-    /// The neutral instrumentation request as this backend takes it. Shared because the renderer
-    /// and the window path both build an instance, and two copies of this would be two chances for
-    /// a run to be validated differently than it was asked to be.
-    InstanceOptions toInstanceOptions(const ValidationOptions& validation);
-
     /// A `VkInstance` and, when validation is on, the messenger and the log behind it.
     class Instance
     {
     public:
-        explicit Instance(const InstanceOptions& options);
+        /// @param validation the layers and what an error does, as the renderer was asked. A
+        ///        developer feature: nobody enables it in a run they care about the frame rate of.
+        /// @param surfaceExtensions what the window's surface needs, or empty for the headless path,
+        ///        which is why `openmw-rtxtool` works over ssh.
+        Instance(const ValidationOptions& validation, std::span<const char* const> surfaceExtensions);
         ~Instance();
 
         VkInstance getHandle() const { return mHandle; }

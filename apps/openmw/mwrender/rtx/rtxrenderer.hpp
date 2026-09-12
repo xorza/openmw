@@ -9,14 +9,14 @@
 #include <optional>
 #include <vector>
 
+#include <osg/Node>
 #include <osg/ref_ptr>
 
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/renderprofile.hpp>
+#include <components/rtx/reconstruction.hpp>
 
 #include "../renderer.hpp"
-#include "framecapture.hpp"
 #include "framereport.hpp"
 #include "session.hpp"
 #include "worldmirror.hpp"
@@ -35,6 +35,7 @@ namespace osg
 {
     class Camera;
     class FrameStamp;
+    class Image;
     class Stats;
     class Texture2D;
 }
@@ -60,12 +61,20 @@ namespace MWRender
     class TracedView;
     struct PoseMoment;
 
+    /// A camera's cull mask as the trace reads it: which `Rtx::InstanceClass`es its rays meet, and
+    /// whether it draws the sprites. `Rtx::Shaders::MASK_*` in `scene.h` names the bits.
+    ///
+    /// **The one translation, so both renderers read one mask.** The rasterizer culls on
+    /// `SceneUtil::Mask_*`; the frame's eye and every picture inside the interface hand their cull
+    /// mask here, and the tracer draws what it names.
+    std::uint32_t rayMaskOf(osg::Node::NodeMask cullMask);
+
     /// The picture as rays find it: a window, a mirror of the scene graph, and a trace.
     ///
-    /// **It names no graphics API.** Which one traces is settled a layer down, where
-    /// `Rtx::createRenderer` hands back what this build has — so the mirror, the frame, the extents
-    /// and the capabilities are written against none of it. `mwrender/gl/` is asymmetric with it
-    /// for a reason: that renderer *is* an API, down to its sky and its water.
+    /// **It names a graphics API in one line.** The constructor makes the `Rtx::VulkanRenderer` and
+    /// everything else here holds an `Rtx::Renderer` — so the mirror, the frame, the extents and
+    /// the capabilities are written against none of it. `mwrender/gl/` is asymmetric with it for a
+    /// reason: that renderer *is* an API, down to its sky and its water.
     ///
     /// **No OpenGL is initialised anywhere under this.** No GL context, no `osgViewer` graphics
     /// window, no interop and no rasterized frame underneath — the window is an SDL surface the
@@ -169,9 +178,11 @@ namespace MWRender
         /// and made a wait of every one of them. Asked twice in one frame is drawn once.
         void redraw(TracedView& view);
 
-        /// Draws what `redraw` queued, now. For the harness, whose stop stands outside any frame
-        /// and writes the picture before the next one.
-        void flushRedraws();
+        /// Draws the pictures asked for since the last frame, every subject's and up to
+        /// `sWorldViewsPerFrame` of the world's, and answers how long that took. Inside the frame's
+        /// window for the game; before the next frame for the harness, whose stop stands outside
+        /// any frame and writes the picture first.
+        double drawViews();
 
         /// Takes a view off that list, because it is going away.
         void forgetView(TracedView& view);
@@ -232,9 +243,16 @@ namespace MWRender
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
 
-        /// Draws the pictures asked for since the last frame, every subject's and up to
-        /// `sWorldViewsPerFrame` of the world's, and answers how long that took.
-        double drawViews();
+        /// The frame as it stands, as an image `width` by `height` — the frame's own size at nought.
+        /// Null before anything was presented.
+        ///
+        /// **Bottom row first, because that is what every reader here takes.** `LoadingScreen`
+        /// inverts the widget's own V — `_setUVSet(0, 1, 1, 0)` — since the rasterizer's frozen
+        /// frame is a copy of the framebuffer and OpenGL puts its bottom row at texel row nought,
+        /// and `osgDB`'s writers and a savegame thumbnail expect the same. A texture handed over in
+        /// the trace's own order was the world the player was in, upside down behind the progress
+        /// bar, for as long as a cell took to load.
+        osg::ref_ptr<osg::Image> readFrame(int width = 0, int height = 0, Rtx::Channels channels = Rtx::Channels::Rgba);
 
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
@@ -284,11 +302,14 @@ namespace MWRender
         osg::ref_ptr<osg::Texture2D> mFrozenFrame;
         std::unique_ptr<MyGUI::ITexture> mFrozenFrameTexture;
 
-        /// Screenshots, savegame thumbnails and the frozen frame a loading screen puts up.
-        ///
-        /// The screenshot writer inside it is the same one the OpenGL renderer uses, so the two
-        /// write the same file the same way.
-        FrameCapture mCapture;
+        /// The same writer the OpenGL renderer hands its screenshots to, so the two write the same
+        /// file the same way.
+        osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
+
+        /// What a frame is read back into, refilled per read and never freed. A screenshot, a
+        /// savegame thumbnail and the frozen frame behind a loading screen all read the same picture
+        /// and differ only in what they do with it.
+        std::vector<std::uint8_t> mReadBack;
 
         SDL_Window* mWindow = nullptr;
 

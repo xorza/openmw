@@ -74,8 +74,9 @@ namespace Rtx
         /// How many are handed out, which is what a report of a buffer built on this calls live.
         std::uint32_t getUsed() const { return getEnd() - getFree(); }
 
-        /// How many separate holes those elements are in. A measure of fragmentation, and what a
-        /// test watches to know that releases merged.
+        // Read by the tests and by nothing else.
+        /// How many separate holes those elements are in: a measure of fragmentation, and what says
+        /// that releases merged.
         std::size_t getHoleCount() const { return mFree.size(); }
 
     private:
@@ -149,6 +150,8 @@ namespace Rtx
         std::uint32_t getEnd() const { return mRuns.getEnd(); }
 
         std::uint32_t getUsed() const { return mRuns.getUsed(); }
+
+        // Read by the tests and by nothing else.
         std::size_t getHoleCount() const { return mRuns.getHoleCount(); }
 
     private:
@@ -200,6 +203,7 @@ namespace Rtx
         /// The whole list, starts and runs, as the device takes it.
         std::span<const std::uint32_t> getWhole() const { return mList; }
 
+        // Read by the tests and by nothing else.
         std::span<const std::uint32_t> getRun(std::size_t key) const
         {
             return std::span<const std::uint32_t>(mList).subspan(mList[key], mList[key + 1] - mList[key]);

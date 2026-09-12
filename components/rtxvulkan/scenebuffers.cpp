@@ -9,7 +9,7 @@
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
-#include <components/surface/material.hpp>
+#include <components/rtx/surface.hpp>
 
 #include "commands.hpp"
 #include "device.hpp"
@@ -31,15 +31,15 @@ namespace Rtx
 
         /// What a material's vertex-colour mode is worth to the shader: one bit, or none. The
         /// shader does a `mix` against a weight, and the host settles which colour the weight picks.
-        std::uint32_t vertexColourFlag(const Surface::VertexColour colour)
+        std::uint32_t vertexColourFlag(const VertexColour colour)
         {
             switch (colour)
             {
-                case Surface::VertexColour::Tint:
+                case VertexColour::Tint:
                     return Shaders::MATERIAL_VERTEX_TINT;
-                case Surface::VertexColour::Glow:
+                case VertexColour::Glow:
                     return Shaders::MATERIAL_VERTEX_GLOW;
-                case Surface::VertexColour::None:
+                case VertexColour::None:
                     break;
             }
 

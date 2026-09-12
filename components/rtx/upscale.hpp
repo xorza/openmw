@@ -49,13 +49,6 @@ namespace Rtx
         std::pair{ Upscale::Dlaa, std::string_view("dlaa") },
     } };
 
-    /// How `upscale` is spelled. The half a report needs: a run is only comparable against another
-    /// if what it says it did can be read back.
-    inline std::string_view upscaleName(Upscale upscale)
-    {
-        return sUpscaleNames.name(upscale);
-    }
-
     /// The modes a menu offers, in the order it lists them: fewest pixels traced first, every pixel
     /// last, and each of them denoised. One list, because the launcher and the settings window both
     /// offer it. `Off` is not among them: Ray Reconstruction is this renderer's denoiser, so
@@ -84,17 +77,11 @@ namespace Rtx
         return sUpscaleMenu[index];
     }
 
-    /// The mode `name` spells, or nothing where it spells none of them.
-    inline std::optional<Upscale> upscaleNamed(std::string_view name)
-    {
-        return sUpscaleNames.named(name);
-    }
-
     /// Where the mode `name` spells sits in the menu — nothing where it spells no mode at all, and
     /// nothing where it spells one the menu does not offer.
     inline std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
     {
-        if (const std::optional<Upscale> mode = upscaleNamed(name))
+        if (const std::optional<Upscale> mode = sUpscaleNames.named(name))
             return upscaleMenuIndex(*mode);
 
         return std::nullopt;

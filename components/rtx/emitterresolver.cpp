@@ -5,7 +5,7 @@
 #include <osgParticle/Particle>
 #include <osgParticle/ParticleSystem>
 
-#include <components/surface/material.hpp>
+#include "surface.hpp"
 #include <components/vfs/pathutil.hpp>
 
 #include "colour.hpp"
@@ -49,9 +49,9 @@ namespace Rtx
 
         // One question and one count, because a particle's whole silhouette is its texture's alpha
         // and an emitter this cannot name a sprite for draws nothing.
-        Surface::Material described;
+        SurfaceDescription described;
         const osg::Image* sprite
-            = describeSurface(shading, described) ? described.getTexture(Surface::TextureRole::Diffuse) : nullptr;
+            = describeSurface(shading, described) ? described.getTexture(TextureRole::Diffuse) : nullptr;
 
         if (sprite == nullptr || sprite->getFileName().empty())
         {

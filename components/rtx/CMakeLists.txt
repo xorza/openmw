@@ -49,8 +49,6 @@ set(RTX_FILES
     framespend.hpp
     frameworld.cpp
     frameworld.hpp
-    geometryfold.cpp
-    geometryfold.hpp
     groundreader.cpp
     groundreader.hpp
     texels.cpp
@@ -102,7 +100,6 @@ set(RTX_FILES
     poseupdate.hpp
     reconstruction.hpp
     renderer.hpp
-    renderprofile.hpp
     runs.cpp
     scenedesc.cpp
     scenedesc.hpp
@@ -112,7 +109,6 @@ set(RTX_FILES
     sceneuploader.hpp
     shading.cpp
     shading.hpp
-    shadingcache.hpp
     shadingmap.cpp
     shadingmap.hpp
     shapefold.cpp
@@ -127,6 +123,8 @@ set(RTX_FILES
     spritelight.hpp
     spritelistsize.cpp
     spritelistsize.hpp
+    surface.cpp
+    surface.hpp
     sprite.hpp
     cellring.cpp
     cellsupply.cpp

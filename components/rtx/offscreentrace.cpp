@@ -27,47 +27,44 @@ namespace Rtx
         }
     }
 
-    OffscreenTrace::OffscreenTrace(
-        Renderer& renderer, std::uint32_t width, std::uint32_t height, const std::uint32_t rayMask)
+    OffscreenTrace::OffscreenTrace(Renderer& renderer, const ViewRequest& request)
         : mRenderer(renderer)
-        , mWidth(width)
-        , mHeight(height)
-        , mRayMask(rayMask)
+        , mWidth(request.mWidth)
+        , mHeight(request.mHeight)
+        , mRowOrder(request.mRowOrder)
+        , mRayMask(request.mRayMask)
+        , mFraming(request.mFraming)
+        , mAmbient(irradianceOf(request.mLight.mAmbient))
+        , mTransparent(request.mClear.a() < 1.f)
     {
-        mOptions.mWidth = width;
-        mOptions.mHeight = height;
-        mOptions.mScene = SceneSlot::world();
-    }
+        mSun.mPosition = request.mLight.mDirection;
+        if (mSun.mPosition.length2() > 0.f)
+            mSun.mPosition.normalize();
+        mSun.mIrradiance = irradianceOf(request.mLight.mDiffuse);
 
-    OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height,
-        const std::uint32_t rayMask, osg::Node& subject, osg::Node::NodeMask mask, Traversals* traversals)
-        : mRenderer(renderer)
-        , mWidth(width)
-        , mHeight(height)
-        , mRayMask(rayMask)
-    {
-        mSubject = std::make_unique<Subject>(traversals);
+        mOptions.mWidth = request.mWidth;
+        mOptions.mHeight = request.mHeight;
+        mOptions.mClear = { request.mClear.r(), request.mClear.g(), request.mClear.b(), request.mClear.a() };
+        mOptions.mScene = SceneSlot::world();
+
+        if (request.mSubject == nullptr)
+            return;
+
+        mSubject = std::make_unique<Subject>();
 
         Subject& held = *mSubject;
-        held.mNode = &subject;
+        held.mNode = request.mSubject;
         held.mScene = std::make_unique<SceneDesc>();
         held.mUpdate = std::make_unique<PoseUpdate>();
         held.mPose = std::make_unique<PoseCull>();
         held.mPoseStamp = new osg::FrameStamp;
         held.mSlot = renderer.addViewScene();
 
-        held.mExtractor = std::make_unique<SceneExtractor>(*held.mScene, &held.mTraversals);
-        held.mExtractor->setTraversalMask(mask);
+        held.mExtractor = std::make_unique<SceneExtractor>(*held.mScene, request.mTraversals);
+        held.mExtractor->setTraversalMask(request.mSubjectMask);
         held.mPose->setFrameStamp(held.mPoseStamp);
 
-        mOptions.mWidth = width;
-        mOptions.mHeight = height;
         mOptions.mScene = held.mSlot;
-    }
-
-    OffscreenTrace::Subject::Subject(Traversals* const shared)
-        : mTraversals(shared != nullptr ? *shared : mOwn)
-    {
     }
 
     OffscreenTrace::Subject::~Subject() = default;
@@ -81,22 +78,6 @@ namespace Rtx
     const SceneDesc* OffscreenTrace::getScene() const
     {
         return mSubject != nullptr ? mSubject->mScene.get() : nullptr;
-    }
-
-    void OffscreenTrace::setLight(const SceneUtil::FlatLight& light)
-    {
-        mSun.mPosition = light.mDirection;
-        if (mSun.mPosition.length2() > 0.f)
-            mSun.mPosition.normalize();
-
-        mSun.mIrradiance = irradianceOf(light.mDiffuse);
-        mAmbient = irradianceOf(light.mAmbient);
-    }
-
-    void OffscreenTrace::setClearColour(const osg::Vec4f& colour)
-    {
-        mOptions.mClear = { colour.r(), colour.g(), colour.b(), colour.a() };
-        mTransparent = colour.a() < 1.f;
     }
 
     void OffscreenTrace::setView(const osg::Matrixf& view)
@@ -120,7 +101,7 @@ namespace Rtx
                 std::get<SceneUtil::Orthographic>(mFraming.mProjection).mHeight, mOptions.mWidth, mOptions.mHeight,
                 mFraming.mNear, mFraming.mFar);
 
-        // `setRowOrder` says why the GUI's copy comes out the other way up.
+        // `ViewRequest::mRowOrder` says why the GUI's copy comes out the other way up.
         if (mRowOrder == RowOrder::BottomFirst)
             camera.mCamera.mUp = -camera.mCamera.mUp;
 
@@ -218,7 +199,7 @@ namespace Rtx
         // intersection with whatever the last cull wrote; the picture was traced from a pose the
         // device computed, so without this the click would land on the bind pose. A number from the
         // shared sequence, because both deforming geometries refuse to move for one they have seen.
-        const unsigned int posed = subject.mTraversals.next();
+        const unsigned int posed = subject.mExtractor->getTraversals().next();
         subject.mPose->setTraversalNumber(posed);
         subject.mPoseStamp->setFrameNumber(posed);
         subject.mNode->accept(*subject.mPose);

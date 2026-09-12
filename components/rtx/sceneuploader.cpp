@@ -8,7 +8,6 @@
 #include "renderer.hpp"
 #include "scenedesc.hpp"
 #include "texturebuilder.hpp"
-#include "wavespectrum.hpp"
 
 namespace Rtx
 {
@@ -31,8 +30,7 @@ namespace Rtx
         SceneDesc& scene = handing.mScene;
         Resource::ImageManager& images = handing.mImages;
         CompositeQueue* const composites = handing.mComposites;
-        const SeaState& sea = handing.mSea;
-        const TextureReadings* const readings = handing.mReadings;
+        const CellHolds* const readings = handing.mReadings;
         FrameSpend* const spend = handing.mSpend;
 
         // Timed into a row nobody reads where the caller handed none, so the three stretches below
@@ -87,7 +85,7 @@ namespace Rtx
             // that went: their structures are destroyed and their storage given back there. Clearing
             // first would hand the renderer an empty list and hold a departed ring's structures
             // until something arrived to take the slots over.
-            renderer.placeScene(slot, tables, sea);
+            renderer.placeScene(slot, tables);
 
             timed.at(Timing::Upload) = since(told, std::chrono::steady_clock::now());
             done.mKind = SceneUpload::Kind::Placed;
@@ -109,7 +107,7 @@ namespace Rtx
 
             if (!mine)
             {
-                renderer.setScene(slot, tables, mTextures.getDescriptions(), sea);
+                renderer.setScene(slot, tables, mTextures.getDescriptions());
                 mBuilt = true;
                 done.mKind = SceneUpload::Kind::Rebuilt;
             }
@@ -119,7 +117,7 @@ namespace Rtx
                 // and first is where the memory is given back soonest. A build from nothing needs
                 // none of this: the array holds no image of what went.
                 done.mDropped = dropFreed(renderer, slot, tables);
-                renderer.extendScene(slot, tables, mTextures.getDescriptions(), sea);
+                renderer.extendScene(slot, tables, mTextures.getDescriptions());
                 done.mKind = SceneUpload::Kind::Extended;
             }
 

@@ -60,10 +60,12 @@ namespace Rtx
         std::size_t layOutLike(std::span<const MipLevel> shape, std::size_t stride);
     };
 
-    /// Every format this renderer uploads. The content formats are sRGB, because the files hold
-    /// display-encoded bytes and the hardware converts inside the filter. There is no `Undefined`:
-    /// a file this cannot read is a content error carrying a message.
-    enum class TextureFormat
+    /// Every format OpenSceneGraph decodes a texture into: the ones this renderer uploads first,
+    /// then the ones it only counts, because a file the uploader refuses is still a file the report
+    /// has to name. The content formats are sRGB, because the files hold display-encoded bytes and
+    /// the hardware converts inside the filter. Nothing uploads under `Unnamed`: `describeImage`
+    /// refuses every format past `Bgra8Srgb` with the file's name in the message.
+    enum class TextureFormat : std::uint8_t
     {
         /// BC1 with its punch-through alpha bit read. Both DXT1 spellings land here, and
         /// `describeImage` says why the header's alpha flag is not consulted.
@@ -82,7 +84,25 @@ namespace Rtx
         /// owning a copy of a buffer this type is defined by not owning.
         Rgba8Srgb,
         Bgra8Srgb,
+
+        /// Read by the census and never uploaded. Three-channel and single-channel spellings are
+        /// refused deliberately: uploading one would need the missing channels written in, which
+        /// means owning a buffer, and nothing this renderer reads stores a texture without them.
+        Rgb8,
+        Luminance,
+        LuminanceAlpha,
+
+        /// Anything else, and there is one count of them rather than one each.
+        Unnamed,
     };
+
+    inline constexpr std::size_t sTextureFormatCount = static_cast<std::size_t>(TextureFormat::Unnamed) + 1;
+
+    /// Whether this renderer uploads a format at all — the first six — or only counts it.
+    inline bool isUploadable(const TextureFormat format)
+    {
+        return format < TextureFormat::Rgb8;
+    }
 
     /// How many bytes one block of a format occupies, or zero where its texels are not blocked.
     /// Exhaustive rather than defaulted, so that a format added to the enum is a build failure
@@ -99,6 +119,10 @@ namespace Rtx
             case TextureFormat::Rgba8Unorm:
             case TextureFormat::Rgba8Srgb:
             case TextureFormat::Bgra8Srgb:
+            case TextureFormat::Rgb8:
+            case TextureFormat::Luminance:
+            case TextureFormat::LuminanceAlpha:
+            case TextureFormat::Unnamed:
                 return 0;
         }
 

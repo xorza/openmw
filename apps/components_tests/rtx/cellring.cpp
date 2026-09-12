@@ -350,11 +350,12 @@ namespace Rtx::Testing
             EXPECT_FALSE(groundOf(osg::Vec2i(5, 0)).has_value()) << "prepared a band out, and not placed";
 
             // The ground's textures were read on the thread as the bark was.
-            EXPECT_NE(mRing.find(*mContent.mImages.get(VFS::Path::NormalizedView("textures/grass.dds"))), nullptr);
+            EXPECT_NE(
+                mRing.getHolds().find(*mContent.mImages.get(VFS::Path::NormalizedView("textures/grass.dds"))), nullptr);
 
             // The bark was read on the thread: its chain built down from four to one, and its
             // shading estimated — a flat grey to one everywhere.
-            const PreparedTexture* bark = mRing.find(*mContent.mBark);
+            const PreparedTexture* bark = mRing.getHolds().find(*mContent.mBark);
             ASSERT_NE(bark, nullptr);
             EXPECT_TRUE(bark->mReadable);
             EXPECT_FALSE(bark->mChain.isEmpty());
@@ -429,7 +430,7 @@ namespace Rtx::Testing
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 2u + sPreparedCells);
             EXPECT_EQ(went.mMaterials, 2u + sPreparedCells);
-            EXPECT_EQ(mRing.find(*mContent.mBark), nullptr) << "no model the ring knows of names it";
+            EXPECT_EQ(mRing.getHolds().find(*mContent.mBark), nullptr) << "no model the ring knows of names it";
 
             fill();
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";

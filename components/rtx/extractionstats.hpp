@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-#include "texels.hpp"
+#include "texturedata.hpp"
 
 namespace osg
 {
@@ -19,13 +19,13 @@ namespace Rtx
         std::uint32_t mMipped = 0;
     };
 
-    /// What the textures a walk reached for turned out to be, one entry per `ImageFormat`, counted
+    /// What the textures a walk reached for turned out to be, one entry per `TextureFormat`, counted
     /// by enumerator and named at the end, because naming one where it is met builds a
     /// `std::string` on the frame path. Its own struct because the unnamed format is the last one
     /// seen rather than a total.
     struct FormatCensus
     {
-        std::array<FormatCount, sImageFormatCount> mMet{};
+        std::array<FormatCount, sTextureFormatCount> mMet{};
 
         /// The pixel format the `Unnamed` count last stood for, or zero — the whole of what makes
         /// that count worth printing, because a format nothing names is a canary and the reader's

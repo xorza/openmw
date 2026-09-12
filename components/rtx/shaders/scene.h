@@ -384,7 +384,7 @@ namespace Rtx::Shaders
     const uint MATERIAL_MEDIUM = 0x01u;
 
     /// The mesh's per-vertex colour replaces this material's diffuse tint —
-    /// `Surface::VertexColour::Tint`, which is every piece of ground and over half of the models
+    /// `Rtx::VertexColour::Tint`, which is every piece of ground and over half of the models
     /// the game ships.
     ///
     /// **A bit and not a second colour on the row.** The two are exclusive, a mesh that brought no
@@ -392,7 +392,7 @@ namespace Rtx::Shaders
     /// nought or one — so a surface that carries neither pays no branch and no extra load.
     const uint MATERIAL_VERTEX_TINT = 0x02u;
 
-    /// The same colour replaces this material's glow instead — `Surface::VertexColour::Glow`. The
+    /// The same colour replaces this material's glow instead — `Rtx::VertexColour::Glow`. The
     /// light mode that goes with it already took the diffuse and the ambient to nought, so such a
     /// surface is its glow and nothing else.
     const uint MATERIAL_VERTEX_GLOW = 0x04u;

@@ -13,6 +13,7 @@
 
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/held.hpp>
 #include <components/rtx/mipchain.hpp>
 #include <components/rtx/prepared.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -278,18 +279,6 @@ namespace Rtx
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
             EXPECT_EQ(described.getUnreadable(), 1u);
         }
-        /// A fake of what the static ring answers: one image, read ahead of the frame.
-        class OneReading final : public TextureReadings
-        {
-        public:
-            PreparedTexture mTexture;
-
-            const PreparedTexture* find(const osg::Image& image) const override
-            {
-                return &image == mTexture.mImage.get() ? &mTexture : nullptr;
-            }
-        };
-
         /// A describe takes a reading's chain and shading over building its own, and builds its own
         /// where nothing read the image ahead of it.
         TEST(RtxTextureBuilderTest, aReadingIsTakenOverABuildAndAMissIsBuilt)
@@ -310,13 +299,17 @@ namespace Rtx
             Rtx::SceneDesc scene;
             addModel(scene, path);
 
-            OneReading reading;
-            reading.mTexture.mImage = image;
+            // What the static ring answers: one image, read ahead of the frame and held.
+            PreparedTexture texture;
+            texture.mImage = image;
             std::vector<Rtx::MipLevel> levels;
-            reading.mTexture.mChain.build(describeImage(*image, levels));
-            ASSERT_FALSE(reading.mTexture.mChain.isEmpty());
-            reading.mTexture.mShading.fill(2.0f);
-            reading.mTexture.mReadable = true;
+            texture.mChain.build(describeImage(*image, levels));
+            ASSERT_FALSE(texture.mChain.isEmpty());
+            texture.mShading.fill(2.0f);
+            texture.mReadable = true;
+
+            CellHolds reading;
+            reading.holdTexture(texture);
 
             SceneTextures taken;
             taken.describeAll(scene, images, nullptr, &reading);
@@ -333,7 +326,7 @@ namespace Rtx
                 << "a flat grey estimates to one everywhere, which is not the reading's two";
 
             // An unreadable reading is no reading: the miss path runs and the stand-in follows.
-            reading.mTexture.mReadable = false;
+            texture.mReadable = false;
             SceneTextures again;
             again.describeAll(scene, images, nullptr, &reading);
             EXPECT_NEAR(again.getDescriptions()[0].mShading[0], 1.0f, 0.01f);

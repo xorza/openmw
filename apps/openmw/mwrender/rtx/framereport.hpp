@@ -17,11 +17,6 @@ namespace Rtx
     class SceneDesc;
 }
 
-namespace osg
-{
-    class Group;
-}
-
 namespace Resource
 {
     class ResourceSystem;
@@ -82,9 +77,6 @@ namespace MWRender
 
         /// The world's, or null before there is a world.
         Resource::ResourceSystem* mResources = nullptr;
-
-        /// Whatever is topmost, or null.
-        osg::Group* mSceneRoot = nullptr;
 
         /// The scene the last walk handed over.
         const Rtx::SceneDesc& mScene;

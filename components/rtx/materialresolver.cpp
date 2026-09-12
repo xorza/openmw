@@ -11,8 +11,8 @@
 #include <osg/Image>
 #include <osg/StateSet>
 
+#include "surface.hpp"
 #include <components/sceneutil/statesetupdater.hpp>
-#include <components/surface/material.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "alphaimage.hpp"
@@ -144,9 +144,9 @@ namespace Rtx
 
         // The same two facts `Material::isTranslucent` reads, off the description they are
         // copied from, so the reader walks the texels of exactly the images `describe` would.
-        const Surface::Material& described = *reading.mDescribed;
-        const bool translucent = described.mAlphaMode == Surface::AlphaMode::Blend && described.mOpacity < 1.0f;
-        const osg::Image* const diffuse = described.getTexture(Surface::TextureRole::Diffuse);
+        const SurfaceDescription& described = *reading.mDescribed;
+        const bool translucent = described.mAlphaMode == AlphaMode::Blend && described.mOpacity < 1.0f;
+        const osg::Image* const diffuse = described.getTexture(TextureRole::Diffuse);
 
         if (translucent && diffuse != nullptr && !diffuse->getFileName().empty())
             reading.mDiffuseSolid = reachesSolid(*diffuse, scratch);
@@ -260,7 +260,7 @@ namespace Rtx
     {
         const bool animated = !shading.empty() && shading.back().mAnimated;
 
-        Surface::Material described;
+        SurfaceDescription described;
         if (!describeSurface(shading, described))
             return describe(nullptr, animated, std::nullopt);
 
@@ -268,7 +268,7 @@ namespace Rtx
     }
 
     Material MaterialResolver::describe(
-        const Surface::Material* const described, const bool animated, const std::optional<bool> diffuseSolid)
+        const SurfaceDescription* const described, const bool animated, const std::optional<bool> diffuseSolid)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -286,16 +286,16 @@ namespace Rtx
 
         // Kept, because the medium test below asks about the same image and asking the description
         // twice for it is asking twice.
-        const osg::Image* const diffuse = described->getTexture(Surface::TextureRole::Diffuse);
+        const osg::Image* const diffuse = described->getTexture(TextureRole::Diffuse);
 
         material.mDiffuse = takeTexture(diffuse);
-        material.mEmissive = takeTexture(described->getTexture(Surface::TextureRole::Emissive));
+        material.mEmissive = takeTexture(described->getTexture(TextureRole::Emissive));
 
         // The two normal roles differ in what the alpha channel holds, and parallax is a rasterizer
         // feature this renderer does not have: to a ray tracer they are the same texture.
-        material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::Normal));
+        material.mNormal = takeTexture(described->getTexture(TextureRole::Normal));
         if (material.mNormal == sNoIndex)
-            material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::NormalHeight));
+            material.mNormal = takeTexture(described->getTexture(TextureRole::NormalHeight));
 
         material.mAlphaRef = described->mAlphaRef;
         material.mAlphaMode = described->mAlphaMode;

@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <osg/Math>
+#include <osg/Vec3f>
 
 #include <components/files/conversion.hpp>
 #include <components/rtx/skylight.hpp>
@@ -47,18 +48,18 @@ namespace RtxTool
 
     }
 
-    float Viewpoint::getBearing() const
+    float bearingOf(const Rtx::Stand& stand)
     {
-        osg::Vec3f forward = mAt.mLook - mAt.mEye;
+        osg::Vec3f forward = stand.getLook() - *stand.mEye;
         forward.normalize();
 
         const float degrees = osg::RadiansToDegrees(std::atan2(forward.x(), forward.y()));
         return degrees < 0.0f ? degrees + 360.0f : degrees;
     }
 
-    float Viewpoint::getClimb() const
+    float climbOf(const Rtx::Stand& stand)
     {
-        osg::Vec3f forward = mAt.mLook - mAt.mEye;
+        osg::Vec3f forward = stand.getLook() - *stand.mEye;
         forward.normalize();
 
         // Clamped because a normalised vector's z can land a bit past one, and `asin` answers a NaN
@@ -66,32 +67,37 @@ namespace RtxTool
         return osg::RadiansToDegrees(std::asin(std::clamp(forward.z(), -1.0f, 1.0f)));
     }
 
-    std::string describeSpot(const Viewpoint& spot)
+    std::string describeSpot(const Rtx::Stop& stop)
     {
+        const osg::Vec3f& eye = *stop.mStand.mEye;
+
         return std::format("# {} at {:.0f}, {:.0f}, {:.0f} — bearing {:.0f}°, climb {:.0f}° — day {}, {}, {}\n",
-            spot.mCell, spot.mAt.mEye.x(), spot.mAt.mEye.y(), spot.mAt.mEye.z(), spot.getBearing(), spot.getClimb(),
-            spot.mAt.mDay, Rtx::describeHour(spot.mAt.mHour), spot.mAt.mWeather);
+            stop.mStand.mCell, eye.x(), eye.y(), eye.z(), bearingOf(stop.mStand), climbOf(stop.mStand),
+            stop.mSky.mDay.value_or(0), Rtx::describeHour(stop.mSky.mHour.value_or(sDefaultHour)),
+            stop.mSky.mWeather.value_or(std::string(sDefaultWeather)));
     }
 
-    std::string describeBlock(const Viewpoint& spot)
+    std::string describeBlock(const Rtx::Stop& stop)
     {
-        std::string block = std::format("[{}]\n", spot.mView.empty() ? slugOf(spot.mCell) : spot.mView);
+        std::string block = std::format("[{}]\n", slugOf(stop.mName));
 
-        if (!spot.mNote.empty())
-            block += std::format("note = {}\n", spot.mNote);
+        if (!stop.mNote.empty())
+            block += std::format("note = {}\n", stop.mNote);
 
-        block += std::format("cell = {}\npos = {}, {}, {}\nlook = {}, {}, {}\n", spot.mCell, spot.mAt.mEye.x(),
-            spot.mAt.mEye.y(), spot.mAt.mEye.z(), spot.mAt.mLook.x(), spot.mAt.mLook.y(), spot.mAt.mLook.z());
+        const osg::Vec3f& eye = *stop.mStand.mEye;
+        const osg::Vec3f look = stop.mStand.getLook();
+        block += std::format("cell = {}\npos = {}, {}, {}\nlook = {}, {}, {}\n", stop.mStand.mCell, eye.x(), eye.y(),
+            eye.z(), look.x(), look.y(), look.z());
 
         // **Each condition only where the window was not at the file's own**, because one written
         // down fixes the place under it. A block pasted from a window flown at dawn in a storm has
         // to bring both with it — the light is most of what the frame is — and one from a window at
         // clear noon should leave the view free to be measured under whatever a run names.
-        if (spot.mAt.mHour != sDefaultHour)
-            block += std::format("hour = {}\n", spot.mAt.mHour);
+        if (stop.mSky.mHour.has_value() && *stop.mSky.mHour != sDefaultHour)
+            block += std::format("hour = {}\n", *stop.mSky.mHour);
 
-        if (spot.mAt.mWeather != sDefaultWeather)
-            block += std::format("weather = {}\n", spot.mAt.mWeather);
+        if (stop.mSky.mWeather.has_value() && *stop.mSky.mWeather != sDefaultWeather)
+            block += std::format("weather = {}\n", *stop.mSky.mWeather);
 
         return block;
     }
@@ -198,11 +204,11 @@ namespace RtxTool
         /// own place, which leaves no chain to walk and no cycle to detect. A route is left behind
         /// because flying from a place is a different measurement rather than the same place under
         /// another light, and a borrower that wants one writes its own.
-        void resolveLikes(std::vector<View>& views, const std::vector<std::pair<std::size_t, std::string>>& likes)
+        void resolveLikes(std::vector<Rtx::Stop>& views, const std::vector<std::pair<std::size_t, std::string>>& likes)
         {
             for (const auto& [at, name] : likes)
             {
-                View& borrower = views[at];
+                Rtx::Stop& borrower = views[at];
                 if (borrower.mName == name)
                     throw std::runtime_error("view \"" + borrower.mName + "\" is like itself");
 
@@ -212,19 +218,19 @@ namespace RtxTool
                     throw std::runtime_error("view \"" + borrower.mName + "\" is like \"" + name
                         + "\", which is itself like another view; only a view that states its own place may be lent");
 
-                const View* source = findView(views, name);
+                const Rtx::Stop* source = findView(views, name);
                 if (source == nullptr)
                     throw std::runtime_error(
                         "view \"" + borrower.mName + "\" is like \"" + name + "\", which is not a view");
 
                 // Written through the vector while `source` points into it, which the check above
                 // makes safe: the two are different views and nothing here resizes.
-                if (borrower.mCell.empty())
-                    borrower.mCell = source->mCell;
-                if (!borrower.mOrigin.has_value())
-                    borrower.mOrigin = source->mOrigin;
-                if (!borrower.mTarget.has_value())
-                    borrower.mTarget = source->mTarget;
+                if (borrower.mStand.mCell.empty())
+                    borrower.mStand.mCell = source->mStand.mCell;
+                if (!borrower.mStand.mEye.has_value())
+                    borrower.mStand.mEye = source->mStand.mEye;
+                if (!borrower.mStand.mLook.has_value())
+                    borrower.mStand.mLook = source->mStand.mLook;
             }
         }
 
@@ -235,7 +241,7 @@ namespace RtxTool
         /// guessing what was meant is how a benchmark measures something other than what was asked
         /// for. The destination must also name its own `pos` and `look`, because a placement derived
         /// from a cell's bounds would need that cell staged to know it.
-        void resolveRoutes(std::vector<View>& views, const std::vector<std::pair<std::size_t, std::string>>& ends,
+        void resolveRoutes(std::vector<Rtx::Stop>& views, const std::vector<std::pair<std::size_t, std::string>>& ends,
             const std::vector<std::pair<std::size_t, float>>& speeds)
         {
             for (const auto& [at, speed] : speeds)
@@ -253,18 +259,18 @@ namespace RtxTool
                 if (paired == speeds.end())
                     throw std::runtime_error("view \"" + views[at].mName + "\" flies to \"" + to + "\" at no speed");
 
-                const View* end = findView(views, to);
+                const Rtx::Stop* end = findView(views, to);
                 if (end == nullptr)
                     throw std::runtime_error(
                         "view \"" + views[at].mName + "\" flies to \"" + to + "\", which is not a view");
 
-                if (!end->mOrigin.has_value() || !end->mTarget.has_value())
+                if (!end->mStand.mEye.has_value() || !end->mStand.mLook.has_value())
                     throw std::runtime_error("view \"" + views[at].mName + "\" flies to \"" + to
                         + "\", which names no pos and look of its own to arrive at");
 
-                views[at].mRoute = Rtx::Route{
-                    .mTo = *end->mOrigin,
-                    .mLookTo = *end->mTarget,
+                views[at].mSchedule.mRoute = Rtx::Route{
+                    .mTo = *end->mStand.mEye,
+                    .mLookTo = *end->mStand.mLook,
                     .mSpeed = paired->second,
                 };
             }
@@ -283,33 +289,24 @@ namespace RtxTool
         }
     }
 
-    Rtx::Stop stopFor(
-        const View& view, const std::optional<float>& hour, const std::optional<std::string>& weather, const int day)
+    Rtx::Stop stopFor(const Rtx::Stop& view, const std::optional<float>& hour,
+        const std::optional<std::string>& weather, const int day)
     {
-        Rtx::Stop stop;
+        Rtx::Stop stop = view;
 
         // **The cell where a view names no id**, because a report row and a hash file are keyed on
-        // this and neither can be keyed on nothing. `Viewpoint::mView` keeps the raw id, which is
-        // what says whether the block a window prints opens a section of its own.
-        stop.mName = view.mName.empty() ? view.mCell : view.mName;
-        stop.mNote = view.mNote;
+        // this and neither can be keyed on nothing.
+        if (stop.mName.empty())
+            stop.mName = view.mStand.mCell;
 
-        stop.mStand.mCell = view.mCell;
-        stop.mStand.mEye = view.mOrigin;
-        stop.mStand.mLook = view.mTarget;
-
-        stop.mSky.mHour = hourFor(hour, view.mHour);
-        stop.mSky.mWeather = weatherFor(weather, view.mWeather);
+        stop.mSky.mHour = hourFor(hour, view.mSky.mHour);
+        stop.mSky.mWeather = weatherFor(weather, view.mSky.mWeather);
         stop.mSky.mDay = day;
-
-        // **A route flies the player, which is what puts a cell arriving into a measurement.**
-        // Where it ends is another view's camera, copied into the entry when the file was read.
-        stop.mSchedule.mRoute = view.mRoute;
 
         return stop;
     }
 
-    std::vector<View> loadViews(const std::filesystem::path& path)
+    std::vector<Rtx::Stop> loadViews(const std::filesystem::path& path)
     {
         Settings::CategorySettingValueMap entries;
         Settings::SettingsFileParser parser;
@@ -325,22 +322,22 @@ namespace RtxTool
         std::vector<std::pair<std::size_t, float>> speeds;
         std::vector<std::pair<std::size_t, std::string>> likes;
 
-        std::vector<View> views;
+        std::vector<Rtx::Stop> views;
         for (const auto& [key, value] : entries)
         {
             const std::string& section = key.first;
             const std::string& field = key.second;
 
             if (views.empty() || views.back().mName != section)
-                views.push_back(View{ .mName = section });
+                views.push_back(Rtx::Stop{ .mName = section });
 
-            View& view = views.back();
+            Rtx::Stop& view = views.back();
             if (field == "cell")
-                view.mCell = value;
+                view.mStand.mCell = value;
             else if (field == "pos")
-                view.mOrigin = parseVec3(value, "pos");
+                view.mStand.mEye = parseVec3(value, "pos");
             else if (field == "look")
-                view.mTarget = parseVec3(value, "look");
+                view.mStand.mLook = parseVec3(value, "look");
             else if (field == "note")
                 view.mNote = value;
             else if (field == "to")
@@ -348,9 +345,9 @@ namespace RtxTool
             else if (field == "speed")
                 speeds.emplace_back(views.size() - 1, parseSpeed(section, value));
             else if (field == "hour")
-                view.mHour = parseHour(section, value);
+                view.mSky.mHour = parseHour(section, value);
             else if (field == "weather")
-                view.mWeather = parseWeather(section, value);
+                view.mSky.mWeather = parseWeather(section, value);
             else if (field == "like")
                 likes.emplace_back(views.size() - 1, value);
             else
@@ -364,32 +361,33 @@ namespace RtxTool
         // it is like, and either check run first would reject a view that is about to be complete.
         resolveLikes(views, likes);
 
-        for (const View& view : views)
-            if (view.mCell.empty())
+        for (const Rtx::Stop& view : views)
+            if (view.mStand.mCell.empty())
                 throw std::runtime_error("view \"" + view.mName + "\" names no cell");
 
         resolveRoutes(views, ends, speeds);
         return views;
     }
 
-    const View* findView(const std::vector<View>& views, std::string_view name)
+    const Rtx::Stop* findView(const std::vector<Rtx::Stop>& views, std::string_view name)
     {
-        const auto found = std::find_if(views.begin(), views.end(), [&](const View& v) { return v.mName == name; });
+        const auto found
+            = std::find_if(views.begin(), views.end(), [&](const Rtx::Stop& v) { return v.mName == name; });
         return found == views.end() ? nullptr : &*found;
     }
 
-    std::vector<View> chooseViews(const std::vector<View>& views, const std::vector<std::string>& named)
+    std::vector<Rtx::Stop> chooseViews(const std::vector<Rtx::Stop>& views, const std::vector<std::string>& named)
     {
         // **"all" is a name nothing may take, and it means every view.** `bench` reaches this
         // through a suite as well, so the word has to mean the same on either road in.
         if (named.empty() || (named.size() == 1 && named.front() == "all"))
             return views;
 
-        std::vector<View> chosen;
+        std::vector<Rtx::Stop> chosen;
         chosen.reserve(named.size());
         for (const std::string& name : named)
         {
-            const View* view = findView(views, name);
+            const Rtx::Stop* view = findView(views, name);
             if (view == nullptr)
                 throw std::runtime_error("no view is called \"" + name + "\"; --list-views prints them");
 

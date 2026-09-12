@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -12,6 +13,8 @@
 
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
 #include <components/rtxvulkan/validation.hpp>
@@ -45,20 +48,21 @@ namespace Rtx::Testing
                 return nullptr;
             }
 
-            InstanceOptions options;
-            options.mValidation = validation;
             // Tests provoke errors deliberately and assert on them; aborting would take the suite
-            // down with the first one.
-            options.mPolicy = ValidationPolicy::Log;
-            // **The same switch `describeRenderer` sets, for the same reason.** A test that drives
-            // Vulkan directly supplies its own ordering with a submit and a wait, so a missing
-            // barrier in the code under it shows as nothing at all — and a suite validated one way
-            // through the renderer and another way beside it answers a different question in each
-            // file. It costs no measurable time here either.
-            options.mSynchronizationValidation = validation;
+            // down with the first one. Synchronization validation is **the same switch
+            // `describeRenderer` sets, for the same reason**: a test that drives Vulkan directly
+            // supplies its own ordering with a submit and a wait, so a missing barrier in the code
+            // under it shows as nothing at all — and a suite validated one way through the renderer
+            // and another way beside it answers a different question in each file. It costs no
+            // measurable time here either.
+            const ValidationOptions options{
+                .mEnabled = validation,
+                .mSynchronization = validation,
+                .mAbortOnError = false,
+            };
 
             auto harness = std::make_unique<Harness>();
-            harness->mInstance = std::make_unique<Instance>(options);
+            harness->mInstance = std::make_unique<Instance>(options, std::span<const char* const>{});
 
             std::uint32_t count = 0;
             if (vkEnumeratePhysicalDevices(harness->mInstance->getHandle(), &count, nullptr) != VK_SUCCESS
@@ -166,7 +170,7 @@ namespace Rtx::Testing
 
         try
         {
-            const Instance probe{ InstanceOptions{} };
+            const Instance probe{ ValidationOptions{}, std::span<const char* const>{} };
         }
         catch (const Unsupported& obstacle)
         {

@@ -137,7 +137,7 @@ namespace Rtx
             fail();
     }
 
-    SessionResult RunRecord::describe(const Standing* const left) const
+    SessionResult RunRecord::describe(const Stop* const left) const
     {
         SessionResult result;
         result.mExitStatus = mExitStatus;

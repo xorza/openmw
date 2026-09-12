@@ -127,6 +127,9 @@ namespace Rtx
         /// anywhere. Copied, so a caller may hand over a temporary.
         void follow(std::span<Residency* const> residents) { mResidents.assign(residents.begin(), residents.end()); }
 
+        /// Where this walk's traversal numbers come from — the one handed in, or its own.
+        Traversals& getTraversals() { return mTraversals; }
+
         /// Ends a frame: what was placed becomes what was placed before. Once per frame by whoever
         /// is mirroring a live graph, and never by anything that walks a world once, for which every
         /// placement's previous transform is rightly its current one. Freeing what has gone is

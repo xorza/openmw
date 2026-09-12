@@ -134,13 +134,6 @@ namespace Rtx
             return mCopies[slot.get()].getDeviceAddress();
         }
 
-        /// What one copy's buffer occupies, for a test that asks whether it keeps growing.
-        VkDeviceSize getCopyBytes(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mCopies[slot.get()].getSize();
-        }
-
         VkDeviceSize getBytes() const
         {
             VkDeviceSize total = 0;
@@ -150,8 +143,16 @@ namespace Rtx
             return total;
         }
 
-        /// What `slot` would write if it were synced now, for a test that asks whether the
-        /// bookkeeping is right rather than whether the picture is.
+        // Read by the tests and by nothing else.
+        /// What one copy's buffer occupies, which says whether it keeps growing.
+        VkDeviceSize getCopyBytes(FrameSlot slot) const
+        {
+            assert(slot.get() < mSlots);
+            return mCopies[slot.get()].getSize();
+        }
+
+        /// What `slot` would write if it were synced now, which says whether the bookkeeping is
+        /// right rather than whether the picture is.
         std::span<const Index> getOwed(FrameSlot slot) const
         {
             assert(slot.get() < mSlots);
@@ -266,6 +267,7 @@ namespace Rtx
             return total;
         }
 
+        // Read by the tests and by nothing else.
         std::span<const Index> getOwed(FrameSlot slot) const
         {
             assert(slot.get() < mSlots);

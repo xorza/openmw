@@ -131,6 +131,7 @@ namespace Rtx
         /// for pacing a frame.
         void waitIdle() const;
 
+        // Read by the tests and by nothing else.
         /// Whether the driver offers `VK_EXT_device_fault` with its feature, and so whether
         /// `describeFault` has anything to ask.
         bool canDescribeFault() const

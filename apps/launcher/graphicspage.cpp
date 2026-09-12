@@ -2,7 +2,6 @@
 
 #include "sdlinit.hpp"
 
-#include <components/features/features.hpp>
 #include <components/misc/display.hpp>
 #include <components/settings/values.hpp>
 
@@ -111,9 +110,8 @@ bool Launcher::GraphicsPage::loadSettings()
 
     // The settings exist in every build so a config file survives moving between them; the controls
     // are shown dead rather than hidden, because one that silently does nothing is worse than one
-    // that says why. Asked of the build rather than of the preprocessor — see
-    // `Features::hasRayTracing`.
-    if (!Features::hasRayTracing())
+    // that says why.
+    if (!Settings::sRayTracingBuilt)
     {
         const QString why = tr("This build was made without the ray tracing renderer.");
         for (QWidget* widget :
@@ -175,7 +173,7 @@ void Launcher::GraphicsPage::saveSettings()
     const int chosenIndex = rayTracingUpscaleComboBox->currentIndex();
     if (chosenIndex >= 0)
         if (const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(static_cast<std::size_t>(chosenIndex)))
-            Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(*chosen)));
+            Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(*chosen)));
     Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
 
     int cWidth = 0;

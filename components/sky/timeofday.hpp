@@ -80,6 +80,7 @@ namespace Sky
             return of.has_value() ? getSetting(*of) : WeatherSetting{ 1.f, 1.f, 1.f, 1.f };
         }
 
+        // Read by the tests and by nothing else.
         /// Whether a window was recorded for `of` at all. See `mSunriseTransitions`.
         bool hasSetting(DayPhaseOf of) const { return mSunriseTransitions[static_cast<std::size_t>(of)].has_value(); }
 

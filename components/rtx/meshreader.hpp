@@ -1,11 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <span>
 #include <vector>
 
 #include <osg/Vec3f>
 
-#include "geometryfold.hpp"
 #include "mesh.hpp"
 #include "nodekind.hpp"
 #include "shapefold.hpp"
@@ -72,7 +72,15 @@ namespace Rtx
         bool read(const DrawableRead& read, MeshReading& into);
 
     private:
-        GeometryFold mFold;
+        /// Collects `geometry`'s triangles into `mIndexScratch`, degenerate ones left out. False
+        /// where none is left.
+        bool collectTriangles(const osg::Geometry& geometry);
+
+        ShapeFold mFold;
+
+        /// Refilled per drawable rather than reallocated, because a cell is tens of thousands of
+        /// them.
+        std::vector<std::uint32_t> mIndexScratch;
 
         /// Where an overall normal is spread across a drawable's vertices.
         std::vector<osg::Vec3f> mFlatNormalScratch;

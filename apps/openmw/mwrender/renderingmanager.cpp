@@ -1448,11 +1448,12 @@ namespace MWRender
             // **Acted on while the game runs, unlike `RTX / enabled` beside it.** Which renderer
             // draws is settled before the window exists; how hard its upscaler works is a pair of
             // resolutions it can be rebuilt for. A renderer with no upscaler ignores this, and a
-            // name it cannot read leaves it where it is — `Rtx::upscaleNamed` refuses rather than
+            // name it cannot read leaves it where it is — `Rtx::sUpscaleNames.named` refuses rather than
             // defaulting, for the reason it gives.
             else if (it->first == "RTX" && it->second == "upscale")
             {
-                if (const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get()))
+                if (const std::optional<Rtx::Upscale> upscale
+                    = Rtx::sUpscaleNames.named(Settings::rtx().mUpscale.get()))
                     mRenderer.setUpscale(*upscale);
             }
             else if (it->first == "Post Processing" && it->second == "enabled"

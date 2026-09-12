@@ -123,7 +123,7 @@ namespace Rtx
         struct FormatCase
         {
             GLenum mSpelling;
-            ImageFormat mFormat;
+            TextureFormat mFormat;
             std::string_view mName;
         };
 
@@ -136,29 +136,35 @@ namespace Rtx
         /// `GL_ALPHA` stands for the formats nothing here names. `ESMTerrain` builds its blend maps
         /// in it, which is a real format that reaches no uploader, so the count it lands in is the
         /// canary rather than a hole.
-        TEST(RtxImageFormatTest, everySpellingReadsAsItsFormatAndNamesItself)
+        TEST(RtxTextureFormatTest, everySpellingReadsAsItsFormatAndNamesItself)
         {
             constexpr std::array<FormatCase, 10> sCases{ {
-                { GL_COMPRESSED_RGB_S3TC_DXT1_EXT, ImageFormat::Bc1, "BC1 (DXT1)" },
-                { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, ImageFormat::Bc1, "BC1 (DXT1)" },
-                { GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, ImageFormat::Bc2, "BC2 (DXT3)" },
-                { GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, ImageFormat::Bc3, "BC3 (DXT5)" },
-                { GL_RGB, ImageFormat::Rgb8, "RGB8" },
-                { GL_RGBA, ImageFormat::Rgba8, "RGBA8" },
-                { GL_BGRA, ImageFormat::Bgra8, "BGRA8" },
-                { GL_LUMINANCE, ImageFormat::Luminance, "L8" },
-                { GL_LUMINANCE_ALPHA, ImageFormat::LuminanceAlpha, "LA8" },
-                { GL_ALPHA, ImageFormat::Unnamed, "an unnamed pixel format" },
+                { GL_COMPRESSED_RGB_S3TC_DXT1_EXT, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, TextureFormat::Bc2Srgb, "BC2 (DXT3)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, TextureFormat::Bc3Srgb, "BC3 (DXT5)" },
+                { GL_RGB, TextureFormat::Rgb8, "RGB8" },
+                { GL_RGBA, TextureFormat::Rgba8Srgb, "RGBA8" },
+                { GL_BGRA, TextureFormat::Bgra8Srgb, "BGRA8" },
+                { GL_LUMINANCE, TextureFormat::Luminance, "L8" },
+                { GL_LUMINANCE_ALPHA, TextureFormat::LuminanceAlpha, "LA8" },
+                { GL_ALPHA, TextureFormat::Unnamed, "an unnamed pixel format" },
             } };
 
-            std::array<bool, sImageFormatCount> met{};
+            std::array<bool, sTextureFormatCount> met{};
             for (const FormatCase& one : sCases)
             {
                 EXPECT_EQ(readFormat(*makeImage(one.mSpelling)), one.mFormat);
                 EXPECT_EQ(nameOf(one.mFormat), one.mName);
+                EXPECT_EQ(isUploadable(one.mFormat), one.mFormat < TextureFormat::Rgb8) << one.mName;
 
                 met[static_cast<std::size_t>(one.mFormat)] = true;
             }
+
+            // No file spells the linear format: it is what a test writes an exact texel into.
+            EXPECT_EQ(nameOf(TextureFormat::Rgba8Unorm), "RGBA8 (linear)");
+            EXPECT_TRUE(isUploadable(TextureFormat::Rgba8Unorm));
+            met[static_cast<std::size_t>(TextureFormat::Rgba8Unorm)] = true;
 
             // A format added to the enum and left out of the table above is a failure here rather
             // than a count nothing can name.

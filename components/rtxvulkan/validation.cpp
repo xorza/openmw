@@ -24,7 +24,7 @@ namespace Rtx
                 Log(Debug::Error) << "Vulkan validation: " << text;
                 log.recordError(std::move(text));
 
-                if (log.getPolicy() == ValidationPolicy::Abort)
+                if (log.abortsOnError())
                 {
                     Log(Debug::Error) << "Aborting: validation errors are fatal when the layers are enabled.";
                     std::abort();

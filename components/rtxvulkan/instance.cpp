@@ -43,25 +43,14 @@ namespace Rtx
         }
     }
 
-    InstanceOptions toInstanceOptions(const ValidationOptions& validation)
-    {
-        return InstanceOptions{
-            .mValidation = validation.mEnabled,
-            .mSynchronizationValidation = validation.mSynchronization,
-            .mGpuAssistedValidation = validation.mGpuAssisted,
-            .mPolicy = validation.mAbortOnError ? ValidationPolicy::Abort : ValidationPolicy::Log,
-            .mDemanded = validation.mDemanded,
-        };
-    }
-
-    Instance::Instance(const InstanceOptions& options)
+    Instance::Instance(const ValidationOptions& options, const std::span<const char* const> surfaceExtensions)
     {
         checkVk(vkEnumerateInstanceVersion(&mApiVersion), "vkEnumerateInstanceVersion");
         if (mApiVersion < sApiVersion)
             throw Unsupported("the Vulkan loader offers " + versionString(mApiVersion) + ", and this renderer is written "
                 "against " + versionString(sApiVersion));
 
-        std::vector<const char*> extensions(options.mSurfaceExtensions);
+        std::vector<const char*> extensions(surfaceExtensions.begin(), surfaceExtensions.end());
 #ifdef OPENMW_RTX_DLSS
         // NGX names instance extensions of its own, and will not start without them.
         for (const char* const name : Dlss::getInstanceExtensions())
@@ -75,12 +64,12 @@ namespace Rtx
 #ifdef OPENMW_RTX_DEBUG_NAMES
         const bool wantDebugUtils = true;
 #else
-        const bool wantDebugUtils = options.mValidation;
+        const bool wantDebugUtils = options.mEnabled;
 #endif
         // What the device half of swapchain maintenance rests on: a present fence is the only
         // thing that says the presentation engine has finished with an image. Taken where the
         // loader has both, so a driver without them presents as before.
-        mSurfaceMaintenance = !options.mSurfaceExtensions.empty()
+        mSurfaceMaintenance = !surfaceExtensions.empty()
             && hasInstanceExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME)
             && hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
         if (mSurfaceMaintenance)
@@ -94,8 +83,8 @@ namespace Rtx
         // Validation reaches us only through the messenger, so without the extension it would run
         // and report nothing — worse than not running at all, because the clean output would read
         // as a pass.
-        const bool validation = options.mValidation && mDebugUtils && hasLayer(sValidationLayer);
-        if (options.mValidation && !validation)
+        const bool validation = options.mEnabled && mDebugUtils && hasLayer(sValidationLayer);
+        if (options.mEnabled && !validation)
         {
             const std::string missing = std::string(sValidationLayer) + " or " + VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
@@ -113,7 +102,7 @@ namespace Rtx
 
         if (validation)
         {
-            mValidationLog = std::make_unique<ValidationLog>(options.mPolicy);
+            mValidationLog = std::make_unique<ValidationLog>(options.mAbortOnError);
             layers.push_back(sValidationLayer);
         }
 
@@ -156,7 +145,7 @@ namespace Rtx
             messengerInfo = makeMessengerCreateInfo(*mValidationLog);
             next = &messengerInfo;
 
-            if (options.mSynchronizationValidation)
+            if (options.mSynchronization)
             {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);
 
@@ -166,7 +155,7 @@ namespace Rtx
                 turnOn("syncval_shader_accesses_heuristic");
             }
 
-            if (options.mGpuAssistedValidation)
+            if (options.mGpuAssisted)
             {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
 

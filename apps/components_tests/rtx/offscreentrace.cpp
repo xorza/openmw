@@ -62,12 +62,18 @@ namespace Rtx
             osg::ref_ptr<osg::Group> subject = new osg::Group;
             subject->addChild(makeQuad());
 
-            const OffscreenTrace world(renderer, 64, 64, Shaders::MASK_EVERY_CLASS);
+            const OffscreenTrace world(
+                renderer, ViewRequest{ .mWidth = 64, .mHeight = 64, .mRayMask = Shaders::MASK_EVERY_CLASS });
             EXPECT_TRUE(world.isOfWorld());
             EXPECT_EQ(world.getScene(), nullptr);
             EXPECT_EQ(renderer.mViewScenes, 0u);
 
-            const OffscreenTrace doll(renderer, 64, 64, Shaders::MASK_EVERY_CLASS, *subject, sEveryNode);
+            const OffscreenTrace doll(renderer,
+                ViewRequest{ .mWidth = 64,
+                    .mHeight = 64,
+                    .mRayMask = Shaders::MASK_EVERY_CLASS,
+                    .mSubject = subject.get(),
+                    .mSubjectMask = sEveryNode });
             EXPECT_FALSE(doll.isOfWorld());
             ASSERT_NE(doll.getScene(), nullptr);
             EXPECT_EQ(renderer.mViewScenes, 1u);
@@ -93,7 +99,12 @@ namespace Rtx
             subject->addChild(body);
             subject->addChild(shirt);
 
-            OffscreenTrace trace(renderer, 64, 64, Shaders::MASK_EVERY_CLASS, *subject, sEveryNode);
+            OffscreenTrace trace(renderer,
+                ViewRequest{ .mWidth = 64,
+                    .mHeight = 64,
+                    .mRayMask = Shaders::MASK_EVERY_CLASS,
+                    .mSubject = subject.get(),
+                    .mSubjectMask = sEveryNode });
             const SceneDesc& scene = *trace.getScene();
 
             ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), 1, images));
@@ -153,7 +164,12 @@ namespace Rtx
 
             osg::ref_ptr<osg::Group> subject = new osg::Group;
 
-            OffscreenTrace trace(renderer, 64, 64, Shaders::MASK_EVERY_CLASS, *subject, sEveryNode);
+            OffscreenTrace trace(renderer,
+                ViewRequest{ .mWidth = 64,
+                    .mHeight = 64,
+                    .mRayMask = Shaders::MASK_EVERY_CLASS,
+                    .mSubject = subject.get(),
+                    .mSubjectMask = sEveryNode });
             EXPECT_FALSE(trace.rebuildSubject(*stampAt(1), 1, images));
             EXPECT_EQ(trace.getScene()->placements().getPlacedCount(), 0u);
         }
@@ -181,14 +197,24 @@ namespace Rtx
             subject->addChild(kept);
             subject->addChild(skipped);
 
-            OffscreenTrace trace(renderer, 64, 64, Shaders::MASK_EVERY_CLASS, *subject, wanted);
+            OffscreenTrace trace(renderer,
+                ViewRequest{ .mWidth = 64,
+                    .mHeight = 64,
+                    .mRayMask = Shaders::MASK_EVERY_CLASS,
+                    .mSubject = subject.get(),
+                    .mSubjectMask = wanted });
             ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), 1, images));
 
             // One of the two, and the same fixture with `wanted | other` would take both — which is
             // what says the mask is doing the choosing rather than the fixture.
             EXPECT_EQ(trace.getScene()->placements().getPlacedCount(), 1u);
 
-            OffscreenTrace both(renderer, 64, 64, Shaders::MASK_EVERY_CLASS, *subject, wanted | other);
+            OffscreenTrace both(renderer,
+                ViewRequest{ .mWidth = 64,
+                    .mHeight = 64,
+                    .mRayMask = Shaders::MASK_EVERY_CLASS,
+                    .mSubject = subject.get(),
+                    .mSubjectMask = wanted | other });
             ASSERT_TRUE(both.rebuildSubject(*stampAt(1), 1, images));
             EXPECT_EQ(both.getScene()->placements().getPlacedCount(), 2u);
         }

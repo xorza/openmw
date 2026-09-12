@@ -5,93 +5,24 @@
 #include <cstddef>
 #include <exception>
 #include <span>
-#include <utility>
 #include <vector>
 
-#include <osg/Drawable>
 #include <osg/Matrixf>
 #include <osg/Quat>
 #include <osg/Vec3f>
 
+#include "surface.hpp"
 #include <components/debug/debuglog.hpp>
 #include <components/misc/resourcehelpers.hpp>
-#include <components/surface/material.hpp>
 
 #include "error.hpp"
-#include "materialresolver.hpp"
 #include "residency.hpp"
-#include "shading.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// Appends `values` to `into` and answers the run they landed in. One statement, because a
-        /// run that named where it started and a count taken from another array is exactly what
-        /// `Rtx::Run` exists to stop.
-        template <class T>
-        Run appended(std::vector<T>& into, std::span<const T> values)
-        {
-            const Run run{ .mOffset = static_cast<std::uint32_t>(into.size()),
-                .mCount = static_cast<std::uint32_t>(values.size()) };
-            into.insert(into.end(), values.begin(), values.end());
-
-            return run;
-        }
-
-        /// Fills one model from the drawables a template walk hands over.
-        class ModelTaker final : public TemplateSink
-        {
-        public:
-            ModelTaker(PreparedModel& into, MeshReader& meshes, AlphaScratch& alpha, const NodeKinds& kinds)
-                : mInto(into)
-                , mMeshes(meshes)
-                , mAlpha(alpha)
-                , mKinds(kinds)
-            {
-            }
-
-            void take(
-                const osg::Drawable& drawable, std::span<const Shading> shading, const osg::Matrixf& local) override
-            {
-                // A particle system is a drawable with no triangles, and the paging left those out
-                // of a chunk too; a rig or a morph is read as its source, which is the bind pose,
-                // and stands still — as it did in a chunk.
-                const DrawableRead read = readDrawable(drawable, mKinds.of(drawable));
-                if (read.mGeometry == nullptr)
-                    return;
-
-                MeshReading reading;
-                if (!mMeshes.read(read, reading))
-                    return;
-
-                PreparedPart part;
-                part.mDrawable = &drawable;
-                part.mMaterial = MaterialResolver::read(shading, mAlpha);
-                part.mLocal = local;
-                part.mShape = reading.mShape;
-
-                part.mVertices = appended(mInto.mPositions, reading.mArrays.mPositions);
-                part.mNormals = appended(mInto.mNormals, reading.mArrays.mNormals);
-                part.mTexCoords = appended(mInto.mTexCoords, reading.mArrays.mTexCoords);
-                part.mColours = appended(mInto.mColours, reading.mArrays.mColours);
-                part.mIndices = appended(mInto.mIndices, reading.mArrays.mIndices);
-
-                mInto.mParts.push_back(std::move(part));
-            }
-
-        private:
-            PreparedModel& mInto;
-            MeshReader& mMeshes;
-            AlphaScratch& mAlpha;
-            const NodeKinds& mKinds;
-        };
-
-        /// The reference's own space to the world's, composed as `SceneUtil::PositionAttitudeTransform`
-        /// composes the one the game stands a clone under: scaled, then turned, then moved. The
-        /// paging's own quaternion, axis by negated axis and Z first, so this stands what
-        /// `createChunk` stood.
         osg::Matrixf transformOf(const Terrain::PagedCellRef& ref)
         {
             const osg::Quat attitude = osg::Quat(ref.mRotation.z(), osg::Vec3f(0.0f, 0.0f, -1.0f))
@@ -107,8 +38,8 @@ namespace Rtx
         }
 
         /// The three images a material can name, in the roles the frame's describe takes them by.
-        constexpr std::array<Surface::TextureRole, 4> sRoles{ Surface::TextureRole::Diffuse,
-            Surface::TextureRole::Emissive, Surface::TextureRole::Normal, Surface::TextureRole::NormalHeight };
+        constexpr std::array<TextureRole, 4> sRoles{ TextureRole::Diffuse, TextureRole::Emissive, TextureRole::Normal,
+            TextureRole::NormalHeight };
 
     }
 
@@ -184,15 +115,14 @@ namespace Rtx
         // for every template the game hands out, so this is a read.
         model.mRadius = node->getBound().radius();
 
-        ModelTaker taker(model, mMeshes, mAlpha, mKinds);
-        mWalk.walk(*node, mMask, taker);
+        mWalk.read(*node, mMask, model);
 
         for (const PreparedPart& part : model.mParts)
         {
             if (!part.mMaterial.mDescribed.has_value())
                 continue;
 
-            for (const Surface::TextureRole role : sRoles)
+            for (const TextureRole role : sRoles)
             {
                 const osg::Image* const image = part.mMaterial.mDescribed->getTexture(role);
                 if (image == nullptr)

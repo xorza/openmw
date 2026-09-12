@@ -7,7 +7,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/shadingmap.hpp>
-#include <components/surface/material.hpp>
+#include <components/rtx/surface.hpp>
 
 #include "fixture.hpp"
 
@@ -112,7 +112,7 @@ namespace Rtx::Testing
 
             mRenderer->resize(size, size);
             const TextureData first = describeTexel(redTexel, 0);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1));
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
 
             // **A hue rather than a pair of exact bytes.** The tone curve rolls a saturated colour
@@ -138,7 +138,7 @@ namespace Rtx::Testing
             // written where it belongs rather than after whatever is already there.
             const Index blueTexture = scene.materials().getRows()[blue].mDiffuse;
             const TextureData second = describeTexel(blueTexel, blueTexture);
-            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1), SeaState{});
+            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1));
             EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u);
 
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
@@ -152,7 +152,7 @@ namespace Rtx::Testing
             // And the first texture is still where it was: move the near wall out of the way and the
             // one behind it has to be red again, sampled from a descriptor nothing rewrote.
             scene.placements().drop(1);
-            mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
@@ -170,7 +170,7 @@ namespace Rtx::Testing
             ASSERT_TRUE(scene.textures().isFree(blueTexture));
             ASSERT_EQ(scene.textures().getPaths().size(), 2u) << "the table does not shrink";
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1));
 
             EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u)
                 << "the array stopped at the last texture it was handed rather than at the table";
@@ -205,7 +205,7 @@ namespace Rtx::Testing
             ASSERT_TRUE(scene.release(keptMeshes, keptAgain));
             ASSERT_TRUE(scene.textures().isFree(0u));
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1));
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
@@ -521,7 +521,7 @@ namespace Rtx::Testing
             camera.mShowAlbedo = 1u;
             camera.mDelight = 0.0f;
 
-            const auto albedoUnder = [&](Surface::VertexColour mode, std::span<const osg::Vec3f> colours) {
+            const auto albedoUnder = [&](VertexColour mode, std::span<const osg::Vec3f> colours) {
                 SceneDesc scene;
                 const Index mesh = scene.addMesh(MeshArrays{
                     .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mColours = colours, .mIndices = sQuadIndices });
@@ -537,14 +537,13 @@ namespace Rtx::Testing
             };
 
             const std::array<int, 3> plain{ 188, 188, 188 };
-            EXPECT_EQ(albedoUnder(Surface::VertexColour::None, tint), plain)
-                << "the content said the colours mean nothing";
-            EXPECT_EQ(albedoUnder(Surface::VertexColour::Tint, tint), (std::array<int, 3>{ 137, 188, 99 }));
-            EXPECT_EQ(albedoUnder(Surface::VertexColour::Glow, tint), plain) << "a glow is not a tint";
+            EXPECT_EQ(albedoUnder(VertexColour::None, tint), plain) << "the content said the colours mean nothing";
+            EXPECT_EQ(albedoUnder(VertexColour::Tint, tint), (std::array<int, 3>{ 137, 188, 99 }));
+            EXPECT_EQ(albedoUnder(VertexColour::Glow, tint), plain) << "a glow is not a tint";
 
             // A mesh that brought no colour is white in the shared buffer, so the tint the shader
             // applies to it is the one that changes nothing.
-            EXPECT_EQ(albedoUnder(Surface::VertexColour::Tint, {}), plain);
+            EXPECT_EQ(albedoUnder(VertexColour::Tint, {}), plain);
         }
 
         /// The glow the mode names is the material's own glow said another way.
@@ -564,8 +563,7 @@ namespace Rtx::Testing
             const Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
-            const auto render = [&](Surface::VertexColour mode, const osg::Vec3f& emissive,
-                                    std::vector<std::uint8_t>& pixels) {
+            const auto render = [&](VertexColour mode, const osg::Vec3f& emissive, std::vector<std::uint8_t>& pixels) {
                 SceneDesc scene;
                 const Index mesh = scene.addMesh(MeshArrays{
                     .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mColours = colours, .mIndices = sQuadIndices });
@@ -582,9 +580,9 @@ namespace Rtx::Testing
             std::vector<std::uint8_t> stated;
             std::vector<std::uint8_t> perVertex;
             std::vector<std::uint8_t> unlit;
-            render(Surface::VertexColour::None, glow, stated);
-            render(Surface::VertexColour::Glow, osg::Vec3f(), perVertex);
-            render(Surface::VertexColour::None, osg::Vec3f(), unlit);
+            render(VertexColour::None, glow, stated);
+            render(VertexColour::Glow, osg::Vec3f(), perVertex);
+            render(VertexColour::None, osg::Vec3f(), unlit);
 
             EXPECT_EQ(perVertex, stated) << "the vertex colour stands in for the material's own";
             EXPECT_NE(perVertex, unlit) << "and a surface that glows is not the surface that does not";

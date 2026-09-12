@@ -13,7 +13,6 @@
 #include <components/myguirtx/texture.hpp>
 
 #include "rtxrenderer.hpp"
-#include "session.hpp"
 
 namespace MWRender
 {
@@ -29,33 +28,31 @@ namespace MWRender
         /// **By value, and `Rtx::OffscreenTrace` neither copies nor moves.** Both returns are
         /// prvalues and so is the call, so guaranteed elision constructs it straight into the member
         /// — which is what lets the two constructors be the two kinds instead of a boolean.
-        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, RtxRenderer& host, Rtx::Traversals& traversals)
+        /// The spec as the trace takes it. Bottom row first, which is what
+        /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for.
+        Rtx::ViewRequest requestFor(const OffscreenViewSpec& spec, Rtx::Traversals& traversals)
         {
-            const std::uint32_t width = static_cast<std::uint32_t>(spec.mWidth);
-            const std::uint32_t height = static_cast<std::uint32_t>(spec.mHeight);
-            Rtx::Renderer& renderer = host.getBackend();
-            const std::uint32_t rays = rayMaskOf(spec.mMask);
-
-            if (spec.mFromWorld)
-                return Rtx::OffscreenTrace(renderer, width, height, rays);
-
-            return Rtx::OffscreenTrace(renderer, width, height, rays, spec.mScene, spec.mMask, &traversals);
+            return Rtx::ViewRequest{
+                .mWidth = static_cast<std::uint32_t>(spec.mWidth),
+                .mHeight = static_cast<std::uint32_t>(spec.mHeight),
+                .mRayMask = rayMaskOf(spec.mMask),
+                .mFraming = spec.mFraming,
+                .mLight = spec.mSun,
+                .mClear = spec.mClearColour,
+                .mRowOrder = Rtx::RowOrder::BottomFirst,
+                .mSubject = spec.mFromWorld ? nullptr : &spec.mScene,
+                .mSubjectMask = spec.mMask,
+                .mTraversals = &traversals,
+            };
         }
     }
 
     TracedView::TracedView(const OffscreenViewSpec& spec, RtxRenderer& host, Rtx::Traversals& traversals)
         : mHost(host)
-        , mTrace(makeTrace(spec, host, traversals))
+        , mTrace(host.getBackend(), requestFor(spec, traversals))
         , mWidth(spec.mWidth)
         , mHeight(spec.mHeight)
     {
-        mTrace.setFraming(spec.mFraming);
-        mTrace.setLight(spec.mSun);
-        mTrace.setClearColour(spec.mClearColour);
-
-        // What `OffscreenView::getTexture` promises, and what the widgets showing one invert V for.
-        mTrace.setRowOrder(Rtx::RowOrder::BottomFirst);
-
         mTexture
             = MyGUI::RenderManager::getInstance().createTexture(MyGUIPlatform::uniqueTextureName("rtx offscreen view"));
         mTexture->createManual(

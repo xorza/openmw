@@ -54,7 +54,6 @@ namespace Rtx
         std::uint32_t getWidth() const { return mWidth; }
         std::uint32_t getHeight() const { return mHeight; }
         VkFormat getFormat() const { return mFormat; }
-        std::uint32_t getMipLevels() const { return mMipLevels; }
 
         /// What this image was created able to do, kept so a mismatch can be asserted: an image
         /// sampled without `VK_IMAGE_USAGE_SAMPLED_BIT` reads as zero with no validation message.
@@ -93,6 +92,8 @@ namespace Rtx
         std::uint32_t getWidthAt(std::uint32_t level) const { return std::max(mWidth >> level, 1u); }
         std::uint32_t getHeightAt(std::uint32_t level) const { return std::max(mHeight >> level, 1u); }
         std::uint32_t getDepthAt(std::uint32_t level) const { return std::max(mDepth >> level, 1u); }
+        // Read by the tests and by nothing else.
+        std::uint32_t getMipLevels() const { return mMipLevels; }
 
     private:
         /// The same barrier `transition` records, over `count` levels from `base`.

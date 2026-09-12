@@ -6,7 +6,6 @@
 #include "framespend.hpp"
 #include "renderer.hpp"
 #include "texturebuilder.hpp"
-#include "wavespectrum.hpp"
 
 namespace Resource
 {
@@ -15,6 +14,7 @@ namespace Resource
 
 namespace Rtx
 {
+    class CellHolds;
     class CompositeQueue;
     class SceneDesc;
     class Renderer;
@@ -54,29 +54,33 @@ namespace Rtx
     class SceneUploader
     {
     public:
-        /// Hands `scene` to `renderer`, building only what has to be built. `scene` must have been
-        /// walked this frame, and is taken by mutable reference because its arrivals are consumed
-        /// here, so a caller cannot upload them twice or lose them.
-        /// @param slot which of the renderer's scenes. A doll takes the same three branches a cell
-        ///        does: a slider drag redraws the same subject sixty times a second.
-        /// @param composites the world's terrain baker, or null for a scene with no distant ground.
-        ///        Not a member, because a doll and a map tile have no ground to flatten.
-        /// @param readings where a describe finds images read ahead of the frame, or null.
-        /// @param spend where the three halves of the hand-over are timed into, or null — `Bake`,
-        ///        `Textures` and `Upload`. Timed here, because a backend that timed itself would be
-        ///        answering a question about the host's frame.
         /// What one hand-over is of. The three pointers are what a caller may not have.
         struct Handing
         {
+            /// Which of the renderer's scenes. A doll takes the same three branches a cell does: a
+            /// slider drag redraws the same subject sixty times a second.
             SceneSlot mSlot;
+
+            /// Walked this frame, and mutable because its arrivals are consumed here, so a caller
+            /// cannot upload them twice or lose them.
             SceneDesc& mScene;
+
             Resource::ImageManager& mImages;
+
+            /// The world's terrain baker, or null for a scene with no distant ground: a doll and a
+            /// map tile have none to flatten.
             CompositeQueue* mComposites = nullptr;
-            SeaState mSea{};
-            const TextureReadings* mReadings = nullptr;
+
+            /// Where a describe finds images read ahead of the frame, or null.
+            const CellHolds* mReadings = nullptr;
+
+            /// Where the three halves of the hand-over are timed into, or null — `Bake`, `Textures`
+            /// and `Upload`. Timed here, because a backend that timed itself would be answering a
+            /// question about the host's frame.
             FrameSpend* mSpend = nullptr;
         };
 
+        /// Hands the scene to `renderer`, building only what has to be built.
         SceneUpload hand(Renderer& renderer, const Handing& handing);
 
     private:

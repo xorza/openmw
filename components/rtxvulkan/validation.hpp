@@ -19,32 +19,25 @@ namespace Rtx
         std::thread::id mThread;
     };
 
-    enum class ValidationPolicy
-    {
-        /// Record and log. Only for tests, which provoke errors deliberately and assert on them.
-        Log,
-
-        /// Record, log, then `std::abort()`. Everything else uses this: validation is a developer
-        /// feature, so anyone who asked for the layers wants the stack where the mistake was made,
-        /// not a frame that limps on with undefined contents.
-        Abort,
-    };
-
     /// Thread-safe sink for validation errors, because a render that emits them and still draws
     /// plausible pixels would otherwise pass a test. Warnings are logged and not stored: nothing
     /// reads them, and a long session would accumulate them without bound.
     class ValidationLog
     {
     public:
-        explicit ValidationLog(ValidationPolicy policy)
-            : mPolicy(policy)
+        /// @param abortOnError record, log, then `std::abort()` — what everything but a test asks:
+        ///        validation is a developer feature, so anyone who asked for the layers wants the
+        ///        stack where the mistake was made, not a frame that limps on with undefined
+        ///        contents. A test provokes errors deliberately and asserts on them.
+        explicit ValidationLog(const bool abortOnError)
+            : mAbortOnError(abortOnError)
         {
         }
 
         ValidationLog(const ValidationLog&) = delete;
         ValidationLog& operator=(const ValidationLog&) = delete;
 
-        ValidationPolicy getPolicy() const { return mPolicy; }
+        bool abortsOnError() const { return mAbortOnError; }
 
         /// Called from the Vulkan debug callback, on whichever thread it fires.
         void recordError(std::string&& text);
@@ -57,7 +50,7 @@ namespace Rtx
         void clear();
 
     private:
-        const ValidationPolicy mPolicy;
+        const bool mAbortOnError;
         mutable std::mutex mMutex;
         std::vector<ValidationMessage> mErrors;
     };

@@ -12,10 +12,7 @@
 #include <components/terrain/storage.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "alphaimage.hpp"
 #include "groundreader.hpp"
-#include "meshreader.hpp"
-#include "nodekind.hpp"
 #include "prepared.hpp"
 #include "scratch.hpp"
 #include "slots.hpp"
@@ -74,11 +71,6 @@ namespace Rtx
 
         GroundReader mGround;
         TemplateWalk mWalk;
-        MeshReader mMeshes;
-
-        /// This thread's own classifier: `NodeKinds` is written on a miss.
-        NodeKinds mKinds;
-        AlphaScratch mAlpha;
 
         // Refilled per cell, per model and per image.
         std::vector<Terrain::PagedCellRef> mRefScratch;

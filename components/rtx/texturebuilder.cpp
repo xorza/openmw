@@ -19,6 +19,7 @@
 #include "alphaimage.hpp"
 #include "compositequeue.hpp"
 #include "error.hpp"
+#include "held.hpp"
 #include "scenedesc.hpp"
 #include "shadingmap.hpp"
 #include "texels.hpp"
@@ -39,44 +40,6 @@ namespace Rtx
 
     namespace
     {
-        /// What the content is, as one of the formats this renderer uploads, or nothing where the
-        /// file is something else, so the caller says so with the file's name in the message.
-        /// `TextureFormat` is why every case is sRGB.
-        std::optional<TextureFormat> toTextureFormat(ImageFormat format)
-        {
-            switch (format)
-            {
-                // Both DXT1 spellings land on the format that reads the alpha bit: every mask in the
-                // game is a punch-through BC1 block, and almost none of Morrowind's files set
-                // `DDPF_ALPHAPIXELS`, so believing the header would leave every canopy a solid card.
-                case ImageFormat::Bc1:
-                    return TextureFormat::Bc1RgbaSrgb;
-                case ImageFormat::Bc2:
-                    return TextureFormat::Bc2Srgb;
-                case ImageFormat::Bc3:
-                    return TextureFormat::Bc3Srgb;
-
-                // Not every file the game ships is a block. The sky's cloud decks are plain
-                // 32-bit `DDPF_RGB`, which is what a texture painted for a full-screen dome would
-                // be, and taking only the compressed formats would draw every weather's clouds grey.
-                case ImageFormat::Rgba8:
-                    return TextureFormat::Rgba8Srgb;
-                case ImageFormat::Bgra8:
-                    return TextureFormat::Bgra8Srgb;
-
-                // Three-channel and single-channel spellings are refused deliberately: uploading
-                // one would need the missing channels written in, which means owning a buffer, and
-                // nothing this renderer reads stores a texture without them.
-                case ImageFormat::Rgb8:
-                case ImageFormat::Luminance:
-                case ImageFormat::LuminanceAlpha:
-                case ImageFormat::Unnamed:
-                    return std::nullopt;
-            }
-
-            return std::nullopt;
-        }
-
         /// What a texture that could not be read is drawn as: mid grey and not magenta, because a
         /// live graph's unreadable textures are mostly things that were never files, and
         /// `getUnreadable` already reports them. One opaque BC1 block with both endpoints the same
@@ -104,10 +67,10 @@ namespace Rtx
 
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
     {
-        const std::optional<TextureFormat> format = toTextureFormat(readFormat(image));
-        if (!format.has_value())
-            throw Error("texture \"" + image.getFileName() + "\" is pixel format "
-                + std::to_string(image.getPixelFormat()) + ", which is not one this renderer uploads");
+        const TextureFormat format = readFormat(image);
+        if (!isUploadable(format))
+            throw Error("texture \"" + image.getFileName() + "\" is " + std::string(nameOf(format)) + " ("
+                + std::to_string(image.getPixelFormat()) + "), which is not one this renderer uploads");
 
         const auto width = static_cast<std::uint32_t>(image.s());
         const auto height = static_cast<std::uint32_t>(image.t());
@@ -122,7 +85,7 @@ namespace Rtx
             });
 
         return TextureData{
-            .mFormat = *format,
+            .mFormat = format,
             .mWidth = width,
             .mHeight = height,
             .mBytes
@@ -133,7 +96,7 @@ namespace Rtx
     }
 
     void SceneTextures::describeAll(const SceneDesc& scene, Resource::ImageManager& images,
-        const CompositeQueue* composites, const TextureReadings* readings)
+        const CompositeQueue* composites, const CellHolds* readings)
     {
         mEverything.resize(scene.textures().getPaths().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
@@ -142,7 +105,7 @@ namespace Rtx
     }
 
     void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-        const CompositeQueue* composites, const TextureReadings* readings)
+        const CompositeQueue* composites, const CellHolds* readings)
     {
         mLevels.clear();
         mDescriptions.clear();

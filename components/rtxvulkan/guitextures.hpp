@@ -53,10 +53,6 @@ namespace Rtx
         /// Records the copy of what `lend` handed out. Nothing has run when this returns.
         void send(GuiSlot slot);
 
-        /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first. `rgba` is
-        /// the region's own rows. `lend` and `send` with a copy in front of them.
-        void write(GuiSlot slot, const GuiRegion& region, std::span<const std::uint8_t> rgba);
-
         void drop(GuiSlot slot);
 
         /// Opens an interface frame: hands `kept` every texture given back since the last one, and

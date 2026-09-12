@@ -78,7 +78,7 @@ namespace Rtx
         return osg::Vec3f(toLinear(encoded.r()), toLinear(encoded.g()), toLinear(encoded.b()));
     }
 
-    osg::Vec3f decodeColour(const Surface::Colour& encoded)
+    osg::Vec3f decodeColour(const EncodedColour& encoded)
     {
         return toLinear(osg::Vec3f(encoded.mRed, encoded.mGreen, encoded.mBlue));
     }

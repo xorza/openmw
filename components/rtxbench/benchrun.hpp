@@ -98,33 +98,6 @@ namespace Rtx
     /// Every check there is, in the order they are run.
     std::span<const Check> everyCheck();
 
-    /// Where a run was left: the camera, and the sky it stood under.
-    ///
-    /// **Reported and never asked for, which is what separates it from `Stand` below.** A stop
-    /// names a cell and may leave the eye to the world; this is where the eye turned out to be, so
-    /// every field is filled and none is a cell.
-    ///
-    /// **One type, because two things say it.** A run reports where it ended and a launcher writes
-    /// that down as a place worth returning to, and the five numbers were spelled out in both — so
-    /// a field added to the report reached the file only if somebody carried it across.
-    ///
-    /// **A look vector and not a rotation**, because that is what a view file states and what a
-    /// camera is aimed with. `MWRender::Session` keeps the pose it samples every frame in a form of
-    /// its own, for the reason its own member says.
-    struct Standing
-    {
-        osg::Vec3f mEye;
-        osg::Vec3f mLook;
-        float mHour = 0.0f;
-
-        /// Which day of Morrowind's own calendar, counted from the one a new game begins on. Only
-        /// the moons read it.
-        int mDay = 0;
-
-        /// As the fallback settings spell it.
-        std::string mWeather;
-    };
-
     /// Where a stop stands: a place in the world, and where the eye is inside it.
     ///
     /// **A savegame restores what no pair of coordinates can** — the player, their equipment, the
@@ -403,13 +376,14 @@ namespace Rtx
         /// What the run printed, whole, for a launcher whose output is read rather than logged.
         std::string mReport;
 
-        /// Where the run was left.
+        /// Where the run was left, as a stop that would put a camera back there: the name, the
+        /// note and the cell of the stop that was running, and the eye, the look, the hour, the day
+        /// and the weather as the last frame found them. Nothing where no stop began.
         ///
         /// **What a window is for as much as the picture is.** Somebody flies to a place worth
         /// keeping and closes the window; without this the coordinates go with it, and the view
-        /// file gains nothing. What is missing from it is the launcher's — a view id and a cell
-        /// spelling are what it asked for in the first place.
-        Standing mLeft;
+        /// file gains nothing.
+        std::optional<Stop> mLeft;
     };
 
 }

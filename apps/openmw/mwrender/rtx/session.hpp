@@ -2,20 +2,24 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <osg/Node>
 #include <osg/Vec3f>
 
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/renderprofile.hpp>
+#include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/frametimes.hpp>
+#include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/runrecord.hpp>
 
 #include "framereport.hpp"
+#include "stopwriter.hpp"
 
 namespace MWRender
 {
@@ -36,36 +40,6 @@ namespace MWRender
         /// session fills it from its own destructor, which `~Engine` runs.
         Rtx::SessionResult* mInto = nullptr;
     };
-
-    /// A camera's cull mask as the trace reads it: which `Rtx::InstanceClass`es its rays meet, and
-    /// whether it draws the sprites. `Rtx::Shaders::MASK_*` in `scene.h` names the bits.
-    ///
-    /// **The one translation, so both renderers read one mask.** The rasterizer culls on
-    /// `SceneUtil::Mask_*`; the frame's eye and every picture inside the interface hand their cull
-    /// mask here, and the tracer draws what it names.
-    std::uint32_t rayMaskOf(osg::Node::NodeMask cullMask);
-
-    /// What a stop asked for and what it came to, beside the frame it drew.
-    ///
-    /// **Named for the reason `FrameContext` is.** Each of these is read by one claim and by nothing
-    /// else, and each arrived as a parameter of its own through `StopWriter::write` and
-    /// `StopWriter::runChecks` — neither of which reads either. A second was one parameter; a third
-    /// would have been another.
-    ///
-    /// Borrowed and valid for one stop.
-    struct StopFacts
-    {
-        /// What the stop's route came to, which only `CrossingsAppend` reads.
-        const Rtx::Crossings& mCrossings;
-
-        /// What the stop asked its camera to be, which only `CameraStands` reads.
-        const Rtx::Stand& mStand;
-    };
-
-    /// Whether one check holds of what `run` was handed and what it drew, with what it found in
-    /// `found` either way.
-    bool checkHolds(const FrameContext& context, const FrameReport& report, Rtx::Check check, const StopFacts& facts,
-        std::string& found);
 
     /// The run `[RTX] session` asks for, or nothing where nobody asked for one.
     ///
@@ -212,7 +186,74 @@ namespace MWRender
         /// `restart` rather than an assignment from a default, because the samples are reserved
         /// once for the longest stop of the run and a bench that allocates where it measures is
         /// measuring its own allocation.
-        struct StopProgress;
+        struct StopProgress
+        {
+            /// Frames seen since the stop began, warm-up included.
+            std::uint32_t mSeen = 0;
+
+            /// What the measured ones came to outside the distributions: how much of the last one hit
+            /// something, and how long they took between them.
+            double mHitPercent = 0.0;
+            double mWallMs = 0.0;
+
+            /// Where the eye stood when the stop began, which a route flies from.
+            osg::Vec3f mFrom;
+            osg::Vec3f mFromLook;
+
+            /// Where the route has flown to, which is not where the player stands.
+            ///
+            /// **The route's own place, because deriving the next step from the player puts physics in
+            /// it.** `moveObjectBy` moves an actor, and the world then steps that actor: gravity pulls
+            /// it down between one frame and the next, and a step taken from where it landed carries
+            /// the fall forward and compounds it: a route flown six thousand units up ends along the
+            /// ground and inside it.
+            osg::Vec3f mFlown;
+
+            /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
+            /// Compared as an address and never read, which is all an identity needs.
+            const void* mCell = nullptr;
+
+            /// Which weather the turn is on, and how far into the transition to the next.
+            std::size_t mTurnedTo = 0;
+            float mTurned = 0.0f;
+
+            Rtx::FrameSamples mSamples;
+            Rtx::GpuBreakdown mGpu;
+            Rtx::Crossings mCrossings;
+            Rtx::GpuClock mClock;
+
+            /// Puts the route where it starts: where the eye stands, what it faces, and how far it has
+            /// flown, which is nowhere yet.
+            ///
+            /// **One call, because the three are one fact and two callers set them.** A stop that names
+            /// its own eye and one that falls back to the player's both land here, and either could
+            /// have set the first two and left the third at wherever the last stop's route ended.
+            void standAt(const osg::Vec3f& eye, const osg::Vec3f& look)
+            {
+                mFrom = eye;
+                mFromLook = look;
+                mFlown = eye;
+            }
+
+            /// Empties it for the next stop, keeping the room every row grew.
+            ///
+            /// **Cleared and not assigned over**, because `mSamples` is reserved once for the longest
+            /// stop of the run and a bench that allocates where it measures is measuring itself.
+            void restart()
+            {
+                mSeen = 0;
+                mHitPercent = 0.0;
+                mWallMs = 0.0;
+                mCell = nullptr;
+                mTurnedTo = 0;
+                mTurned = 0.0f;
+
+                mSamples.clear();
+                mGpu = Rtx::GpuBreakdown{};
+                mCrossings = Rtx::Crossings{};
+                mClock = Rtx::GpuClock{};
+            }
+        };
 
         Rtx::SessionRequest mRequest;
 
@@ -232,10 +273,12 @@ namespace MWRender
         /// **The run's and not the stop's**, because what it answers is where the run was left —
         /// which is a question asked after the last stop has closed.
         ///
-        /// **Kept as the launcher's own type**, and the one conversion — a facing to a point looked
-        /// at, a weather id to its name — made where the note is taken. The name is a `std::string`
-        /// assigned per frame, which is a copy into room the string already has.
-        std::optional<Rtx::Standing> mStood;
+        /// **Kept as a stop, which is what a launcher writes down**, with the one conversion — a
+        /// facing to a point looked at, a weather id to its name — made where the note is taken.
+        /// The weather is a `std::string` assigned per frame, which is a copy into room the string
+        /// already has; the name, the note and the cell are the running stop's, copied once as it
+        /// begins.
+        std::optional<Rtx::Stop> mStood;
 
         /// What the run has come to so far: the places, the report and the verdict. Its own type,
         /// because everything with something to say writes into all of it.
@@ -243,14 +286,24 @@ namespace MWRender
 
         bool mDone = false;
 
-        /// Out of line so this header names no container of samples, and reserved once so the run
-        /// itself does not allocate — a bench that stutters where it measures is measuring its own
-        /// stutter.
+        /// perf's control fifo, held for the whole run so every stop brackets its own frames.
+        Rtx::PerfControl mProfiling;
+
+        /// The card, watched across each stop's measured frames. **Held rather than made per stop**,
+        /// because what it owns is a thread: one that is started and stopped by every stop is a
+        /// thread made and joined at every place of a suite.
+        Rtx::ClockWatch mClock;
+
+        StopWriter mWriter;
+
+        /// What a hashed frame lands in, refilled per measured frame and never freed.
         ///
-        /// **`Held` is what outlives a stop and `mProgress` is what does not**, which is the whole
-        /// of why they are two objects.
-        struct Held;
-        std::unique_ptr<Held> mHeld;
-        std::unique_ptr<StopProgress> mProgress;
+        /// **Not shared with the writer's**, which reads at a doll's or a tile's extent rather than
+        /// the frame's — one buffer would grow to the largest of them and stay there.
+        std::vector<std::uint8_t> mPixels;
+
+        /// Reserved once for the longest stop of the run, so the run itself does not allocate — a
+        /// bench that stutters where it measures is measuring its own stutter.
+        StopProgress mProgress;
     };
 }

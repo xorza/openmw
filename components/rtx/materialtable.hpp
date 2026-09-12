@@ -30,9 +30,19 @@ namespace Rtx
     /// One type, because a material's textures have to be given back before the run that says
     /// which they were is handed to the next chunk. The textures are borrowed and not owned: a slot
     /// is named by holds nothing here can see.
-    class MaterialTable : public SweptTable<Material>
+    class MaterialTable : protected SlotRows<Material>
     {
     public:
+        /// The half of `SlotRows` a reader and a sweep use; `take`, `at` and `sweep` stay this
+        /// table's own, because a row goes only through `add` and `sweep`.
+        using SlotRows::drop;
+        using SlotRows::getLiveCount;
+        using SlotRows::getRows;
+        using SlotRows::hasDroppedHolds;
+        using SlotRows::hold;
+        using SlotRows::mark;
+        using SlotRows::size;
+
         explicit MaterialTable(TextureTable& textures)
             : mTextures(textures)
         {

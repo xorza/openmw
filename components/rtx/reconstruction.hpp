@@ -34,11 +34,6 @@ namespace Rtx
         std::pair{ Denoiser::RayReconstruction, std::string_view("ray-reconstruction") },
     } };
 
-    inline std::string_view denoiserName(Denoiser denoiser)
-    {
-        return sDenoiserNames.name(denoiser);
-    }
-
     /// Which network Ray Reconstruction runs, named for the letters NVIDIA uses. Ray Reconstruction
     /// keeps its own set, distinct from super-resolution's: `nvsdk_ngx_defs_dlssd.h` names D and E,
     /// where `nvsdk_ngx_defs.h` names J through M, and reading one for the other selects a network
@@ -65,17 +60,6 @@ namespace Rtx
         std::pair{ Preset::D, std::string_view("d") },
         std::pair{ Preset::E, std::string_view("e") },
     } };
-
-    inline std::string_view presetName(Preset preset)
-    {
-        return sPresetNames.name(preset);
-    }
-
-    /// The preset `name` spells, or nothing where it spells none of them.
-    inline std::optional<Preset> presetNamed(std::string_view name)
-    {
-        return sPresetNames.named(name);
-    }
 
     /// What the upscaler is built with, decided once per set of targets: the mode says whether an
     /// upscaler runs and at what ratio, and the preset which network it runs. A feature is created
@@ -152,5 +136,30 @@ namespace Rtx
                 .mJitterForced = !asked.mJitter,
             };
         }
+    };
+
+    /// Everything a run decides once about how the picture is made, in one bag for both hosts.
+    /// Nothing here changes while a run is being made, so a frame reads what it was handed rather
+    /// than asking the registry per knob per frame.
+    struct RenderProfile
+    {
+        /// What the upscaler is built with. Carried whole into `RendererOptions`.
+        Upscaling mUpscaling;
+
+        /// What every frame asks of the reconstruction. Carried whole into `FrameOptions`.
+        ReconstructionRequest mReconstruction;
+
+        /// Whether the trace counts the see-through surfaces each primary ray crosses.
+        bool mCountCrossings = false;
+
+        /// How much of the painted lighting to divide out of a texture. Nought hands the trace
+        /// Bethesda's textures with their lighting still in them.
+        float mDelight = 1.0f;
+
+        bool mShowAlbedo = false;
+
+        /// What to scale the frame by before the display curve, or nothing to measure it off the
+        /// frame. A picture wants it measured, and a reference wants it held still.
+        std::optional<float> mExposure;
     };
 }

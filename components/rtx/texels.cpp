@@ -110,55 +110,62 @@ namespace Rtx
         };
     }
 
-    ImageFormat readFormat(const osg::Image& image)
+    TextureFormat readFormat(const osg::Image& image)
     {
         switch (image.getPixelFormat())
         {
             // One format for both spellings: whether the file's header claimed alpha decides
-            // nothing, since a BC1 block carries its punch-through bit either way.
+            // nothing, since a BC1 block carries its punch-through bit either way — every mask in
+            // the game is a punch-through BC1 block, and almost none of Morrowind's files set
+            // `DDPF_ALPHAPIXELS`, so believing the header would leave every canopy a solid card.
             case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
             case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
-                return ImageFormat::Bc1;
+                return TextureFormat::Bc1RgbaSrgb;
             case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
-                return ImageFormat::Bc2;
+                return TextureFormat::Bc2Srgb;
             case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
-                return ImageFormat::Bc3;
+                return TextureFormat::Bc3Srgb;
             case GL_RGB:
-                return ImageFormat::Rgb8;
+                return TextureFormat::Rgb8;
+            // Not every file the game ships is a block. The sky's cloud decks are plain 32-bit
+            // `DDPF_RGB`, which is what a texture painted for a full-screen dome would be, and
+            // taking only the compressed formats would draw every weather's clouds grey.
             case GL_RGBA:
-                return ImageFormat::Rgba8;
+                return TextureFormat::Rgba8Srgb;
             case GL_BGRA:
-                return ImageFormat::Bgra8;
+                return TextureFormat::Bgra8Srgb;
             case GL_LUMINANCE:
-                return ImageFormat::Luminance;
+                return TextureFormat::Luminance;
             case GL_LUMINANCE_ALPHA:
-                return ImageFormat::LuminanceAlpha;
+                return TextureFormat::LuminanceAlpha;
             default:
-                return ImageFormat::Unnamed;
+                return TextureFormat::Unnamed;
         }
     }
 
-    std::string_view nameOf(ImageFormat format)
+    std::string_view nameOf(TextureFormat format)
     {
         switch (format)
         {
-            case ImageFormat::Bc1:
+            case TextureFormat::Bc1RgbaSrgb:
                 return "BC1 (DXT1)";
-            case ImageFormat::Bc2:
+            case TextureFormat::Bc2Srgb:
                 return "BC2 (DXT3)";
-            case ImageFormat::Bc3:
+            case TextureFormat::Bc3Srgb:
                 return "BC3 (DXT5)";
-            case ImageFormat::Rgb8:
+            case TextureFormat::Rgba8Unorm:
+                return "RGBA8 (linear)";
+            case TextureFormat::Rgb8:
                 return "RGB8";
-            case ImageFormat::Rgba8:
+            case TextureFormat::Rgba8Srgb:
                 return "RGBA8";
-            case ImageFormat::Bgra8:
+            case TextureFormat::Bgra8Srgb:
                 return "BGRA8";
-            case ImageFormat::Luminance:
+            case TextureFormat::Luminance:
                 return "L8";
-            case ImageFormat::LuminanceAlpha:
+            case TextureFormat::LuminanceAlpha:
                 return "LA8";
-            case ImageFormat::Unnamed:
+            case TextureFormat::Unnamed:
                 break;
         }
 

@@ -7,6 +7,14 @@
 
 namespace Settings
 {
+    /// Whether this binary was built with the ray tracing renderer. The settings below exist either
+    /// way; a menu offering them on a build without it shows them dead and says why.
+#ifdef OPENMW_RTX
+    inline constexpr bool sRayTracingBuilt = true;
+#else
+    inline constexpr bool sRayTracingBuilt = false;
+#endif
+
     /// The experimental ray tracing renderer.
     ///
     /// **Which renderer draws is read once and the rest are read as they are wanted.** The choice
@@ -36,7 +44,7 @@ namespace Settings
         /// How hard DLSS Ray Reconstruction works, or `off` for none of it.
         ///
         /// A name rather than a number, and unrecognised is refused rather than defaulted — see
-        /// `Rtx::upscaleNamed`. **No menu offers `off`**, for the reason `Rtx::sUpscaleModes` gives.
+        /// `Rtx::sUpscaleNames`. **No menu offers `off`**, for the reason `Rtx::sUpscaleMenu` gives.
         ///
         /// **Changing it rebuilds every target**, which `Rtx::Renderer::setUpscale` does and the
         /// window manager asks for when this changes. A machine that cannot reach the mode keeps
@@ -46,7 +54,7 @@ namespace Settings
         /// Which Ray Reconstruction network runs, where one runs at all.
         ///
         /// A name rather than a number, refused rather than defaulted when unrecognised — see
-        /// `Rtx::presetNamed`. Ray Reconstruction keeps its own presets, which are not
+        /// `Rtx::sPresetNames`. Ray Reconstruction keeps its own presets, which are not
         /// super-resolution's.
         SettingValue<std::string> mPreset{ mIndex, "RTX", "preset" };
 

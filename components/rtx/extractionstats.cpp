@@ -4,6 +4,8 @@
 
 #include <osg/Image>
 
+#include "texels.hpp"
+
 namespace Rtx
 {
     namespace
@@ -36,14 +38,14 @@ namespace Rtx
 
     void FormatCensus::count(const osg::Image& image)
     {
-        const ImageFormat format = readFormat(image);
+        const TextureFormat format = readFormat(image);
 
         FormatCount& met = mMet[static_cast<std::size_t>(format)];
         ++met.mMet;
         if (image.getNumMipmapLevels() > 1)
             ++met.mMipped;
 
-        if (format == ImageFormat::Unnamed)
+        if (format == TextureFormat::Unnamed)
             mUnnamed = static_cast<std::uint32_t>(image.getPixelFormat());
     }
 

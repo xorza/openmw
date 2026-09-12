@@ -179,14 +179,11 @@ set(RTX_VULKAN_FILES
     computepipeline.hpp
     device.cpp
     device.hpp
-    deviceprofile.cpp
-    deviceprofile.hpp
     dispatch.hpp
     exposurepass.cpp
     exposurepass.hpp
     fogvolume.cpp
     fogvolume.hpp
-    framehistory.hpp
     framering.cpp
     framering.hpp
     frameslots.hpp
@@ -236,7 +233,6 @@ set(RTX_VULKAN_FILES
     skintables.cpp
     skintables.hpp
     slottable.hpp
-    specialization.hpp
     structurebuild.cpp
     structurebuild.hpp
     structurestorage.cpp

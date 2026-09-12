@@ -1,6 +1,8 @@
 #include "stopwriter.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -8,19 +10,24 @@
 #include <format>
 #include <fstream>
 #include <ios>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <osg/BoundingBox>
 #include <osg/Image>
+#include <osg/Math>
 #include <osg/Vec3f>
 
 #include <components/esm/refid.hpp>
 #include <components/files/conversion.hpp>
+#include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/extractionstats.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/reconstruction.hpp>
@@ -28,13 +35,14 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/colour.h>
+#include <components/rtx/surface.hpp>
 #include <components/rtx/texels.hpp>
 #include <components/rtx/texturebuilder.hpp>
+#include <components/rtx/texturedata.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
 #include <components/settings/values.hpp>
-#include <components/surface/material.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -47,24 +55,34 @@
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
 
+#include "../camera.hpp"
 #include "../characterpreview.hpp"
 #include "../localmap.hpp"
 #include "../offscreenview.hpp"
 #include "../renderer.hpp"
+#include "../renderingmanager.hpp"
 #include "rtxrenderer.hpp"
-#include "session.hpp"
 
 namespace MWRender
 {
     namespace
     {
+
+        /// How wide the square of cells the simulation holds is, in units.
+        ///
+        /// **What distant ground has to reach past to be distant.** `Constants::CellGridRadius` is
+        /// the ring the game loads around the player, so a scene no wider than this is one the
+        /// residency contributed nothing to.
+        constexpr float sActiveGridWidth
+            = static_cast<float>(Constants::CellSizeInUnits) * (2 * Constants::CellGridRadius + 1);
+
         /// Draws every picture asked for since the frame, and waits for it.
         ///
         /// A stop stands after the frame, and a picture is drawn inside the next one: drawn now
         /// instead, which is a drain a stop may pay and a frame may not.
         void drawPicturesNow(const FrameContext& context)
         {
-            context.mRenderer.flushRedraws();
+            context.mRenderer.drawViews();
             context.mRenderer.getBackend().finishGuiTraces();
         }
     }
@@ -132,7 +150,7 @@ namespace MWRender
         {
             into.mRecord.note(
                 std::format("no bounce tail: only the wavelet writes one, and {} put this frame back together\n",
-                    Rtx::denoiserName(into.mReport.mReconstruction.mDenoiser)));
+                    Rtx::sDenoiserNames.name(into.mReport.mReconstruction.mDenoiser)));
             into.mRecord.fail();
             return;
         }
@@ -213,14 +231,14 @@ namespace MWRender
         for (std::size_t at = 0; at < stats.mFormats.mMet.size(); ++at)
         {
             const Rtx::FormatCount& count = stats.mFormats.mMet[at];
-            const auto format = static_cast<Rtx::ImageFormat>(at);
+            const auto format = static_cast<Rtx::TextureFormat>(at);
 
             if (count.mMipped > 0)
                 into.mRecord.note(std::format("  {} x {}, with mips\n", count.mMipped, Rtx::nameOf(format)));
             if (count.mMet > count.mMipped)
                 into.mRecord.note(
                     std::format("  {} x {}, one level\n", count.mMet - count.mMipped, Rtx::nameOf(format)));
-            if (count.mMet > 0 && format == Rtx::ImageFormat::Unnamed)
+            if (count.mMet > 0 && format == Rtx::TextureFormat::Unnamed)
                 into.mRecord.note(std::format("    which was pixel format {}\n", stats.mFormats.mUnnamed));
         }
 
@@ -241,7 +259,7 @@ namespace MWRender
         for (const Rtx::Material& material : scene.materials().getRows())
         {
             cutouts += material.isCutout() ? 1 : 0;
-            tested += material.mAlphaMode == Surface::AlphaMode::Cutout ? 1 : 0;
+            tested += material.mAlphaMode == Rtx::AlphaMode::Cutout ? 1 : 0;
             translucent += material.isTranslucent() ? 1 : 0;
             media += material.isMedium() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
@@ -454,5 +472,151 @@ namespace MWRender
             into.mRecord.checked(held);
             into.mRecord.note(std::format("  {:<20} {:<4} {}\n", checkName(check), held ? "ok" : "FAIL", found));
         }
+    }
+
+    bool StopWriter::checkHolds(const FrameContext& context, const FrameReport& report, const Rtx::Check check,
+        const StopFacts& facts, std::string& found)
+    {
+        const Rtx::SceneDesc& scene = context.mScene;
+        const Rtx::ExtractionStats& stats = report.mWalked.mFound;
+
+        switch (check)
+        {
+            case Rtx::Check::WalkTwice:
+            {
+                if (!report.mWalked.mAgain.has_value())
+                {
+                    found = "no second walk was made";
+                    return false;
+                }
+
+                const Rtx::ExtractionStats& again = *report.mWalked.mAgain;
+                found = std::format("{} meshes and {} materials added by the second walk, {} drawables resolved",
+                    again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused);
+                return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0;
+            }
+
+            case Rtx::Check::SurfacesDescribed:
+                // **The emitters are reported and not asserted**, for the reason
+                // `ExtractionStats::mSpritelessEmitters` gives: every world carries one of the
+                // rasterizer's that the traced path answers for itself.
+                found = std::format("{} surfaces undescribed, {} emitters spriteless", stats.mUndescribedSurfaces,
+                    stats.mSpritelessEmitters);
+                return stats.mUndescribedSurfaces == 0;
+
+            case Rtx::Check::LightsPlaced:
+            {
+                const bool indoors = !MWBase::Environment::get().getWorld()->isCellExterior();
+                found = std::format("{} lights casting {}", scene.lights().size(),
+                    indoors ? "in a room" : "under a sky, where none is a fair answer");
+                return !indoors || !scene.lights().empty();
+            }
+
+            case Rtx::Check::GroundReaches:
+            {
+                // **Asked of an exterior and answered yes by every room**, which has no distant
+                // ground to reach for.
+                const bool outdoors = MWBase::Environment::get().getWorld()->isCellExterior();
+
+                // **What stands inside the reach, and not the whole scene's extent.** The sea is
+                // one sheet a hundred and fifty cells across, so `getBounds` clears any threshold
+                // at every coastline and the question goes unasked. `getContentBoundsWithin` leaves
+                // a backdrop out and clips what it meets, which is exactly the ground this is about.
+                const osg::Vec3f eye
+                    = MWBase::Environment::get().getWorld()->getPlayerPtr().getRefData().getPosition().asVec3();
+                const float reach = context.mReach;
+                const float sky = std::numeric_limits<float>::max();
+                const osg::BoundingBoxf region(
+                    eye.x() - reach, eye.y() - reach, -sky, eye.x() + reach, eye.y() + reach, sky);
+
+                const osg::BoundingBoxf bounds = scene.getContentBoundsWithin(region);
+                const float widest
+                    = bounds.valid() ? std::max(bounds.xMax() - bounds.xMin(), bounds.yMax() - bounds.yMin()) : 0.0f;
+
+                found = std::format(
+                    "the ground spans {:.0f} units against an active grid {:.0f} wide", widest, sActiveGridWidth);
+                return !outdoors || widest > sActiveGridWidth;
+            }
+
+            case Rtx::Check::GroundStands:
+            {
+                // **Every cell of the reach, the active grid's included**: the game builds no ground
+                // for this renderer, so a cell short is a hole the player can walk on.
+                const bool outdoors = MWBase::Environment::get().getWorld()->isCellExterior();
+                const int reach
+                    = static_cast<int>(std::ceil(context.mReach / static_cast<float>(Constants::CellSizeInUnits)));
+                const auto expected = static_cast<std::uint32_t>((2 * reach + 1) * (2 * reach + 1));
+
+                found = std::format(
+                    "{} cells of ground stand against {} in the reach", stats.mGroundCells, outdoors ? expected : 0);
+                return !outdoors || stats.mGroundCells == expected;
+            }
+
+            case Rtx::Check::LightsNotDoubled:
+            {
+                std::vector<osg::Vec3f> where;
+                where.reserve(scene.lights().size());
+                for (const Rtx::Light& light : scene.lights())
+                    where.push_back(light.mPosition);
+
+                // `osg::Vec3f` orders lexicographically already, which is what a sort for
+                // duplicates needs and what its own `operator<` promises.
+                std::sort(where.begin(), where.end());
+
+                const auto doubled = std::adjacent_find(where.begin(), where.end());
+                found = std::format(
+                    "{} lights, {}", where.size(), doubled == where.end() ? "no two at one point" : "two at one point");
+
+                return doubled == where.end();
+            }
+
+            case Rtx::Check::TexturesReadable:
+                found = std::format("{} of {} textures could not be read", report.mUnreadableTextures,
+                    scene.textures().getPaths().size());
+                return report.mUnreadableTextures == 0;
+
+            case Rtx::Check::CrossingsAppend:
+            {
+                const Rtx::Crossings& crossings = facts.mCrossings;
+                found = std::format("{} crossings, {} of them rebuilds", crossings.mCount, crossings.mRebuilds);
+                return crossings.mCount > 0 && crossings.mRebuilds < crossings.mCount;
+            }
+
+            case Rtx::Check::CameraStands:
+            {
+                // **Answered rather than compared, where the stop named no camera.** Measuring the
+                // camera against itself is a yes nothing could fail, which reads in the report
+                // exactly like a camera that held.
+                const Rtx::Stand& stand = facts.mStand;
+                if (!stand.mEye.has_value())
+                {
+                    found = "the stop named no camera of its own";
+                    return true;
+                }
+
+                // **The game's camera and not the note the session took**, which is read off the
+                // same object: a check against that would agree with itself however far either had
+                // drifted from what the stop asked for.
+                const Camera& camera = *MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
+                const osg::Vec3f eye(camera.getPosition());
+                const osg::Vec3f forward = camera.getOrient() * osg::Vec3f(0.0f, 1.0f, 0.0f);
+
+                osg::Vec3f asked = stand.getLook() - *stand.mEye;
+                asked.normalize();
+
+                // A tenth of a unit and a tenth of a degree: the eye is set from the view file
+                // outright, and the aim goes out through a pitch and a yaw and comes back through a
+                // quaternion, so what survives is float rounding rather than a tolerance on a
+                // measurement.
+                const float slipped = (eye - *stand.mEye).length();
+                const float turned = osg::RadiansToDegrees(std::acos(std::clamp(forward * asked, -1.0f, 1.0f)));
+
+                found
+                    = std::format("the eye stands {:.2f} units and {:.2f}° from what the stop asked", slipped, turned);
+                return slipped < 0.1f && turned < 0.1f;
+            }
+        }
+
+        return false;
     }
 }

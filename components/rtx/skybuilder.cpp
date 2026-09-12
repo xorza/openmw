@@ -9,9 +9,9 @@
 #include <osg/Image>
 #include <osg/Vec2f>
 
+#include <components/fallback/fallback.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/sky/clouds.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -77,7 +77,10 @@ namespace Rtx
 
         for (std::uint32_t weather = 0; weather < Shaders::WEATHER_COUNT; ++weather)
         {
-            const std::string_view sheet = Sky::cloudTexture(weatherName(weather));
+            // A bare file name the archive holds under `textures/`, and empty where the weather
+            // names none, which the shipped fallbacks do for ash and blight.
+            const std::string_view sheet
+                = Fallback::Map::getString("Weather_" + std::string(weatherName(weather)) + "_Cloud_Texture");
             if (sheet.empty())
                 continue;
 

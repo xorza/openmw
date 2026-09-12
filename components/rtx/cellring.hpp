@@ -45,7 +45,7 @@ namespace Rtx
     /// walk, and holds by `Known::mHolds` rather than being named again on every walk. Everything
     /// the thread reads is lent and given back — `Spares` says why an address and not a shared
     /// count, and `giveBackHolds` why a hold is a cell's.
-    class CellRing final : public Residency, public TextureReadings
+    class CellRing final : public Residency
     {
     public:
         explicit CellRing(SceneDesc& scene);
@@ -77,10 +77,9 @@ namespace Rtx
 
         void collect(SceneAdopter& into, ExtractionStats& stats) override;
 
-        /// The reading of `image` where a model or a cell's ground the ring holds names it, for the
-        /// frame's describe.
-        const PreparedTexture* find(const osg::Image& image) const override { return mHolds.find(image); }
-
+        /// The models and images lent, for the frame's describe to find a reading by its image.
+        const CellHolds& getHolds() const { return mHolds; }
+        // Read by the tests and by nothing else.
         /// How many cells the prepared ring holds.
         std::size_t getHeldCellCount() const { return mCells.size(); }
 

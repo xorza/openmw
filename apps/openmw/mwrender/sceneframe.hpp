@@ -102,12 +102,6 @@ namespace MWRender
         /// the other question.
         osg::Vec4f mSunDiscColour{ 1.0f, 1.0f, 1.0f, 0.0f };
 
-        /// How much of the sun is over the horizon, nought to one — `Sky::sunShareAt` at
-        /// `mGameHour`. Nought all night and at the two hours the sun is level with the horizon,
-        /// ramping across dawn and dusk. What a ray tracer scales its *sunlight* by rather than only
-        /// its disc: one that scaled the disc alone had shadows swinging across a dark sky.
-        float mSunShare = 0.0f;
-
         /// How much of the sun this weather lets through, which dims a disc under an overcast but
         /// says nothing about whether there is one. It is also what keeps the stars in behind one.
         float mSunGlare = 1.0f;

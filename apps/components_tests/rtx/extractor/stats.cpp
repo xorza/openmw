@@ -55,10 +55,10 @@ namespace Rtx::Testing
 
             const ExtractionStats stats = walk(*root);
 
-            const FormatCount& blocks = stats.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc1)];
+            const FormatCount& blocks = stats.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc1RgbaSrgb)];
             EXPECT_EQ(blocks.mMet, 2u);
             EXPECT_EQ(blocks.mMipped, 1u) << "one of the two brought a chain";
-            EXPECT_EQ(stats.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Unnamed)].mMet, 0u);
+            EXPECT_EQ(stats.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Unnamed)].mMet, 0u);
         }
 
         /// Every count of a walk, each a different number, so a sum short of one is short by an
@@ -80,7 +80,7 @@ namespace Rtx::Testing
             stats.mUndescribedSurfaces = from + 12;
             stats.mSkippedEmpty = from + 13;
             stats.mLights = from + 14;
-            stats.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc3)]
+            stats.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc3Srgb)]
                 = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
             stats.mUnskinned = from + 17;
             stats.mGroundCells = from + 18;
@@ -118,10 +118,10 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mSpritelessEmitters, 138u);
             EXPECT_EQ(sum.mWornOtherwise, 140u);
 
-            const FormatCount& blocks = sum.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc3)];
+            const FormatCount& blocks = sum.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc3Srgb)];
             EXPECT_EQ(blocks.mMet, 130u);
             EXPECT_EQ(blocks.mMipped, 132u);
-            EXPECT_EQ(sum.mFormats.mMet[static_cast<std::size_t>(ImageFormat::Bc1)].mMet, 0u);
+            EXPECT_EQ(sum.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc1RgbaSrgb)].mMet, 0u);
         }
 
         /// The format an unnamed count stood for survives the sum, since a report that says how many

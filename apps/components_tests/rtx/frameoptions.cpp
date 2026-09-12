@@ -2,8 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/renderprofile.hpp>
 
 namespace Rtx
 {

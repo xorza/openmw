@@ -18,7 +18,6 @@
 #include <SDL_video.h>
 
 #include <components/debug/debuglog.hpp>
-#include <components/features/features.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/l10n/manager.hpp>
 #include <components/lua_ui/scriptsettings.hpp>
@@ -327,9 +326,8 @@ namespace MWGui
 
         // The renderer is a compile-time option, so a build without it shows the switch as
         // dead rather than hiding it: a setting that silently does nothing is worse than one
-        // that says why. Asked of the build rather than of the preprocessor — see
-        // `Features::hasRayTracing`.
-        const bool rayTracing = Features::hasRayTracing();
+        // that says why.
+        const bool rayTracing = Settings::sRayTracingBuilt;
         mRayTracingUnavailableHint->setVisible(!rayTracing);
         mRayTracingButton->setEnabled(rayTracing);
         mRayTracingRestartHint->setVisible(rayTracing);
@@ -652,7 +650,7 @@ namespace MWGui
         if (!chosen.has_value())
             return;
 
-        Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(*chosen)));
+        Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(*chosen)));
         apply();
     }
 

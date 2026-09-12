@@ -9,7 +9,12 @@
 #include <osg/Vec2f>
 #include <osg/ref_ptr>
 
-namespace Surface
+namespace osg
+{
+    class StateSet;
+}
+
+namespace Rtx
 {
     /// What the alpha channel of a surface's diffuse texture means.
     ///
@@ -44,13 +49,13 @@ namespace Surface
     /// **No arithmetic, on purpose.** Nothing weighs, sums or scales a colour on this side of the
     /// crossing: the content states it, a controller replaces it, and a renderer decodes it. A gain
     /// belongs past the decode, where the numbers are light.
-    struct Colour
+    struct EncodedColour
     {
         float mRed = 0.0f;
         float mGreen = 0.0f;
         float mBlue = 0.0f;
 
-        bool operator==(const Colour& other) const = default;
+        bool operator==(const EncodedColour& other) const = default;
     };
 
     /// What a surface's per-vertex colour is for, as the content said.
@@ -106,12 +111,8 @@ namespace Surface
     inline constexpr std::size_t sTextureRoleCount = 11;
 
     /// The name the OpenGL renderer binds this role under, which is also the name the content
-    /// pipeline has used since before there was anything else to call it.
-    ///
-    /// **One table, because there were fifty literals.** The same handful of strings were spelled out
-    /// in `nifloader.cpp` (17), `shadervisitor.cpp` (15), `terrain/material.cpp` (4) and
-    /// `rtx/sceneextractor.cpp` (4), and a typo in any of them silently produced an untextured surface
-    /// rather than a build error.
+    /// pipeline has used since before there was anything else to call it — one table, so a typo
+    /// is a build error rather than an untextured surface.
     std::string_view textureRoleName(TextureRole role);
 
     /// The role a texture unit's name means, or nothing for a name that is not a role — `blendMap`
@@ -120,7 +121,7 @@ namespace Surface
 
     /// What a surface is, as the content said and before any renderer has an opinion.
     ///
-    /// **Read off the finished `osg::StateSet`, by `describe`.** Everything here was written into
+    /// **Read off the finished `osg::StateSet`, by `describeStateSet`.** Everything here was written into
     /// OpenGL pipeline state by whoever loaded the content — `NifOsg` from the NIF properties,
     /// `Terrain` from its texture layers, `Shader::ShaderVisitor` for the maps it discovers by
     /// filename — and the state set is the one place the fact is kept, whatever a controller has
@@ -128,7 +129,7 @@ namespace Surface
     ///
     /// **A value, and cheap to copy.** A chain of state sets is folded into one of these in order,
     /// which is how a texturing property on a parent reaches the shape three levels down.
-    struct Material
+    struct SurfaceDescription
     {
         /// One texture per role, null where the content has none.
         ///
@@ -175,13 +176,13 @@ namespace Surface
 
         /// The four colours a `NiMaterialProperty` states for a surface.
         ///
-        /// **Display-encoded, and `Surface::Colour` is what says so.** A renderer working in light
+        /// **Display-encoded, and `EncodedColour` is what says so.** A renderer working in light
         /// divides the curve out through `Rtx::decodeColour`, and one drawing in the game's own
         /// space uses them as they stand.
-        Colour mDiffuseColour{ 1.0f, 1.0f, 1.0f };
-        Colour mAmbientColour{ 1.0f, 1.0f, 1.0f };
-        Colour mEmissiveColour;
-        Colour mSpecularColour;
+        EncodedColour mDiffuseColour{ 1.0f, 1.0f, 1.0f };
+        EncodedColour mAmbientColour{ 1.0f, 1.0f, 1.0f };
+        EncodedColour mEmissiveColour;
+        EncodedColour mSpecularColour;
 
         /// How much of the surface is there, before its texture is read.
         ///
@@ -225,14 +226,44 @@ namespace Surface
         /// role, which is what a placeholder a flip controller has not filled in yet amounts to.
         void setTexture(TextureRole role, const osg::Texture* texture);
 
-        bool operator==(const Material& other) const = default;
+        bool operator==(const SurfaceDescription& other) const = default;
     };
 
-    /// What the shader visitor is told a GPU offers, for a host that has no GL context to ask.
+    /// Folds what one state set says about a surface into `into`, and says whether it said
+    /// anything at all.
     ///
-    /// **A stand-in and not a capability.** The visitor runs on every model OpenMW loads and needs a
-    /// number to fit texture slots into. The value decides only how many slots it is willing to use;
-    /// the roles it labels them with, which is the whole of what a described surface carries, are the
-    /// same for any number this large.
-    constexpr int sAssumedTextureUnits = 32;
+    /// **Read off the finished state set, the way `Shader::ShaderVisitor` reads its own
+    /// requirements.** Everything a description holds was written into OpenGL pipeline state by
+    /// whoever loaded the content — a `NiMaterialProperty` became a `SceneUtil::Material`, a
+    /// `NiAlphaProperty` an `osg::AlphaFunc` and a `BlendFunc`, a `NiStencilProperty` a
+    /// `GL_CULL_FACE` mode, a texture a unit with a `SceneUtil::TextureType` beside it — so the
+    /// state set is the one place the fact is kept, whatever loaded it and whatever a controller
+    /// has done to it since. A description authored beside that state would be a second copy of
+    /// the same fact, and the loader's thirty signatures would carry it.
+    ///
+    /// **One state set at a time, nearest last, because that is how OpenGL resolves a chain.** A
+    /// texturing property three nodes up and a material on the shape land on two state sets, and
+    /// the shape wears both; a caller folds the chain in force at a drawable in order and the
+    /// later state set overrides what the earlier one set. A material starts as the defaults the
+    /// loader would have written for a shape nothing spoke about.
+    ///
+    /// What is read, and from where:
+    /// - a texture at a unit: its role is the `SceneUtil::TextureType` at that unit, or the sampler
+    ///   uniform naming the unit — and a unit nothing names is not the surface's;
+    /// - the colours, the opacity, the glossiness, the emissive multiplier and the vertex-colour
+    ///   mode: the `SceneUtil::Material` attribute;
+    /// - the opacity again from an `alpha` uniform, which is what `NifOsg::AlphaController`
+    ///   animates — unless an `actorFade` stands beside it, in which case the pair is the game
+    ///   fading an actor and `Rtx::fadeThrough`'s business;
+    /// - the alpha test: the `osg::AlphaFunc` attribute, whose reference the visitor moves into an
+    ///   `alphaRef` uniform when it replaces the attribute with `Shader::RemovedAlphaFunc`;
+    /// - blending: a `BlendFunc` attribute or the `GL_BLEND` mode;
+    /// - two-sidedness: the `GL_CULL_FACE` mode, which only a stencil property or a material file
+    ///   turns off;
+    /// - the texture transform: the `texMat<unit>` uniform on the diffuse unit, undone to the scale
+    ///   and offset it was built from.
+    ///
+    /// @return whether the state set carried a material or a texture: what tells a surface from a
+    ///         node that only sets a mode or a uniform on the way down.
+    bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& into);
 }

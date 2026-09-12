@@ -21,6 +21,7 @@ namespace Resource
 
 namespace Rtx
 {
+    class CellHolds;
     class CompositeQueue;
     class SceneDesc;
 
@@ -34,19 +35,6 @@ namespace Rtx
     /// because a live scene graph names textures that were never files and a renderer that fell
     /// over on one would fall over on a cell.
     osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, VFS::Path::NormalizedView path);
-
-    /// Where images already described off the frame are found, by the image, so an arrival's
-    /// describe costs a lookup instead of reading every texel for the chain and the shading
-    /// estimate.
-    class TextureReadings
-    {
-    public:
-        virtual ~TextureReadings() = default;
-
-        /// The reading of `image`, or null where nothing read it. What comes back stays where it is
-        /// for at least as long as the caller's descriptions span it.
-        virtual const PreparedTexture* find(const osg::Image& image) const = 0;
-    };
 
     /// Every live texture a scene names, described, and the storage those descriptions point into.
     /// Each description carries the slot it belongs to and there is not one per slot: a slot the
@@ -68,16 +56,18 @@ namespace Rtx
         /// building an array from nothing. The free slots are not among them.
         /// @param composites where a chunk's flattened ground comes from, or null for a caller
         ///        that bakes none. A terrain slot the queue has no composite for yet is passed over.
-        /// @param readings where images read ahead of the frame are found, or null for a caller
-        ///        with none: a doll, a map tile, the harness's own world.
+        /// @param readings the cell ring's holds, where images read ahead of the frame are found
+        ///        by the image — a lookup instead of every texel for the chain and the shading
+        ///        estimate — or null for a caller with none: a doll, a map tile, the harness's own
+        ///        world.
         void describeAll(const SceneDesc& scene, Resource::ImageManager& images,
-            const CompositeQueue* composites = nullptr, const TextureReadings* readings = nullptr);
+            const CompositeQueue* composites = nullptr, const CellHolds* readings = nullptr);
 
         /// The same, for `slots` and nothing else — what stops a texture being decoded and its
         /// shading estimated twice. A list and not an offset, because a slot a departing cell freed
         /// is taken over wherever it sits.
         void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-            const CompositeQueue* composites = nullptr, const TextureReadings* readings = nullptr);
+            const CompositeQueue* composites = nullptr, const CellHolds* readings = nullptr);
 
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }

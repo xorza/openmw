@@ -11,7 +11,6 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/skylight.hpp>
-#include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
 
 namespace Rtx
@@ -99,7 +98,7 @@ namespace Rtx
 
         /// A layer over the ground keeps the sun, and what it keeps is an hour and not an angle.
         ///
-        /// **Morrowind's sunset is a clock.** `Sky::sunShareAt` ramps between `mDayEnd` and
+        /// **Morrowind's sunset is a clock.** `sunShareAt` ramps between `mDayEnd` and
         /// `mNightStart` and nothing anywhere takes an elevation, so a layer that sees the sun 0.718
         /// degrees longer is handed the ramp read 5.35 minutes earlier — the time the disc takes to
         /// fall that far at 8.04 degrees an hour.
@@ -129,12 +128,12 @@ namespace Rtx
             // Nothing at all is different while the whole disc is up, which is every hour of the day
             // between the two ramps.
             for (const float hour : { 9.0f, 12.0f, 17.9f })
-                EXPECT_EQ(sunShareAloft(hour, times), Sky::sunShareAt(hour, times)) << "at hour " << hour;
+                EXPECT_EQ(sunShareAloft(hour, times), sunShareAt(hour, times)) << "at hour " << hour;
 
             // **And never less than the ground's**, at any hour of the clock — which is the whole
             // claim, and the one a sign error in the offset would break.
             for (float hour = 0.0f; hour < 24.0f; hour += 0.05f)
-                EXPECT_GE(sunShareAloft(hour, times), Sky::sunShareAt(hour, times)) << "at hour " << hour;
+                EXPECT_GE(sunShareAloft(hour, times), sunShareAt(hour, times)) << "at hour " << hour;
         }
 
         /// The ten names, in the order a script id counts along.

@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtxvulkan/deviceprofile.hpp>
+#include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
 
 namespace Rtx
@@ -97,7 +97,10 @@ namespace Rtx
                 requestRequiredFeatures(mFeatures);
             }
 
-            DeviceProfile profile() { return profileOf(mProperties, mFeatures, mExtensions, mQueues); }
+            PhysicalDevice::Profile profile()
+            {
+                return PhysicalDevice::profileOf(mProperties, mFeatures, mExtensions, mQueues);
+            }
 
             DeviceProperties mProperties;
             DeviceFeatures mFeatures;
@@ -110,19 +113,19 @@ namespace Rtx
         /// **The whole reason the type exists.** Neither card is plugged into this machine, and both
         /// answers matter: an RTX 2060 that reorders nothing runs the same trace, and its 246 MiB
         /// aperture is what decides where the scene's tables live.
-        TEST(RtxDeviceProfileTest, twoCardsDifferExactlyWhereTheirHardwareDoes)
+        TEST(RtxPhysicalDeviceTest, twoCardsDifferExactlyWhereTheirHardwareDoes)
         {
             Card turing(&describeTuring);
             Card ada(&describeAda);
 
-            const DeviceProfile onTuring = turing.profile();
-            const DeviceProfile onAda = ada.profile();
+            const PhysicalDevice::Profile onTuring = turing.profile();
+            const PhysicalDevice::Profile onAda = ada.profile();
 
             EXPECT_EQ(onTuring.mObstacle, "") << "an RTX 2060 was refused";
             EXPECT_EQ(onAda.mObstacle, "") << "an RTX 4090 was refused";
 
             // 246 MiB against the whole of video memory, which is the difference resizable BAR
-            // makes. `DeviceProfile::mHostWrittenBytes` says what the figure then decides.
+            // makes. `PhysicalDevice::Profile::mHostWrittenBytes` says what the figure then decides.
             EXPECT_EQ(onTuring.mHostWrittenBytes, 257949696ull);
             EXPECT_EQ(onAda.mHostWrittenBytes, 17171480576ull);
             EXPECT_NE(onTuring.mHostWrittenBytes, onAda.mHostWrittenBytes);
@@ -138,7 +141,7 @@ namespace Rtx
         /// **Neither answer refuses the device**, which is the whole difference between this list
         /// and the required one: a card without `VK_EXT_device_fault` traces the same frames and
         /// says less about a device loss.
-        TEST(RtxDeviceProfileTest, anOptionalExtensionIsTakenOnlyWhereTheDeviceListsIt)
+        TEST(RtxPhysicalDeviceTest, anOptionalExtensionIsTakenOnlyWhereTheDeviceListsIt)
         {
             Card bare(&describeTuring);
             EXPECT_TRUE(bare.profile().mOptionalExtensions.empty()) << "an extension nothing offered was taken";
@@ -147,7 +150,7 @@ namespace Rtx
             for (const char* const name : getOptionalDeviceExtensions())
                 full.mExtensions.emplace_back(name);
 
-            const DeviceProfile profile = full.profile();
+            const PhysicalDevice::Profile profile = full.profile();
             ASSERT_EQ(profile.mOptionalExtensions.size(), getOptionalDeviceExtensions().size());
             for (std::size_t at = 0; at < profile.mOptionalExtensions.size(); ++at)
                 EXPECT_STREQ(profile.mOptionalExtensions[at], getOptionalDeviceExtensions()[at])
@@ -160,7 +163,7 @@ namespace Rtx
         ///
         /// **One case per obstacle, on a card that qualifies but for that one thing**, so a message
         /// naming the wrong lack fails here rather than sending a reader after it.
-        TEST(RtxDeviceProfileTest, aCardShortOfOneThingIsNamedForThatThing)
+        TEST(RtxPhysicalDeviceTest, aCardShortOfOneThingIsNamedForThatThing)
         {
             {
                 Card old(&describeTuring);
@@ -189,7 +192,7 @@ namespace Rtx
                 // go, and nothing in this renderer stages instead.
                 Card walled(&describeTuring);
                 walled.mProperties.mMemory.memoryTypeCount = 4;
-                const DeviceProfile profile = walled.profile();
+                const PhysicalDevice::Profile profile = walled.profile();
                 EXPECT_EQ(profile.mHostWrittenBytes, 0u);
                 EXPECT_EQ(profile.mObstacle, "no memory type the host writes into and the device reads");
             }
@@ -200,7 +203,7 @@ namespace Rtx
         /// **A buffer goes in one heap.** Two windows of 128 MiB hold no table a single 256 MiB one
         /// would not, so the profile reports the largest rather than the sum — and a sum would say a
         /// card had room it has nowhere.
-        TEST(RtxDeviceProfileTest, twoAperturesReportTheLargerAndNotTheirSum)
+        TEST(RtxPhysicalDeviceTest, twoAperturesReportTheLargerAndNotTheirSum)
         {
             Card split(&describeTuring);
             VkPhysicalDeviceMemoryProperties& memory = split.mProperties.mMemory;

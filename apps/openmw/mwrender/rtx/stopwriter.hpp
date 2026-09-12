@@ -10,7 +10,6 @@
 #include <components/rtxbench/benchrun.hpp>
 
 #include "framereport.hpp"
-#include "session.hpp"
 
 namespace osg
 {
@@ -25,6 +24,21 @@ namespace Rtx
 namespace MWRender
 {
     class OffscreenView;
+
+    /// What a stop asked for and what it came to, beside the frame it drew.
+    ///
+    /// **Named for the reason `FrameContext` is.** Each of these is read by one claim and by nothing
+    /// else, so one value carries them past `write` and `runChecks`, which read neither.
+    ///
+    /// Borrowed and valid for one stop.
+    struct StopFacts
+    {
+        /// What the stop's route came to, which only `CrossingsAppend` reads.
+        const Rtx::Crossings& mCrossings;
+
+        /// What the stop asked its camera to be, which only `CameraStands` reads.
+        const Rtx::Stand& mStand;
+    };
 
     /// Writes what `Rtx::Actions` asks of the place a stop stood at.
     ///
@@ -104,6 +118,11 @@ namespace MWRender
 
         /// Asks every check the stop named, and reports each one's answer.
         void runChecks(const Writing& into, std::span<const Rtx::Check> checks, const StopFacts& facts);
+
+        /// Whether one check holds of what the run was handed and what it drew, with what it found
+        /// in `found` either way.
+        static bool checkHolds(const FrameContext& context, const FrameReport& report, Rtx::Check check,
+            const StopFacts& facts, std::string& found);
 
         /// What a read back lands in, refilled per stop and never freed.
         std::vector<std::uint8_t> mPixels;

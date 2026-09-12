@@ -120,7 +120,7 @@ namespace Rtx
         /// run fills all four, so a hand-over written out member by member loses whichever ones
         /// nobody remembered — silently, since an unfilled `SessionResult` is a valid one describing
         /// a camera at the origin.
-        SessionResult describe(const Standing* left) const;
+        SessionResult describe(const Stop* left) const;
 
     private:
         std::vector<BenchPlace> mPlaces;

@@ -47,8 +47,6 @@
 #include "../../profile.hpp"
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
-#include "../screenshotwriter.hpp"
-#include "../windowsetup.hpp"
 #include "gloffscreenview.hpp"
 #include "postprocessor.hpp"
 #include "screenshotmanager.hpp"

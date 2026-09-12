@@ -8,9 +8,8 @@
 #include <vector>
 
 #include <boost/program_options/variables_map.hpp>
-#include <osg/Vec3f>
 
-#include <components/rtx/renderprofile.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
@@ -21,56 +20,29 @@ namespace Files
 
 namespace RtxTool
 {
-    /// Where a camera is standing and under what, as this tool writes a place down.
+    /// Degrees clockwise from north, in `[0, 360)`, of the way a stand faces.
     ///
-    /// **How a place found by flying is written into `views.cfg`.** A run that opened a window
-    /// prints one of these where the eye was left, so somebody who flew somewhere worth keeping
-    /// closes the window and pastes what it said.
+    /// **North is +Y and east is +X**, so the arguments come the other way round from the usual
+    /// `atan2`.
+    float bearingOf(const Rtx::Stand& stand);
+
+    /// Degrees above the horizon, in `[-90, 90]`, of the way a stand faces.
+    float climbOf(const Rtx::Stand& stand);
+
+    /// One line for a person: where `stop` stands, in numbers worth reading rather than
+    /// round-tripping. A `#` comment in both of the formats below, so a file of these can be fed
+    /// to either.
     ///
-    /// **A type rather than a handful of `format` calls at whatever prints it**, because everything
-    /// it writes is something the tool has to be able to read back — a `views.cfg` section and a
-    /// command line — and a format that drifts from its parser is not a thing an eye catches in a
-    /// log. Held apart from whatever prints it, so the tests can assert both without a device.
-    struct Viewpoint
-    {
-        /// The `views.cfg` id this was opened as, or empty where it was opened by `--cell`. Kept so
-        /// that flying somewhere better and saving it is a replacement rather than a new entry.
-        std::string mView;
-        std::string mNote;
+    /// **How a place found by flying is written down.** A run that opened a window prints this and
+    /// `describeBlock` where the eye was left, so somebody who flew somewhere worth keeping closes
+    /// the window and pastes what it said. Held apart from whatever prints them, so the tests can
+    /// assert both without a device — and everything they write is something `loadViews` has to
+    /// read back, which a format that drifted from its parser would not be.
+    std::string describeSpot(const Rtx::Stop& stop);
 
-        /// The cell as `--cell` spells it: a pair of integers for an exterior, a name for an
-        /// interior.
-        ///
-        /// **Where a run enters, and not the square a camera has since flown into.** The world is
-        /// streamed around the player, and a stop moves the player to `mOrigin` once it is standing
-        /// somewhere — so the two disagreeing costs nothing, and the block still opens on the frame
-        /// it was printed from. Naming the containing square would ask the game to spell a cell
-        /// back, which is a second spelling of a name `--cell` already reads.
-        std::string mCell;
-
-        /// Where the eye was left and what it stood under, as the run reported it.
-        ///
-        /// **`Rtx::Standing` and not five fields of this type's own**, because the run states the
-        /// same five and a launcher only writes them down — held apart, a field added to the report
-        /// reached the file that has to be able to read it back only if somebody carried it across.
-        Rtx::Standing mAt;
-
-        /// Degrees clockwise from north, in `[0, 360)`.
-        ///
-        /// **North is +Y and east is +X**, so the arguments come the other way round from the usual
-        /// `atan2`.
-        float getBearing() const;
-
-        /// Degrees above the horizon, in `[-90, 90]`.
-        float getClimb() const;
-    };
-
-    /// One line for a person: where this is, in numbers worth reading rather than round-tripping.
-    ///
-    /// A `#` comment in both of the formats below, so a file of these can be fed to either.
-    std::string describeSpot(const Viewpoint& spot);
-
-    /// The whole `views.cfg` section, ready to paste into it.
+    /// The whole `views.cfg` section for `stop`, ready to paste into it, under a slug of the stop's
+    /// name — which `stopFor` makes the cell's for a window opened by `--cell`, so that one prints a
+    /// block the file can take too.
     ///
     /// **The whole section and not two of its lines.** A block with no `cell` in it is one the view
     /// file refuses to load, so what was printed could never have gone where it was printed to go.
@@ -78,7 +50,7 @@ namespace RtxTool
     /// **Shortest-round-trip numbers and not the rounded ones `describeSpot` prints**: these exist
     /// to be read back into the same floats, and a position rounded to the unit is a different
     /// frame when the camera is a hand's width from a wall.
-    std::string describeBlock(const Viewpoint& spot);
+    std::string describeBlock(const Rtx::Stop& stop);
 
     /// What a frame is upscaled by when nobody names a mode.
     ///
@@ -152,13 +124,12 @@ namespace RtxTool
     ///
     /// @param variables the parsed command line, which carries the data directories, the content
     ///        files and the encoding the engine is configured from.
-    /// @param spot where the run was asked to stand, or null for a run whose end nobody wants
-    ///        written down. Given one, the place the eye was left at is printed as a `views.cfg`
-    ///        block — which is what a window is for as much as the picture is.
+    /// @param printLeft whether the place the eye was left at is printed as a `views.cfg` block —
+    ///        which is what a window is for as much as the picture is.
     /// @return a process exit status.
     int runHosted(const boost::program_options::variables_map& variables, Files::ConfigurationManager& config,
         const std::filesystem::path& resources, Rtx::RenderProfile profile, Rtx::SessionRequest request,
-        const Viewpoint* spot = nullptr);
+        bool printLeft = false);
 
     /// A list of places to profile, by name.
     ///
@@ -194,45 +165,19 @@ namespace RtxTool
     /// under. A view whose sky is the point of it says so itself.
     inline constexpr std::string_view sDefaultWeather = "Clear";
 
-    /// A place worth looking at, by name.
+    /// A view file entry is a stop with no schedule and no actions: a name, a note, where it
+    /// stands and what sky it fixes. A view id is the unit of comparison across commits — the same
+    /// name renders the same frame today and after a change, which is what makes a screenshot
+    /// evidence rather than an anecdote.
     ///
-    /// A view id is the unit of comparison across commits: the same name renders the same frame
-    /// today and after a change, which is what makes a screenshot evidence rather than an anecdote.
-    struct View
-    {
-        std::string mName;
-
-        /// Addressed the way Morrowind does: a pair of integers is an exterior, anything else is an
-        /// interior's name.
-        std::string mCell;
-
-        /// Left out for a view that only names a cell, which then gets the default placement.
-        std::optional<osg::Vec3f> mOrigin;
-        std::optional<osg::Vec3f> mTarget;
-
-        /// The hour this place is looked at, or absent for whatever hour the run is at.
-        ///
-        /// **The conditions belong to the place, for the reason the coordinates do.** A view id has
-        /// to name one frame, and a frame at dawn and the same camera at noon are not one frame —
-        /// so a place measured at dawn says so here rather than in whoever remembers to pass
-        /// `--hour`. An `--hour` on the command line still wins, which is the rule every other
-        /// field a view fixes already follows.
-        std::optional<float> mHour;
-
-        /// The weather this place stands under, or absent for whatever weather the run is under.
-        ///
-        /// **A condition of the place, exactly as the hour is one.** An overcast deck and a clear
-        /// one are not one frame — the cloud shadow, the fog and the sun's own glare all differ —
-        /// and a saving that only pays under a heavy sky can be measured no other way. `--weather`
-        /// still wins, which is the rule every field a view fixes follows.
-        std::optional<std::string> mWeather;
-
-        std::string mNote;
-
-        /// Where a bench run flies from here, or absent for a place that stands still. A shot and a
-        /// window ignore it: one is a still and the other is flown by hand.
-        std::optional<Rtx::Route> mRoute;
-    };
+    /// **The conditions belong to the place, for the reason the coordinates do.** A view id has to
+    /// name one frame, and a frame at dawn and the same camera at noon are not one frame — so a
+    /// place measured at dawn says so in `mSky.mHour` rather than in whoever remembers to pass
+    /// `--hour`; an overcast deck and a clear one differ in the cloud shadow, the fog and the sun's
+    /// own glare, and a saving that only pays under a heavy sky says so in `mSky.mWeather`. The
+    /// command line still wins, which is the rule every field a view fixes follows. A route is
+    /// where a bench run flies from here; a shot and a window ignore it, one being a still and the
+    /// other flown by hand.
 
     /// One stop, from a view file entry and whatever the command line named.
     ///
@@ -248,14 +193,14 @@ namespace RtxTool
     /// @param weather the same for `--weather`.
     /// @param day which day of Morrowind's calendar the run stands on. Only the moons read it.
     Rtx::Stop stopFor(
-        const View& view, const std::optional<float>& hour, const std::optional<std::string>& weather, int day);
+        const Rtx::Stop& view, const std::optional<float>& hour, const std::optional<std::string>& weather, int day);
 
     /// Reads the view file. Throws when it is missing or malformed — a mistyped view should say so
     /// rather than quietly render somewhere else.
-    std::vector<View> loadViews(const std::filesystem::path& path);
+    std::vector<Rtx::Stop> loadViews(const std::filesystem::path& path);
 
     /// The view called `name`, or null.
-    const View* findView(const std::vector<View>& views, std::string_view name);
+    const Rtx::Stop* findView(const std::vector<Rtx::Stop>& views, std::string_view name);
 
     /// The views `named` asks for, in the order it names them; every one of them where it names
     /// none or names "all". Throws `std::runtime_error` naming a view that is not there.
@@ -263,5 +208,5 @@ namespace RtxTool
     /// **One place decides what a list of view names means.** `bench` reaches it through a suite as
     /// well as from the command line and `verify` names them directly, and a filter that behaved
     /// differently between the two would make a run of one impossible to reproduce with the other.
-    std::vector<View> chooseViews(const std::vector<View>& views, const std::vector<std::string>& named);
+    std::vector<Rtx::Stop> chooseViews(const std::vector<Rtx::Stop>& views, const std::vector<std::string>& named);
 }

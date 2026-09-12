@@ -32,7 +32,7 @@ namespace Rtx
     {
     public:
         NodeKind of(const osg::Object& object) const;
-
+        // Read by the tests and by nothing else.
         /// How many asks fell past the table. A content set with more classes than `sKept` shows
         /// up here rather than as a walk that silently went back to casting.
         std::uint32_t getOverflow() const { return mOverflow; }

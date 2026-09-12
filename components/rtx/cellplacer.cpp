@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <span>
 
-#include <components/surface/material.hpp>
+#include "surface.hpp"
 
 #include "fogbuilder.hpp"
 #include "held.hpp"
@@ -122,7 +122,7 @@ namespace Rtx
         // Stated here, because the ground is nobody's node. Every other material reads its
         // mode off a state set `NifOsg` described, and this one is stood off the land records —
         // where `Terrain::ChunkManager` states the same thing for the rasterizer's chunks.
-        material.mVertexColour = Surface::VertexColour::Tint;
+        material.mVertexColour = VertexColour::Tint;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.materials().addLayers(mLayerScratch);
         stands.mMaterial = mScene.materials().add(material);

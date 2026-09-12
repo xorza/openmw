@@ -1,6 +1,7 @@
 #ifndef GAME_RENDER_RENDERER_H
 #define GAME_RENDER_RENDERER_H
 
+#include <cstdint>
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
@@ -54,6 +55,7 @@ namespace Resource
 
 namespace SceneUtil
 {
+    class AsyncScreenCaptureOperation;
     class WorkQueue;
 }
 
@@ -174,8 +176,16 @@ namespace MWRender
         /// than find out at link time.
         ///
         /// **A GL fact, so the default is the one number a renderer with no GL context can give**:
-        /// `Surface::sAssumedTextureUnits`, which is what the content was described against.
-        virtual int getMaxTextureUnits() const;
+        /// `sAssumedTextureUnits`, which is what the content was described against.
+        virtual int getMaxTextureUnits() const { return sAssumedTextureUnits; }
+
+        /// What the shader visitor is told a GPU offers, for a host that has no GL context to ask.
+        ///
+        /// **A stand-in and not a capability.** The visitor runs on every model OpenMW loads and
+        /// needs a number to fit texture slots into. The value decides only how many slots it is
+        /// willing to use; the roles it labels them with, which is the whole of what a described
+        /// surface carries, are the same for any number this large.
+        static constexpr int sAssumedTextureUnits = 32;
 
         /// The window the renderer made. Input, the GUI's scale and the gamma ramp are SDL's
         /// business and read it; what is bound to it is not theirs to know.
@@ -466,6 +476,44 @@ namespace MWRender
     /// The one place the choice is made. Throws naming the name where there is no such renderer,
     /// because a fallback would answer "why does it look like that" with silence.
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec);
+
+    /// Where a window goes and what it is, as the video settings ask for it.
+    struct WindowPlacement
+    {
+        int mX = 0;
+        int mY = 0;
+        int mWidth = 0;
+        int mHeight = 0;
+        std::uint32_t mFlags = 0;
+    };
+
+    /// What every renderer asks SDL for, and the hints it has to have set before asking.
+    ///
+    /// **Everything here is the video settings and none of it is a graphics API.** Screen, size,
+    /// window mode, border, what happens on focus loss — two renderers wanted the same twenty lines
+    /// and the only difference between them is one flag naming what will be drawn into the surface.
+    ///
+    /// **The hints are set here because this is the last moment they can be.** SDL reads them inside
+    /// `SDL_CreateWindow`, so a caller that set them afterwards would be setting them for the next
+    /// window.
+    ///
+    /// @param surfaceFlag what the window is for: `SDL_WINDOW_OPENGL` for the rasterizer, and
+    ///        whatever surface the other renderer's backend asks for.
+    WindowPlacement describeWindow(std::uint32_t surfaceFlag);
+
+    /// Reads `openmw.png` from beside the resources and gives it to the window.
+    ///
+    /// Logs and carries on wherever it cannot: a window with no icon is still a window, and this
+    /// runs before there is anything on screen to report a failure with.
+    void setWindowIcon(SDL_Window& window, const std::filesystem::path& resourceDir);
+
+    /// The writer both renderers hand a captured frame to.
+    ///
+    /// **Shared rather than one apiece**, so the two write the same files to the same place with the
+    /// same names and say the same thing afterwards. Where the picture came from — a frame buffer or
+    /// a trace — is the renderer's business; the format, the path and the message are the game's.
+    osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> makeScreenshotWriter(
+        SceneUtil::WorkQueue& queue, const std::filesystem::path& screenshotPath);
 }
 
 #endif

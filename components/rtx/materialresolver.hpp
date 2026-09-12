@@ -8,7 +8,7 @@
 #include <osg/Node>
 #include <osg/ref_ptr>
 
-#include <components/surface/material.hpp>
+#include "surface.hpp"
 
 #include "alphaimage.hpp"
 #include "mirroridentity.hpp"
@@ -43,7 +43,7 @@ namespace Rtx
         const osg::StateSet* mKey = nullptr;
 
         /// What the content said, or nothing where nothing did.
-        std::optional<Surface::Material> mDescribed;
+        std::optional<SurfaceDescription> mDescribed;
 
         /// Whether the diffuse map's alpha ever reaches solid — decided by the reader for the one
         /// kind of surface the answer changes, a translucent one, and left unset for every other.
@@ -132,7 +132,7 @@ namespace Rtx
         ///
         /// @param diffuseSolid whether the diffuse map reaches solid, where a reader already
         ///        answered; asked of the image here otherwise, and only where it matters.
-        Material describe(const Surface::Material* described, bool animated, std::optional<bool> diffuseSolid);
+        Material describe(const SurfaceDescription* described, bool animated, std::optional<bool> diffuseSolid);
 
         /// The slot `key` already holds, stamped and counted as a reuse, or `sNoIndex`.
         Index reuse(const osg::StateSet* key);
