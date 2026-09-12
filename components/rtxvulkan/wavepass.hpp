@@ -55,7 +55,6 @@ namespace Rtx
         /// The two slopes, their own second moment, and the elevation squared.
         const Image& getSurface(std::size_t cascade) const { return *mTiles[cascade].mSurface; }
 
-        /// The three curvatures.
         const Image& getCurvature(std::size_t cascade) const { return *mTiles[cascade].mCurvature; }
 
         /// How wide this tile is in world units, which is what turns a world position into a

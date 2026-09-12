@@ -19,7 +19,7 @@ namespace Rtx
 
         const VkComputePipelineCreateInfo pipeline{
             .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-            // **Asked for at creation, because it cannot be asked for afterwards.** The cost is
+            // Asked for at creation, because it cannot be asked for afterwards. The cost is
             // to compiling the pipeline and not to running it, and every pipeline here is made
             // once — where the answer it buys is the only way to see a register count, which is
             // what an occupancy figure is made of.

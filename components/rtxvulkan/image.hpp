@@ -34,8 +34,8 @@ namespace Rtx
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
             std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1);
 
-        /// **Movable, because the channels of a g-buffer are built by a loop over a table rather
-        /// than by a member list.** `Owned` is what makes the moves defaultable.
+        /// Movable, because the channels of a g-buffer are built by a loop over a table rather
+        /// than by a member list. `Owned` is what makes the moves defaultable.
         Image(Image&&) noexcept = default;
         Image& operator=(Image&&) noexcept = default;
 

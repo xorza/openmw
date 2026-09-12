@@ -66,9 +66,8 @@ namespace Rtx
         return Shaders::MASK_STATIC;
     }
 
-    /// One mesh placed in the world: a row of the top-level acceleration structure.
-    ///
-    /// Not `Instance`, which in this namespace is the `VkInstance` a device comes from.
+    /// One mesh placed in the world: a row of the top-level acceleration structure. Not `Instance`,
+    /// which in this namespace is the `VkInstance` a device comes from.
     struct MeshInstance
     {
         /// Object space to world space.
@@ -106,7 +105,7 @@ namespace Rtx
     struct MeshRange
     {
         /// Where this mesh's vertices sit, which the positions, the normals and the texture
-        /// coordinates are all indexed by. The run the allocator handed out, given back as it stands.
+        /// coordinates are all indexed by.
         Run mVertices;
 
         /// Where its indices sit. They are mesh-local, so a triangle's vertex is
@@ -133,8 +132,8 @@ namespace Rtx
         Index mMaterial = sNoIndex;
 
         /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
-        /// backend's bind table is indexed by. **A run as long as `mVertices` beside the mesh's
-        /// own**, allocated only for a mesh that deforms: the shared vertex buffers hold every mesh,
+        /// backend's bind table is indexed by. A run as long as `mVertices` beside the mesh's
+        /// own, allocated only for a mesh that deforms: the shared vertex buffers hold every mesh,
         /// and a bind table that mirrored them would hold megabytes of the cell for a few bodies.
         Index mBindOffset = 0;
 

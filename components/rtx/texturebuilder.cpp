@@ -39,10 +39,9 @@ namespace Rtx
 
     namespace
     {
-        /// What the content is, as one of the formats this renderer uploads.
-        ///
-        /// Nothing where the file is something else, so the caller says so with the file's name in
-        /// the message. `TextureFormat` is why every case is sRGB.
+        /// What the content is, as one of the formats this renderer uploads, or nothing where the
+        /// file is something else, so the caller says so with the file's name in the message.
+        /// `TextureFormat` is why every case is sRGB.
         std::optional<TextureFormat> toTextureFormat(ImageFormat format)
         {
             switch (format)
@@ -57,7 +56,7 @@ namespace Rtx
                 case ImageFormat::Bc3:
                     return TextureFormat::Bc3Srgb;
 
-                // **Not every file the game ships is a block.** The sky's cloud decks are plain
+                // Not every file the game ships is a block. The sky's cloud decks are plain
                 // 32-bit `DDPF_RGB`, which is what a texture painted for a full-screen dome would
                 // be, and taking only the compressed formats would draw every weather's clouds grey.
                 case ImageFormat::Rgba8:
@@ -156,7 +155,7 @@ namespace Rtx
 
         for (const Index slot : slots)
         {
-            // **A free slot is not a texture.** `SceneDesc` empties one the last thing naming it
+            // A free slot is not a texture. `SceneDesc` empties one the last thing naming it
             // gave back and leaves it in the table until something takes it over; describing it
             // would build an image, a shading map and a descriptor write for a slot no material can
             // reach — and count it as a texture that arrived.
@@ -175,8 +174,8 @@ namespace Rtx
                 image = openImage(images, scene.textures().getPaths()[slot]);
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(baked))
             {
-                // **Baked from the sprite texture's alpha, here, because here is where a file is
-                // opened for upload.** The source's own description is transient — its levels go
+                // Baked from the sprite texture's alpha, here, because here is where a file is
+                // opened for upload. The source's own description is transient — its levels go
                 // in a table thrown away with it — since nothing reaches the source through this
                 // slot; the emitter names the source by a slot of its own.
                 if (const osg::ref_ptr<const osg::Image> sprite = openImage(images, *source))
@@ -186,7 +185,7 @@ namespace Rtx
                     {
                         TextureData painted = describeImage(*sprite, mSourceLevels);
 
-                        // **The same chain the sprite's own slot gets**, because a bake is read at
+                        // The same chain the sprite's own slot gets, because a bake is read at
                         // whatever level the ray can resolve and a source with one level would bake
                         // one answer for every distance.
                         mSourceChain.build(painted);
@@ -213,7 +212,7 @@ namespace Rtx
             mKept.push_back(Kept{ .mSlot = slot, .mLight = light, .mImage = std::move(image) });
         }
 
-        // **Reserved before anything points into it, and that is what makes the spans safe.** Every
+        // Reserved before anything points into it, and that is what makes the spans safe. Every
         // description spans this one table, so it must not grow while they are being taken — and
         // every level count is known before the first description is built. A table kept from the
         // last arrival is usually large enough already, and then this asks for nothing.
@@ -236,7 +235,7 @@ namespace Rtx
                 {
                     described = describeImage(*kept.mImage, mLevels);
 
-                    // **What was read ahead of the frame is taken, and the rest read here.** A
+                    // What was read ahead of the frame is taken, and the rest read here. A
                     // reading carries the chain the file did not have and the shading estimate;
                     // both span the reading's own storage, which outlives this describe.
                     const PreparedTexture* read = readings != nullptr ? readings->find(*kept.mImage) : nullptr;
@@ -249,7 +248,7 @@ namespace Rtx
                     }
                     else
                     {
-                        // **What the file did not carry, built rather than done without.**
+                        // What the file did not carry, built rather than done without.
                         // `MipChain` says why almost nothing in the game needs this and why the
                         // rain does.
                         MipChain& chain = mChains.next();
@@ -306,7 +305,7 @@ namespace Rtx
             const auto into = mShading.begin() + static_cast<std::ptrdiff_t>(i * cells);
             const std::span<const float> own = mDescriptions[i].mShading;
 
-            // **A description that carries its own map keeps it.** A composite says neutral,
+            // A description that carries its own map keeps it. A composite says neutral,
             // because the light painted into each ground texture came off per tile in the bake;
             // an estimate made from its bytes instead would take the same light off twice, and
             // read a quarter of a million texels on the frame the composite landed in to do it.

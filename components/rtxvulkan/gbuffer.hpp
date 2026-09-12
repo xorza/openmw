@@ -17,23 +17,18 @@ namespace Rtx
 {
     class Device;
 
-    /// What the trace leaves behind, before anything has decided what the picture looks like.
-    ///
-    /// **A picture cannot be filtered and these can.** One bounce per pixel is noisy, and the only
-    /// thing that removes noise without removing detail is a blur that runs over the light alone —
-    /// which means the light has to still be separate from the surface it landed on when the blur
-    /// reaches it. By the time a pixel is a colour, the albedo has been multiplied in, the fog has
-    /// been laid over it and the curve has been applied; there is nothing left to filter that would
-    /// not also smear the wall's texture.
-    ///
-    /// So the trace writes what it knows in the form the next pass can use, and the composite puts
-    /// it back together:
+    /// What the trace leaves behind, before anything has decided what the picture looks like. A
+    /// picture cannot be filtered and these can: one bounce per pixel is noisy, and the only thing
+    /// that removes noise without removing detail is a blur over the light alone, so the light has
+    /// to still be separate from the surface it landed on when the blur reaches it. By the time a
+    /// pixel is a colour, the albedo is multiplied in, the fog is laid over it and the curve is
+    /// applied, and nothing is left to filter that would not also smear the wall's texture. So the
+    /// trace writes what it knows and the composite puts it back together:
     ///
     ///     colour = direct + albedo * filter(indirect * transmittance)
     ///
-    /// **And this is the same buffer Ray Reconstruction reads.** It asks for exactly this —
-    /// demodulated radiance, the albedo to put back, normals and depth — so the split earns its
-    /// place twice over even if the filter written on top of it is later replaced.
+    /// Ray Reconstruction asks for exactly this — demodulated radiance, the albedo to put back,
+    /// normals and depth — so the split earns its place whichever filter runs over it.
     class GBuffer
     {
     public:
@@ -44,10 +39,9 @@ namespace Rtx
         GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
             std::uint32_t height, bool layers);
 
-        /// The set every `GBuffer` is addressed through, made once and outliving all of them.
-        ///
-        /// **Separate from the buffer because a pipeline layout names every set it will ever be
-        /// handed**, and the trace's pipelines are built before any camera has a size.
+        /// The set every `GBuffer` is addressed through, made once and outliving all of them,
+        /// because a pipeline layout names every set it will ever be handed, and the trace's
+        /// pipelines are built before any camera has a size.
         static SetLayout describeLayout(const Device& device);
 
         /// One channel's image, which is the image bound at that channel's number.
@@ -62,7 +56,6 @@ namespace Rtx
         std::uint32_t getHeight() const { return get(Channel::Direct).getHeight(); }
 
         /// Discards the contents and makes every channel writable, which is how a frame starts.
-        ///
         /// Waits for the previous frame's composite to have read them, so that one set of channels
         /// can serve a window that keeps several frames in flight.
         void begin(VkCommandBuffer commands) const;
@@ -72,7 +65,7 @@ namespace Rtx
         void handOver(VkCommandBuffer commands) const;
 
     private:
-        /// **An array and not fourteen members.** Named three times each — a member, an accessor,
+        /// An array and not fourteen members. Named three times each — a member, an accessor,
         /// and a hand-written table mapping the binding back — a channel added to `Rtx::Channel`
         /// without the third reaches its pass as a null.
         std::vector<Image> mChannels;

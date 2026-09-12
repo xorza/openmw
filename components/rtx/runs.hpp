@@ -14,10 +14,8 @@ namespace Rtx
 
     inline constexpr Index sNoIndex = ~Index{ 0 };
 
-    /// A run inside a buffer: where it starts, and how many elements it holds.
-    ///
-    /// A mesh's vertices, a material's layers, a layer's mask weights and an emitter's sprites are
-    /// all runs.
+    /// A run inside a buffer: where it starts, and how many elements it holds. A mesh's vertices,
+    /// a material's layers, a layer's mask weights and an emitter's sprites are all runs.
     struct Run
     {
         std::uint32_t mOffset = 0;
@@ -53,10 +51,9 @@ namespace Rtx
         {
         }
 
-        /// A run of `count` elements. Never empty, and never straddling a block.
-        ///
-        /// Taken from the smallest hole that can hold it, and appended past the end when none can.
-        /// `count` must be at least one and, where there is a block size, no larger than it.
+        /// A run of `count` elements, taken from the smallest hole that can hold it, and appended
+        /// past the end when none can. `count` must be at least one and, where there is a block
+        /// size, no larger than it.
         Run allocate(std::uint32_t count);
 
         /// Gives a run back. Merged with whatever it touches, and an empty run is not a run. The
@@ -108,10 +105,8 @@ namespace Rtx
         {
         }
 
-        /// Room for `count` elements.
-        ///
-        /// **What the run holds is whatever its last tenant left**, so a caller writes the whole of
-        /// it before anything reads it. `allocateZeroed` is the other answer.
+        /// Room for `count` elements, holding whatever its last tenant left, so a caller writes the
+        /// whole of it before anything reads it. `allocateZeroed` is the other answer.
         Run allocate(std::uint32_t count)
         {
             const Run run = mRuns.allocate(count);

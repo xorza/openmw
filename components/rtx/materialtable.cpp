@@ -21,7 +21,7 @@ namespace Rtx
 
         const bool reclassed = row.getTraversed() != what.getTraversed();
 
-        // **The new set taken before the old is given back.** A flipbook that comes round to a frame
+        // The new set taken before the old is given back. A flipbook that comes round to a frame
         // it already had names the same texture twice running; releasing first would take that slot
         // to zero, empty its path and hand it to the next thing that asked — a slot changing
         // identity under everything standing on it, on a frame where nothing was supposed to move.
@@ -67,12 +67,12 @@ namespace Rtx
     std::size_t MaterialTable::sweep()
     {
         return mRows.sweep([this](Index, Material& going) {
-            // **What it named goes with it**, and before its layer run does: the run is what says
+            // What it named goes with it, and before its layer run does: the run is what says
             // which textures those were, and it is about to be handed to an allocator that will let
             // the next chunk write over it.
             dropTextures(going);
 
-            // **Its layers and the masks behind them go with it.** A material that carries layers is
+            // Its layers and the masks behind them go with it. A material that carries layers is
             // a terrain chunk, so without this what accumulates is a blend map per chunk walked
             // past; the runs are variable length, which is why they are given back to an allocator
             // rather than to a list of slots.

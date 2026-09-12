@@ -21,18 +21,16 @@ namespace Rtx
         /// position looks alike.
         constexpr float sSigma = 1.5f;
 
-        /// How far the Gaussian is carried before it is dropped, in pixels.
-        ///
-        /// Three and a third sigma, where it is worth a part in 250 of its peak. It must stay inside
-        /// the tile: a splat wide enough to wrap onto itself would stop measuring distance.
+        /// How far the Gaussian is carried before it is dropped, in pixels: three and a third
+        /// sigma, where it is worth a part in 250 of its peak. It must stay inside the tile: a
+        /// splat wide enough to wrap onto itself would stop measuring distance.
         constexpr int sRadius = 5;
         constexpr int sSide = 2 * sRadius + 1;
         static_assert(sSide < static_cast<int>(sExtent));
 
-        /// The share of the tile the first arrangement fills.
-        ///
-        /// A tenth, which is sparse enough to leave room for rearranging into something even and
-        /// dense enough to say where the rest should go.
+        /// The share of the tile the first arrangement fills: a tenth, which is sparse enough to
+        /// leave room for rearranging into something even and dense enough to say where the rest
+        /// should go.
         constexpr std::size_t sInitialOnes = sCount / 10;
 
         /// The pattern being ranked and the field saying where its ones are crowded. The field is

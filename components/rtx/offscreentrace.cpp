@@ -139,7 +139,7 @@ namespace Rtx
         if (mSubject == nullptr)
             return true;
 
-        // **Posed here, because nothing else will.** The camera callback the game hangs on a doll's
+        // Posed here, because nothing else will. The camera callback the game hangs on a doll's
         // subtree is what finds the head to look at, and it runs in an update traversal — and a
         // subtree that is in no graph is reached by no traversal but this one.
         Subject& subject = *mSubject;
@@ -157,7 +157,7 @@ namespace Rtx
         // to reuse the moment this returns.
         *subject.mPoseStamp = posing;
 
-        // **Re-walked and not rebuilt**, which the identity maps owning their keys is what makes
+        // Re-walked and not rebuilt, which the identity maps owning their keys is what makes
         // sound. Between one redraw and the next this subject is taken apart —
         // `NpcAnimation::updateParts` frees the body parts that changed and builds their
         // replacements — and the allocator is free to put a new part exactly where a retired one
@@ -170,13 +170,13 @@ namespace Rtx
         // walk is trying not to read again.
         subject.mScene->clearPlacement();
 
-        // **The world's frame and not a redraw count.** The number handed to `extract` picks which
+        // The world's frame and not a redraw count. The number handed to `extract` picks which
         // of a `SceneUtil::LightSource`'s two buffers to read, which is a property of the frame the
         // world is in. The pose the walk reads is what the update above left in the bones, and it
         // is handed to the device as rows: no cull runs here and no traversal number gates it.
         subject.mExtractor->extract(*subject.mNode, osg::Matrixf::identity(), 0, worldFrame);
 
-        // **No `advance` between them**, unlike the world's frame: a picture drawn when the subject
+        // No `advance` between them, unlike the world's frame: a picture drawn when the subject
         // changes rather than when the frame does has no motion to describe, and `SceneDesc` answers
         // a scene that has never advanced with a previous transform equal to its current one — which
         // is the right answer here and a stale one otherwise.
@@ -213,7 +213,7 @@ namespace Rtx
                 camera.mOrigin + direction * mFraming.mNear, camera.mOrigin + direction * mFraming.mFar);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        // **Posed here, on the processor, because the intersection reads the drawable's own copy.**
+        // Posed here, on the processor, because the intersection reads the drawable's own copy.
         // `SceneUtil::RigGeometry` and `MorphGeometry` skin inside a cull traversal and answer an
         // intersection with whatever the last cull wrote; the picture was traced from a pose the
         // device computed, so without this the click would land on the bind pose. A number from the

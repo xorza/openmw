@@ -83,7 +83,7 @@ namespace Rtx
 
     void MeshTable::writeAttributes(const MeshRange& range, const MeshArrays& arrays)
     {
-        // **As long as the positions and no longer.** All four arrays are indexed by one vertex
+        // As long as the positions and no longer. All four arrays are indexed by one vertex
         // id, and the blocks decide where a run may go rather than how much room is held — so
         // rounding up to a whole block would upload the tail of the last one as well.
         const std::size_t reach = getPositions().size();
@@ -112,7 +112,7 @@ namespace Rtx
         MeshRange& range = mRows.at(mesh);
         range.mPosed = true;
 
-        // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
+        // A pose the size of the last one still reaches somewhere else. An arm that came down is
         // the same count of vertices in a different place, and a box left where the bind pose put it
         // is what a camera would then be framed from.
         range.mBounds = bounds;

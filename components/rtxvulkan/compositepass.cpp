@@ -38,7 +38,7 @@ namespace Rtx
 
         const Image& bound = sum != nullptr ? *sum : mNoSum;
 
-        // **The stand-in is ordered here, and the real sum is the caller's to order.** Nothing
+        // The stand-in is ordered here, and the real sum is the caller's to order. Nothing
         // writes this one texel — the shader's store sits behind `mAccumulate`, and a stand-in is
         // bound only where that is nought — but synchronization validation reasons from the
         // descriptor set rather than from the branch, so two frames' composites read to it as two

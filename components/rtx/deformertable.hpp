@@ -63,7 +63,6 @@ namespace Rtx
         Index addMorph(std::span<const osg::Vec3f> offsets, Index targets);
 
         /// Gives `range` the runs its kind needs, and counts one more mesh on the deformer it names.
-        ///
         /// Nothing for a mesh that stands. The rows it hands out are zeroed, which is a pose nothing
         /// can equal — `MeshRange::mPosed` says why the first pose counts regardless.
         void stand(MeshRange& range);
@@ -109,7 +108,7 @@ namespace Rtx
         SlotRows<Rig> mRigs;
         SlotRows<Morph> mMorphs;
 
-        /// **Unblocked**, unlike the bind runs below: a backend reaches each of these by an address
+        /// Unblocked, unlike the bind runs below: a backend reaches each of these by an address
         /// it is handed per dispatch, so nothing here has to keep an address across a growth.
         RunBuffer<std::uint32_t> mRuns;
         RunBuffer<Shaders::GpuInfluence> mInfluences;

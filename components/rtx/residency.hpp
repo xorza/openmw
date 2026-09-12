@@ -132,9 +132,8 @@ namespace Rtx
         /// Where the eye is, which decides every ring.
         osg::Vec3f mEye;
 
-        /// How far out anything is stood, in units — `distantLandReach`.
-        ///
-        /// **Told rather than asked, so this library reads no settings.** Nought stands nothing.
+        /// How far out anything is stood, in units — `distantLandReach`. Told rather than asked,
+        /// so this library reads no settings. Nought stands nothing.
         float mReach = 0.0f;
 
         /// The cells the game has stood for itself, as `Terrain::World` states them: minimum

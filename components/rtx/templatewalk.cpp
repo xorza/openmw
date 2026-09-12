@@ -50,7 +50,7 @@ namespace Rtx
 
     void TemplateWalk::apply(osg::Transform& node)
     {
-        // **The visitor goes with it, as the frame's walk hands itself over.** A visitor that is
+        // The visitor goes with it, as the frame's walk hands itself over. A visitor that is
         // not a cull visitor takes the branch a null one would in every transform this tree has —
         // an `AutoTransform` included — so a billboard reads the same here as under the frame.
         const osg::Matrix above = mHere;
@@ -73,7 +73,7 @@ namespace Rtx
         mShading.resize(held);
     }
 
-    /// **The frame the sequence stands on, and no step.** The frame's walk runs a flipbook's clock
+    /// The frame the sequence stands on, and no step. The frame's walk runs a flipbook's clock
     /// and then walks the frame it settled on; a template's clock is nobody's to run, so what a
     /// distant fire shows is the frame its file was authored to open on, which is what the
     /// rasterizer's paging shows of it too.

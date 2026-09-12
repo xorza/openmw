@@ -23,10 +23,9 @@ namespace Rtx
     class LightGrid
     {
     public:
-        /// An unfilled grid, for an owner that binds its lamps in a later step.
-        ///
-        /// **Not the same as a grid built from no lamps**, which has one cell and a two-entry list.
-        /// This has none, so `rebuild` has to run before anything looks a position up.
+        /// An unfilled grid, for an owner that binds its lamps in a later step. Not the same as a
+        /// grid built from no lamps, which has one cell and a two-entry list: this has none, so
+        /// `rebuild` has to run before anything looks a position up.
         LightGrid() = default;
 
         /// Bins `lights`, for a caller that has them at construction.

@@ -180,7 +180,7 @@ namespace Rtx
             if (block.mPool != pool)
                 continue;
 
-            // **Asked for and given back rather than measured first**, which is what
+            // Asked for and given back rather than measured first, which is what
             // `StructureStorage` says of the same allocator: where a run goes is best fit over a
             // free list, and asking whether one would fit is that rule written a second time.
             const Run run = block.mRuns.allocate(pages);
@@ -193,12 +193,12 @@ namespace Rtx
         const std::uint32_t made
             = std::max(static_cast<std::uint32_t>(blockBytes(type, mBlocksInPool[pool]) / sPage), pages);
 
-        // **Built whole before it joins the list**, so that a device out of memory leaves the
+        // Built whole before it joins the list, so that a device out of memory leaves the
         // allocator holding what it held rather than a block with no allocation behind it.
         Block block;
         block.mPool = pool;
 
-        // **Every block, because a pool cannot know what will be put in it.** The flag costs a
+        // Every block, because a pool cannot know what will be put in it. The flag costs a
         // device nothing it does not already pay for `bufferDeviceAddress`, which this renderer
         // requires; a pool that carried it only where the first resource asked would refuse the
         // second one that did.
@@ -222,7 +222,7 @@ namespace Rtx
             return result;
         };
 
-        // **The room the block wants is a preference; the room the resource needs is not.** A block
+        // The room the block wants is a preference; the room the resource needs is not. A block
         // is sized from the heap, which is what the device has rather than what is left of it, so
         // another process holding most of the card turns the first request into a refusal where the
         // pages this one resource asked for would still have fitted.
@@ -232,7 +232,7 @@ namespace Rtx
 
         checkVk(allocated, "vkAllocateMemory");
 
-        // **Mapped here rather than by whoever holds a range of it**, so the pointer goes when the
+        // Mapped here rather than by whoever holds a range of it, so the pointer goes when the
         // block does, and once for the whole block rather than once per resource in it.
         if ((mMemory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
             checkVk(vkMapMemory(mDevice, block.mHandle.get(), 0, VK_WHOLE_SIZE, 0, &block.mMapped), "vkMapMemory");
@@ -278,7 +278,7 @@ namespace Rtx
         for (std::uint32_t heap = 0; heap < out.mHeapCount; ++heap)
             out.mHeaps[heap].mSize = mMemory.memoryHeaps[heap].size;
 
-        // **What a heap is for, taken off its types rather than off the heap.** Vulkan states the
+        // What a heap is for, taken off its types rather than off the heap. Vulkan states the
         // host's access on the memory type and only the device's on the heap, so a heap is
         // host-visible here when any type in it is — which is what makes the small aperture of a
         // card without resizable BAR tell itself apart from the video memory beside it.

@@ -115,7 +115,7 @@ namespace Rtx
 
         CellWorld mWorld;
 
-        /// Which thread the two below belong to. **The frame's**, and `mOnFrame.check()` is what
+        /// Which thread the two below belong to. The frame's, and `mOnFrame.check()` is what
         /// says so at each of the calls that touch them.
         OwnedBy mOnFrame;
 
@@ -143,7 +143,7 @@ namespace Rtx
         /// Owned here and used by the thread alone while it runs.
         std::unique_ptr<CellReader> mReader;
 
-        /// **Last, for the reason `Worker` gives.**
+        /// Last, for the reason `Worker` gives.
         Worker mWorker;
     };
 }

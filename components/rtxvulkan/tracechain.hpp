@@ -83,10 +83,9 @@ namespace Rtx
         const Image& getBlended() const { return mAccumulate.getBlended(); }
 
         /// Records one camera's whole trace, from the discards it opens with to the barrier after
-        /// the composite. What the caller keeps is what a frame has and a picture has not — the
-        /// frame ring, the upscaler, the lens, the measured exposure and the display curve.
-        ///
-        /// @return the composite's output, which is `getColour()`.
+        /// the composite, and hands back the composite's output. What the caller keeps is what a
+        /// frame has and a picture has not — the frame ring, the upscaler, the lens, the measured
+        /// exposure and the display curve.
         const Image& record(VkCommandBuffer commands, const TraceRecording& what);
 
     private:

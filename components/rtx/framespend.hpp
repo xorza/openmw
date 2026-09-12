@@ -8,21 +8,18 @@
 
 namespace Rtx
 {
-    /// Which of a measured frame's figures a row holds.
-    ///
-    /// `Wait` is the CPU standing still for the device — a wait near the frame is a device that
-    /// cannot keep up, near nought a CPU that cannot — and `Finish` is the whole of collecting the
-    /// frame behind, of which `Wait` is the largest share. `Walk` is the world being mirrored,
-    /// with `Fold` the share of it spent folding geometry that arrived on it. `Place` is the
-    /// renderer being told what moved, split into `Bake`, `Textures` and `Upload` because its
-    /// worst frame is hundreds of times its median and a profile cannot say which half. `Trace`
-    /// and `Present` are the other two calls into the backend, and `Update` is the rest of the
-    /// loop, which is the game's.
-    ///
-    /// Timed rather than profiled, because most of what a call into the driver costs is inside the
-    /// driver with no frame pointer to walk, and a thread asleep is nothing to a sampling profiler.
-    /// Together they close the frame: `Frame` less the rest is under 0.05 ms at every place that
-    /// stands still, and a row that does not close is a stretch nobody has named.
+    /// Which of a measured frame's figures a row holds. `Wait` is the CPU standing still for the
+    /// device — a wait near the frame is a device that cannot keep up, near nought a CPU that
+    /// cannot — and `Finish` is the whole of collecting the frame behind, of which `Wait` is the
+    /// largest share. `Walk` is the world being mirrored, with `Fold` the share of it spent
+    /// folding geometry that arrived on it. `Place` is the renderer being told what moved, split
+    /// into `Bake`, `Textures` and `Upload` because its worst frame is hundreds of times its
+    /// median and a profile cannot say which half. `Trace` and `Present` are the other two calls
+    /// into the backend, and `Update` is the rest of the loop, which is the game's. Timed rather
+    /// than profiled, because most of what a call into the driver costs is inside the driver with
+    /// no frame pointer to walk, and a thread asleep is nothing to a sampling profiler. Together
+    /// they close the frame: `Frame` less the rest is under 0.05 ms at every place that stands
+    /// still, and a row that does not close is a stretch nobody has named.
     enum class Timing : std::uint32_t
     {
         Frame,

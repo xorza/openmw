@@ -129,7 +129,7 @@ namespace Rtx
             << "Vulkan:            " << versionString(base.apiVersion) << '\n'
             << "device-local heap: " << sumDeviceLocalHeaps(mProperties->mMemory) / (1024 * 1024)
             << " MiB\n"
-            // **The heap a table the frame rewrites has to fit in**, which on a card without
+            // The heap a table the frame rewrites has to fit in, which on a card without
             // resizable BAR is a couple of hundred megabytes of the line above rather than all of
             // it. Printed beside it because the two look alike and only one of them bounds a scene.
             << "host-written:      " << mProfile.mHostWrittenBytes / (1024 * 1024) << " MiB\n"
@@ -153,7 +153,7 @@ namespace Rtx
             << pipeline.shaderGroupHandleAlignment << ", based " << pipeline.shaderGroupBaseAlignment << '\n'
             << "  max ray dispatch:             " << pipeline.maxRayDispatchInvocationCount
             << '\n'
-            // **What a hit object may name.** The field arrived with the extension's revision 2, so
+            // What a hit object may name. The field arrived with the extension's revision 2, so
             // a driver at revision 1 leaves it as it found it — printed rather than asserted against
             // for that reason.
             << "  max record index:             " << reorder.maxShaderBindingTableRecordIndex << '\n';

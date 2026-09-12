@@ -8,7 +8,7 @@ namespace Rtx
     {
         const Index slot = mInstances.take(instance, [this](const std::size_t slots) { mPrevious.resize(slots); });
 
-        // **Standing where it is, not arriving from wherever the last tenant left.** A reused slot
+        // Standing where it is, not arriving from wherever the last tenant left. A reused slot
         // would otherwise inherit a previous transform from something else entirely, and a motion
         // vector built from that points across the frame.
         mPrevious[slot] = instance.mTransform;

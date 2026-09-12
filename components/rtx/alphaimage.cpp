@@ -26,7 +26,6 @@ namespace Rtx
         }
 
         /// BC2's alpha: four bits a texel, sixteen of them in the block's first eight bytes.
-        ///
         /// Widened by seventeen rather than by shifting four places, so that fifteen lands on 255
         /// and not on 240 — the difference is whether a fully opaque texel reads as fully opaque.
         std::uint8_t bc2Alpha(std::span<const std::byte, 8> bytes, std::size_t texel)
@@ -38,8 +37,7 @@ namespace Rtx
         }
 
         /// BC3's alpha: two endpoints and sixteen three-bit indices into a palette built from them.
-        ///
-        /// **Which palette depends on the order the endpoints are stored in**, exactly as BC1's
+        /// Which palette depends on the order the endpoints are stored in, exactly as BC1's
         /// colour does: descending gives eight interpolated values, ascending gives six and spends
         /// the last two entries on nought and full. A decoder that assumed one of them reads every
         /// texel of half the blocks wrong.
@@ -69,12 +67,11 @@ namespace Rtx
             return palette[(indices >> (texel * 3)) & 0x7u];
         }
 
-        /// One level's alpha, decoded into `into` in row order.
-        ///
-        /// **Every block format is read through the same walk**, because they differ only in how
-        /// many bytes a block is and where its alpha sits inside one. A level whose bytes run short
-        /// keeps the fully opaque values it was filled with, which is the same answer a texture
-        /// that could not be read gets and for the same reason.
+        /// One level's alpha, decoded into `into` in row order. Every block format is read through
+        /// the same walk, because they differ only in how many bytes a block is and where its
+        /// alpha sits inside one. A level whose bytes run short keeps the fully opaque values it
+        /// was filled with, which is the same answer a texture that could not be read gets and for
+        /// the same reason.
         void decodeLevel(TextureFormat format, std::span<const std::byte> bytes, std::uint32_t width,
             std::uint32_t height, std::span<std::uint8_t> into)
         {
@@ -173,7 +170,7 @@ namespace Rtx
         if (levels.empty() || levels.front().mWidth == 0 || levels.front().mHeight == 0)
             return true;
 
-        // **Decoded down to the one level that can answer**, which is three quarters of the work a
+        // Decoded down to the one level that can answer, which is three quarters of the work a
         // whole chain would be: every coarser level is an average of the one above it, and a mask's
         // average stops reaching solid a level or two down. Handing the description one level is
         // what says that in code rather than in a comment over a loop that reads `at(0, ...)`.

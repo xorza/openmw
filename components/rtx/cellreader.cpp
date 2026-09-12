@@ -27,10 +27,9 @@ namespace Rtx
 {
     namespace
     {
-        /// Appends `values` to `into` and answers the run they landed in.
-        ///
-        /// **One statement**: a run that named where it started and a count taken from another
-        /// array is exactly what `Rtx::Run` exists to stop.
+        /// Appends `values` to `into` and answers the run they landed in. One statement, because a
+        /// run that named where it started and a count taken from another array is exactly what
+        /// `Rtx::Run` exists to stop.
         template <class T>
         Run appended(std::vector<T>& into, std::span<const T> values)
         {
@@ -139,7 +138,7 @@ namespace Rtx
         texture.mPath = VFS::Path::Normalized(image.getFileName());
         texture.mLent = 1;
 
-        // **What the frame's describe would have done, done here.** A file that carried no chain
+        // What the frame's describe would have done, done here. A file that carried no chain
         // gets one built; every file gets its shading estimated. Both read every texel, and both
         // are what the frame then finds ready. A format this renderer does not upload is recorded as
         // such and drawn as the stand-in there, as it would be without this.
@@ -249,7 +248,7 @@ namespace Rtx
 
             model = Misc::ResourceHelpers::correctMeshPath(model);
 
-            // **A model this cannot read is a reference left out and named**, and never a cell
+            // A model this cannot read is a reference left out and named, and never a cell
             // left out: a settled walk waits for every cell of the ring, and one that never came
             // would hold it for ever.
             PreparedModel* read = nullptr;

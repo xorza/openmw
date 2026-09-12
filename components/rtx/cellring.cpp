@@ -51,7 +51,7 @@ namespace Rtx
         if (mSupply.isReading(around.mWorld))
             return;
 
-        // **Everything held names the reader that is about to go**, so it is let go of before the
+        // Everything held names the reader that is about to go, so it is let go of before the
         // supply is pointed anywhere else. Nothing is given back: what the frame held dies with the
         // reader that lent it.
         forget();
@@ -181,7 +181,7 @@ namespace Rtx
         // usually a cell nothing wants any more.
         while (mHanded.empty())
         {
-            // **Given up on where the reader has gone**, which is a reader that threw. Waiting on
+            // Given up on where the reader has gone, which is a reader that threw. Waiting on
             // one that can hand nothing over is a wait with no end, and a wait that answered at
             // once with no cell would be a spin instead. The walk adopts nothing this frame and
             // `CellSupply::take` is where the failure is reported.
@@ -195,7 +195,7 @@ namespace Rtx
 
     void CellRing::adoptHanded(SceneAdopter& into, ExtractionStats& stats)
     {
-        // **One cell a frame, and one frame walked twice adopts once.** A cell's meshes are copied
+        // One cell a frame, and one frame walked twice adopts once. A cell's meshes are copied
         // into the scene and its structures built by the hand-over that follows; two on one frame
         // would be the batch behind a threshold this renderer never takes. A settled walk keeps the
         // rule and waits for its one cell, which is what `setSettled` says.
@@ -216,7 +216,7 @@ namespace Rtx
         held.mStatics = cell.mStatics;
         held.mModels.clear();
 
-        // **Emptied and kept, not reset**, so the texture list a spare cell grew is room the next
+        // Emptied and kept, not reset, so the texture list a spare cell grew is room the next
         // one refills rather than a heap call on the frame a cell lands.
         if (held.mGround.has_value())
             held.mGround->reuse();
@@ -293,7 +293,7 @@ namespace Rtx
         walkRings(into, stats);
         mHolds.releaseParts(into);
 
-        // **What stands, counted off the slots and not off a tally**: a world with no reader and an
+        // What stands, counted off the slots and not off a tally: a world with no reader and an
         // interior have both dropped every slot by now, and stand nothing.
         stats.mInstances += mPlacer.getPlaced() + mPlacer.getGroundPlaced();
         stats.mDistantStatics += mPlacer.getPlaced();
@@ -307,7 +307,7 @@ namespace Rtx
 
         takeDone();
 
-        // **Indoors the eye's coordinates belong to another space**, so the rings are not moved:
+        // Indoors the eye's coordinates belong to another space, so the rings are not moved:
         // what is held stays held for the way back out, and nothing stands.
         if (!mAround.mOutdoors)
         {
@@ -350,7 +350,7 @@ namespace Rtx
 
         ask(eye, band);
 
-        // **Waited for after the ask that names it and never before**, because what the reader is
+        // Waited for after the ask that names it and never before, because what the reader is
         // about to hand back is what that ask asked for. Nothing was asked for where the band is
         // whole, and then there is nothing to wait for.
         if (mSettled && mHanded.empty() && !mAsking.mCells.empty())

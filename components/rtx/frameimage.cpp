@@ -22,7 +22,7 @@ namespace Rtx
         osg::ref_ptr<osg::Image> image = new osg::Image;
         image->allocateImage(width, height, 1, channels == Channels::Rgb ? GL_RGB : GL_RGBA, GL_UNSIGNED_BYTE);
 
-        // **A row at a time where nothing is being resized or dropped**, which is both callers
+        // A row at a time where nothing is being resized or dropped, which is both callers
         // that want the whole frame: at 4K the general path below is eight million short copies.
         if (width == wide && height == tall && channels == Channels::Rgba)
         {

@@ -37,11 +37,10 @@ namespace Rtx
             return VK_FALSE;
         }
 
-        /// Which thread a message raised on this one is filed under.
-        ///
-        /// **This thread by default, and `AdoptedThread` is what moves it.** A thread-local rather
-        /// than a member of the log, because the callback reaches the log through `pUserData` and
-        /// knows nothing else, and because one process may hold more than one instance.
+        /// Which thread a message raised on this one is filed under: this thread by default, and
+        /// `AdoptedThread` is what moves it. A thread-local rather than a member of the log,
+        /// because the callback reaches the log through `pUserData` and knows nothing else, and
+        /// because one process may hold more than one instance.
         thread_local std::thread::id sFiledUnder = std::this_thread::get_id();
     }
 

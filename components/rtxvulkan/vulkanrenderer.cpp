@@ -157,7 +157,7 @@ namespace Rtx
 
     VulkanRenderer::~VulkanRenderer()
     {
-        // **What the interface handed over, before the pool holding it is taken apart.** A GUI
+        // What the interface handed over, before the pool holding it is taken apart. A GUI
         // texture write waits for nothing and rides the next submit this pool makes; there is no
         // next submit here, and `Presenter`'s destructor resets the pool underneath it.
         tearDown("the interface's last writes were not submitted", [&] { mGuiTextures.finish(); });
@@ -175,7 +175,7 @@ namespace Rtx
         if (mNgx != nullptr)
             return;
 
-        // **A quarter of a second, which is why it waits to be wanted.** Bringing the runtime up
+        // A quarter of a second, which is why it waits to be wanted. Bringing the runtime up
         // loads the feature libraries; a player who never upscales should not spend that at every
         // start, and one who turns it on in the menu spends it once.
         mNgx = std::make_unique<Dlss>(mDevice, mInstance.getHandle());
@@ -189,7 +189,7 @@ namespace Rtx
             throw Unsupported("DLSS Ray Reconstruction was asked for and " + obstacle);
         }
 #else
-        // **Named rather than quietly ignored.** A build that cannot upscale and renders at the
+        // Named rather than quietly ignored. A build that cannot upscale and renders at the
         // output size anyway is one whose frame times mean something else entirely.
         throw Unsupported("upscaling was asked for and this build has no DLSS; configure with -DOPENMW_RTX_DLSS=ON");
 #endif
@@ -209,7 +209,7 @@ namespace Rtx
         if (upscale == mUpscaling.mMode)
             return;
 
-        // **Before anything is torn down**, so a mode this machine cannot reach leaves the renderer
+        // Before anything is torn down, so a mode this machine cannot reach leaves the renderer
         // drawing exactly as it was rather than half way between two of them.
         if (upscale != Upscale::Off)
             startUpscaler();
@@ -238,12 +238,12 @@ namespace Rtx
         if (upscaling())
             render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscaling.mMode);
 #endif
-        // **The layer channels only where something upscales**, which is the same test
+        // The layer channels only where something upscales, which is the same test
         // `mLayerCompositedAfter` makes of the shader: Ray Reconstruction is the one reader the
         // trace hands a separate layer to, and a frame nothing upscales composites its own.
         mFrame.resize(render.width, render.height, upscaling());
 
-        // **Two, and interchangeable**, because the frame after this one must not rewrite the image
+        // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
         mTargets.resize(mDevice, mPool, mOutputWidth, mOutputHeight);
 
@@ -272,7 +272,7 @@ namespace Rtx
         }
 #endif
 
-        // **Over whatever the frame is by the time the curve maps it**, which is the upscaler's
+        // Over whatever the frame is by the time the curve maps it, which is the upscaler's
         // output where one runs and the trace's own extent where none does. The same test the frame
         // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
         const std::uint32_t shownWidth = upscaling() ? mOutputWidth : mFrame.getWidth();
@@ -299,7 +299,7 @@ namespace Rtx
         report += "\nDLSS Ray Reconstruction: ";
         try
         {
-            // **An answer rather than a runtime**, which is why reporting on a device cannot disturb
+            // An answer rather than a runtime, which is why reporting on a device cannot disturb
             // one: NGX keeps one runtime per process and its shutdown is unconditional, so a `Dlss`
             // built to ask with and let go would end this renderer's the moment it left scope.
             const DlssSupport support = Dlss::probe(mDevice, mInstance.getHandle());
@@ -369,7 +369,7 @@ namespace Rtx
         if (reconstruction.mJitter)
             sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
 
-        // **Only Ray Reconstruction reads the transparency layer**, so only a frame it is about to
+        // Only Ray Reconstruction reads the transparency layer, so only a frame it is about to
         // upscale hands its sprites over. Every other trace in this renderer composites them itself.
         sampled.mLayerCompositedAfter = upscaling() ? 1 : 0;
 
@@ -378,7 +378,7 @@ namespace Rtx
         // at from.
         sampled.mMediumInFrame = mWorld.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
-        // **The one subtraction of two world points, and it happens here.** Two camera positions a
+        // The one subtraction of two world points, and it happens here. Two camera positions a
         // step apart subtract exactly in a float; the same difference taken on the device, between
         // coordinates six figures long, would be rounding.
         sampled.mCameraMotion = camera.mOrigin - mPreviousCamera.mOrigin;
@@ -394,7 +394,7 @@ namespace Rtx
     {
         ViewScene& held = sceneAt(slot);
 
-        // **Nothing may be in flight over what is about to go.** A rebuild is a load, and a load
+        // Nothing may be in flight over what is about to go. A rebuild is a load, and a load
         // waits: for a picture recorded against the old scene and not yet carried, for the frames
         // tracing it, and for a placement the frame being recorded may have submitted without a
         // fence of its own.
@@ -413,8 +413,8 @@ namespace Rtx
 
         if (slot.isWorld())
         {
-            // **The reports of a world that has gone are dropped, and this is the only place they
-            // are.** A caller counts the frames it drew, so an arrival or a resize keeps its
+            // The reports of a world that has gone are dropped, and this is the only place they
+            // are. A caller counts the frames it drew, so an arrival or a resize keeps its
             // reports and hands them over as it asks; a new world is that count starting again, and
             // a report from before it would answer the next question with the wrong frame.
             mRing.dropReports();
@@ -434,20 +434,20 @@ namespace Rtx
         // the only place that knows both.
         makeInstanceRecords(scene, held.mRecords);
 
-        // **One submit for the whole cell.** Every structure, every table and every texture is
+        // One submit for the whole cell. Every structure, every table and every texture is
         // recorded into this and the queue is asked once, at the flush below; a round trip apiece
         // would be hundreds for a town.
         Batch setup(mPool);
 
         Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
 
-        // **The world's, because there is one sea and every scene traces it.** A doll and a map tile
+        // The world's, because there is one sea and every scene traces it. A doll and a map tile
         // carry a sea state of their own only because they take the same argument, and letting one
         // of those redraw the spectrum would put the interface's water under the world.
         if (slot.isWorld())
             mWaves.describe(sea, graveyard);
 
-        // **Every scene is traced by two frames at once**, the doll's included: a picture inside the
+        // Every scene is traced by two frames at once, the doll's included: a picture inside the
         // interface rides the frame it was asked on, and the next frame may place it again while
         // that one is still tracing.
         held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, sFrameSlots);
@@ -468,7 +468,7 @@ namespace Rtx
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 
-        // **Posed before it is built.** The structures are built over the first copy of the
+        // Posed before it is built. The structures are built over the first copy of the
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the
         // pose into that copy and the build then reads it. The other copy is owed the same pose and
         // takes it on the first placement that writes it.
@@ -534,7 +534,7 @@ namespace Rtx
         // rebuilt every frame regardless, so an arrival costs it nothing.
         placeScene(slot, scene, sea);
 
-        // **The history is kept.** Nothing was renumbered, so what the last frame resolved still
+        // The history is kept. Nothing was renumbered, so what the last frame resolved still
         // describes the same surfaces — and throwing it away is a visible flash every time an actor
         // walks into view with a texture nobody has worn yet.
         if (slot.isWorld())
@@ -575,7 +575,7 @@ namespace Rtx
         // fifty thousand rows with a matrix inverse apiece, and a frame changes a hundred.
         updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
 
-        // **The pose first, because the refit reads it.** Every skinned body and morphed face this
+        // The pose first, because the refit reads it. Every skinned body and morphed face this
         // copy owes is computed into it here, and the barrier the pass ends in is what the refit
         // and the trace wait on.
         const bool posed = skin.record(placing.mCommands, scene, placing.mSlot, *held.mSkinTables,
@@ -603,7 +603,7 @@ namespace Rtx
         const FrameSlot into = held.mSlot.next();
         if (held.mReadBy[into.get()] != sNeverRead)
         {
-            // **A picture recorded this frame and carried by nothing yet reads this copy too**, and
+            // A picture recorded this frame and carried by nothing yet reads this copy too, and
             // the ring cannot wait for a frame that was never submitted. Two placements of one
             // scene inside one frame is the only way here, which a game never takes.
             if (held.mReadBy[into.get()] >= mRing.getRecording())
@@ -629,7 +629,7 @@ namespace Rtx
             return;
         }
 
-        // **A placement opens the frame, and every placement before a trace joins it.** The frame's
+        // A placement opens the frame, and every placement before a trace joins it. The frame's
         // report starts here and not at the trace: placing the world is the refit and the top level,
         // and a report that began at `renderFrame` would leave them out.
         FrameRecord& frame = mRing.begin();
@@ -638,7 +638,7 @@ namespace Rtx
         // first and any on which the weather turned the wind.
         mWaves.describe(sea, frame.mWorld.mGraveyard);
 
-        // **The placement's own submit, without a fence and without a wait.** The frame's fence,
+        // The placement's own submit, without a fence and without a wait. The frame's fence,
         // later on the queue, covers this submit too. Nothing recorded is nothing submitted, which
         // is every frame of a standing camera in an empty place.
         const VkCommandBuffer placement = mRing.takePlaceCommands(frame);
@@ -670,7 +670,7 @@ namespace Rtx
         mStats.mInstances = held.mAcceleration->getInstanceCounts();
         mStats.mTableBytes = held.mBuffers->getBytes() + held.mSkinTables->getBytes();
 
-        // **Read every placement and not with the rest of the report**, because a placement is
+        // Read every placement and not with the rest of the report, because a placement is
         // where the answer lands: the queries a build wrote are read some placements later, so a
         // pair read at the build would be the nought that stands between the question and its
         // answer. `BottomLevelStore::getCompactableBytes` says why it is not asked for sooner.
@@ -712,8 +712,8 @@ namespace Rtx
     {
         if (mPresenter != nullptr)
         {
-            // **Asked before anything is drained, because `fitToWindow` calls this every settled
-            // frame.** Same reason as the destructor's: remaking a swapchain resets the command
+            // Asked before anything is drained, because `fitToWindow` calls this every settled
+            // frame. Same reason as the destructor's: remaking a swapchain resets the command
             // pool, and a batch handed over is sitting in it waiting for a submit. What that costs
             // where no rebuild follows is `Presenter::wantsResize`.
             if (mPresenter->wantsResize(VkExtent2D{ width, height }))
@@ -722,7 +722,7 @@ namespace Rtx
                 mPresenter->rebuild(VkExtent2D{ width, height });
             }
 
-            // **What the swapchain came back with, not what was asked for.** A surface clamps to
+            // What the swapchain came back with, not what was asked for. A surface clamps to
             // what it can do, and targets sized to the request would then be blitted through a
             // scale nobody chose.
             const VkExtent2D shown = mPresenter->getExtent();
@@ -805,7 +805,7 @@ namespace Rtx
                     batch.mBlend == GuiBlend::Additive ? Blend::Additive : Blend::Over });
         }
 
-        // **Its own submit, after the frame's, and not waited for.** The GUI is collected once the
+        // Its own submit, after the frame's, and not waited for. The GUI is collected once the
         // world has been drawn and there is nothing to gain by holding the frame open for it; the
         // queue draws it after the frame, the present blits after both, and the fence is for the
         // vertices alone.
@@ -880,7 +880,7 @@ namespace Rtx
         if (mCountHits || mCountCrossings)
             *static_cast<FrameCounts*>(frame.mHitCount.map()) = FrameCounts{};
 
-        // **What reconstructs this frame, decided once and by one rule.** Every switch below reads
+        // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
         // result, so what a run reports and what it did are one answer.
         const Reconstruction reconstruction = Reconstruction::resolve(mUpscaling, options.mReconstruction);
@@ -932,7 +932,7 @@ namespace Rtx
         if (mWorld.mReadBy[mWorld.mSlot.get()] != sNeverRead)
             mRing.finishThrough(mWorld.mReadBy[mWorld.mSlot.get()]);
 
-        // **Ray Reconstruction is itself the denoiser**, and handing it a frame the wavelet already
+        // Ray Reconstruction is itself the denoiser, and handing it a frame the wavelet already
         // blurred is asking it to recover what was thrown away — which is why `resolve` never
         // answers with both.
         const bool filtering = reconstruction.filtered();
@@ -984,8 +984,8 @@ namespace Rtx
                     .mReset = history.answer(),
                 });
 
-            // What NGX recorded is its own; nothing here knows which stages it used. **And the
-            // bloom samples what it left**, rather than loading it — `BloomPass` binds the frame as
+            // What NGX recorded is its own; nothing here knows which stages it used. And the
+            // bloom samples what it left, rather than loading it — `BloomPass` binds the frame as
             // a combined image sampler — so a visibility scope of storage reads alone would leave
             // that read uncovered.
             mUpscaled->transition(commands, Use::sAnyGeneralWrite, Use::sComputeReadOrSample);
@@ -995,14 +995,14 @@ namespace Rtx
         }
 #endif
 
-        // **What the lens will spread, built here and applied by the curve.** Nothing is
+        // What the lens will spread, built here and applied by the curve. Nothing is
         // written back over the frame — `BloomPass` says why the trace's own answer has to
         // reach `FrameImage::Composite` untouched.
         timer.open(commands, "bloom");
         mBloom.record(commands, *shown);
         timer.close(commands);
 
-        // **Measured off the image the curve is about to map**, which is the upscaled one
+        // Measured off the image the curve is about to map, which is the upscaled one
         // wherever something upscales — see `histogram.comp` for what measuring the other one
         // costs. One `shown` feeds both, so the two cannot come apart.
         timer.open(commands, "exposure");
@@ -1010,7 +1010,7 @@ namespace Rtx
             mExposure.recordFixed(commands, *options.mExposure);
         else
         {
-            // **The third thing that reads a lost history**, and the only one that reads it on
+            // The third thing that reads a lost history, and the only one that reads it on
             // every frame: the eye has no past to adapt from either.
             mExposure.record(commands, *shown, 0.001f * sinceLastMs, history.answer(), options.mExposureBias);
         }
@@ -1035,7 +1035,7 @@ namespace Rtx
         // where inside a pixel this frame sampled, not where the eye was.
         mPreviousCamera = camera;
 
-        // **The air's is spent here and unconditionally, because the trace above always ran.** A
+        // The air's is spent here and unconditionally, because the trace above always ran. A
         // frame that filled the volume was told; a frame with no volume to fill has nothing to keep
         // a stale flag for, and holding it would zero the basis — and so every motion vector — for
         // as long as the player stayed indoors.
@@ -1064,7 +1064,7 @@ namespace Rtx
         assert(scene.getViewIndex() < mViewScenes.size() && mViewScenes[scene.getViewIndex()] != nullptr
             && "a scene given back twice");
 
-        // **What a picture's placement buried is this scene's**, and the frame it was buried under
+        // What a picture's placement buried is this scene's, and the frame it was buried under
         // need never be traced — so it is given back here rather than to a scene that has gone. A
         // picture of it recorded this frame and not yet carried goes first, or it would be carried
         // over a scene that no longer exists.
@@ -1082,7 +1082,7 @@ namespace Rtx
         if (mView.holds(width, height))
             return;
 
-        // **The one drain a picture still pays, and only the first picture of a new size pays it.**
+        // The one drain a picture still pays, and only the first picture of a new size pays it.
         // A picture recorded and not yet carried, or carried and not yet finished, names the images
         // about to be replaced.
         mPool.finishDeferred();
@@ -1158,13 +1158,13 @@ namespace Rtx
 
             mViewTarget->transition(commands, Use::sComputeWrite, Use::sCopyRead);
 
-            // **Borrowed rather than transitioned.** Where a GUI texture rests between writes is
+            // Borrowed rather than transitioned. Where a GUI texture rests between writes is
             // `GuiTextures`' to say, and a caller that said it here had to keep a barrier's scope in
             // step with the commands below — which it did not.
             mGuiTextures.writeWith(texture, commands, [&](const Image& into, VkImageLayout layout) {
                 assert(options.mWidth <= into.getWidth() && options.mHeight <= into.getHeight());
 
-                // **Cleared whole and then covered in part**, and only where the picture does not
+                // Cleared whole and then covered in part, and only where the picture does not
                 // cover it all: what the trace fills is as much of the texture as the widget is
                 // currently wide, and the rest has to be the clear colour rather than what a wider
                 // picture left there the last time this was drawn.
@@ -1195,7 +1195,7 @@ namespace Rtx
         }
         trace.defer();
 
-        // **Conservative where it is not exact.** The batch rides the next submit this pool makes,
+        // Conservative where it is not exact. The batch rides the next submit this pool makes,
         // which is this frame's or an earlier one's GUI; a later frame's fence covers either by
         // queue order.
         traced.mReadBy[traced.mSlot.get()] = mRing.getRecording();
@@ -1224,7 +1224,7 @@ namespace Rtx
     {
         assert(mTargets.isOpen());
 
-        // **The frame that was finished, not the one the next will be written into.** A present has
+        // The frame that was finished, not the one the next will be written into. A present has
         // already swapped those two; with no window nothing presents, nothing swaps, and the frame
         // just written is still the one `mTarget` names.
         const Image& frame = mTargets.lastPresented() != nullptr ? *mTargets.lastPresented() : mTargets.current();
@@ -1236,7 +1236,7 @@ namespace Rtx
         assert(mFrame.isBuilt());
         assert(mFrame.getChannels().carries(channel) && "a channel this frame stands in for, read back as its own");
 
-        // **One lookup and not a switch of fourteen arms.** A channel is its binding, and the buffer
+        // One lookup and not a switch of fourteen arms. A channel is its binding, and the buffer
         // is indexed by it.
         readImage(mFrame.getChannels().get(channel), values);
     }

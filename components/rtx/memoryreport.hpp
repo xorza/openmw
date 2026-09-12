@@ -40,7 +40,7 @@ namespace Rtx
     /// Every heap of the device the renderer is running on.
     struct MemoryReport
     {
-        /// **Fixed, so that a report can be copied into a bench record without an allocation.** No
+        /// Fixed, so that a report can be copied into a bench record without an allocation. No
         /// device this renderer targets states more heaps than this; a device that stated more
         /// would have the rest left out rather than counted wrongly.
         static constexpr std::size_t sMaxHeaps = 16;

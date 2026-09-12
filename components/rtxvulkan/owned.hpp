@@ -49,7 +49,6 @@ namespace Rtx
 
         Handle get() const { return mHandle; }
 
-        /// The device it belongs to, for a call that needs both.
         VkDevice getDevice() const { return mDevice; }
 
         /// Where to put one, for a call that fills a handle in rather than returning it.

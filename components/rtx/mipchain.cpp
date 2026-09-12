@@ -31,7 +31,7 @@ namespace Rtx
         if (described.mLevels.empty())
             return;
 
-        // **Only a file that carried no chain at all.** Morrowind's own stop short of a single
+        // Only a file that carried no chain at all. Morrowind's own stop short of a single
         // texel — a 256-square texture ships six levels and ends at 8 by 8 — and that last level is
         // already the texture's own mean to within what a ray can tell. Rebuilding those would
         // decompress the whole game to gain nothing, and double what a cell's textures hold.
@@ -54,7 +54,7 @@ namespace Rtx
         const std::uint32_t width = mTexture.getWidth();
         const std::uint32_t height = mTexture.getHeight();
 
-        // **The finest level, through the readers that already know every format.** Alpha is a byte
+        // The finest level, through the readers that already know every format. Alpha is a byte
         // a texel in all of them and colour is one call apiece, so nothing here knows what a block
         // is.
         mAlpha.build(described);
@@ -97,7 +97,7 @@ namespace Rtx
                             const auto stored
                                 = [&](std::size_t offset) { return std::to_integer<std::uint8_t>(from[offset]); };
 
-                            // **Through the byte and not through a float divided by 255**, which is
+                            // Through the byte and not through a float divided by 255, which is
                             // the same number by a table rather than by a `pow` a texel a channel a
                             // level. Alpha is linear in every format and is the byte's own share.
                             const auto channel = [&](std::size_t offset) {

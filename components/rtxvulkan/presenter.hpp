@@ -36,10 +36,9 @@ namespace Rtx
         Presenter(const Device& device, VkInstance instance, SDL_Window* window);
         ~Presenter();
 
-        /// Blits `frame` onto the next swapchain image and queues it. False where the surface no
-        /// longer matches the window, which is not an error: the caller resizes and asks again.
-        ///
-        /// @param frame must be in `VK_IMAGE_LAYOUT_GENERAL` and is left there.
+        /// Blits `frame`, in `VK_IMAGE_LAYOUT_GENERAL` and left there, onto the next swapchain
+        /// image and queues it. False where the surface no longer matches the window, which is not
+        /// an error: the caller resizes and asks again.
         bool present(const Image& frame);
 
         /// Waits until the present that last read `frame` has finished with it. A present's blit
@@ -105,7 +104,7 @@ namespace Rtx
         /// Which slot the next acquire takes.
         std::uint32_t mAcquisition = 0;
 
-        /// Signalled by the blit and waited by the present. **Per swapchain image and not one**: a
+        /// Signalled by the blit and waited by the present. Per swapchain image and not one: a
         /// present may still be reading the semaphore a frame signalled, and there is no fence that
         /// says when it stopped.
         std::vector<Owned<VkSemaphore, vkDestroySemaphore>> mRendered;

@@ -14,9 +14,8 @@ namespace Rtx
 {
     class Device;
 
-    /// Where one bottom-level structure sits: which block of storage, and the run inside it.
-    ///
-    /// Empty for a mesh slot that has no structure — a slot the scene took back and has not filled.
+    /// Where one bottom-level structure sits: which block of storage, and the run inside it. Empty
+    /// for a mesh slot that has no structure — a slot the scene took back and has not filled.
     struct StructureRoom
     {
         std::uint32_t mBlock = 0;
@@ -66,10 +65,9 @@ namespace Rtx
         VkDeviceSize getLiveBytes() const;
 
     private:
-        /// One buffer and what has been handed out inside it.
-        ///
-        /// The allocator has no block boundary of its own: this buffer *is* the block, and what
-        /// stops a run leaving it is the capacity checked against `getEnd`.
+        /// One buffer and what has been handed out inside it. The allocator has no block boundary
+        /// of its own: this buffer *is* the block, and what stops a run leaving it is the capacity
+        /// checked against `getEnd`.
         struct Block
         {
             Buffer mBuffer;

@@ -72,7 +72,7 @@ namespace Rtx
 {
     bool LightGrid::standsWhereItWas(std::span<const Light> lights) const
     {
-        // **A list nothing has made yet says nothing about where the lamps are**, and a world of no
+        // A list nothing has made yet says nothing about where the lamps are, and a world of no
         // lamps cannot be told from one by the lengths alone — both are nought. `RunList::start` is
         // what puts the first entry in, so an empty list is a grid that was never built.
         if (mList.getWhole().empty() || mBinnedOn.size() != lights.size())

@@ -116,7 +116,7 @@ namespace Rtx
             closeZone(what.mTimer, commands);
         }
 
-        // **The sprite tiles are screen space, so they belong to the camera and not to the scene.**
+        // The sprite tiles are screen space, so they belong to the camera and not to the scene.
         // Binned on the device, into the copy this trace is about to read, and ahead of that trace.
         // Not at all for a camera handed a list of its own, which is the one that draws none.
         if (what.mInputs.mSpriteList == 0)

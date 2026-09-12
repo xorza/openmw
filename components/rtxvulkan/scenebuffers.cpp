@@ -197,7 +197,7 @@ namespace Rtx
     void SceneBuffers::writeMeshes(
         Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
     {
-        // **Whole runs here and a mesh at a time afterwards.** Only a skinned body's normals change,
+        // Whole runs here and a mesh at a time afterwards. Only a skinned body's normals change,
         // so filling these when the mesh arrives is a load's cost and every frame after it pays for
         // what actually moved.
         mTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getTexCoords().size()));
@@ -218,13 +218,13 @@ namespace Rtx
             mColours.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.meshes().getColours()));
         }
 
-        // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
+        // What is built out of these was copied a moment ago. The blocks are device memory, so a
         // mesh reaches them through a transfer rather than through a host write that a submit already
         // orders — and the acceleration structures built from them are recorded into this same
         // command buffer. One dependency for every block, because they are read together.
         orderStagedWrites(batch);
 
-        // **Whole, and it is twelve bytes a slot.** A mesh arriving moves nothing already in this,
+        // Whole, and it is twelve bytes a slot. A mesh arriving moves nothing already in this,
         // but sizing it to the scene means growing it, and growing means writing it — so the rows
         // that did not change are written again for the price of not having to know which did.
         mMeshScratch.clear();
@@ -254,7 +254,7 @@ namespace Rtx
 
         Tables& tables = mTables[placing.mSlot.get()];
 
-        // **The sprites go over from here and not from `place`**, because what each is shaded by is
+        // The sprites go over from here and not from `place`, because what each is shaded by is
         // the frame's sun, which a placement does not know — and a doll or a map bins against a
         // camera and a sun of its own.
         const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
@@ -280,7 +280,7 @@ namespace Rtx
             },
             placing.mTimer);
 
-        // **Sized from what this copy's last bin said it needed, with room over it**, because the
+        // Sized from what this copy's last bin said it needed, with room over it, because the
         // need is only known once the tiles are counted and that happens on the device. The fence
         // this copy's last frame signalled is what makes the report readable here.
         // `SpriteListSize` says the rest of the policy and why one object holds it.
@@ -305,7 +305,7 @@ namespace Rtx
             },
             tables.mSpriteTileList, placing.mTimer);
 
-        // **What the next bin of this copy sizes its list from**, read on the host once the frame's
+        // What the next bin of this copy sizes its list from, read on the host once the frame's
         // fence has been waited on. A fence's access scope is the device's, so without this the
         // figure is whatever the caches held.
         tables.mSpriteBinReport.orderForHostRead(placing.mCommands);
@@ -317,7 +317,7 @@ namespace Rtx
         const std::span<const MaterialLayer> layers = scene.materials().getLayers();
         const std::span<const float> masks = scene.materials().getMasks();
 
-        // **Every row where the table changed length, and the rows the scene wrote otherwise.** The
+        // Every row where the table changed length, and the rows the scene wrote otherwise. The
         // sentinel sits one past the real materials, so a table that grew has a real material where
         // the sentinel was and the sentinel where nothing was — two rows to reason about separately,
         // or every row written on a path only a cell arrival takes. A material is sixty-eight bytes.
@@ -346,8 +346,8 @@ namespace Rtx
         const Shaders::GpuLayer noLayer{};
         constexpr float noMask = 1.0f;
 
-        // **Every copy, because a run only ever arrives with a chunk, and a chunk arriving is an
-        // arrival the caller waited every frame out for.** Nothing is reading the other copies, so
+        // Every copy, because a run only ever arrives with a chunk, and a chunk arriving is an
+        // arrival the caller waited every frame out for. Nothing is reading the other copies, so
         // they take the runs now rather than owing them; what a flipbook does every frame never
         // touches these tables.
         for (std::uint32_t each = 0; each < mSlots; ++each)
@@ -402,7 +402,7 @@ namespace Rtx
         // The sentinel material sits one past the real ones, which is where `shade` put it.
         const auto sentinel = static_cast<std::uint32_t>(scene.materials().getRows().size());
 
-        // **Indexed by slot, gaps included.** A hit reads its slot back as the custom index and
+        // Indexed by slot, gaps included. A hit reads its slot back as the custom index and
         // looks the row up here directly, so a table that closed its gaps would answer for the
         // wrong placement. A gap's row is never read, so it is never written either.
         const std::span<const MeshInstance> placements = scene.placements().getAll();
@@ -425,7 +425,7 @@ namespace Rtx
                     record.mMotion.mRows[r][2], record.mMotion.mRows[r][3]);
         };
 
-        // **The rows this placement wrote, and whatever the table grew by.** A world is tens of
+        // The rows this placement wrote, and whatever the table grew by. A world is tens of
         // thousands of placements and a frame moves hundreds; writing every row to change those was
         // a memcpy of megabytes a frame. Which copies are then behind is the table's own answer,
         // and it is the same answer the acceleration structure's rows get from the same list.
@@ -452,7 +452,7 @@ namespace Rtx
         for (const SpriteEmitter& emitter : scene.emitters())
             mEmitterScratch.push_back(toGpu(emitter));
 
-        // **Which emitter placed a sprite, written from this side because only this side knows.**
+        // Which emitter placed a sprite, written from this side because only this side knows.
         // The scene keeps the pairing as a run on the emitter; a tile's list is sprites, and a
         // sprite walked out of one has to be able to say when the run it belongs to has changed.
         for (std::uint32_t at = 0; at < mEmitterScratch.size(); ++at)
@@ -464,7 +464,7 @@ namespace Rtx
 
         mLightGrid.rebuild(scene.lights());
 
-        // **The tables go over as they are, empty ones included.** Something has to stand at every
+        // The tables go over as they are, empty ones included. Something has to stand at every
         // address the frame carries, and `growTo` is what guarantees it for all of them at once —
         // a stand-in per table is one table without one, and that costs a device. What stops the
         // shader reading an empty table is its count.

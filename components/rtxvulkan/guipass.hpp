@@ -14,10 +14,9 @@ namespace Rtx
     class Device;
     class Image;
 
-    /// One run of vertices drawn with one texture.
-    ///
-    /// **A run and not an index range**, because MyGUI hands over triangle lists and no indices: a
-    /// batch is a stretch of the vertex buffer and a texture to read while drawing it.
+    /// One run of vertices drawn with one texture. A run and not an index range, because MyGUI
+    /// hands over triangle lists and no indices: a batch is a stretch of the vertex buffer and a
+    /// texture to read while drawing it.
     struct GuiDraw
     {
         VkImageView mTexture = VK_NULL_HANDLE;
@@ -50,7 +49,7 @@ namespace Rtx
             VkCommandBuffer commands, const Image& target, VkBuffer vertices, std::span<const GuiDraw> draws) const;
 
     private:
-        /// **Two, because a blend mode is baked into a pipeline.** The alternative is
+        /// Two, because a blend mode is baked into a pipeline. The alternative is
         /// `VK_EXT_extended_dynamic_state3`, which is a device feature to require and a driver
         /// path to trust for something that is two objects compiled once at startup.
         GraphicsPipeline mOver;

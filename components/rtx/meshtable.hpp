@@ -92,7 +92,7 @@ namespace Rtx
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
 
-        /// The per-vertex colour, in linear light. **White where a mesh brought none**, so that a
+        /// The per-vertex colour, in linear light. White where a mesh brought none, so that a
         /// hit multiplies by it whatever the content said and no shader branches on whether there
         /// is one. `MeshArrays::mColours` says why it is linear here.
         std::vector<osg::Vec3f> mColours;

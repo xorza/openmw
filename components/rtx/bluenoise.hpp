@@ -22,7 +22,6 @@ namespace Rtx
         BlueNoise& operator=(const BlueNoise&) = delete;
 
         /// Values in `[0, 1)`, one pixel's `RANDOM_STREAMS` channels at a time, row by row.
-        ///
         /// Interleaved rather than planar, so that the channels one pixel reads sit in one cache
         /// line: a shader that draws a pair touches two of them and never the same channel twice.
         std::span<const float> getValues() const { return mValues; }

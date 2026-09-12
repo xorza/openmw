@@ -97,10 +97,8 @@ namespace Rtx
             writeAt(0, data);
         }
 
-        /// Zeroes the whole buffer.
-        ///
-        /// **For a block, which is made longer than what will be put in it.** A buffer holding
-        /// whatever was last in that memory is a picture that depends on it too.
+        /// Zeroes the whole buffer, for a block, which is made longer than what will be put in it:
+        /// a buffer holding whatever was last in that memory is a picture that depends on it too.
         void clear() const { std::memset(writable<std::byte>(0, mSize).data(), 0, mSize); }
 
     private:

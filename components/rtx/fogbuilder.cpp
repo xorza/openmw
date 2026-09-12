@@ -172,7 +172,7 @@ namespace Rtx
 
     FogNoise bakeFogNoise()
     {
-        // **Two fields and not one, because the shape and the displacement are read together.** The
+        // Two fields and not one, because the shape and the displacement are read together. The
         // domain is warped by a noise of its own, and a warp is a vector: taking it from one channel
         // means a second fetch at a second place, where two channels of one fetch are already there.
         std::array<std::vector<float>, 2> channels;
@@ -189,7 +189,7 @@ namespace Rtx
                             (static_cast<float>(y) + 0.5f) / static_cast<float>(sSize),
                             (static_cast<float>(z) + 0.5f) / static_cast<float>(sSize));
 
-                        // **Four texels a cell and one octave.** A lattice finer than that aliases
+                        // Four texels a cell and one octave. A lattice finer than that aliases
                         // into the level it is drawn at, and the chain then averages a mistake rather
                         // than the field; a second octave is what `fogShape`'s scales are for.
                         channels[channel][(static_cast<std::size_t>(z) * sSize + y) * sSize + x]

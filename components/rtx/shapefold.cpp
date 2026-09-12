@@ -16,16 +16,12 @@ namespace Rtx
             return a.z() < b.z();
         }
 
-        /// The bits of a run of points, mixed to a hash. A triangle's three corners, or an edge's
-        /// two ends.
-        ///
-        /// **Mixed here rather than through `Misc::hashCombine`.** That reaches `std::hash<float>`,
-        /// which is `_Hash_bytes` — a byte-wise murmur over four bytes — and eighteen of those per
-        /// triangle cost more than the fold around them. FNV over the bits and one final mix cost
-        /// nine multiplies.
-        ///
-        /// **A zero is normalised first**, because -0 and 0 compare equal in a spelling and in an
-        /// edge, and a hash that told the two apart would never find the twin.
+        /// The bits of a run of points, mixed to a hash: a triangle's three corners, or an edge's
+        /// two ends. Mixed here rather than through `Misc::hashCombine`, which reaches
+        /// `std::hash<float>` — a byte-wise murmur over four bytes — and eighteen of those per
+        /// triangle cost more than the fold around them, where FNV over the bits and one final mix
+        /// cost nine multiplies. A zero is normalised first, because -0 and 0 compare equal in a
+        /// spelling and in an edge, and a hash that told the two apart would never find the twin.
         std::size_t hashPoints(std::span<const osg::Vec3f> points)
         {
             std::uint64_t seed = 0xcbf29ce484222325ull;
@@ -70,19 +66,19 @@ namespace Rtx
     {
         const std::size_t count = indices.size() / 3;
 
-        // **A closed shape carries three halves of a triangle's worth of edges**, because every edge
+        // A closed shape carries three halves of a triangle's worth of edges, because every edge
         // of one has a triangle each way. Two things follow and neither is a threshold: an odd
         // triangle count cannot close, and no shape passes `mostEdges` distinct edges and still
         // closes. Nothing closes nothing, which is the third.
         //
-        // **They are here for the merged terrain chunk**, which is hundreds of statics whose first
+        // They are here for the merged terrain chunk, which is hundreds of statics whose first
         // grass card already passes the limit: a saving in the fold's tail alone.
         if (count == 0 || count % 2 != 0)
             return false;
 
         const std::size_t mostEdges = count * 3 / 2;
 
-        // **Sized against what can be reached and not against what could be pushed.** The limit
+        // Sized against what can be reached and not against what could be pushed. The limit
         // above bounds the table, so the same one entry in two costs half the slots a bound of
         // every side of every triangle would — half a megabyte of the `assign` below, on a chunk of
         // thirty thousand triangles.
@@ -114,8 +110,8 @@ namespace Rtx
                     const std::uint32_t held = mEdgeTable[at];
                     if (held == sNoEntry)
                     {
-                        // **Reaching the limit is what a closed shape does, and passing it is what
-                        // says this is not one.** A tetrahedron is four triangles and six edges,
+                        // Reaching the limit is what a closed shape does, and passing it is what
+                        // says this is not one. A tetrahedron is four triangles and six edges,
                         // which is exactly the limit.
                         if (mEdges.size() == mostEdges)
                             return false;
@@ -171,7 +167,7 @@ namespace Rtx
         mTable.assign(slots, sNoEntry);
         mNext.assign(count, sNoEntry);
 
-        // **From the last triangle back, so each chain runs forwards.** The pairing below takes the
+        // From the last triangle back, so each chain runs forwards. The pairing below takes the
         // first triangle of a spelling that is still unpaired, and which one that is decides which
         // copy of a doubled card survives: the one the file wrote first, as it was before anything
         // was folded.
@@ -246,7 +242,7 @@ namespace Rtx
         }
         indices.resize(kept * 3);
 
-        // **On what survives, because that is what a ray will meet.** A doubled card folds to one
+        // On what survives, because that is what a ray will meet. A doubled card folds to one
         // quad, which has a boundary; a shape with no twins folds to itself and is whatever it was.
         return FoldedShape{ .mSheet = sheet, .mClosed = closes(positions, indices) };
     }

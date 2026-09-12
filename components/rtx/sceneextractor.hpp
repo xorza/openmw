@@ -49,12 +49,12 @@ namespace Rtx
 
     /// Mirrors an OpenSceneGraph subtree into a `SceneDesc`. The identity maps live across calls,
     /// so the same geometry met again resolves to the mesh already uploaded rather than to a copy,
-    /// which is what makes an incremental mirror possible instead of a rebuild per frame.
+    /// and the mirror is incremental instead of a rebuild per frame.
     class SceneExtractor : public SceneAdopter
     {
     public:
-        /// @param traversals where this walk's traversal numbers come from. **Shared by everything
-        ///        that can reach one graph** — the game hands the same counter to the world's walk
+        /// @param traversals where this walk's traversal numbers come from. Shared by everything
+        ///        that can reach one graph — the game hands the same counter to the world's walk
         ///        and to every traced view. Left out, the extractor keeps a sequence of its own,
         ///        which is right for a harness where nothing else walks the same nodes.
         explicit SceneExtractor(SceneDesc& scene, Traversals* traversals = nullptr);
@@ -63,7 +63,7 @@ namespace Rtx
         /// declared here.
         ~SceneExtractor();
 
-        /// Which nodes the walks may descend into, as an `osg` traversal mask — what keeps the
+        /// Which nodes the walks may descend into, as an `osg` traversal mask: what keeps the
         /// mirror out of subtrees the ray tracer answers for itself, such as `SceneUtil::Mask_Sky`,
         /// without knowing what a sky is. Everything the content did not hide, by default.
         void setTraversalMask(osg::Node::NodeMask mask) { mTraversalMask = mask; }
@@ -72,7 +72,7 @@ namespace Rtx
         /// Which nodes are the world's water, as an `osg` node mask. None by default. Water reaches
         /// here as an ordinary blended quad, so without this it is shaded as a painted surface:
         /// every shallow goes black under a shadow ray and there are no waves or caustics. A
-        /// drawable is water when its own mask carries **no bit outside** this one, because a node
+        /// drawable is water when its own mask carries no bit outside this one, because a node
         /// mask defaults to all ones. The harness places an analytic sea of its own (`addWater`).
         void setWaterMask(osg::Node::NodeMask mask) { mWaterMask = mask; }
 
@@ -140,7 +140,7 @@ namespace Rtx
         /// keys, so a caller that never sweeps holds every drawable it has ever walked.
         Retirement retire();
 
-        /// Places one light. **The graph and not the content files**, because that is where a light
+        /// Places one light. The graph and not the content files, because that is where a light
         /// that moves with the thing carrying it exists: a torch in an NPC's hand is no cell
         /// record, and neither is a lamp something picked up and put down.
         void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime);
@@ -161,10 +161,9 @@ namespace Rtx
         const osg::StateSet* animate(osg::Node& node);
 
     private:
-        /// **What a residency may do inside a walk, and nothing else may.** `Rtx::SceneAdopter` is
-        /// the object a residency is handed, and it is implemented here privately: reachable through
-        /// that interface, and not five calls in front of every reader of this class that only mean
-        /// anything inside one walk.
+        /// What a residency may do inside a walk, and nothing else may. `Rtx::SceneAdopter` is
+        /// implemented privately, so the five calls that only mean anything inside one walk are
+        /// reachable through that interface and not in front of every reader of this class.
         void take(osg::Node& node) override;
         Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material) override
         {
@@ -218,17 +217,16 @@ namespace Rtx
         std::array<ClassMask, 3> mClassMasks{ ClassMask{ InstanceClass::Actor }, ClassMask{ InstanceClass::Effect },
             ClassMask{ InstanceClass::FirstPerson } };
 
-        /// Geometry no node parents, asked of every world walk. See `follow`.
-        /// Refilled by `follow` every frame and never freed: two of them at most, so far.
+        /// Geometry no node parents, asked of every world walk. Refilled by `follow` every frame
+        /// and never freed: two of them at most, so far.
         std::vector<Residency*> mResidents;
 
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;
 
-        /// Which sweep is current, and where the walk in progress puts its counts.
-        ///
-        /// **Declared before everything that borrows it**, which is the walk and every resolver
-        /// below: each reads the mirror's own rather than keeping a copy that could fall behind it.
+        /// Which sweep is current, and where the walk in progress puts its counts. Declared before
+        /// the walk and every resolver below, which borrow it rather than keep a copy that could
+        /// fall behind.
         MirrorPass mPass;
 
         /// Which slot each placement holds, and when it was last met. One lookup a placement a

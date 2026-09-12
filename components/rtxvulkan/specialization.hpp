@@ -9,14 +9,11 @@
 namespace Rtx
 {
     /// The map entries a table of specialization words needs, and the `VkSpecializationInfo` over
-    /// them.
-    ///
-    /// **Built here rather than by the caller**, because it is the same table every time and its
-    /// contents are the caller's own indices: `constant_id` `i` takes word `i`, at word `i`'s
+    /// them. Built here rather than by the caller, because it is the same table every time and
+    /// its contents are the caller's own indices: `constant_id` `i` takes word `i`, at word `i`'s
     /// offset. Words because that is what every constant this renderer specializes on is — a `bool`
-    /// reaches SPIR-V as a 32-bit value like a `uint` does.
-    ///
-    /// Does not outlive the words it was made from, and neither does what `getInfo` points at.
+    /// reaches SPIR-V as a 32-bit value like a `uint` does. Does not outlive the words it was made
+    /// from, and neither does what `getInfo` points at.
     class Specialization
     {
     public:

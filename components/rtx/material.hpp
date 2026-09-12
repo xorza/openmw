@@ -25,10 +25,8 @@ namespace Rtx
         Water,
     };
 
-    /// How a surface is shaded, as recovered from the model.
-    ///
-    /// Vanilla textures are pre-lit, so `mDiffuse` is not an albedo yet; recovering one is M9. What
-    /// is here is what the file says.
+    /// How a surface is shaded, as the file says it. Vanilla textures are pre-lit, so `mDiffuse` is
+    /// not an albedo yet.
     struct Material
     {
         MaterialKind mKind = MaterialKind::Surface;
@@ -69,10 +67,9 @@ namespace Rtx
         /// which `setMaterial` rewrites, and not on the instance.
         osg::Vec4f mTextureTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
 
-        /// Where this material's terrain layers sit in the scene's layer table.
-        ///
-        /// Empty for everything that is not terrain, which is all but a handful of materials in a
-        /// cell — so the layered path costs the rest of them one comparison and no indirection.
+        /// Where this material's terrain layers sit in the scene's layer table. Empty for everything
+        /// that is not terrain, which is all but a handful of materials in a cell, so the layered
+        /// path costs the rest of them one comparison and no indirection.
         Run mLayers;
 
         /// Whether this chunk is wide enough that its stack is worth flattening into one texture.

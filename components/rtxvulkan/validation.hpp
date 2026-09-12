@@ -9,7 +9,6 @@
 
 namespace Rtx
 {
-    /// One message the validation layers reported.
     struct ValidationMessage
     {
         std::string mText;
@@ -20,7 +19,6 @@ namespace Rtx
         std::thread::id mThread;
     };
 
-    /// What happens when the layers report an error.
     enum class ValidationPolicy
     {
         /// Record and log. Only for tests, which provoke errors deliberately and assert on them.
@@ -80,9 +78,8 @@ namespace Rtx
         std::thread::id mPrevious;
     };
 
-    /// Fills in a messenger description that routes every severity to `log`.
-    ///
-    /// Returned by value so it can be chained into `VkInstanceCreateInfo::pNext`, which is what
-    /// catches errors raised by `vkCreateInstance` and `vkDestroyInstance` themselves.
+    /// Fills in a messenger description that routes every severity to `log`. Returned by value so
+    /// it can be chained into `VkInstanceCreateInfo::pNext`, which is what catches errors raised
+    /// by `vkCreateInstance` and `vkDestroyInstance` themselves.
     VkDebugUtilsMessengerCreateInfoEXT makeMessengerCreateInfo(ValidationLog& log);
 }

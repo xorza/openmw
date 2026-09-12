@@ -16,9 +16,8 @@ namespace Rtx
 {
     class Device;
 
-    /// Which shader stands at each record of a trace's shader binding table.
-    ///
-    /// One miss record apiece, in the order given: a missed hit object naming index `i` runs entry
+    /// Which shader stands at each record of a trace's shader binding table. One miss record
+    /// apiece, in the order given: a missed hit object naming index `i` runs entry
     /// `i` of `mMiss`. A closest-hit shader stands behind `mHitRecordsPerShader` records in turn, so
     /// a hit object naming index `i` runs entry `i / mHitRecordsPerShader` of `mHit`. Which index an
     /// instance names is the shader-table record offset its acceleration structure carries, plus
@@ -65,7 +64,6 @@ namespace Rtx
 
         VkPipeline getHandle() const { return mHandle.get(); }
 
-        /// What descriptors are pushed against.
         VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
 
         /// Launches `width` by `height` invocations of the ray generation stage.

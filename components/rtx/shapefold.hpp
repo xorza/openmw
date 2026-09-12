@@ -9,10 +9,9 @@
 
 namespace Rtx
 {
-    /// What a shape's triangles turned out to be, once its reversed twins were folded away.
-    ///
-    /// **Two facts and neither follows from the other.** A shape may be both — two exteriors hold
-    /// one each — so `ShapeFold` reports them apart rather than as one kind.
+    /// What a shape's triangles turned out to be, once its reversed twins were folded away. Two
+    /// facts and neither follows from the other: a shape may be both — two exteriors hold one
+    /// each — so `ShapeFold` reports them apart rather than as one kind.
     struct FoldedShape
     {
         /// Every triangle was one of a reversed pair, so the content doubled the whole shape for its

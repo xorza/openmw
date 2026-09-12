@@ -37,31 +37,29 @@ namespace Rtx
 
     /// One picture traced from somewhere other than the eye: an inventory doll, a map tile. The
     /// trace writes straight into a slot of the renderer's GUI texture table, so the picture is
-    /// never a framebuffer and never in main memory unless somebody asks `readGuiTexture`.
-    ///
-    /// Two kinds, and which constructor built it is which: a picture of the world traces against
-    /// the scene the renderer already holds, and a picture of a subject is of a group assembled for
-    /// it, mirrored into a scene of its own and walked again whenever the picture is asked for.
-    /// The slot is handed to `traceInto` rather than owned here, which is what lets the harness
-    /// draw a doll with no GUI under it.
+    /// never a framebuffer and never in main memory unless somebody asks `readGuiTexture`. Two
+    /// kinds, and which constructor built it is which: a picture of the world traces against the
+    /// scene the renderer already holds, and a picture of a subject is of a group assembled for it,
+    /// mirrored into a scene of its own and walked again whenever the picture is asked for. The
+    /// slot is handed to `traceInto` rather than owned here, so the harness can draw a doll with no
+    /// GUI under it.
     class OffscreenTrace
     {
     public:
         /// A picture of the world the renderer already holds. Nothing is mirrored for it, so a
         /// picture taken before the first frame is a picture of nothing.
         ///
-        /// @param rayMask which classes the picture's camera draws, `Shaders::MASK_*`. A map tile's
+        /// @param rayMask which classes the picture's camera draws, `Shaders::MASK_*`. A map tile
         ///        leaves out the actors, the effects and the particles.
         OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, std::uint32_t rayMask);
 
-        /// A picture of a subtree assembled for it alone.
+        /// A picture of a subtree assembled for it alone. A doll asks for every class of `rayMask`.
         ///
         /// @param mask which nodes the walk may descend into, AND-ed at every node.
         /// @param traversals where the walk's and the pick's traversal numbers come from, shared
         ///        with everything else that can reach the same nodes, because a subtree two walks
         ///        reach would otherwise be run by whichever got there first and frozen for the
         ///        other. Left out, this keeps a sequence of its own.
-        /// @param rayMask as above. A doll asks for every class.
         OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, std::uint32_t rayMask,
             osg::Node& subject, osg::Node::NodeMask mask, Traversals* traversals = nullptr);
 
@@ -92,9 +90,8 @@ namespace Rtx
         void setView(const osg::Matrixf& view);
 
         /// Fill only this much of the picture, from its top-left corner, and leave the rest at the
-        /// clear colour. Clamped to the size this was made at.
-        ///
-        /// The inventory doll, whose window resizes while the texture behind it does not.
+        /// clear colour. Clamped to the size this was made at. For the inventory doll, whose window
+        /// resizes while the texture behind it does not.
         void setExtent(std::uint32_t width, std::uint32_t height);
 
         bool isOfWorld() const { return mSubject == nullptr; }
@@ -109,8 +106,8 @@ namespace Rtx
         /// @param posing what the update traversal runs on — the caller's own drawing clock, because
         ///        a skeleton keeps the last number it saw and a clock that stood still would move the
         ///        doll's bones the first time and never again.
-        /// @param worldFrame which of a `SceneUtil::LightSource`'s two buffers update has just
-        ///        written, which stops with the world when the game is paused; `posing` does not.
+        /// @param worldFrame which of a `SceneUtil::LightSource`'s two buffers update just wrote,
+        ///        which stops with the world when the game is paused; `posing` does not.
         bool rebuildSubject(const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images);
 
         /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`, and leaves a
@@ -143,7 +140,7 @@ namespace Rtx
             explicit Subject(Traversals* shared);
             ~Subject();
 
-            /// **Not const, because a picture is taken by changing it**: the update traversal poses
+            /// Not const, because a picture is taken by changing it: the update traversal poses
             /// the subject and the intersection visitor walks it, and both take a mutable node.
             osg::ref_ptr<osg::Node> mNode;
 
@@ -151,8 +148,8 @@ namespace Rtx
             std::unique_ptr<SceneDesc> mScene;
             std::unique_ptr<SceneExtractor> mExtractor;
 
-            /// **Its own, because the only state one carries between calls is the clock it is
-            /// given.** The camera callback the game hangs on a doll's subtree is what finds the
+            /// Its own, because the only state one carries between calls is the clock it is
+            /// given. The camera callback the game hangs on a doll's subtree is what finds the
             /// head to look at, and it runs in an update traversal — so a picture drawn between
             /// frames has to run one.
             std::unique_ptr<PoseUpdate> mUpdate;
@@ -168,10 +165,9 @@ namespace Rtx
             Traversals mOwn;
             Traversals& mTraversals;
 
-            /// **A doll takes the same three branches a cell does.** A race-creation slider drag
-            /// redraws the same subject every frame, and this is what makes that a placement rather
-            /// than an acceleration structure and a texture array built from nothing sixty times a
-            /// second.
+            /// A doll takes the same three branches a cell does, so a race-creation slider drag
+            /// that redraws the same subject every frame is a placement rather than an acceleration
+            /// structure and a texture array built from nothing sixty times a second.
             SceneUploader mUploader;
 
             /// The slot the renderer keeps this scene's acceleration structures in.
@@ -196,13 +192,12 @@ namespace Rtx
         RowOrder mRowOrder = RowOrder::TopFirst;
         std::uint32_t mRayMask = 0;
 
-        /// **One value and not a flag beside four floats**, three of which would mean nothing in
+        /// One value and not a flag beside four floats, three of which would mean nothing in
         /// whichever case the flag did not name, and all four of which the caller already holds as a
         /// `SceneUtil::Framing`.
         SceneUtil::Framing mFraming;
 
-        /// Where the light stands, unit — which is what the trace takes, and so already the sense
-        /// `setLight` states it in.
+        /// Where the light stands, unit, in the sense `setLight` states it and the trace takes it.
         Sun mSun;
         osg::Vec3f mAmbient;
 

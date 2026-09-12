@@ -35,10 +35,9 @@ namespace Rtx
             endAndWait(commands);
         }
 
-        /// Command buffers the caller records into again every frame.
-        ///
-        /// The pool allows individual reset, so re-recording one is `vkBeginCommandBuffer` and
-        /// nothing else. They live as long as the pool does and are not freed individually.
+        /// Command buffers the caller records into again every frame. The pool allows individual
+        /// reset, so re-recording one is `vkBeginCommandBuffer` and nothing else. They live as long
+        /// as the pool does and are not freed individually.
         std::vector<VkCommandBuffer> allocate(std::uint32_t count);
 
         /// Begins one of them, one-shot like everything this pool hands out.

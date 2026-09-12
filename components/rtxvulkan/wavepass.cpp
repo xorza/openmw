@@ -103,7 +103,7 @@ namespace Rtx
         Batch batch(mPool);
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
-            // **Buried and not dropped.** A frame in flight is still synthesising from the spectrum
+            // Buried and not dropped. A frame in flight is still synthesising from the spectrum
             // this replaces, and a weather that turns the wind is what makes that happen: assigning
             // over these frees them where the queue has not reached the dispatch that reads them.
             graveyard.bury(std::exchange(mTiles[index].mAmplitudes,

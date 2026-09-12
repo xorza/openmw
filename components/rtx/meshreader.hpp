@@ -66,10 +66,9 @@ namespace Rtx
     class MeshReader
     {
     public:
-        /// Reads `read` into `into`. Throws where a morph's base is not the length of its source,
-        /// which is a content file naming a face this cannot pose.
-        ///
-        /// @return false where the drawable holds no triangle to read.
+        /// Reads `read` into `into`. False where the drawable holds no triangle to read. Throws
+        /// where a morph's base is not the length of its source, which is a content file naming a
+        /// face this cannot pose.
         bool read(const DrawableRead& read, MeshReading& into);
 
     private:
@@ -78,7 +77,7 @@ namespace Rtx
         /// Where an overall normal is spread across a drawable's vertices.
         std::vector<osg::Vec3f> mFlatNormalScratch;
 
-        /// Where a drawable's colours are decoded to. **Always scratch**, where the other
+        /// Where a drawable's colours are decoded to. Always scratch, where the other
         /// attributes are usually the geometry's own arrays: what the file holds is display-encoded
         /// bytes and what a hit interpolates is linear light, so there is nothing to point at.
         std::vector<osg::Vec3f> mColourScratch;

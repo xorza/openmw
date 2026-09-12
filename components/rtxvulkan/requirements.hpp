@@ -52,9 +52,7 @@ namespace Rtx
     };
 
     /// The properties worth reporting or budgeting against: one chained query, and the memory
-    /// layout beside it.
-    ///
-    /// Non-copyable for the same reason as `DeviceFeatures`.
+    /// layout beside it. Non-copyable for the same reason as `DeviceFeatures`.
     struct DeviceProperties
     {
         DeviceProperties();

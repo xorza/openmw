@@ -30,7 +30,6 @@ namespace Rtx
         /// Takes the frame about to be binned into account, and moves the mark where it has to.
         ///
         /// @param tiles what `Shaders::spriteTilesIn` says that frame's camera covers.
-        /// @param sprites how many there are to bin.
         /// @param reported what the last bin into this copy said its runs came to, whether or not
         ///        they fit. Nought where none has run.
         void sizeFor(std::uint32_t tiles, std::uint32_t sprites, std::uint32_t reported);

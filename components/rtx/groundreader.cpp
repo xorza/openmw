@@ -27,7 +27,7 @@ namespace Rtx
         {
             if (image.getPixelFormat() == GL_ALPHA && image.getDataType() == GL_UNSIGNED_BYTE)
             {
-                // **The reciprocal and not a divide, because that is `getColor`'s own arithmetic.**
+                // The reciprocal and not a divide, because that is `getColor`'s own arithmetic.
                 // The two disagree in the last place for 126 of the 256 byte values, and a weight is
                 // what a cell's ground is blended by and what its composite is baked from — so a
                 // divide here would move the picture by a bit and the scene digests with it.
@@ -82,7 +82,7 @@ namespace Rtx
     void GroundReader::copyGrid(Terrain::BufferCache& buffers, const unsigned int verts,
         std::vector<std::uint32_t>& indices, std::vector<osg::Vec2f>& corners)
     {
-        // **The rasterizer's own triangles and corners, with no stitching flags**: a vertex is
+        // The rasterizer's own triangles and corners, with no stitching flags: a vertex is
         // `col * verts + row`, which is the order `fillVertexBuffers` writes them in, and the
         // diamond alternates which diagonal a quad is split along — so a slope is cut the way the
         // game cuts it, from the one place that says how.
@@ -112,7 +112,7 @@ namespace Rtx
             into.mTexCoords = mGridCorners;
             into.mIndices = mGridIndices;
 
-            // **Decoded here, because a hit interpolates between two of these.** The land stores a
+            // Decoded here, because a hit interpolates between two of these. The land stores a
             // byte a channel and the trace works in light, and the two orders do not agree: a
             // vertex at 116 beside one at 255 meets at 201 in light and at 186 in bytes. The alpha
             // the storage writes is 255 at every vertex, because `VCLR` holds three channels.
@@ -144,7 +144,7 @@ namespace Rtx
 
         into.mStands = true;
 
-        // **The layers as the chunk manager reads them**, one blend map per ground type where there
+        // The layers as the chunk manager reads them, one blend map per ground type where there
         // is more than one, and none where a single type covers the cell.
         mBlendmaps.clear();
         mLayerInfos.clear();

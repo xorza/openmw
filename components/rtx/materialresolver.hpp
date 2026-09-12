@@ -149,10 +149,9 @@ namespace Rtx
         /// walks every texel of the finest level.
         bool diffuseReachesSolid(const osg::Image* image);
 
-        /// What the scene knows one image as, and whether its alpha ever reaches solid.
-        ///
-        /// **Unset until something asks**, because the walk over its texels is only worth doing for
-        /// a material that has to tell a wisp from a mask.
+        /// What the scene knows one image as, and whether its alpha ever reaches solid — unset
+        /// until something asks, because the walk over its texels is only worth doing for a
+        /// material that has to tell a wisp from a mask.
         struct HeldTexture : Known
         {
             std::optional<bool> mSolid;

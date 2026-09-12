@@ -202,7 +202,7 @@ namespace Rtx
 
     void MeshResolver::stampDeformer(const DrawableRead& read, const Held& held)
     {
-        // **The entry is there, and the fit test is why.** It agreed that the slot's deformer is
+        // The entry is there, and the fit test is why. It agreed that the slot's deformer is
         // this drawable's, and neither `resolveRig` nor `resolveMorph` ever hands back `sNoIndex` —
         // so a deformer the sweep had taken would have failed that test rather than reach here.
         if (read.mDeform == Deform::Rig)
@@ -239,7 +239,7 @@ namespace Rtx
 
         const std::size_t vertices = vertexCountOf(*rig.getSourceGeometry());
 
-        // **A skin rewritten in place under the same address is a new skin.** `setInfluences` on a
+        // A skin rewritten in place under the same address is a new skin. `setInfluences` on a
         // rig the mirror has met writes into the `InfluenceData` every copy shares, so what the map
         // holds describes a mesh of another length; the rig it named stays for the meshes still on
         // it and goes with the last of them, and this drawable gets one of its own.
@@ -247,7 +247,7 @@ namespace Rtx
         if (!arrived && mScene.deformers().getRigs()[known->second.mIndex].getVertexCount() == vertices)
             return known->second.mIndex;
 
-        // **The groups flattened into a run per vertex.** `RigGeometry::setInfluences` gathers the
+        // The groups flattened into a run per vertex. `RigGeometry::setInfluences` gathers the
         // vertices that share one weight list so the rasterizer blends each list once; a kernel
         // blends per lane and wants to find its list from its vertex, which is what the run word
         // is. A vertex in no group is a run of nothing, as the rasterizer leaves it at the origin.

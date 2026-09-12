@@ -195,7 +195,7 @@ namespace Rtx
     void MirrorTraversal::begin(
         const osg::Matrixf& root, std::size_t frame, unsigned int traversal, std::size_t identity)
     {
-        // **The whole of what a traversal number promises.** A state-set controller and an
+        // The whole of what a traversal number promises. A state-set controller and an
         // `osg::Sequence` each keep the last number they ran at and do nothing for one they have
         // already seen, so a walk that handed back a number is a walk whose fires stand still — and
         // it fails as a frozen picture nobody can explain rather than as anything a log would carry.
@@ -208,7 +208,7 @@ namespace Rtx
         mPathHash = identity;
         mShading.clear();
 
-        // **The mirror's own sequence and never the game's.** What this walk runs — the controllers
+        // The mirror's own sequence and never the game's. What this walk runs — the controllers
         // and the sequences — is keyed on it, and a number taken from the game's frame would be a
         // second clock over the same nodes. `Traversals` is where that sequence lives and why there
         // is one of it.
@@ -402,7 +402,7 @@ namespace Rtx
         , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
         , mTraversalMask(~NifOsg::Loader::getHiddenNodeMask())
     {
-        // **Reserved once, so no frame rehashes a map.** A cell's drawables arriving grow every
+        // Reserved once, so no frame rehashes a map. A cell's drawables arriving grow every
         // identity map on that frame, and an `unordered_map` that grows past its buckets rehashes
         // on the insert that did it. Budgets past what a Morrowind exterior reaches at four cells
         // of distance, and a few hundred kilobytes of buckets apiece.
@@ -453,18 +453,18 @@ namespace Rtx
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
-        // **Non-const because the walk writes.** It poses every actor it reaches and it runs every
+        // Non-const because the walk writes. It poses every actor it reaches and it runs every
         // state-set controller it finds, which is what makes an actor behind the camera posed and a
         // fire lit; OSG's visitor API is non-const regardless, so the cast happens once, here.
         const_cast<osg::Node&>(node).accept(*mWalk);
 
-        // **Inside the same walk, not beside it.** What a residency stands is part of the same
+        // Inside the same walk, not beside it. What a residency stands is part of the same
         // frame as everything else — the same epoch, the same stats, the same sweep — and a second
         // `begin` would date it apart from the rest.
         for (Residency* resident : hidden)
             resident->collect(*this, stats);
 
-        // **After the whole walk, including whatever the residency brought in.** Everything under it
+        // After the whole walk, including whatever the residency brought in. Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
         // one that depends on where an updater happened to sit among its siblings.
         mEmitters.flush();
@@ -524,7 +524,7 @@ namespace Rtx
         mMaterials.retireHolds();
         mEmitters.retire();
 
-        // **After the sweep and not before it**, so that the walk which fills the next epoch is the
+        // After the sweep and not before it, so that the walk which fills the next epoch is the
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
         ++mPass.mEpoch;
@@ -575,11 +575,11 @@ namespace Rtx
             return;
         }
 
-        // **Asked of the drawable and not of the path.** OpenMW marks the water geometry itself, and
+        // Asked of the drawable and not of the path. OpenMW marks the water geometry itself, and
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());
 
-        // **The material before the mesh, because a mesh records the material it arrives wearing.**
+        // The material before the mesh, because a mesh records the material it arrives wearing.
         // `MeshRange::mMaterial` says why a static mesh has one to record; a backend bakes its mask
         // against that one, and the two counts past the mesh are what say the loader keeps it so.
         const MaterialResolver::Resolved material = water ? mMaterials.resolveWater() : mMaterials.resolve(shading);
@@ -599,7 +599,7 @@ namespace Rtx
                 ++stats.mWornOtherwise;
         }
 
-        // **The slot this placement has held since it first appeared**, so a world that stands
+        // The slot this placement has held since it first appeared, so a world that stands
         // still writes nothing: the scene already knows where everything is, and only a transform
         // that differs from the one in the slot costs anything at all.
         const auto held = mPlacements.find(who);
@@ -654,7 +654,7 @@ namespace Rtx
 
     bool SceneExtractor::carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named)
     {
-        // **Every bit outside the named one, and not merely one inside it.** A node mask is a
+        // Every bit outside the named one, and not merely one inside it. A node mask is a
         // filter over passes and its default is all ones, so `mask & named` is true for every node
         // that never set one — which in this engine is nearly all of them, and would shade the whole
         // world as sea. What names the water, or the arms, is that no *other* pass may see it.

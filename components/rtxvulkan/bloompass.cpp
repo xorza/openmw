@@ -64,7 +64,7 @@ namespace Rtx
     void BloomPass::run(VkCommandBuffer commands, const ComputePipeline& pipeline, const Image& source,
         const Image& target, float mix) const
     {
-        // **Sampled from `GENERAL` rather than moved to a read-only layout.** A level is written as
+        // Sampled from `GENERAL` rather than moved to a read-only layout. A level is written as
         // a storage image and read as a sampled one within a few dispatches of each other, and the
         // layout this renderer keeps everything in is one both accesses are legal from.
         const std::array<VkDescriptorImageInfo, 2> images{

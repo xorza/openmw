@@ -35,17 +35,14 @@ namespace Rtx
         static constexpr Index sVertexBlock = MeshTable::sVertexBlock;
         static constexpr Index sIndexBlock = MeshTable::sIndexBlock;
 
-        /// Copies the vertex data into the shared buffers and returns the new mesh's index.
-        ///
-        /// Every attribute but `MeshArrays::mPositions` may be empty; when one is not it must match
-        /// the positions in length, and `MeshArrays::mIndices` must be a whole number of triangles
+        /// Copies the vertex data into the shared buffers and returns the new mesh's index. Every
+        /// attribute but `MeshArrays::mPositions` may be empty; when one is not it must match the
+        /// positions in length, and `MeshArrays::mIndices` must be a whole number of triangles
         /// addressing only those vertices — asserted, as a contract on the caller. Throws where the
-        /// mesh is longer than a block, because a vertex count comes out of a content file.
-        ///
-        /// `shape`, `deform` and `material` are the caller's findings, kept as `MeshRange`'s. A
-        /// mesh that deforms names the rig or the morph that poses it, whose vertex count must be
-        /// this mesh's, and hands over its bind pose, which stays in the shared buffers for as long
-        /// as the mesh does.
+        /// mesh is longer than a block, because a vertex count comes out of a content file. A mesh
+        /// that deforms names the rig or the morph that poses it, whose vertex count must be this
+        /// mesh's, and hands over its bind pose, which stays in the shared buffers for as long as
+        /// the mesh does.
         Index addMesh(const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None,
             Index deformer = sNoIndex, Index material = sNoIndex);
 
@@ -90,17 +87,15 @@ namespace Rtx
         void addEmitter(std::span<const Sprite> sprites, Index texture, bool additive, float width = 0.0f,
             Index lighting = sNoIndex);
 
-        /// Drops every mesh and material the caller did not name — the only way a scene loses
-        /// geometry, and nothing is renumbered by it: every bottom-level acceleration structure is
-        /// named by a mesh index, and compacting is what made a cell boundary cost a full rebuild.
-        /// Textures are not swept here: a material freed gives back what it named on its way out,
-        /// as `setMaterial` and `TextureTable::drop` do, and its layer and mask runs go with it.
-        /// Placements do not go: a slot is a name, and what it names has stopped moving.
-        ///
-        /// @param meshes every mesh to keep, each once, in any order.
-        /// @param materials the same for materials.
-        /// @return whether anything was freed. False is the ordinary frame, and it costs two
-        ///         comparisons: a scene that lost nothing has as many survivors as it had entries.
+        /// Drops every mesh and material the caller did not name, each named once in any order —
+        /// the only way a scene loses geometry, and nothing is renumbered by it: every bottom-level
+        /// acceleration structure is named by a mesh index, and compacting is what made a cell
+        /// boundary cost a full rebuild. Textures are not swept here: a material freed gives back
+        /// what it named on its way out, as `setMaterial` and `TextureTable::drop` do, and its
+        /// layer and mask runs go with it. Placements do not go: a slot is a name, and what it
+        /// names has stopped moving. Answers whether anything was freed, and false is the ordinary
+        /// frame at the cost of two comparisons: a scene that lost nothing has as many survivors as
+        /// it had entries.
         bool release(std::span<const Index> meshes, std::span<const Index> materials);
 
         /// Empties the per-frame lists a walk rebuilds wholesale: lights, deformed meshes, sprites
@@ -142,10 +137,9 @@ namespace Rtx
         /// Every placement's own box, in the world.
         osg::BoundingBoxf getBounds() const;
 
-        /// The same, clipped to `region` and with the water left out.
-        ///
-        /// **The sea is one sheet a hundred and fifty cells across**, so a caller asking how far the
-        /// ground reaches would clear any threshold at every coastline.
+        /// The same, clipped to `region` and with the water left out: the sea is one sheet a
+        /// hundred and fifty cells across, so a caller asking how far the ground reaches would
+        /// clear any threshold at every coastline.
         osg::BoundingBoxf getContentBoundsWithin(const osg::BoundingBoxf& region) const;
 
         /// Sorts the lights so that a frame's own order is a fact about the world. `SceneUploader`
@@ -159,7 +153,7 @@ namespace Rtx
         template <class Visit>
         void forEachPlacement(Visit&& visit) const;
 
-        /// **The two borrowed tables first, because a member is constructed in declaration order.**
+        /// The two borrowed tables first, because a member is constructed in declaration order.
         /// `MeshTable` takes a `DeformerTable&` and `MaterialTable` a `TextureTable&`, so either
         /// moved below its borrower would bind a reference to storage no constructor had reached.
         TextureTable mTextures;

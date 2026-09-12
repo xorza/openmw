@@ -32,7 +32,7 @@ namespace Rtx
         assert(bytes > 0);
         const std::uint32_t units = unitsFor(bytes);
 
-        // **A place a retired block left, remembered on the way past.** A room names its block by
+        // A place a retired block left, remembered on the way past. A room names its block by
         // index, so nothing is ever erased from this list; without filling the empty places again, a
         // route that compacts at every crossing would grow one place per block it ever made.
         std::size_t spare = mBlocks.size();
@@ -46,7 +46,7 @@ namespace Rtx
                 continue;
             }
 
-            // **Asked for and given back rather than measured first.** The allocator's rule for
+            // Asked for and given back rather than measured first. The allocator's rule for
             // where a run goes is best fit over a free list, and reimplementing it here to ask
             // whether it would fit is two answers to one question; a run given back at the end
             // shrinks the reach it just extended.

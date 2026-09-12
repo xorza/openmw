@@ -82,7 +82,7 @@ namespace Rtx
 
         const auto first = static_cast<std::uint32_t>(mZones.size()) * 2;
 
-        // **Reset here rather than once per command buffer.** The zones of one frame are spread over
+        // Reset here rather than once per command buffer. The zones of one frame are spread over
         // three submits and this class is not told where the boundaries are; resetting the pair
         // about to be written, in the buffer about to write it, is correct wherever it lands.
         vkCmdResetQueryPool(commands, mHandle.get(), first, 2);

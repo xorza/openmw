@@ -62,7 +62,7 @@ namespace Rtx
 
         for (const PreparedPart& part : model.mParts)
         {
-            // **The material before the mesh**, as the walk resolves them: a mesh records the
+            // The material before the mesh, as the walk resolves them: a mesh records the
             // material it arrives wearing.
             const Index material = into.adoptMaterial(part.mMaterial);
             const Index mesh = into.adoptMesh(*part.mDrawable, model.readingOf(part), material);

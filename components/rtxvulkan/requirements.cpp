@@ -40,7 +40,7 @@ namespace Rtx
             // how precisely they are known, and what the vendor adds. `Device::describeFault` is
             // what reads it, and `Device` enables its feature where the driver has it.
             VK_EXT_DEVICE_FAULT_EXTENSION_NAME,
-            // **What the driver says is left, which the heap's own size does not.** A budget moves
+            // What the driver says is left, which the heap's own size does not. A budget moves
             // with whatever else is on the card, and it is the figure a residency decision belongs
             // against — most of all on a card whose host-visible heap is a couple of hundred
             // megabytes. `MemoryAllocator::report` is what reads it.
@@ -55,7 +55,7 @@ namespace Rtx
             RequiredFeature{
                 "shaderInt64", +[](DeviceFeatures& f) -> VkBool32& { return f.mFeatures2.features.shaderInt64; } },
 
-            // **What lets `composite.comp` read one binding that is two formats.** The bounce it
+            // What lets `composite.comp` read one binding that is two formats. The bounce it
             // composites is the trace's own channel where nothing denoised the frame and the
             // cascade's where something did, and those are `rgba32f` and `rgba16f` — so the shader
             // states no format at all and the load converts from whatever the view holds.

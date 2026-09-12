@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-// **First, and in a block of its own so clang-format keeps it there.** The DLSSD helper below
+// First, and in a block of its own so clang-format keeps it there. The DLSSD helper below
 // reaches for `NVSDK_NGX_Create_ImageView_Resource_VK` and `NVSDK_NGX_VK_GBuffer` without including
 // the header that declares them, and sorted alphabetically it would come first.
 #include <nvsdk_ngx_helpers_vk.h>
@@ -71,7 +71,7 @@ namespace Rtx
         // Roughness comes from the normal target's fourth channel, so there is no separate resource
         // to bind and none to write.
         create.InRoughnessMode = NVSDK_NGX_DLSS_Roughness_Mode_Packed;
-        // **The enum is about the depth's shape, not where it came from.** `Linear` is 0 and `HW`
+        // The enum is about the depth's shape, not where it came from. `Linear` is 0 and `HW`
         // is 1, and what the trace writes is a projected clip value whichever shader computed it.
         // Saying `Linear` because a compute shader wrote it is true and irrelevant, and is the
         // second thing `FAIL_InvalidParameter` has meant here.

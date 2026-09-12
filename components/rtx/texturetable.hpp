@@ -97,10 +97,9 @@ namespace Rtx
             std::size_t operator()(std::string_view key) const { return std::hash<std::string_view>{}(key); }
         };
 
-        /// The two lookups, so that naming a texture again is the slot it already has.
-        ///
-        /// The scan these replace was O(materials x textures). A cell is a hundred of each and would
-        /// have paid it on every material it resolved.
+        /// The two lookups, so that naming a texture again is the slot it already has, where a scan
+        /// was O(materials x textures): a cell is a hundred of each and paid it on every material
+        /// it resolved.
         std::unordered_map<VFS::Path::Normalized, Index, VFS::Path::Hash, std::equal_to<>> mPathIndex;
         std::unordered_map<std::string, Index, BakedHash, std::equal_to<>> mBakedIndex;
 

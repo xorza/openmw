@@ -57,10 +57,9 @@ namespace Rtx
         /// Sixteen two-bit indices, the first texel in the lowest bits.
         std::uint32_t mIndices = 0;
 
-        /// Whether the fourth entry is transparent rather than a colour.
-        ///
-        /// BC1 spells that by storing its endpoints in ascending order, which costs it the fourth
-        /// palette entry. BC2 and BC3 carry alpha of their own and never do.
+        /// Whether the fourth entry is transparent rather than a colour. BC1 spells that by storing
+        /// its endpoints in ascending order, which costs it the fourth palette entry. BC2 and BC3
+        /// carry alpha of their own and never do.
         bool mCutout = false;
 
         /// @param punchThrough whether the ascending spelling means transparency, which is BC1's

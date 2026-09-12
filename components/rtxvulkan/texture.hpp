@@ -48,7 +48,7 @@ namespace Rtx
         VkDeviceSize getBytes() const { return mBytes; }
 
     private:
-        /// **By pointer, because `Image` is not movable** and a texture is: the array holds them in
+        /// By pointer, because `Image` is not movable and a texture is: the array holds them in
         /// a vector, and a slot given back is buried under the frame that may still be reading it.
         std::unique_ptr<Image> mImage;
         std::unique_ptr<Image> mShading;
@@ -56,10 +56,8 @@ namespace Rtx
         VkDeviceSize mBytes = 0;
     };
 
-    /// What a texture array stands: how many of its slots hold a texture, and what those come to.
-    ///
-    /// **One walk for both, so the two cannot disagree about which slots they counted.** A length
-    /// and a sum over what is live are different questions — `SceneStats::mTextureCount` says why.
+    /// What a texture array stands: how many of its slots hold a texture, and what those come to,
+    /// out of one walk, so the two cannot disagree about which slots they counted.
     struct TexturesHeld
     {
         std::uint32_t mCount = 0;

@@ -13,13 +13,12 @@
 
 namespace Rtx
 {
-    /// The slots of a table that nothing stands in.
-    ///
-    /// The lowest is what a take answers with, never the last one freed: `Rtx::Identity` hashes by
-    /// address, so a sweep retires in whatever order the allocator left its map in, and a list
-    /// taken from the back would hand the same live set different slots in two processes.
-    /// `apps/rtxtool/repeatable.sh` is what asks. Its own type because `GuiTextures` and the view
-    /// scenes hold rows `SlotRows` cannot — a `unique_ptr` is move-only and `SlotRows::take` copies.
+    /// The slots of a table that nothing stands in. The lowest is what a take answers with, never
+    /// the last one freed: `Rtx::Identity` hashes by address, so a sweep retires in whatever order
+    /// the allocator left its map in, and a list taken from the back would hand the same live set
+    /// different slots in two processes, which `apps/rtxtool/repeatable.sh` catches. Its own type
+    /// because `GuiTextures` and the view scenes hold rows `SlotRows` cannot — a `unique_ptr` is
+    /// move-only and `SlotRows::take` copies.
     class SlotPool
     {
     public:
@@ -57,9 +56,8 @@ namespace Rtx
     };
 
     /// The slots of one table that something is true of, in the order they were named, each once.
-    ///
     /// The list is what a frame walks and the byte is what keeps a slot named twice from appearing
-    /// twice, without searching the list — N²/2 comparisons for the N movers of a crowded cell.
+    /// twice without searching the list — N²/2 comparisons for the N movers of a crowded cell.
     /// Kept together, because apart they fall out of step in the one direction nothing catches.
     class SlotSet
     {
@@ -83,10 +81,9 @@ namespace Rtx
             mSlots.push_back(slot);
         }
 
-        /// The same, for a caller that is told one slot at a time and never sees the table.
-        ///
-        /// The pragma is a GCC 16 false positive: with `NDEBUG` the optimiser inlines the `resize`
-        /// and reports its uninitialised move as writing past a region it deduced from nothing.
+        /// The same, for a caller that is told one slot at a time and never sees the table. The
+        /// pragma is a GCC 16 false positive: with `NDEBUG` the optimiser inlines the `resize` and
+        /// reports its uninitialised move as writing past a region it deduced from nothing, where
         /// `mFlags[slot]` is in range by the `grow` on the line above it.
         void addMakingRoom(Index slot)
         {
@@ -196,17 +193,15 @@ namespace Rtx
     };
 
     /// A table of fixed-size rows: the rows, the slots nothing stands in, what holds each, and the
-    /// sweep.
-    ///
-    /// A slot is never moved and never closed up — a mesh index names a bottom-level acceleration
-    /// structure and a texture index is what a material points at — so a dropped row leaves a hole
-    /// and the next arrival takes the lowest one (`SlotPool`). The hold count lives here and the
-    /// table decides what a count of nought means: a texture is named by materials, a rig by the
-    /// meshes on it, a ground row by the residency that stood it. What a freed row holds is the
-    /// table's business too — a mesh row keeps its last tenant's offsets because a backend walks
-    /// every slot, a material row is emptied — so `free` writes nothing and `sweep` hands each row
-    /// to the caller before it goes. `take`'s growth hook reaches the arrays a table keeps parallel
-    /// to its rows.
+    /// sweep. A slot is never moved and never closed up — a mesh index names a bottom-level
+    /// acceleration structure and a texture index is what a material points at — so a dropped row
+    /// leaves a hole and the next arrival takes the lowest one (`SlotPool`). The hold count lives
+    /// here and the table decides what a count of nought means: a texture is named by materials, a
+    /// rig by the meshes on it, a ground row by the residency that stood it. What a freed row holds
+    /// is the table's business too — a mesh row keeps its last tenant's offsets because a backend
+    /// walks every slot, a material row is emptied — so `free` writes nothing and `sweep` hands
+    /// each row to the caller before it goes. `take`'s growth hook reaches the arrays a table
+    /// keeps parallel to its rows.
     template <class Row>
     class SlotRows
     {
@@ -267,7 +262,6 @@ namespace Rtx
             mFree.free(slot);
         }
 
-        /// Counts one more holder of `slot`.
         void hold(Index slot)
         {
             assert(slot < mRows.size());
@@ -364,7 +358,6 @@ namespace Rtx
         /// How many things hold each row, parallel to the rows.
         std::vector<std::uint32_t> mHolds;
 
-        /// The slots nothing stands in.
         SlotPool mFree;
 
         /// Which slots the last `mark` named, one flag per row. Held rather than made, because a

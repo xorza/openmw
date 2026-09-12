@@ -49,10 +49,9 @@ namespace Rtx
             wait(*mTarget);
         }
 
-        /// The one the last present read, or null where nothing has been presented at all.
-        ///
-        /// **Named apart because that null is the whole question `readPixels` asks**, and a headless
-        /// run never answers it.
+        /// The one the last present read, or null where nothing was presented at all — named apart
+        /// because that null is the whole question `readPixels` asks, and a headless run never
+        /// answers it.
         const Image* lastPresented() const { return mPresented; }
 
     private:

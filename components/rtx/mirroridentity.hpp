@@ -78,7 +78,7 @@ namespace Rtx
         /// is what this is called once to prevent.
         void reserve(std::size_t count) { mKnown.reserve(count); }
 
-        /// The entry for `key`, or `end()`. **Unstamped**: `stamp` is what says the walk met it.
+        /// The entry for `key`, or `end()`. Unstamped: `stamp` is what says the walk met it.
         template <class Key>
         Entry find(const Key& key)
         {
@@ -189,11 +189,9 @@ namespace Rtx
             return !mAbandoned && mReached + mHeld == mKnown.size();
         }
 
-        /// Drops every entry neither the epoch nor a hold keeps, and collects the slots the
-        /// survivors name, unsorted, which is how `SceneDesc::release` takes them. Not skipped where
-        /// the map is whole, because the list is read beside another table's.
-        ///
-        /// @return how many were dropped.
+        /// Drops every entry neither the epoch nor a hold keeps, says how many, and collects the
+        /// slots the survivors name, unsorted, which is how `SceneDesc::release` takes them. Not
+        /// skipped where the map is whole, because the list is read beside another table's.
         std::uint32_t sweep(std::vector<Index>& live)
         {
             live.clear();
@@ -218,9 +216,7 @@ namespace Rtx
         }
 
         /// Drops every entry neither the epoch nor a hold keeps, handing `drop` what each held on
-        /// its way out.
-        ///
-        /// **Skipped where the map is whole**, which is the point of the count.
+        /// its way out. Skipped where the map is whole, which is the point of the count.
         template <class Drop>
         void retire(Drop drop)
         {

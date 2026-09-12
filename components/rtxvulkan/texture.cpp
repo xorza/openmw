@@ -21,10 +21,9 @@ namespace Rtx
 {
     namespace
     {
-        /// How many textures a scene may hold.
-        ///
-        /// The descriptor array is sized once and bound for the run; a cell of Morrowind reaches a
-        /// couple of hundred, and a worldspace will not reach this.
+        /// How many textures a scene may hold. The descriptor array is sized once and bound for
+        /// the run; a cell of Morrowind reaches a couple of hundred, and a worldspace will not
+        /// reach this.
         constexpr std::uint32_t sMaxTextures = 4096;
 
         /// The one place a `TextureFormat` becomes Vulkan's. Every case is sRGB: the files hold
@@ -151,7 +150,7 @@ namespace Rtx
 
         uploadImage(device, batch, *mImage, data.mBytes, regions);
 
-        // **The map, in the same batch and left where the same sampler expects it.** One level and
+        // The map, in the same batch and left where the same sampler expects it. One level and
         // no chain: the map is read at level nought whatever the cone, because it has no detail for
         // a level to lose.
         const std::array<std::uint16_t, ShadingMap::sCells> stored = encodeShadingMap(data.mShading);
@@ -185,7 +184,7 @@ namespace Rtx
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "
                 + std::to_string(sMaxTextures) + " this array holds");
 
-        // **Allocated at the maximum the layout declares, not at what this scene brought.** Sizing
+        // Allocated at the maximum the layout declares, not at what this scene brought. Sizing
         // the set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `extend` then only ever writes the range that is new.
@@ -193,7 +192,7 @@ namespace Rtx
         mPool = std::move(own.mPool);
         mSet = own.mSet;
 
-        // **Sized to the table before anything is written into it**, so a description lands in the
+        // Sized to the table before anything is written into it, so a description lands in the
         // slot it names whatever sits either side of it. Every entry starts holding no image and no
         // map, which is what a free slot goes on holding: its descriptors are never written, and
         // the bindings' `PARTIALLY_BOUND` is what makes that legal for one nothing samples.

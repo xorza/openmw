@@ -27,10 +27,9 @@ namespace Rtx
     {
         std::array<FormatCount, sImageFormatCount> mMet{};
 
-        /// The pixel format the `Unnamed` count last stood for, or zero.
-        ///
-        /// The number is the whole of what makes that count worth printing: a format nothing names
-        /// is a canary, and the reader's next step is to look this one up.
+        /// The pixel format the `Unnamed` count last stood for, or zero — the whole of what makes
+        /// that count worth printing, because a format nothing names is a canary and the reader's
+        /// next step is to look this one up.
         std::uint32_t mUnnamed = 0;
 
         /// Counts `image` under its format, and its mips beside it.
@@ -47,10 +46,9 @@ namespace Rtx
         std::uint32_t mMeshesAdded = 0;
         std::uint32_t mMaterialsAdded = 0;
 
-        /// What the folding cost, of the meshes added above.
-        ///
-        /// **Timed rather than counted, because what it costs is triangles and not drawables.** One
-        /// entry of `mMeshesAdded` can be a building and its neighbour a crate.
+        /// What the folding cost, of the meshes added above. Timed rather than counted, because
+        /// what it costs is triangles and not drawables: one entry of `mMeshesAdded` can be a
+        /// building and its neighbour a crate.
         double mFoldMs = 0.0;
 
         /// Of those, the meshes that were nothing but reversed pairs and left here as one copy

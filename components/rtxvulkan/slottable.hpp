@@ -43,10 +43,9 @@ namespace Rtx
 
         std::size_t size() const { return mRows.size(); }
 
-        /// The host-side rows, which is what every copy is written from.
         std::span<const Row> getRows() const { return mRows; }
 
-        /// The row at `at`, to be written. **Owed by every copy from here on**, including the one
+        /// The row at `at`, to be written. Owed by every copy from here on, including the one
         /// about to be synced: a caller that writes a row and syncs is a caller whose copy has it.
         Row& write(Index at)
         {

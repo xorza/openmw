@@ -5,10 +5,9 @@
 
 namespace Rtx
 {
-    /// Which scene a call is about: the world, or one a view asked for.
-    ///
-    /// **The world is a case and not a sentinel.** A `~0u` in the same value space as the indices
-    /// `addViewScene` hands out is a view table indexed out of range by a caller that forgot it.
+    /// Which scene a call is about: the world, or one a view asked for. The world is a case and
+    /// not a sentinel, because a `~0u` in the same value space as the indices `addViewScene` hands
+    /// out is a view table indexed out of range by a caller that forgot it.
     class SceneSlot
     {
     public:
@@ -43,10 +42,9 @@ namespace Rtx
         std::uint32_t mIndex = sWorldIndex;
     };
 
-    /// One texture the GUI draws from, or nothing.
-    ///
-    /// **Nothing is a state and not an index**, because a MyGUI texture exists before it is given
-    /// one: `createManual` is what takes the slot, and everything before that has to answer.
+    /// One texture the GUI draws from, or nothing. Nothing is a state and not an index, because a
+    /// MyGUI texture exists before it is given one: `createManual` is what takes the slot, and
+    /// everything before that has to answer.
     class GuiSlot
     {
     public:

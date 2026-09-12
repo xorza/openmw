@@ -87,7 +87,7 @@ namespace Rtx
 
         const VkRayTracingPipelineCreateInfoKHR pipeline{
             .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
-            // **Asked for and, on this driver, not answered.** NVIDIA reports one executable for
+            // Asked for and, on this driver, not answered. NVIDIA reports one executable for
             // every compute pipeline in this renderer and none at all for a ray tracing one —
             // `Device::reportPipeline` is where that shows. The flag stays because it costs the
             // frame nothing and is what makes the report appear the day a driver answers.
@@ -96,7 +96,7 @@ namespace Rtx
             .pStages = stages.data(),
             .groupCount = static_cast<std::uint32_t>(groups.size()),
             .pGroups = groups.data(),
-            // **One, and one is the whole of it.** The launch traces a hit object and runs the
+            // One, and one is the whole of it. The launch traces a hit object and runs the
             // shader it names; that shader traces again with inline ray queries, which are not
             // recursion and cost the stack nothing. Nothing anywhere calls `traceRayEXT`, so no
             // second level exists to be sized for.
@@ -122,7 +122,7 @@ namespace Rtx
         const VkDeviceSize hitStride
             = alignUp(limits.shaderGroupHandleSize + hitRecordBytes, limits.shaderGroupHandleAlignment);
 
-        // **A region's size is its stride for the ray generation stage**, and both are aligned to
+        // A region's size is its stride for the ray generation stage, and both are aligned to
         // the base alignment rather than the handle's, which is what makes that one record longer
         // than the two kinds beside it.
         const VkDeviceSize raygenStride = alignUp(stride, limits.shaderGroupBaseAlignment);

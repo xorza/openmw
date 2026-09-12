@@ -44,9 +44,8 @@ namespace Rtx
             return value;
         }
 
-        /// The mean opaque texel of `tx_masser_full.dds` and `tx_secunda_full.dds`, linear.
-        ///
-        /// Measured off the shipped portraits rather than chosen: one red, one grey, and the ratio
+        /// The mean opaque texel of `tx_masser_full.dds` and `tx_secunda_full.dds`, linear —
+        /// measured off the shipped portraits rather than chosen: one red, one grey, and the ratio
         /// between them is what tells the two moons apart at a glance.
         const osg::Vec3f sMasserFace(0.0332f, 0.0099f, 0.0123f);
         const osg::Vec3f sSecundaFace(0.0440f, 0.0373f, 0.0295f);
@@ -64,10 +63,9 @@ namespace Rtx
             return std::atan(halfWidth / 1000.0f);
         }
 
-        /// The same, worked out once.
-        ///
-        /// **Both moons are placed every frame**, and `setting` builds two strings to look a key up
-        /// with — an allocation on the frame path, for a pair of numbers that are fixed for the run.
+        /// The same, worked out once, because both moons are placed every frame and `setting`
+        /// builds two strings to look a key up with — an allocation on the frame path, for a pair
+        /// of numbers that are fixed for the run.
         float angularRadiusOf(Moon moon)
         {
             static const float sMasser = subtendedBy(Moon::Masser);
@@ -153,7 +151,7 @@ namespace Rtx
         const osg::Quat arc(alongArc, osg::Vec3f(1.0f, 0.0f, 0.0f));
         const osg::Quat swing(aboutZenith, osg::Vec3f(0.0f, 0.0f, 1.0f));
 
-        // **The face's own attitude, and not a billboard's.** The quad the game draws starts facing
+        // The face's own attitude, and not a billboard's. The quad the game draws starts facing
         // down, so its rotation carries the same quarter turn — which is what leaves the portrait
         // upright against the moon's arc rather than against the horizon.
         const osg::Quat attitude = osg::Quat(alongArc - 0.5f * osg::PIf, osg::Vec3f(1.0f, 0.0f, 0.0f)) * swing;
@@ -168,12 +166,12 @@ namespace Rtx
             // the index is the angle, and the sign of its sine is the limb the light is on.
             .mPhaseAngle = static_cast<float>(phase) * 0.25f * osg::PIf,
 
-            // **Nought until it is on its arc**, which the engine states by leaving the angle there
+            // Nought until it is on its arc, which the engine states by leaving the angle there
             // until a moon rises and returning it there once it sets. Without this a moon that is
             // down sits on the horizon all night, because nothing else in the placement says so.
             .mAlpha = alongArcDegrees > 0.0f ? alpha : 0.0f,
 
-            // **The file's own mean, unscaled.** `Shaders::MOON_RADIANCE` is what takes a
+            // The file's own mean, unscaled. `Shaders::MOON_RADIANCE` is what takes a
             // moon's texels to radiance, and it multiplies this where no portrait is loaded and the
             // portrait itself where one is — so the level lives in one place either way.
             .mColour = moon == Moon::Masser ? sMasserFace : sSecundaFace,
@@ -183,7 +181,7 @@ namespace Rtx
         placement.mRight.normalize();
         placement.mUp.normalize();
 
-        // **The air, over what it shows and what it sends alike**, and read off the direction rather
+        // The air, over what it shows and what it sends alike, and read off the direction rather
         // than off the arc: the slant path is measured on an elevation, and the two agree only
         // because this arc runs through the zenith.
         placement.mThroughAir = airTransmittance(placement.mDirection.z());

@@ -24,7 +24,7 @@ namespace Rtx
     {
         for (auto it = shading.rbegin(); it != shading.rend(); ++it)
         {
-            // **`static_cast`, because the attribute is keyed by type.** A state set answers
+            // `static_cast`, because the attribute is keyed by type. A state set answers
             // `BLENDFUNC` with a `BlendFunc` or with nothing, and this runs once per state set of
             // every drawable's chain — which is the frame path.
             const auto* blend
@@ -40,8 +40,8 @@ namespace Rtx
 
     float fadeThrough(const osg::StateSet& stateSet, float inherited)
     {
-        // **Asked of the list before the name, because nearly every state set in the world has no
-        // uniform at all.** `osg::StateSet::getUniform` searches a `std::map` keyed on
+        // Asked of the list before the name, because nearly every state set in the world has no
+        // uniform at all. `osg::StateSet::getUniform` searches a `std::map` keyed on
         // `std::string`, and this is called at every node and every drawable a walk enters — a
         // tree walk and a `memcmp` apiece, tens of thousands of times a frame. What writes the two
         // uniforms below is `MWRender::TransparencyUpdater`, on the handful of actors the game is

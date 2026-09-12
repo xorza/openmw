@@ -131,7 +131,7 @@ namespace Rtx
         };
         checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, mSets.data()), "vkAllocateDescriptorSets");
 
-        // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
+        // Sampled from `GENERAL` rather than moved to a read-only layout, for the reason
         // `BloomPass` gives: these are written as storage images and read as sampled ones a
         // dispatch apart, and `GENERAL` is the one layout both accesses are legal from.
         for (std::size_t parity = 0; parity < mSets.size(); ++parity)
@@ -214,7 +214,7 @@ namespace Rtx
                                               VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
                     Use::sComputeWrite));
 
-        // **From `GENERAL` and not from undefined**, which is the whole of what makes a history a
+        // From `GENERAL` and not from undefined, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand
         // this frame a volume of nothing to average against.
         for (const Image* image : { &mScatter[1 - written], &mSunward[1 - written] })

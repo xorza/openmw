@@ -24,7 +24,7 @@ namespace Rtx
             computeBinding(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
         };
 
-        /// **Both reads, because a level's inputs are sampled and its target is storage.** An image
+        /// Both reads, because a level's inputs are sampled and its target is storage. An image
         /// is each in turn as the levels ping-pong, so a dependency that named one of the two would
         /// leave the other frame's access uncovered.
         constexpr VkAccessFlags2 sReads = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
@@ -79,7 +79,7 @@ namespace Rtx
         mScratch->transition(commands,
             ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, sReads }, Use::sComputeWrite);
 
-        // **One assignment and not eight**, so the filter's rays and the trace's cannot come to
+        // One assignment and not eight, so the filter's rays and the trace's cannot come to
         // differ: this pass is handed the one struct, and the shader rebuilds the rays with the
         // trace's own `rayAt`.
         Shaders::AtrousConstants level{

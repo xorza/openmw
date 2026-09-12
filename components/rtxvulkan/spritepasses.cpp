@@ -116,7 +116,7 @@ namespace Rtx
 
         openZone(timer, commands, "shade");
 
-        // **Behind the write that put the sprites there**, which is the host's, and behind whatever
+        // Behind the write that put the sprites there, which is the host's, and behind whatever
         // the queue last did to this copy — the frame before last's trace. The caller waited that
         // frame's fence, but a wait on the host is not a dependency on the queue.
         handOver(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -126,7 +126,7 @@ namespace Rtx
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mShade.getHandle());
         vkCmdPushConstants(commands, mShade.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(shade), &shade);
 
-        // **One workgroup per emitter per light, and the ones with nothing to do exit at once.** The
+        // One workgroup per emitter per light, and the ones with nothing to do exit at once. The
         // count is tens, so a workgroup that reads its emitter and returns is cheaper than a host
         // pass that worked out which ones to launch and wrote a list of them.
         vkCmdDispatch(commands, shade.mEmitterCount * Shaders::SPRITE_SHADE_LIGHTS, 1, 1);

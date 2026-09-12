@@ -90,7 +90,7 @@ namespace Rtx
         /// Refilled per emitter and never freed: a cell's plumes are hundreds of discs apiece.
         std::vector<Sprite> mSpriteScratch;
 
-        /// **Noted now and read when the walk is over.** Whether a system has been integrated this
+        /// Noted now and read when the walk is over. Whether a system has been integrated this
         /// frame depends on where its `ParticleSystemUpdater` sits among its siblings — above it in
         /// everything `NifOsg` builds, but that is the content's promise and not this walk's.
         /// Reading after the walk has settled is what makes the question stop existing.

@@ -40,10 +40,9 @@ namespace Rtx
 
         Index add(const Material& material);
 
-        /// Rewrites a material in place, keeping its slot and everything standing on it.
-        ///
-        /// @return whether what traversal is told about the surfaces wearing it changed — a fade
-        ///         crossing opaque does, a flipbook turning does not.
+        /// Rewrites a material in place, keeping its slot and everything standing on it, and says
+        /// whether what traversal is told about the surfaces wearing it changed — a fade crossing
+        /// opaque does, a flipbook turning does not.
         bool set(Index material, const Material& what);
 
         /// Copies `weights` into the shared mask table and returns where they landed. One float per

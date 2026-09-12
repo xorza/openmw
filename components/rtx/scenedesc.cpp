@@ -174,7 +174,7 @@ namespace Rtx
             if (!instance.isPlaced())
                 continue;
 
-            // **Each mesh's own box carried through its instances**, rather than every vertex of
+            // Each mesh's own box carried through its instances, rather than every vertex of
             // every instance — the difference between eight transforms per instance and several
             // hundred. The mesh kept it as its vertices arrived, so nothing is walked here at all.
             const osg::BoundingBoxf& box = mMeshes.getRows()[instance.mMesh].mBounds;

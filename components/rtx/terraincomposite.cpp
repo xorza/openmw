@@ -178,7 +178,7 @@ namespace Rtx
         assert(!layers.empty() && "a composite of no layers is a chunk with no ground at all");
         assert(extent > 0 && std::has_single_bit(extent) && "a composite extent the chain cannot halve to one texel");
 
-        // **Grown to the deepest stack met and never shrunk**, so a ground decodes into the buffers
+        // Grown to the deepest stack met and never shrunk, so a ground decodes into the buffers
         // the last chunk left rather than into eighteen fresh ones. A shorter stack uses the front.
         if (scratch.mGrounds.size() < layers.size())
             scratch.mGrounds.resize(layers.size());
@@ -186,7 +186,7 @@ namespace Rtx
         for (std::size_t index = 0; index < layers.size(); ++index)
             prepare(layers[index], extent, scratch.mGrounds[index]);
 
-        // **`mCoarser` to the same size, because the reduction swaps the two.** Only `mLight` is
+        // `mCoarser` to the same size, because the reduction swaps the two. Only `mLight` is
         // ever assigned the whole extent, so without this the other leaves the first chunk holding a
         // quarter of it — and where the swaps put that one under the next chunk's sum, it has to
         // grow once more. Reserved, the first chunk pays for both and none after it pays at all.
@@ -257,7 +257,7 @@ namespace Rtx
                             + sampleAt(ground.mCoarse, wrappedTap(atU, ground.mCoarse.mWidth), coarseDown)
                                 * ground.mBetween;
 
-                    // **The layer's own texel, at the layer's own tiled coordinates.** The estimate
+                    // The layer's own texel, at the layer's own tiled coordinates. The estimate
                     // repeats with the texture and this is the last point at which that tiling is
                     // still known — dividing the finished sum, at the chunk's coordinates, would be
                     // correcting a texture that no longer exists by a map that never described it.
@@ -319,7 +319,7 @@ namespace Rtx
 
     TextureData TerrainComposite::describe() const
     {
-        // **Neutral, and one grid shared by every composite there will ever be.** A texture with no
+        // Neutral, and one grid shared by every composite there will ever be. A texture with no
         // map at all reads whatever the array's stand-in holds, and there is nothing left for a real
         // one to say: the light painted into the ground came off per tile during the bake, which is
         // the only place the tiling was still known.

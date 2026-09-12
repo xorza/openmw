@@ -65,7 +65,7 @@ namespace Rtx
             extensions.push_back(name);
         for (const char* const name : mPhysicalDevice.getAvailableOptionalExtensions())
         {
-            // **The swapchain half rests on the surface half**, which is an instance extension: a
+            // The swapchain half rests on the surface half, which is an instance extension: a
             // headless run loads neither, and a device that asked for this one without it is a
             // device the driver may refuse.
             if (std::strcmp(name, VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0
@@ -80,7 +80,7 @@ namespace Rtx
         // without DLSS must not fail on a device that lacks them.
         for (const char* const name : Dlss::getDeviceExtensions())
         {
-            // **`VK_EXT_buffer_device_address` cannot come along**, and not because it is missing:
+            // `VK_EXT_buffer_device_address` cannot come along, and not because it is missing:
             // the feature it provides is Vulkan 1.2 core here, enabled through
             // `VkPhysicalDeviceVulkan12Features`, and the spec forbids asking for both. NGX names
             // the pre-1.2 spelling because it supports drivers older than this one does.
@@ -99,7 +99,7 @@ namespace Rtx
         DeviceFeatures features;
         requestRequiredFeatures(features);
 
-        // **Outside `DeviceFeatures`, because these are the features that are optional.** That type
+        // Outside `DeviceFeatures`, because these are the features that are optional. That type
         // is what the renderer requires, asked and enabled as one list, and a feature it can do
         // without has no place in a list a device is refused for lacking.
         VkPhysicalDeviceFaultFeaturesEXT fault{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
@@ -111,7 +111,7 @@ namespace Rtx
         const bool offersPresentFences = instance.hasSurfaceMaintenance()
             && mPhysicalDevice.hasOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
 
-        // **Only what the device offers is chained, into the query and into the creation alike.** A
+        // Only what the device offers is chained, into the query and into the creation alike. A
         // driver may offer an extension without the feature it provides, so each has to be asked;
         // asking for one whose extension is not there is a structure the driver was never told to
         // expect.
@@ -211,7 +211,7 @@ namespace Rtx
         }
         catch (...)
         {
-            // **Before the device, and by name rather than by member order.** Unwinding runs these
+            // Before the device, and by name rather than by member order. Unwinding runs these
             // destructors after this block, and each calls into the device: the cache reads itself
             // back out of it and a block hands its memory to it. A device destroyed first would be
             // a handle they then use.
@@ -291,7 +291,7 @@ namespace Rtx
                     },
                     VkPipelineExecutableStatisticKHR{ .sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR });
 
-            // **Whatever the driver chose to say, and not a list this side picked.** The names are
+            // Whatever the driver chose to say, and not a list this side picked. The names are
             // the compiler's own — NVIDIA reports registers and spills, another vendor reports
             // something else — so a fixed set of fields here would be a set that goes empty on the
             // next driver. `openmw-rtxtool` prints them verbatim.

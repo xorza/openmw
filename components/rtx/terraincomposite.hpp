@@ -22,10 +22,9 @@ namespace Rtx
     /// `--delight` reaches the near field and not distant ground.
     inline constexpr float sCompositeDelight = 1.0f;
 
-    /// One layer of the stack a chunk's ground is drawn from, as a bake needs it.
-    ///
-    /// The same four facts `MaterialLayer` carries, with the images themselves in place of the slots
-    /// they were put in: a bake reads texels, and the scene's table holds indices.
+    /// One layer of the stack a chunk's ground is drawn from, as a bake needs it: the same four
+    /// facts `MaterialLayer` carries, with the images themselves in place of the slots they were
+    /// put in, because a bake reads texels and the scene's table holds indices.
     struct CompositeLayer
     {
         /// The tiling ground texture, decoded, with whatever mip chain its file carried.
@@ -94,8 +93,8 @@ namespace Rtx
         /// The sum, in light, one entry a texel of the level being built.
         std::vector<osg::Vec3f> mLight;
 
-        /// The level under it, while the chain is being reduced. **Swapped with `mLight` at every
-        /// level**, so the two take turns holding the finer half and both are reserved to the
+        /// The level under it, while the chain is being reduced. Swapped with `mLight` at every
+        /// level, so the two take turns holding the finer half and both are reserved to the
         /// finest.
         std::vector<osg::Vec3f> mCoarser;
 
@@ -132,7 +131,6 @@ namespace Rtx
         TerrainComposite& operator=(TerrainComposite&&) noexcept = default;
 
         /// The baked image, spanning storage this object owns and carrying a neutral shading map.
-        ///
         /// `mSlot` and `mName` are the caller's to fill: the scene decides where a composite goes
         /// and what key found it.
         TextureData describe() const;

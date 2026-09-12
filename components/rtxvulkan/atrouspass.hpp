@@ -26,10 +26,9 @@ namespace Rtx
     public:
         AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        /// Makes room for a frame this size, if the last one was not. Before the first frame.
-        ///
-        /// The levels ping-pong, so a filtered frame needs a second channel to land in. Idempotent,
-        /// and the caller is expected to have waited for anything still reading the old one.
+        /// Makes room for a frame this size, if the last one was not. Before the first frame. The
+        /// levels ping-pong, so a filtered frame needs a second channel to land in. The caller
+        /// waited for anything still reading the old one.
         void resize(std::uint32_t width, std::uint32_t height);
 
         /// Runs every level and returns the channel the result ended up in, because the levels

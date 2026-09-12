@@ -19,10 +19,9 @@ namespace Rtx
     class PhysicalDevice
     {
     public:
-        /// Picks a device, preferring discrete over anything else.
-        ///
-        /// Throws `Error` listing every candidate and what each was missing when none qualifies —
-        /// the one moment where a wall of text is the useful answer.
+        /// Picks a device, preferring discrete over anything else. Throws `Error` listing every
+        /// candidate and what each was missing when none qualifies — the one moment where a wall
+        /// of text is the useful answer.
         static PhysicalDevice select(VkInstance instance);
 
         VkPhysicalDevice getHandle() const { return mHandle; }

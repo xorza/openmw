@@ -19,7 +19,7 @@ namespace Rtx
     /// and the layers silent; `record` asserts it.
     struct DlssInputs
     {
-        /// The trace's radiance at render resolution, **undenoised**. Ray Reconstruction is the
+        /// The trace's radiance at render resolution, undenoised. Ray Reconstruction is the
         /// denoiser: handing it a filtered frame is asking it to reconstruct detail already blurred
         /// away.
         const Image& mColour;

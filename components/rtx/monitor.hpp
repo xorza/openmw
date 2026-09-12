@@ -19,10 +19,8 @@ namespace Rtx
     public:
         Monitor() = default;
 
-        /// Runs `write` under the lock and wakes nobody, answering with whatever it answered.
-        ///
-        /// **By value**, so a caller cannot hand back a reference into state the lock was what
-        /// guarded.
+        /// Runs `write` under the lock and wakes nobody, answering with whatever it answered — by
+        /// value, so a caller cannot hand back a reference into state the lock guarded.
         template <class Write>
         auto under(Write write)
         {
@@ -30,10 +28,9 @@ namespace Rtx
             return write();
         }
 
-        /// The frame's side: runs `write` under the lock, then wakes one worker.
-        ///
-        /// One and not all, because what a `give` adds is one piece of work. A caller that adds
-        /// several calls this several times, which is what wakes several.
+        /// The frame's side: runs `write` under the lock, then wakes one worker and not all,
+        /// because what a `give` adds is one piece of work. A caller that adds several calls this
+        /// several times, which is what wakes several.
         template <class Write>
         void give(Write write)
         {
@@ -49,10 +46,9 @@ namespace Rtx
             mToFrame.notify_all();
         }
 
-        /// The frame's side: waits until `ready`.
-        ///
-        /// **False where the monitor closed**, which is a worker that threw or a run that is over.
-        /// A frame that waits on a worker which has gone would otherwise wait for ever.
+        /// The frame's side: waits until `ready`. False where the monitor closed, which is a worker
+        /// that threw or a run that is over, because a frame that waits on a worker which has gone
+        /// would otherwise wait for ever.
         template <class Ready>
         bool await(Ready ready)
         {
@@ -110,10 +106,9 @@ namespace Rtx
             mToFrame.notify_all();
         }
 
-        /// Throws what the first worker to fail threw, and nothing where none did.
-        ///
-        /// **Thrown once.** The owner asks at a point where it can report, and a second ask after
-        /// that has nothing to say.
+        /// Throws what the first worker to fail threw, and nothing where none did. Thrown once: the
+        /// owner asks at a point where it can report, and a second ask after that has nothing to
+        /// say.
         void rethrowFailure()
         {
             const std::exception_ptr failed = under([&] { return std::exchange(mFailed, nullptr); });
@@ -122,7 +117,7 @@ namespace Rtx
         }
 
     private:
-        /// Keeps the first failure and closes. **The first and not the last**, so the message names
+        /// Keeps the first failure and closes. The first and not the last, so the message names
         /// what actually went wrong rather than whichever worker finished after it.
         void fail(std::exception_ptr thrown)
         {
@@ -136,7 +131,7 @@ namespace Rtx
 
         std::mutex mMutex;
 
-        /// **`condition_variable_any` on the worker's side and the plain one on the frame's**,
+        /// `condition_variable_any` on the worker's side and the plain one on the frame's,
         /// because only a worker waits on a stop token — and the any-form carries a second lock of
         /// its own that the frame has no use for.
         std::condition_variable_any mToWorker;

@@ -243,7 +243,7 @@ namespace Rtx
             return;
         }
 
-        // **The blocks go with what callers handed over**, because a deferred copy has not run: the
+        // The blocks go with what callers handed over, because a deferred copy has not run: the
         // pool holds both until the submit that carries this batch has been waited on.
         mStaging.insert(
             mStaging.end(), std::make_move_iterator(mBlocks.begin()), std::make_move_iterator(mBlocks.end()));
@@ -266,7 +266,7 @@ namespace Rtx
 
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage)
     {
-        // **Host memory and not the aperture.** These bytes are written once and read once by the
+        // Host memory and not the aperture. These bytes are written once and read once by the
         // copy below, so putting them in the video memory the host writes into spends the scarcest
         // heap on a card without resizable BAR for a buffer that is gone by the next submit.
         Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
@@ -278,7 +278,7 @@ namespace Rtx
         const VkBufferCopy region{ .size = bytes.size() };
         vkCmdCopyBuffer(commands, staging.getHandle(), result.getHandle(), 1, &region);
 
-        // **What makes an upload self-contained.** Batched, the next thing recorded may be an
+        // What makes an upload self-contained. Batched, the next thing recorded may be an
         // acceleration structure built out of exactly these bytes, and without this it would read
         // them before the copy had run.
         const VkBufferMemoryBarrier2 copied{

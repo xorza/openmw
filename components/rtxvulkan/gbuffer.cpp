@@ -54,7 +54,7 @@ namespace Rtx
         /// Three bytes for three fractions, which is what `gbuffer.h` argues a modulation is.
         constexpr VkFormat sStars = GBUFFER_STARS;
 
-        /// **`SAMPLED` on all of them, and it is not decoration.** DLSS samples every input it is
+        /// `SAMPLED` on all of them, and it is not decoration. DLSS samples every input it is
         /// handed; one without the bit reads as zero, NGX returns success and the validation layers
         /// say nothing, so the whole frame comes back black with nothing pointing at the cause. It
         /// costs no memory, so every channel carries it rather than only the five DLSS reads today.
@@ -106,7 +106,7 @@ namespace Rtx
         const std::uint32_t height, const bool layers)
         : mCarried(layers ? sChannelCount : bindingOf(Channel::Transparency))
     {
-        // **The three the eye sees through are last, so one count says which are the frame's.**
+        // The three the eye sees through are last, so one count says which are the frame's.
         // `sEveryChannel` is in binding order and `gbuffer.h` puts them at the end.
         static_assert(
             bindingOf(Channel::Transparency) + 3 == sChannelCount, "the layer channels are no longer the last three");

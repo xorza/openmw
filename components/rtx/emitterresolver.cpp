@@ -72,14 +72,14 @@ namespace Rtx
             // bake, and it is made when the texture is opened for upload — `SceneTextures`.
             known->second.mLighting = mScene.textures().addBaked(SpriteLightMap::keyFor(path));
 
-            // **Held, because nothing else can name them.** An emitter is a placement and is thrown
+            // Held, because nothing else can name them. An emitter is a placement and is thrown
             // away every frame, so this entry is the only lasting thing that says the sprite is in
             // use; the scene frees the slots when the sweep below lets go of them.
             mScene.textures().hold(known->second.mIndex);
             mScene.textures().hold(known->second.mLighting);
         }
 
-        // **Noted now and read when the walk is over.** Whether this system has been integrated
+        // Noted now and read when the walk is over. Whether this system has been integrated
         // this frame depends on where its `ParticleSystemUpdater` sits among its siblings — above
         // it in everything `NifOsg` builds, but that is the content's promise and not this walk's.
         // Reading after the walk has settled is what makes the question stop existing.
@@ -123,7 +123,7 @@ namespace Rtx
         const float width = oriented ? particles.getAlignVectorX().length() : 0.0f;
         const osg::Vec3f authored = oriented ? particles.getAlignVectorY() : osg::Vec3f();
 
-        // **Turned by the placement and not scaled by it**, because a sprite's radius already
+        // Turned by the placement and not scaled by it, because a sprite's radius already
         // carries the scale: the quad reaches `mAxis * mRadius`, so scaling both would square it.
         // A placement that collapses to nothing gives a zero axis, and its sprites have no radius
         // to draw with either.
@@ -131,7 +131,7 @@ namespace Rtx
         const auto orient
             = [&](const osg::Vec3f& axis) { return osg::Matrixf::transform3x3(axis, place) * inverseScale; };
 
-        // **The angle one run of particles shares, and the axis it gave.** A shooter fires every
+        // The angle one run of particles shares, and the axis it gave. A shooter fires every
         // particle it makes with the same angle, so a frame of rain is one or two runs — and this is
         // what keeps it from building a rotation matrix per drop.
         osg::Vec3f angle;

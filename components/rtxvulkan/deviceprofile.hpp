@@ -17,9 +17,8 @@ namespace Rtx
     /// a test hands it an RTX 2060's heaps and asks what the renderer would do.
     struct DeviceProfile
     {
-        /// What stops this renderer running here, named, or empty where nothing does.
-        ///
-        /// **Every other field means something only when this is empty.**
+        /// What stops this renderer running here, named, or empty where nothing does. Every other
+        /// field means something only when this is empty.
         std::string mObstacle;
 
         /// The queue family that can do everything this renderer submits.

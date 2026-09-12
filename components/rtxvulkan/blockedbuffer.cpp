@@ -30,7 +30,7 @@ namespace Rtx
         if (wanted <= mBlocks.size())
             return;
 
-        // **The fill below and the copies after it write the same bytes.** A run written into a
+        // The fill below and the copies after it write the same bytes. A run written into a
         // block this call just emptied is a write after a write, and the queue orders neither
         // against the other on its own — the layers say so at once, which is how this was found.
         const VkMemoryBarrier2 emptied{
@@ -50,7 +50,7 @@ namespace Rtx
         {
             Buffer made = Buffer::deviceLocal(*mDevice, getBlockBytes(), mUsage);
 
-            // **Zeroed at birth, not left as the allocator found it.** A block is longer than what
+            // Zeroed at birth, not left as the allocator found it. A block is longer than what
             // is put in it and holds gaps between the runs handed out, and a picture that depended
             // on what was last in that memory would depend on it.
             vkCmdFillBuffer(batch.getCommands(), made.getHandle(), 0, VK_WHOLE_SIZE, 0);

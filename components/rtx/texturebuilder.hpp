@@ -30,10 +30,9 @@ namespace Rtx
     /// `MipChain` builds the rest. Throws for a format Morrowind does not produce.
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
 
-    /// The image at `path`, or null where nothing could be read there.
-    ///
-    /// **Null and not an exception**, because a live scene graph names textures that were never
-    /// files and a renderer that fell over on one would fall over on a cell.
+    /// The image at `path`, or null where nothing could be read there — null and not an exception,
+    /// because a live scene graph names textures that were never files and a renderer that fell
+    /// over on one would fall over on a cell.
     osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, VFS::Path::NormalizedView path);
 
     /// Where images already described off the frame are found, by the image, so an arrival's
@@ -111,8 +110,7 @@ namespace Rtx
         std::vector<Kept> mKept;
 
         /// Every texture's estimated lighting, back to back and `SHADING_EXTENT` squared apiece.
-        ///
-        /// **Made on load and thrown away with the cell**, because a cache would cost more than it
+        /// Made on load and thrown away with the cell, because a cache would cost more than it
         /// saved: a cell's couple of hundred textures estimate in well under a millisecond.
         std::vector<float> mShading;
 

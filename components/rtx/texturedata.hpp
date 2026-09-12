@@ -85,8 +85,7 @@ namespace Rtx
     };
 
     /// How many bytes one block of a format occupies, or zero where its texels are not blocked.
-    ///
-    /// **Exhaustive rather than defaulted**, so that a format added to the enum is a build failure
+    /// Exhaustive rather than defaulted, so that a format added to the enum is a build failure
     /// here rather than a block format quietly read as though its texels were loose bytes.
     inline std::uint32_t blockBytes(TextureFormat format)
     {
@@ -106,10 +105,9 @@ namespace Rtx
         throw Error("unknown texture format");
     }
 
-    /// Whether a format's bytes are display-encoded, which every content format's are.
-    ///
-    /// The one that is not exists for tests: a value written into an `Rgba8Unorm` texture is the
-    /// value light transport sees, with no transfer function between the expectation and the answer.
+    /// Whether a format's bytes are display-encoded, which every content format's are. The one
+    /// that is not exists for tests: a value written into an `Rgba8Unorm` texture is the value
+    /// light transport sees, with no transfer function between the expectation and the answer.
     inline bool isSrgb(TextureFormat format)
     {
         return format != TextureFormat::Rgba8Unorm;

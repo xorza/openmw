@@ -11,10 +11,9 @@
 
 namespace Rtx
 {
-    /// How many workgroups of `workgroup` lanes cover `extent` of them.
-    ///
-    /// **One statement for every pass, because a dispatch that fell a group short would leave a
-    /// stripe of the frame untouched** — and a rounding written once is one a test can hold.
+    /// How many workgroups of `workgroup` lanes cover `extent` of them. One statement for every
+    /// pass, because a dispatch that fell a group short would leave a stripe of the frame
+    /// untouched — and a rounding written once is one a test can hold.
     constexpr std::uint32_t groupsFor(std::uint32_t extent, std::uint32_t workgroup)
     {
         return (extent + workgroup - 1) / workgroup;
@@ -38,7 +37,7 @@ namespace Rtx
         return bindings;
     }
 
-    /// One descriptor write. **`info` is read when the write is submitted and not here**, so it has
+    /// One descriptor write. `info` is read when the write is submitted and not here, so it has
     /// to outlive the array this goes into — which is what keeps every caller's infos a local.
     constexpr VkWriteDescriptorSet imageWrite(std::uint32_t binding, const VkDescriptorImageInfo& info,
         VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)

@@ -51,7 +51,7 @@ namespace Rtx
             .scissorCount = 1,
         };
 
-        // **No culling.** What is drawn here is two-dimensional and its winding says nothing;
+        // No culling. What is drawn here is two-dimensional and its winding says nothing;
         // a flipped viewport would otherwise reverse the face of every triangle at once.
         const VkPipelineRasterizationStateCreateInfo raster{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,

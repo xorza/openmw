@@ -86,7 +86,7 @@ namespace Rtx
                         if (one.mAsked.mMaterial != at)
                             return false;
 
-                        // **Filed rather than dropped**, because a sequence that never arrived would
+                        // Filed rather than dropped, because a sequence that never arrived would
                         // stop `collect` at it for the rest of the run. It comes back holding nothing,
                         // which is what `collect` already does with a bake whose chunk has gone.
                         one.reuse();
@@ -98,7 +98,7 @@ namespace Rtx
 
             const std::span<const MaterialLayer> layers = material.mLayers.in(scene.materials().getLayers());
 
-            // **Off the spare list where one has come back.** A request is four vectors and a
+            // Off the spare list where one has come back. A request is four vectors and a
             // crossing gathers dozens, so building each here and freeing it in `collect` is a
             // region's worth of allocation twice over. Whatever comes off the list is already
             // empty: `mSpare` says that is what putting one back means.
@@ -132,7 +132,7 @@ namespace Rtx
 
     void CompositeQueue::waitFor(const std::size_t limit)
     {
-        // **A monitor that answered false is one every baker has left**, and `collect` asks
+        // A monitor that answered false is one every baker has left, and `collect` asks
         // `rethrowFailure` for the reason on the line after this.
         mMonitor.await([&] {
             const std::size_t due = getDue(limit);
@@ -187,7 +187,7 @@ namespace Rtx
 
     std::size_t CompositeQueue::collect(SceneDesc& scene, const std::size_t limit)
     {
-        // **Asked before anything is taken.** A baker that threw left the queue closed, and a
+        // Asked before anything is taken. A baker that threw left the queue closed, and a
         // frame that read what came back before it before it asked would report a short collect
         // rather than the failure under it.
         mMonitor.rethrowFailure();
@@ -195,7 +195,7 @@ namespace Rtx
         mTaken.clear();
         const std::size_t due = getDue(limit);
         mMonitor.under([&] {
-            // **In sequence and never in whatever order the bakers finished**, which is what makes
+            // In sequence and never in whatever order the bakers finished, which is what makes
             // the frame a composite lands on the schedule's answer. `setSettled` says why.
             while (mTaken.size() < due && !mDone.empty() && mDone.front().mRequest.mSequence == mNextTake)
             {
@@ -246,7 +246,7 @@ namespace Rtx
             ++finished;
         }
 
-        // **The images go and the buffers stay.** What a request held is a picture of ground already
+        // The images go and the buffers stay. What a request held is a picture of ground already
         // baked, and holding it past here would be a second copy of every layer a region uses; the
         // vectors themselves are room the next chunk would otherwise ask the allocator for.
         for (Baked& baked : mTaken)

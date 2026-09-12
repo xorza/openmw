@@ -23,12 +23,10 @@ namespace Rtx
         /// Stops and joins whatever is running.
         ~Worker() { stop(); }
 
-        /// Runs `work` on a thread of its own, where none is running. `work` must give up on the
-        /// stop token it is handed, or the join hangs; `Monitor::serve` and `repeat` are the two
-        /// shapes that do.
-        ///
-        /// @return whether this call is what started it, so a caller that clears what the last run
-        ///         left knows it is not clearing a run in progress.
+        /// Runs `work` on a thread of its own, where none is running, and says whether this call
+        /// is what started it, so a caller that clears what the last run left knows it is not
+        /// clearing a run in progress. `work` must give up on the stop token it is handed, or the
+        /// join hangs; `Monitor::serve` and `repeat` are the two shapes that do.
         bool start(std::function<void(std::stop_token)> work)
         {
             if (mThread.joinable())
@@ -38,11 +36,9 @@ namespace Rtx
             return true;
         }
 
-        /// Runs `tick` straight away and every `period` after it, until stopped. The wait is a
-        /// condition variable only so the stop can break it, where `sleep_for` would make every
-        /// join wait a period out.
-        ///
-        /// @return what `start` answers.
+        /// Runs `tick` straight away and every `period` after it, until stopped, and answers as
+        /// `start` does. The wait is a condition variable only so the stop can break it, where
+        /// `sleep_for` would make every join wait a period out.
         template <class Tick>
         bool repeat(std::chrono::milliseconds period, Tick tick)
         {

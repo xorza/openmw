@@ -8,7 +8,7 @@ namespace Rtx
     {
         mTiles = tiles;
 
-        // **Every step in sixty-four bits.** A share of the tiles is a product of two counts and
+        // Every step in sixty-four bits. A share of the tiles is a product of two counts and
         // twice a report is a doubling of a number the device wrote, and either overflows a
         // `std::uint32_t` for a frame that is merely large. An overflow here is the worst shape a
         // wrong answer can take: a smaller number, under a capacity that did not shrink with it.

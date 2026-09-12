@@ -106,7 +106,7 @@ namespace Rtx
             mFree.erase(merged + 1);
         }
 
-        // **A hole at the very end is not a hole, it is room never used.** Giving it back keeps the
+        // A hole at the very end is not a hole, it is room never used. Giving it back keeps the
         // buffer as short as what is in it, so a region walked away from and never returned to stops
         // costing anything at all rather than costing a hole for ever.
         if (merged->getEnd() == mEnd)

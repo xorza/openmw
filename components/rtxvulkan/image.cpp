@@ -101,7 +101,7 @@ namespace Rtx
         checkVk(
             vkCreateImageView(device.getHandle(), &view, nullptr, mView.put(device.getHandle())), "vkCreateImageView");
 
-        // **Only where something will write through it.** A storage descriptor is what this second
+        // Only where something will write through it. A storage descriptor is what this second
         // view exists for, and an image without the usage bit can have none — a chain that is only
         // ever sampled would be paying for a view nothing may name.
         if (mipLevels > 1 && (usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
@@ -265,7 +265,7 @@ namespace Rtx
         const VkDeviceSize bytes = getReadBytes(level);
         const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
-        // **Back where it was found.** Reading an image is not a change to it, and a caller that
+        // Back where it was found. Reading an image is not a change to it, and a caller that
         // has to know a read moved it is one that will forget: the GUI's own table is sampled
         // straight after the global map takes a copy of a tile out of it.
         pool.submitAndWait([&](VkCommandBuffer commands) {

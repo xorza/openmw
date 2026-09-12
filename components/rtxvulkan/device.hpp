@@ -96,10 +96,9 @@ namespace Rtx
 #endif
         }
 
-        /// Attaches a name to a Vulkan object so captures and validation messages name it.
-        ///
-        /// Compiled to nothing in release: an unreadable capture is a debugging session that does
-        /// not happen, and a released build has no captures.
+        /// Attaches a name to a Vulkan object so captures and validation messages name it. Compiled
+        /// to nothing in release: an unreadable capture is a debugging session that does not
+        /// happen, and a released build has no captures.
         void setName([[maybe_unused]] VkObjectType type, [[maybe_unused]] std::uint64_t handle,
             [[maybe_unused]] std::string_view name) const
         {

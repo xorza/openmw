@@ -41,7 +41,7 @@ namespace Rtx
     {
         mOnFrame.check();
 
-        // **The thread reads the storages and the content without the lock**, which is sound only
+        // The thread reads the storages and the content without the lock, which is sound only
         // because it is stopped and joined here before any is replaced — and before the reader that
         // holds them goes. Nothing is given back: what the frame held dies with the reader.
         mWorker.stop();
@@ -78,7 +78,7 @@ namespace Rtx
 
     void CellSupply::take(std::vector<PreparedCell*>& into)
     {
-        // **Asked here, because this is the one call every frame makes.** A reader that threw is a
+        // Asked here, because this is the one call every frame makes. A reader that threw is a
         // world that cannot be read, and the frame learns it where it would have taken a cell.
         mMonitor.rethrowFailure();
 

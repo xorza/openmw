@@ -34,7 +34,6 @@ namespace Rtx
         std::pair{ Denoiser::RayReconstruction, std::string_view("ray-reconstruction") },
     } };
 
-    /// How `denoiser` is spelled in a report.
     inline std::string_view denoiserName(Denoiser denoiser)
     {
         return sDenoiserNames.name(denoiser);
@@ -47,8 +46,8 @@ namespace Rtx
     enum class Preset
     {
         /// Whatever the installed feature library picks, which has changed between SDK versions and
-        /// again between the convolutional and transformer models. **Two runs are not comparable
-        /// under this**, which is the whole reason the rest of the enum is here.
+        /// again between the convolutional and transformer models. Two runs are not comparable
+        /// under this, which is the whole reason the rest of the enum is here.
         Default,
 
         /// NVIDIA's preset D — what the SDK calls the default transformer model.
@@ -67,7 +66,6 @@ namespace Rtx
         std::pair{ Preset::E, std::string_view("e") },
     } };
 
-    /// How `preset` is spelled.
     inline std::string_view presetName(Preset preset)
     {
         return sPresetNames.name(preset);

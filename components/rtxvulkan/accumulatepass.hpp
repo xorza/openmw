@@ -46,9 +46,8 @@ namespace Rtx
         const Image& record(
             VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, float far, bool reset);
 
-        /// This frame's bounce blended with the history, which is what the cascade filters.
-        ///
-        /// **One image and not a pair**, because nothing reads it after the frame that wrote it: the
+        /// This frame's bounce blended with the history, which is what the cascade filters. One
+        /// image and not a pair, because nothing reads it after the frame that wrote it: the
         /// cascade consumes it immediately and the history the next frame needs is `mColour`.
         const Image& getBlended() const;
 

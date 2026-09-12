@@ -58,12 +58,11 @@ namespace Rtx
     bool castsWherePlaced(const SceneUtil::LightCommon& record);
 
     /// Hangs a record's light under `where`, exactly as the game hangs one on a reference. False
-    /// where the record casts nothing, so a caller can drop what it built to hold one.
-    ///
-    /// The one place a `LIGH` becomes a light in a graph this renderer walks, for both routes to a
-    /// lamp: the cell the eye stands in, and the reach around it that `DistantLights` reads out of
-    /// the content files. `SceneUtil::addLight` and not `createLightSource`, so the `AttachLight`
-    /// node a model may carry is honoured; a caller with no model hands over an empty group.
+    /// where the record casts nothing, so a caller can drop what it built to hold one. The one
+    /// place a `LIGH` becomes a light in a graph this renderer walks, for both routes to a lamp:
+    /// the cell the eye stands in, and the reach around it that `DistantLights` reads out of the
+    /// content files. `SceneUtil::addLight` and not `createLightSource`, so the `AttachLight` node
+    /// a model may carry is honoured; a caller with no model hands over an empty group.
     ///
     /// @param exterior decides the attenuation. The reach around a cell is outdoors by definition.
     bool standLight(osg::Group& where, const SceneUtil::LightCommon& record, bool exterior);
@@ -81,10 +80,9 @@ namespace Rtx
     /// @param radius the recorded one. Null where it is not a size a light can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
-    /// What a light in the game's scene graph radiates this frame, in the renderer's units.
-    ///
-    /// The diffuse and the ambient summed, because the content uses both:
-    /// `Animation::setLightEffect` gives a glow light a zero diffuse and a bright ambient, and
+    /// What a light in the game's scene graph radiates this frame, in the renderer's units. The
+    /// diffuse and the ambient summed, because the content uses both: `Animation::setLightEffect`
+    /// gives a glow light a zero diffuse and a bright ambient, and
     /// `ActorAnimation::addHiddenItemLight` adds a white ambient on top of a carried lamp's colour.
     /// Decoded, because `SceneUtil::colourFromRGB` divides a record's bytes by 255 and stops. The
     /// recorded colours and this frame's scalars, rather than the colours the frame was written
@@ -93,14 +91,11 @@ namespace Rtx
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime);
 
     /// How much of what a light radiates is arriving at `simulationTime` seconds, as a multiplier
-    /// on its recorded colour.
-    ///
-    /// A `LIGH` record says *that* a light flickers or pulses and never says how, so every number
-    /// behind this is chosen in the implementation. This renderer's own animation and not
-    /// `SceneUtil::LightController`'s, which keeps a random walk's state and only advances where an
-    /// update traversal runs it. Lands in `1 +- depth` and averages exactly one over time. A
-    /// function of the clock and of `id` and of nothing else, so it is the same at a given instant
-    /// however it is reached — at any frame rate, from any renderer, however many times one frame
-    /// asks.
+    /// on its recorded colour. A `LIGH` record says *that* a light flickers or pulses and never
+    /// says how, so every number behind this is chosen in the implementation. This renderer's own
+    /// animation and not `SceneUtil::LightController`'s, which keeps a random walk's state and only
+    /// advances where an update traversal runs it. Lands in `1 +- depth`, averages exactly one over
+    /// time, and is a function of the clock and of `id` and of nothing else, so it is the same at a
+    /// given instant at any frame rate, from any renderer, however many times one frame asks.
     float lightBrightness(SceneUtil::LightController::LightType type, int id, double simulationTime);
 }

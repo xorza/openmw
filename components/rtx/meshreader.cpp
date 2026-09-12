@@ -20,7 +20,6 @@ namespace Rtx
 {
     namespace
     {
-        /// A geometry's per-vertex positions and normals.
         struct VertexArrays
         {
             std::span<const osg::Vec3f> mPositions;

@@ -183,7 +183,7 @@ namespace Rtx
                 }
         }
 
-        // **Normalising is what makes this a redistribution rather than a dimmer.** Dividing by a
+        // Normalising is what makes this a redistribution rather than a dimmer. Dividing by a
         // map that averages one moves light from where the texture already had it to where it did
         // not, and leaves the total alone.
         float mean = 0.0f;

@@ -22,10 +22,9 @@ namespace Rtx
     class CommandPool;
     class Device;
 
-    /// What the trace counts over a frame, laid out as the shader writes it.
-    ///
-    /// **The host's spelling of `lib/bindings.glsl`'s `HitCount` block**, so the frame that clears
-    /// the buffer and the frame that reads it back agree about where each word sits.
+    /// What the trace counts over a frame: the host's spelling of `lib/bindings.glsl`'s `HitCount`
+    /// block, so the frame that clears the buffer and the frame that reads it back agree about
+    /// where each word sits.
     struct FrameCounts
     {
         std::uint32_t mHits = 0;
@@ -155,7 +154,7 @@ namespace Rtx
         const Device& mDevice;
         CommandPool& mPool;
 
-        /// **By value, because both are settled at construction and never move.** References into
+        /// By value, because both are settled at construction and never move. References into
         /// the renderer's own members would tie this ring's correctness to where two booleans
         /// happen to live.
         bool mCountHits = false;

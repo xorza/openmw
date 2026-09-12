@@ -48,14 +48,13 @@ namespace Rtx
         DeviceMemory(const DeviceMemory&) = delete;
         DeviceMemory& operator=(const DeviceMemory&) = delete;
 
-        /// **Written out, because a moved-from range must stop naming the block.** Everything else
+        /// Written out, because a moved-from range must stop naming the block. Everything else
         /// here empties itself; a range the source still described would be given back twice.
         DeviceMemory(DeviceMemory&& other) noexcept;
         DeviceMemory& operator=(DeviceMemory&& other) noexcept;
 
         VkDeviceMemory getHandle() const { return mHandle; }
 
-        /// Where in that allocation the resource is bound, which is what `vkBind*Memory` takes.
         VkDeviceSize getOffset() const { return mOffset; }
 
         /// This range, mapped, or null where the memory is not host-visible. The block is mapped
@@ -105,10 +104,9 @@ namespace Rtx
         /// that meets the requirements means the request was wrong.
         DeviceMemory take(const VkMemoryRequirements& requirements, VkMemoryPropertyFlags properties, Tiling tiling);
 
-        /// How many calls to `vkAllocateMemory` stand behind everything handed out.
-        ///
-        /// The allocations and not the slots: a block given back to the device leaves its slot for
-        /// the next one, because a range names its block by index.
+        /// How many calls to `vkAllocateMemory` stand behind everything handed out — the
+        /// allocations and not the slots, because a block given back to the device leaves its slot
+        /// for the next one, since a range names its block by index.
         std::size_t getBlockCount() const;
 
         /// Every heap of the device, what this allocator took out of each, and what the driver says
@@ -118,10 +116,9 @@ namespace Rtx
     private:
         friend class DeviceMemory;
 
-        /// One `vkAllocateMemory` and what has been handed out inside it.
-        ///
-        /// The allocator has no block boundary of its own: this allocation *is* the block, and what
-        /// stops a range leaving it is `mPages` checked against `getEnd`.
+        /// One `vkAllocateMemory` and what has been handed out inside it. The allocator has no
+        /// block boundary of its own: this allocation *is* the block, and what stops a range
+        /// leaving it is `mPages` checked against `getEnd`.
         struct Block
         {
             Owned<VkDeviceMemory, vkFreeMemory> mHandle;

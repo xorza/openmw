@@ -27,14 +27,13 @@ namespace Rtx
         /// Depth of the shelf the spectrum is attenuated against.
         float mDepth = 300.0f;
 
-        /// **What decides whether the amplitudes have to be drawn again.** Every one of them is a
+        /// What decides whether the amplitudes have to be drawn again. Every one of them is a
         /// function of these four numbers and of nothing else, so two equal states are one sea.
         bool operator==(const SeaState& other) const = default;
 
-        /// The dispersion relation at this depth: `omega^2 = g k tanh(k h)`.
-        ///
-        /// Deep water's `sqrt(g k)` is only its limit, and a wave whose length approaches the depth
-        /// falls behind it — which is why a swell slows and steepens as it reaches a shore.
+        /// The dispersion relation at this depth: `omega^2 = g k tanh(k h)`. Deep water's
+        /// `sqrt(g k)` is only its limit, and a wave whose length approaches the depth falls behind
+        /// it — which is why a swell slows and steepens as it reaches a shore.
         float getFrequency(float wavenumber) const;
 
         /// The same relation the other way round, by Newton from the deep-water guess.

@@ -31,16 +31,15 @@ namespace Rtx
         Balanced,
         Quality,
 
-        /// **No upscaling, but still the upscaler**: render and output are the same size and it only
+        /// No upscaling, but still the upscaler: render and output are the same size and it only
         /// denoises and antialiases. What separates the two halves of what it does, when a frame
         /// comes out softer than the reference and the question is which half softened it.
         Dlaa,
     };
 
-    /// How an `Upscale` is spelled on a command line, in a setting file and in a report.
-    ///
-    /// **The one list of the names**, so a mode added here reaches the parser, the report and every
-    /// line of prose that offers the modes at once.
+    /// How an `Upscale` is spelled on a command line, in a setting file and in a report — the one
+    /// list of the names, so a mode added here reaches the parser, the report and every line of
+    /// prose that offers the modes at once.
     inline constexpr NamedEnum sUpscaleNames{ std::array{
         std::pair{ Upscale::Off, std::string_view("off") },
         std::pair{ Upscale::UltraPerformance, std::string_view("ultraperformance") },
@@ -74,10 +73,9 @@ namespace Rtx
         return static_cast<std::size_t>(found - sUpscaleMenu.begin());
     }
 
-    /// The mode at `index` of that menu, or nothing where the menu is shorter than that.
-    ///
-    /// **Asked rather than indexed, because the list of entries lives in a layout file.** A menu
-    /// with an entry the list has no mode for would otherwise read past the end of it.
+    /// The mode at `index` of that menu, or nothing where the menu is shorter than that — asked
+    /// rather than indexed, because the list of entries lives in a layout file, and a menu with an
+    /// entry the list has no mode for would otherwise read past the end of it.
     inline std::optional<Upscale> upscaleAtMenu(std::size_t index)
     {
         if (index >= sUpscaleMenu.size())

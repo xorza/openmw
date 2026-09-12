@@ -43,10 +43,9 @@ namespace Rtx
         /// disagrees with itself somewhere still lands where most of it says.
         float mTile = 0.0f;
 
-        /// The elevation the field fades out below, in radians.
-        ///
-        /// `MWRender::ModVertexAlphaVisitor` draws a vertex of that dome only where its authored
-        /// colour is white, so the ring the engine keeps is the lowest one this reaches.
+        /// The elevation the field fades out below, in radians. `MWRender::ModVertexAlphaVisitor`
+        /// draws a vertex of that dome only where its authored colour is white, so the ring the
+        /// engine keeps is the lowest one this reaches.
         float mHorizon = 0.0f;
 
         std::array<Patch, Shaders::SKY_PATCH_COUNT> mPatches;

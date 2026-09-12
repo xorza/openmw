@@ -32,7 +32,7 @@ namespace Rtx
             out += std::format("   {} blocks\n", use.mBlocks);
         }
 
-        // **Under the heaps and in their columns, because it cuts across them.** A card with
+        // Under the heaps and in their columns, because it cuts across them. A card with
         // resizable BAR states one heap that is host-visible throughout, so this is the only line
         // that says what would have to fit in the small aperture of a card without it.
         out += std::format("  {:<{}}reserved {:7.1f}   live {:7.1f}\n", "host-written", sReservedColumn,

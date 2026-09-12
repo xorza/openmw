@@ -24,29 +24,27 @@ namespace Rtx
     class SceneDesc;
 
     /// The world's cells as this renderer stands them: their ground off the land records, and the
-    /// statics of the cells the simulation does not hold as instances of their templates.
-    ///
-    /// Not `Terrain::QuadTreeWorld`'s chunks nor `Terrain::ObjectPaging`'s merges, which cut and
-    /// fold geometry by the eye's distance on the frame that first meets it — two thirds of the tail
-    /// a cell ring costs, measured. A ray tracer has no draw calls to save: a top level takes a
+    /// statics of the cells the simulation does not hold as instances of their templates. Not
+    /// `Terrain::QuadTreeWorld`'s chunks nor `Terrain::ObjectPaging`'s merges, which cut and fold
+    /// geometry by the eye's distance on the frame that first meets it — two thirds of the tail a
+    /// cell ring costs, measured. A ray tracer has no draw calls to save: a top level takes a
     /// thousand instances of one bottom level as one entry apiece, and a cell's own 65 × 65 grid
-    /// meets its neighbours vertex for vertex. So the content's own cells are what stands.
+    /// meets its neighbours vertex for vertex.
     ///
     /// Two rings, and a thread between them. The *prepared* ring is the reach plus one band: each
     /// cell in it has been read by the thread and adopted by the frame into the scene, so its
     /// meshes stand on the device before anything can see them. The *placed* ring is the reach: a
-    /// cell in it has its ground in the top level, and outside the active grid its statics too.
-    /// What a frame does is adopt at most one prepared cell and move the placements of the cells
-    /// that crossed a boundary. This is the policy; `CellHolds` is the bookkeeping of what the
-    /// reader lent and the holds adoption took; `CellPlacer` is what stands and by what rule.
-    ///
-    /// A model's drawable is the template's, so a mesh adopted here is the mesh the frame's walk
-    /// finds under the clone when the cell becomes active, and nothing is uploaded twice. The
-    /// ground's rows are the ring's own: no drawable will ever name them, so the placer holds them
-    /// on the scene. A `Residency`, because what this adopts goes through the extractor's own
-    /// resolvers inside the walk, and holds by `Known::mHolds` rather than being named again on
-    /// every walk. Everything the thread reads is lent and given back — `Spares` says why an
-    /// address and not a shared count, and `giveBackHolds` why a hold is a cell's.
+    /// cell in it has its ground in the top level, and outside the active grid its statics too. A
+    /// frame adopts at most one prepared cell and moves the placements of the cells that crossed a
+    /// boundary. This is the policy; `CellHolds` is the bookkeeping of what the reader lent and
+    /// the holds adoption took; `CellPlacer` is what stands and by what rule. A model's drawable
+    /// is the template's, so a mesh adopted here is the mesh the frame's walk finds under the
+    /// clone when the cell becomes active, and nothing is uploaded twice. The ground's rows are
+    /// the ring's own: no drawable will ever name them, so the placer holds them on the scene. A
+    /// `Residency`, because what this adopts goes through the extractor's own resolvers inside the
+    /// walk, and holds by `Known::mHolds` rather than being named again on every walk. Everything
+    /// the thread reads is lent and given back — `Spares` says why an address and not a shared
+    /// count, and `giveBackHolds` why a hold is a cell's.
     class CellRing final : public Residency, public TextureReadings
     {
     public:
@@ -63,7 +61,6 @@ namespace Rtx
         /// off is the A/B `--distant-statics=false` is, and a change of it reads every cell again.
         void setStaticsEnabled(bool enabled);
 
-        /// `CellPlacer::setMinSize`.
         void setMinSize(float minSize) { mPlacer.setMinSize(minSize); }
 
         /// The frame the next walk is for, so a frame walked twice adopts one cell and not two.
@@ -112,10 +109,9 @@ namespace Rtx
         /// has been through neither test.
         void sift(const osg::Vec2i& eye, int band);
 
-        /// Blocks until the supply has read a cell this walk can adopt. See `setSettled`.
-        ///
-        /// **Only where the last `ask` named something**, because nothing is coming otherwise and
-        /// the reader would never wake this.
+        /// Blocks until the supply has read a cell this walk can adopt (`setSettled`). Only where
+        /// the last `ask` named something, because nothing is coming otherwise and the reader would
+        /// never wake this.
         void waitForNext(const osg::Vec2i& eye, int band);
 
         /// Adopts the next cell the supply read, which is one cell and one frame's worth.

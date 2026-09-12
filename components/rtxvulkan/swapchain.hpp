@@ -36,8 +36,7 @@ namespace Rtx
         void recreate(VkExtent2D extent);
 
         /// Whether the surface has no extent at all, which is what a minimised window reports.
-        ///
-        /// **Asked of the surface and not of this**, because what this holds is the size it was last
+        /// Asked of the surface and not of this, because what this holds is the size it was last
         /// built at: a window minimised after that still reports its old extent here and none there.
         bool surfaceIsHidden() const;
 
@@ -60,7 +59,7 @@ namespace Rtx
         VkSurfaceFormatKHR mFormat{};
         VkPresentModeKHR mPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
-        /// **Off by default, which is what a window someone is steering wants.** The harness and the
+        /// Off by default, which is what a window someone is steering wants. The harness and the
         /// inventory doll follow a mouse, and the game overwrites this from its own setting before
         /// the first frame.
         SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;

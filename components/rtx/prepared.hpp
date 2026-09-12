@@ -216,9 +216,8 @@ namespace Rtx
     };
 
     /// What a thread hands the frame for one cell: its ground, the references that page, reduced
-    /// the way the content files stack, and the models they name.
-    ///
-    /// Owned by the reader and lent to the frame, as a model is.
+    /// the way the content files stack, and the models they name. Owned by the reader and lent to
+    /// the frame, as a model is.
     struct PreparedCell
     {
         osg::Vec2i mCell;

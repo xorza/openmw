@@ -22,11 +22,11 @@ namespace Rtx
     class GeometryFold
     {
     public:
-        /// Collects `geometry`'s triangles, folds them, and says what the shape came to.
+        /// Collects `geometry`'s triangles, folds them, and says what the shape came to. False where
+        /// the geometry holds no triangle to read.
         ///
         /// @param positions what the fold matches its twins on — the caller's array, because a
         ///        morphed face is folded against its base target and the geometry holds the source.
-        /// @return false where the geometry holds no triangle to read.
         bool read(const osg::Geometry& geometry, std::span<const osg::Vec3f> positions, FoldedShape& shape);
 
         /// The triangles the fold kept, valid until the next `read`.

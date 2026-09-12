@@ -9,10 +9,9 @@ namespace Rtx
 {
     namespace
     {
-        /// sRGB's transfer function itself.
-        ///
-        /// **Both overloads answer with this one**, so what a stored byte is worth and what a value
-        /// that was never a byte is worth cannot come from two spellings of the same three constants.
+        /// sRGB's transfer function itself. Both overloads answer with this one, so what a stored
+        /// byte is worth and what a value that was never a byte is worth cannot come from two
+        /// spellings of the same three constants.
         float curve(float encoded)
         {
             return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
@@ -93,10 +92,9 @@ namespace Rtx
 
     namespace
     {
-        /// One endpoint out of the five-six-five pair a block stores its ends as.
-        ///
-        /// Five and six bits replicated into eight, which is what every decoder does and what makes
-        /// the endpoints exactly representable as bytes.
+        /// One endpoint out of the five-six-five pair a block stores its ends as: five and six bits
+        /// replicated into eight, which is what every decoder does and what makes the endpoints
+        /// exactly representable as bytes.
         osg::Vec3f decode565(std::uint16_t packed)
         {
             const auto five = [](std::uint32_t bits) { return static_cast<float>(bits << 3 | bits >> 2) / 255.0f; };

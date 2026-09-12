@@ -15,12 +15,10 @@
 namespace Rtx
 {
     /// The sun, as a directional light and as something to look at. Far enough away that its rays
-    /// are parallel, so it has a direction and no position.
-    ///
-    /// Nothing may fill these fields itself: `makeSkylight` builds every one of them for the world,
-    /// and `OffscreenTrace::setLight` for a picture inside the interface lit by a flat light with no
-    /// hour behind it. Here and not in `SceneDesc`, because a sun is what the frame's *world* is
-    /// doing.
+    /// are parallel, so it has a direction and no position. Nothing may fill these fields itself:
+    /// `makeSkylight` builds every one of them for the world, and `OffscreenTrace::setLight` for a
+    /// picture inside the interface lit by a flat light with no hour behind it. Here and not in
+    /// `SceneDesc`, because a sun is what the frame's *world* is doing.
     struct Sun
     {
         /// Where the sun stands, unit — and so `-mPosition` is where its light travels.
@@ -92,27 +90,20 @@ namespace Rtx
     };
 
     /// The sky's light, out of what a weather says — the one place a sun is allowed to be built.
-    ///
     /// Morrowind never switches its sunlight off: `WeatherManager` reads a colour off the same ramp
     /// all night — `Sun_Night_Color` is `59, 97, 176` — and turns off only the *sprite*. A
     /// rasterized directional light with no visible source looks like nothing in particular; traced,
-    /// it casts hard shadows that swing across the ground all night. So what the file calls the
-    /// night's sun goes where light with no direction belongs — the ambient — and the sun keeps only
-    /// what is over the horizon. The two halves are complements, so the total is continuous through
-    /// dusk, which is also what twilight is.
-    ///
-    /// The share that goes into the ambient is a quarter of the irradiance over pi: a directional
-    /// source delivers, averaged over every orientation, a quarter of its irradiance, and a uniform
-    /// hemisphere of radiance `L` delivers `pi L`, so `E / 4pi` is the same light with the direction
-    /// taken out.
+    /// it casts hard shadows that swing across the ground all night. So the night's sun goes into
+    /// the ambient, where light with no direction belongs, and the sun keeps only what is over the
+    /// horizon; the two halves are complements, so the total is continuous through dusk. The
+    /// ambient's share is `E / 4pi`: a directional source delivers a quarter of its irradiance
+    /// averaged over every orientation, and a uniform hemisphere of radiance `L` delivers `pi L`.
     Skylight makeSkylight(const SkyReading& sky);
 
-    /// What to hold a measured exposure back by, for a sky delivering this much light. One where
-    /// the hour delivers a full sun's worth or more, falling from there.
-    ///
-    /// Night is a thing the world knows and not a thing the picture can measure: a histogram
-    /// normalises whatever it is shown toward the key, so a midnight and a noon come out within a
-    /// few per cent of each other. The weather knows the hour, so it says how dark the hour is.
+    /// What to hold a measured exposure back by, for a sky delivering this much light: one where
+    /// the hour delivers a full sun's worth or more, falling from there. Night is a thing the world
+    /// knows and not a thing the picture can measure, because a histogram normalises whatever it is
+    /// shown toward the key, so a midnight and a noon come out within a few per cent of each other.
     float exposureBias(const osg::Vec3f& sunIrradiance, const osg::Vec3f& ambient);
 
     /// How high the cloud layer stands, in world units — the one number in the sky that is chosen
@@ -123,17 +114,15 @@ namespace Rtx
     /// the camera would cast a shadow that moved with it.
     inline constexpr float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
 
-    /// How much of the sun a layer standing over the ground still has at `hour`.
-    ///
-    /// The engine's sunset is a clock and not a horizon: `Sky::sunShareAt` ramps on the hour and
-    /// the weather manager puts the disc level with the horizon at exactly `mNightStart`, so a
-    /// layer that keeps the sun past the ground's horizon is handed a different hour instead of a
-    /// lower one. How far the clock moves is the dip a layer that high sees, over the time the disc
-    /// takes to fall it: 0.718 degrees at 5.35 game minutes on the shipped fourteen-hour day, a
-    /// shift of 4.5% against the two-hour dusk, and 8.7% of the sun still held at the instant the
-    /// ground's goes out. Its day is the ground's widened at both ends rather than moved. Nothing is
-    /// done to the colour, because `Sun_Sunset_Color` is the content's own reddening keyed on the
-    /// same hour.
+    /// How much of the sun a layer standing over the ground still has at `hour`. The engine's
+    /// sunset is a clock and not a horizon: `Sky::sunShareAt` ramps on the hour and the weather
+    /// manager puts the disc level with the horizon at exactly `mNightStart`, so a layer that keeps
+    /// the sun past the ground's horizon is handed a different hour instead of a lower one. The
+    /// shift is the dip a layer that high sees, over the time the disc takes to fall it: 0.718
+    /// degrees at 5.35 game minutes on the shipped fourteen-hour day, 4.5% of the two-hour dusk,
+    /// and 8.7% of the sun still held at the instant the ground's goes out. Its day is the ground's
+    /// widened at both ends rather than moved. Nothing is done to the colour, because
+    /// `Sun_Sunset_Color` is the content's own reddening keyed on the same hour.
     float sunShareAloft(float hour, const Sky::TimeOfDaySettings& times);
 
     /// What the sky delivers to a surface facing it, and how much of that it is never drawn with.
@@ -143,18 +132,17 @@ namespace Rtx
         /// What lights anything the sky stands over, which so far is the cloud deck.
         osg::Vec3f mMean;
 
-        /// What the sky delivers as light over and above the colour it is drawn with.
-        ///
-        /// Morrowind lights its night with an ambient and this renderer lights it with a sky, and
-        /// the two are an order apart: the engine puts `Ambient_<weather>_Night_Color` on every
-        /// surface directly, while a bounce ray at the dome reads `Sky_<weather>_Night_Color`, which
-        /// is a tenth of it. So the sky is held to what the weather says a night is worth: a
-        /// gradient linear in `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 *
-        /// zenith / 3` would, the night's sheets add their mean, and whatever the ambient asks for
-        /// beyond the two is this. It is light and not a colour — nothing draws it, because
-        /// Morrowind does not draw it either — and every layer that lights comes out of the same
-        /// figure, so a night does not brighten each time one more of them starts lighting. Nought
-        /// by day, because a weather's daylight sky outruns its daylight ambient in every channel.
+        /// What the sky delivers as light over and above the colour it is drawn with. Morrowind
+        /// lights its night with an ambient and this renderer lights it with a sky, and the two are
+        /// an order apart: the engine puts `Ambient_<weather>_Night_Color` on every surface
+        /// directly, while a bounce ray at the dome reads `Sky_<weather>_Night_Color`, a tenth of
+        /// it. So the sky is held to what the weather says a night is worth: a gradient linear in
+        /// `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 * zenith / 3` would, the
+        /// night's sheets add their mean, and whatever the ambient asks for beyond the two is this.
+        /// Light and not a colour, because Morrowind does not draw it either, and every layer that
+        /// lights comes out of the same figure, so a night does not brighten each time one more of
+        /// them starts lighting. Nought by day, because a weather's daylight sky outruns its
+        /// daylight ambient in every channel.
         osg::Vec3f mFill;
     };
 
@@ -197,18 +185,15 @@ namespace Rtx
     std::string_view weatherName(std::uint32_t weather);
 
     /// A room's light, out of its own `AMBI` record — the one place a `Daylight` is built without
-    /// a sky, and what every interior is lit by.
-    ///
-    /// The record, and not the rasterizer's reading of it: `RenderingManager::configureAmbient`
-    /// lifts an interior's ambient to `minimum interior brightness`, which balances a falloff curve
-    /// this renderer does not have, and `openmw-rtxtool` has no rasterizer to read.
-    ///
-    /// A room has no sun, and its sunlight is spread instead. `configureAmbient` aims the record's
-    /// sunlight along `(-1, 45°, 45°)` — two angles in radians used as coordinates, which upstream's
-    /// own comment calls nonsense. Traced, that direction is real: hard shadows off nothing, and a
-    /// bright seam through every crack a room's shell is built from. So the sunlight is kept whole
-    /// and its direction taken away, over `INV_FOUR_PI`, as `makeSkylight` does with the night's
-    /// sun. The sky is the fog colour at both ends, a colour and never a light: nothing outside a
+    /// a sky. The record, and not the rasterizer's reading of it, because
+    /// `RenderingManager::configureAmbient` lifts an interior's ambient to `minimum interior
+    /// brightness` to balance a falloff curve this renderer does not have, and `openmw-rtxtool` has
+    /// no rasterizer to read. A room has no sun, and its sunlight is spread instead:
+    /// `configureAmbient` aims the record's sunlight along `(-1, 45°, 45°)`, two angles in radians
+    /// used as coordinates, and traced, that direction is hard shadows off nothing and a bright seam
+    /// through every crack a room's shell is built from. So the sunlight is kept whole and its
+    /// direction taken away, over `INV_FOUR_PI`, as `makeSkylight` does with the night's sun. The
+    /// sky is the fog colour at both ends, a colour and never a light, because nothing outside a
     /// room lights anything in it. The stars are nought and the exposure bias is one.
     ///
     /// @param nightEye what the Night-Eye effect adds to every channel of the ambient, in the
@@ -219,13 +204,12 @@ namespace Rtx
     /// What the air leaves of a body in the sky, per channel — the reason a moon can rise at all
     /// here. The engine draws no moon under `Moons_<name>_Fade_End_Angle` because a lit quad over
     /// its own fogged dome reads as a sticker; a renderer that traces the air lets the air take a
-    /// low moon out on its own.
-    ///
-    /// Rayleigh optical depth at the three sRGB primaries, times the air mass along the slant path.
-    /// The depth is `0.008569 λ^-4` with its usual correction — 0.068, 0.097 and 0.221 at the zenith
-    /// — and the air mass is Kasten and Young's fit, 37.92 at the horizon against one overhead. So
-    /// a moon comes up a deep red ember and is itself by thirty degrees. Not applied to the sun,
-    /// whose `Sun_Disc_Sunset_Color` and `sunShareAt` are the content's own sunset already.
+    /// low moon out on its own. Rayleigh optical depth at the three sRGB primaries, times the air
+    /// mass along the slant path: the depth is `0.008569 λ^-4` with its usual correction — 0.068,
+    /// 0.097 and 0.221 at the zenith — and the air mass is Kasten and Young's fit, 37.92 at the
+    /// horizon against one overhead. So a moon comes up a deep red ember and is itself by thirty
+    /// degrees. Not applied to the sun, whose `Sun_Disc_Sunset_Color` and `sunShareAt` are the
+    /// content's own sunset already.
     ///
     /// @param upward the `z` of a unit direction. At or below nothing gives the horizon's own figure.
     osg::Vec3f airTransmittance(float upward);

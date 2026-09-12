@@ -55,14 +55,12 @@ namespace Rtx
 
         /// Rebuilds what a moved world changed: every deformed mesh's structure, then the top level,
         /// in one command buffer with a barrier between — two `submitAndWait`s were a round trip
-        /// through the driver in the middle of the frame for a dependency a barrier expresses.
-        ///
-        /// A deforming mesh's structure is refitted, not rebuilt: it was built with
-        /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR`, which costs that mesh alone a
-        /// larger structure, over the vertices `SkinPass` wrote into `slot`'s copy ahead of this.
-        /// The whole of it is skipped where nothing moved and nothing deformed. Recorded into
-        /// `placing.mCommands` and not submitted, so the caller decides whether the queue is asked
-        /// now or with the frame; true where anything was recorded.
+        /// through the driver in the middle of the frame for a dependency a barrier expresses. A
+        /// deforming mesh's structure is refitted over the vertices `SkinPass` wrote into `slot`'s
+        /// copy, which its `ALLOW_UPDATE` bit costs that mesh alone a larger structure for. Skipped
+        /// whole where nothing moved and nothing deformed. Recorded into `placing.mCommands` and not
+        /// submitted, so the caller decides whether the queue is asked now or with the frame; true
+        /// where anything was recorded.
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list any of
         ///        this is driven by. `records` is handed in rather than made here because
@@ -114,10 +112,9 @@ namespace Rtx
         VkDeviceSize getCompactableNowBytes() const { return mBottomLevel.getCompactableNowBytes(); }
 
     private:
-        /// Reserves room for the scene's geometry and copies in the runs `meshes` names.
-        ///
-        /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
-        /// hold everything else, and rewriting them would be rewriting what nothing changed.
+        /// Reserves room for the scene's geometry and copies in the runs `meshes` names. Per mesh
+        /// and not per scene, because that is what an arrival is: the blocks already hold
+        /// everything else.
         void writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
         /// Fills the refit build infos and sizes the scratch. Leaves `mRefitBuilds` holding exactly
@@ -165,10 +162,9 @@ namespace Rtx
 
         Buffer mTopLevelStorage;
 
-        /// The rows the top level is built from, and one copy of them per frame in flight.
-        ///
-        /// A gap is an inactive row — a reference of nought — and not a row left out, because a
-        /// row's index is the slot a hit reads back. `SlotTable` is what keeps the copies level.
+        /// The rows the top level is built from, one copy per frame in flight. A gap is an inactive
+        /// row — a reference of nought — and not a row left out, because a row's index is the slot a
+        /// hit reads back.
         SlotTable<VkAccelerationStructureInstanceKHR> mRowTable;
 
         /// Kept across frames and built into again, made anew only when the slot table grows
@@ -190,9 +186,8 @@ namespace Rtx
         /// and a buffer freed under a build in flight was a device lost on every crossing.
         Buffer mRefitScratch;
 
-        /// The top level's build scratch. This and the storage buffer beside it were
-        /// `vkAllocateMemory` twice on every frame that moved; both grow to the high-water mark and
-        /// stay.
+        /// Grows to the high-water mark and stays, as the storage beside it does: made per frame,
+        /// the pair was `vkAllocateMemory` twice on every frame that moved.
         Buffer mTopLevelScratch;
 
         /// The top-level build, prepared before a command buffer exists and recorded into one after.
@@ -209,7 +204,7 @@ namespace Rtx
 
         InstanceCounts mCounts;
 
-        /// **Two totals, each assigned, because one accumulated.** The bottom levels are made once
+        /// Two totals, each assigned, because one accumulated. The bottom levels are made once
         /// and the top level again every frame that moves, so adding both to one figure reported a
         /// scene that grew by its own top level sixty times a second.
         VkDeviceSize mTopLevelBytes = 0;

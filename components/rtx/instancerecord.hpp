@@ -53,10 +53,9 @@ namespace Rtx
         /// shadow rays past costs half the frame rate.
         std::uint32_t mMask = 0;
 
-        /// Whether traversal must stop and ask the shader whether a hit is a hole.
-        ///
-        /// Without it the geometry's own opaque flag stands, traversal commits the first triangle it
-        /// meets, and a canopy stays the rectangle it was painted on.
+        /// Whether traversal must stop and ask the shader whether a hit is a hole. Without it the
+        /// geometry's own opaque flag stands, traversal commits the first triangle it meets, and a
+        /// canopy stays the rectangle it was painted on.
         bool mCutout = false;
 
         /// Whether traversal must stop and ask the shader how much of a hit there is — separate

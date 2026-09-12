@@ -114,8 +114,8 @@ namespace Rtx
         /// Records the trace, in whichever kernel this frame calls for.
         ///
         /// @param buffer where the trace leaves its channels, all four in `VK_IMAGE_LAYOUT_GENERAL`
-        ///        and at least as large as the frame. It writes a picture no longer: the indirect
-        ///        term has to survive to the filter with the albedo still divided out.
+        ///        and at least as large as the frame. Channels and not a picture, because the
+        ///        indirect term has to survive to the filter with the albedo still divided out.
         /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
         /// @param historyLost whether the frame before this one is worth reprojecting into. Written
         ///        into the block as a basis of nothing, which every shader here reads as "there is

@@ -25,9 +25,8 @@ namespace Rtx
 {
     namespace
     {
-        /// What the sea's material is keyed on: the state set it has not got. See `resolveWater`.
-        ///
-        /// **Nothing else in the world can key as null.** A shading chain's entries come from
+        /// What the sea's material is keyed on: the state set it has not got (`resolveWater`).
+        /// Nothing else in the world can key as null, because a shading chain's entries come from
         /// `MirrorTraversal::pushShading`, which takes a reference.
         constexpr const osg::StateSet* sSea = nullptr;
 
@@ -66,7 +65,7 @@ namespace Rtx
         if (node.getCullCallback() == nullptr && node.getUpdateCallback() == nullptr)
             return nullptr;
 
-        // **The casts are taken when the chains change, not per frame.** The entry remembers what it
+        // The casts are taken when the chains change, not per frame. The entry remembers what it
         // found and what the chains looked like when it found it; a controller swapped, appended or
         // removed under the walk changes the signature, and a node whose chains carry no updater
         // keeps a null one.
@@ -143,7 +142,7 @@ namespace Rtx
             return reading;
         }
 
-        // **The same two facts `Material::isTranslucent` reads**, off the description they are
+        // The same two facts `Material::isTranslucent` reads, off the description they are
         // copied from, so the reader walks the texels of exactly the images `describe` would.
         const Surface::Material& described = *reading.mDescribed;
         const bool translucent = described.mAlphaMode == Surface::AlphaMode::Blend && described.mOpacity < 1.0f;
@@ -198,7 +197,7 @@ namespace Rtx
 
         if (const Index held = reuse(own.mStateSet); held != sNoIndex)
         {
-            // **Read again, because a controller rewrote it since the last frame.** The state set
+            // Read again, because a controller rewrote it since the last frame. The state set
             // is the same object — that is what lets the material keep its slot and every placement
             // standing on it stay where it is — and everything inside it is this frame's.
             if (own.mAnimated)
@@ -217,8 +216,8 @@ namespace Rtx
         if (image == nullptr || image->getFileName().empty())
             return sNoIndex;
 
-        // **Outside the cache, because what this counts is what the walk met and not what it
-        // added.** `openmw-rtxtool scene --twice` reads these off a second walk of one graph, and a
+        // Outside the cache, because what this counts is what the walk met and not what it
+        // added. `openmw-rtxtool scene --twice` reads these off a second walk of one graph, and a
         // count that only rose on an arrival would report nothing there.
         stats.mFormats.count(*image);
 
@@ -230,7 +229,7 @@ namespace Rtx
 
         const Index index = mScene.textures().add(VFS::Path::Normalized(image->getFileName()));
 
-        // **Held, because this entry is the reference.** `mTextureOf` says why a slot the map names
+        // Held, because this entry is the reference. `mTextureOf` says why a slot the map names
         // has to be one nothing else can hand out.
         mScene.textures().hold(index);
         mTextureOf.add(image, HeldTexture{ { .mIndex = index }, std::nullopt });
@@ -243,7 +242,7 @@ namespace Rtx
         if (image == nullptr)
             return true;
 
-        // **Asked only of an image `takeTexture` already met**, which is the only way a material
+        // Asked only of an image `takeTexture` already met, which is the only way a material
         // can come to name one. Anything else is a texture this cannot answer for, and the answer
         // that leaves the surface traced exactly as it was is that it reaches solid.
         const auto known = mTextureOf.find(image);
@@ -305,7 +304,7 @@ namespace Rtx
         material.mTwoSided = described->mTwoSided;
         material.mOpacity = described->mOpacity;
 
-        // **Decoded here, because this is where the game's numbers enter the trace.** A record's
+        // Decoded here, because this is where the game's numbers enter the trace. A record's
         // colour is written in the space the artist saw and everything past this is light.
         material.mDiffuseColour = decodeColour(described->mDiffuseColour);
 
@@ -313,7 +312,7 @@ namespace Rtx
         // its own. Folded in because the game's own shader only ever uses their product.
         material.mEmissiveColour = decodeColour(described->mEmissiveColour) * described->mEmissiveMult;
 
-        // **Scaled about the middle of the texture, then offset**, which is what `NifOsg` builds its
+        // Scaled about the middle of the texture, then offset, which is what `NifOsg` builds its
         // texture matrix from — so `(uv - 0.5) * scale + 0.5 + offset`, resolved here into the
         // `uv * xy + zw` the sampler takes. Doing the arithmetic once on the host keeps two
         // multiplies and an add out of every texture fetch in the frame.
@@ -322,7 +321,7 @@ namespace Rtx
         material.mTextureTransform = osg::Vec4f(
             scale.x(), scale.y(), 0.5f * (1.0f - scale.x()) + offset.x(), 0.5f * (1.0f - scale.y()) + offset.y());
 
-        // **Last, and only for the surfaces the answer separates.** Every field the test reads is
+        // Last, and only for the surfaces the answer separates. Every field the test reads is
         // filled above, and the walk over a texture's texels is worth nothing to a material that is
         // opaque, masked, or has no diffuse map to read — `Material::isMedium` is the other half.
         if (material.isTranslucent() && material.mDiffuse != sNoIndex)

@@ -107,7 +107,7 @@ namespace Rtx
 
         mBindRuns.release(Run{ .mOffset = range.mBindOffset, .mCount = range.mVertices.mCount });
 
-        // **The rig or the morph goes with its last mesh**, and its runs with it. Nothing downstream
+        // The rig or the morph goes with its last mesh, and its runs with it. Nothing downstream
         // is told: what a backend holds of a rig is data at an offset, read by no frame once no mesh
         // names it, and the next rig to land in the run is what names it again.
         if (range.mDeform == Deform::Rig)
@@ -148,11 +148,11 @@ namespace Rtx
         if (range.mDeform == Deform::None)
             return;
 
-        // **A run in the bind table whichever kind it is**, because the bind pose is the mesh's
+        // A run in the bind table whichever kind it is, because the bind pose is the mesh's
         // vertices and both kinds are computed from them.
         range.mBindOffset = mBindRuns.allocate(range.mVertices.mCount).mOffset;
 
-        // **And a run of rows or of weights, zeroed.** Zero is a pose nothing can equal, and
+        // And a run of rows or of weights, zeroed. Zero is a pose nothing can equal, and
         // `MeshRange::mPosed` is what says the first pose names the mesh regardless.
         if (range.mDeform == Deform::Rig)
         {

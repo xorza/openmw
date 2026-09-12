@@ -75,7 +75,7 @@ namespace Rtx
                 .mMotion = sStillTransform,
                 .mMesh = instance.mMesh,
                 .mKind = worn.mKind,
-                // **The medium bit rides with whichever of the three this is**, so that every ray
+                // The medium bit rides with whichever of the three this is, so that every ray
                 // meets it exactly as it did and one more ray can ask for it alone. Everything that
                 // reads a row's mask tests the bit it wants rather than the whole word, which is
                 // what makes a second bit free to ride here.
@@ -112,7 +112,7 @@ namespace Rtx
 
     void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records)
     {
-        // **Resized and not cleared.** `clear` plus `resize` writes the whole array twice — once
+        // Resized and not cleared. `clear` plus `resize` writes the whole array twice — once
         // with zeroes and once with the records — and at a hundred bytes a slot over fifty thousand
         // slots that is five megabytes of pointless stores. The buffer is the caller's and keeps
         // its size between scenes; only a scene that grew or shrank pays anything here.

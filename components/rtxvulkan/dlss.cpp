@@ -37,9 +37,8 @@ namespace Rtx
             return path.c_str();
         }
 
-        /// Where NGX finds the feature libraries it loads at runtime.
-        ///
-        /// Its own search is the application's folder alone, and these are nowhere near the binary.
+        /// Where NGX finds the feature libraries it loads at runtime: its own search is the
+        /// application's folder alone, and these are nowhere near the binary.
         const wchar_t* featurePath()
         {
             static const std::wstring path = [] {
@@ -50,7 +49,7 @@ namespace Rtx
             return path.c_str();
         }
 
-        /// **Off unless asked for, and that is not timidity.** NGX's feature libraries write around
+        /// Off unless asked for, and that is not timidity. NGX's feature libraries write around
         /// a thousand lines to the console on one successful run — enough to bury the message of
         /// whatever failure sent someone looking for them. The reference implementation found the
         /// one error that mattered only in this log, and it appears nowhere in the API surface.
@@ -99,7 +98,7 @@ namespace Rtx
             return DlssSupport{ sLive->mAvailable, sLive->mObstacle };
         }
 
-        // **Stood up and taken down inside this call**, which is what makes it safe to ask from
+        // Stood up and taken down inside this call, which is what makes it safe to ask from
         // anywhere: nothing outside holds a runtime that this could be ending, because the branch
         // above is what happens when something does.
         const Dlss asked(device, instance);
@@ -109,7 +108,7 @@ namespace Rtx
     Dlss::Dlss(const Device& device, VkInstance instance)
         : mDevice(device.getHandle())
     {
-        // **Before anything is started**, so a refusal leaves the runtime that is up untouched. A
+        // Before anything is started, so a refusal leaves the runtime that is up untouched. A
         // constructor that threw after `Init` would have shut the first one down on the way out.
         if (sLive != nullptr)
             throw Error("NGX keeps one runtime per process and one is already up");
@@ -155,7 +154,7 @@ namespace Rtx
                                          : "this device does not offer Ray Reconstruction";
         }
 
-        // **Last, so that only a runtime that came all the way up claims the process.** Everything
+        // Last, so that only a runtime that came all the way up claims the process. Everything
         // above throws on failure, and a constructor that threw gets no destructor to clear this.
         sLive = this;
     }
@@ -172,7 +171,7 @@ namespace Rtx
         unsigned int leastTall = 0;
         float sharpness = 0.0f;
 
-        // **The query is a function pointer inside the capability map, not an exported symbol** —
+        // The query is a function pointer inside the capability map, not an exported symbol —
         // the driver's feature library puts it there. So it is absent exactly when that library was
         // not found, and the helper answers `FAIL_OutOfDate` rather than anything about paths.
         const NVSDK_NGX_Result asked = NGX_DLSSD_GET_OPTIMAL_SETTINGS(mCapabilities, output.width, output.height,
@@ -191,7 +190,7 @@ namespace Rtx
     {
         sLive = nullptr;
 
-        // **Destroyed, and it is not NGX's to reclaim.** The SDK tells `GetCapabilityParameters`
+        // Destroyed, and it is not NGX's to reclaim. The SDK tells `GetCapabilityParameters`
         // apart from the deprecated `GetParameters` on exactly this: a capability map is the
         // caller's, and `DlssPass` releases the one it allocates for the same reason.
         NVSDK_NGX_VULKAN_DestroyParameters(mCapabilities);

@@ -36,7 +36,7 @@ namespace Rtx
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             "gui texture");
 
-        // **Cleared rather than left undefined.** A slot is sampleable from the moment anything can
+        // Cleared rather than left undefined. A slot is sampleable from the moment anything can
         // observe it, so a batch drawn before the first write shows nothing instead of whatever the
         // memory held — and the pass never has to ask whether a texture is ready.
         const VkCommandBuffer commands = mBatch.getCommands();
@@ -126,8 +126,8 @@ namespace Rtx
 
         if (at + bytes > arena.getSize())
         {
-            // **Waited for before the arena is rewound or replaced, and that is the whole of the
-            // safety here.** What was recorded reads these bytes; handing it over would only order
+            // Waited for before the arena is rewound or replaced, and that is the whole of the
+            // safety here. What was recorded reads these bytes; handing it over would only order
             // it, and this is the one place that needs it to have run.
             finish();
             at = 0;

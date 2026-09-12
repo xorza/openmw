@@ -22,7 +22,7 @@ namespace Rtx
         constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings
             = computeBindings<sBindingCount>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
-        /// **`SAMPLED` beside `STORAGE` on what the cascade after this reads.** `AtrousPass` takes
+        /// `SAMPLED` beside `STORAGE` on what the cascade after this reads. `AtrousPass` takes
         /// its taps through the texture unit and a sampled descriptor needs the bit at creation,
         /// which is a promise made here and kept there.
         constexpr VkImageUsageFlags sReadAndWrite = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -69,7 +69,7 @@ namespace Rtx
         const std::size_t previous = mCurrent;
         mCurrent = 1 - mCurrent;
 
-        // **The first frame after a resize has nothing behind it**, and an image whose contents were
+        // The first frame after a resize has nothing behind it, and an image whose contents were
         // never written is not zero — it is whatever the allocation held. Discarding it is what makes
         // the reset below a statement about the history rather than about the memory.
         Barriers barriers(commands);
@@ -86,7 +86,7 @@ namespace Rtx
                     VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
                 Use::sComputeWrite));
 
-        // **Waiting on both of the cascade's accesses and not only its read.** Two frames are in
+        // Waiting on both of the cascade's accesses and not only its read. Two frames are in
         // flight over one blend image, and the levels of the cascade write it as well as read it —
         // so a frame arriving here has to wait for the previous frame's odd levels to finish
         // writing, which a dependency naming the read alone would not order.

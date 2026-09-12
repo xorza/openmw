@@ -34,10 +34,9 @@ namespace Rtx
         /// to the one already there writes nothing, which is the ordinary case.
         bool move(Index slot, const osg::Matrixf& transform);
 
-        /// Empties `slot`. Its index is not reused until the next `add` asks for one.
-        ///
-        /// The slot joins `getMoved`: a backend has to write its row inactive, or the structure
-        /// goes on tracing what stood there.
+        /// Empties `slot`. Its index is not reused until the next `add` asks for one. The slot
+        /// joins `getMoved`: a backend has to write its row inactive, or the structure goes on
+        /// tracing what stood there.
         void drop(Index slot);
 
         /// Says `slot`'s row has to be written again for a reason this table did not make — a

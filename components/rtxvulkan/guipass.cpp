@@ -23,7 +23,7 @@ namespace Rtx
             VkVertexInputBindingDescription{ 0, sizeof(GuiVertex), VK_VERTEX_INPUT_RATE_VERTEX },
         };
 
-        /// **The colour is four bytes read as a normalised vector by the hardware**, which is what
+        /// The colour is four bytes read as a normalised vector by the hardware, which is what
         /// makes MyGUI's own packing free to consume: `ColourABGR` puts red in the low byte, which
         /// is what `R8G8B8A8_UNORM` reads first.
         constexpr std::array<VkVertexInputAttributeDescription, 3> sVertexAttributes{
@@ -80,7 +80,7 @@ namespace Rtx
 
         vkCmdBeginRendering(commands, &rendering);
 
-        // **Upside down on purpose.** MyGUI computes its vertices for a clip space with +Y up,
+        // Upside down on purpose. MyGUI computes its vertices for a clip space with +Y up,
         // which is OpenGL's; Vulkan's points the other way. Flipping the viewport rather than the
         // vertices leaves the vertex shader a pass-through and costs nothing at all.
         const VkViewport viewport{

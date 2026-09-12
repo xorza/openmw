@@ -40,7 +40,7 @@ namespace Rtx
     {
         assert(constants.mWidth <= target.getWidth() && constants.mHeight <= target.getHeight());
 
-        // **Set from whether there is a pyramid, rather than asked of the caller.** A strength with
+        // Set from whether there is a pyramid, rather than asked of the caller. A strength with
         // no pyramid behind it is a sampled stand-in mixed into the picture, and the one place that
         // knows which was bound is here.
         const Image& spread = bloom != nullptr ? *bloom : mNoBloom;
@@ -65,7 +65,7 @@ namespace Rtx
         writes[3] = bufferWrite(3, scale);
         writes[4] = imageWrite(4, pyramid, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-        // **The scene's textures before the launch and beside set zero**, which the two are
+        // The scene's textures before the launch and beside set zero, which the two are
         // independent of: a pushed set and a bound one only have to be in place by the dispatch.
         vkCmdBindDescriptorSets(
             commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 1, 1, &textures, 0, nullptr);

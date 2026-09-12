@@ -88,8 +88,8 @@ namespace Rtx
 
     void Presenter::destroy()
     {
-        // **Through `tearDown`, because this runs from a destructor and from the `catch` that tidies
-        // up after a constructor that failed.** Throwing out of either is `std::terminate`. This
+        // Through `tearDown`, because this runs from a destructor and from the `catch` that tidies
+        // up after a constructor that failed. Throwing out of either is `std::terminate`. This
         // called `vkDeviceWaitIdle` itself to dodge that, which also threw away what the device said
         // about the fault — and left the rule as a comment for the next teardown to remember.
         tearDown("the device would not finish before the presenter was taken apart", [&] { mDevice.waitIdle(); });
@@ -107,7 +107,7 @@ namespace Rtx
 
     void Presenter::releaseImageSync()
     {
-        // **Waited before the semaphores they guard go.** A present holds its wait semaphore until
+        // Waited before the semaphores they guard go. A present holds its wait semaphore until
         // the presentation engine is done, and only these say when that is: the device-idle the
         // caller owes proves the queue is empty and nothing more.
         for (const Owned<VkFence, vkDestroyFence>& fence : mPresented)
@@ -129,7 +129,7 @@ namespace Rtx
         // target still names it.
         mPool->reset();
 
-        // **Freed and not merely reset.** `vkResetCommandPool` returns what a buffer recorded; the
+        // Freed and not merely reset. `vkResetCommandPool` returns what a buffer recorded; the
         // buffer itself stays allocated, so a rebuild that allocates a fresh set leaves the old one
         // in the pool for the presenter's life — and a window resized or a vsync changed a few dozen
         // times is a few dozen sets.
@@ -138,7 +138,7 @@ namespace Rtx
 
         const std::uint32_t images = mSwapchain->getImageCount();
 
-        // **Made again rather than reused**, because a slot can arrive here signalled with nothing
+        // Made again rather than reused, because a slot can arrive here signalled with nothing
         // left to wait it: a suboptimal acquire hands back both an image and a signal, and it is the
         // present after it that reports the swapchain stale. Destroying the semaphore is what clears
         // that signal, and `releaseImageSync` above is where it happens.
@@ -176,7 +176,7 @@ namespace Rtx
         if (!mStale && extent.width == getExtent().width && extent.height == getExtent().height)
             return false;
 
-        // **A window that is not on screen is left alone.** Its surface reports no extent, a
+        // A window that is not on screen is left alone. Its surface reports no extent, a
         // swapchain of none is invalid usage, and rebuilding once a frame against a surface that
         // will not take one is a rebuild a minimised game would pay for as long as it stayed
         // minimised. The staleness stands, so the window coming back rebuilds then.
@@ -220,7 +220,7 @@ namespace Rtx
         Acquisition& acquisition = mAcquiring[mAcquisition];
         mAcquisition = (mAcquisition + 1) % static_cast<std::uint32_t>(mAcquiring.size());
 
-        // **A slot is free when its blit has run, and not when the call that queued it returned.**
+        // A slot is free when its blit has run, and not when the call that queued it returned.
         // The blit waits the semaphore the acquire signalled, so until it runs both operations are
         // still pending on that semaphore and it may not be handed to another acquire.
         if (acquisition.mBlit != VK_NULL_HANDLE)
@@ -234,7 +234,7 @@ namespace Rtx
             return false;
         }
 
-        // **This image may still be in the presentation engine's hands.** Mailbox releases a frame
+        // This image may still be in the presentation engine's hands. Mailbox releases a frame
         // the moment a newer one replaces it, so an image can come back round before the present
         // that queued it has consumed its semaphore — the case a count of frames in flight does not
         // cover, because it counts frames rather than images.
@@ -263,7 +263,7 @@ namespace Rtx
 
         const VkImage presented = mSwapchain->getImage(index);
 
-        // **The source scope names the stage the acquire semaphore is waited at**, or the transition
+        // The source scope names the stage the acquire semaphore is waited at, or the transition
         // is ordered against nothing and can run before the image is ours. `TOP_OF_PIPE` as a source
         // scope means exactly that: nothing.
         VkImageMemoryBarrier2 barrier{

@@ -43,10 +43,9 @@ namespace Rtx
         osg::Vec3f mRings;
     };
 
-    /// Reads it off the cloud mesh the configuration names, which the host passes in.
-    ///
-    /// A missing or unreadable mesh comes back with nothing in it, which draws no deck rather than
-    /// failing — the same answer `readNightSky` gives, and for the same reason.
+    /// Reads it off the cloud mesh the configuration names, which the host passes in. A missing or
+    /// unreadable mesh comes back with nothing in it, which draws no deck rather than failing — the
+    /// same answer `readNightSky` gives, and for the same reason.
     CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh);
 
     /// The same reading, of a mesh already in hand.

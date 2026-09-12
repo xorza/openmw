@@ -12,12 +12,11 @@
 namespace Rtx
 {
     /// The fog's fractal field, drawn once into a wrapping volume with a chain of levels under it.
-    ///
-    /// A field a sampler reads rather than one a march computes: value noise off a hashed lattice
-    /// costs eight hashes an octave, at every step of a twenty-four step march, at every pixel,
-    /// which is nearly the whole of a trace. It is the reference renderer's own trilinear value
-    /// noise, baked and wrapping on all three axes. One octave, and the fractal is the shader's:
-    /// `fogShape` reads this at three scales that never come back into step.
+    /// A field a sampler reads rather than one a march computes, because value noise off a hashed
+    /// lattice costs eight hashes an octave at every step of a twenty-four step march at every
+    /// pixel, which is nearly the whole of a trace. The reference renderer's own trilinear value
+    /// noise, one octave, wrapping on all three axes; the fractal is the shader's, which reads this
+    /// at three scales that never come back into step.
     struct FogNoise
     {
         /// Every level end to end, the full one first, two channels a texel, slice by slice.
@@ -43,14 +42,12 @@ namespace Rtx
     bool withinCells(const osg::Vec2i& cell, const osg::Vec2i& eye, int band);
 
     /// How far from the eye the world is built, in units — one number, and both the ground and the
-    /// air are measured against it.
-    ///
-    /// Rays go everywhere, so what this path needs is how much world exists, which is a property
-    /// of the structure and not of a camera; `viewing distance` at 7168 against a cell of 8192
-    /// barely leaves the active grid. The air has to follow it at both ends: fog extinction tuned
-    /// to seven thousand units swallows everything past the active grid, and
-    /// `Shaders::VisibilityConstants::mFogEdge` closes at exactly this, where `QuadTreeWorld` culls,
-    /// so the ball that is built and the ball that can be seen are the same one.
+    /// air are measured against it. Rays go everywhere, so what this path needs is how much world
+    /// exists, a property of the structure and not of a camera: `viewing distance` at 7168 against
+    /// a cell of 8192 barely leaves the active grid. The air follows it at both ends, because an
+    /// extinction tuned to seven thousand units swallows everything past the active grid, and
+    /// `Shaders::VisibilityConstants::mFogEdge` closes where `QuadTreeWorld` culls, so the ball that
+    /// is built and the ball that can be seen are the same one.
     ///
     /// @param cells how many cells out to build, from `[RTX] distant land cells`. Nought hands the
     ///        decision back to the rasterizer's knob.
@@ -119,13 +116,12 @@ namespace Rtx
     /// How deep a weather's layer stands, as a multiple of the one `FOG_HEIGHT` names.
     float fogLift(float depth, float wind);
 
-    /// What the air scatters toward the eye: the sky's own light, in the weather's colour.
-    ///
-    /// Fog is lit by the sky, so its level belongs to the dome and only its colour to the record:
-    /// the recorded colour handed over as a radiance drew a foggy day as a flat wash the same
-    /// brightness at noon and at dusk. Normalised by its brightest channel and not by its
-    /// luminance, because the record is a scattering albedo and cannot exceed one — blight's
-    /// (128, 19, 19) divided by its luminance came out four times the light that lit it.
+    /// What the air scatters toward the eye: the sky's own light, in the weather's colour. The
+    /// level belongs to the dome and only the colour to the record, because the recorded colour
+    /// handed over as a radiance drew a foggy day as a flat wash the same brightness at noon and at
+    /// dusk. Normalised by its brightest channel and not by its luminance, because the record is a
+    /// scattering albedo and cannot exceed one — blight's (128, 19, 19) divided by its luminance
+    /// came out four times the light that lit it.
     ///
     /// @param skyMean what the dome delivers on average, as a radiance — `SkyBudget::mMean`.
     /// @param hue the weather's recorded fog colour, linear.
@@ -133,16 +129,14 @@ namespace Rtx
 
     /// The distance a room's air is measured over: the view range's shipped default, 7168, stretched
     /// by the factor here. A constant, because the original engine measures a room's ramp against
-    /// `viewing distance`, so raising that setting thinned the air in every cellar in the game.
-    ///
-    /// The stretch is the one number here set by eye, and what it is set against is not. A ramp is
-    /// *clear* until `view * (1 - depth)` — 1792 units for the Seyda Neen customs office, further
-    /// off than any wall in it — so the original draws that room with no fog whatsoever, where a
-    /// medium matched at its half-life puts a tenth of one between the eye and the far wall; and
-    /// this air is *lit* by every lamp that reaches it, so a room with two dozen candles scatters
-    /// far more than the recorded colour ever stood for. Unstretched, the air lifts that room's
-    /// black level by a fifth; stretched, what is left is candlelight hanging under the chandelier.
-    /// Nothing outdoors is stretched: aerial perspective does start at the eye.
+    /// `viewing distance`, so raising that setting thinned the air in every cellar in the game. The
+    /// stretch is the one number here set by eye. A ramp is *clear* until `view * (1 - depth)` —
+    /// 1792 units for the Seyda Neen customs office, further off than any wall in it — so the
+    /// original draws that room with no fog at all, where a medium matched at its half-life puts a
+    /// tenth of one between the eye and the far wall, lit by every lamp that reaches it. Unstretched,
+    /// the air lifts that room's black level by a fifth; stretched, what is left is candlelight
+    /// hanging under the chandelier. Nothing outdoors is stretched: aerial perspective does start at
+    /// the eye.
     constexpr float sInteriorFogReach = 25.0f * 7168.0f;
 
     /// The open air, from the colour and the fog depth a weather is at. One place decides what the

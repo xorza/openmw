@@ -80,7 +80,7 @@ namespace Rtx
                 // blows.
                 .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
 
-                // **The layer `FOG_HEIGHT` names, until a weather says otherwise.** A camera is
+                // The layer `FOG_HEIGHT` names, until a weather says otherwise. A camera is
                 // built before anything has described the air over it, and a lift of nothing is a
                 // layer of no height at all rather than an absence of one. `describeWorld` overwrites
                 // this with what the cell's own weather stands its fog up to.
@@ -155,7 +155,7 @@ namespace Rtx
             .mRight = basis.mRight * (worldWidth * 0.5f),
             .mUp = basis.mUp * (worldHeight * 0.5f),
 
-            // **Zero, and not for want of an answer.** A parallel ray's cone does not widen with
+            // Zero, and not for want of an answer. A parallel ray's cone does not widen with
             // distance; what it has instead is a footprint one pixel of the box wide for its whole
             // length, which the shader works out from `mRight` rather than carry twice.
             .mSpreadAngle = 0.f,

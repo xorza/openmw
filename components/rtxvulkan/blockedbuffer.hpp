@@ -74,10 +74,9 @@ namespace Rtx
         std::uint32_t blockOf(std::uint32_t element) const { return element / mBlockSize; }
         VkDeviceSize offsetOf(std::uint32_t element) const { return VkDeviceSize{ element % mBlockSize } * mStride; }
 
-        /// Where an element sits on the device, for a builder that reads it directly.
-        ///
-        /// **A contract**: a scene reaching past what has been reserved is a caller that skipped a
-        /// `reserve`, not a table that should quietly grow under a builder.
+        /// Where an element sits on the device, for a builder that reads it directly. A contract:
+        /// a scene reaching past what was reserved is a caller that skipped a `reserve`, not a
+        /// table that should quietly grow under a builder.
         VkDeviceAddress addressOf(std::uint32_t element) const
         {
             assert(blockOf(element) < mAddresses.size());

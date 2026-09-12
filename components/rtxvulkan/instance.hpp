@@ -14,10 +14,9 @@ namespace Rtx
 {
     struct InstanceOptions
     {
-        /// Load `VK_LAYER_KHRONOS_validation`.
-        ///
-        /// A developer feature, and treated as one: with the layers on, `mPolicy` decides whether an
-        /// error stops the process. Nobody enables this in a run they care about the frame rate of.
+        /// Load `VK_LAYER_KHRONOS_validation`. A developer feature, and treated as one: with the
+        /// layers on, `mPolicy` decides whether an error stops the process. Nobody enables this in
+        /// a run they care about the frame rate of.
         bool mValidation = false;
 
         /// Catch missing barriers and wrong stage masks. Costs enough to be opt-in even among
@@ -37,10 +36,9 @@ namespace Rtx
         std::vector<const char*> mSurfaceExtensions;
     };
 
-    /// The neutral instrumentation request as this backend takes it.
-    ///
-    /// Shared because the renderer and the window path both build an instance, and two copies of
-    /// this would be two chances for a run to be validated differently than it was asked to be.
+    /// The neutral instrumentation request as this backend takes it. Shared because the renderer
+    /// and the window path both build an instance, and two copies of this would be two chances for
+    /// a run to be validated differently than it was asked to be.
     InstanceOptions toInstanceOptions(const ValidationOptions& validation);
 
     /// A `VkInstance` and, when validation is on, the messenger and the log behind it.

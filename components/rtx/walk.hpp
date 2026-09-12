@@ -38,7 +38,7 @@ namespace Rtx
         unsigned int next() { return ++mLast; }
 
     private:
-        /// **From one and not from zero.** Everything OSG poses starts at a traversal number of
+        /// From one and not from zero. Everything OSG poses starts at a traversal number of
         /// zero, so a first walk saying zero is a walk that poses nothing.
         unsigned int mLast = 0;
     };

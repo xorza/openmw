@@ -15,7 +15,7 @@ namespace Rtx
         if (fall == nullptr || underwater)
             return;
 
-        // **The same mask as everything else, because there is nothing here to select.** The walk
+        // The same mask as everything else, because there is nothing here to select. The walk
         // starts at the precipitation node, so the subtree is already chosen; a mask is only ever
         // excluding what a renderer draws for itself, and none of that is under here.
         extractor.extract(*fall, osg::Matrixf::translate(eye), 0, frameNumber);
@@ -76,7 +76,7 @@ namespace Rtx
 
         constants.mStars = stars;
 
-        // **A moon is a light as well as a disc**, and both halves stop at the door: the weather
+        // A moon is a light as well as a disc, and both halves stop at the door: the weather
         // system stops reporting the moment the player steps inside, so what it last said is still
         // standing in the frame the room is drawn from — a moon left in one lights through every
         // seam the shell has, and traces a shadow ray at a body over the roof.

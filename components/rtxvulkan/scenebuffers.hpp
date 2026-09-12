@@ -50,12 +50,10 @@ namespace Rtx
         /// it is made of alone: rebuilding all of it is tens of milliseconds on a nine-by-nine
         /// region. Those tables live in memory the host writes straight into, so this is a `memcpy`
         /// and not a staging buffer, a submit and a wait. Into `slot`'s copy of every table a frame
-        /// writes, which the caller has waited the fence of; `SlotTable` and `SlotBlocks` keep each
-        /// copy's account of what it is owed.
-        ///
-        /// `scene` must be the one the constructor was given. `records` are the rows the
-        /// acceleration structure was placed with, so the motion transform a shader reads and the
-        /// one an instance was placed with come out of the same arithmetic.
+        /// writes, whose fence the caller waited; `SlotTable` and `SlotBlocks` keep each copy's
+        /// account of what it is owed. `scene` must be the one the constructor was given, and
+        /// `records` the rows the acceleration structure was placed with, so the motion transform a
+        /// shader reads and the one an instance was placed with come out of the same arithmetic.
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list the rows
         ///        are driven by.
@@ -121,17 +119,14 @@ namespace Rtx
             /// other table. `SpriteListSize` says why the two numbers are one object.
             SpriteListSize mSpriteListSize;
 
-            /// What one copy of them occupies.
-            ///
-            /// **Beside the declarations, because a table added above and forgotten here is a
-            /// figure that quietly stops accounting for it.** Two of them already were.
+            /// What one copy of them occupies. Beside the declarations, because a table added above
+            /// and forgotten here is a figure that quietly stops accounting for it, which two of
+            /// them were.
             VkDeviceSize getBytes() const;
         };
 
-        /// Grows one of this object's tables to exactly `bytes`, burying what that displaced.
-        ///
-        /// A thin name over `growTo` — the rule that a table is never nothing lives there, and this
-        /// only saves every call site from repeating what is the same for all of them.
+        /// Grows one of this object's tables to exactly `bytes`, burying what that displaced. A thin
+        /// name over `growTo`, where the rule that a table is never nothing lives.
         void reserve(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
 
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
@@ -165,17 +160,16 @@ namespace Rtx
         std::vector<Shaders::GpuMesh> mMeshScratch;
         std::vector<Shaders::GpuLayer> mLayerScratch;
 
-        /// What a hit turns its slot into: the mesh, the material, the opacity and the motion.
-        ///
-        /// **Its own table rather than a field of `Tables`**, because the copies and what each of
-        /// them still owes are one thing and belong to one object. `SlotTable` says why.
+        /// What a hit turns its slot into: the mesh, the material, the opacity and the motion. Its
+        /// own table rather than a field of `Tables`, because the copies and what each of them
+        /// still owes are one thing and belong to one object (`SlotTable`).
         SlotTable<Shaders::GpuInstance> mInstanceTable;
 
         /// Every material the scene holds, and one row past them for the sentinel a placement with
         /// no material of its own wears.
         SlotTable<Shaders::GpuMaterial> mMaterialTable;
 
-        /// **Blocked like the geometry they belong to**, so a scene that grows keeps the blocks it
+        /// Blocked like the geometry they belong to, so a scene that grows keeps the blocks it
         /// already has and adds one. One copy per frame in flight because a skinned body's normals
         /// are recomputed every frame — by `SkinPass`, into the copy the frame traces; the rest of a
         /// cell's are written once into every copy.

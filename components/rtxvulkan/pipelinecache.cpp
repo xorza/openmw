@@ -145,7 +145,7 @@ namespace Rtx
             if (!file)
                 return {};
 
-            // **Both bounds before the read and not only after it**, because the file this refuses
+            // Both bounds before the read and not only after it, because the file this refuses
             // for its size is the one it would be most expensive to read: `PipelineCache::sMostBytes`
             // says what has been seen in a directory nothing swept.
             const std::streamoff bytes = file.tellg();
@@ -203,7 +203,7 @@ namespace Rtx
         if (mHandle.get() == VK_NULL_HANDLE)
             return;
 
-        // **The one destructor here that is not about a handle.** A destructor, so nothing in it may
+        // The one destructor here that is not about a handle. A destructor, so nothing in it may
         // throw: allocating the blob can, and a cache that failed to save is not worth taking the
         // process down over. `tearDown` is where that rule lives.
         tearDown("the pipeline cache was not saved", [&] { write(); });
@@ -270,7 +270,7 @@ namespace Rtx
         if (data == mLoaded)
             return;
 
-        // **Removed rather than written, where one run's own pipelines have outgrown the cap.** The
+        // Removed rather than written, where one run's own pipelines have outgrown the cap. The
         // next run would refuse a blob this size and start again, so writing it is a hundred
         // megabytes spent to be thrown away — and leaving the smaller file that is already there
         // would have the run after that grow past the cap again from where this one did.

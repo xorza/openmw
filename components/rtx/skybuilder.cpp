@@ -38,7 +38,6 @@ namespace Rtx
         }
 
         /// What a sheet averages: the luminance of what it paints, and how much of the sky it hides.
-        ///
         /// Nothing where the file will not read or decode, which is the same answer a missing sheet
         /// gives and lands in the same place: a weather with no deck to draw.
         MeanTexel sheetMean(Resource::ImageManager& images, const VFS::Path::Normalized& path)
@@ -93,7 +92,7 @@ namespace Rtx
             loaded.mClouds[weather] = scene.textures().add(path);
             scene.textures().hold(loaded.mClouds[weather]);
 
-            // **Read here and not on the frame that needs it.** Averaging a 512-square sheet is a
+            // Read here and not on the frame that needs it. Averaging a 512-square sheet is a
             // quarter of a million texels, and there are six of them; the image is the one the
             // upload is about to take out of the same cache.
             const MeanTexel painted = sheetMean(*scenes.getImageManager(), path);
@@ -101,11 +100,11 @@ namespace Rtx
             loaded.mCloudCover[weather] = painted.mAlpha;
         }
 
-        // **The shape the deck hangs on is the mesh's**, both of its numbers: how high the layer is
+        // The shape the deck hangs on is the mesh's, both of its numbers: how high the layer is
         // in tiles of its own sheet, and how far it falls away over the ground it covers.
         loaded.mShell = readCloudShell(scenes, meshes.mClouds);
 
-        // **The night sky is the mesh's**, every number of it: which sheet the field wears, how much
+        // The night sky is the mesh's, every number of it: which sheet the field wears, how much
         // sky a tile of it covers, where it fades out, and where the six patches sit.
         loaded.mNight = readNightSky(scene, scenes, meshes.mStars, meshes.mStarsFallback);
 
@@ -114,13 +113,13 @@ namespace Rtx
 
     DeckLight deckLight(const Sun& sun, const osg::Vec3f& skyMean, std::span<const MoonPlacement, 2> moons)
     {
-        // **The sky's own radiance, less what the deck keeps of it.** A layer under a hemisphere of
+        // The sky's own radiance, less what the deck keeps of it. A layer under a hemisphere of
         // radiance `L` receives `pi L` and spreads what leaves its base over the hemisphere below,
         // so what comes back is `T * pi L / pi` — the `pi` divides out and a deck is simply a
         // fraction of the sky it hides.
         const osg::Vec3f fromSky = skyMean * Shaders::CLOUD_TRANSMISSION;
 
-        // **A direction has to be turned into a level surface's share of it first.** The layer is
+        // A direction has to be turned into a level surface's share of it first. The layer is
         // flat and the light is not overhead, so what lands is `E cos`, and what leaves the base is
         // that spread over the lower hemisphere.
         const auto sentDown = [](const osg::Vec3f& irradiance, const osg::Vec3f& towards) {
@@ -148,8 +147,8 @@ namespace Rtx
         // content file by way of a division, and a NaN through `clamp` blacks out the sky.
         const float mixed = blend > 0.0f ? (blend < 1.0f ? blend : 1.0f) : 0.0f;
 
-        // **The level the sheet is read against crosses with the sheet, and falls back the way it
-        // does.** Where the weather ahead names no deck the shader samples the near sheet for both
+        // The level the sheet is read against crosses with the sheet, and falls back the way it
+        // does. Where the weather ahead names no deck the shader samples the near sheet for both
         // ends of the blend, so what it read is that sheet alone and so is the mean it is read
         // against.
         const std::uint32_t ahead = textures.cloudsOf(next);
@@ -171,7 +170,7 @@ namespace Rtx
             .mMean = mean,
             .mCover = cover,
 
-            // **A world height and a tile's own width**, which is what anchors the sheet to the
+            // A world height and a tile's own width, which is what anchors the sheet to the
             // ground under it rather than to the eye. `Rtx::sCloudAltitude` is the chosen number and
             // the mesh's own height in tiles is what turns it into a width.
             .mAltitude = sCloudAltitude,
@@ -180,7 +179,7 @@ namespace Rtx
             .mBlend = mixed,
             .mScroll = scroll,
 
-            // **Turned to face where each weather is driving**, which is what the engine does to
+            // Turned to face where each weather is driving, which is what the engine does to
             // each of its two cloud meshes: the deck of an ashstorm runs the way the ash does. A
             // weather with nothing to drive leaves the direction due north, and this due north too.
             .mBearing = bearingOf(storm),
@@ -234,8 +233,8 @@ namespace Rtx
             const osg::Vec3f towards(placed.mDirection.x() * std::cos(turn) - placed.mDirection.y() * std::sin(turn),
                 placed.mDirection.x() * std::sin(turn) + placed.mDirection.y() * std::cos(turn), placed.mDirection.z());
 
-            // **A canonical orientation, because the mesh's own is not recoverable from a centre and
-            // a radius.** What a patch is painted with is a soft wash or a scatter of stars, neither
+            // A canonical orientation, because the mesh's own is not recoverable from a centre and
+            // a radius. What a patch is painted with is a soft wash or a scatter of stars, neither
             // of which reads as turned the wrong way; keeping `mUp` as near the zenith as the patch
             // allows is what stops one drifting as the sphere rolls.
             osg::Vec3f up = osg::Vec3f(0.0f, 0.0f, 1.0f) - towards * towards.z();

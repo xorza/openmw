@@ -60,7 +60,7 @@ namespace Rtx
                 = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
                 .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
                     | VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                // **Read as well as written**, because the reduction now moves the previous frame's
+                // Read as well as written, because the reduction now moves the previous frame's
                 // exposure toward this frame's measurement: the write before it has to be visible
                 // and not merely ordered.
                 .dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,

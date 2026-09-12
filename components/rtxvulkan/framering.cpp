@@ -48,7 +48,7 @@ namespace Rtx
 
     FrameRecord& FrameRing::recording()
     {
-        // **The frame that last used this slot has to be out of the way** — its fence waited, its
+        // The frame that last used this slot has to be out of the way — its fence waited, its
         // graveyard emptied, its results read or dropped — which is what caps the frames in flight
         // at the number of slots and what makes the slot this hands back the caller's own.
         while (mFrame - mFinished >= sFrameSlots)
@@ -129,7 +129,7 @@ namespace Rtx
 
     std::optional<FrameResult> FrameRing::collect()
     {
-        // **What is already in hand before anything is waited for.** A frame the ring drained to
+        // What is already in hand before anything is waited for. A frame the ring drained to
         // make room has been finished and its report is here; waiting again would wait the frame
         // after it and hand back a report a frame ahead of the one the caller is asking about.
         if (mReports.empty())

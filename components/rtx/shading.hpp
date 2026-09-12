@@ -34,11 +34,9 @@ namespace Rtx
     };
 
     /// What the content said this surface is, folded out of the chain of state sets in force at it,
-    /// root first and nearest last, which is how OpenGL resolves the same chain.
-    ///
-    /// @return whether any state set on the chain carried a material or a texture. False is a
-    ///         drawable that wears nothing — the sky, the water, a debug line — and `material` is
-    ///         then the defaults.
+    /// root first and nearest last, which is how OpenGL resolves the same chain. False where no
+    /// state set on the chain carried a material or a texture — the sky, the water, a debug line —
+    /// and `material` is then the defaults.
     bool describeSurface(std::span<const Shading> shading, Surface::Material& material);
 
     /// Whether the nearest pass on the chain adds to the frame rather than covering it — the

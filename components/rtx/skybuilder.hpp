@@ -123,8 +123,6 @@ namespace Rtx
 
     /// The cloud deck, in the units the shader takes — one conversion, so a screenshot and a
     /// played frame stand under one sky.
-    ///
-    /// @param light what the deck radiates, out of `deckLight`.
     Shaders::CloudDeck describeClouds(const CloudCrossing& clouds, const DeckLight& light, const SkyContent& textures);
 
     /// The star field, in the units the shader takes.

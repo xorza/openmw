@@ -90,7 +90,7 @@ namespace Rtx
         /// One sine of the ladder: `index` steps this light's phase along, `frequency` is in hertz.
         float band(double simulationTime, float frequency, float phase, int index)
         {
-            // **Reduced to one turn in double, before it is narrowed.** A session's clock reaches tens
+            // Reduced to one turn in double, before it is narrowed. A session's clock reaches tens
             // of thousands of seconds, and a float holding that many turns at nine hertz has nothing
             // left for the fraction of a turn that is the whole answer.
             const auto turns = static_cast<float>(std::fmod(static_cast<double>(frequency) * simulationTime, 1.0));
@@ -110,7 +110,7 @@ namespace Rtx
                 frequency /= sBandRatio;
             }
 
-            // **Equal weights, which is what makes the spectrum pink.** The bands are a geometric
+            // Equal weights, which is what makes the spectrum pink. The bands are a geometric
             // ladder, so one weight each is one share of the power per octave — the spectrum a flame
             // has, and the reason this reads as a flame rather than as a wobble at one rate. Divided by
             // their count so that the sum cannot leave `-1 .. 1`, which is what bounds the brightness.
@@ -137,7 +137,7 @@ namespace Rtx
             .mIntensity = colour * (radius * radius * sIntensity),
             .mReach = radius * sReachScale + sReachBonus,
 
-            // **A sixteenth is an estimate**, and the paragraph above argues it is a good one — a
+            // A sixteenth is an estimate, and the paragraph above argues it is a good one — a
             // lamp that casts no penumbra at all is the worse answer.
             .mSourceRadius = radius * sSourceFraction,
             .mClearance = radius * sFittingFraction,
@@ -199,7 +199,7 @@ namespace Rtx
         if (!castsWherePlaced(record))
             return false;
 
-        // **The mirror does not filter on the mask**, so it decides nothing here. It is what the
+        // The mirror does not filter on the mask, so it decides nothing here. It is what the
         // game marks a light node with, so the two graphs look the same to anything that ever does.
         SceneUtil::addLight(&where, record, SceneUtil::Mask_Lighting, exterior);
 

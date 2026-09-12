@@ -48,7 +48,7 @@ namespace Rtx
                 .mPosition = sky.mSunPosition,
                 .mIrradiance = sky.mSunColour * (Shaders::DAYLIGHT * std::clamp(share, 0.0f, 1.0f)),
 
-                // **The glare arrives here rather than being folded into the colour earlier**, and that
+                // The glare arrives here rather than being folded into the colour earlier, and that
                 // is not tidiness: it is a blend factor the rasterizer applies to a sprite in the file's
                 // own space, and dimming radiance is a linear multiply. Applied before the decode it
                 // would come out a different colour, not merely a darker one.
@@ -71,7 +71,7 @@ namespace Rtx
     {
         const float level = (sunIrradiance + ambient) * Shaders::LUMINANCE_WEIGHTS;
 
-        // **Against a full sun rather than against a noon worked out here.** A clear noon
+        // Against a full sun rather than against a noon worked out here. A clear noon
         // delivers 8.03 where `DAYLIGHT` is 8, so the hour that needs no holding back is the one
         // that comes out at one — and no second number has to be kept in step with the first.
         return std::pow(std::min(level / Shaders::DAYLIGHT, 1.0f), sHourStops);
@@ -141,8 +141,8 @@ namespace Rtx
         if (!(descent > 0.0f))
             return Sky::sunShareAt(hour, times);
 
-        // **The larger of the ramp read either side, because the layer's day is the ground's widened
-        // at both ends.** A layer that sees the sun lower sees it earlier in the morning and later
+        // The larger of the ramp read either side, because the layer's day is the ground's widened
+        // at both ends. A layer that sees the sun lower sees it earlier in the morning and later
         // in the evening, and those are opposite shifts of one clock — reading an earlier hour is
         // right at dusk and hands the morning less sun than the ground itself gets.
         const float offset = dip / descent;

@@ -20,10 +20,8 @@ namespace Rtx
     /// Name of a `VkResult` as it is spelled in the header, for messages.
     std::string_view resultName(VkResult result);
 
-    /// Throws `Error` naming `call` and the result unless `result` is `VK_SUCCESS`.
-    ///
-    /// `VK_INCOMPLETE` is a failure here, and `enumerateVk` is the one caller that answers it
-    /// instead of raising it.
+    /// Throws `Error` naming `call` and the result unless `result` is `VK_SUCCESS`. `VK_INCOMPLETE`
+    /// is a failure here, and `enumerateVk` is the one caller that answers it instead of raising it.
     void checkVk(VkResult result, const char* call);
 
     /// The same, for a call that can lose the device: a submit, a wait, an acquire or a present.
@@ -85,7 +83,7 @@ namespace Rtx
 
             checkVk(filled, call);
 
-            // **Down to what the fill wrote and never up.** A list that shrank between the two
+            // Down to what the fill wrote and never up. A list that shrank between the two
             // calls leaves elements nothing touched, and a driver that reported more than it was
             // given room for would otherwise be handed back elements that are not there.
             into.resize(std::min(static_cast<std::size_t>(count), into.size()));
@@ -120,7 +118,7 @@ namespace Rtx
         }
         catch (...)
         {
-            // **The promise is that nothing leaves, so it may not depend on what was thrown.**
+            // The promise is that nothing leaves, so it may not depend on what was thrown.
             // Nothing in this tree raises anything else, and a promise with a hole in it is not one.
             reportTornDown(failure, "something that is not an exception");
         }

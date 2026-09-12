@@ -7,11 +7,10 @@ namespace Rtx
 {
     namespace
     {
-        /// Collects triangle indices whatever primitive mode the geometry used.
-        ///
-        /// Strips, fans and quads all arrive here as triangles, which is the only form an
-        /// acceleration structure takes. Degenerate triangles — how a strip restarts — are dropped:
-        /// they contribute no surface and a zero-area triangle in a BLAS is wasted traversal.
+        /// Collects triangle indices whatever primitive mode the geometry used: strips, fans and
+        /// quads all arrive here as triangles, which is the only form an acceleration structure
+        /// takes. Degenerate triangles — how a strip restarts — are dropped: they contribute no
+        /// surface and a zero-area triangle in a BLAS is wasted traversal.
         struct TriangleCollector
         {
             std::vector<std::uint32_t>* mIndices = nullptr;

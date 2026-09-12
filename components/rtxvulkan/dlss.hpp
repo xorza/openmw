@@ -44,7 +44,7 @@ namespace Rtx
         /// the call. Throws `Error` where the runtime will not come up at all.
         static DlssSupport probe(const Device& device, VkInstance instance);
 
-        /// Starts the runtime. **Throws where one is already up**, on any device: there is one per
+        /// Starts the runtime. Throws where one is already up, on any device: there is one per
         /// process, and a second would end the first rather than stand beside it.
         Dlss(const Device& device, VkInstance instance);
 
@@ -69,7 +69,7 @@ namespace Rtx
         VkDevice getDevice() const { return mDevice; }
 
     private:
-        /// Whichever one is up, or null. **A tripwire and not an owner**: nothing reads it to find
+        /// Whichever one is up, or null. A tripwire and not an owner: nothing reads it to find
         /// the runtime — the renderer holds that — and what it is for is making a second one a throw
         /// instead of a silent shutdown of the first.
         static inline Dlss* sLive = nullptr;

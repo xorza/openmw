@@ -26,14 +26,13 @@ namespace Rtx
 
     /// Every texture the GUI draws with, addressed by slot — a font atlas, a skin sheet, a map, a
     /// video frame — nothing like the scene's bindless array. A slot a texture gave back is taken
-    /// over before the table grows (`Rtx::SlotPool`).
-    ///
-    /// Nothing here waits on the frame path: making a texture and writing one are recorded into a
-    /// batch and handed to the pool, to go ahead of whatever submits next. Every reader needs these
-    /// copies *ordered* before it, and waiting for them *finished* would be waiting for the whole
-    /// traced frame on every frame that wrote a texture; `finish` is the exception. A texture rests
-    /// in `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` between the calls here, which is why the one
-    /// path that writes one with device commands goes through `writeWith`.
+    /// over before the table grows (`Rtx::SlotPool`). Nothing here waits on the frame path: making
+    /// a texture and writing one are recorded into a batch and handed to the pool, to go ahead of
+    /// whatever submits next, because every reader needs these copies *ordered* before it, and
+    /// waiting for them *finished* would be waiting for the whole traced frame on every frame that
+    /// wrote a texture; `finish` is the exception. A texture rests in
+    /// `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` between the calls here, which is why the one path
+    /// that writes one with device commands goes through `writeWith`.
     class GuiTextures
     {
     public:
@@ -70,7 +69,6 @@ namespace Rtx
         /// What the pass samples, or null where nothing holds that slot.
         VkImageView getView(GuiSlot slot);
 
-        /// Whether anything is in that slot.
         bool holds(GuiSlot slot) const
         {
             return !slot.isNone() && slot.get() < mImages.size() && mImages[slot.get()] != nullptr;
@@ -111,10 +109,9 @@ namespace Rtx
         ///        the old one may not have run.
         void readBackWith(GuiSlot slot, VkCommandBuffer commands, std::uint64_t frame, Graveyard& graveyard);
 
-        /// Copies what `readBackWith` left for `slot` into `into`, and answers whether it did.
-        ///
-        /// **False until the frame carrying the copy is behind `finished`**, and never a wait: the
-        /// caller asks again next frame. False too where nothing was ever asked of the slot.
+        /// Copies what `readBackWith` left for `slot` into `into`, and answers whether it did:
+        /// false until the frame carrying the copy is behind `finished`, and never a wait, because
+        /// the caller asks again next frame. False too where nothing was ever asked of the slot.
         bool takeCopy(GuiSlot slot, std::span<std::uint8_t> into, std::uint64_t finished);
 
         /// Every copy recorded so far has run — the caller drained the queue, deferred batches and
@@ -127,9 +124,8 @@ namespace Rtx
         void finish();
 
     private:
-        /// Hands what has been recorded to the pool, to go ahead of its next submit.
-        ///
-        /// Costs nothing where nothing is pending, which is what lets every accessor call it.
+        /// Hands what has been recorded to the pool, to go ahead of its next submit. Costs nothing
+        /// where nothing is pending, so every accessor can call it.
         void handOver();
 
         /// A run of the current staging arena, `bytes` long, and where it starts, so several writes
@@ -153,7 +149,7 @@ namespace Rtx
         };
         std::vector<Copy> mCopies;
 
-        /// The slots nothing holds. **`SlotPool` and not a list of its own**, because which free
+        /// The slots nothing holds. `SlotPool` and not a list of its own, because which free
         /// slot an arrival takes is one rule and this renderer keeps three tables by it.
         SlotPool mFree;
 

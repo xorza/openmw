@@ -87,7 +87,7 @@ namespace Rtx
             if (has(extensions, name))
                 profile.mOptionalExtensions.push_back(name);
 
-        // **In the order a reader would want to be told.** A device short of the version cannot be
+        // In the order a reader would want to be told. A device short of the version cannot be
         // asked the rest of these questions meaningfully, and naming one missing feature of a card
         // that reports Vulkan 1.2 sends the reader after the wrong thing.
         if (properties.mProperties2.properties.apiVersion < sApiVersion)

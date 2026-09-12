@@ -37,13 +37,12 @@ namespace Rtx
         Sampler mSampler;
     };
 
-    /// The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
-    ///
-    /// A frustum-aligned grid replacing a march of `FOG_STEPS` steps and eight sun probes down
-    /// every primary ray of every frame, over a field that has no detail at a pixel's size. One
-    /// column per `FOG_VOLUME_SCALE` squared pixels answers all of them. A room's air is drawn here
-    /// too: its even field integrates in closed form, but that form still needs a lamp reservoir
-    /// and a shadow ray per pixel, which a froxel does once for a column.
+    /// The air in front of the eye, integrated once for a block of pixels rather than once per
+    /// pixel: a frustum-aligned grid replacing a march of `FOG_STEPS` steps and eight sun probes
+    /// down every primary ray of every frame, over a field that has no detail at a pixel's size.
+    /// One column per `FOG_VOLUME_SCALE` squared pixels answers all of them. A room's air is drawn
+    /// here too: its even field integrates in closed form, but that form still needs a lamp
+    /// reservoir and a shadow ray per pixel, which a froxel does once for a column.
     ///
     /// Two volumes and not one, because what filters and what a pixel reads are different
     /// quantities: a froxel's scattering and extinction are properties of the point and reproject
@@ -52,13 +51,12 @@ namespace Rtx
     /// integral is taken afterwards from the filtered volume, every frame; skipping that split is
     /// what put the grid on screen. Every slice is a sample at its own middle and the air between
     /// two is the line between them (`FogSlice`), and `fogdepth.comp` keeps a froxel's samples in
-    /// the air short of the surface.
-    ///
-    /// The sun keeps a channel of its own, because its phase function must stay at the pixel's
-    /// resolution: Mie scattering throws a peak thousands of times isotropic within a degree of the
-    /// sun's line, and a column is a quarter of a degree across. The factor depends on the direction
-    /// alone, so it divides out and the trace puts it back per pixel. The moons keep the column's
-    /// phase: two more channels would buy the same sharpness for halos a fraction of the sun's.
+    /// the air short of the surface. The sun keeps a channel of its own, because its phase
+    /// function must stay at the pixel's resolution: Mie scattering throws a peak thousands of
+    /// times isotropic within a degree of the sun's line, and a column is a quarter of a degree
+    /// across. The factor depends on the direction alone, so it divides out and the trace puts it
+    /// back per pixel. The moons keep the column's phase: two more channels would buy the same
+    /// sharpness for halos a fraction of the sun's.
     class FogVolume
     {
     public:
@@ -73,8 +71,8 @@ namespace Rtx
         /// the reason `GBuffer::describeLayout` gives.
         static SetLayout describeLayout(const Device& device);
 
-        /// How many columns across and down the grid is — **not pixels**, which is what the
-        /// `GBuffer` beside it measures in.
+        /// How many columns across and down the grid is — not pixels, which the `GBuffer` beside
+        /// it measures in.
         std::uint32_t getColumns() const { return mColumns; }
         std::uint32_t getRows() const { return mRows; }
 
@@ -108,7 +106,7 @@ namespace Rtx
         std::uint32_t mRows = 0;
 
         /// What the air scatters and takes out at a point: the sky's own colour, both moons and
-        /// every lamp in `rgb`, and the extinction per world unit in `a`. **Not integrated** — this
+        /// every lamp in `rgb`, and the extinction per world unit in `a`. Not integrated — this
         /// is the pair a frame reprojects and averages.
         std::array<Image, 2> mScatter;
 

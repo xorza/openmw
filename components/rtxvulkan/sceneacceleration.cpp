@@ -96,7 +96,7 @@ namespace Rtx
             if (range.mVertices.empty())
                 continue;
 
-            // **The bind pose into every copy, and only for a mesh that has one.** A body stands in
+            // The bind pose into every copy, and only for a mesh that has one. A body stands in
             // whatever pose the copy being traced was last given, so a copy the pass has never
             // dispatched for it still has to hold something a refit can read. A static mesh has no
             // run here at all: `buildMeshes` stages its vertices for the build and nothing else.
@@ -108,7 +108,7 @@ namespace Rtx
             mIndices.writeAt(batch, range.mIndices.mOffset, range.mIndices.in(scene.meshes().getIndices()));
         }
 
-        // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
+        // What is built out of these was copied a moment ago. The blocks are device memory, so a
         // mesh reaches them through a transfer rather than through a host write that a submit already
         // orders — and the acceleration structures built from them are recorded into this same
         // command buffer. One dependency for every block, because they are read together.
@@ -117,7 +117,7 @@ namespace Rtx
 
     void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
     {
-        // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
+        // Departures first, and their rooms go to the graveyard rather than straight back, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
         // lists are disjoint, so a slot handed out again appears only among the arrivals and is
         // dealt with by `buildMeshes`, which buries whatever the slot was holding.
@@ -128,7 +128,7 @@ namespace Rtx
 
     void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard)
     {
-        // **The builds a crossing brings, bracketed as one zone.** Without it they are device time
+        // The builds a crossing brings, bracketed as one zone. Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
@@ -142,7 +142,7 @@ namespace Rtx
     {
         const std::span<const Index> deformed = scene.meshes().getDeformed();
 
-        // **This frame's copy, which the pass has already posed into.** `SkinPass::record` runs
+        // This frame's copy, which the pass has already posed into. `SkinPass::record` runs
         // ahead of this in the same command buffer and pays the poses' account — every pose this
         // copy owed, this frame's and the ones it missed — so what the refit reads is the pose and
         // not the bind.
@@ -150,7 +150,7 @@ namespace Rtx
 
         if (deformed.empty())
         {
-            // **Emptied and not left alone.** These still hold the last frame's rebuilds, and a
+            // Emptied and not left alone. These still hold the last frame's rebuilds, and a
             // frame whose actors have all gone would otherwise leave a vector whose size claims work
             // that is not there.
             mRefit.sizeTo(0);
@@ -200,7 +200,7 @@ namespace Rtx
         {
             const Index index = deformed[i];
 
-            // **Into the structure that is already there**, rather than into a new one beside it:
+            // Into the structure that is already there, rather than into a new one beside it:
             // its handle is what every top-level row already points at. An update, with the same
             // flags as the build that allowed one, which the update requires.
             mRefit.mBuilds[i] = VkAccelerationStructureBuildGeometryInfoKHR{
@@ -243,7 +243,7 @@ namespace Rtx
         // caches the bounds of what it names.
         writeRows(records, changed);
 
-        // **After the rows are grown to the scene and before the copy they are synced from.** A
+        // After the rows are grown to the scene and before the copy they are synced from. A
         // structure copied tight has moved, and the rows naming it are written again here — into
         // the same table, so every copy owes them the way it owes anything else.
         const bool compacting = placeCompacted(records, placing.mGraveyard);
@@ -273,7 +273,7 @@ namespace Rtx
         if (moved.empty())
             return false;
 
-        // **Every row that placed one of these names an address that has moved.** Nothing indexes
+        // Every row that placed one of these names an address that has moved. Nothing indexes
         // the instances by the mesh they place, so the records are walked — only on a placement that
         // compacted something, which is the twenty or so after a cell arrives and never again for
         // those meshes.
@@ -291,7 +291,7 @@ namespace Rtx
     {
         const std::size_t had = mRowTable.size();
 
-        // **A row that leaves discounts itself before its flags go.** `mRowFlags` is what says what
+        // A row that leaves discounts itself before its flags go. `mRowFlags` is what says what
         // a row counted as, and the resize below drops the flags of the rows past the new end — so
         // a cutout or a medium that left with them would stay in the totals for the rest of the
         // scene.
@@ -302,7 +302,7 @@ namespace Rtx
         mRowTable.resize(records.size());
         mRowFlags.resize(records.size(), 0);
 
-        // **What the table grew by, written from its record rather than left inactive.** `resize`
+        // What the table grew by, written from its record rather than left inactive. `resize`
         // owes every appended row to every copy, so a row nothing writes reaches the device as a
         // gap rather than as whatever was last in that memory. This is what makes them the
         // instances they actually are, and on the first placement it is the whole table.
@@ -351,7 +351,7 @@ namespace Rtx
     {
         discountRow(slot);
 
-        // **A gap is an inactive row and not a row left out.** Its slot is the custom index a hit
+        // A gap is an inactive row and not a row left out. Its slot is the custom index a hit
         // reads back, so the rows cannot close up around it; a reference of nought is what the
         // build reads as an instance to skip, and it costs the build nothing it would ever trace.
         if (!record.mPlaced)
@@ -362,7 +362,7 @@ namespace Rtx
 
         std::uint8_t& counted = mRowFlags[slot];
 
-        // **A test on the bit and not on the whole mask.** A row carries `MASK_MEDIUM` beside
+        // A test on the bit and not on the whole mask. A row carries `MASK_MEDIUM` beside
         // whichever of the three it is, so an equality here would stop counting the day anything
         // that is water is also a medium.
         if ((record.mMask & Shaders::MASK_WATER) != 0)
@@ -382,8 +382,8 @@ namespace Rtx
 
         assert(record.mMesh < mBottomLevel.size() && "a row placing a mesh nothing built");
 
-        // **The geometry is built opaque, so forcing is the whole of how either candidate reaches
-        // the shader at all** — a cutout to be asked whether there is anything at the hit, a
+        // The geometry is built opaque, so forcing is the whole of how either candidate reaches
+        // the shader at all — a cutout to be asked whether there is anything at the hit, a
         // translucent surface to be asked how much of it there is.
         if (record.mCutout || record.mTranslucent)
             flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
@@ -441,7 +441,7 @@ namespace Rtx
         functions.mGetAccelerationStructureBuildSizes(
             mDevice.getHandle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mTopLevelBuild, &slots, &sizes);
 
-        // **The old structure is buried, and its storage with it where that has to grow.** A cell
+        // The old structure is buried, and its storage with it where that has to grow. A cell
         // arriving is what brings this here, and an arrival waits every frame out first — but the
         // rule is one rule, and burying costs nothing where nothing is in flight.
         graveyard.bury(mTopLevel);

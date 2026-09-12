@@ -78,13 +78,12 @@ namespace Rtx
             declared[Shaders::BIND_FRAME]
                 = VkDescriptorSetLayoutBinding{ Shaders::BIND_FRAME, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sStages };
 
-            // Then the two the sea was synthesised into, one descriptor a cascade.
             for (const std::uint32_t binding : { Shaders::BIND_WAVE_SURFACE, Shaders::BIND_WAVE_CURVATURE })
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     Shaders::WAVE_CASCADES, sStages };
 
-            // And the one the fog's field was drawn into, which is one volume rather than a cascade
-            // of tiles: the air has no near band and no far one, it has a field read at three scales.
+            // One volume rather than a cascade of tiles: the air has no near band and no far one, it
+            // has a field read at three scales.
             declared[Shaders::BIND_FOG_FIELD] = VkDescriptorSetLayoutBinding{ Shaders::BIND_FOG_FIELD,
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sStages };
 
@@ -92,7 +91,7 @@ namespace Rtx
         }();
     }
 
-    // **The hit table is the material kinds, in their own order.** Traversal reads an instance's
+    // The hit table is the material kinds, in their own order. Traversal reads an instance's
     // shader-table offset to pick the shader, and `SceneAcceleration::placeRow` writes that offset
     // as the kind itself — so a record out of order would shade every chunk of ground as a pane of
     // glass, and nothing would say so.
@@ -102,7 +101,7 @@ namespace Rtx
 
     VisibilityVariant VisibilityVariant::resolve(const Shaders::VisibilityConstants& frame, const bool water)
     {
-        // **A moon that is drawn and a moon that lights are two facts**, and the sky needs the first
+        // A moon that is drawn and a moon that lights are two facts, and the sky needs the first
         // where no surface asks for the second: the game fades both out over the hours around dawn,
         // and a disc still on its way down lights nothing.
         bool moons = false;
@@ -165,7 +164,7 @@ namespace Rtx
 
     void VisibilityPass::compileEvery(VkDescriptorSetLayout textureLayout)
     {
-        // **No tuple and no specialization**, because it reads what the pass before it wrote and
+        // No tuple and no specialization, because it reads what the pass before it wrote and
         // has no opinion about the sky. Made here rather than among the table below so that the
         // table stays one entry per tuple.
         mDepthPipeline = std::make_unique<ComputePipeline>(
@@ -194,7 +193,7 @@ namespace Rtx
 
         const std::thread::id caller = std::this_thread::get_id();
 
-        // **So that a hand's validation error reaches whoever asked for these pipelines.** The
+        // So that a hand's validation error reaches whoever asked for these pipelines. The
         // layers report on the thread that made the call, and the log files by thread because the
         // test binary runs tests in parallel against one of them — an error left filed under a
         // hand is one nobody ever collects.
@@ -308,7 +307,7 @@ namespace Rtx
         const VkDescriptorBufferInfo hitWrite{ hitCount.getHandle(), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo frameWrite{ mConstants.getHandle(), 0, VK_WHOLE_SIZE };
 
-        // **The tiles' widths come off the pass that built them**, so what the shader divides by is
+        // The tiles' widths come off the pass that built them, so what the shader divides by is
         // what is actually bound rather than a second statement of the same table.
         std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> surfaces{};
         std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> curvatures{};
@@ -362,7 +361,7 @@ namespace Rtx
         appendBuffer(Shaders::BIND_HITS, hitWrite);
         appendUniform(Shaders::BIND_FRAME, frameWrite);
 
-        // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
+        // Sampled from `GENERAL` rather than moved to a read-only layout, for the reason
         // `BloomPass` gives: these are written as storage images and read as sampled ones a few
         // dispatches apart, and `GENERAL` is the one layout both accesses are legal from.
         appendImages(Shaders::BIND_WAVE_SURFACE, surfaces);
@@ -400,7 +399,7 @@ namespace Rtx
 
         Shaders::VisibilityConstants described = constants;
 
-        // **A basis of nothing is how this block already says there is no previous frame**, so a
+        // A basis of nothing is how this block already says there is no previous frame, so a
         // door or a rebuild is told to every reprojection at once rather than to each of them
         // separately. The frame that carries it reprojects nothing, which is what it is for.
         if (historyLost)
@@ -410,7 +409,7 @@ namespace Rtx
             described.mPreviousUp = Shaders::vec3();
         }
 
-        // **The tiles' widths come off the pass that built them**, so what the shader divides by is
+        // The tiles' widths come off the pass that built them, so what the shader divides by is
         // what is actually bound rather than a second statement of the same table.
         for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
         {
@@ -445,15 +444,15 @@ namespace Rtx
         if (inputs.mSpriteList != 0)
             described.mTables.mSpriteTileList = inputs.mSpriteList;
 
-        // **Nothing addressed here may be nothing, and every address must be what its reference
-        // claims.** A descriptor bound as a null handle cost this renderer a device with no message;
+        // Nothing addressed here may be nothing, and every address must be what its reference
+        // claims. A descriptor bound as a null handle cost this renderer a device with no message;
         // an address of nought or one off its claimed alignment is the same mistake one step later,
         // and the device says even less about it.
         assert(everyTableAddressed(described.mTables) && "a table addressed as nothing, or not as its block declares");
 
         writeConstants(commands, described);
 
-        // **Resolved from the constants this frame is about to be traced with**, and from nothing
+        // Resolved from the constants this frame is about to be traced with, and from nothing
         // kept between frames: a dusk moves the tuple and a doorway moves it again.
         const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater);
 
@@ -461,7 +460,7 @@ namespace Rtx
 
         const ComputePipeline& scatter = scatterPipelineFor(variant);
 
-        // **Every column the image has and not every column the camera needs.** A traced view is
+        // Every column the image has and not every column the camera needs. A traced view is
         // drawn into a volume grown to the largest one asked for, and the pixel at its edge
         // interpolates against the column outside it — which has to hold air rather than
         // whatever was there.
@@ -470,7 +469,7 @@ namespace Rtx
 
         openZone(timer, commands, "air");
 
-        // **Where each column's ray stops, before anything is drawn along it.** One ray a
+        // Where each column's ray stops, before anything is drawn along it. One ray a
         // column, and the froxels of the column keep their draws short of the answer.
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getHandle());
         pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getLayout(), inputs, buffer, hitCount,
@@ -481,7 +480,7 @@ namespace Rtx
 
         inputs.mFogVolume->depthTaken(commands);
 
-        // **The set stays pushed across all three dispatches.** Every pipeline here is
+        // The set stays pushed across all three dispatches. Every pipeline here is
         // addressed through the same layout at the same bind point, so what was pushed for the
         // first is still bound for the others — and pushing set zero again would be six
         // descriptor writes for a pass that reads a handful of images out of another set.
@@ -513,7 +512,7 @@ namespace Rtx
         pushInputs(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getLayout(), inputs, buffer, hitCount,
             constants.mFrame);
 
-        // **One invocation a pixel and no tail**, where the dispatch it replaces covered the picture
+        // One invocation a pixel and no tail, where the dispatch it replaces covered the picture
         // in whole workgroups and had every one of them test whether it had run off the edge.
         pipeline.traceRays(commands, constants.mCamera.mWidth, constants.mCamera.mHeight);
 

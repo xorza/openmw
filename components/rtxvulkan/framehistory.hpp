@@ -17,7 +17,7 @@ namespace Rtx
         {
         }
 
-        /// The trace's, which is the fog volume's. **Nothing records that this was read**, because
+        /// The trace's, which is the fog volume's. Nothing records that this was read, because
         /// the trace runs on every frame and the caller spends the signal unconditionally.
         bool airLost() const { return mAirLost; }
 

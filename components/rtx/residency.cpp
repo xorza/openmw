@@ -8,7 +8,7 @@ namespace Rtx
 {
     osg::ref_ptr<const osg::Node> SceneContent::getTemplate(VFS::Path::NormalizedView path)
     {
-        // **Uncompiled, because nothing here has a context to compile for.** `compile` asks the
+        // Uncompiled, because nothing here has a context to compile for. `compile` asks the
         // loader to queue the model's OpenGL objects, and this renderer initialises no OpenGL.
         return mScenes.getTemplate(path, false);
     }

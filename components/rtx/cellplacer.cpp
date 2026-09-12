@@ -113,13 +113,13 @@ namespace Rtx
         stands.mOrigin = ground.mOrigin;
         stands.mFlattened = wantsFlattening(held.mCell, stands, around);
 
-        // **The material before the mesh**, here too: a mesh records the material it arrives
+        // The material before the mesh, here too: a mesh records the material it arrives
         // wearing, and a cell's ground wears one for its life.
         Material material;
         material.mKind = MaterialKind::Terrain;
         material.mFlatten = stands.mFlattened;
 
-        // **Stated here, because the ground is nobody's node.** Every other material reads its
+        // Stated here, because the ground is nobody's node. Every other material reads its
         // mode off a state set `NifOsg` described, and this one is stood off the land records —
         // where `Terrain::ChunkManager` states the same thing for the rasterizer's chunks.
         material.mVertexColour = Surface::VertexColour::Tint;
@@ -135,7 +135,7 @@ namespace Rtx
                                           .mIndices = ground.mIndices },
             FoldedShape{}, Deform::None, sNoIndex, stands.mMaterial);
 
-        // **Held on the scene, because no drawable and no state set will ever name them.** The
+        // Held on the scene, because no drawable and no state set will ever name them. The
         // sweep keeps a held row, and `dropGround` is what lets go.
         mScene.meshes().hold(stands.mMesh);
         mScene.materials().hold(stands.mMaterial);
@@ -234,7 +234,7 @@ namespace Rtx
     {
         const bool inReach = withinCells(cell.mCell, eye, reach);
 
-        // **The ground stands inside the active grid too**: the game builds none for this
+        // The ground stands inside the active grid too: the game builds none for this
         // renderer, so what a cell's land says is stood here wherever the cell is.
         if (cell.mGround.has_value())
         {

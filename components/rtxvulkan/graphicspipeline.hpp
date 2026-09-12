@@ -28,10 +28,9 @@ namespace Rtx
         Additive,
     };
 
-    /// What a raster pipeline is made of that a compute one has no equivalent for.
-    ///
-    /// **No span outlives the call.** Every one is read into Vulkan's own copies inside the
-    /// constructor, which is what lets a caller pass the address of one of its own locals.
+    /// What a raster pipeline is made of that a compute one has no equivalent for. No span
+    /// outlives the call: every one is read into Vulkan's own copies inside the constructor, so a
+    /// caller may pass the address of one of its own locals.
     struct GraphicsPipelineOptions
     {
         /// Set zero, which is always a push descriptor set: nothing in this renderer wants a

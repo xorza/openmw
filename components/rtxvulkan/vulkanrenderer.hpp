@@ -73,7 +73,7 @@ namespace Rtx
             /// One row per placement slot, made whole when the scene is built and kept across
             /// frames, with the rows the scene says changed rewritten by each placement. Here
             /// rather than in either half, because the acceleration structure and the instance
-            /// table need the same rows and each used to build its own — fifty thousand matrix
+            /// table need the same rows, and each building its own was fifty thousand matrix
             /// inverses on a nine-by-nine exterior.
             std::vector<InstanceRecord> mRecords;
 
@@ -88,8 +88,8 @@ namespace Rtx
             /// did not grow.
             std::uint64_t mBuiltMeshes = 0;
 
-            /// Which scene's tables this was built from and at what revision of the whole
-            /// structure, which is what `describeHeld` answers and an uploader appends against.
+            /// The revision of the whole structure this was built from: what `describeHeld` answers
+            /// and an uploader appends against.
             std::uint64_t mBuiltStructure = 0;
 
             /// Which copy of the tables the last placement wrote — what a trace of this scene reads,
@@ -159,10 +159,9 @@ namespace Rtx
         const ViewScene& sceneAt(SceneSlot slot) const;
         ViewScene& sceneAt(SceneSlot slot);
 
-        /// What the trace reads a scene through, for the copy its last placement wrote.
-        ///
-        /// **One description for a frame and for a picture inside the interface.** The two differ
-        /// in the fog volume they march, and in nothing else.
+        /// What the trace reads a scene through, for the copy its last placement wrote. One
+        /// description for a frame and for a picture inside the interface, which differ in the fog
+        /// volume they march and in nothing else.
         VisibilityInputs describeInputs(const ViewScene& held, const FogVolume* volume, std::uint32_t rayMask) const;
 
         /// The frame's camera as its trace will sample it: what the caller wrote, plus every field
@@ -173,8 +172,7 @@ namespace Rtx
 
         /// Everything a placement of `held` is, recorded and written where `placing` says. True
         /// where anything was recorded, which is whether its command buffer is worth submitting.
-        /// What differs between the world's placement and a picture's is around this and not in
-        /// it.
+        /// What differs between the world's placement and a picture's is around this and not in it.
         static bool recordPlacement(
             const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing);
 
@@ -186,14 +184,14 @@ namespace Rtx
         /// Reads all of `mStats`, for a scene that has just been built or extended.
         void readStats(const ViewScene& held);
 
-        /// @param width, height what the frame is **presented** at. What it is traced at is the
+        /// @param width, height what the frame is presented at. What it is traced at is the
         ///        upscaler's answer for that, or the same numbers where nothing upscales.
         void createTargets(std::uint32_t width, std::uint32_t height);
 
         /// Brings the upscaler's runtime up if it is not already, and throws where it cannot be.
         void startUpscaler();
 
-        /// Whether a frame is upscaled: a runtime that is up **and** a mode that wants one. The
+        /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
         /// second. The one answer the build decides, so that no reader of the three members below
         /// has to be conditionally compiled.
@@ -227,7 +225,7 @@ namespace Rtx
         /// counters, which it borrows.
         FrameRing mRing{ mDevice, mPool, mCountHits, mCountCrossings };
 
-        /// What the frames are traced under. **Changing the mode rebuilds every target**, which is
+        /// What the frames are traced under. Changing the mode rebuilds every target, which is
         /// what `setUpscale` is for and why it is a setting rather than a frame option.
         Upscaling mUpscaling;
 
@@ -277,10 +275,9 @@ namespace Rtx
         /// would mean resizing them away from the frame and back between two of them.
         TraceChain mView;
 
-        /// The camera the last frame was traced with, for reprojecting this one against.
-        ///
-        /// Its basis is all zero until a frame has been traced, and after a resize or a new scene —
-        /// which the shader reads as "there is no previous frame" and answers with no motion at all.
+        /// The camera the last frame was traced with, for reprojecting this one against. Its basis
+        /// is all zero until a frame is traced, and after a resize or a new scene, which the shader
+        /// reads as "there is no previous frame" and answers with no motion at all.
         Shaders::VisibilityConstants mPreviousCamera{};
 
         /// The world's, which is one of these like any other: what `SceneSlot::world` names.
@@ -292,21 +289,21 @@ namespace Rtx
         CompositePass mComposite;
         BloomPass mBloom;
 
-        /// **One sea for everything traced**, the doll and the map included: the water is not a
+        /// One sea for everything traced, the doll and the map included: the water is not a
         /// property of a scene, so it is synthesised once a frame here rather than held per scene.
         WavePass mWaves;
 
-        /// **One field for everything traced, drawn once for the life of the device.** Nothing about
+        /// One field for everything traced, drawn once for the life of the device. Nothing about
         /// it turns on the weather or the cell — those decide the extinction and the layer's height,
         /// which are numbers the shader already has.
         FogTile mFog;
         ExposurePass mExposure;
 
-        /// **One pass for everything posed**, the doll included: what differs per scene is the
+        /// One pass for everything posed, the doll included: what differs per scene is the
         /// tables, which each `ViewScene` holds.
         SkinPass mSkinPass;
 
-        /// **One pass for everything binned**, for the same reason: what differs per scene is the
+        /// One pass for everything binned, for the same reason: what differs per scene is the
         /// tables, and the camera arrives with the frame.
         SpriteBinPass mSpriteBin;
 
@@ -322,12 +319,12 @@ namespace Rtx
         /// them.
         Buffer mViewCounts;
 
-        /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
+        /// Held like `mPass` and for its reason: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.
         std::unique_ptr<TonePass> mTone;
 
-        /// The interface: `GuiTextures` holds the part with a rule, and what is left beside it is a
-        /// pipeline, a scratch vector and a counter with nothing binding them.
+        /// The interface: `GuiTextures` holds the part with a rule, and the rest is a pipeline, a
+        /// scratch vector and a counter with nothing binding them.
         GuiPass mGuiPass;
         GuiTextures mGuiTextures;
 

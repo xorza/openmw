@@ -37,7 +37,7 @@ namespace Rtx
         {
             mStep = mFixed.has_value() ? static_cast<double>(*mFixed) : measured;
 
-            // **Sampled once a frame rather than read per question**, so two callers asking what
+            // Sampled once a frame rather than read per question, so two callers asking what
             // time it is inside one frame cannot be told two things.
             mNow = mFixed.has_value() ? mNow + mStep
                                       : std::chrono::duration<double>(std::chrono::steady_clock::now() - mMade).count();
@@ -50,10 +50,9 @@ namespace Rtx
         /// wall says since this clock was made where none is.
         double getNow() const { return mNow; }
 
-        /// The step a run stated, or nothing where the wall decides.
-        ///
-        /// **What says the run repeats itself**, and what `Rtx::FrameOptions::mSinceLast` takes.
-        /// The absence is the information: `getStep` answers either way, and only this says which.
+        /// The step a run stated, or nothing where the wall decides — what says the run repeats
+        /// itself, and what `Rtx::FrameOptions::mSinceLast` takes. The absence is the information:
+        /// `getStep` answers either way, and only this says which.
         std::optional<float> getStatedStep() const { return mFixed; }
 
     private:

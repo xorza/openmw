@@ -24,7 +24,7 @@ namespace Rtx
 
     void DistantLights::follow(const WorldAround& around)
     {
-        // **What is read is a fact about the world and not about where the eye is**, so only a
+        // What is read is a fact about the world and not about where the eye is, so only a
         // change of the content or of the worldspace empties what has been read.
         const bool changed = mAround.mWorld.mStorage != around.mWorld.mStorage
             || mAround.mWorld.mWorldspace != around.mWorld.mWorldspace;
@@ -52,19 +52,19 @@ namespace Rtx
         {
             const std::optional<SceneUtil::LightCommon> light = mAround.mWorld.mStorage->getLight(ref.mRefId);
 
-            // **A reference naming no record is the content's to answer for**, and the game draws
+            // A reference naming no record is the content's to answer for, and the game draws
             // nothing for one either. Nothing is invented here to stand in its place.
             if (!light.has_value())
                 continue;
 
-            // **At the reference's own origin, and not at the model's `AttachLight` node.** Finding
+            // At the reference's own origin, and not at the model's `AttachLight` node. Finding
             // that means loading the mesh, and the mesh is what `pagedType` refuses to stand out
             // here; the offset between the two is the height of a lamp, against a cell of distance.
             // So what `standLight` is handed carries no model, and the light lands on this.
             const osg::ref_ptr<osg::MatrixTransform> place
                 = new osg::MatrixTransform(osg::Matrix::translate(ref.mPosition));
 
-            // **The one route both kinds of lamp take**, so what the mirror finds out here is what
+            // The one route both kinds of lamp take, so what the mirror finds out here is what
             // it would have found had the player walked into the cell — the off-default refusal, the
             // colours, the attenuation and the flicker flags all included. Outdoors is not a guess:
             // the reach is exterior cells and nothing else.
@@ -82,7 +82,7 @@ namespace Rtx
 
     void DistantLights::collect(SceneAdopter& into, ExtractionStats&)
     {
-        // **Nothing to add to the stats, ever.** What this stands is lights, which the walk counts
+        // Nothing to add to the stats, ever. What this stands is lights, which the walk counts
         // as it places each of them, and it owns no mesh and no material row.
         if (mAround.mWorld.mStorage == nullptr || !mAround.mOutdoors)
             return;
@@ -93,7 +93,7 @@ namespace Rtx
         for (int x = eye.x() - reach; x <= eye.x() + reach; ++x)
             for (int y = eye.y() - reach; y <= eye.y() + reach; ++y)
             {
-                // **What the game stands for itself is not this class's to stand again.** Inside the
+                // What the game stands for itself is not this class's to stand again. Inside the
                 // active grid the real object is on the graph with its light on it, and the mirror
                 // has already met it — see the class comment.
                 if (x >= mAround.mActiveGrid.x() && y >= mAround.mActiveGrid.y() && x < mAround.mActiveGrid.z()
@@ -104,12 +104,12 @@ namespace Rtx
                 auto found = std::lower_bound(mCells.begin(), mCells.end(), key,
                     [](const ReadCell& held, const osg::Vec2i& wanted) { return held.mCell < wanted; });
 
-                // **Read here rather than on a rota, and never read twice.** What a `LIGH` says is
+                // Read here rather than on a rota, and never read twice. What a `LIGH` says is
                 // content: it does not change with the hour, the weather or the eye, so a cell costs
                 // one reading for the life of the scene and the frames after it cost a pointer. The
                 // whole reach is eighty-one cells and reading all of them is under the run-to-run
-                // noise of a still. **A budget per frame would be worse than the spike
-                // it avoided**: what a picture holds would then depend on how many frames had been
+                // noise of a still. A budget per frame would be worse than the spike
+                // it avoided: what a picture holds would then depend on how many frames had been
                 // drawn before it, and `verify` compares stills.
                 if (found == mCells.end() || found->mCell != key)
                     found = mCells.insert(found, ReadCell{ .mCell = key, .mLights = build(key) });

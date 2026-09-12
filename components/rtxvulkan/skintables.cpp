@@ -37,7 +37,7 @@ namespace Rtx
     {
         assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
 
-        // **Every table exists from here, whether or not anything has been written to it.** A
+        // Every table exists from here, whether or not anything has been written to it. A
         // scene with no actor in it poses nothing and reads none of these, and a scene that gains
         // one grows them; what `growTo` guarantees is that there is a buffer to grow.
         for (Buffer* table : { &mBindPositions, &mBindNormals, &mRuns, &mInfluences, &mMorphOffsets })
@@ -56,7 +56,7 @@ namespace Rtx
     {
         const Device& device = *mDevice;
 
-        // **Grown to what the scene reaches, and written whole where a growth moved it.** The
+        // Grown to what the scene reaches, and written whole where a growth moved it. The
         // arrivals are what a frame with an actor walking in costs; a table made again is what a
         // cell full of them costs, once per doubling.
         const VkDeviceSize bind = VkDeviceSize{ scene.deformers().getBindVertexCount() } * sizeof(osg::Vec3f);

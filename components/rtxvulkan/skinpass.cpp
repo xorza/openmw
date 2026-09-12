@@ -68,7 +68,7 @@ namespace Rtx
                 recorded = true;
             }
 
-            // **The pose table is indexed by the bind offset and the normals by the scene's own.**
+            // The pose table is indexed by the bind offset and the normals by the scene's own.
             // A hit reads a normal out of the shared table, so every mesh has a run there; nothing
             // reads a position at a hit, so only the bodies have one here.
             const VkDeviceAddress posed = into.addressOf(mesh.mBindOffset);

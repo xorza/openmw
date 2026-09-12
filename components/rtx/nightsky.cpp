@@ -218,8 +218,8 @@ namespace Rtx
                 return nullptr;
             }
 
-            /// **`MWRender::ModVertexAlphaVisitor::Stars`'s rule, read rather than reimplemented
-            /// twice**: the engine draws a vertex of the star dome only where its authored colour is
+            /// `MWRender::ModVertexAlphaVisitor::Stars`'s rule, read rather than reimplemented
+            /// twice: the engine draws a vertex of the star dome only where its authored colour is
             /// exactly white, and its bottom ring alone is not — so what it keeps begins at the ring
             /// above the horizon. Nothing authored means the whole of it is kept.
             static float keptFrom(const osg::Geometry& geometry, const std::vector<osg::Vec3f>& directions)
@@ -237,10 +237,9 @@ namespace Rtx
             }
         };
 
-        /// How far a sheet has to run in **both** directions before it counts as tiled.
-        ///
-        /// Morrowind's leaves a factor of two either side of this: its widest patch repeats half a
-        /// tile across its short axis and its field two whole ones.
+        /// How far a sheet has to run in both directions before it counts as tiled. Morrowind's
+        /// leaves a factor of two either side of this: its widest patch repeats half a tile across
+        /// its short axis and its field two whole ones.
         constexpr float sTiledSpan = 1.5f;
     }
 
@@ -268,7 +267,7 @@ namespace Rtx
 
             if (std::min(layer.mUvSpan.x(), layer.mUvSpan.y()) > sTiledSpan)
             {
-                // **The first that looks like one and no more.** A file with two would otherwise
+                // The first that looks like one and no more. A file with two would otherwise
                 // leave the earlier one's hold taken and nothing holding it, which is a slot the
                 // sweep can never reclaim.
                 if (sky.mField != sNoIndex)

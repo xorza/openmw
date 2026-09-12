@@ -93,7 +93,7 @@ namespace Rtx
         VkDeviceSize wanted = 0;
         VkDeviceSize scratchTotal = 0;
 
-        // **Every row at nought**, which is what a mesh with no triangles is left at: nothing
+        // Every row at nought, which is what a mesh with no triangles is left at: nothing
         // describes it, nothing builds it, and the gate below reads that nought.
         mBuilding.clear();
         mBuilding.resize(meshes.size());
@@ -143,7 +143,7 @@ namespace Rtx
             const Index slot = meshes[at];
             const MeshRange& mesh = scene.meshes().getRows()[slot];
 
-            // **A slot handed out again arrives holding different geometry.** Whatever was there is
+            // A slot handed out again arrives holding different geometry. Whatever was there is
             // destroyed and its room given back before this one asks for room of its own, so the
             // two can be the same run.
             if (mStructures[slot] != VK_NULL_HANDLE)
@@ -156,7 +156,7 @@ namespace Rtx
                 mRooms[slot] = StructureRoom{};
             }
 
-            // **A pose or an arrival's staging, and which one is what the mesh is.** A deforming
+            // A pose or an arrival's staging, and which one is what the mesh is. A deforming
             // mesh is built over what `SkinPass` wrote into the first copy ahead of this, so its
             // structure carries the pose rather than the bind; a static one is built over the
             // vertices staged above.
@@ -172,7 +172,7 @@ namespace Rtx
             mBuild.mGeometries[at] = describeTriangles(
                 mesh, vertices, !mesh.mIndices.empty() ? indices.addressOf(mesh.mIndices.mOffset) : 0);
 
-            // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
+            // Only a mesh that deforms is built to be refitted. The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
             // thousands of static meshes around them do not.
             mUpdatable[slot] = mesh.mDeform != Deform::None ? 1 : 0;
@@ -202,7 +202,7 @@ namespace Rtx
 
             const std::uint32_t triangles = mesh.getTriangleCount();
 
-            // **A freed slot gets no structure at all.** It keeps its index and its room and holds
+            // A freed slot gets no structure at all. It keeps its index and its room and holds
             // nothing until something fits into it, and a build over no primitives is not a small
             // structure — it is a size the driver may answer zero for, which is not a size an
             // acceleration structure can be created at.
@@ -261,7 +261,7 @@ namespace Rtx
             mBuild.mBuilds[at].dstAccelerationStructure = mStructures[slot];
             mBuild.mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuilding[at].mScratchOffset;
 
-            // **Asked once each, here, and never again.** A handle lasts until the mesh is released
+            // Asked once each, here, and never again. A handle lasts until the mesh is released
             // and its address with it, so the alternative is the same question per instance per
             // frame — fifty thousand driver round trips on a nine-by-nine exterior for fifty
             // thousand answers that cannot have changed.
@@ -275,7 +275,7 @@ namespace Rtx
             // than the meshes this call happened to build.
             mCompaction[slot].mBuiltSize = mBuilding[at].mSize;
 
-            // **Built loose whatever stood in the slot before**, and a mesh that refits keeps its
+            // Built loose whatever stood in the slot before, and a mesh that refits keeps its
             // slack: a refit writes back into it.
             mCompaction[slot].mTightness = mUpdatable[slot] != 0 ? Tightness::None : Tightness::Loose;
 
@@ -333,7 +333,7 @@ namespace Rtx
                     state.mTightness = Tightness::Loose;
         }
 
-        // **One reset and one write per run of consecutive slots**, which is what a cell's
+        // One reset and one write per run of consecutive slots, which is what a cell's
         // arrivals are: the scene hands out its slots in order. Each query is reset before it is
         // written because the slot may have been asked about before, for a structure that has
         // since gone.
@@ -450,7 +450,7 @@ namespace Rtx
             const Index slot = mAnswered.at(0);
             mAnswered.pop(1);
 
-            // **The slot may have been handed out again since it answered.** A cell that left took
+            // The slot may have been handed out again since it answered. A cell that left took
             // its meshes with it, and whatever stands here now is not what this answer is about —
             // its own question is.
             Compaction& state = mCompaction[slot];
@@ -478,7 +478,7 @@ namespace Rtx
                 .mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR,
             });
 
-            // **Buried and not destroyed, though the copy below reads it.** The graveyard lets go
+            // Buried and not destroyed, though the copy below reads it. The graveyard lets go
             // once the frame this is recorded into retires, and the copy runs inside that frame —
             // so what the fence covers is both this read and whatever earlier frame is still
             // tracing the structure through the top level it was named in.

@@ -44,10 +44,9 @@ namespace Rtx
 
         bool isEmpty() const { return mShape.isEmpty(); }
 
-        /// Alpha at a texel of a level, both of which must be inside the image.
-        ///
-        /// Defined here because `SpriteLightMap` asks it for every texel of every level, and a call
-        /// across a translation unit for a vector index is most of what that walk costs.
+        /// Alpha at a texel of a level, both of which must be inside the image. Defined here
+        /// because `SpriteLightMap` asks it for every texel of every level, and a call across a
+        /// translation unit for a vector index is most of what that walk costs.
         std::uint8_t at(std::uint32_t level, std::uint32_t x, std::uint32_t y) const
         {
             return mValues[mShape.offsetOf(level, x, y, 1)];

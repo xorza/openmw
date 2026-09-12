@@ -38,10 +38,9 @@ namespace Rtx
             return formats.front();
         }
 
-        /// What the surface will actually accept, in the order the caller would rather have.
-        ///
-        /// **FIFO is the only mode a surface must support**, so it ends every list here and nothing
-        /// below has to answer for a driver that offers little else.
+        /// What the surface will accept, in the order the caller would rather have. FIFO is the
+        /// only mode a surface must support, so it ends every list here and nothing below has to
+        /// answer for a driver that offers little else.
         VkPresentModeKHR chooseFrom(
             VkPhysicalDevice device, VkSurfaceKHR surface, std::initializer_list<VkPresentModeKHR> wanted)
         {
@@ -128,7 +127,7 @@ namespace Rtx
                 std::clamp(extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
             };
 
-        // **A minimised window reports no extent at all, and a swapchain of none is invalid usage.**
+        // A minimised window reports no extent at all, and a swapchain of none is invalid usage.
         // One pixel rather than a refusal, because a window comes back: `Presenter::wantsResize`
         // declines to rebuild while the surface is hidden, and what stands until then costs a blit
         // of a single pixel.
@@ -139,7 +138,7 @@ namespace Rtx
         if (capabilities.maxImageCount > 0)
             images = std::min(images, capabilities.maxImageCount);
 
-        // **What the surface will take, asked rather than assumed.** The frame reaches the screen
+        // What the surface will take, asked rather than assumed. The frame reaches the screen
         // as a blit, so a surface that will not be a transfer destination cannot be presented to at
         // all — and this renderer has no second way of filling one.
         if ((capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0)
@@ -192,7 +191,7 @@ namespace Rtx
 
         mVerticalSync = mode;
 
-        // **What the surface offers decides, so two settings can mean one mode.** A driver with no
+        // What the surface offers decides, so two settings can mean one mode. A driver with no
         // relaxed FIFO answers `Adaptive` with plain FIFO, and rebuilding the swapchain to arrive at
         // the mode it already had is a stall for nothing.
         const VkPresentModeKHR wanted
@@ -208,7 +207,7 @@ namespace Rtx
 
     bool Swapchain::acquire(VkSemaphore ready, std::uint32_t& index)
     {
-        // **Bounded for the reason `awaitVk` is**, and this is the wait a window is most likely to
+        // Bounded for the reason `awaitVk` is, and this is the wait a window is most likely to
         // sit in: a compositor that stops handing images back is indistinguishable from one that is
         // merely slow, and forever is not an answer a frame loop can act on.
         const VkResult result

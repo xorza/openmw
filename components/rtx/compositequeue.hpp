@@ -42,14 +42,13 @@ namespace Rtx
     inline constexpr std::size_t sBakeFrames = 16;
 
     /// Every distant chunk waiting for its ground to be flattened, and the threads that flatten them.
-    ///
-    /// The bake happens on no frame at all: one is tens of milliseconds and a ring fill wants
-    /// dozens, so threads of this queue's own take each stack whole and the frame only hands a
+    /// The bake happens on no frame at all, because one is tens of milliseconds and a ring fill
+    /// wants dozens: threads of this queue's own take each stack whole, and the frame only hands a
     /// stack over and takes the bytes back. Several threads, because one is slower than the ground
-    /// arrives (`bakerCount`). Nothing is wrong while it waits: a chunk that asked keeps
-    /// `mDiffuse` unset and the shader sums its layer stack at the hit, so the bake buys the cost
-    /// of that hit and not the sight of the ground. A finished composite is held only until it is
-    /// uploaded, because a region's worth is fifty megabytes the texture array already holds.
+    /// arrives (`bakerCount`). Nothing is wrong while it waits: a chunk that asked keeps `mDiffuse`
+    /// unset and the shader sums its layer stack at the hit, so the bake buys the cost of that hit
+    /// and not the sight of the ground. A finished composite is held only until it is uploaded,
+    /// because a region's worth is fifty megabytes the texture array already holds.
     class CompositeQueue
     {
     public:
@@ -58,20 +57,17 @@ namespace Rtx
         /// Stops the baker. A bake in flight finishes first; what is queued behind it does not.
         ~CompositeQueue() = default;
 
-        /// Whether a hand-over waits for the bakes it queued before it takes any. Which frame a
-        /// composite lands on is otherwise the baker thread's answer, so two runs of one build draw
-        /// different pictures from the crossing onwards — the same reason
-        /// `Rtx::FrameOptions::mSinceLast` exists. A frame waits for what it collects, never for
-        /// what it queued, and takes by the sequence a stack was handed over in and never by what
-        /// came back first. This is the only thread a settled run waits on: the quad tree loads
-        /// every entry it names in the calling thread.
+        /// Whether a frame waits for the bakes it is due to collect. Which frame a composite lands
+        /// on is otherwise the baker thread's answer, so two runs of one build draw different
+        /// pictures from the crossing onwards — the same reason `Rtx::FrameOptions::mSinceLast`
+        /// exists. A frame waits for what it collects and never for what it queued, and takes by
+        /// the sequence a stack was handed over in. This is the only thread a settled run waits on:
+        /// the quad tree loads every entry it names in the calling thread.
         void setSettled(bool settled) { mSettled = settled; }
 
-        /// Hands the bakers what this walk marked, then moves what is finished into the scene.
-        /// Before anything reads what arrived, because a composite coming back takes a texture
-        /// slot and is an arrival like any other.
-        ///
-        /// @return how many landed.
+        /// Hands the bakers what this walk marked, then moves what is finished into the scene, and
+        /// says how many landed. Before anything reads what arrived, because a composite coming
+        /// back takes a texture slot and is an arrival like any other.
         std::size_t advance(SceneDesc& scene, Resource::ImageManager& images);
 
         /// The finished composite in `slot`, or null where nothing here baked one.
@@ -81,7 +77,7 @@ namespace Rtx
         /// hand-over adds to the frame's unreadable textures.
         std::uint32_t takeUnreadable() { return std::exchange(mUnreadable, 0u); }
 
-        /// Lets go of everything `collect` took. **After the upload and not before**: what is held
+        /// Lets go of everything `collect` took. After the upload and not before: what is held
         /// between those two calls is the only copy of the bytes a backend has to read.
         void releaseFinished() { mFinished.clear(); }
 
@@ -105,11 +101,9 @@ namespace Rtx
         std::size_t getReady(std::size_t limit) const;
 
         /// Moves the composites that are due into the scene, in the order they were handed over,
-        /// and at most `limit` of them. It stops at the first sequence that is not due or has not
-        /// come back. A composite taken takes a texture slot and goes onto the material that asked;
-        /// one whose chunk left the world while it baked is dropped.
-        ///
-        /// @return how many were taken.
+        /// at most `limit` of them, and says how many. Stops at the first sequence that is not due
+        /// or has not come back. A composite taken takes a texture slot and goes onto the material
+        /// that asked; one whose chunk left the world while it baked is dropped.
         std::size_t collect(SceneDesc& scene, std::size_t limit);
 
         bool mSettled = false;
@@ -176,7 +170,7 @@ namespace Rtx
             /// Describes, estimates and flattens one stack, on this baker's thread.
             Baked bake(Request&& request);
 
-            /// **This thread's and no other's**, because that is where a stack is described. The
+            /// This thread's and no other's, because that is where a stack is described. The
             /// estimate is node-based, which is what lets the stack span it.
             ShadingCache mPainted;
 
@@ -186,7 +180,7 @@ namespace Rtx
             std::vector<CompositeLayer> mStackScratch;
             CompositeScratch mScratch;
 
-            /// **Last, for the reason `Worker` gives.**
+            /// Last, for the reason `Worker` gives.
             Worker mWorker;
         };
 
@@ -212,8 +206,7 @@ namespace Rtx
         /// By sequence and not by when a bake finished. See `file`.
         std::deque<Baked> mDone;
 
-        /// Which thread everything below belongs to. **The frame's**, and `advance` asks it: what
-        /// it reaches is every call that writes any of them.
+        /// Which thread everything below belongs to: the frame's, which `advance` asserts.
         OwnedBy mOnFrame;
 
         /// The next sequence to hand out, and the next to collect. One is written by `gather` and
@@ -250,7 +243,7 @@ namespace Rtx
 
         std::string mKey;
 
-        /// **Last, for the reason `Worker` gives.** Held by pointer so that a baker keeps its
+        /// Last, for the reason `Worker` gives. Held by pointer so that a baker keeps its
         /// address, which its own thread captured.
         std::vector<std::unique_ptr<Baker>> mBakers;
     };

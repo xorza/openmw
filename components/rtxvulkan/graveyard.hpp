@@ -49,7 +49,7 @@ namespace Rtx
         /// A one-shot command buffer the pool handed out, freed once it has run.
         void bury(VkCommandBuffer commands);
 
-        /// Destroys everything held. **After the fence and never before**: the caller is what knows.
+        /// Destroys everything held. After the fence and never before: the caller is what knows.
         void clear();
 
     private:

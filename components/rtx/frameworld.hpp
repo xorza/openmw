@@ -65,7 +65,7 @@ namespace Rtx
         /// Where the sky's own sheets sit in the scene's texture table.
         SkyContent mSky;
 
-        /// Masser and Secunda, placed and with their faces named. **An input and not a derivation**:
+        /// Masser and Secunda, placed and with their faces named. An input and not a derivation:
         /// the angles come from the weather system, and nothing here can work them out.
         std::array<MoonPlacement, 2> mMoons;
 

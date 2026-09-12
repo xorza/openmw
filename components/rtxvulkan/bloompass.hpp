@@ -28,10 +28,8 @@ namespace Rtx
     public:
         BloomPass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        /// Builds a pyramid for a frame this size, if the last one was not this size.
-        ///
-        /// Idempotent, and the caller is expected to have waited for anything still reading the old
-        /// one. Before the first frame.
+        /// Builds a pyramid for a frame this size, if the last one was not this size. The caller
+        /// waited for anything still reading the old one. Before the first frame.
         void resize(std::uint32_t width, std::uint32_t height);
 
         /// Builds the pyramid out of `frame`, leaving `frame` as it found it.
@@ -41,9 +39,8 @@ namespace Rtx
         void record(VkCommandBuffer commands, const Image& frame) const;
 
         /// The finest level, which after `record` holds the blur of every level under it — or null
-        /// where the frame was too small to halve.
-        ///
-        /// Left in `VK_IMAGE_LAYOUT_GENERAL` and already ordered against a sampled read.
+        /// where the frame was too small to halve. Left in `VK_IMAGE_LAYOUT_GENERAL` and already
+        /// ordered against a sampled read.
         const Image* getPyramid() const { return mLevels.empty() ? nullptr : mLevels.front().get(); }
 
         /// How many halvings the last `resize` had room for, which is `BLOOM_LEVELS` for any frame

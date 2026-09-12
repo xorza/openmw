@@ -37,7 +37,7 @@ namespace Rtx
         SceneBuffers* mBuffers = nullptr;
         Graveyard* mGraveyard = nullptr;
 
-        /// The camera the caller asked for. **What the sprite bin tiles against**, because a bin is
+        /// The camera the caller asked for. What the sprite bin tiles against, because a bin is
         /// a screen-space tile and the jitter below is where inside a pixel this frame sampled:
         /// binning against that would move every tile by a fraction of a pixel a frame, for nothing.
         Shaders::VisibilityConstants mAsked;

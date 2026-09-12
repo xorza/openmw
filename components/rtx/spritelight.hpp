@@ -38,10 +38,9 @@ namespace Rtx
         /// For a caller with one sprite to bake and no map to reuse. `build` is the whole of it.
         explicit SpriteLightMap(const AlphaImage& alpha) { build(alpha); }
 
-        /// Bakes every level `alpha` carries. An alpha with none leaves this empty.
-        ///
-        /// **Refills this one rather than making another**, so a loader that bakes a cell's sprites
-        /// keeps the room the last one grew. Whatever was here is gone, buffers apart.
+        /// Bakes every level `alpha` carries. An alpha with none leaves this empty. Refills this
+        /// one rather than making another, so a loader that bakes a cell's sprites keeps the room
+        /// the last one grew.
         void build(const AlphaImage& alpha);
 
         bool isEmpty() const { return mTexture.isEmpty(); }

@@ -19,12 +19,9 @@ namespace Rtx
     using SetLayout = Owned<VkDescriptorSetLayout, vkDestroyDescriptorSetLayout>;
     using Sampler = Owned<VkSampler, vkDestroySampler>;
 
-    /// A `VkShaderModule` built from a SPIR-V file the build produced.
-    ///
-    /// The build compiles every shader with `glslc` and runs `spirv-val` over the result, so a
-    /// module that reaches here has already been validated. What this checks is that the *file* is
-    /// the one the build wrote — a stale or truncated `.spv` is otherwise a driver crash with no
-    /// explanation.
+    /// A `VkShaderModule` built from a SPIR-V file the build produced. The build ran `spirv-val`
+    /// over it already, so what this checks is that the *file* is the one the build wrote — a
+    /// stale or truncated `.spv` is otherwise a driver crash with no explanation.
     ShaderModule loadShaderModule(const Device& device, const std::filesystem::path& path);
 
     /// A descriptor set layout. What each layout *is* stays with the thing that knows —
@@ -35,39 +32,29 @@ namespace Rtx
     SetLayout makeSetLayout(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
         VkDescriptorSetLayoutCreateFlags flags = 0, const void* next = nullptr);
 
-    /// The two shapes this renderer reads images through, and every sampler in it is one of them.
-    ///
-    /// All of them are linear. What differs is whether an image tiles and whether it carries a
-    /// chain, and those go together: a tiling image is content and content is mipped, while a
-    /// pass's own target is neither. Written out per class, the pair drifts where nothing decides:
-    /// a `maxLod` left at nought that reaches nothing only because the images below it happen to
-    /// have one level, a border colour set on a sampler that clamps to the edge and so never reads
-    /// one.
-    ///
-    /// `makeTargetSampler` is clamped to the edge, over the whole chain: what a pass reads its own
-    /// targets through — a bloom level, a volume slice, a frame — because such a target runs to the
-    /// edge of what it was given, and wrapping would fetch the far side of it.
-    /// `makeContentSampler` repeats, over the whole chain, because Morrowind's textures tile and a
-    /// great many of them rely on it.
+    /// The two shapes this renderer reads images through, and every sampler in it is one of them,
+    /// because written out per class the fields drift where nothing decides: a `maxLod` left at
+    /// nought that reaches nothing only because the images below it happen to have one level, a
+    /// border colour set on a sampler that clamps and so never reads one. Both are linear over the
+    /// whole chain. `makeTargetSampler` clamps to the edge, for a pass's own targets — a bloom
+    /// level, a volume slice, a frame — which run to the edge of what they were given, so wrapping
+    /// would fetch the far side. `makeContentSampler` repeats, because Morrowind's textures tile
+    /// and a great many of them rely on it.
     Sampler makeTargetSampler(const Device& device, std::string_view name);
     Sampler makeContentSampler(const Device& device, std::string_view name);
 
     /// A pass's own descriptor set layout and the pipeline layout that names it and the sets bound
-    /// after it.
-    ///
-    /// **One statement of it, because every pipeline in this renderer is addressed the same way.**
-    /// A compute pipeline, a trace pipeline and a graphics pipeline differ in how a shader is
-    /// compiled and how work is launched, and in nothing about how descriptors reach it —
-    /// `VisibilityPass` hands the first two the same bindings and the same three later sets. Written
-    /// out per pipeline, the copies drift the moment a flag changes.
-    ///
-    /// Set zero is always a push descriptor set: nothing in this renderer wants a descriptor pool on
-    /// the frame path.
+    /// after it. One statement of it, because a compute, a trace and a graphics pipeline differ in
+    /// how a shader is compiled and how work is launched, and in nothing about how descriptors
+    /// reach it — `VisibilityPass` hands the first two the same bindings and the same three later
+    /// sets — and written out per pipeline the copies drift the moment a flag changes. Set zero is
+    /// always a push descriptor set: nothing in this renderer wants a descriptor pool on the frame
+    /// path.
     class PipelineLayout
     {
     public:
-        /// Neither span outlives the call: both are read into Vulkan's own copies here, which is
-        /// what lets a caller pass the address of one of its own parameters.
+        /// Neither span outlives the call: both are read into Vulkan's own copies here, so a caller
+        /// may pass the address of one of its own parameters.
         ///
         /// @param bindings set zero, with each binding naming the stages that read it.
         /// @param pushConstantBytes the whole range, at offset zero. A range of no bytes is not one
@@ -80,7 +67,6 @@ namespace Rtx
             std::uint32_t pushConstantBytes, VkShaderStageFlags pushStages,
             std::span<const VkDescriptorSetLayout> laterSets);
 
-        /// What descriptors are pushed against and push constants are written through.
         VkPipelineLayout getHandle() const { return mHandle.get(); }
 
     private:
