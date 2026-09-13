@@ -23,8 +23,8 @@ namespace Rtx
         /// made on the spot.
         float mFade = 1.0f;
 
-        /// Whether a controller rewrote this since the last frame, so `resolveMaterial` reads a
-        /// known state set again instead of handing back the slot it already has.
+        /// Whether a controller rewrote this since the last frame, so `MaterialResolver::resolve`
+        /// reads a known state set again instead of handing back the slot it already has.
         bool mAnimated = false;
     };
 

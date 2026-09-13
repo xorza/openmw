@@ -28,6 +28,9 @@
 
 namespace Rtx
 {
+    /// Everything the renderer needs to know about a world, with no Vulkan and no scene graph in
+    /// it. It appends and it dedups paths, and nothing else: deciding that two drawables are the
+    /// same mesh belongs to whoever is reading the scene graph.
     class SceneDesc
     {
     public:
