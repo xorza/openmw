@@ -1,0 +1,37 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// A loop that holds the queue for as long as it is told and reads nothing the frame has, so that a
+// frame recorded over it is a frame recorded over a device that is still busy — what
+// `--stress-overlap` is for. The one write at the end is what keeps the compiler from folding the
+// loop away.
+
+#include "stress.h"
+
+layout(local_size_x = STRESS_WORKGROUP) in;
+
+layout(set = 0, binding = 0, scalar) buffer Sink
+{
+    uint sink;
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    StressConstants frame;
+};
+
+void main()
+{
+    // A linear congruential step per iteration: a dependent chain the compiler cannot shorten,
+    // and one that never reaches a value the loop below could exit on early.
+    uint state = gl_LocalInvocationIndex + 1u;
+    for (uint at = 0u; at < frame.mIterations; ++at)
+        state = state * 1664525u + 1013904223u;
+
+    // One lane writes what the chain came to, so the chain has a reader. The value itself means
+    // nothing to anybody.
+    if (state == 0xFFFFFFFFu)
+        sink = state;
+}

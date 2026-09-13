@@ -9,7 +9,6 @@
 
 #include "compositepass.hpp"
 #include "gputimer.hpp"
-#include "placing.hpp"
 #include "scenebuffers.hpp"
 #include "spritepasses.hpp"
 #include "tracerecording.hpp"
@@ -36,6 +35,7 @@ namespace Rtx
         , mFogVolumeLayout(fog)
         , mColourUsage(colourUsage)
         , mColourName(colourName)
+        , mBins{ SpriteBin{ device }, SpriteBin{ device } }
         , mAccumulate(device, shaders)
         , mFilter(device, shaders)
     {
@@ -117,21 +117,19 @@ namespace Rtx
         }
 
         // The sprite tiles are screen space, so they belong to the camera and not to the scene.
-        // Binned on the device, into the copy this trace is about to read, and ahead of that trace.
-        // Not at all for a camera handed a list of its own, which is the one that draws none.
-        if (what.mInputs.mSpriteList == 0)
-            what.mBuffers->binSprites(*what.mSpriteShade, *what.mSpriteBin, what.mAsked.mOrigin, what.mAsked.mCamera,
-                what.mAsked.mSunPosition,
-                Placing{
-                    .mCommands = commands,
-                    .mSlot = what.mInputs.mSlot,
-                    .mTimer = what.mTimer,
-                    .mGraveyard = *what.mGraveyard,
-                });
+        // Binned on the device into this trace's own bin, ahead of the trace that reads it. Not at
+        // all for a camera handed a list of its own, which is the one that draws none.
+        SpriteBin& bin = mBins[what.mBinSlot.get()];
+        VisibilityInputs inputs = what.mInputs;
+        inputs.mBin = &bin;
+        if (inputs.mSpriteList == 0)
+            bin.record(*what.mSpriteShade, *what.mSpriteBin, what.mBuffers->describeSprites(inputs.mSlot),
+                what.mAsked.mOrigin, what.mAsked.mCamera, what.mAsked.mSunPosition, commands, what.mTimer,
+                *what.mGraveyard);
 
         mChannels->begin(commands);
         what.mVisibility->record(
-            commands, what.mInputs, *mChannels, *what.mCounts, what.mSampled, what.mAirLost, what.mTimer);
+            commands, inputs, *mChannels, *what.mCounts, what.mSampled, what.mAirLost, what.mTimer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote where

@@ -356,6 +356,12 @@ namespace RtxTool
             "sample a different point inside each pixel every frame. Only worth anything to "
             "something putting several frames together, and forced on whenever anything upscales");
 
+        option(sFramed, "stress-overlap", bpo::value<double>()->default_value(byDefault.mProfile.mStressOverlapMs),
+            "hold the queue this many milliseconds after every frame's trace, so the device runs "
+            "that far behind the host and every frame is recorded over one still running. What a "
+            "hazard that needs two frames in flight is provoked with; the `stress` zone in the "
+            "report is what the hold actually came to, calibrated once at start on this card");
+
         option(sFramed, "crossings",
             bpo::value<bool>()->default_value(byDefault.mProfile.mCountCrossings)->implicit_value(true),
             "also count the see-through surfaces each primary ray crosses. A second traversal a "

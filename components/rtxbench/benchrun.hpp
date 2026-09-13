@@ -59,6 +59,12 @@ namespace Rtx
         /// moved gives figures that look reasonable. Answered yes by a stop that named no camera,
         /// by a free-camera stop, and by a routed one.
         CameraStands,
+
+        /// Two frames were in flight at every submit. The ring is sized for two and the game
+        /// keeps two, so a submit that found one is a wait somebody put back — the 0.9 ms a frame
+        /// the device idled for the whole of this fork's life before `Renderer::collectFrame`.
+        /// Asked of a place that stands still, because an arrival drains the ring by design.
+        FramesOverlap,
     };
 
     /// What a check is called on a command line and in a report.

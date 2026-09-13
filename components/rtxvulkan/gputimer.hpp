@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string_view>
 #include <vector>
 
@@ -10,12 +9,11 @@
 
 #include <components/rtx/renderer.hpp>
 
+#include "device.hpp"
 #include "owned.hpp"
 
 namespace Rtx
 {
-    class Device;
-
     /// Timestamps written into the command stream, so a frame can say where its device time went,
     /// where a wall clock around a submit measures one number for eight pieces of work. Both ends
     /// wait for every stage, so a zone cannot overlap its neighbours — which would distort a
@@ -25,13 +23,11 @@ namespace Rtx
     class GpuTimer
     {
     public:
-        /// The most zones one frame may open. Thirteen are used; the rest is room to bisect one.
-        static constexpr std::uint32_t sMaxZones = 24;
-
         explicit GpuTimer(const Device& device);
 
-        /// Forgets the last frame's zones. Whatever is opened after this is one report.
-        void beginFrame();
+        /// Forgets the last frame's zones. Whatever is opened after this is one report, and
+        /// `frame` is what a checkpoint the zones set names it as.
+        void beginFrame(std::uint64_t frame = 0);
 
         /// Opens a zone. `name` is stored rather than copied, so it must outlive the frame. Also
         /// names the region for a capture, where the build and the instance carry the labels.
@@ -40,9 +36,9 @@ namespace Rtx
         /// Closes the zone `open` started. Every open is closed before the next is opened.
         void close(VkCommandBuffer commands);
 
-        /// What the zones measured, in the order they were opened. The caller waited for every
-        /// submit the zones were recorded into. Valid until the next `beginFrame`.
-        std::span<const GpuSpan> resolve();
+        /// What the zones measured, in the order they were opened, into `into`. The caller waited
+        /// for every submit the zones were recorded into.
+        void resolve(GpuZones& into);
 
     private:
         const Device& mDevice;
@@ -53,15 +49,18 @@ namespace Rtx
         std::uint64_t mMask = ~std::uint64_t{ 0 };
         bool mSupported = false;
 
-        /// A name and the first of the two queries bracketing it.
+        /// The first of the two queries bracketing a zone, and the checkpoint the queue was set
+        /// at its open. The checkpoint is in here rather than beside it because the queue keeps a
+        /// pointer to it: `mZones` is reserved to `sMaxGpuZones` and never grows past that, so an
+        /// element stays where it is until the slot's next `beginFrame`.
         struct Zone
         {
-            std::string_view mName;
+            Checkpoint mCheckpoint;
             std::uint32_t mFirstQuery = 0;
         };
 
         std::vector<Zone> mZones;
-        std::vector<GpuSpan> mSpans;
+        std::uint64_t mFrame = 0;
 
         /// Which of `mZones` is open, or `mZones.size()` for none.
         std::size_t mOpen = 0;

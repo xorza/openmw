@@ -271,6 +271,7 @@ namespace MWRender
         // here and taken as command-line options by the harness, so a picture taken by one and a
         // frame drawn by the other were traced by two differently configured renderers.
         options.mCountCrossings = mProfile.mCountCrossings;
+        options.mStressOverlapMs = mProfile.mStressOverlapMs;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
@@ -832,21 +833,23 @@ namespace MWRender
     void RtxRenderer::finishBehind(FrameReport& report)
     {
         // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
-        // writes the copy of the tables the frame behind is still tracing, so it waits that frame
-        // out before it writes — and left to it the stall lands inside `place ms`, which then reads
+        // writes the copy of the tables the frame before last traced, so it waits that frame out
+        // before it writes — and left to it the stall lands inside `place ms`, which then reads
         // as placement work rather than as a device the CPU is ahead of. One figure, in `wait ms`,
         // which `Rtx::FrameSamples` carries for the harness and for the game alike so that the two
         // reports can be read against each other.
         //
-        // **Before the submit, which is what keeps the CPU a frame ahead of the device**, and
-        // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What comes
-        // back is the frame behind, so the bench row carries it beside this frame's wall time.
+        // **`collectFrame` and not `finishFrame`**: the frame behind stays on the device while this
+        // one is placed, which is what keeps the device busy from one trace to the next — 0.9 ms
+        // of a 6 ms frame on the ship, in `.notes/bench.txt`. What comes back is the frame before
+        // it, so the bench row carries a report two frames behind this frame's wall time.
+        // `Check::FramesOverlap` is what says the ring still holds two.
         //
-        // **Timed as well as waited for**, because the fence is not the whole of it: the ring then
+        // **Timed as well as waited for**, because the wait is not the whole of it: the ring then
         // reads the device's counters and its timestamps and destroys what that frame was the last
         // to read, and none of that is in the figure the device reports.
         const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
-        report.mResult = mRenderer->finishFrame();
+        report.mResult = mRenderer->collectFrame();
         report.mSpend.at(Rtx::Timing::Finish) = Rtx::since(finishing, std::chrono::steady_clock::now());
     }
 

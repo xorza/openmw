@@ -14,6 +14,7 @@ namespace Rtx
 {
     class Instance;
     class MemoryAllocator;
+    class Timeline;
     class PipelineCache;
     struct PipelineCacheSpec;
 
@@ -44,6 +45,15 @@ namespace Rtx
         PFN_vkGetPipelineExecutableStatisticsKHR mGetPipelineExecutableStatistics = nullptr;
     };
 
+    /// What a checkpoint on the queue points at: the zone the timer opened and the frame it was
+    /// opened for, so a device loss can say "frame 83, `tlas`". Owned by the timer that set it
+    /// and stable while the timer's slot lives, which is longer than a fault takes to be reported.
+    struct Checkpoint
+    {
+        std::string_view mName;
+        std::uint64_t mFrame = 0;
+    };
+
     /// A logical device, its single queue, and the extension entry points.
     class Device
     {
@@ -69,6 +79,9 @@ namespace Rtx
         /// hundred images. Not const although the device is, because every resource that asks holds
         /// the device by const reference.
         MemoryAllocator& getMemory() const;
+
+        /// The queue's clock, which every submit signals and every wait reads.
+        Timeline& getTimeline() const { return *mTimeline; }
 
         /// Whether `vkQueuePresentKHR` may be handed a fence it signals when the presentation
         /// engine has finished with an image — the only thing that says so, since a queue-idle
@@ -127,6 +140,17 @@ namespace Rtx
 #endif
         }
 
+        /// Marks the queue's progress with `checkpoint`, which the queue reports as the last one
+        /// each stage passed if the device is lost. Compiled to nothing in release, like the
+        /// labels, and nothing where the driver offers no `VK_NV_device_diagnostic_checkpoints`.
+        void checkpoint([[maybe_unused]] VkCommandBuffer commands, [[maybe_unused]] const Checkpoint* checkpoint) const
+        {
+#ifdef OPENMW_RTX_DEBUG_NAMES
+            if (mCmdSetCheckpoint != nullptr)
+                mCmdSetCheckpoint(commands, checkpoint);
+#endif
+        }
+
         /// Blocks until the queue has finished everything. For tearing down and for resizing, not
         /// for pacing a frame.
         void waitIdle() const;
@@ -145,6 +169,10 @@ namespace Rtx
         std::string describeFault() const;
 
     private:
+        /// The last checkpoint each stage of the queue passed, as lines for the fault report.
+        /// Nothing where the driver offers no checkpoints.
+        std::string describeCheckpoints() const;
+
         void setNameImpl(VkObjectType type, std::uint64_t handle, const char* name) const;
         void beginLabelImpl(VkCommandBuffer commands, const char* name) const;
 
@@ -160,6 +188,10 @@ namespace Rtx
         /// its feature.
         PFN_vkGetDeviceFaultInfoEXT mGetDeviceFaultInfo = nullptr;
 
+        /// Null where the driver offers no `VK_NV_device_diagnostic_checkpoints`.
+        PFN_vkCmdSetCheckpointNV mCmdSetCheckpoint = nullptr;
+        PFN_vkGetQueueCheckpointDataNV mGetQueueCheckpointData = nullptr;
+
         bool mPresentFences = false;
 
         // Last, so that they are torn down first: saving the cache reads from the device, and
@@ -167,5 +199,6 @@ namespace Rtx
         // point.
         std::unique_ptr<PipelineCache> mPipelineCache;
         std::unique_ptr<MemoryAllocator> mMemory;
+        std::unique_ptr<Timeline> mTimeline;
     };
 }

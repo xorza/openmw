@@ -26,6 +26,7 @@
 #include "scenebuffers.hpp"
 #include "skintables.hpp"
 #include "texture.hpp"
+#include "timeline.hpp"
 #include "tracerecording.hpp"
 #include "visibilitypass.hpp"
 
@@ -109,6 +110,7 @@ namespace Rtx
               PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory },
               deviceExtensionsFor(options))
         , mPool(mDevice)
+        , mGraveyard(mDevice, mPool)
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
         , mCountCrossings(options.mCountCrossings)
@@ -143,6 +145,9 @@ namespace Rtx
         if (mUpscaling.mMode != Upscale::Off)
             startUpscaler();
 
+        if (options.mStressOverlapMs > 0.0)
+            mStress = std::make_unique<StressPass>(mDevice, mPool, options.mShaderDirectory, options.mStressOverlapMs);
+
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
         if (options.mWindow != nullptr)
@@ -164,7 +169,7 @@ namespace Rtx
         tearDown("the device would not finish before the renderer was taken apart", [&] { mDevice.waitIdle(); });
 
         // Before the scenes below it, which own the storage the buried rooms are rooms in.
-        mRing.emptyGraveyards();
+        mGraveyard.clear();
     }
 
     void VulkanRenderer::startUpscaler()
@@ -359,7 +364,7 @@ namespace Rtx
             .mBuffers = held.mBuffers.get(),
             .mSlot = held.mSlot,
             .mIndexBlocks = held.mAcceleration->getIndexBlocks(),
-            .mTextures = held.mTextures->getSet(),
+            .mTextures = held.mTextures->getSet(held.mSlot),
             .mWaves = &mWaves,
             .mFog = &mFog,
             .mFogVolume = volume,
@@ -409,7 +414,7 @@ namespace Rtx
         mPool.finishDeferred();
         mDevice.waitIdle();
         mRing.finishAll();
-        mRing.emptyGraveyards();
+        mGraveyard.clear();
 
         // Torn down before anything is built, so a second scene does not hold two of everything at
         // once — a cell's structures and textures are most of what this renderer occupies. The pass
@@ -447,7 +452,7 @@ namespace Rtx
         // would be hundreds for a town.
         Batch setup(mPool);
 
-        Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
+        Graveyard& graveyard = mGraveyard;
 
         // Every scene is traced by two frames at once, the doll's included: a picture inside the
         // interface rides the frame it was asked on, and the next frame may place it again while
@@ -480,6 +485,9 @@ namespace Rtx
         held.mBuiltMeshes = scene.meshes().getRevision();
         held.mBuiltStructure = scene.getStructureRevision();
 
+        // The first copy's set, which the first frame binds before any placement pays it.
+        held.mTextures->sync(FrameSlot{});
+
         // By hand rather than left to the destructor, so a submit that fails throws out of here
         // instead of being logged on the way past.
         setup.flush();
@@ -501,7 +509,7 @@ namespace Rtx
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
 
-        Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
+        Graveyard& graveyard = mGraveyard;
 
         Batch setup(mPool);
         held.mTextures->write(setup, arrived, graveyard);
@@ -561,7 +569,7 @@ namespace Rtx
         if (held.mTextures == nullptr)
             return;
 
-        held.mTextures->drop(textures, mRing.recording().mWorld.mGraveyard);
+        held.mTextures->drop(textures, mGraveyard);
     }
 
     bool VulkanRenderer::recordPlacement(
@@ -575,6 +583,9 @@ namespace Rtx
         // Once, for the slots that changed, and both halves read it: a nine-by-nine exterior is
         // fifty thousand rows with a matrix inverse apiece, and a frame changes a hundred.
         updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
+
+        // The descriptors this copy's set owes, now that nothing on the queue reads it.
+        held.mTextures->sync(placing.mSlot);
 
         // The pose first, because the refit reads it. Every skinned body and morphed face this
         // copy owes is computed into it here, and the barrier the pass ends in is what the refit
@@ -623,7 +634,7 @@ namespace Rtx
                 Placing{
                     .mCommands = placement.getCommands(),
                     .mSlot = into,
-                    .mGraveyard = mRing.recording().mWorld.mGraveyard,
+                    .mGraveyard = mGraveyard,
                 });
             placement.defer();
             held.mSlot = into;
@@ -635,9 +646,9 @@ namespace Rtx
         // and a report that began at `renderFrame` would leave them out.
         FrameRecord& frame = mRing.begin();
 
-        // The placement's own submit, without a fence and without a wait. The frame's fence,
-        // later on the queue, covers this submit too. Nothing recorded is nothing submitted, which
-        // is every frame of a standing camera in an empty place.
+        // The placement's own submit, without a wait. The frame's trace, later on the queue,
+        // covers this submit too. Nothing recorded is nothing submitted, which is every frame of a
+        // standing camera in an empty place.
         const VkCommandBuffer placement = mRing.takePlaceCommands(frame);
         mPool.begin(placement);
 
@@ -646,9 +657,9 @@ namespace Rtx
                     .mCommands = placement,
                     .mSlot = into,
                     .mTimer = &frame.mTimer,
-                    .mGraveyard = frame.mWorld.mGraveyard,
+                    .mGraveyard = mGraveyard,
                 }))
-            mPool.submit(placement, VK_NULL_HANDLE, frame.mWorld.mGraveyard);
+            mPool.submit(placement, mGraveyard);
         else
             checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
 
@@ -703,6 +714,11 @@ namespace Rtx
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
         return mRing.collect();
+    }
+
+    std::optional<FrameResult> VulkanRenderer::collectFrame()
+    {
+        return mRing.collectFinished();
     }
 
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
@@ -763,24 +779,26 @@ namespace Rtx
         if (vertices.empty() || batches.empty())
             return;
 
-        // The interface drawn two frames ago drew out of this slot; its fence is what says the
-        // vertices may be written over.
+        // The interface drawn two frames ago drew out of this slot; its value passed is what says
+        // the vertices may be written over.
         FrameRecord& gui = mRing.slotOf(mGuiFrame);
         if (gui.mGui.mPending)
         {
-            awaitVk(mDevice, gui.mGui.mFence.get(), "the interface drawn two frames ago");
+            mDevice.getTimeline().waitFor(gui.mGui.mSubmitted, "the interface drawn two frames ago");
             gui.mGui.mPending = false;
-            gui.mGui.mGraveyard.clear();
+            mGraveyard.collect();
         }
 
-        // After the clear and before anything is handed over: this frame's fence is the first
+        // After the collect and before anything is handed over: this frame's submit is the first
         // that says every draw with a texture given back has finished, and the staging turns on
         // the same signal.
-        mGuiTextures.startFrame(gui.mGui.mGraveyard);
+        mGuiTextures.startFrame(mGraveyard);
 
-        gui.mGui.mGraveyard.bury(
-            growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+        mGraveyard.bury(growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+        assert(
+            mDevice.getTimeline().hasFinished(gui.mGuiVertices) && "the interface's vertices rewritten under a draw");
         gui.mGuiVertices.write(vertices);
+        gui.mGuiVertices.nameFor(mDevice.getTimeline().getNext());
 
         mGuiDraws.clear();
         mGuiDraws.reserve(batches.size());
@@ -798,12 +816,12 @@ namespace Rtx
 
         // Its own submit, after the frame's, and not waited for. The GUI is collected once the
         // world has been drawn and there is nothing to gain by holding the frame open for it; the
-        // queue draws it after the frame, the present blits after both, and the fence is for the
+        // queue draws it after the frame, the present blits after both, and the wait is for the
         // vertices alone.
         mPool.begin(gui.mGui.mCommands);
 
         const VkCommandBuffer commands = gui.mGui.mCommands;
-        mTargets.current().transition(commands, Use::sComputeWrite, Use::sColourAttachment);
+        claimTarget().transition(commands, Use::sComputeWrite, Use::sColourAttachment);
 
         mGuiPass.record(commands, mTargets.current(), gui.mGuiVertices.getHandle(), mGuiDraws);
 
@@ -814,7 +832,7 @@ namespace Rtx
                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT },
             Use::sAnyGeneralRead);
 
-        mPool.submit(commands, gui.mGui.mFence.get(), gui.mGui.mGraveyard);
+        gui.mGui.mSubmitted = mPool.submit(commands, mGraveyard);
         gui.mGui.mPending = true;
         ++mGuiFrame;
     }
@@ -825,10 +843,16 @@ namespace Rtx
         assert(mTargets.isOpen());
 
         const bool shown = mPresenter->present(mTargets.current());
-
-        mTargets.presented([this](const Image& next) { mPresenter->waitForLastUse(next); });
-
+        mTargets.presented();
         return shown;
+    }
+
+    Image& VulkanRenderer::claimTarget()
+    {
+        return mTargets.claim([this](const Image& target) {
+            if (mPresenter != nullptr)
+                mPresenter->waitForLastUse(target);
+        });
     }
 
     FrameExtents VulkanRenderer::getExtents() const
@@ -869,7 +893,11 @@ namespace Rtx
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
         // this is the write a frame that never reads it was still paying for.
         if (mCountHits || mCountCrossings)
+        {
+            assert(mDevice.getTimeline().hasFinished(frame.mHitCount) && "a frame's counts cleared under its trace");
             *static_cast<FrameCounts*>(frame.mHitCount.map()) = FrameCounts{};
+            frame.mHitCount.nameFor(mDevice.getTimeline().getNext());
+        }
 
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
@@ -921,12 +949,6 @@ namespace Rtx
                     fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
                 Use::sComputeReadWrite);
 
-        // What the bin inside the recording writes may still be being traced: two frames with no
-        // placement between them bin into the one copy. On the ordinary path this was waited by
-        // `placeScene` and costs a compare.
-        if (mWorld.mReadBy[mWorld.mSlot.get()] != sNeverRead)
-            mRing.finishThrough(mWorld.mReadBy[mWorld.mSlot.get()]);
-
         // Ray Reconstruction is itself the denoiser, and handing it a frame the wavelet already
         // blurred is asking it to recover what was thrown away — which is why `resolve` never
         // answers with both.
@@ -942,12 +964,13 @@ namespace Rtx
                 .mSpriteBin = &mSpriteBin,
                 .mSpriteShade = &mSpriteShade,
                 .mInputs = inputs,
+                .mBinSlot = mRing.getRecordingSlot(),
                 .mBuffers = mWorld.mBuffers.get(),
-                .mGraveyard = &frame.mWorld.mGraveyard,
+                .mGraveyard = &mGraveyard,
                 .mAsked = camera,
                 .mSampled = sampled,
                 .mCounts = &frame.mHitCount,
-                .mTarget = &mTargets.current(),
+                .mTarget = &claimTarget(),
                 .mSum = mSum.get(),
                 .mAccumulate = options.mAccumulate,
                 .mAirLost = airLost,
@@ -1020,9 +1043,15 @@ namespace Rtx
             toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
         timer.close(commands);
 
-        // Submitted and not waited for: `finishFrame` brings the count and the report back a
-        // frame late. A fence's access scope is the device's, so the counters need a dependency
-        // of their own, recorded here after every pass that could have added to them.
+        // After the picture and inside the frame's trace, so the frame is finished when its value
+        // has passed and the hold is the last thing it did.
+        if (mStress != nullptr)
+            mStress->record(commands, timer);
+
+        // Submitted and not waited for: `finishFrame` or `collectFrame` brings the count and the
+        // report back a frame or two late. A wait's access scope is the device's, so the counters
+        // need a dependency of their own, recorded here after every pass that could have added to
+        // them.
         if (mCountHits || mCountCrossings)
             frame.mHitCount.orderForHostRead(commands);
 
@@ -1069,7 +1098,7 @@ namespace Rtx
         mPool.finishDeferred();
         mDevice.waitIdle();
         mRing.finishAll();
-        mRing.emptyGraveyards();
+        mGraveyard.clear();
 
         mViewScenes[scene.getViewIndex()].reset();
         mFreeViewScenes.free(scene.getViewIndex());
@@ -1140,7 +1169,7 @@ namespace Rtx
                     .mSpriteShade = &mSpriteShade,
                     .mInputs = inputs,
                     .mBuffers = traced.mBuffers.get(),
-                    .mGraveyard = &mRing.recording().mWorld.mGraveyard,
+                    .mGraveyard = &mGraveyard,
                     .mAsked = camera,
                     .mSampled = sampled,
                     .mCounts = &mViewCounts,
@@ -1189,12 +1218,12 @@ namespace Rtx
             });
 
             if (options.mReadBack)
-                mGuiTextures.readBackWith(texture, commands, mRing.getRecording(), mRing.recording().mWorld.mGraveyard);
+                mGuiTextures.readBackWith(texture, commands, mRing.getRecording(), mGraveyard);
         }
         trace.defer();
 
         // Conservative where it is not exact. The batch rides the next submit this pool makes,
-        // which is this frame's or an earlier one's GUI; a later frame's fence covers either by
+        // which is this frame's or an earlier one's GUI; a later frame's wait covers either by
         // queue order.
         traced.mReadBy[traced.mSlot.get()] = mRing.getRecording();
     }

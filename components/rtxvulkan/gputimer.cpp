@@ -4,7 +4,6 @@
 #include <cassert>
 #include <vector>
 
-#include "device.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -47,7 +46,7 @@ namespace Rtx
             .pNext = nullptr,
             .flags = 0,
             .queryType = VK_QUERY_TYPE_TIMESTAMP,
-            .queryCount = sMaxZones * 2,
+            .queryCount = sMaxGpuZones * 2,
             .pipelineStatistics = 0,
         };
 
@@ -55,62 +54,64 @@ namespace Rtx
             "vkCreateQueryPool");
         device.setName(VK_OBJECT_TYPE_QUERY_POOL, reinterpret_cast<std::uint64_t>(mHandle.get()), "frame timestamps");
 
-        mZones.reserve(sMaxZones);
-        mSpans.reserve(sMaxZones);
+        mZones.reserve(sMaxGpuZones);
     }
 
-    void GpuTimer::beginFrame()
+    void GpuTimer::beginFrame(const std::uint64_t frame)
     {
         mZones.clear();
-        mSpans.clear();
         mOpen = 0;
+        mFrame = frame;
     }
 
     void GpuTimer::open(VkCommandBuffer commands, std::string_view name)
     {
         mDevice.beginLabel(commands, name);
 
-        if (!mSupported)
-            return;
-
         assert(mOpen == mZones.size() && "a zone was opened while another was still open");
 
         // A frame that wanted more zones than the pool holds is a frame being instrumented past what
         // this was built for; the label above still names it for a capture.
-        if (mZones.size() >= sMaxZones)
+        if (mZones.size() >= sMaxGpuZones)
             return;
 
         const auto first = static_cast<std::uint32_t>(mZones.size()) * 2;
+        const Zone& zone = mZones.emplace_back(
+            Zone{ .mCheckpoint = Checkpoint{ .mName = name, .mFrame = mFrame }, .mFirstQuery = first });
+        mDevice.checkpoint(commands, &zone.mCheckpoint);
+
+        if (!mSupported)
+            return;
 
         // Reset here rather than once per command buffer. The zones of one frame are spread over
         // three submits and this class is not told where the boundaries are; resetting the pair
         // about to be written, in the buffer about to write it, is correct wherever it lands.
         vkCmdResetQueryPool(commands, mHandle.get(), first, 2);
         vkCmdWriteTimestamp2(commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle.get(), first);
-
-        mZones.push_back(Zone{ .mName = name, .mFirstQuery = first });
     }
 
     void GpuTimer::close(VkCommandBuffer commands)
     {
         mDevice.endLabel(commands);
 
-        if (!mSupported || mOpen == mZones.size())
+        if (mOpen == mZones.size())
             return;
 
-        vkCmdWriteTimestamp2(
-            commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle.get(), mZones[mOpen].mFirstQuery + 1);
+        if (mSupported)
+            vkCmdWriteTimestamp2(
+                commands, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, mHandle.get(), mZones[mOpen].mFirstQuery + 1);
         ++mOpen;
     }
 
-    std::span<const GpuSpan> GpuTimer::resolve()
+    void GpuTimer::resolve(GpuZones& into)
     {
         assert(mOpen == mZones.size() && "a zone was left open when the frame was resolved");
 
-        if (mZones.empty())
-            return {};
+        into.clear();
+        if (mZones.empty() || !mSupported)
+            return;
 
-        std::array<std::uint64_t, sMaxZones * 2> ticks{};
+        std::array<std::uint64_t, sMaxGpuZones * 2> ticks{};
         const auto count = static_cast<std::uint32_t>(mZones.size()) * 2;
 
         // Waiting rather than polling for availability: every submit these were written into has
@@ -120,7 +121,6 @@ namespace Rtx
                 ticks.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
             "vkGetQueryPoolResults");
 
-        mSpans.clear();
         for (const Zone& zone : mZones)
         {
             const std::uint64_t began = ticks[zone.mFirstQuery] & mMask;
@@ -131,9 +131,7 @@ namespace Rtx
             // two landed.
             const std::uint64_t elapsed = (ended - began) & mMask;
 
-            mSpans.push_back(GpuSpan{ .mName = zone.mName, .mMs = static_cast<double>(elapsed) * mPeriod / 1.0e6 });
+            into.add(GpuSpan{ .mName = zone.mCheckpoint.mName, .mMs = static_cast<double>(elapsed) * mPeriod / 1.0e6 });
         }
-
-        return mSpans;
     }
 }

@@ -582,6 +582,14 @@ namespace MWRender
                 return crossings.mCount > 0 && crossings.mRebuilds < crossings.mCount;
             }
 
+            case Rtx::Check::FramesOverlap:
+            {
+                const Rtx::Overlap& overlap = facts.mOverlap;
+                found = std::format(
+                    "{:.2f} frames in flight at a submit, {} at the least", overlap.getMean(), overlap.mLeast);
+                return overlap.mFrames > 0 && overlap.mLeast == 2;
+            }
+
             case Rtx::Check::CameraStands:
             {
                 // **Answered rather than compared, where the stop named no camera.** Measuring the

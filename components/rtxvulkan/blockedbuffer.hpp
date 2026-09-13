@@ -87,6 +87,9 @@ namespace Rtx
         /// address of the table of addresses, which the frame block carries.
         VkDeviceAddress getTableAddress() const { return mTable.getDeviceAddress(); }
 
+        /// Says a submit signalling `value` reads the address table — `Buffer::nameFor`.
+        void nameTableFor(std::uint64_t value) const { mTable.nameFor(value); }
+
         /// One block by number, for a test that copies what a kernel wrote into it back out.
         const Buffer& getBlock(std::uint32_t block) const
         {

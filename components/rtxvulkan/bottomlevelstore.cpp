@@ -17,6 +17,7 @@
 #include "graveyard.hpp"
 #include "memory.hpp"
 #include "result.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -29,9 +30,8 @@ namespace Rtx
         constexpr VkDeviceSize sCompactionPerPlacement = 8 * 1024 * 1024;
     }
 
-    BottomLevelStore::BottomLevelStore(const Device& device, const std::uint32_t slots)
+    BottomLevelStore::BottomLevelStore(const Device& device)
         : mDevice(device)
-        , mSlots(slots)
     {
     }
 
@@ -337,6 +337,10 @@ namespace Rtx
         // arrivals are: the scene hands out its slots in order. Each query is reset before it is
         // written because the slot may have been asked about before, for a structure that has
         // since gone.
+        //
+        // The value the batch rides, which is the pool's next submit: a batch is flushed into
+        // it or deferred ahead of it, and nothing else takes a value in between.
+        const std::uint64_t rides = mDevice.getTimeline().getNext();
         std::uint32_t first = 0;
         mAskScratch.clear();
         for (std::uint32_t slot = 0; slot < held; ++slot)
@@ -353,8 +357,8 @@ namespace Rtx
             mAskScratch.push_back(mStructures[slot]);
 
             state.mTightness = Tightness::Asked;
-            state.mAskedAt = mPlacements;
-            mAsked.push(Ask{ .mSlot = static_cast<Index>(slot), .mAt = mPlacements });
+            state.mAskedAt = rides;
+            mAsked.push(Ask{ .mSlot = static_cast<Index>(slot), .mAt = rides });
         }
         askRun(commands, first);
     }
@@ -377,10 +381,9 @@ namespace Rtx
         {
             const Ask& oldest = mAsked.at(0);
 
-            // Read once the placement that recorded the question has certainly run: the ring waits
-            // for the frame `mSlots` back before it records this one. The questions are in the order
-            // they were asked, so what is ready is a prefix.
-            if (mPlacements <= oldest.mAt + mSlots)
+            // Read once the submit that carried the question has run, which the timeline says. The
+            // questions are in the order they were asked, so what is ready is a prefix.
+            if (!mDevice.getTimeline().hasFinished(oldest.mAt))
                 break;
 
             if (!isOutstanding(oldest))
@@ -435,8 +438,6 @@ namespace Rtx
 
     const SlotSet& BottomLevelStore::prepareCompaction(Graveyard& graveyard)
     {
-        ++mPlacements;
-
         mCompactionCopies.clear();
         mMovedMeshes.clear();
 

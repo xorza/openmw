@@ -13,13 +13,12 @@
 #include <components/rtx/lightgrid.hpp>
 #include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/scene.h>
-#include <components/rtx/spritelistsize.hpp>
 
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
-#include "placing.hpp"
 #include "slottable.hpp"
+#include "spritebin.hpp"
 
 namespace Rtx
 {
@@ -60,14 +59,9 @@ namespace Rtx
         void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
             FrameSlot slot, Graveyard& graveyard);
 
-        /// Shades this scene's sprites against the frame's sun, writes them, and records the bin
-        /// of them into the screen tiles of the camera about to trace them. From the frame and not
-        /// from the placement, because both the sun and the camera are the frame's. Recorded into
-        /// `placing.mCommands` ahead of the trace that reads the tiles, and grows the list first
-        /// from what this copy's last bin reported it needed, so nothing between this and the trace
-        /// moves a table.
-        void binSprites(const SpriteShadePass& shading, const SpriteBinPass& pass, const osg::Vec3f& origin,
-            const Shaders::Camera& camera, const osg::Vec3f& toSun, const Placing& placing);
+        /// The sprites `slot`'s copy holds and the emitters that placed them, for the bin a trace
+        /// records against them (`SpriteBin::record`).
+        SpriteSource describeSprites(FrameSlot slot) const;
 
         /// Where the lamps were binned, for the frame's block the pass writes: its geometry rides
         /// there, beside the sea's, and only the lists it made are tables.
@@ -78,11 +72,12 @@ namespace Rtx
         /// both — so nothing here is owed by a pose.
         SlotBlocks& getNormals() { return mNormalTable; }
 
-        /// Where every table this owns is, for the frame's block: the twelve of `GpuTables` that are
+        /// Where every table this owns is, for the frame's block: those of `GpuTables` that are
         /// the scene's, with `slot`'s copy wherever a table has one per frame in flight. Addresses
         /// and never handles, because a shader constructs a reference from the block and reads; for
         /// the vertex attributes a table of addresses, one per block (`BlockedBuffer`). The
-        /// blue-noise tile and the index blocks are not the scene's and write their own.
+        /// blue-noise tile, the index blocks and the sprite bin's two are not the scene's and write
+        /// their own.
         void describeTables(FrameSlot slot, Shaders::GpuTables& into) const;
 
         VkDeviceSize getBytes() const;
@@ -96,28 +91,15 @@ namespace Rtx
             Buffer mMasks;
             Buffer mLights;
             Buffer mLightList;
+
+            /// The sprites as the scene placed them, unshaded: what a trace's `SpriteBin` copies
+            /// and shades for its own sun. Never read by a shader directly.
             Buffer mSprites;
             Buffer mEmitters;
 
-            /// The sprite tiles' list, made on the device by `SpriteBinPass` and never written by
-            /// the host: `tiles + 1` starts, then the runs, in `RunList`'s shape.
-            Buffer mSpriteTileList;
-
-            /// One rectangle of tiles per sprite, the bin's own scratch between its dispatches.
-            Buffer mSpriteRects;
-
-            /// One depth key per sprite per light, the shading's own scratch inside its dispatch.
-            /// `Shaders::SpriteShadeConstants::mOrder` says how the two lights share it.
-            Buffer mSpriteOrder;
-
-            /// How many entries the last bin into this copy came to, written by the pass and read
-            /// back here before the next bin. Staging, because it is the one table the host reads.
-            Buffer mSpriteBinReport;
-
-            /// How long `mSpriteTileList` is and how much of it a bin may fill. Grown from the
-            /// report and never shrunk, so the list settles at its high-water mark like every
-            /// other table. `SpriteListSize` says why the two numbers are one object.
-            SpriteListSize mSpriteListSize;
+            /// How many of each the copy holds, for the bin that copies them.
+            std::uint32_t mSpriteCount = 0;
+            std::uint32_t mEmitterCount = 0;
 
             /// What one copy of them occupies. Beside the declarations, because a table added above
             /// and forgotten here is a figure that quietly stops accounting for it, which two of

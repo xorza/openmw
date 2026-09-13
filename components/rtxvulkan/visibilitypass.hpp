@@ -25,6 +25,7 @@ namespace Rtx
     class GBuffer;
     class GpuTimer;
     class SceneBuffers;
+    class SpriteBin;
     class WavePass;
 
     /// What a trace reads about the world, as against the camera that looks at it.
@@ -62,6 +63,10 @@ namespace Rtx
         /// a camera that draws no sprites: the slot's list holds whatever the last bin into it left,
         /// sized for another camera. An empty list is two words, and one buffer serves every extent.
         VkDeviceAddress mSpriteList = 0;
+
+        /// The bin the trace reads its sprites and its tiles from, which the chain that records the
+        /// trace owns and filled ahead of it. Always set by the time the pass records.
+        const SpriteBin* mBin = nullptr;
 
         /// Whether the eye can meet water in this scene — the scene's answer and not the camera's,
         /// and what `HAS_SEA` takes the waves out of for a room.

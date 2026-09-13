@@ -7,54 +7,53 @@
 
 #include "commands.hpp"
 #include "device.hpp"
-#include "result.hpp"
+#include "graveyard.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
-    FrameRecord::FrameRecord(const Device& device, CommandPool& pool)
-        : mWorld(device, pool)
-        , mGui(device, pool)
-        , mTimer(device)
+    FrameRecord::FrameRecord(const Device& device)
+        : mTimer(device)
         , mHitCount(Buffer::staging(
               device, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
     {
     }
 
-    FrameRing::FrameRing(const Device& device, CommandPool& pool, const bool countHits, const bool countCrossings)
+    FrameRing::FrameRing(
+        const Device& device, CommandPool& pool, Graveyard& graveyard, const bool countHits, const bool countCrossings)
         : mDevice(device)
         , mPool(pool)
+        , mGraveyard(graveyard)
         , mCountHits(countHits)
         , mCountCrossings(countCrossings)
-        , mSlots{ { FrameRecord{ device, pool }, FrameRecord{ device, pool } } }
+        , mSlots{ { FrameRecord{ device }, FrameRecord{ device } } }
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
-        // interface's — allocated once and recorded into again, and a fence for each of the two that
-        // are waited on. A frame placed more than once takes another from the same pool and keeps
-        // it, which `FrameRecord::mPlaceCommands` explains.
+        // interface's — allocated once and recorded into again. A frame placed more than once takes
+        // another from the same pool and keeps it, which `FrameRecord::mPlaceCommands` explains.
         const std::vector<VkCommandBuffer> commands = mPool.allocate(3 * sFrameSlots);
-        const VkFenceCreateInfo fence{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
         for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
         {
             FrameRecord& frame = mSlots[slot];
             frame.mPlaceCommands.push_back(commands[3 * slot]);
             frame.mWorld.mCommands = commands[3 * slot + 1];
             frame.mGui.mCommands = commands[3 * slot + 2];
-            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, frame.mWorld.mFence.put(mDevice.getHandle())),
-                "vkCreateFence");
-            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, frame.mGui.mFence.put(mDevice.getHandle())),
-                "vkCreateFence");
         }
     }
 
     FrameRecord& FrameRing::recording()
     {
-        // The frame that last used this slot has to be out of the way — its fence waited, its
-        // graveyard emptied, its results read or dropped — which is what caps the frames in flight
-        // at the number of slots and what makes the slot this hands back the caller's own.
+        makeRoom();
+        return slotOf(mFrame);
+    }
+
+    void FrameRing::makeRoom()
+    {
+        // The frame that last used the next slot has to be out of the way — waited for, its
+        // burials collected, its results read or dropped — which is what caps the frames in flight
+        // at the number of slots and what makes the slot `recording` hands back the caller's own.
         while (mFrame - mFinished >= sFrameSlots)
             finishOldest();
-
-        return slotOf(mFrame);
     }
 
     FrameRecord& FrameRing::begin()
@@ -63,7 +62,7 @@ namespace Rtx
         if (frame.mBegun)
             return frame;
 
-        frame.mTimer.beginFrame();
+        frame.mTimer.beginFrame(mFrame);
         frame.mBegun = true;
         frame.mPlacements = 0;
         frame.mReconstruction = Reconstruction{};
@@ -80,11 +79,12 @@ namespace Rtx
 
     void FrameRing::submit(FrameRecord& frame)
     {
-        mPool.submit(frame.mWorld.mCommands, frame.mWorld.mFence.get(), frame.mWorld.mGraveyard);
+        frame.mWorld.mSubmitted = mPool.submit(frame.mWorld.mCommands, mGraveyard);
 
         frame.mBegun = false;
         frame.mWorld.mPending = true;
         ++mFrame;
+        frame.mInFlight = static_cast<std::uint32_t>(mFrame - mFinished);
     }
 
     void FrameRing::finishOldest()
@@ -95,36 +95,34 @@ namespace Rtx
         assert(frame.mWorld.mPending && "a frame in flight that was never submitted");
 
         const auto start = std::chrono::steady_clock::now();
-        awaitVk(mDevice, frame.mWorld.mFence.get(), "a frame");
+        mDevice.getTimeline().waitFor(frame.mWorld.mSubmitted, "a frame");
         const double waited = since(start, std::chrono::steady_clock::now());
 
         frame.mWorld.mPending = false;
 
-        // Read after the fence and never before: the count is the device's sum, and the queries
+        // Read after the wait and never before: the count is the device's sum, and the queries
         // are the device's clock.
         FrameCounts counted;
         if (mCountHits || mCountCrossings)
             counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
 
-        // What this frame may still have been reading is nothing's now.
-        frame.mWorld.mGraveyard.clear();
+        // What the timeline has passed is nothing's now, this frame's burials among it.
+        mGraveyard.collect();
 
         ++mFinished;
 
-        // `FrameResult::mGpu` is a span into the frame's own timer, good until that slot resolves
-        // again `sFrameSlots` finishes away, so a report nothing collected by then goes rather
-        // than hand back a later frame's zones.
         if (mReports.size() >= sFrameSlots)
             mReports.erase(mReports.begin());
 
-        mReports.push_back(FrameResult{
+        FrameResult& report = mReports.emplace_back(FrameResult{
             .mHits = counted.mHits,
             .mCrossings = counted.mCrossings,
             .mCrossingsMost = counted.mCrossingsMost,
             .mWaitMs = waited,
-            .mGpu = frame.mTimer.resolve(),
+            .mInFlight = frame.mInFlight,
             .mReconstruction = frame.mReconstruction,
         });
+        frame.mTimer.resolve(report.mGpu);
     }
 
     std::optional<FrameResult> FrameRing::collect()
@@ -139,6 +137,20 @@ namespace Rtx
 
             finishOldest();
         }
+
+        return takeReport();
+    }
+
+    std::optional<FrameResult> FrameRing::collectFinished()
+    {
+        makeRoom();
+        return takeReport();
+    }
+
+    std::optional<FrameResult> FrameRing::takeReport()
+    {
+        if (mReports.empty())
+            return std::nullopt;
 
         const FrameResult report = mReports.front();
         mReports.erase(mReports.begin());
@@ -155,15 +167,6 @@ namespace Rtx
     {
         while (mFinished < mFrame)
             finishOldest();
-    }
-
-    void FrameRing::emptyGraveyards()
-    {
-        for (FrameRecord& frame : mSlots)
-        {
-            frame.mWorld.mGraveyard.clear();
-            frame.mGui.mGraveyard.clear();
-        }
     }
 
 }

@@ -12,6 +12,7 @@
 #include "image.hpp"
 #include "imageuse.hpp"
 #include "result.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -25,9 +26,6 @@ namespace Rtx
         };
         checkVk(vkCreateCommandPool(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())),
             "vkCreateCommandPool");
-
-        const VkFenceCreateInfo fence{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-        checkVk(vkCreateFence(device.getHandle(), &fence, nullptr, mFence.put(device.getHandle())), "vkCreateFence");
     }
 
     void CommandPool::reset()
@@ -46,7 +44,7 @@ namespace Rtx
         std::move(staging.begin(), staging.end(), std::back_inserter(mDeferredStaging));
     }
 
-    void CommandPool::submitWithDeferred(VkCommandBuffer commands, VkFence fence)
+    std::uint64_t CommandPool::submitWithDeferred(VkCommandBuffer commands)
     {
         mSubmitScratch.clear();
         mSubmitScratch.reserve(mDeferred.size() + 1);
@@ -60,15 +58,18 @@ namespace Rtx
             .commandBuffer = commands,
         });
 
+        Timeline& timeline = mDevice.getTimeline();
+        const std::uint64_t value = timeline.next();
+        const VkSemaphoreSubmitInfo signal = timeline.signal(value);
         const VkSubmitInfo2 submit{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
             .commandBufferInfoCount = static_cast<std::uint32_t>(mSubmitScratch.size()),
             .pCommandBufferInfos = mSubmitScratch.data(),
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos = &signal,
         };
-
-        if (fence != VK_NULL_HANDLE)
-            checkVk(vkResetFences(mDevice.getHandle(), 1, &fence), "vkResetFences");
-        checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, fence), "vkQueueSubmit2");
+        checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, VK_NULL_HANDLE), "vkQueueSubmit2");
+        return value;
     }
 
     void CommandPool::forgetDeferred()
@@ -85,20 +86,20 @@ namespace Rtx
         submitAndWait([](VkCommandBuffer) {});
     }
 
-    void CommandPool::submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept)
+    std::uint64_t CommandPool::submit(VkCommandBuffer commands, Graveyard& kept)
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        submitWithDeferred(commands, fence);
-
-        // The deferred batches run ahead of `commands` and are finished when it is, so what they
-        // hold goes under the same fence.
+        // Buried before the value is taken, so the stamp is the value this submit signals: the
+        // deferred batches run ahead of `commands` and are finished when it is.
         for (const VkCommandBuffer deferred : mDeferred)
             kept.bury(deferred);
         for (Buffer& staging : mDeferredStaging)
             kept.bury(std::move(staging));
 
+        const std::uint64_t value = submitWithDeferred(commands);
         forgetDeferred();
+        return value;
     }
 
     void CommandPool::discard(VkCommandBuffer commands)
@@ -136,6 +137,28 @@ namespace Rtx
             .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         };
         checkVk(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer");
+
+        // **Everything earlier on the queue, before anything in this buffer.** A buffer is recorded
+        // over a frame still running, and the barriers inside it are between its own passes; what
+        // they do not say is that its first pass comes after that frame's last — a refit reading a
+        // pose row an arrival's skin pass writes over, a copy into a table a trace reads through.
+        // One full barrier at the head says it for every pass at once, whatever the pass, which is
+        // what a dependency derived from each resource's state would say pass by pass and at far
+        // greater length. A full barrier between passes already costs this renderer nothing it
+        // could measure; four a frame at the seams cost the same.
+        const VkMemoryBarrier2 head{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &head,
+        };
+        vkCmdPipelineBarrier2(commands, &dependency);
     }
 
     VkCommandBuffer CommandPool::begin()
@@ -157,8 +180,7 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        submitWithDeferred(commands, mFence.get());
-        awaitVk(mDevice, mFence.get(), "a one-off submit");
+        mDevice.getTimeline().waitFor(submitWithDeferred(commands), "a one-off submit");
 
         // The copies have run, so this is where a deferred batch's staging stops being read, and
         // where every buffer that carried one can go back to the pool.

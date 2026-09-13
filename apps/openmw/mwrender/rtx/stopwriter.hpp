@@ -38,6 +38,9 @@ namespace MWRender
 
         /// What the stop asked its camera to be, which only `CameraStands` reads.
         const Rtx::Stand& mStand;
+
+        /// How many frames the ring held at each submit, which only `FramesOverlap` reads.
+        const Rtx::Overlap& mOverlap;
     };
 
     /// Writes what `Rtx::Actions` asks of the place a stop stood at.

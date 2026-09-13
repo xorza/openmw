@@ -599,7 +599,8 @@ namespace MWRender
 
         mProgress.mSamples.add(frameMs, report.mSpend);
         mProgress.mSamples.addWait(report.mResult->mWaitMs);
-        mProgress.mGpu.add(report.mResult->mGpu);
+        mProgress.mOverlap.add(report.mResult->mInFlight);
+        mProgress.mGpu.add(report.mResult->mGpu.spans());
         mProgress.mWallMs += frameMs;
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
@@ -664,7 +665,8 @@ namespace MWRender
         }
 
         mWriter.write(context, report, stop.mActions,
-            StopFacts{ .mCrossings = mProgress.mCrossings, .mStand = stop.mStand }, mRecord);
+            StopFacts{ .mCrossings = mProgress.mCrossings, .mStand = stop.mStand, .mOverlap = mProgress.mOverlap },
+            mRecord);
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;
@@ -679,6 +681,7 @@ namespace MWRender
         place.mClock = mProgress.mClock;
         place.mHitPercent = mProgress.mHitPercent;
         place.mCrossings = mProgress.mCrossings;
+        place.mOverlap = mProgress.mOverlap;
         place.mScene = renderer.getSceneStats();
         place.mMemory = renderer.getMemoryReport();
 

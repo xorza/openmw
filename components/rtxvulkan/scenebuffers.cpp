@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -15,6 +16,7 @@
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "spritepasses.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -24,10 +26,8 @@ namespace Rtx
         // descriptor names one.
         constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-        // The sprite tiles' list is the one table the device fills, and its head is zeroed by a
-        // fill before every bin.
-        constexpr VkBufferUsageFlags sSpriteListUsage
-            = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        // The sprites are the one table a trace's bin copies out of on the device.
+        constexpr VkBufferUsageFlags sSpriteUsage = sTableUsage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
         /// What a material's vertex-colour mode is worth to the shader: one bit, or none. The
         /// shader does a `mix` against a weight, and the host settles which colour the weight picks.
@@ -152,23 +152,16 @@ namespace Rtx
         mNormalTable.open(device, slots, sTableUsage, "normals");
 
         // Every table exists from here, whether or not anything is written to it: a frame carries
-        // the address of all of them, and a scene with no sprites never bins any, so the tiles were
-        // once bound as nothing at all.
+        // the address of all of them, and a table bound as nothing at all is undefined.
         graveyard.bury(growTo(mMeshes, device, 0, sTableUsage));
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
         {
             Tables& tables = mTables[slot];
 
-            for (Buffer* table : { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightList,
-                     &tables.mSprites, &tables.mEmitters, &tables.mSpriteRects })
+            for (Buffer* table :
+                { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightList, &tables.mEmitters })
                 graveyard.bury(growTo(*table, device, 0, sTableUsage));
-
-            graveyard.bury(growTo(tables.mSpriteTileList, device, 0, sSpriteListUsage));
-
-            // Read before it is first written, so it has to say that nothing was needed yet.
-            tables.mSpriteBinReport
-                = Buffer::staging(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
-            *static_cast<std::uint32_t*>(tables.mSpriteBinReport.map()) = 0;
+            graveyard.bury(growTo(tables.mSprites, device, 0, sSpriteUsage));
         }
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -237,7 +230,13 @@ namespace Rtx
                 = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u) | (mesh.mShape.mClosed ? Shaders::MESH_CLOSED : 0u),
             });
 
-        reserve(mMeshes, mMeshScratch.size() * sizeof(Shaders::GpuMesh), graveyard);
+        // **A new table on every arrival, and the old one buried**, because the frame behind is
+        // reading the old one: an arrival does not wait for the frames in flight, and a slot the
+        // scene handed out again holds another mesh's offsets in the same row — which the frame
+        // behind, still tracing the mesh that was there, would read as that mesh's geometry. One
+        // copy is the versioned kind, and a version is never written in place.
+        const VkDeviceSize bytes = std::max<VkDeviceSize>(mMeshScratch.size() * sizeof(Shaders::GpuMesh), 1);
+        graveyard.bury(std::exchange(mMeshes, Buffer::hostWritten(*mDevice, bytes, sTableUsage)));
         mMeshes.write(std::span<const Shaders::GpuMesh>(mMeshScratch));
         mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mMeshes.getHandle()), "meshes");
     }
@@ -247,68 +246,23 @@ namespace Rtx
         graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
-    void SceneBuffers::binSprites(const SpriteShadePass& shading, const SpriteBinPass& pass, const osg::Vec3f& origin,
-        const Shaders::Camera& camera, const osg::Vec3f& toSun, const Placing& placing)
+    SpriteSource SceneBuffers::describeSprites(const FrameSlot slot) const
     {
-        assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
+        assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
 
-        Tables& tables = mTables[placing.mSlot.get()];
+        // The bin copies the one and reads the other in the submit it records into, which is
+        // the next one.
+        const Tables& tables = mTables[slot.get()];
+        const std::uint64_t reads = mDevice->getTimeline().getNext();
+        tables.mSprites.nameFor(reads);
+        tables.mEmitters.nameFor(reads);
 
-        // The sprites go over from here and not from `place`, because what each is shaded by is
-        // the frame's sun, which a placement does not know — and a doll or a map bins against a
-        // camera and a sun of its own.
-        const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
-        reserve(tables.mSprites, sprites.size_bytes(), placing.mGraveyard);
-        tables.mSprites.write(sprites);
-
-        const auto count = static_cast<std::uint32_t>(sprites.size());
-
-        // Before the bin and after the write, because the bin reads a sprite's position and the
-        // trace reads its layers, and both read the table this shades in place. The depth-order
-        // scratch is one key a sprite a light, read by nothing after the dispatch.
-        reserve(tables.mSpriteOrder, VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t),
-            placing.mGraveyard);
-
-        shading.record(placing.mCommands,
-            Shaders::SpriteShadeConstants{
-                .mSprites = tables.mSprites.getDeviceAddress(),
-                .mEmitters = tables.mEmitters.getDeviceAddress(),
-                .mOrder = tables.mSpriteOrder.getDeviceAddress(),
-                .mToSun = toSun,
-                .mEmitterCount = static_cast<std::uint32_t>(mEmitterScratch.size()),
-                .mCount = count,
-            },
-            placing.mTimer);
-
-        // Sized from what this copy's last bin said it needed, with room over it, because the
-        // need is only known once the tiles are counted and that happens on the device. The fence
-        // this copy's last frame signalled is what makes the report readable here.
-        // `SpriteListSize` says the rest of the policy and why one object holds it.
-        const std::uint32_t reported = *static_cast<const std::uint32_t*>(tables.mSpriteBinReport.map());
-        tables.mSpriteListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
-
-        placing.mGraveyard.bury(
-            growTo(tables.mSpriteTileList, *mDevice, tables.mSpriteListSize.getBytes(), sSpriteListUsage));
-        reserve(tables.mSpriteRects, VkDeviceSize{ count } * sizeof(std::uint64_t), placing.mGraveyard);
-
-        pass.record(placing.mCommands,
-            Shaders::SpriteBinConstants{
-                .mSprites = tables.mSprites.getDeviceAddress(),
-                .mEmitters = tables.mEmitters.getDeviceAddress(),
-                .mRects = tables.mSpriteRects.getDeviceAddress(),
-                .mList = tables.mSpriteTileList.getDeviceAddress(),
-                .mReport = tables.mSpriteBinReport.getDeviceAddress(),
-                .mOrigin = origin,
-                .mCamera = camera,
-                .mCount = count,
-                .mCapacity = tables.mSpriteListSize.getCapacity(),
-            },
-            tables.mSpriteTileList, placing.mTimer);
-
-        // What the next bin of this copy sizes its list from, read on the host once the frame's
-        // fence has been waited on. A fence's access scope is the device's, so without this the
-        // figure is whatever the caches held.
-        tables.mSpriteBinReport.orderForHostRead(placing.mCommands);
+        return SpriteSource{
+            .mSprites = &tables.mSprites,
+            .mEmitters = tables.mEmitters.getDeviceAddress(),
+            .mSpriteCount = tables.mSpriteCount,
+            .mEmitterCount = tables.mEmitterCount,
+        };
     }
 
     void SceneBuffers::shade(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
@@ -471,14 +425,26 @@ namespace Rtx
         const std::span<const Shaders::GpuLight> lights(mLightScratch);
         const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
+        const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
 
         reserve(tables.mLights, lights.size_bytes(), graveyard);
         reserve(tables.mLightList, lightList.size_bytes(), graveyard);
         reserve(tables.mEmitters, emitters.size_bytes(), graveyard);
+        graveyard.bury(growTo(tables.mSprites, *mDevice, sprites.size_bytes(), sSpriteUsage));
+
+        assert(mDevice->getTimeline().hasFinished(tables.mLights)
+            && mDevice->getTimeline().hasFinished(tables.mLightList)
+            && mDevice->getTimeline().hasFinished(tables.mEmitters)
+            && mDevice->getTimeline().hasFinished(tables.mSprites) && "a host write over a copy a submit still reads");
 
         tables.mLights.write(lights);
         tables.mLightList.write(lightList);
         tables.mEmitters.write(emitters);
+
+        // Unshaded, which is what a trace's bin copies and shades for its own sun.
+        tables.mSprites.write(sprites);
+        tables.mSpriteCount = static_cast<std::uint32_t>(sprites.size());
+        tables.mEmitterCount = static_cast<std::uint32_t>(emitters.size());
 
         // The normals of anything skinned are not written here: a cell's are the same from one
         // frame to the next, and a body's are what `SkinPass` computed into this copy ahead of this.
@@ -500,15 +466,29 @@ namespace Rtx
         into.mMasks = tables.mMasks.getDeviceAddress();
         into.mLights = tables.mLights.getDeviceAddress();
         into.mLightList = tables.mLightList.getDeviceAddress();
-        into.mSprites = tables.mSprites.getDeviceAddress();
         into.mEmitters = tables.mEmitters.getDeviceAddress();
-        into.mSpriteTileList = tables.mSpriteTileList.getDeviceAddress();
+
+        // What the block hands out, the submit it is recorded into reads — which is the next one,
+        // whether it is a frame's trace or a picture's deferred batch. Every host write of any of
+        // these checks the stamp, so a table rewritten under a trace is an assert and not a fault.
+        const std::uint64_t reads = mDevice->getTimeline().getNext();
+        mNormalTable.at(slot).nameTableFor(reads);
+        mTexCoords.nameTableFor(reads);
+        mColours.nameTableFor(reads);
+        mMeshes.nameFor(reads);
+        mInstanceTable.nameFor(slot, reads);
+        mMaterialTable.nameFor(slot, reads);
+        tables.mLayers.nameFor(reads);
+        tables.mMasks.nameFor(reads);
+        tables.mLights.nameFor(reads);
+        tables.mLightList.nameFor(reads);
+        tables.mEmitters.nameFor(reads);
     }
 
     VkDeviceSize SceneBuffers::Tables::getBytes() const
     {
         return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightList.getSize() + mSprites.getSize()
-            + mEmitters.getSize() + mSpriteTileList.getSize() + mSpriteRects.getSize() + mSpriteBinReport.getSize();
+            + mEmitters.getSize();
     }
 
     VkDeviceSize SceneBuffers::getBytes() const

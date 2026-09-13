@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -8,8 +10,10 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/slots.hpp>
 #include <components/rtx/texturedata.hpp>
 
+#include "frameslots.hpp"
 #include "handles.hpp"
 #include "image.hpp"
 #include "owned.hpp"
@@ -65,11 +69,17 @@ namespace Rtx
     };
 
     /// Every texture a scene uses, in one descriptor array a shader indexes by material, and every
-    /// texture's shading map in a second array beside it at the same slot. A separate set from the
-    /// per-frame one, bound for the run. Update after bind, so a cell landing may write it while a
-    /// frame in flight is tracing through it. The maps are an array and not a buffer, because a
-    /// map is a grid the texture unit filters; an array of their own for the reason
-    /// `texturearray.glsl` gives.
+    /// texture's shading map in a second array beside it at the same slot. The maps are an array
+    /// and not a buffer, because a map is a grid the texture unit filters; an array of their own
+    /// for the reason `texturearray.glsl` gives.
+    ///
+    /// **One set per frame in flight, and a debt per set**, the way `SlotTable` keeps its copies:
+    /// an arrival writes the slots it brought into the set the next placement binds and owes them
+    /// to the other, which is paid when that set's frame comes round. Update after bind is what
+    /// makes writing a set legal while a command that bound it is on the queue — for a slot that
+    /// command does not read. A slot the sweep freed and an arrival took over is one the frame
+    /// behind is still reading through its material table, and one set written from the host
+    /// while it traced was exactly that read.
     class TextureArray
     {
     public:
@@ -81,11 +91,16 @@ namespace Rtx
         TextureArray(const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures,
             Graveyard& graveyard);
 
-        /// Writes each of `arrived` into the slot it names, leaving every other texture alone —
-        /// why the set is allocated at the maximum rather than at the scene's count. By slot and not
-        /// by appending, because a slot a departing cell freed is taken over wherever it sits. What
-        /// a slot held before goes to `graveyard`: a frame in flight may be reading it.
+        /// Uploads each of `arrived` into the slot it names, leaving every other texture alone —
+        /// why the sets are allocated at the maximum rather than at the scene's count. By slot and
+        /// not by appending, because a slot a departing cell freed is taken over wherever it sits.
+        /// What a slot held before goes to `graveyard`: a frame in flight may be reading it. The
+        /// descriptors are owed to every set and written by `sync`.
         void write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard);
+
+        /// Writes the descriptors `slot`'s set owes. Before the placement that binds it, after the
+        /// ring has waited out the frame that last read it.
+        void sync(FrameSlot slot);
 
         /// Destroys the images of `slots`, leaving the slots themselves where they are. The
         /// descriptors are left naming what has gone, which `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT`
@@ -94,7 +109,13 @@ namespace Rtx
         void drop(std::span<const std::uint32_t> slots, Graveyard& graveyard);
 
         VkDescriptorSetLayout getLayout() const { return mLayout.get(); }
-        VkDescriptorSet getSet() const { return mSet; }
+
+        /// The set `slot`'s frame binds, which `sync(slot)` brought up to date.
+        VkDescriptorSet getSet(FrameSlot slot) const
+        {
+            assert(slot.get() < sFrameSlots);
+            return mSets[slot.get()].mSet;
+        }
 
         /// How long the array is, which is where an append begins and what an uploader compares a
         /// scene's table against. Not how many textures there are: see `getHeld`.
@@ -105,8 +126,12 @@ namespace Rtx
         TexturesHeld getHeld() const;
 
     private:
-        /// Writes the descriptors for the slots `arrived` names, the texture's and its map's.
-        void describe(std::span<const TextureData> arrived);
+        /// A descriptor set and the pool it was taken from, which is what frees it.
+        struct SetPool
+        {
+            Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
+            VkDescriptorSet mSet = VK_NULL_HANDLE;
+        };
 
         /// Queues a write of `view` into `set` at `binding[slot]`, behind the image info the write
         /// names by address.
@@ -131,7 +156,9 @@ namespace Rtx
 
         Sampler mSampler;
         SetLayout mLayout;
-        Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
-        VkDescriptorSet mSet = VK_NULL_HANDLE;
+        std::array<SetPool, sFrameSlots> mSets;
+
+        /// The slots each set has yet to be told, each once however often it was written.
+        std::array<SlotSet, sFrameSlots> mOwed;
     };
 }

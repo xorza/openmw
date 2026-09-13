@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -43,6 +44,15 @@ namespace Rtx
 
         VkBuffer getHandle() const { return mHandle.get(); }
         VkDeviceSize getSize() const { return mSize; }
+
+        /// Says a submit signalling `value` names this buffer — by its address in a frame block,
+        /// by a descriptor, or as a build's input. Set by whatever hands the buffer to a submit,
+        /// and what `Timeline::hasFinished(const Buffer&)` checks a host write against. `const`,
+        /// because naming is not a change to the bytes, and the callers that name are const.
+        void nameFor(std::uint64_t value) const { mNamedUntil = std::max(mNamedUntil, value); }
+
+        /// The last value a submit naming this buffer signals, or nought where nothing has.
+        std::uint64_t getNamedUntil() const { return mNamedUntil; }
 
         /// The GPU-side address, for the acceleration structure builder and for anything that
         /// dereferences a pointer in a shader. Only valid when the buffer was created with
@@ -117,6 +127,8 @@ namespace Rtx
 
         /// Whether reading it back is what its memory is for. `map` is the only thing that asks.
         bool mReadable = false;
+
+        mutable std::uint64_t mNamedUntil = 0;
     };
 
     /// Grows `held` so it can hold `bytes`, and never leaves it holding nothing: a table asked for

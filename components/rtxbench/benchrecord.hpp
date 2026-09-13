@@ -58,6 +58,26 @@ namespace Rtx
         }
     };
 
+    /// How many frames the ring held at each submit over a run — `FrameResult::mInFlight`. The
+    /// least and the mean, because the figure is one or two: a place that stands still holds the
+    /// same number on every frame, and a route that drained the ring for an arrival holds one on
+    /// that frame and two on the rest.
+    struct Overlap
+    {
+        std::uint32_t mLeast = 0;
+        std::uint32_t mFrames = 0;
+        double mSum = 0.0;
+
+        void add(std::uint32_t inFlight)
+        {
+            mLeast = mFrames == 0 ? inFlight : std::min(mLeast, inFlight);
+            ++mFrames;
+            mSum += inFlight;
+        }
+
+        double getMean() const { return mFrames == 0 ? 0.0 : mSum / mFrames; }
+    };
+
     /// What one place came to.
     struct BenchPlace
     {
@@ -98,6 +118,8 @@ namespace Rtx
         double mHitPercent = 0.0;
 
         Crossings mCrossings;
+
+        Overlap mOverlap;
 
         /// How far along its route the camera got, as a fraction. One where it arrived, and less
         /// where the run ended first — a route flown too slowly to finish is measuring a shorter

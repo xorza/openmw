@@ -130,6 +130,10 @@ namespace Rtx
         if (place.mHitPercent > 0.0)
             out += std::format("  {:.1f}% of primary rays hit\n", place.mHitPercent);
 
+        if (place.mOverlap.mFrames > 0)
+            out += std::format("  {:.2f} frames in flight at a submit, {} at the least\n", place.mOverlap.getMean(),
+                place.mOverlap.mLeast);
+
         out += describeHeadings();
         for (const Timing timing : sTimings.values())
             out += describeTimes(std::format("{} ms", sTimings.name(timing)), place.mRows[indexOf(timing)]);
@@ -204,7 +208,8 @@ namespace Rtx
                  << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                         place.mWallSeconds, place.mHitPercent)
                  << R"("crossings": )" << asJson(place.mCrossings)
-                 << std::format(R"(, "travelled": {:.4f}, )", place.mTravelled);
+                 << std::format(R"(, "overlap": {{"mean": {:.4f}, "least": {}}}, "travelled": {:.4f}, )",
+                        place.mOverlap.getMean(), place.mOverlap.mLeast, place.mTravelled);
 
             for (const Timing timing : sTimings.values())
                 file << std::format(R"("{}Ms": )", sTimings.name(timing)) << asJson(place.mRows[indexOf(timing)])

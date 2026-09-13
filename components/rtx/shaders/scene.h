@@ -642,7 +642,7 @@ namespace Rtx::Shaders
     /// a frame's entries outgrew the buffer, `spritestarts.comp` writes nought there and the sprite
     /// count in entry one, and the trace walks every sprite over every pixel for that frame: slow
     /// and right. The host reads what the frame needed,
-    /// grows the buffer and the next frame is binned. `SceneBuffers::binSprites` says how the list
+    /// grows the buffer and the next frame is binned. `SpriteBin::record` says how the list
     /// is sized so that this is a rare frame and never a wrong one.
     const uint SPRITE_LIST_UNBINNED = 0u;
 

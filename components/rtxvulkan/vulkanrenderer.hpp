@@ -33,6 +33,7 @@
 #include "presenttargets.hpp"
 #include "skinpass.hpp"
 #include "spritepasses.hpp"
+#include "stresspass.hpp"
 #include "tonepass.hpp"
 #include "tracechain.hpp"
 #include "visibilitypass.hpp"
@@ -128,6 +129,7 @@ namespace Rtx
         FrameExtents getExtents() const override;
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
         std::optional<FrameResult> finishFrame() override;
+        std::optional<FrameResult> collectFrame() override;
         bool presentFrame() override;
 
         SceneSlot addViewScene() override;
@@ -151,6 +153,10 @@ namespace Rtx
     private:
         /// Widens a channel stored as bytes or as halves on the way out.
         void readImage(const Image& image, std::vector<float>& values);
+
+        /// The image this frame writes, with the present that last read it waited for — once per
+        /// frame, at the first of the trace and the interface to want it.
+        Image& claimTarget();
 
         /// The scene a slot names — the world's, or a picture's. A slot nothing holds is a caller
         /// bug, so it is asserted rather than reported.
@@ -206,6 +212,10 @@ namespace Rtx
         Device mDevice;
         CommandPool mPool;
 
+        /// What every submit this renderer makes may still be reading, held until the timeline
+        /// says it has run.
+        Graveyard mGraveyard;
+
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;
 
@@ -219,9 +229,8 @@ namespace Rtx
         /// `RendererOptions::mCountCrossings` says why that is a switch of its own.
         bool mCountCrossings = false;
 
-        /// The frames in flight, their fences and what each may still be reading. After the two
-        /// counters, which it borrows.
-        FrameRing mRing{ mDevice, mPool, mCountHits, mCountCrossings };
+        /// The frames in flight and what each came to. After the two counters, which it borrows.
+        FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits, mCountCrossings };
 
         /// What the frames are traced under. Changing the mode rebuilds every target, which is
         /// what `setUpscale` is for and why it is a setting rather than a frame option.
@@ -307,6 +316,9 @@ namespace Rtx
 
         /// And one for everything shaded, which runs ahead of the bin over the same tables.
         SpriteShadePass mSpriteShade;
+
+        /// The hold `RendererOptions::mStressOverlapMs` asked for, or nothing.
+        std::unique_ptr<StressPass> mStress;
 
         /// An empty sprite tiles' list, for a camera that draws no sprites and so binned none.
         /// `VisibilityInputs::mSpriteList` says why one buffer serves every extent.

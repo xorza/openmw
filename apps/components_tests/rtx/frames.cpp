@@ -139,6 +139,8 @@ namespace Rtx
         /// many of them that drain accounted for.
         TEST_F(RtxFramesTest, aFrameTheRingDrainedToMakeRoomStillReports)
         {
+            // Placed before every frame, the first included, so the three record the same zones.
+            moveTo(200.0f);
             mRenderer->renderFrame(ahead(), FrameOptions{});
             moveTo(-1000.0f);
             mRenderer->renderFrame(ahead(), FrameOptions{});
@@ -147,9 +149,43 @@ namespace Rtx
 
             // The third placement wrote the copy the first frame traced, and could only do so once
             // the first frame had finished — which is the drain, and the frame it accounted for.
-            EXPECT_EQ(finishedHits(), sEveryPixel) << "the wall the first frame was drawn against";
-            EXPECT_EQ(finishedHits(), 0u) << "the second, with the wall moved behind the eye";
-            EXPECT_EQ(finishedHits(), sEveryPixel) << "the third, with it moved back";
+            const std::optional<FrameResult> first = mRenderer->finishFrame();
+            const std::optional<FrameResult> second = mRenderer->finishFrame();
+            const std::optional<FrameResult> third = mRenderer->finishFrame();
+            ASSERT_TRUE(first.has_value() && second.has_value() && third.has_value())
+                << "three frames were in flight and fewer came back";
+            EXPECT_EQ(first->mHits, sEveryPixel) << "the wall the first frame was drawn against";
+            EXPECT_EQ(second->mHits, 0u) << "the second, with the wall moved behind the eye";
+            EXPECT_EQ(third->mHits, sEveryPixel) << "the third, with it moved back";
+            EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a frame reported twice";
+
+            // The zones as well as the count: the third frame took the first one's slot and began
+            // its timer before the first report was read, and the report is what its frame measured
+            // and not what the timer holds now.
+            EXPECT_EQ(first->mGpu.spans().size(), third->mGpu.spans().size())
+                << "the drained frame's zones went with its slot";
+        }
+
+        /// What the game calls before each placement: it waits only where the ring is full, so the
+        /// frame behind stays on the device while the next is placed, and reports the frame before.
+        TEST_F(RtxFramesTest, collectFrameWaitsOnlyWhereTheRingIsFull)
+        {
+            EXPECT_FALSE(mRenderer->collectFrame().has_value()) << "nothing was drawn and something came back";
+
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            EXPECT_FALSE(mRenderer->collectFrame().has_value())
+                << "one frame in flight is room for another, and it was waited out";
+
+            moveTo(-1000.0f);
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+
+            // Two in flight is none to spare: the first is waited out and reported, the second stays.
+            const std::optional<FrameResult> first = mRenderer->collectFrame();
+            ASSERT_TRUE(first.has_value()) << "the ring was full and nothing was finished";
+            EXPECT_EQ(first->mHits, sEveryPixel) << "the first frame, or the second reported first";
+            EXPECT_FALSE(mRenderer->collectFrame().has_value()) << "the frame behind was waited out with room to spare";
+
+            EXPECT_EQ(finishedHits(), 0u) << "the second frame, or the first reported twice";
             EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a frame reported twice";
         }
 

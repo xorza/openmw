@@ -20,6 +20,7 @@ namespace Rtx
         mTarget = make("target 0");
         mSpare = make("target 1");
         mPresented = nullptr;
+        mClaimed = false;
 
         pool.submitAndWait([&](VkCommandBuffer commands) {
             const VkClearColorValue black{ .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };

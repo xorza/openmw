@@ -31,22 +31,34 @@ namespace Rtx
 
         bool isOpen() const { return mTarget != nullptr; }
 
-        /// The one this frame writes.
+        /// The one this frame writes, made writable: `wait` is called with it on the first claim
+        /// after a present and not again. At the first write rather than at the present, because
+        /// with two frames in flight the blit that last read this image is behind a trace still
+        /// running when the present swaps, and waiting there is waiting that trace out — the gap
+        /// `collectFrame` closes, opened again at the other end of the frame. By the first write
+        /// the ring has waited the frame before last out, and that blit was queued right behind it.
+        template <class Wait>
+        Image& claim(Wait&& wait)
+        {
+            if (!mClaimed)
+            {
+                wait(*mTarget);
+                mClaimed = true;
+            }
+
+            return *mTarget;
+        }
+
+        /// The one this frame writes, for a record after the claim and for a read.
         Image& current() { return *mTarget; }
         const Image& current() const { return *mTarget; }
 
         /// Says the current one has just been presented, and hands the next frame the other one.
-        ///
-        /// @param wait called with the image the next frame will write, once it is the current one.
-        ///        Here rather than at the first write, because two presents went by since that
-        ///        image was last read, so the wait returns at once.
-        template <class Wait>
-        void presented(Wait&& wait)
+        void presented()
         {
             mPresented = mTarget.get();
             mTarget.swap(mSpare);
-
-            wait(*mTarget);
+            mClaimed = false;
         }
 
         /// The one the last present read, or null where nothing was presented at all — named apart
@@ -61,5 +73,8 @@ namespace Rtx
         std::unique_ptr<Image> mSpare;
 
         const Image* mPresented = nullptr;
+
+        /// Whether the current one's last reader has been waited for since it became current.
+        bool mClaimed = false;
     };
 }

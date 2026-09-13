@@ -49,6 +49,10 @@ namespace Rtx
             // finished with an image. `Presenter` retires its semaphores and its swapchain against
             // one where the driver has it, and against a device-idle where it does not.
             VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+            // A marker the queue remembers passing, so a device loss names the last zone each
+            // stage reached rather than an address: `GpuTimer::open` sets one per zone in a build
+            // that names things, and `Device::describeFault` reads them back.
+            VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,
         };
 
         constexpr std::array sRequiredDeviceFeatures{
@@ -66,6 +70,10 @@ namespace Rtx
 
             RequiredFeature{ "bufferDeviceAddress",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.bufferDeviceAddress; } },
+
+            // The queue's one clock, `Rtx::Timeline`.
+            RequiredFeature{
+                "timelineSemaphore", +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.timelineSemaphore; } },
             RequiredFeature{
                 "descriptorIndexing", +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.descriptorIndexing; } },
             RequiredFeature{ "runtimeDescriptorArray",

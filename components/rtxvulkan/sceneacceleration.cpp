@@ -15,6 +15,7 @@
 #include "gputimer.hpp"
 #include "graveyard.hpp"
 #include "result.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -43,7 +44,7 @@ namespace Rtx
         const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
         , mSlots(slots)
-        , mBottomLevel(device, slots)
+        , mBottomLevel(device)
     {
         assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
 
@@ -331,6 +332,7 @@ namespace Rtx
 
         // The top level is built from this frame's copy, so the address moves with the slot.
         mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.getDeviceAddress(slot);
+        mRowTable.nameFor(slot, mDevice.getTimeline().getNext());
 
         mCounts.mPlaced = scene.placements().getPlacedCount();
     }

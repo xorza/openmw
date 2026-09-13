@@ -8,6 +8,7 @@
 
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/rtxvulkan/spritebin.hpp>
 
 #include "fixture.hpp"
 
@@ -54,6 +55,12 @@ namespace Rtx::Testing
             // no message either.
             Shaders::GpuTables addressed{};
             buffers.describeTables(FrameSlot{}, addressed);
+
+            // The two the trace's own bin writes, which it hands out the same way, whether or not
+            // anything was ever binned into it.
+            const SpriteBin bin(device);
+            addressed.mSprites = bin.getSpritesAddress();
+            addressed.mSpriteTileList = bin.getTileListAddress();
 
             struct Named
             {

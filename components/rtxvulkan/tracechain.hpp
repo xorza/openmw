@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -13,8 +14,10 @@
 #include "accumulatepass.hpp"
 #include "atrouspass.hpp"
 #include "fogvolume.hpp"
+#include "frameslots.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
+#include "spritebin.hpp"
 
 namespace Rtx
 {
@@ -111,6 +114,10 @@ namespace Rtx
         std::unique_ptr<Image> mColour;
         std::unique_ptr<GBuffer> mChannels;
         std::unique_ptr<FogVolume> mFogVolume;
+
+        /// One sprite bin per frame in flight — `TraceRecording::mBinSlot` picks — so the frame
+        /// behind keeps the tables its trace reads while this frame's bin writes its own.
+        std::array<SpriteBin, sFrameSlots> mBins;
 
         /// Held by value rather than built with the extent, because what they read is pushed at
         /// record time. The filter is not const only because it keeps a channel the size of the

@@ -170,6 +170,7 @@ namespace MWRender
             Rtx::FrameSamples mSamples;
             Rtx::GpuBreakdown mGpu;
             Rtx::Crossings mCrossings;
+            Rtx::Overlap mOverlap;
             Rtx::GpuClock mClock;
 
             /// Puts the route where it starts. One call, because two callers set the three and either
@@ -194,6 +195,7 @@ namespace MWRender
                 mSamples.clear();
                 mGpu = Rtx::GpuBreakdown{};
                 mCrossings = Rtx::Crossings{};
+                mOverlap = Rtx::Overlap{};
                 mClock = Rtx::GpuClock{};
             }
         };

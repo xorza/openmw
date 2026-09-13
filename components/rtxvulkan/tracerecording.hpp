@@ -4,6 +4,7 @@
 
 #include <components/rtx/shaders/visibility.h>
 
+#include "frameslots.hpp"
 #include "visibilitypass.hpp"
 
 namespace Rtx
@@ -32,9 +33,15 @@ namespace Rtx
         /// What the rays meet, and where the sea and the sprites the trace reads were left.
         VisibilityInputs mInputs;
 
-        /// Where the sprite bin writes, which is `mInputs.mSlot`'s copy of the tables — the one this
-        /// trace is about to read. The caller has waited for whatever was reading it.
-        SceneBuffers* mBuffers = nullptr;
+        /// Which of the chain's sprite bins this trace records into and reads: the frame's own
+        /// slot in the world's chain, so the frame behind keeps its bin, and the first bin of the
+        /// pictures' chain.
+        FrameSlot mBinSlot;
+
+        /// Where the sprites the bin copies are, in `mInputs.mSlot`'s copy of the tables. Read
+        /// and never written here: a placement is what writes a copy, and it waits for every
+        /// trace of it first.
+        const SceneBuffers* mBuffers = nullptr;
         Graveyard* mGraveyard = nullptr;
 
         /// The camera the caller asked for. What the sprite bin tiles against, because a bin is

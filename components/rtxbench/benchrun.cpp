@@ -26,6 +26,7 @@ namespace Rtx
             std::pair{ Check::TexturesReadable, std::string_view("textures-readable") },
             std::pair{ Check::CameraStands, std::string_view("camera-stands") },
             std::pair{ Check::CrossingsAppend, std::string_view("crossings-append") },
+            std::pair{ Check::FramesOverlap, std::string_view("frames-overlap") },
         } };
 
         constexpr auto sEvery = sChecks.values();

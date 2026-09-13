@@ -66,6 +66,13 @@ namespace Rtx
         // Made again rather than appended to, which is what a table of a few dozen addresses is
         // worth: the address changes, and every frame carries it afresh. Addressable and never
         // bound, because the frame block is how a shader reaches it.
+        //
+        // **The old one goes to the batch and not to the floor.** A frame in flight carries its
+        // address in its frame block and reads it on every hit, so it lives until the batch's own
+        // submit is fenced — which is what `Batch::keep` promises of the staging, and is after
+        // that frame. Destroyed here, it was the invalid read at a fixed address that lost the
+        // device on the first arrival with two frames in flight.
+        batch.keep(std::move(mTable));
         mTable = Buffer::hostWritten(
             *mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
         mTable.write(std::span<const VkDeviceAddress>(mAddresses));

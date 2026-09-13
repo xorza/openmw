@@ -73,6 +73,7 @@ set(RTX_SHADERS
     shaders/spriteruns.comp
     shaders/spriteshade.comp
     shaders/spritestarts.comp
+    shaders/stress.comp
     shaders/tone.comp
     shaders/visibility.rahit
     shaders/visibility.rgen
@@ -228,6 +229,8 @@ set(RTX_VULKAN_FILES
     scenebuffers.hpp
     skinpass.cpp
     skinpass.hpp
+    spritebin.cpp
+    spritebin.hpp
     spritepasses.cpp
     spritepasses.hpp
     skintables.cpp
@@ -235,12 +238,16 @@ set(RTX_VULKAN_FILES
     slottable.hpp
     structurebuild.cpp
     structurebuild.hpp
+    stresspass.cpp
+    stresspass.hpp
     structurestorage.cpp
     structurestorage.hpp
     swapchain.cpp
     swapchain.hpp
     texture.cpp
     texture.hpp
+    timeline.cpp
+    timeline.hpp
     tonepass.cpp
     tonepass.hpp
     tracechain.cpp

@@ -96,6 +96,7 @@ namespace Rtx::Testing
             return {};
         }
         std::optional<Rtx::FrameResult> finishFrame() override { return std::nullopt; }
+        std::optional<Rtx::FrameResult> collectFrame() override { return std::nullopt; }
         bool presentFrame() override { return true; }
 
         /// The GUI is not what this counts. Slots go up and nothing is drawn.

@@ -15,7 +15,7 @@
 //
 // **The one place that knows whether the runs fit**, so it is where the list's degenerate form is
 // written and where the frame's need is reported. `SPRITE_LIST_UNBINNED` says what the trace does
-// with the first and `SceneBuffers::binSprites` what the host does with the second.
+// with the first and `SpriteBin::record` what the host does with the second.
 
 #include "spritebin.h"
 

@@ -51,8 +51,6 @@ namespace Rtx
 
         struct RtxBottomLevelStoreTest : Testing::DeviceTest
         {
-            static constexpr std::uint32_t sSlots = 2;
-
             SceneDesc mScene;
             SlotBlocks mPoses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
             BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };
@@ -76,11 +74,20 @@ namespace Rtx
                 mPoses.settle(FrameSlot{});
             }
 
+            /// Builds and waits, so the answers are on the device when this returns.
             void build(BottomLevelStore& store, std::span<const Index> meshes, Graveyard& graveyard)
             {
                 Batch batch(getPool());
                 store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, graveyard);
                 batch.flush();
+            }
+
+            /// Builds into a batch that rides the pool's next submit, which nothing has made yet.
+            void buildDeferred(BottomLevelStore& store, std::span<const Index> meshes, Graveyard& graveyard)
+            {
+                Batch batch(getPool());
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, graveyard);
+                batch.defer();
             }
 
             /// One placement: what it copies is recorded and run, so the next can build on it.
@@ -97,14 +104,16 @@ namespace Rtx
             }
         };
 
-        /// A structure's answer is read when its own placement has run, whatever was built after it.
+        /// A structure's answer is read once the submit that carried its question has run, and
+        /// not before, whatever was built after it.
         ///
-        /// **The store asked about every loose structure at every build and read the answers only
-        /// once no build had followed for `sSlots` placements**, so a route that builds on every frame
-        /// never read one: nothing was copied tight and every build asked the device about the whole
-        /// scene over again. Three builds on three placements in a row, and each answer read on the
-        /// placement its own question became readable.
-        TEST_F(RtxBottomLevelStoreTest, aBuildThatFollowsDoesNotPostponeTheCompactionOfWhatWasBuiltBefore)
+        /// **The store counted placements and called the count a fence**: an answer was read once
+        /// no build had followed for two placements, which a route that builds on every frame never
+        /// reached, and a crossing that placed twice in one frame ran the count ahead of the queue.
+        /// It asks the timeline now. A build that waited is readable on the next placement however
+        /// many builds followed; one deferred into a submit nothing has made is not readable until
+        /// that submit has run.
+        TEST_F(RtxBottomLevelStoreTest, anAnswerIsReadOnceItsOwnSubmitHasRunAndNotBefore)
         {
             if (mHarness == nullptr)
                 GTEST_SKIP() << "no device";
@@ -114,22 +123,24 @@ namespace Rtx
             stage();
 
             Graveyard graveyard(getDevice(), getPool());
-            BottomLevelStore store(getDevice(), sSlots);
+            BottomLevelStore store(getDevice());
 
-            // The first is asked on placement count 0, and readable once the count passes 0 + 2.
+            // Waited for, so the first placement reads it — and the build after it changes nothing.
             build(store, std::span(grids).subspan(0, 1), graveyard);
-            EXPECT_TRUE(place(store, graveyard).empty()) << "an answer read before its placement could have run";
             build(store, std::span(grids).subspan(1, 1), graveyard);
-            EXPECT_TRUE(place(store, graveyard).empty()) << "an answer read before its placement could have run";
-            build(store, std::span(grids).subspan(2, 1), graveyard);
+            const SlotSet& atOne = place(store, graveyard);
+            EXPECT_TRUE(atOne.has(grids[0])) << "a question whose submit has run was not read";
+            EXPECT_TRUE(atOne.has(grids[1])) << "a question whose submit has run was not read";
 
-            const SlotSet& atThree = place(store, graveyard);
-            EXPECT_TRUE(atThree.has(grids[0])) << "the first structure was not copied tight on placement three";
-            EXPECT_FALSE(atThree.has(grids[1])) << "the second was copied before its placement could have run";
-            EXPECT_FALSE(atThree.has(grids[2])) << "the third was copied before its placement could have run";
+            // Deferred and never submitted: the timeline has not passed the value it rides, so the
+            // placement reads nothing, and it is not the count of placements that decides.
+            buildDeferred(store, std::span(grids).subspan(2, 1), graveyard);
+            EXPECT_TRUE(place(store, graveyard).empty()) << "an answer read before its submit could have run";
+            EXPECT_TRUE(place(store, graveyard).empty()) << "an answer read before its submit could have run";
 
-            EXPECT_TRUE(place(store, graveyard).has(grids[1])) << "the second was not copied tight on placement four";
-            EXPECT_TRUE(place(store, graveyard).has(grids[2])) << "the third was not copied tight on placement five";
+            // Submitted and waited, and the next placement reads it.
+            getPool().finishDeferred();
+            EXPECT_TRUE(place(store, graveyard).has(grids[2])) << "an answer whose submit has run was not read";
 
             EXPECT_TRUE(place(store, graveyard).empty()) << "something was copied twice";
             EXPECT_EQ(store.getCompactableBytes(), 0u) << "an answer outlived its copy";
@@ -149,14 +160,11 @@ namespace Rtx
             stage();
 
             Graveyard graveyard(getDevice(), getPool());
-            BottomLevelStore store(getDevice(), sSlots);
+            BottomLevelStore store(getDevice());
             build(store, grids, graveyard);
 
             store.release(std::span(grids).subspan(0, 1), graveyard);
             EXPECT_EQ(store.getStructure(grids[0]), VK_NULL_HANDLE);
-
-            EXPECT_TRUE(place(store, graveyard).empty());
-            EXPECT_TRUE(place(store, graveyard).empty());
 
             const SlotSet& moved = place(store, graveyard);
             EXPECT_FALSE(moved.has(grids[0])) << "a released structure was copied";

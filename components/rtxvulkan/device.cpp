@@ -17,11 +17,35 @@
 #include "memory.hpp"
 #include "pipelinecache.hpp"
 #include "result.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
     namespace
     {
+        /// Which stage a checkpoint was reported for, for the handful a queue reports on and
+        /// the number for the rest.
+        std::string checkpointStageName(const VkPipelineStageFlagBits stage)
+        {
+            switch (stage)
+            {
+                case VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:
+                    return "the top of the pipe";
+                case VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT:
+                    return "the bottom of the pipe";
+                case VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:
+                    return "the compute stage";
+                case VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR:
+                    return "the ray tracing stage";
+                case VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR:
+                    return "the structure build stage";
+                case VK_PIPELINE_STAGE_TRANSFER_BIT:
+                    return "the transfer stage";
+                default:
+                    return std::format("stage {:#x}", static_cast<std::uint32_t>(stage));
+            }
+        }
+
         /// What a faulting address was being used for, as the header spells it.
         std::string_view faultAddressTypeName(VkDeviceFaultAddressTypeEXT type)
         {
@@ -193,6 +217,12 @@ namespace Rtx
             if (describesFault)
                 load(mHandle, mGetDeviceFaultInfo, "vkGetDeviceFaultInfoEXT");
 
+            if (mPhysicalDevice.hasOptionalExtension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
+            {
+                load(mHandle, mCmdSetCheckpoint, "vkCmdSetCheckpointNV");
+                load(mHandle, mGetQueueCheckpointData, "vkGetQueueCheckpointDataNV");
+            }
+
             if (instance.hasDebugUtils())
             {
                 mSetObjectName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
@@ -208,6 +238,7 @@ namespace Rtx
             mMemory = std::make_unique<MemoryAllocator>(mHandle, mPhysicalDevice.getHandle(),
                 mPhysicalDevice.getProperties().mMemory,
                 mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
+            mTimeline = std::make_unique<Timeline>(*this);
         }
         catch (...)
         {
@@ -215,6 +246,7 @@ namespace Rtx
             // destructors after this block, and each calls into the device: the cache reads itself
             // back out of it and a block hands its memory to it. A device destroyed first would be
             // a handle they then use.
+            mTimeline.reset();
             mMemory.reset();
             mPipelineCache.reset();
 
@@ -238,6 +270,7 @@ namespace Rtx
 
             // Likewise, and after everything it stood has gone: a block is freed by a call on the
             // device this is about to close.
+            mTimeline.reset();
             mMemory.reset();
 
             vkDestroyDevice(mHandle, nullptr);
@@ -332,16 +365,44 @@ namespace Rtx
         checkVk(*this, vkDeviceWaitIdle(mHandle), "vkDeviceWaitIdle");
     }
 
+    std::string Device::describeCheckpoints() const
+    {
+        if (mGetQueueCheckpointData == nullptr)
+            return {};
+
+        std::uint32_t count = 0;
+        mGetQueueCheckpointData(mQueue, &count, nullptr);
+        if (count == 0)
+            return "\nthe queue passed no checkpoint";
+
+        std::vector<VkCheckpointDataNV> passed(
+            count, VkCheckpointDataNV{ .sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV });
+        mGetQueueCheckpointData(mQueue, &count, passed.data());
+
+        std::string report;
+        for (std::uint32_t at = 0; at < count; ++at)
+        {
+            const auto* checkpoint = static_cast<const Checkpoint*>(passed[at].pCheckpointMarker);
+            if (checkpoint == nullptr)
+                continue;
+
+            report += std::format("\n  {} last passed `{}` of frame {}", checkpointStageName(passed[at].stage),
+                checkpoint->mName, checkpoint->mFrame);
+        }
+
+        return report;
+    }
+
     std::string Device::describeFault() const
     {
         if (mGetDeviceFaultInfo == nullptr)
-            return {};
+            return describeCheckpoints();
 
         constexpr const char* sUnsaid = "\nthe driver would not say where the device faulted";
 
         VkDeviceFaultCountsEXT counts{ .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT };
         if (mGetDeviceFaultInfo(mHandle, &counts, nullptr) != VK_SUCCESS)
-            return sUnsaid;
+            return sUnsaid + describeCheckpoints();
 
         std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
         std::vector<VkDeviceFaultVendorInfoEXT> vendor(counts.vendorInfoCount);
@@ -359,7 +420,7 @@ namespace Rtx
         // allowed for, and what it did say is still worth reading.
         const VkResult result = mGetDeviceFaultInfo(mHandle, &counts, &info);
         if (result != VK_SUCCESS && result != VK_INCOMPLETE)
-            return sUnsaid;
+            return sUnsaid + describeCheckpoints();
 
         std::string report = "\ndevice fault: ";
         report += info.description;
@@ -371,7 +432,7 @@ namespace Rtx
             report += std::format("\n  {} (vendor code {:#x}, data {:#x})", vendor[at].description,
                 vendor[at].vendorFaultCode, vendor[at].vendorFaultData);
 
-        return report;
+        return report + describeCheckpoints();
     }
 
     void Device::setNameImpl(VkObjectType type, std::uint64_t handle, const char* name) const

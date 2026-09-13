@@ -99,19 +99,11 @@ namespace Rtx
                 device, bindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
         }
 
-        /// A descriptor set and the pool it was taken from, which is what frees it.
-        struct SetPool
-        {
-            Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
-            VkDescriptorSet mSet = VK_NULL_HANDLE;
-        };
-
         /// A set of `layout` from a pool of its own, both bindings at the maximum the layout
         /// declares.
-        SetPool allocateSet(const Device& device, VkDescriptorSetLayout layout)
+        void allocateSet(const Device& device, VkDescriptorSetLayout layout,
+            Owned<VkDescriptorPool, vkDestroyDescriptorPool>& pool, VkDescriptorSet& set)
         {
-            SetPool set;
-
             const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * sMaxTextures };
             const VkDescriptorPoolCreateInfo describePool{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -120,19 +112,16 @@ namespace Rtx
                 .poolSizeCount = 1,
                 .pPoolSizes = &size,
             };
-            checkVk(
-                vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, set.mPool.put(device.getHandle())),
+            checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, pool.put(device.getHandle())),
                 "vkCreateDescriptorPool");
 
             const VkDescriptorSetAllocateInfo allocate{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = set.mPool.get(),
+                .descriptorPool = pool.get(),
                 .descriptorSetCount = 1,
                 .pSetLayouts = &layout,
             };
-            checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &set.mSet), "vkAllocateDescriptorSets");
-
-            return set;
+            checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &set), "vkAllocateDescriptorSets");
         }
     }
 
@@ -195,10 +184,9 @@ namespace Rtx
         // Allocated at the maximum the layout declares, not at what this scene brought. Sizing
         // the set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
-        // is paid once. `extend` then only ever writes the range that is new.
-        SetPool own = allocateSet(device, mLayout.get());
-        mPool = std::move(own.mPool);
-        mSet = own.mSet;
+        // is paid once. `write` then only ever owes the slots that are new.
+        for (SetPool& set : mSets)
+            allocateSet(device, mLayout.get(), set.mPool, set.mSet);
 
         // Sized to the table before anything is written into it, so a description lands in the
         // slot it names whatever sits either side of it. Every entry starts holding no image and no
@@ -238,12 +226,50 @@ namespace Rtx
                 name = "texture " + std::to_string(texture.mSlot);
 
             // What the slot held is buried and not destroyed: its descriptor is the one a frame in
-            // flight bound, and it stays valid until that frame's fence says nothing reads it.
+            // flight bound, and it stays valid until the timeline says nothing reads it.
             graveyard.bury(
                 std::exchange(mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch)));
+
+            for (SlotSet& owed : mOwed)
+                owed.addMakingRoom(texture.mSlot);
+        }
+    }
+
+    void TextureArray::sync(const FrameSlot slot)
+    {
+        assert(slot.get() < sFrameSlots);
+
+        SlotSet& owed = mOwed[slot.get()];
+        if (owed.empty())
+            return;
+
+        // One write per slot and per array rather than one over a range: the arrivals are wherever
+        // the scene's free list put them, and a run is no longer what they are. Reserved before
+        // any write points into it, since a write names its image by address.
+        const std::span<const Index> slots = owed.getSlots();
+        mImageScratch.clear();
+        mWriteScratch.clear();
+        mImageScratch.reserve(2 * slots.size());
+        mWriteScratch.reserve(2 * slots.size());
+
+        const VkDescriptorSet set = mSets[slot.get()].mSet;
+        for (const Index at : slots)
+        {
+            // Owed and since dropped: the slot holds nothing, and a descriptor left naming what has
+            // gone is what `drop` says is legal.
+            const Texture& held = mTextures[at];
+            if (held.getView() == VK_NULL_HANDLE)
+                continue;
+
+            queueWrite(set, sTextureBinding, at, held.getView(), mImageScratch, mWriteScratch);
+            queueWrite(set, sShadingBinding, at, held.getShadingView(), mImageScratch, mWriteScratch);
         }
 
-        describe(arrived);
+        if (!mWriteScratch.empty())
+            vkUpdateDescriptorSets(mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()),
+                mWriteScratch.data(), 0, nullptr);
+
+        owed.clear();
     }
 
     void TextureArray::drop(std::span<const std::uint32_t> slots, Graveyard& graveyard)
@@ -259,30 +285,6 @@ namespace Rtx
             // the frame that may still name it.
             graveyard.bury(std::exchange(mTextures[slot], Texture()));
         }
-    }
-
-    void TextureArray::describe(std::span<const TextureData> arrived)
-    {
-        if (arrived.empty())
-            return;
-
-        // One write per slot and per array rather than one over a range: the arrivals are wherever
-        // the scene's free list put them, and a run is no longer what they are. Reserved before
-        // any write points into it, since a write names its image by address.
-        mImageScratch.clear();
-        mWriteScratch.clear();
-        mImageScratch.reserve(2 * arrived.size());
-        mWriteScratch.reserve(2 * arrived.size());
-
-        for (const TextureData& texture : arrived)
-        {
-            const Texture& held = mTextures[texture.mSlot];
-            queueWrite(mSet, sTextureBinding, texture.mSlot, held.getView(), mImageScratch, mWriteScratch);
-            queueWrite(mSet, sShadingBinding, texture.mSlot, held.getShadingView(), mImageScratch, mWriteScratch);
-        }
-
-        vkUpdateDescriptorSets(
-            mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()), mWriteScratch.data(), 0, nullptr);
     }
 
     void TextureArray::queueWrite(const VkDescriptorSet set, const std::uint32_t binding, const std::uint32_t slot,

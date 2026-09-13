@@ -54,9 +54,7 @@ namespace Rtx
     class BottomLevelStore
     {
     public:
-        /// @param slots how many frames may be tracing this scene at once, which is what the
-        ///        compaction's readiness rule counts placements against.
-        BottomLevelStore(const Device& device, std::uint32_t slots);
+        explicit BottomLevelStore(const Device& device);
         ~BottomLevelStore();
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
@@ -135,15 +133,16 @@ namespace Rtx
         };
 
         /// One question recorded, in the order they were, so the ones ready to read are a prefix.
+        /// `mAt` is the timeline value the batch it was recorded into rides.
         struct Ask
         {
             Index mSlot = sNoIndex;
             std::uint64_t mAt = 0;
         };
 
-        /// What the compaction knows about the structure in one slot: where it stands, the placement
-        /// count when its question was recorded — what `readAnswers` reads it against — what it was
-        /// created at, and what the driver said a tight copy would come to, once answered.
+        /// What the compaction knows about the structure in one slot: where it stands, the timeline
+        /// value its question rides — what `readAnswers` reads it against — what it was created at,
+        /// and what the driver said a tight copy would come to, once answered.
         struct Compaction
         {
             Tightness mTightness = Tightness::None;
@@ -159,7 +158,7 @@ namespace Rtx
         /// starts at `first`, and empties it. Nothing where nothing was gathered.
         void askRun(VkCommandBuffer commands, std::uint32_t first);
 
-        /// Reads every answer whose placement has certainly run.
+        /// Reads every answer whose submit the timeline says has run.
         void readAnswers();
 
         /// Whether `ask` is still the question its slot is waiting on: a slot built again since is
@@ -240,11 +239,5 @@ namespace Rtx
 
         /// The meshes those copies moved, for the caller's walk over the rows placing them.
         SlotSet mMovedMeshes;
-
-        /// How many placements this store has been through — what stands in for a fence: the ring
-        /// waits for the frame `mSlots` back before it records this one, so a placement that far
-        /// behind has finished on the queue.
-        std::uint64_t mPlacements = 0;
-        std::uint32_t mSlots = 1;
     };
 }

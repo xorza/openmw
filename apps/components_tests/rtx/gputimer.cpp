@@ -6,7 +6,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -55,15 +54,14 @@ namespace Rtx
             return sum;
         }
 
-        /// One frame's result with its zones copied out, because the span the renderer hands back
-        /// is overwritten by the frame after next.
+        /// One frame's result and the wall clock around it.
         struct Drawn
         {
             std::uint32_t mHits = 0;
             /// From before the submit to after the wait: the whole of what the device did, and the
             /// CPU sat through, for this frame.
             double mWallMs = 0.0;
-            std::vector<GpuSpan> mGpu;
+            GpuZones mGpu;
         };
 
         /// Draws one frame and waits for it, so what comes back is that frame's own report.
@@ -79,9 +77,7 @@ namespace Rtx
             if (!result.has_value())
                 return Drawn{};
 
-            return Drawn{ .mHits = result->mHits,
-                .mWallMs = wallMs,
-                .mGpu = std::vector<GpuSpan>(result->mGpu.begin(), result->mGpu.end()) };
+            return Drawn{ .mHits = result->mHits, .mWallMs = wallMs, .mGpu = result->mGpu };
         }
 
         /// A frame accounts for its own device time, pass by pass.
@@ -106,28 +102,28 @@ namespace Rtx
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
 
             const Drawn drawn = draw(*mRenderer, camera);
-            if (drawn.mGpu.empty())
+            if (drawn.mGpu.spans().empty())
                 GTEST_SKIP() << "this device cannot write timestamps";
 
             // The passes every frame records, whatever it is drawing. `filter` is here too — the
             // shared renderer does not upscale, so the wavelet runs — and is left out of the list
             // because a build without it is not a failure of this.
             for (const char* const pass : { "trace", "composite", "exposure", "tone" })
-                EXPECT_TRUE(reports(drawn.mGpu, pass)) << "no zone called " << pass;
+                EXPECT_TRUE(reports(drawn.mGpu.spans(), pass)) << "no zone called " << pass;
 
             // **And the sea is not among them where the frame has none.** `makeCamera` names no
             // water, so nothing can sample the wave tiles and nothing should synthesise them; a
             // frame that does name a level pays for them once, before the trace.
-            EXPECT_FALSE(reports(drawn.mGpu, "waves")) << "a dry frame synthesised the sea";
+            EXPECT_FALSE(reports(drawn.mGpu.spans(), "waves")) << "a dry frame synthesised the sea";
 
             Shaders::VisibilityConstants flooded = camera;
             flooded.mWaterLevel = 0.0f;
             const Drawn wet = draw(*mRenderer, flooded);
-            EXPECT_TRUE(reports(wet.mGpu, "waves")) << "a frame with water in it synthesised no sea";
-            EXPECT_EQ(wet.mGpu.front().mName, "waves")
+            EXPECT_TRUE(reports(wet.mGpu.spans(), "waves")) << "a frame with water in it synthesised no sea";
+            EXPECT_EQ(wet.mGpu.spans().front().mName, "waves")
                 << "the sea was synthesised somewhere other than before the trace";
 
-            for (const GpuSpan& span : drawn.mGpu)
+            for (const GpuSpan& span : drawn.mGpu.spans())
             {
                 EXPECT_GT(span.mMs, 0.0) << span.mName << " took no time at all";
                 EXPECT_LT(span.mMs, 1000.0) << span.mName << " took a second, which is a clock read wrong";
@@ -137,28 +133,36 @@ namespace Rtx
             // zone was recorded inside the submit `draw` waited out, and the zones do not overlap —
             // so their sum is device work the CPU also sat through, and the CPU also paid for the
             // submit itself.
-            EXPECT_LT(totalOf(drawn.mGpu), drawn.mWallMs)
+            EXPECT_LT(totalOf(drawn.mGpu.spans()), drawn.mWallMs)
                 << "the passes add up to more device time than the frame that held them took";
 
             // **A frame that placed the world says so, and one that did not, does not.** The
             // structure builds happen in submits of their own before the frame's, and the whole
             // point of carrying them in the same report is that they are the same frame's cost.
-            EXPECT_FALSE(reports(drawn.mGpu, "tlas")) << "nothing was placed, so nothing was built";
+            EXPECT_FALSE(reports(drawn.mGpu.spans(), "tlas")) << "nothing was placed, so nothing was built";
 
             mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
             const Drawn placed = draw(*mRenderer, camera);
 
-            EXPECT_TRUE(reports(placed.mGpu, "tlas")) << "the top level was rebuilt and went unmeasured";
-            EXPECT_GT(placed.mGpu.size(), drawn.mGpu.size()) << "placing the world added no zone";
+            EXPECT_TRUE(reports(placed.mGpu.spans(), "tlas")) << "the top level was rebuilt and went unmeasured";
+            EXPECT_GT(placed.mGpu.spans().size(), drawn.mGpu.spans().size()) << "placing the world added no zone";
 
-            // First, because it happened first: the order is the order the work was recorded, which
-            // is what lets a reader see the frame rather than a bag of numbers.
-            EXPECT_EQ(placed.mGpu.front().mName, "tlas");
+            // In the order the work was recorded, which is what lets a reader see the frame rather
+            // than a bag of numbers: the tight copy of the wall `setScene` built, whose answer the
+            // timeline says is readable by now, and then the top level over it. Nothing before
+            // the copy, because a placement is what a frame opens with.
+            const std::span<const GpuSpan> zones = placed.mGpu.spans();
+            const auto compact = std::ranges::find(zones, std::string_view("compact"), &GpuSpan::mName);
+            const auto tlas = std::ranges::find(zones, std::string_view("tlas"), &GpuSpan::mName);
+            ASSERT_NE(tlas, zones.end());
+            EXPECT_TRUE(compact == zones.end() || compact < tlas) << "the top level was built before the copy it names";
+            EXPECT_EQ(zones.front().mName, compact == zones.end() ? "tlas" : "compact");
 
             // And the report does not accumulate: the frame after is its own again.
             const Drawn after = draw(*mRenderer, camera);
-            EXPECT_EQ(after.mGpu.size(), drawn.mGpu.size()) << "last frame's zones were carried into this one";
-            EXPECT_FALSE(reports(after.mGpu, "tlas"));
+            EXPECT_EQ(after.mGpu.spans().size(), drawn.mGpu.spans().size())
+                << "last frame's zones were carried into this one";
+            EXPECT_FALSE(reports(after.mGpu.spans(), "tlas"));
 
             // **A cell arriving says so too, and that is the frame worth having a figure for.** The
             // structures its meshes bring are recorded ahead of the placement and ride its submit,
@@ -170,16 +174,17 @@ namespace Rtx
             mRenderer->extendScene(Rtx::SceneSlot::world(), scene, {});
             const Drawn arrived = draw(*mRenderer, camera);
 
-            EXPECT_TRUE(reports(arrived.mGpu, "blas")) << "a mesh arrived and its structure was built unmeasured";
+            EXPECT_TRUE(reports(arrived.mGpu.spans(), "blas"))
+                << "a mesh arrived and its structure was built unmeasured";
 
             // First, because the builds run before the top level that names what they built, and a
             // duration rather than a bracket that closed on itself.
-            EXPECT_EQ(arrived.mGpu.front().mName, "blas");
-            EXPECT_GT(arrived.mGpu.front().mMs, 0.0) << "the arrival's builds took no time at all";
+            EXPECT_EQ(arrived.mGpu.spans().front().mName, "blas");
+            EXPECT_GT(arrived.mGpu.spans().front().mMs, 0.0) << "the arrival's builds took no time at all";
 
             // And only on the frame the arrival landed in.
             const Drawn settled = draw(*mRenderer, camera);
-            EXPECT_FALSE(reports(settled.mGpu, "blas")) << "nothing arrived, so nothing was built";
+            EXPECT_FALSE(reports(settled.mGpu.spans(), "blas")) << "nothing arrived, so nothing was built";
         }
     }
 }

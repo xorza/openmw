@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -96,6 +97,12 @@ namespace Rtx
         /// Whether the trace counts the see-through surfaces each primary ray crosses. Off by
         /// default, because it is a second traversal on every pixel.
         bool mCountCrossings = false;
+
+        /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
+        /// hold it not at all. A held queue keeps the device that far behind the host, so every
+        /// frame is recorded over a frame still running: what makes a hazard that needs the
+        /// overlap show on the first frame of every run. A gate's option, never a player's.
+        double mStressOverlapMs = 0.0;
     };
 
     /// One vertex of the GUI, in MyGUI's own layout: a position already in clip space, a colour
@@ -288,6 +295,31 @@ namespace Rtx
         double mMs = 0.0;
     };
 
+    /// The most zones one frame may open. Sixteen are used; the rest is room to bisect one.
+    inline constexpr std::uint32_t sMaxGpuZones = 24;
+
+    /// Where the device spent a frame, in the order the work was recorded, or nothing where it
+    /// cannot write timestamps. Owned by the report rather than borrowed from the timer that
+    /// measured it: with two frames in flight, the frame that takes this frame's slot begins its
+    /// timer before this report is read.
+    class GpuZones
+    {
+    public:
+        void clear() { mCount = 0; }
+
+        void add(const GpuSpan& span)
+        {
+            assert(mCount < sMaxGpuZones && "more zones than a frame may open");
+            mSpans[mCount++] = span;
+        }
+
+        std::span<const GpuSpan> spans() const { return { mSpans.data(), mCount }; }
+
+    private:
+        std::array<GpuSpan, sMaxGpuZones> mSpans{};
+        std::uint32_t mCount = 0;
+    };
+
     struct FrameResult
     {
         /// Primary rays that hit something: what tells "the cell rendered" from "the camera faced
@@ -300,13 +332,15 @@ namespace Rtx
         std::uint32_t mCrossings = 0;
         std::uint32_t mCrossingsMost = 0;
 
-        /// How long `finishFrame` waited for this frame's fence; nought where it was already done.
+        /// How long the ring waited for this frame; nought where it was already done.
         double mWaitMs = 0.0;
 
-        /// Where the device spent this frame, in the order the work was recorded, or empty where it
-        /// cannot write timestamps. Borrowed from the renderer and valid until the frame after next
-        /// is finished, so that reporting a frame's cost allocates nothing.
-        std::span<const GpuSpan> mGpu;
+        /// How many frames the ring held when this one was submitted, this one included — one
+        /// where the caller waited the frame behind out first, two where it did not. What the
+        /// bench's `overlap` figure is taken from, and the number a gate on two in flight asserts.
+        std::uint32_t mInFlight = 0;
+
+        GpuZones mGpu;
 
         /// What put this frame back together, as the renderer resolved it.
         Reconstruction mReconstruction;
@@ -428,9 +462,16 @@ namespace Rtx
 
         /// What the oldest unreported frame came to, waiting for it where it is still in flight, or
         /// nothing where every frame drawn was reported. After `renderFrame` that is the frame just
-        /// submitted, which a screenshot wants; before it, the frame behind, whose fence has usually
-        /// signalled, which is the only order that keeps two frames in the ring.
+        /// submitted, which a screenshot and a test want.
         virtual std::optional<FrameResult> finishFrame() = 0;
+
+        /// What the oldest unreported frame came to, waiting only where the ring has no room for
+        /// the frame about to be placed, or nothing where none has finished. Before `placeScene`,
+        /// this is what keeps two frames in flight: the frame behind stays on the device while the
+        /// next is placed, and the report is the frame before it. `finishFrame` there instead waits
+        /// the frame behind out on every frame, so the device idles from its last pass until the
+        /// next placement is submitted — a gap a device-bound frame pays in full.
+        virtual std::optional<FrameResult> collectFrame() = 0;
 
         /// Shows the frame `renderFrame` just produced. False means the surface stopped matching
         /// the window and the caller should `resize` and carry on. No window is an assert.

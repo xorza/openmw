@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/framering.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
+#include <components/rtxvulkan/graveyard.hpp>
 
 #include "harness.hpp"
 
@@ -30,11 +32,8 @@ namespace Rtx
         ///
         /// **Two slots and two frames in flight makes them the same slot**, which is the whole of
         /// this: `slotOf(mFrame)` and `slotOf(mFinished)` agree once the ring is full, so the slot a
-        /// caller is about to bury into is the oldest frame's. The next drain empties that
-        /// graveyard, having waited that frame alone — and the newer frame is still tracing whatever
-        /// was in it. `VulkanRenderer::dropTextures` buries a texture the scene let go there, before
-        /// anything on its path has drained, and an image went out from under a trace whose
-        /// descriptor set still named it.
+        /// caller is about to record into is the oldest frame's, and the next drain waits that
+        /// frame alone while the newer one is still tracing.
         ///
         /// The ring is filled first, and `mPending` is what says a frame is still on the queue.
         TEST_F(RtxFrameRingTest, theSlotHandedOutForRecordingIsNotOneAFrameInFlightHolds)
@@ -44,7 +43,8 @@ namespace Rtx
 
             const bool countHits = false;
             const bool countCrossings = false;
-            FrameRing ring(getDevice(), getPool(), countHits, countCrossings);
+            Graveyard graveyard(getDevice(), getPool());
+            FrameRing ring(getDevice(), getPool(), graveyard, countHits, countCrossings);
 
             // Filled to the brim: nothing collects, so every frame stays in flight, exactly as
             // `RtxTool::runWindow` leaves the ring.
@@ -60,9 +60,41 @@ namespace Rtx
             // and then beginning the frame asks.
             EXPECT_EQ(&ring.recording(), &ring.begin()) << "beginning the frame moved to another slot";
 
-            // Before the ring goes, because its fences and its command buffers go with it and the
-            // last frame is still on the queue.
+            // Before the ring goes, because its command buffers go with it and the last frame is
+            // still on the queue.
             ring.finishAll();
+        }
+
+        /// What is buried while a frame is in flight is held until a submit made after the burial
+        /// has run, whoever buried it and whatever the ring was doing.
+        ///
+        /// **The property the two graveyards keyed by slot did not have.** A burial went into the
+        /// recording frame's, and that frame's wait was what freed it — so a burial made into the
+        /// wrong slot, or a table replaced by a caller that never saw a graveyard, was an object
+        /// gone from under a trace. One graveyard stamps every burial with the next submit's value,
+        /// so nothing is freed before every submit that could name it has finished.
+        TEST_F(RtxFrameRingTest, aBurialOutlivesEverySubmitMadeBeforeIt)
+        {
+            if (mHarness == nullptr)
+                GTEST_SKIP() << "no device";
+
+            Graveyard graveyard(getDevice(), getPool());
+            FrameRing ring(getDevice(), getPool(), graveyard, false, false);
+
+            // One frame on the queue, and a burial made while it is.
+            submitEmpty(ring);
+            graveyard.bury(Buffer::hostWritten(getDevice(), 16, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
+            EXPECT_EQ(graveyard.getHeldCount(), 1u);
+
+            // That frame done is not enough: the burial is stamped with the value of the submit
+            // after it, which nothing has made.
+            ring.finishAll();
+            EXPECT_EQ(graveyard.getHeldCount(), 1u) << "freed before a submit made after the burial had run";
+
+            // The next submit made and run is what frees it.
+            submitEmpty(ring);
+            ring.finishAll();
+            EXPECT_EQ(graveyard.getHeldCount(), 0u) << "held past the submit that retired it";
         }
     }
 }

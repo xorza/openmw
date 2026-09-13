@@ -212,6 +212,7 @@ namespace RtxTool
             request.mProfile.mReconstruction.mJitter = variables["jitter"].as<bool>();
             request.mProfile.mCountCrossings = variables["crossings"].as<bool>();
             request.mProfile.mExposure = parseExposure(variables["exposure"].as<std::string>());
+            request.mProfile.mStressOverlapMs = variables["stress-overlap"].as<double>();
 
             return request;
         }
@@ -694,6 +695,11 @@ namespace RtxTool
                 case Rtx::Check::CameraStands:
                     return stop.mStand.mEye.has_value() && !stop.mSchedule.mFreeCamera
                         && !stop.mSchedule.mRoute.has_value();
+
+                // A route arrives at cells, and an arrival that rebuilds the scene, or places it
+                // twice in one frame, drains the ring.
+                case Rtx::Check::FramesOverlap:
+                    return !stop.mSchedule.mRoute.has_value();
 
                 case Rtx::Check::WalkTwice:
                 case Rtx::Check::SurfacesDescribed:

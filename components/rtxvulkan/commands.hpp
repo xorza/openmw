@@ -58,10 +58,11 @@ namespace Rtx
         /// apart — a resize and shutdown — which have no next submit to give a deferred batch.
         void finishDeferred();
 
-        /// Submits `commands` behind whatever was deferred, signalling `fence` where one is given,
-        /// and does not wait — the frame's own submit. Ends `commands`. What the deferred batches
-        /// read from goes to `kept`, to be let go when the caller knows the queue has passed it.
-        void submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept);
+        /// Submits `commands` behind whatever was deferred and does not wait — the frame's own
+        /// submit. Ends `commands`. What the deferred batches read from goes to `kept`, to be let
+        /// go when the caller knows the queue has passed it. Returns the value the submit signals
+        /// on the device's timeline, which is what says when that is.
+        std::uint64_t submit(VkCommandBuffer commands, Graveyard& kept);
 
         /// Frees one-shot command buffers this pool handed out and the queue has finished with.
         void free(std::span<const VkCommandBuffer> commands);
@@ -75,10 +76,11 @@ namespace Rtx
         /// Gives back a recording nobody will submit. `Batch::~Batch` says when that happens.
         void discard(VkCommandBuffer commands);
 
-        /// Submits every deferred batch and then `commands`, as one submit signalling `fence`. A
-        /// deferred batch ends every upload and every build in a barrier, so what `commands` reads
-        /// of them is what it would have read had they been recorded into it.
-        void submitWithDeferred(VkCommandBuffer commands, VkFence fence);
+        /// Submits every deferred batch and then `commands`, as one submit signalling the next
+        /// value of the timeline, which it returns. A deferred batch ends every upload and every
+        /// build in a barrier, so what `commands` reads of them is what it would have read had
+        /// they been recorded into it.
+        std::uint64_t submitWithDeferred(VkCommandBuffer commands);
 
         /// Lets go of what was deferred, once it has been submitted and whoever wanted its staging
         /// has taken it.
@@ -86,7 +88,6 @@ namespace Rtx
 
         const Device& mDevice;
         Owned<VkCommandPool, vkDestroyCommandPool> mHandle;
-        Owned<VkFence, vkDestroyFence> mFence;
 
         /// Recorded and ended, waiting for the next submit to carry them first, with the staging
         /// their copies read.

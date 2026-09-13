@@ -161,5 +161,8 @@ namespace Rtx
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured, and a reference wants it held still.
         std::optional<float> mExposure;
+
+        /// `RendererOptions::mStressOverlapMs`, carried whole.
+        double mStressOverlapMs = 0.0;
     };
 }

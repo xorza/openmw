@@ -20,6 +20,7 @@
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
 #include "scenebuffers.hpp"
+#include "spritebin.hpp"
 #include "validation.hpp"
 #include "wavepass.hpp"
 
@@ -441,8 +442,13 @@ namespace Rtx
         inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
         described.mTables.mBlueNoise = mBlueNoise.getDeviceAddress();
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
-        if (inputs.mSpriteList != 0)
-            described.mTables.mSpriteTileList = inputs.mSpriteList;
+
+        // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
+        // for a camera that draws no sprites and binned none.
+        assert(inputs.mBin != nullptr && "a trace with no bin to read its sprites from");
+        described.mTables.mSprites = inputs.mBin->getSpritesAddress();
+        described.mTables.mSpriteTileList
+            = inputs.mSpriteList != 0 ? inputs.mSpriteList : inputs.mBin->getTileListAddress();
 
         // Nothing addressed here may be nothing, and every address must be what its reference
         // claims. A descriptor bound as a null handle cost this renderer a device with no message;

@@ -18,6 +18,7 @@
 #include "device.hpp"
 #include "frameslots.hpp"
 #include "graveyard.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -105,6 +106,10 @@ namespace Rtx
             RowDebt& owed = mOwed[slot.get()];
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
+            // The copy about to be written is the one the frame before last read, and the ring
+            // waited that frame out before this placement began. This is what says it did.
+            assert(mDevice->getTimeline().hasFinished(copy) && "a host write over a copy a submit still reads");
+
             // A copy made again is empty whatever the debt says. Doubled only where it does not
             // fit, because `growTo` remakes whatever is larger than what it has. A byte where the
             // table is empty, because a descriptor with nothing bound is undefined rather than blank.
@@ -132,6 +137,13 @@ namespace Rtx
         {
             assert(slot.get() < mSlots);
             return mCopies[slot.get()].getDeviceAddress();
+        }
+
+        /// Says a submit signalling `value` reads `slot`'s copy — `Buffer::nameFor`.
+        void nameFor(FrameSlot slot, std::uint64_t value) const
+        {
+            assert(slot.get() < mSlots);
+            mCopies[slot.get()].nameFor(value);
         }
 
         VkDeviceSize getBytes() const
