@@ -7,7 +7,7 @@
 #include "../mwbase/mechanicsmanager.hpp"
 #include "../mwbase/world.hpp"
 
-#include "../mwrender/gl/postprocessor.hpp"
+#include "../mwrender/postprocessor.hpp"
 #include "../mwrender/renderingmanager.hpp"
 
 #include <components/resource/resourcesystem.hpp>

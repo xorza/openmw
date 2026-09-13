@@ -92,9 +92,6 @@ namespace MWRender
         void enableReference(ESM::RefNum refnum, bool enabled) override;
         void detachWorld() override;
 
-        /// The distant land radius, which is also what the fog is built to. `cameraDistance` and
-        /// `fov` are a frustum's answer and no ray has one.
-        float getTerrainViewDistance(float cameraDistance, float fov) const override;
         float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
 

@@ -108,8 +108,8 @@ namespace MWRender
         /// What the weather drops, for a renderer that walks the graph itself: the rain box and the
         /// driven effect, or null where there is none. Both are camera-relative, so a walk stands
         /// them at the eye.
-        osg::Node* getRainNode();
-        osg::Node* getParticleNode();
+        osg::Group* getRainNode() { return mRainNode; }
+        osg::PositionAttitudeTransform* getParticleNode() { return mParticleNode; }
 
         /// How far the cloud deck has scrolled and the stars have turned, for a renderer that draws
         /// its own sky off the same clock.
@@ -118,7 +118,7 @@ namespace MWRender
 
         /// Where the eye is this frame. The cull traversal tells the sky's root the same thing, and a
         /// renderer that culls nothing has to say it here, or the underwater switch reads a stale one.
-        void setViewPoint(const osg::Vec3f& eye);
+        void setViewPoint(const osg::Vec3f& eye) { mSkyRootNode->setLastViewPoint(eye); }
 
     private:
         void create();

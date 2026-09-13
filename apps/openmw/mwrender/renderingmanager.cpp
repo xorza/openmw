@@ -72,20 +72,20 @@
 #include "camera.hpp"
 #include "effectmanager.hpp"
 #include "fogmanager.hpp"
-#include "gl/postprocessor.hpp"
-#include "gl/sky.hpp"
-#include "gl/water.hpp"
 #include "groundcover.hpp"
 #include "navmesh.hpp"
 #include "npcanimation.hpp"
 #include "objectpaging.hpp"
 #include "pathgrid.hpp"
+#include "postprocessor.hpp"
 #include "recastmesh.hpp"
 #include "renderer.hpp"
 #include "sceneframe.hpp"
+#include "sky.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"
 #include "vismask.hpp"
+#include "water.hpp"
 
 namespace
 {
@@ -1221,7 +1221,10 @@ namespace MWRender
             setScreenRes(width, height);
         }
 
-        mTerrain->setViewDistance(mRenderer.getTerrainViewDistance(mViewDistance, fov));
+        // Since our fog is not radial yet, we should take FOV in account, otherwise terrain near viewing distance may
+        // disappear. Limit FOV here just for sure, otherwise viewing distance can be too high.
+        float distanceMult = std::cos(osg::DegreesToRadians(std::min(fov, 140.f)) / 2.f);
+        mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
     }
 
     void RenderingManager::setScreenRes(int width, int height)
@@ -1308,7 +1311,8 @@ namespace MWRender
                 mTerrainStorage.get(), Mask_Terrain, worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
 
         newChunkMgr.mTerrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
-        newChunkMgr.mTerrain->setViewDistance(mRenderer.getTerrainViewDistance(mViewDistance, mFieldOfView));
+        float distanceMult = std::cos(osg::DegreesToRadians(std::min(mFieldOfView, 140.f)) / 2.f);
+        newChunkMgr.mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
         newChunkMgr.mTerrain->enableHeightCullCallback(Settings::terrain().mWaterCulling);
 
         return mWorldspaceChunks.emplace(worldspace, std::move(newChunkMgr)).first->second;

@@ -6,8 +6,8 @@
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/world.hpp"
+#include "../mwbase/environment.hpp"
+#include "../mwbase/world.hpp"
 
 #include "postprocessor.hpp"
 

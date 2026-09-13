@@ -382,11 +382,6 @@ namespace MWRender
         mMirror.detach();
     }
 
-    float RtxRenderer::getTerrainViewDistance(float, float) const
-    {
-        return mMirror.getReach();
-    }
-
     float RtxRenderer::getGroundReach() const
     {
         return mMirror.getReach();

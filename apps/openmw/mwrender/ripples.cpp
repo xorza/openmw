@@ -13,11 +13,11 @@
 #include <components/sceneutil/glextensions.hpp>
 #include <components/shader/shadermanager.hpp>
 
-#include "../../mwworld/ptr.hpp"
+#include "../mwworld/ptr.hpp"
 
-#include "../../mwmechanics/actorutil.hpp"
+#include "../mwmechanics/actorutil.hpp"
 
-#include "../vismask.hpp"
+#include "vismask.hpp"
 
 namespace MWRender
 {

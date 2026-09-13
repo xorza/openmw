@@ -86,7 +86,7 @@ namespace Rtx
 
             // `Morrowind.ini` spells every deck `.tga` and every one ships as `.dds`, so a name
             // joined by hand leaves the two weathers an importer writes with no deck, in silence.
-            // `correctTexturePath` is the same question `mwrender/gl/sky.cpp` asks.
+            // `correctTexturePath` is the same question `mwrender/sky.cpp` asks.
             const VFS::Path::Normalized path
                 = Misc::ResourceHelpers::correctTexturePath(VFS::Path::toNormalized(sheet), vfs);
             if (!vfs.exists(path))

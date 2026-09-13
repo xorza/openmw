@@ -13,7 +13,6 @@
 
 #include <components/sceneutil/controller.hpp>
 #include <components/sceneutil/depth.hpp>
-#include <components/sceneutil/localtoworld.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
@@ -30,16 +29,16 @@
 
 #include <components/nifosg/particle.hpp>
 
-#include "../../mwworld/datetimemanager.hpp"
-#include "../../mwworld/weather.hpp"
+#include "../mwworld/datetimemanager.hpp"
+#include "../mwworld/weather.hpp"
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/world.hpp"
+#include "../mwbase/environment.hpp"
+#include "../mwbase/world.hpp"
 
-#include "../renderbin.hpp"
-#include "../util.hpp"
-#include "../vismask.hpp"
+#include "renderbin.hpp"
 #include "skyutil.hpp"
+#include "util.hpp"
+#include "vismask.hpp"
 
 namespace
 {
@@ -66,11 +65,15 @@ namespace
             osg::Vec3 position = getCameraPosition();
             osg::Vec3 positionDifference = position - mPreviousCameraPosition;
 
-            // `getWorldMatrices` builds a vector of node paths and a vector of matrices to answer
-            // this, for every system on every frame; the walk answers the same out of one matrix.
-            const osg::Matrix toWorld = SceneUtil::localToWorldOf(*ps);
-            osg::Matrix toLocal;
-            toLocal.invert(toWorld);
+            osg::Matrix toWorld, toLocal;
+
+            std::vector<osg::Matrix> worldMatrices = ps->getWorldMatrices();
+
+            if (!worldMatrices.empty())
+            {
+                toWorld = worldMatrices[0];
+                toLocal.invert(toWorld);
+            }
 
             for (int i = 0; i < ps->numParticles(); ++i)
             {
@@ -877,21 +880,6 @@ namespace MWRender
     void SkyManager::setStormParticleDirection(const osg::Vec3f& direction)
     {
         mStormParticleDirection = direction;
-    }
-
-    osg::Node* SkyManager::getRainNode()
-    {
-        return mRainNode;
-    }
-
-    osg::Node* SkyManager::getParticleNode()
-    {
-        return mParticleNode;
-    }
-
-    void SkyManager::setViewPoint(const osg::Vec3f& eye)
-    {
-        mSkyRootNode->setLastViewPoint(eye);
     }
 
     void SkyManager::setSunDirection(const osg::Vec3f& direction)

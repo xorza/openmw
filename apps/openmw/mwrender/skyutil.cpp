@@ -32,10 +32,10 @@
 
 #include <components/sceneutil/statesetupdater.hpp>
 
-#include "../../mwbase/environment.hpp"
+#include "../mwbase/environment.hpp"
 
-#include "../renderbin.hpp"
-#include "../vismask.hpp"
+#include "renderbin.hpp"
+#include "vismask.hpp"
 
 namespace
 {

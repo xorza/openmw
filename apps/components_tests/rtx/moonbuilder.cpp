@@ -34,7 +34,7 @@ namespace Rtx
         /// A moon is as wide as the renderer the game already has draws it.
         ///
         /// `Moons_<name>_Size` is scaled by 450/125 onto a quad of half-extent 0.5 a thousand units
-        /// off (`apps/openmw/mwrender/gl/skyutil.cpp:641`), so the radius is `atan(1.8 * size /
+        /// off (`apps/openmw/mwrender/skyutil.cpp:641`), so the radius is `atan(1.8 * size /
         /// 1000)` — the closed form this checks the code against.
         ///
         /// **The size itself is not pinned here, and deliberately.** Morrowind's own ini says 94 and

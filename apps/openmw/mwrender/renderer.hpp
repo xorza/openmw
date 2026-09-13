@@ -140,11 +140,6 @@ namespace MWRender
         /// of first.
         virtual void detachWorld() {}
 
-        /// How far from the eye ground is made at all, in units. What is culled needs the corners
-        /// of the frustum covered, so `cameraDistance` is widened by `fov`; what is traced needs to
-        /// know how much world exists, which no camera decides.
-        virtual float getTerrainViewDistance(float cameraDistance, float fov) const = 0;
-
         /// How far from the eye ground is built, straight ahead: what the local map is a map of.
         /// Nought where the ground reaches no further than the cells the simulation has loaded.
         virtual float getGroundReach() const = 0;

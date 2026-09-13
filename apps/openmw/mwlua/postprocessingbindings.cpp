@@ -7,7 +7,7 @@
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
-#include "../mwrender/gl/postprocessor.hpp"
+#include "../mwrender/postprocessor.hpp"
 
 #include "context.hpp"
 #include "luamanagerimp.hpp"

@@ -74,7 +74,7 @@
 #include "../mwmechanics/actorutil.hpp"
 #include "../mwmechanics/npcstats.hpp"
 
-#include "../mwrender/gl/postprocessor.hpp"
+#include "../mwrender/postprocessor.hpp"
 
 #include "alchemywindow.hpp"
 #include "backgroundimage.hpp"

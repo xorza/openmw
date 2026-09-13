@@ -142,7 +142,7 @@ namespace Rtx
     MoonPlacement placeMoon(
         Moon moon, float alongArcDegrees, float axisOffsetDegrees, Sky::MoonPhase phase, float alpha)
     {
-        // `Moon::setState`'s own two rotations (`apps/openmw/mwrender/gl/skyutil.cpp:900`): the arc
+        // `Moon::setState`'s own two rotations (`apps/openmw/mwrender/skyutil.cpp:900`): the arc
         // tips the moon up from the horizon about +X, and the axis offset swings that whole arc
         // about the zenith so the two moons rise in different places and their paths cross.
         const float alongArc = osg::DegreesToRadians(alongArcDegrees);

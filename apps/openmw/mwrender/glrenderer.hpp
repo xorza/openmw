@@ -1,12 +1,12 @@
-#ifndef GAME_RENDER_GL_GLRENDERER_H
-#define GAME_RENDER_GL_GLRENDERER_H
+#ifndef GAME_RENDER_GLRENDERER_H
+#define GAME_RENDER_GLRENDERER_H
 
 #include <memory>
 #include <optional>
 
 #include <osg/ref_ptr>
 
-#include "../renderer.hpp"
+#include "renderer.hpp"
 
 namespace osgViewer
 {
@@ -70,7 +70,6 @@ namespace MWRender
 
         int getMaxTextureUnits() const override { return mMaxTextureUnits; }
 
-        float getTerrainViewDistance(float cameraDistance, float fov) const override;
         float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
 

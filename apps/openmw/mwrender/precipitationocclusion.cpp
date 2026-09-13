@@ -13,8 +13,9 @@
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../vismask.hpp"
+#include "../mwbase/environment.hpp"
+
+#include "vismask.hpp"
 
 namespace
 {

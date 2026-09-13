@@ -18,8 +18,8 @@
 
 #include "../mwsound/sound.hpp"
 
-#include "../mwrender/gl/sky.hpp"
 #include "../mwrender/renderingmanager.hpp"
+#include "../mwrender/sky.hpp"
 
 #include "cellstore.hpp"
 #include "esmstore.hpp"

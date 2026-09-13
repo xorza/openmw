@@ -1,11 +1,11 @@
-#ifndef GAME_RENDER_GL_GLOFFSCREENVIEW_H
-#define GAME_RENDER_GL_GLOFFSCREENVIEW_H
+#ifndef GAME_RENDER_GLOFFSCREENVIEW_H
+#define GAME_RENDER_GLOFFSCREENVIEW_H
 
 #include <memory>
 
 #include <osg/ref_ptr>
 
-#include "../offscreenview.hpp"
+#include "offscreenview.hpp"
 
 namespace MyGUIPlatform
 {

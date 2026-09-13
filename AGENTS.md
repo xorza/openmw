@@ -81,7 +81,7 @@ never a patch to upstream, never a fallback path.
 
 **No merge-back discipline inside the RTX places.** This code is not upstreaming.
 
-**Read the old renderer first, every time.** Find what `apps/openmw/mwrender/gl/` and the components
+**Read the old renderer first, every time.** Find what `apps/openmw/mwrender/` and the components
 under it already do about it. A number the game states beats one derived here, and a behaviour it
 has beats one invented here. Most apparent gaps are a field the RT path stopped carrying.
 
@@ -100,7 +100,7 @@ backend ever arrives.
   scene digest and a texture sheet. It knows nothing about a world.
 - `components/myguirtx/` — MyGUI's backend.
 - `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
-  `MWRender::Renderer` — the seam against `mwrender/gl/`.
+  `MWRender::Renderer` — the seam, and `GlRenderer` beside upstream's files in `mwrender/`.
 
 ## Traps
 

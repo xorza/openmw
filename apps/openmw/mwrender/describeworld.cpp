@@ -12,6 +12,7 @@
 
 #include <osg/Camera>
 #include <osg/FrameStamp>
+#include <osg/PositionAttitudeTransform>
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -28,10 +29,10 @@
 
 #include "camera.hpp"
 #include "fogmanager.hpp"
-#include "gl/sky.hpp"
-#include "gl/water.hpp"
 #include "renderer.hpp"
 #include "sceneframe.hpp"
+#include "sky.hpp"
+#include "water.hpp"
 
 namespace MWRender
 {

@@ -5,7 +5,6 @@
 #include <chrono>
 #include <thread>
 
-#include <osg/FrameStamp>
 #include <osg/Texture1D>
 #include <osg/Texture2D>
 #include <osg/Texture2DArray>
@@ -27,20 +26,19 @@
 #include <components/vfs/manager.hpp>
 #include <components/vfs/recursivedirectoryiterator.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/windowmanager.hpp"
+#include "../mwbase/environment.hpp"
+#include "../mwbase/windowmanager.hpp"
 
-#include "../../mwgui/postprocessorhud.hpp"
+#include "../mwgui/postprocessorhud.hpp"
 
-#include "../renderbin.hpp"
-#include "../renderingmanager.hpp"
-#include "../sceneframe.hpp"
-#include "../vismask.hpp"
 #include "distortion.hpp"
 #include "opaqueblit.hpp"
 #include "pingpongcull.hpp"
+#include "renderbin.hpp"
+#include "renderingmanager.hpp"
 #include "sky.hpp"
 #include "transparentpass.hpp"
+#include "vismask.hpp"
 #include "water.hpp"
 #include "waterawaretransparentbin.hpp"
 
@@ -249,39 +247,6 @@ namespace MWRender
     {
         if (auto* bin = osgUtil::RenderBin::getRenderBinPrototype("DepthSortedBin"))
             bin->setDrawCallback(nullptr);
-    }
-
-    void PostProcessor::describe(const WorldState& world, const EyeState& eye)
-    {
-        mStateUpdater->setSunPos(world.mSunPosition, world.mSunAtNight);
-        mStateUpdater->setSunVec(world.mSunVector);
-        mStateUpdater->setSunColor(world.mSunColour);
-        mStateUpdater->setSunVis(world.mSunVisibility);
-        mStateUpdater->setAmbientColor(world.mAmbientColour);
-        mStateUpdater->setSkyColor(world.mSkyColour);
-        mStateUpdater->setIsInterior(world.isInteriorCell());
-
-        mStateUpdater->setIsWaterEnabled(world.mWaterEnabled);
-        mStateUpdater->setWaterHeight(world.mWaterHeight);
-        mStateUpdater->setIsUnderwater(world.mUnderwater);
-
-        mStateUpdater->setFogColor(world.mFog.mColour);
-        mStateUpdater->setFogRange(world.mFog.mStart, world.mFog.mEnd);
-        mStateUpdater->setNearFar(eye.mNearClip, eye.mViewDistance);
-        mStateUpdater->setProjectionMatrix(eye.mProjectionMatrix);
-        mStateUpdater->setFov(eye.mFieldOfView);
-
-        mStateUpdater->setGameHour(world.mGameHour);
-        mStateUpdater->setWeatherId(world.mWeatherId);
-        // -1 for no transition, which is what the world hands over and what a technique reads.
-        mStateUpdater->setNextWeatherId(world.mNextWeatherId.value_or(-1));
-        mStateUpdater->setWeatherTransition(world.mWeatherTransition);
-        mStateUpdater->setWindSpeed(world.mWindSpeed);
-
-        // Which techniques run at all. A quasi-exterior is outside here and inside for the
-        // `isInterior` uniform above, which is why `WorldState` answers the two apart.
-        mUnderwater = world.mUnderwater;
-        mExteriorFlag = world.isOutdoors();
     }
 
     void PostProcessor::resize()

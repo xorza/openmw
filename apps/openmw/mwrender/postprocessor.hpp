@@ -54,8 +54,6 @@ namespace MWRender
     class PingPongCanvas;
     class TransparentDepthBinCallback;
     class DistortionCallback;
-    struct EyeState;
-    struct WorldState;
 
     class PostProcessor : public osg::Group
     {
@@ -177,9 +175,9 @@ namespace MWRender
 
         bool isTechniqueEnabled(const std::shared_ptr<Fx::Technique>& technique) const;
 
-        /// This frame's world, in the spelling the chain's shaders sample. A copy and not a cache:
-        /// every value here is settled elsewhere in the world already.
-        void describe(const WorldState& world, const EyeState& eye);
+        void setExteriorFlag(bool exterior) { mExteriorFlag = exterior; }
+
+        void setUnderwaterFlag(bool underwater) { mUnderwater = underwater; }
 
         void toggleMode();
 

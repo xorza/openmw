@@ -27,7 +27,7 @@
 #include <components/settings/values.hpp>
 #include <components/stereo/multiview.hpp>
 
-#include "../util.hpp"
+#include "util.hpp"
 
 namespace MWRender
 {

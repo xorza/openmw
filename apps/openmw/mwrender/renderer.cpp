@@ -31,7 +31,7 @@
 #include "../mwbase/windowmanager.hpp"
 #include "../mwgui/messagebox.hpp"
 
-#include "gl/glrenderer.hpp"
+#include "glrenderer.hpp"
 
 #ifdef OPENMW_RTX
 #include "rtx/rtxrenderer.hpp"

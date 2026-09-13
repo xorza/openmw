@@ -15,7 +15,7 @@
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
-#include "../vismask.hpp"
+#include "vismask.hpp"
 
 namespace MWRender
 {

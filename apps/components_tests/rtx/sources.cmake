@@ -112,7 +112,6 @@ set(RTX_TEST_FILES
     rtxtool/run.cpp
     rtxtool/verify.cpp
     sky/timeofday.cpp
-    sceneutil/localtoworld.cpp
 )
 
 # Reads a NIF through upstream's loader, whose headers are not warning-free under

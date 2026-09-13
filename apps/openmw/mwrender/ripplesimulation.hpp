@@ -3,7 +3,7 @@
 
 #include <osg/ref_ptr>
 
-#include "../../mwworld/ptr.hpp"
+#include "../mwworld/ptr.hpp"
 
 #include "ripples.hpp"
 

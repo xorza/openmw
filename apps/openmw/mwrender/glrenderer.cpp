@@ -1,7 +1,6 @@
 #include "glrenderer.hpp"
 
 #include <atomic>
-#include <cmath>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -25,6 +24,7 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/debug/gldebug.hpp>
+#include <components/fx/stateupdater.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguiplatform/myguirendermanager.hpp>
 #include <components/myguiplatform/myguitexture.hpp>
@@ -42,13 +42,13 @@
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/stereomanager.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/windowmanager.hpp"
-#include "../../profile.hpp"
-#include "../renderingmanager.hpp"
-#include "../sceneframe.hpp"
+#include "../mwbase/environment.hpp"
+#include "../mwbase/windowmanager.hpp"
+#include "../profile.hpp"
 #include "gloffscreenview.hpp"
 #include "postprocessor.hpp"
+#include "renderingmanager.hpp"
+#include "sceneframe.hpp"
 #include "screenshotmanager.hpp"
 
 namespace
@@ -110,6 +110,39 @@ namespace
     private:
         int mMaxTextureImageUnits = 0;
     };
+
+    /// Hands the post-processor what its techniques read about the world, off the one description
+    /// both renderers are given.
+    void describe(
+        MWRender::PostProcessor& postProcessor, const MWRender::WorldState& world, const MWRender::EyeState& eye)
+    {
+        Fx::StateUpdater& state = *postProcessor.getStateUpdater();
+        state.setSunPos(world.mSunPosition, world.mSunAtNight);
+        state.setSunVec(world.mSunVector);
+        state.setSunColor(world.mSunColour);
+        state.setSunVis(world.mSunVisibility);
+        state.setAmbientColor(world.mAmbientColour);
+        state.setSkyColor(world.mSkyColour);
+        state.setIsInterior(world.isInteriorCell());
+        state.setIsWaterEnabled(world.mWaterEnabled);
+        state.setWaterHeight(world.mWaterHeight);
+        state.setIsUnderwater(world.mUnderwater);
+        state.setFogColor(world.mFog.mColour);
+        state.setFogRange(world.mFog.mStart, world.mFog.mEnd);
+        state.setNearFar(eye.mNearClip, eye.mViewDistance);
+        state.setProjectionMatrix(eye.mProjectionMatrix);
+        state.setFov(eye.mFieldOfView);
+        state.setGameHour(world.mGameHour);
+        state.setWeatherId(world.mWeatherId);
+        // -1 for no transition, which is what the world hands over and what a technique reads.
+        state.setNextWeatherId(world.mNextWeatherId.value_or(-1));
+        state.setWeatherTransition(world.mWeatherTransition);
+        state.setWindSpeed(world.mWindSpeed);
+        // Which techniques run at all. A quasi-exterior is outside here and inside for the
+        // `isInterior` uniform above, which is why `WorldState` answers the two apart.
+        postProcessor.setUnderwaterFlag(world.mUnderwater);
+        postProcessor.setExteriorFlag(world.isOutdoors());
+    }
 }
 
 namespace MWRender
@@ -362,14 +395,6 @@ namespace MWRender
             0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
     }
 
-    float GlRenderer::getTerrainViewDistance(const float cameraDistance, const float fov) const
-    {
-        // Since our fog is not radial yet, we should take FOV in account, otherwise terrain near viewing distance may
-        // disappear. Limit FOV here just for sure, otherwise viewing distance can be too high.
-        const float distanceMult = std::cos(osg::DegreesToRadians(std::min(fov, 140.f)) / 2.f);
-        return cameraDistance * (distanceMult ? 1.f / distanceMult : 1.f);
-    }
-
     float GlRenderer::getGroundReach() const
     {
         // The setting rather than the world's live distance, which is the same number until a Lua
@@ -470,7 +495,7 @@ namespace MWRender
     {
         retireFreezeFrame();
 
-        mPostProcessor->describe(frame.mWorld, frame.mEye);
+        describe(*mPostProcessor, frame.mWorld, frame.mEye);
 
         mViewer->renderingTraversals();
     }

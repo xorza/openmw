@@ -26,7 +26,7 @@
 #include "../mwbase/world.hpp"
 
 #include "../mwrender/bonegroup.hpp"
-#include "../mwrender/gl/postprocessor.hpp"
+#include "../mwrender/postprocessor.hpp"
 
 #include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/esmstore.hpp"
