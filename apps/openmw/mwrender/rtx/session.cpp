@@ -16,6 +16,7 @@
 #include <components/esm/attr.hpp>
 #include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
+#include <components/esm3/loadregn.hpp>
 #include <components/esm3/loadskil.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/skylight.hpp>
@@ -310,7 +311,8 @@ namespace MWRender
         {
             const std::optional<std::uint32_t> named = Rtx::weatherIndex(*stop.mSky.mWeather);
             if (named.has_value())
-                world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(), *named);
+                world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
+                    ESM::Weather::indexToRefId(static_cast<int>(*named)));
             else
                 Log(Debug::Warning) << "Ray tracing session: no weather is called \"" << *stop.mSky.mWeather << '"';
         }
@@ -325,7 +327,8 @@ namespace MWRender
         {
             const std::optional<std::uint32_t> first = Rtx::weatherIndex(stop.mSky.mTurnThrough.front());
             if (first.has_value())
-                world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(), *first);
+                world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
+                    ESM::Weather::indexToRefId(static_cast<int>(*first)));
         }
 
         // **The clock stops after the world has been moved and not before.** A frozen stop is a
@@ -476,7 +479,8 @@ namespace MWRender
         MWBase::World& world = *MWBase::Environment::get().getWorld();
         const std::optional<std::uint32_t> named = Rtx::weatherIndex(through[mProgress.mTurnedTo]);
         if (named.has_value())
-            world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(), *named);
+            world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
+                ESM::Weather::indexToRefId(static_cast<int>(*named)));
     }
 
     std::optional<std::uint32_t> Session::getSampleFrame() const

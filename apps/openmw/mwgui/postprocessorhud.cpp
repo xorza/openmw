@@ -250,6 +250,11 @@ namespace MWGui
         toggleMode(Settings::ShaderManager::Mode::Normal);
     }
 
+    void PostProcessorHud::onResChange(int width, int height)
+    {
+        layout();
+    }
+
     void PostProcessorHud::layout()
     {
         constexpr int padding = 12;

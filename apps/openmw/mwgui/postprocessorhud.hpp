@@ -39,6 +39,8 @@ namespace MWGui
 
         void onClose() override;
 
+        void onResChange(int width, int height) override;
+
         void updateTechniques();
 
         void toggleMode(Settings::ShaderManager::Mode mode);

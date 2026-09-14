@@ -125,6 +125,11 @@ if (OPENMW_RTX)
     set_source_files_properties(${RTX_TEST_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
 endif()
 
+if (USE_QT)
+    target_sources(components-tests PRIVATE config/testlaunchersettings.cpp)
+    target_link_libraries(components-tests components_qt)
+endif()
+
 if (WIN32)
     target_sources(components-tests PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
 endif()

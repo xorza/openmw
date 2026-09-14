@@ -1005,6 +1005,9 @@ namespace MWRender
         mIntersectionVisitor->setTraversalNumber(mRenderer.getFrameStamp().getFrameNumber());
         mIntersectionVisitor->setFrameStamp(&mRenderer.getFrameStamp());
         mIntersectionVisitor->setIntersector(intersector);
+        // Terrain picks its LOD from the eye point.
+        mIntersectionVisitor->setReferenceEyePoint(osg::Vec3f());
+        mIntersectionVisitor->setReferenceEyePointCoordinateFrame(osgUtil::Intersector::VIEW);
 
         unsigned int mask = ~0u;
         mask &= ~(Mask_RenderToTexture | Mask_Sky | Mask_Debug | Mask_Effect | Mask_Water | Mask_SimpleWater
@@ -1027,7 +1030,11 @@ namespace MWRender
             new osgUtil::LineSegmentIntersector(osgUtil::LineSegmentIntersector::MODEL, origin, dest));
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        mRootNode->accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain, ignoreList));
+        osg::ref_ptr<osgUtil::IntersectionVisitor> visitor
+            = getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain, ignoreList);
+        visitor->setReferenceEyePoint(origin);
+        visitor->setReferenceEyePointCoordinateFrame(osgUtil::Intersector::MODEL);
+        mRootNode->accept(*visitor);
 
         return getIntersectionResult(intersector, mIntersectionVisitor, ignoreList);
     }

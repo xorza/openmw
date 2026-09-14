@@ -1342,6 +1342,8 @@ namespace MWGui
         for (const auto& window : mWindows)
             window->onResChange(x, y);
 
+        LuaUi::updateAllElementCoords();
+
         // Re-apply any controller-specific window changes.
         reapplyActiveControllerWindow();
 

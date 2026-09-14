@@ -14,6 +14,7 @@ namespace LuaUi
 
     void clearGameInterface();
     void clearMenuInterface();
+    void updateAllElementCoords();
 
     bool warnUnused(std::vector<std::string>& warnings, sol::object table, const std::string& tableName,
         const std::vector<std::string_view>& usedKeys, bool generateWarningStrings);

@@ -1,6 +1,7 @@
 #include "util.hpp"
 
 #include <ranges>
+#include <unordered_set>
 
 #include <MyGUI_FactoryManager.h>
 
@@ -55,6 +56,23 @@ namespace LuaUi
     {
         while (!Element::sMenuElements.empty())
             Element::erase(Element::sMenuElements.begin()->second.get());
+    }
+
+    void updateAllElementCoords()
+    {
+        std::unordered_set<WidgetExtension*> roots;
+        auto collectRoot = [&roots](Element* element) {
+            if (!element->mRoot)
+                return;
+            WidgetExtension* root = element->mRoot;
+            while (root->getParent())
+                root = root->getParent();
+            roots.insert(root);
+        };
+        Element::forEach(false, collectRoot);
+        Element::forEach(true, collectRoot);
+        for (WidgetExtension* root : roots)
+            root->updateCoord();
     }
 
     bool warnUnused(std::vector<std::string>& warnings, sol::object object, const std::string& tableName,
