@@ -41,10 +41,10 @@ void main()
     const Cone cone = coneAt(frame.mCamera);
 
     // An lvalue `candidateStops` writes only where it is walking past, which this never is.
-    float through = 1.0;
+    uint blocked = 0u;
 
     if (!candidateStops(uint(gl_InstanceCustomIndexEXT), uint(gl_PrimitiveID), barycentrics,
             triangleCross(corners, gl_ObjectToWorldEXT), gl_WorldRayDirectionEXT,
-            cone.mWidth + cone.mSpread * gl_HitTEXT, false, through))
+            cone.mWidth + cone.mSpread * gl_HitTEXT, false, blocked))
         ignoreIntersectionEXT;
 }

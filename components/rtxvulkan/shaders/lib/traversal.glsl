@@ -100,6 +100,65 @@ float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point)
     return sampledOpacity(opacity, painted);
 }
 
+/// One, in the units an order-free sum over candidates is taken in: twenty fractional bits.
+///
+/// **A sum over candidates is an integer sum, because the order candidates arrive in is the
+/// card's.** The specification's "Ray Intersection Candidate Determination" says *there is no
+/// ordering guarantee between operations performed on different intersection candidates*, and a
+/// float sum or product rounds differently for every order it is taken in — so a shadow made of
+/// three panes came out one bit different from run to run, and the frame hash with it. An integer
+/// sum is the same sum in every order. Twenty bits, because the largest term is a colour times a
+/// coverage and the sums saturate at four thousand of those, which no stack of shells reaches; and
+/// it holds a shadow's logarithm to a relative part in a million.
+///
+/// **Saturating, so an overflow is a clamp and not a wrap**: `addShare` is the one way a share is
+/// summed.
+const float SHARE_UNIT = 1048576.0;
+
+/// A term of an order-free sum, off a non-negative float.
+uint sharePart(float part)
+{
+    return uint(round(max(part, 0.0) * SHARE_UNIT));
+}
+
+uvec3 sharePart(vec3 part)
+{
+    return uvec3(round(max(part, vec3(0.0)) * SHARE_UNIT));
+}
+
+/// `sharePart` undone, for a sum read back as a float.
+float shareTotal(uint total)
+{
+    return float(total) / SHARE_UNIT;
+}
+
+uint addShare(uint total, uint part)
+{
+    return total + min(part, ~total);
+}
+
+uvec3 addShare(uvec3 total, uvec3 part)
+{
+    return total + min(part, ~total);
+}
+
+/// What a see-through candidate keeps from a ray, as the term an order-free sum carries: the
+/// logarithm of what it lets past, so that the product of the surfaces is the sum of the terms.
+///
+/// **Clamped at twenty-four binary orders**, which is a surface nothing measurable gets through
+/// and the finest step an eight-bit alpha can name, so that an opaque texel is a large finite term
+/// and not an infinity the sum could not hold.
+uint blockedBy(float opacity)
+{
+    return sharePart(-log2(max(1.0 - opacity, exp2(-24.0))));
+}
+
+/// What a sum of `blockedBy` terms lets through.
+float throughBlocked(uint blocked)
+{
+    return exp2(-shareTotal(blocked));
+}
+
 /// Whether a candidate hit stops the ray, and what it lets past where it does not.
 ///
 /// **One load of the instance and its material, and not three questions asked in turn.** Whether a
@@ -118,12 +177,12 @@ float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point)
 /// Letting the cone average the mask first costs a leaf edge some of its bite, which is by a long
 /// way the better of the two errors.
 ///
-/// @param through multiplied by what a see-through candidate let past. Untouched otherwise, which
-///        the compiler folds away with `seeThrough`.
+/// @param blocked raised by what a see-through candidate kept, in `blockedBy`'s terms. Untouched
+///        otherwise, which the compiler folds away with `seeThrough`.
 /// @param seeThrough whether a see-through candidate is walked past or taken against its cutoff like
 ///        any other. **A literal at every call**, so the whole branch folds.
 bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth,
-    bool seeThrough, inout float through)
+    bool seeThrough, inout uint blocked)
 {
     const GpuInstance instance = instanceAt(instanceIndex);
     const GpuMaterial material = materialAt(instance.mMaterial);
@@ -157,7 +216,7 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 
     if (walkPast)
     {
-        through *= 1.0 - sampledOpacity(opacity, material, point);
+        blocked = addShare(blocked, blockedBy(sampledOpacity(opacity, material, point)));
         return false;
     }
 
@@ -179,13 +238,13 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 ///        mask one pixel is looking at. Nought for a ray that carries no cone, which reads the
 ///        finest level — every shadow ray. Substituted textually, so it may name the traversal.
 /// @param counted raised by one for every candidate walked past, which is every see-through surface
-///        the ray crossed. An lvalue like `through`, folded away by every caller that never reads
+///        the ray crossed. An lvalue like `blocked`, folded away by every caller that never reads
 ///        it, and read by exactly one — the census `crossingsAlong` takes.
-/// @param through,seeThrough handed straight to `candidateStops`, which says what each is for. A
+/// @param blocked,seeThrough handed straight to `candidateStops`, which says what each is for. A
 ///        ray that sees through cannot commit the surface it saw through, so a caller with no use
-///        for `through` must say false and get the surface. The shadow ray and the census say true —
-///        one wants a product and the other a count, and neither cares what order they arrived in.
-#define RTX_RESOLVE(query, along, cone, through, counted, seeThrough)                                       \
+///        for `blocked` must say false and get the surface. The shadow ray and the census say true —
+///        one wants a sum and the other a count, and neither depends on the order they arrived in.
+#define RTX_RESOLVE(query, along, cone, blocked, counted, seeThrough)                                       \
     while (rayQueryProceedEXT(query))                                                                       \
     {                                                                                                       \
         if (rayQueryGetIntersectionTypeEXT(query, false) != gl_RayQueryCandidateIntersectionTriangleEXT)    \
@@ -201,7 +260,7 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
             = triangleCross(candidateCorners, rayQueryGetIntersectionObjectToWorldEXT(query, false));       \
                                                                                                             \
         if (candidateStops(candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along),   \
-                (cone), (seeThrough), (through)))                                                           \
+                (cone), (seeThrough), (blocked)))                                                           \
             rayQueryConfirmIntersectionEXT(query);                                                          \
         else                                                                                                \
             ++(counted);                                                                                    \
@@ -317,10 +376,10 @@ Hit committedHit(
                                                                                                             \
         /* Two lvalues the resolve needs and nothing here reads: a ray that keeps what it passed    */      \
         /* through cannot commit the surface it passed through, and this one commits.                */      \
-        float traversedThrough = 1.0;                                                                       \
+        uint traversedBlocked = 0u;                                                                         \
         uint traversedCrossings = 0u;                                                                       \
         RTX_RESOLVE((query), (direction),                                                                   \
-            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedThrough,         \
+            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedBlocked,         \
             traversedCrossings, false)                                                                      \
                                                                                                             \
         if (rayQueryGetIntersectionTypeEXT((query), true) == gl_RayQueryCommittedIntersectionNoneEXT)       \
@@ -358,6 +417,7 @@ Hit committedHit(
 /// **A translucent surface dims the light rather than stopping it**, and the order it is met in does
 /// not matter: the answer is a product, and a product does not care. That is what makes the shadow
 /// the cheap half of transparency — the eye needs its layers sorted and this needs nothing at all.
+/// Taken as `blockedBy`'s sum and not as the product itself, because a float product does care.
 ///
 /// **`TerminateOnFirstHit` stays.** A translucent candidate is never confirmed, so traversal walks
 /// past it and keeps the early out for the first thing that does stop the ray.
@@ -366,7 +426,7 @@ float lightThrough(vec3 from, vec3 towards, float distance)
     if (distance <= SHADOW_BIAS)
         return 1.0;
 
-    float through = 1.0;
+    uint blocked = 0u;
 
     // An lvalue the macro needs and nothing here reads: what a shadow ray wants is the product, and
     // how many factors it has is nobody's question.
@@ -376,12 +436,12 @@ float lightThrough(vec3 from, vec3 towards, float distance)
     rayQueryInitializeEXT(
         query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, solidMask(frame.mRayMask), from, SHADOW_BIAS, towards,
         distance);
-    RTX_RESOLVE(query, towards, 0.0, through, crossed, true)
+    RTX_RESOLVE(query, towards, 0.0, blocked, crossed, true)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT)
         return 0.0;
 
-    return through;
+    return throughBlocked(blocked);
 }
 
 /// How far the nearest surface that stops a ray is along it, at most `reach` away.
@@ -408,10 +468,10 @@ float surfaceWithin(
 
     // Two lvalues the macro needs and nothing here reads: what a surface walked past let through is
     // a question for whoever wants the picture, and this ray wants the distance.
-    float passed = 1.0;
+    uint blocked = 0u;
     uint crossed = 0u;
     RTX_RESOLVE(
-        query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, crossed, seeThrough)
+        query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), blocked, crossed, seeThrough)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
         return reach;
@@ -450,12 +510,12 @@ uint crossingsAlong(vec3 origin, vec3 direction, float footprint, float spread)
 
     // An lvalue the macro needs and nothing here reads: what each layer let past is the composite's
     // question, and this one only counts them.
-    float through = 1.0;
+    uint blocked = 0u;
 
     rayQueryEXT query;
     rayQueryInitializeEXT(
         query, sceneTop, gl_RayFlagsNoneEXT, solidMask(frame.mRayMask), origin, 0.0, direction, frame.mFar);
-    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), through, crossings,
+    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), blocked, crossings,
         true)
 
     return crossings;

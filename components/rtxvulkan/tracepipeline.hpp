@@ -66,8 +66,9 @@ namespace Rtx
 
         VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
 
-        /// Launches `width` by `height` invocations of the ray generation stage.
-        void traceRays(VkCommandBuffer commands, std::uint32_t width, std::uint32_t height) const;
+        /// Launches `width` by `height` by `depth` invocations of the ray generation stage.
+        void traceRays(
+            VkCommandBuffer commands, std::uint32_t width, std::uint32_t height, std::uint32_t depth = 1) const;
 
     private:
         const Device& mDevice;

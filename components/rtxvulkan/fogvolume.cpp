@@ -195,7 +195,7 @@ namespace Rtx
                 vkCmdClearColorImage(
                     commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &nothing, 1, &whole);
 
-                image->transition(commands, Use::sClearWrite, Use::sComputeWrite);
+                image->transition(commands, Use::sClearWrite, Use::sAnyGeneral);
             }
         });
     }
@@ -205,20 +205,22 @@ namespace Rtx
         const std::size_t written = writtenAt(frame);
 
         // Discarded, because every texel of it is written before any is read; the other half of
-        // the pair is this frame's history and survives, one loop down.
+        // the pair is this frame's history and survives, one loop down. The point pair, the lamps
+        // and the column images are written by the two launches, the integrated ones by the
+        // dispatch after them.
+        constexpr ImageUse discarded{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT };
         Barriers barriers(commands);
-        for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mAir, &mAirSunward, &mSlice,
-                 &mSliceSunward, &mColumnDepth, &mColumnMoons })
-            barriers.add(
-                image->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                              VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                    Use::sComputeWrite));
+        for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mColumnDepth, &mColumnMoons })
+            barriers.add(image->describeTransition(discarded, Use::sTraceWrite));
+        for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
+            barriers.add(image->describeTransition(discarded, Use::sComputeWrite));
 
         // From `GENERAL` and not from undefined, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand
         // this frame a volume of nothing to average against.
         for (const Image* image : { &mScatter[1 - written], &mSunward[1 - written] })
-            barriers.add(image->describeTransition(Use::sAnyGeneral, Use::sComputeSample));
+            barriers.add(image->describeTransition(Use::sAnyGeneral, Use::sTraceSample));
 
         barriers.flush();
     }
@@ -227,7 +229,7 @@ namespace Rtx
     {
         Barriers barriers(commands);
         for (const Image* image : { &mColumnDepth, &mColumnMoons })
-            barriers.add(image->describeTransition(Use::sComputeWrite, Use::sComputeRead));
+            barriers.add(image->describeTransition(Use::sTraceWrite, Use::sTraceRead));
 
         barriers.flush();
     }
@@ -241,7 +243,7 @@ namespace Rtx
         // of these at a point (`puffLight`).
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
-            barriers.add(image->describeTransition(Use::sComputeWrite,
+            barriers.add(image->describeTransition(Use::sTraceWrite,
                 ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
                     VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
@@ -259,8 +261,8 @@ namespace Rtx
                     VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
 
         // The column depth the trace reads beside them, which `depthTaken` ordered only against the
-        // two compute passes between.
-        barriers.add(mColumnDepth.describeTransition(Use::sComputeWrite,
+        // launch and the dispatch between.
+        barriers.add(mColumnDepth.describeTransition(Use::sTraceWrite,
             ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT }));

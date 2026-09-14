@@ -401,7 +401,7 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // one ray Shader Execution Reordering's sources point at is this one, and sorting for it was
     // measured before the trace was split: 20 percent slower out of doors and 30 in a room, because
     // a bounce indoors is short and lands on the same few surfaces, so there is no coherence left to
-    // recover. `.notes/rtx/gpu-performance.md` holds every reading since.
+    // recover. `Requirements::mInvocationReorder` holds every reading since.
     const Surface hit
         = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, solidMask(frame.mRayMask));
 

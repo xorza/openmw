@@ -61,9 +61,9 @@ set(RTX_SHADERS
     shaders/bloomup.comp
     shaders/composite.comp
     shaders/exposure.comp
-    shaders/fogdepth.comp
+    shaders/fogdepth.rgen
     shaders/fogintegrate.comp
-    shaders/fogscatter.comp
+    shaders/fogscatter.rgen
     shaders/gui.frag
     shaders/gui.vert
     shaders/histogram.comp

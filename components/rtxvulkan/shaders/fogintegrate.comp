@@ -20,7 +20,7 @@
 // surface stands at any depth reads one fetch and never a sum. What would make a thread to a
 // column the wrong shape is everything else a march does: the field, the walk of the light grid
 // and three shadow rays, all of them per froxel and none of them needing an order.
-// `fogscatter.comp` has those, one thread to each.
+// `fogscatter.rgen` has those, one thread to each.
 //
 // **Each slice is a sample and the air between two is the line between them**, which `FogSlice`
 // says why. So a slice is stepped through in two halves, each a straight piece of that line, and
@@ -72,12 +72,12 @@ ivec2 fogTentAt(ivec2 column, int i, ivec2 grid)
 /// or it is not — so a froxel on a bank's edge holds one draw of a coin averaged over ten frames,
 /// and the ten frames leave a third of the coin. Painted at eight pixels that is a blotch on every
 /// bank's edge, which the tent takes to a third of itself. This is the spatial half of what every
-/// shipping froxel volumetric does about a draw, and the temporal half is `fogscatter.comp`'s
+/// shipping froxel volumetric does about a draw, and the temporal half is `fogscatter.rgen`'s
 /// history. What the lamps deliver is an integral, carries no draw and is read plain.
 ///
 /// **Only the neighbours that hold air at this slice**, which is what makes this nine fetches and
 /// not four corner taps of the sampler. A column whose surface stands short of the slice holds
-/// nothing of the air there — `fogdepth.comp` says what it holds — and averaged in it darkened the
+/// nothing of the air there — `fogdepth.rgen` says what it holds — and averaged in it darkened the
 /// seeing and thinned the air in every froxel beside a surface: the lit air over a lamp-lit floor
 /// dimmed by the floor's own shadow of a froxel that was never in the air. The weights are
 /// renormalised over what is left, and a froxel with nothing around it in the air keeps its own.
@@ -133,7 +133,7 @@ void main()
     if (outsideOf(uvec2(column), uvec2(grid.xy)))
         return;
 
-    // **Where this column's view of the air ends, and its neighbours'** — `fogdepth.comp` says why
+    // **Where this column's view of the air ends, and its neighbours'** — `fogdepth.rgen` says why
     // it matters. Read once for the column: the tent asks for all nine at every slice.
     //
     // **The one array here that stays one.** It holds nine measured depths rather than a table two
@@ -166,7 +166,7 @@ void main()
         // the sampler is flat past the last texel of an axis.
         //
         // **And only that half.** The slices past the surface are integrated as they stand, out of
-        // whatever they held when this column's ray missed the surface — `fogscatter.comp` keeps
+        // whatever they held when this column's ray missed the surface — `fogscatter.rgen` keeps
         // that — because a pixel at the surface's edge that sees past it reads them. Carrying the
         // last slice in the air over all of them instead drew that slice around every silhouette:
         // the lit air beside a lantern, laid over the whole of the fog behind the wall it hangs on,

@@ -177,8 +177,7 @@ namespace Rtx
             barriers.add(
                 image.describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                                              VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                    ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT }));
+                    Use::sTraceWrite));
 
         barriers.flush();
     }
@@ -189,9 +188,7 @@ namespace Rtx
         // of the frame. Sampled as well as loaded, because DLSS samples every guide it is handed.
         Barriers barriers(commands);
         for (const Image& image : mChannels)
-            barriers.add(image.describeTransition(
-                ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
+            barriers.add(image.describeTransition(Use::sTraceWrite,
                 ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
 

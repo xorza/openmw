@@ -150,8 +150,8 @@ namespace Rtx
         , mCountCrossings(countCrossings ? 1u : 0u)
         , mChannelLayout(channelLayout.get())
         , mVolumeLayout(volumeLayout.get())
-        , mDepthModule(shaderDirectory / "fogdepth.comp.spv")
-        , mScatterModule(shaderDirectory / "fogscatter.comp.spv")
+        , mDepthModule(shaderDirectory / "fogdepth.rgen.spv")
+        , mScatterModule(shaderDirectory / "fogscatter.rgen.spv")
         , mIntegrateModule(shaderDirectory / "fogintegrate.comp.spv")
         , mRaygenModule(shaderDirectory / "visibility.rgen.spv")
         , mAnyHitModule(shaderDirectory / "visibility.rahit.spv")
@@ -168,8 +168,8 @@ namespace Rtx
         // No tuple and no specialization, because it reads what the pass before it wrote and
         // has no opinion about the sky. Made here rather than among the table below so that the
         // table stays one entry per tuple.
-        mDepthPipeline = std::make_unique<ComputePipeline>(
-            mDevice, sBindings, 0, laterSets(textureLayout), mDepthModule, "fog depth");
+        mDepthPipeline = std::make_unique<TracePipeline>(
+            mDevice, sBindings, laterSets(textureLayout), TraceShaders{ .mRaygen = mDepthModule }, "fog depth");
         mIntegratePipeline = std::make_unique<ComputePipeline>(
             mDevice, sBindings, 0, laterSets(textureLayout), mIntegrateModule, "fog integrate");
 
@@ -211,8 +211,9 @@ namespace Rtx
                     variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, volume ? 0u : mCountCrossings };
 
                 if (volume)
-                    mScatterPipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
-                        laterSets(textureLayout), mScatterModule, variant.describe("fog scatter"), specialization);
+                    mScatterPipelines[variant.index()]
+                        = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+                            TraceShaders{ .mRaygen = mScatterModule }, variant.describe("fog scatter"), specialization);
                 else
                     mPipelines[variant.index()]
                         = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
@@ -236,9 +237,9 @@ namespace Rtx
         return *held;
     }
 
-    const ComputePipeline& VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
+    const TracePipeline& VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
     {
-        const std::unique_ptr<ComputePipeline>& held = mScatterPipelines[variant.index()];
+        const std::unique_ptr<TracePipeline>& held = mScatterPipelines[variant.index()];
         assert(held != nullptr && "a tuple `compileEvery` made no scatter kernel for");
 
         return *held;
@@ -464,7 +465,7 @@ namespace Rtx
 
         inputs.mFogVolume->begin(commands, constants.mFrame);
 
-        const ComputePipeline& scatter = scatterPipelineFor(variant);
+        const TracePipeline& scatter = scatterPipelineFor(variant);
 
         // Every column the image has and not every column the camera needs. A traced view is
         // drawn into a volume grown to the largest one asked for, and the pixel at its edge
@@ -477,24 +478,21 @@ namespace Rtx
 
         // Where each column's ray stops, before anything is drawn along it. One ray a
         // column, and the froxels of the column keep their draws short of the answer.
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getHandle());
-        pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getLayout(), inputs, buffer, hitCount,
-            constants.mFrame);
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, mDepthPipeline->getHandle());
+        pushInputs(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, mDepthPipeline->getLayout(), inputs, buffer,
+            hitCount, constants.mFrame);
 
-        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
-            groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
+        mDepthPipeline->traceRays(commands, columns, rows);
 
         inputs.mFogVolume->depthTaken(commands);
 
-        // The set stays pushed across all three dispatches. Every pipeline here is
-        // addressed through the same layout at the same bind point, so what was pushed for the
-        // first is still bound for the others — and pushing set zero again would be six
-        // descriptor writes for a pass that reads a handful of images out of another set.
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, scatter.getHandle());
+        // The set stays pushed across all three launches. Every one of them is addressed through
+        // the same layout at the same bind point, so what was pushed for the first is still bound
+        // for the others — and pushing set zero again would be six descriptor writes for a pass
+        // that reads a handful of images out of another set.
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, scatter.getHandle());
 
-        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
-            groupsFor(rows, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
-            groupsFor(Shaders::FOG_VOLUME_SLICES, Shaders::FOG_FROXEL_WORKGROUP_DEEP));
+        scatter.traceRays(commands, columns, rows, Shaders::FOG_VOLUME_SLICES);
 
         closeZone(timer, commands);
 
@@ -502,7 +500,11 @@ namespace Rtx
 
         openZone(timer, commands, "column");
 
+        // The integrate pass is a dispatch and reads what the launches wrote, so it is handed the
+        // set again at its own bind point.
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getHandle());
+        pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getLayout(), inputs, buffer, hitCount,
+            constants.mFrame);
 
         vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
             groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
@@ -515,8 +517,6 @@ namespace Rtx
 
         const TracePipeline& pipeline = pipelineFor(variant);
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getHandle());
-        pushInputs(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getLayout(), inputs, buffer, hitCount,
-            constants.mFrame);
 
         // One invocation a pixel and no tail, where the dispatch it replaces covered the picture
         // in whole workgroups and had every one of them test whether it had run off the edge.

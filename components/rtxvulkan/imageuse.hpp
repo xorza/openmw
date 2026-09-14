@@ -30,6 +30,13 @@ namespace Rtx
         inline constexpr ImageUse sComputeReadOrSample{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT };
 
+        inline constexpr ImageUse sTraceWrite{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT };
+        inline constexpr ImageUse sTraceRead{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            VK_ACCESS_2_SHADER_STORAGE_READ_BIT };
+        inline constexpr ImageUse sTraceSample{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT };
+
         /// Read by the trace and by the passes after it alike.
         inline constexpr ImageUse sShaderRead{ VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,

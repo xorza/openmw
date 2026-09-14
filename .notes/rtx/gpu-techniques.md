@@ -1,6 +1,7 @@
 # What the field says about a ray-traced frame, and what this fork does
 
-Read in September 2026, against the measurements in `.notes/rtx/gpu-performance.md`. Every section
+Read in September 2026, against the measurements in `.notes/rtx/gpu-performance.md` — since removed,
+and `git show 8918103993^:.notes/rtx/gpu-performance.md` is where it stands. Every section
 says what the sources recommend, what this tree already does, and what is left.
 
 **A published figure is not a measurement of this renderer.** The numbers other people quote are
@@ -12,8 +13,7 @@ compaction, the skybox, the two payloads and the shadow ray's early exit are all
 them with a measurement written beside them that this reading only re-confirms. Two things are
 open: **there is one queue**, and **a shipping title compacts the structures this tree decided not
 to**. Two of the field's headline techniques were measured here and removed — Shader Execution
-Reordering and opacity micromaps — and Findings 3 and 4 of `.notes/rtx/gpu-performance.md` hold
-those readings.
+Reordering and opacity micromaps — and Findings 3 and 4 of that note hold those readings.
 
 ## Acceleration structures — this fork already follows the guidance
 
@@ -27,7 +27,7 @@ not. The sky is not in the scene at all — a ray that reaches it has missed eve
 renderer draws its own.
 
 **So the one item on the list this fork had open is closed by the sources rather than by a
-measurement.** `gpu-performance.md` asked whether a top-level refit would beat the 0.24 ms rebuild.
+measurement.** That note asked whether a top-level refit would beat the 0.24 ms rebuild.
 The guidance says to rebuild it every frame whatever the scene did, "making the TLAS as high quality
 as possible regardless of the movement occurring in the scene". That item comes off the list.
 

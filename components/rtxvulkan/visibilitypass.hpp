@@ -156,10 +156,10 @@ namespace Rtx
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;
 
-        /// The same, for the pass that fills the fog volume's froxels. Every tuple has one, a
+        /// The same, for the launch that fills the fog volume's froxels. Every tuple has one, a
         /// room's included: the volume walks the lamps once per froxel where the closed form would
         /// be a lamp reservoir and a shadow ray per pixel.
-        const ComputePipeline& scatterPipelineFor(VisibilityVariant variant) const;
+        const TracePipeline& scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
 
@@ -198,12 +198,14 @@ namespace Rtx
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;
 
-        /// The same table for the pass that fills the froxels.
-        std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mScatterPipelines;
+        /// The same table for the launch that fills the froxels. A launch and not a dispatch, and
+        /// so is the column pass under it: `fogscatter.rgen` says what a ray query answers inside a
+        /// dispatch when another process shares the card.
+        std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mScatterPipelines;
 
-        /// And one for the pass that finds where each column's ray stops, which no tuple changes:
-        /// it traces and shades nothing.
-        std::unique_ptr<ComputePipeline> mDepthPipeline;
+        /// And one for the launch that finds where each column's ray stops, which no tuple
+        /// changes: it traces and shades nothing.
+        std::unique_ptr<TracePipeline> mDepthPipeline;
 
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.

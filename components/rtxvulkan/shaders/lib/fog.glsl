@@ -303,7 +303,7 @@ struct FogSources
     /// The one the draw landed on, so a ray can be aimed at it and its slant through the fog taken.
     ///
     /// **A `SkySource` and not an index into `frame.mMoons`.** `moonsInAir` read the pair at a
-    /// subscript the draw decided and `fogscatter.comp` added the same subscript to
+    /// subscript the draw decided and `fogscatter.rgen` added the same subscript to
     /// `SKY_SOURCE_MASSER` to ask `skyVisible` — two places deriving one thing from a number, where
     /// the thing itself fits here.
     SkySource mDrawnSky;
@@ -353,7 +353,7 @@ vec3 moonsInAir(float extinction, FogSources sources, float lunar)
 
 /// **The column's half of `FogSources`.** A directional source holds its angle to a straight ray,
 /// so this is one evaluation for the whole ray — and every froxel of a column samples the column's
-/// ray, so it is one evaluation for the whole column. `fogdepth.comp` works it out once and stores
+/// ray, so it is one evaluation for the whole column. `fogdepth.rgen` works it out once and stores
 /// it a layer a moon; the scatter pass reads two texels where it evaluated two Mie phases.
 ///
 /// **The sun is not one of them.** Its irradiance and its phase are functions of the direction
@@ -401,8 +401,8 @@ Ray fogColumnRayAt(uvec2 column, vec2 inside)
 
 /// The ray one column of the fog volume samples its air along this frame.
 ///
-/// **Stated once, because two passes have to agree about it exactly.** `fogdepth.comp` traces it to
-/// find where the column's view of the air ends, and `fogscatter.comp` draws every froxel's sample
+/// **Stated once, because two passes have to agree about it exactly.** `fogdepth.rgen` traces it to
+/// find where the column's view of the air ends, and `fogscatter.rgen` draws every froxel's sample
 /// along it — so a froxel's "short of the surface" is measured along the ray the surface was found
 /// on.
 ///
@@ -433,7 +433,7 @@ FogSlice fogSliceAt(vec2 across, float depth)
 /// What the weather's own air takes out of what is behind it, and what it puts in on the way.
 ///
 /// **Read out of `Rtx::FogVolume` rather than marched.** The field is the same one, the sources are
-/// the same and the arithmetic is the one `fogscatter.comp` carries — what changes is that a column
+/// the same and the arithmetic is the one `fogscatter.rgen` carries — what changes is that a column
 /// of the frustum answers for `FOG_VOLUME_SCALE` squared pixels instead of each of them paying for
 /// its own twenty-four steps and its own eight sun probes.
 ///
@@ -803,7 +803,7 @@ vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance)
 {
     // **Air only, and an eye under the surface has none of it in front of it.** Every ray from a
     // submerged eye ends at the water or short of it — `MASK_WATER` stops the trace and stops
-    // `fogdepth.comp`'s column alike — so none of the path is in air, and `waterColumn` has already
+    // `fogdepth.rgen`'s column alike — so none of the path is in air, and `waterColumn` has already
     // charged the whole of it for the water.
     //
     // **Here rather than in each element, because only one of the three could tell.**

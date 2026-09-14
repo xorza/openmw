@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_ray_query : require
+#extension GL_EXT_ray_tracing : require
 #extension GL_EXT_ray_tracing_position_fetch : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_nonuniform_qualifier : require
@@ -9,6 +10,16 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // What the weather's air holds at one froxel, and what lights it there.
+//
+// **A ray generation launch and not a compute dispatch, for one reason: what a ray query answers
+// is only repeatable inside one.** With another process on the card, the same froxel's sun and
+// ambient rays answered differently from run to run — a candidate counted twice or not at all,
+// where the scene, the constants, the history and every table were byte-identical — and only in
+// this pass and `fogdepth.rgen`, never in the trace's own shadow and ambient rays, which ask the
+// same questions through the same functions from inside a launch. The one thing that separates
+// the two is how the card interrupts them: a compute dispatch is preempted mid-instruction, a
+// traversal in flight with it, and a launch is not. `.notes/bench.txt` has the runs. The launch
+// is the froxel grid itself, so no invocation lands outside it.
 //
 // **A thread to a froxel, and every question asked where the answer is used.** This pass and
 // `fogintegrate.comp` are the two halves of one march: this one computes the properties of a
@@ -32,7 +43,7 @@
 // **And nothing behind a surface is a sample of the air.** A froxel that straddles the ground, or
 // the sea, holds air on one side of the surface and something else on the other, and what a pixel
 // wants of it is the air alone: the pixel's ray ends at the surface, and a ray that passes over the
-// surface passes through the air part. `fogdepth.comp` says what the alternative drew. So the
+// surface passes through the air part. `fogdepth.rgen` says what the alternative drew. So the
 // sample is drawn inside the air the froxel holds and not inside the froxel, the lamps are
 // integrated over that same stretch, and a froxel standing wholly past the surface keeps what it
 // had.
@@ -46,15 +57,11 @@
 #include "lib/fog.glsl"
 #include "lib/froxel.glsl"
 #include "lib/lights.glsl"
-#include "lib/pixels.glsl"
 #include "lib/random.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
 #include "lib/traversal.glsl"
 #include "lib/variants.glsl"
-
-layout(local_size_x = FOG_FROXEL_WORKGROUP_ACROSS, local_size_y = FOG_FROXEL_WORKGROUP_ACROSS,
-    local_size_z = FOG_FROXEL_WORKGROUP_DEEP) in;
 
 /// How far the blue-noise tile is turned between one slice and the next.
 ///
@@ -89,10 +96,7 @@ vec3 fogVolumeWas(vec3 fromEye)
 
 void main()
 {
-    const ivec3 grid = imageSize(fogScatterTarget);
-    const ivec3 froxel = ivec3(gl_GlobalInvocationID);
-    if (outsideOf(uvec3(froxel), uvec3(grid)))
-        return;
+    const ivec3 froxel = ivec3(gl_LaunchIDEXT);
 
     const ivec2 column = froxel.xy;
     const uint slice = uint(froxel.z);
@@ -127,7 +131,7 @@ void main()
     const float behind = froxelNear(slice);
     const float ahead = froxelFar(slice);
 
-    // **Where this column's view of the air ends**, which `fogdepth.comp` traced along this same
+    // **Where this column's view of the air ends**, which `fogdepth.rgen` traced along this same
     // ray, and so where this froxel's air ends: at its own far edge, or at the surface if that
     // stands inside it. A froxel that starts past the surface holds no air at all.
     const float surface = imageLoad(fogColumnDepth, column).x;

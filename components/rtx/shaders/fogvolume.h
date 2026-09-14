@@ -90,12 +90,12 @@ namespace Rtx::Shaders
     const uint BIND_FOG_COLUMN_DEPTH = 16;
 
     /// What each moon puts into the air along each column's ray, before its slant through the fog:
-    /// one layer a moon, in `MoonDisc` order. `fogdepth.comp` writes it once a column and the
+    /// one layer a moon, in `MoonDisc` order. `fogdepth.rgen` writes it once a column and the
     /// scatter pass reads it once a froxel, which is the phase function evaluated once where it was
     /// evaluated sixty-four times.
     ///
     /// **The sun is not one of them.** Its irradiance and its phase are functions of the direction
-    /// alone, and `fogscatter.comp` says why the trace puts both back at the pixel's own angle
+    /// alone, and `fogscatter.rgen` says why the trace puts both back at the pixel's own angle
     /// rather than the column's — so a third layer held the sun's term and no pass ever read it.
     const uint BIND_FOG_COLUMN_MOONS = 17;
 

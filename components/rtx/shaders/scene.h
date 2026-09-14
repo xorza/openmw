@@ -185,16 +185,6 @@ namespace Rtx::Shaders
     /// per pixel; this spends 64 per sixty-four pixels.
     const uint FOG_VOLUME_SLICES = 64u;
 
-    /// How many froxels one workgroup of the scatter pass covers, across the screen and in depth.
-    ///
-    /// **Two hundred and fifty-six threads, laid out to keep what they read together.** Froxels
-    /// beside each other read one block of the fog field and walk the same cells of the light grid,
-    /// and froxels behind each other walk the cells of one ray — so both axes are coherent and the
-    /// only thing the shape decides is which is more so. Eight by eight keeps the screen-space
-    /// block square, which is what the field's read and the reprojection both want.
-    const uint FOG_FROXEL_WORKGROUP_ACROSS = 8u;
-    const uint FOG_FROXEL_WORKGROUP_DEEP = 4u;
-
     /// How many columns one workgroup of the integrate pass covers, on each axis.
     ///
     /// **A thread to a column there, and that is not a shape to be improved.** Front to back is the

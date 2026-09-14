@@ -188,8 +188,9 @@ namespace Rtx
             described->deviceAddress = described->size > 0 ? base + described->deviceAddress : 0;
     }
 
-    void TracePipeline::traceRays(VkCommandBuffer commands, std::uint32_t width, std::uint32_t height) const
+    void TracePipeline::traceRays(
+        VkCommandBuffer commands, std::uint32_t width, std::uint32_t height, std::uint32_t depth) const
     {
-        mDevice.getFunctions().mCmdTraceRays(commands, &mRaygen, &mMiss, &mHit, &mCallable, width, height, 1);
+        mDevice.getFunctions().mCmdTraceRays(commands, &mRaygen, &mMiss, &mHit, &mCallable, width, height, depth);
     }
 }

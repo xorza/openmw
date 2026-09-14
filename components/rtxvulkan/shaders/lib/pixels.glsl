@@ -5,7 +5,7 @@
 //
 // **Nothing is bound here on purpose.** A standalone pass reaches this file without reaching the
 // descriptor set, which is what lets `wavecompose.comp` and `histogram.comp` read it beside
-// `fogscatter.comp`.
+// `fogintegrate.comp`.
 
 /// Whether this invocation fell off the edge of what the dispatch covers.
 ///
@@ -16,12 +16,6 @@
 bool outsideOf(uvec2 pixel, uvec2 extent)
 {
     return any(greaterThanEqual(pixel, extent));
-}
-
-/// The same, for the one dispatch whose grid is a volume.
-bool outsideOf(uvec3 froxel, uvec3 extent)
-{
-    return any(greaterThanEqual(froxel, extent));
 }
 
 #endif

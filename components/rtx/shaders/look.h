@@ -778,7 +778,8 @@ namespace Rtx::Shaders
     /// **Four, and the beam's body does not depend on it.** The march is a ratio against the same
     /// steps without the lens, so the step count cancels out of everything but the pattern's own
     /// quadrature — and each step is a shadow ray, on the two rays every water pixel already traces.
-    /// `.notes/rtx/light-model-plan.md` is where the count was measured.
+    /// Measured against eight at the shore: 0.23 ms off the trace, twelve per cent of it, for a
+    /// reference that moved by a hundredth of a per cent of its mean.
     const uint WATER_SHAFT_STEPS = 4u;
 
     /// How far apart the rain's impacts are, in world units: a lattice with one splash a cell.

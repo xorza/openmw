@@ -79,13 +79,19 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
     PuffLayer layer = noPuffs();
     covering = 0u;
 
-    vec3 covered = vec3(0.0);
-    vec3 glowed = vec3(0.0);
-    float coverage = 0.0;
-    float coveredAt = 0.0;
+    // **In `sharePart`'s units, because the shells arrive in the card's order** — `SHARE_UNIT` says
+    // what a float sum taken in that order did to the frame hash. The distance is summed as a share
+    // of `limit`, which is the one bound a crossing has.
+    uvec3 covered = uvec3(0u);
+    uvec3 glowed = uvec3(0u);
+    uint coverage = 0u;
+    uint coveredAt = 0u;
+    uint blocked = 0u;
 
-    // The plane of the crossing that hid the most, which is the one side the layer is given.
+    // The plane of the crossing that hid the most, which is the one side the layer is given, and
+    // how far off it was.
     vec3 coveringNormal = vec3(0.0, 0.0, 1.0);
+    float coveringAt = limit;
 
     rayQueryEXT query;
     rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_MEDIUM, origin, 0.0, direction, limit);
@@ -130,33 +136,41 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
 
         const float alpha = mediumCrossing(painted, area > 0.0 ? abs(dot(plane, direction)) : 1.0);
 
-        covered += texel.rgb * material.mDiffuseColour * alpha;
+        covered = addShare(covered, sharePart(texel.rgb * material.mDiffuseColour * alpha));
 
         // **The material's own glow, summed with the light and not beside it**, which is where the
         // original engine puts it: a surface carrying one glows *with its texture in it*. An
         // emissive *map* on a medium is not read — no cloud in the game carries one, and a fetch a
         // crossing for it would be paid by every shell of every one that does not.
-        glowed += material.mEmissiveColour * alpha;
+        glowed = addShare(glowed, sharePart(material.mEmissiveColour * alpha));
 
-        coverage += alpha;
-        coveredAt += at * alpha;
-        layer.mTransmittance *= 1.0 - alpha;
+        coverage = addShare(coverage, sharePart(alpha));
+        coveredAt = addShare(coveredAt, sharePart(at / limit * alpha));
+        blocked = addShare(blocked, blockedBy(alpha));
 
         // **By what it hid and not by what it was lit by**, which is `PuffLayer::mCovering`'s own
-        // rule: an unlit shell decides the whole of what the pixel shows.
-        if (alpha > layer.mCovering.mWeight)
+        // rule: an unlit shell decides the whole of what the pixel shows. **A tie goes to the nearer
+        // shell and then to the lower instance**, because two shells hiding the same share arrive
+        // in the card's order, and the first of them would be the scheduler's choice.
+        const bool tied = alpha == layer.mCovering.mWeight && alpha > 0.0
+            && (at < coveringAt || (at == coveringAt && instanceIndex < covering));
+        if (alpha > layer.mCovering.mWeight || tied)
         {
             layer.mCovering = PuffClaim(direction * at, vec3(0.0), alpha);
             coveringNormal = plane;
+            coveringAt = at;
             covering = instanceIndex;
         }
     }
 
-    if (!(coverage > 0.0))
+    if (coverage == 0u)
         return layer;
 
-    const vec3 albedo = covered / coverage;
-    const float seen = coveredAt / coverage;
+    layer.mTransmittance = throughBlocked(blocked);
+
+    // The unit cancels in a ratio of two sums, so neither is scaled back.
+    const vec3 albedo = vec3(covered) / float(coverage);
+    const float seen = float(coveredAt) / float(coverage) * limit;
 
     // **The layer taken exactly and the band taken once**, which is what the geometry behind this
     // shell is charged — so a cloud and the mountain behind it fade at one rate. `fogColumn` states
@@ -174,7 +188,7 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
     // A cloud is smoke, and is lit as a ball of it.
     const vec3 light = puffLight(pixel, direction, seen, ballPuff(normal, smokeThrow(direction)));
 
-    layer.mColour = albedo * (light + glowed / coverage) * reaching;
+    layer.mColour = albedo * (light + vec3(glowed) / float(coverage)) * reaching;
     layer.mCoveredAt = seen;
 
     return layer;

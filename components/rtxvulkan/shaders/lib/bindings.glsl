@@ -440,13 +440,13 @@ layout(set = 3, binding = BIND_FOG_AIR_SUNWARD_TARGET, FOG_SUNWARD_FORMAT) unifo
 layout(set = 3, binding = BIND_FOG_SLICE_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceTarget;
 layout(set = 3, binding = BIND_FOG_SLICE_SUNWARD_TARGET, FOG_SUNWARD_FORMAT) uniform writeonly image3D fogSliceSunwardTarget;
 
-/// How far each column's ray runs before it meets a surface, which `fogdepth.comp` writes and the
+/// How far each column's ray runs before it meets a surface, which `fogdepth.rgen` writes and the
 /// scatter pass reads. **One storage binding for both**, because neither samples it: a column reads
 /// its own texel and nothing between texels.
 layout(set = 3, binding = BIND_FOG_COLUMN_DEPTH, FOG_DEPTH_FORMAT) uniform image2D fogColumnDepth;
 
 /// What each moon puts into the air along each column's ray, one layer a moon, which
-/// `fogdepth.comp` writes and the scatter pass reads. `FogVolume::mColumnMoons` says why it is the
+/// `fogdepth.rgen` writes and the scatter pass reads. `FogVolume::mColumnMoons` says why it is the
 /// column's and not the froxel's.
 layout(set = 3, binding = BIND_FOG_COLUMN_MOONS, FOG_MOONS_FORMAT) uniform image3D fogColumnMoons;
 

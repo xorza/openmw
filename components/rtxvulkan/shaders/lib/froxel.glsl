@@ -5,7 +5,7 @@
 
 // Where the fog volume's slices stand, which four shaders have to agree about exactly.
 //
-// **Its own file because three of the four want nothing else from the air.** `fogscatter.comp`
+// **Its own file because three of the four want nothing else from the air.** `fogscatter.rgen`
 // fills a froxel, `fogintegrate.comp` carries the transmittance down a column and `fogVolumeAlong`
 // resolves a distance to a slice — and a shader that only asks where a slice starts should not have
 // to pull in a phase function, a light grid and a ray query to find out.

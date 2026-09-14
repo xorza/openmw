@@ -21,7 +21,10 @@ namespace Rtx
                               .indexType = VK_INDEX_TYPE_UINT32,
                               .indexData = { .deviceAddress = indices },
                           } },
-            .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+            // **No duplicate candidate, or a see-through surface is counted twice.** The spec lets a
+            // traversal report one triangle more than once unless the geometry says otherwise, and
+            // `candidateStops` sums every report it gets.
+            .flags = VK_GEOMETRY_OPAQUE_BIT_KHR | VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR,
         };
     }
 
