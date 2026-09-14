@@ -397,6 +397,14 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     if (skyLights() && surface.mGround && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
         return bounceEscape(surface.mPosition, towards, weight);
 
+    // Drawn last, so the side, the direction and the escape are the numbers they were. One path
+    // at a rate of one: no draw reaches it, and the weight is divided by one.
+    uint traced = randomSeed(pixelKey(pixel) + SEED_BOUNCE_TRACED);
+    if (randomNext(traced) >= frame.mBounceRate)
+        return vec3(0.0);
+
+    weight /= frame.mBounceRate;
+
     // **An inline query inside the closest-hit shader, and not a second launch-side trace.** The
     // one ray Shader Execution Reordering's sources point at is this one, and sorting for it was
     // measured before the trace was split: 20 percent slower out of doors and 30 in a room, because

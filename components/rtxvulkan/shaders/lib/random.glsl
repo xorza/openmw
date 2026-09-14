@@ -85,6 +85,14 @@ uint paneAmbientSeed(uint layer)
     return SEED_AMBIENT_PANE + layer;
 }
 
+/// And one for whether the eye's bounce is traced at all this frame.
+///
+/// **After the two blocks, so that adding it moved no sequence already drawn.** Offset from the
+/// pixel's key rather than drawn out of the bounce's own pair or the sheet's side, for the reason
+/// `SEED_INDIRECT_LIGHT` is: a draw taken as a step of another sequence moves everything that
+/// sequence decides.
+const uint SEED_BOUNCE_TRACED = SEED_AMBIENT_PANE + PEEL_LAYERS;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

@@ -5,6 +5,7 @@
 #include <osg/Matrixf>
 
 #include "sceneextractor.hpp"
+#include "shaders/look.h"
 #include "shaders/scene.h"
 
 namespace Rtx
@@ -69,6 +70,7 @@ namespace Rtx
         constants.mSunDiscColour = light.mSun.mDiscColour;
         constants.mAmbient = light.mAmbient;
         constants.mAmbientFromSky = reading.mOutdoors ? 1.0f : 0.0f;
+        constants.mBounceRate = Shaders::BOUNCE_RATE;
 
         constants.mSkyHorizon = day.mSkyHorizon;
         constants.mSkyZenith = day.mSkyZenith;

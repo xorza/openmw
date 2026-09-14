@@ -170,6 +170,17 @@ namespace Rtx::Shaders
         /// cell part open to the sky would want.
         float mAmbientFromSky;
 
+        /// What share of the eye's hits trace their bounce: `BOUNCE_RATE`, or every one of them.
+        ///
+        /// **In the block and not read off `look.h` beside its two siblings, because no scene dodges
+        /// it.** The two rates at the hit never reach a figure a test asserts, since a test's bounce
+        /// escapes to the sky and an escape is not a hit. This one rates the escape too, so under it
+        /// a pixel's indirect term is nought or twice itself whatever the scene holds, and a test
+        /// that reads one pixel reads a coin. `Rtx::describeWorld` writes the rate on every frame a
+        /// world draws, which is a frame the reconstruction follows; a frame assembled by hand
+        /// traces every bounce and reads exactly.
+        float mBounceRate;
+
         /// What the sky lights with over and above those two, and is not drawn with.
         ///
         /// **The one place where what the sky sends and what the sky shows are different things.**
@@ -400,17 +411,17 @@ namespace Rtx::Shaders
         ///
         /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
         /// pad the middle of a struct two languages have to agree on, and the offset asserted below
-        /// pins where it landed. Everything above it is four-aligned and sums to a multiple of
-        /// eight, so nothing is padded; a field added above has to keep it so, or take the four
-        /// bytes a pad would leave.
+        /// pins where it landed. Everything above it is four-aligned and sums to four short of a
+        /// multiple of eight, so four bytes are padded in front of it, on both sides alike; the
+        /// next four-byte field added above takes them.
         GpuTables mTables;
     };
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #ifdef RTX_HOST
-    static_assert(offsetof(VisibilityConstants, mTables) == 1008, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1128, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1016, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1136, "VisibilityConstants must be scalar-packed on every side");
 
 #endif
 

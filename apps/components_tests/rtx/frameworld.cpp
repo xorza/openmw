@@ -12,6 +12,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/skybuilder.hpp>
@@ -201,6 +202,10 @@ namespace Rtx
             EXPECT_EQ(constants.mFogUniform, read.mDaylight.mFog.mUniform) << "the game wrote this nowhere";
             EXPECT_EQ(constants.mFogLift, read.mDaylight.mFog.mLift);
             EXPECT_EQ(constants.mFogEdge, read.mDaylight.mFog.mEdge);
+
+            // The one number a world decides that no reading carries: a world's frame is the one
+            // the reconstruction follows, so it is the one that rates its bounces.
+            EXPECT_EQ(constants.mBounceRate, Shaders::BOUNCE_RATE);
 
             // **The wind blows the way the deck drifts**, because there is one wind over a
             // landscape. The deck holds the cosine and sine of its turn from north, so a storm

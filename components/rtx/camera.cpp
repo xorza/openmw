@@ -71,6 +71,10 @@ namespace Rtx
                 .mNear = near,
                 .mFar = far,
 
+                // Every bounce, until a world says the reconstruction follows the frame —
+                // `VisibilityConstants::mBounceRate` says why a frame built by hand keeps them all.
+                .mBounceRate = 1.0f,
+
                 // Not zero, which would be sea level: a world with no water has to answer "how deep
                 // is this point" with never, and only an infinity does that without a second
                 // question.

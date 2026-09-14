@@ -319,6 +319,28 @@ namespace Rtx::Shaders
     /// view renders bit-identically under this, which `verify` says.
     const float INDIRECT_LIGHT_RATE = 0.5f;
 
+    /// What share of the eye's hits trace their bounce at all, the rest paying by weight.
+    ///
+    /// **The bounce is the one ray whose hit is shaded**, so what a skipped lane drops is the
+    /// traversal and the whole of `shadeSurface` behind it: the lamp walk, the sun ray and the
+    /// ambient ray. That is why it is worth more than the two rates beside it, which each drop one
+    /// ray — and why it is not out of doors only, as they are: a room's lamp walk is the largest
+    /// part of what it drops. Release, three alternated rounds, the `trace` zone: 1.97–2.05 ms to
+    /// 1.77–1.82 at the ship and 1.45–1.47 to 1.20–1.23 in the guild; at 4K performance 4.33–4.36
+    /// to 3.83–3.84 and 3.38–3.41 to 2.76. Four to six per cent of the frame.
+    ///
+    /// **Drawn and divided, so the estimate is unbiased by construction.** What it hands the filter
+    /// is the indirect term at nought or twice itself, which is the variance Ray Reconstruction is
+    /// built for and the reason it is judged on a moving camera: a denoised still moves by under
+    /// half a part in 255 on average, at either place. A third is untested, and would hand the
+    /// filter the term at three times itself.
+    ///
+    /// **Drawn after the escape and not before it**, so a pixel `BOUNCE_REACH` handed the sky keeps
+    /// the sky: that pixel paid for nothing, and rating it would add noise and save no time.
+    ///
+    /// Reaches the shader as `VisibilityConstants::mBounceRate` and not by name, which says why.
+    const float BOUNCE_RATE = 0.5f;
+
     /// How fast a bounce ray's cone widens, against a primary ray's.
     ///
     /// A diffuse bounce spreads over the whole hemisphere, and what the indirect term wants from a
