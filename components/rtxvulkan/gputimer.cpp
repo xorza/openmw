@@ -8,29 +8,15 @@
 
 namespace Rtx
 {
-    namespace
-    {
-        /// How many of the queue family's timestamp bits are meaningful, which is zero where the
-        /// queue cannot timestamp at all.
-        std::uint32_t validBits(VkPhysicalDevice device, std::uint32_t family)
-        {
-            std::uint32_t count = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-
-            std::vector<VkQueueFamilyProperties> families(count);
-            vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
-
-            return family < count ? families[family].timestampValidBits : 0;
-        }
-    }
-
     GpuTimer::GpuTimer(const Device& device)
         : mDevice(device)
     {
         const VkPhysicalDeviceLimits& limits
             = device.getPhysicalDevice().getProperties().mProperties2.properties.limits;
 
-        const std::uint32_t bits = validBits(device.getPhysicalDevice().getHandle(), device.getQueueFamily());
+        // How many of the queue's timestamp bits are meaningful, which is zero where the queue
+        // cannot timestamp at all — asked of the device once, when it was chosen.
+        const std::uint32_t bits = device.getPhysicalDevice().getTimestampBits();
 
         // A period of zero is the driver saying its clock does not advance, which no amount of
         // arithmetic recovers from.
@@ -50,9 +36,8 @@ namespace Rtx
             .pipelineStatistics = 0,
         };
 
-        checkVk(vkCreateQueryPool(device.getHandle(), &info, nullptr, mHandle.put(device.getHandle())),
-            "vkCreateQueryPool");
-        device.setName(VK_OBJECT_TYPE_QUERY_POOL, reinterpret_cast<std::uint64_t>(mHandle.get()), "frame timestamps");
+        mHandle = QueryPool::make(device.getHandle(), vkCreateQueryPool, info, "vkCreateQueryPool");
+        device.setName(mHandle.get(), "frame timestamps");
 
         mZones.reserve(sMaxGpuZones);
     }

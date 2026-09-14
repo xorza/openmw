@@ -43,7 +43,7 @@
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/upscale.hpp>
-#include <components/rtxvulkan/vulkanrenderer.hpp>
+#include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
@@ -286,7 +286,7 @@ namespace MWRender
         if (Settings::groundcover().mEnabled)
             throw std::runtime_error("groundcover is on, and the ray tracing renderer builds no quad tree to carry it");
 
-        mRenderer = std::make_unique<Rtx::VulkanRenderer>(options);
+        mRenderer = Rtx::createVulkanRenderer(options);
 
         Log(Debug::Info) << "Ray tracing on " << mRenderer->describeDevice();
 

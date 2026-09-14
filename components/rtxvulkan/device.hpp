@@ -18,6 +18,68 @@ namespace Rtx
     class PipelineCache;
     struct PipelineCacheSpec;
 
+    /// Which `VkObjectType` a handle is, so that `Device::setName` takes the handle and never a
+    /// type a caller could get wrong. Every handle this backend names is listed; one that is not is
+    /// a compile error rather than a name filed under the wrong kind. The handles are distinct
+    /// pointer types on the 64-bit targets this backend runs on, which is what lets them be told
+    /// apart at all.
+    template <class Handle>
+    struct ObjectTypeOf;
+
+    template <>
+    struct ObjectTypeOf<VkBuffer>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_BUFFER;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkImage>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_IMAGE;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkImageView>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_IMAGE_VIEW;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkSampler>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_SAMPLER;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkPipeline>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_PIPELINE;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkShaderModule>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_SHADER_MODULE;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkSemaphore>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_SEMAPHORE;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkQueryPool>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_QUERY_POOL;
+    };
+
+    template <>
+    struct ObjectTypeOf<VkAccelerationStructureKHR>
+    {
+        static constexpr VkObjectType value = VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR;
+    };
+
     /// Entry points that come from the required extensions rather than from core Vulkan, resolved
     /// and checked once at device creation, so a driver that advertises an extension it cannot
     /// dispatch fails at startup.
@@ -112,13 +174,14 @@ namespace Rtx
         /// Attaches a name to a Vulkan object so captures and validation messages name it. Compiled
         /// to nothing in release: an unreadable capture is a debugging session that does not
         /// happen, and a released build has no captures.
-        void setName([[maybe_unused]] VkObjectType type, [[maybe_unused]] std::uint64_t handle,
-            [[maybe_unused]] std::string_view name) const
+        template <class Handle>
+        void setName([[maybe_unused]] Handle handle, [[maybe_unused]] std::string_view name) const
         {
 #ifdef OPENMW_RTX_DEBUG_NAMES
             // Terminated here and nowhere else, so a release build constructs nothing at all — and a
             // caller may hand over a literal or a view into a path it is already holding.
-            setNameImpl(type, handle, std::string(name).c_str());
+            setNameImpl(
+                ObjectTypeOf<Handle>::value, reinterpret_cast<std::uint64_t>(handle), std::string(name).c_str());
 #endif
         }
 

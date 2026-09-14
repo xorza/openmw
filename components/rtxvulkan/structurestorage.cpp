@@ -9,6 +9,7 @@
 #include <components/rtx/error.hpp>
 
 #include "device.hpp"
+#include "memory.hpp"
 
 namespace Rtx
 {
@@ -17,7 +18,7 @@ namespace Rtx
         std::uint32_t unitsFor(VkDeviceSize bytes)
         {
             return static_cast<std::uint32_t>(
-                (bytes + StructureStorage::sAlignment - 1) / StructureStorage::sAlignment);
+                alignUp(bytes, StructureStorage::sAlignment) / StructureStorage::sAlignment);
         }
     }
 
@@ -30,45 +31,25 @@ namespace Rtx
     StructureRoom StructureStorage::take(const Device& device, VkDeviceSize bytes, VkDeviceSize least)
     {
         assert(bytes > 0);
-        const std::uint32_t units = unitsFor(bytes);
 
-        // A place a retired block left, remembered on the way past. A room names its block by
-        // index, so nothing is ever erased from this list; without filling the empty places again, a
-        // route that compacts at every crossing would grow one place per block it ever made.
-        std::size_t spare = mBlocks.size();
+        // Every live block may hold a structure, so the list is asked for the first that fits,
+        // and a new block is as large as the caller asked or as the structure needs.
+        return mBlocks.take(
+            unitsFor(bytes), [](const Block&) { return true; },
+            [&](const std::uint32_t units, const std::uint32_t slot) {
+                const std::uint32_t made = std::max(unitsFor(least), units);
 
-        for (std::size_t at = 0; at < mBlocks.size(); ++at)
-        {
-            Block& block = mBlocks[at];
-            if (block.mUnits == 0)
-            {
-                spare = std::min(spare, at);
-                continue;
-            }
+                // Named only where a capture could read it: a release build names nothing, and
+                // the concatenation is a trip to the heap for a name that goes nowhere.
+                std::string name;
+                if constexpr (Device::wantsNames())
+                    name = mName + " " + std::to_string(slot);
 
-            // Asked for and given back rather than measured first. The allocator's rule for
-            // where a run goes is best fit over a free list, and reimplementing it here to ask
-            // whether it would fit is two answers to one question; a run given back at the end
-            // shrinks the reach it just extended.
-            const Run run = block.mRuns.allocate(units);
-            if (block.mRuns.getEnd() <= block.mUnits)
-                return StructureRoom{ static_cast<std::uint32_t>(at), run };
-
-            block.mRuns.release(run);
-        }
-
-        const std::uint32_t made = std::max(unitsFor(least), units);
-
-        if (spare == mBlocks.size())
-            mBlocks.emplace_back();
-
-        Block& block = mBlocks[spare];
-        block.mUnits = made;
-        block.mBuffer = Buffer::deviceLocal(device, VkDeviceSize{ made } * sAlignment, mUsage);
-        device.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(block.mBuffer.getHandle()),
-            mName + " " + std::to_string(spare));
-
-        return StructureRoom{ static_cast<std::uint32_t>(spare), block.mRuns.allocate(units) };
+                Block block;
+                block.mCapacity = made;
+                block.mBuffer = Buffer::deviceLocal(device, VkDeviceSize{ made } * sAlignment, mUsage, name);
+                return block;
+            });
     }
 
     void StructureStorage::give(const StructureRoom& room)
@@ -76,25 +57,18 @@ namespace Rtx
         if (room.empty())
             return;
 
-        Block& block = mBlocks[room.mBlock];
-        block.mRuns.release(room.mRun);
-
         // A block that empties goes back to the device, one at a time and never a sweep. A
         // refitted structure stays for the life of its mesh and pins its block. The last one
         // standing stays, so a scene that empties and fills does not ask for it back on the next
         // arrival.
-        if (block.mRuns.getEnd() == 0 && countLive() > 1)
-        {
-            block.mBuffer = Buffer();
-            block.mUnits = 0;
-        }
+        mBlocks.give(room, [&](const Block&) { return countLive() > 1; });
     }
 
     std::size_t StructureStorage::countLive() const
     {
         std::size_t live = 0;
         for (const Block& block : mBlocks)
-            if (block.mUnits > 0)
+            if (block.mCapacity > 0)
                 ++live;
 
         return live;

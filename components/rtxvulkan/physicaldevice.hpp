@@ -69,6 +69,17 @@ namespace Rtx
         /// Which of `getOptionalDeviceExtensions()` this device offers, in that order.
         const std::vector<const char*>& getAvailableOptionalExtensions() const { return mProfile.mOptionalExtensions; }
 
+        /// How many bits of the device's clock the chosen queue writes into a timestamp, or nought
+        /// where it writes none — `Profile::mTimestampBits`, for the timer that reads the clock.
+        std::uint32_t getTimestampBits() const { return mProfile.mTimestampBits; }
+
+        /// What a build's scratch has to be aligned to, read once here for the two builders that
+        /// lay scratch out.
+        VkDeviceSize getStructureScratchAlignment() const
+        {
+            return mProperties->mAccelerationStructure.minAccelerationStructureScratchOffsetAlignment;
+        }
+
         /// Whether `name` is one of them.
         bool hasOptionalExtension(const char* name) const;
 

@@ -5,8 +5,8 @@
 
 #include <components/rtx/shaders/gbuffer.h>
 
-#include "device.hpp"
-#include "result.hpp"
+#include "barriers.hpp"
+#include "dispatch.hpp"
 
 namespace Rtx
 {
@@ -100,11 +100,25 @@ namespace Rtx
 
             return sFormats[bindingOf(channel)];
         }
+
+        /// Every channel is a storage image the trace writes, bound one per number from nought,
+        /// which is what `gbuffer.h`'s `CHANNEL_*` are. Both stages, because the trace is a launch
+        /// and everything that reads what it left is a dispatch. One table serves the layout and the
+        /// pool that holds a set of it.
+        constexpr std::array<VkDescriptorSetLayoutBinding, sChannelCount> sBindings = [] {
+            std::array<VkDescriptorSetLayoutBinding, sChannelCount> bindings{};
+            for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
+                bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
+                    VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr };
+
+            return bindings;
+        }();
     }
 
     GBuffer::GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, const std::uint32_t width,
         const std::uint32_t height, const bool layers)
         : mCarried(layers ? sChannelCount : bindingOf(Channel::Transparency))
+        , mSet(device, sBindings, layout.get(), 1)
     {
         // The three the eye sees through are last, so one count says which are the frame's.
         // `sEveryChannel` is in binding order and `gbuffer.h` puts them at the end.
@@ -127,57 +141,22 @@ namespace Rtx
                     makeStandIn(device, pool, described.mFormat, VK_IMAGE_USAGE_STORAGE_BIT, channelName(channel)));
         }
 
-        const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannelCount };
-        const VkDescriptorPoolCreateInfo describePool{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .maxSets = 1,
-            .poolSizeCount = 1,
-            .pPoolSizes = &size,
-        };
-        checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, mPool.put(device.getHandle())),
-            "vkCreateDescriptorPool");
-
-        const VkDescriptorSetLayout named = layout.get();
-        const VkDescriptorSetAllocateInfo allocate{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = mPool.get(),
-            .descriptorSetCount = 1,
-            .pSetLayouts = &named,
-        };
-        checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
-
-        std::array<VkDescriptorImageInfo, sChannelCount> views{};
-        std::array<VkWriteDescriptorSet, sChannelCount> writes{};
+        DescriptorWrites<sChannelCount> writes(mSet.get(0));
         for (std::uint32_t channel = 0; channel < sChannelCount; ++channel)
-        {
-            views[channel]
-                = VkDescriptorImageInfo{ VK_NULL_HANDLE, mChannels[channel].getView(), VK_IMAGE_LAYOUT_GENERAL };
-            writes[channel] = VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = mSet,
-                .dstBinding = channel,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                .pImageInfo = &views[channel],
-            };
-        }
+            writes.image(channel, mChannels[channel].describeStorage());
 
-        vkUpdateDescriptorSets(device.getHandle(), sChannelCount, writes.data(), 0, nullptr);
+        updateSets(device, writes.get());
     }
 
     void GBuffer::begin(VkCommandBuffer commands) const
     {
-        // From undefined, because every pixel is written before any is read — but waiting on the
-        // last frame's readers, because one set of channels serves every frame and two are in
-        // flight. Sourced at everything before it on the queue rather than at the compute stage,
-        // because what NGX reads them at is its own. The stand-ins are in here too
-        // (`CompositePass::mNoSum`).
+        // From undefined, because every pixel is written before any is read. One set of channels
+        // serves every frame and two are in flight, and the head barrier `CommandPool::begin`
+        // recorded is what orders this buffer after the last frame's readers — NGX among them,
+        // whose stages are its own. The stand-ins are in here too (`CompositePass::mNoSum`).
         Barriers barriers(commands);
         for (const Image& image : mChannels)
-            barriers.add(
-                image.describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                             VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                    Use::sTraceWrite));
+            barriers.add(image.describeTransition(Use::sUndefined, Use::sTraceWrite));
 
         barriers.flush();
     }
@@ -197,14 +176,6 @@ namespace Rtx
 
     SetLayout GBuffer::describeLayout(const Device& device)
     {
-        // Every channel is a storage image the trace writes, bound one per number from nought,
-        // which is what `gbuffer.h`'s `CHANNEL_*` are. Both stages, because the trace is a launch
-        // and everything that reads what it left is a dispatch.
-        std::array<VkDescriptorSetLayoutBinding, sChannelCount> bindings{};
-        for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
-            bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr };
-
-        return makeSetLayout(device, bindings);
+        return makeSetLayout(device, sBindings);
     }
 }

@@ -84,11 +84,9 @@ namespace Rtx
         }
 
         /// Where every block starts, as a shader reads it so it can resolve a global id itself: the
-        /// address of the table of addresses, which the frame block carries.
-        VkDeviceAddress getTableAddress() const { return mTable.getDeviceAddress(); }
-
-        /// Says a submit signalling `value` reads the address table — `Buffer::nameFor`.
-        void nameTableFor(std::uint64_t value) const { mTable.nameFor(value); }
+        /// address of the table of addresses, which the frame block carries. Names the table for
+        /// the next submit, as `Buffer::addressFor` does.
+        VkDeviceAddress getTableAddress() const { return mTable.addressFor(); }
 
         /// One block by number, for a test that copies what a kernel wrote into it back out.
         const Buffer& getBlock(std::uint32_t block) const
@@ -106,7 +104,10 @@ namespace Rtx
 
         const Device* mDevice = nullptr;
         VkBufferUsageFlags mUsage = 0;
+
+        /// What a block and the table of them are called, or nothing where no build names any.
         std::string mName;
+        std::string mTableName;
 
         std::uint32_t mBlockSize;
         std::uint32_t mStride;

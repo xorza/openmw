@@ -1,14 +1,12 @@
 #pragma once
 
-#include <cstdint>
 #include <filesystem>
 #include <span>
 #include <string_view>
 
 #include <vulkan/vulkan_core.h>
 
-#include "handles.hpp"
-#include "owned.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {
@@ -37,9 +35,6 @@ namespace Rtx
         /// descriptor pool on the frame path.
         std::span<const VkDescriptorSetLayoutBinding> mBindings;
 
-        /// The whole range, at offset zero, visible to both stages. Zero where there is none.
-        std::uint32_t mPushConstantBytes = 0;
-
         std::span<const VkVertexInputBindingDescription> mVertexBindings;
         std::span<const VkVertexInputAttributeDescription> mVertexAttributes;
 
@@ -56,21 +51,11 @@ namespace Rtx
         std::string_view mName;
     };
 
-    /// A graphics pipeline and the layout it is addressed through, one object for the reason
-    /// `ComputePipeline` gives. The one thing in this backend that is not compute, because there
-    /// is nothing to be gained by tracing a font atlas.
-    class GraphicsPipeline
+    /// A graphics pipeline and its layout. The one thing in this backend that is not compute,
+    /// because there is nothing to be gained by tracing a font atlas.
+    class GraphicsPipeline : public Pipeline
     {
     public:
         GraphicsPipeline(const Device& device, const GraphicsPipelineOptions& options);
-
-        VkPipeline getHandle() const { return mHandle.get(); }
-
-        /// What descriptors are pushed against and push constants are written through.
-        VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
-
-    private:
-        PipelineLayout mLayout;
-        Owned<VkPipeline, vkDestroyPipeline> mHandle;
     };
 }

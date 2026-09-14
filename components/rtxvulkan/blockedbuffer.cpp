@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <utility>
 
+#include "barriers.hpp"
 #include "commands.hpp"
 #include "device.hpp"
+#include "memory.hpp"
 
 namespace Rtx
 {
@@ -19,49 +22,47 @@ namespace Rtx
         // address if it was created saying so. `TRANSFER_DST` because a block is filled and written
         // by the device rather than by the host: `writeAt` says why.
         mUsage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        mName = name;
+
+        // Kept only where a capture could read them: a release build names nothing, and building
+        // them is a trip to the heap apiece.
+        if constexpr (Device::wantsNames())
+        {
+            mName = name;
+            mTableName = std::string(name) + " blocks";
+        }
     }
 
     void BlockedBuffer::reserve(Batch& batch, std::uint32_t elements)
     {
         assert(mDevice != nullptr && "a blocked buffer written before it was opened");
 
-        const std::uint32_t wanted = std::max(1u, (elements + mBlockSize - 1) / mBlockSize);
+        const std::uint32_t wanted
+            = std::max(1u, static_cast<std::uint32_t>(alignUp(elements, mBlockSize) / mBlockSize));
         if (wanted <= mBlocks.size())
             return;
 
-        // The fill below and the copies after it write the same bytes. A run written into a
-        // block this call just emptied is a write after a write, and the queue orders neither
-        // against the other on its own — the layers say so at once, which is how this was found.
-        const VkMemoryBarrier2 emptied{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &emptied,
-        };
-
         while (mBlocks.size() < wanted)
         {
-            Buffer made = Buffer::deviceLocal(*mDevice, getBlockBytes(), mUsage);
+            std::string name;
+            if constexpr (Device::wantsNames())
+                name = mName + " " + std::to_string(mBlocks.size());
+
+            Buffer made = Buffer::deviceLocal(*mDevice, getBlockBytes(), mUsage, name);
 
             // Zeroed at birth, not left as the allocator found it. A block is longer than what
             // is put in it and holds gaps between the runs handed out, and a picture that depended
             // on what was last in that memory would depend on it.
-            vkCmdFillBuffer(batch.getCommands(), made.getHandle(), 0, VK_WHOLE_SIZE, 0);
+            made.clear(batch.getCommands());
 
-            mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(made.getHandle()),
-                mName + " " + std::to_string(mBlocks.size()));
             mAddresses.push_back(made.getDeviceAddress());
             mBlocks.push_back(std::move(made));
         }
 
-        vkCmdPipelineBarrier2(batch.getCommands(), &dependency);
+        // The fills above and the copies after them write the same bytes. A run written into a
+        // block this call just emptied is a write after a write, and the queue orders neither
+        // against the other on its own — the layers say so at once, which is how this was found.
+        handOver(batch.getCommands(), Use::sBufferClearWrite,
+            BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT });
 
         // Made again rather than appended to, which is what a table of a few dozen addresses is
         // worth: the address changes, and every frame carries it afresh. Addressable and never
@@ -73,10 +74,9 @@ namespace Rtx
         // that frame. Destroyed here, it was the invalid read at a fixed address that lost the
         // device on the first arrival with two frames in flight.
         batch.keep(std::move(mTable));
-        mTable = Buffer::hostWritten(
-            *mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+        mTable = Buffer::hostWritten(*mDevice, mAddresses.size() * sizeof(VkDeviceAddress),
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, mTableName);
         mTable.write(std::span<const VkDeviceAddress>(mAddresses));
-        mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mTable.getHandle()), mName + " blocks");
     }
 
     void BlockedBuffer::writeInto(Batch& batch, std::uint32_t element, std::span<const std::byte> bytes)

@@ -116,10 +116,13 @@ namespace Rtx
             DeviceFeatures supported;
             vkGetPhysicalDeviceFeatures2(handle, &supported.mFeatures2);
 
-            std::uint32_t families = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(handle, &families, nullptr);
-            std::vector<VkQueueFamilyProperties> queues(families);
-            vkGetPhysicalDeviceQueueFamilyProperties(handle, &families, queues.data());
+            // Through the two-call enumeration every other list query goes through, with the
+            // success the entry point does not return supplied for it.
+            const std::vector<VkQueueFamilyProperties> queues = enumerateVk<VkQueueFamilyProperties>(
+                "vkGetPhysicalDeviceQueueFamilyProperties", [&](std::uint32_t* count, VkQueueFamilyProperties* into) {
+                    vkGetPhysicalDeviceQueueFamilyProperties(handle, count, into);
+                    return VK_SUCCESS;
+                });
 
             found.mProfile
                 = PhysicalDevice::profileOf(*found.mProperties, supported, getDeviceExtensions(handle), queues);

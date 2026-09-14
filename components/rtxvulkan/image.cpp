@@ -6,6 +6,7 @@
 
 #include <components/rtx/error.hpp>
 
+#include "barriers.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "device.hpp"
@@ -83,7 +84,7 @@ namespace Rtx
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };
-        checkVk(vkCreateImage(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())), "vkCreateImage");
+        mHandle = Owned<VkImage, vkDestroyImage>::make(device.getHandle(), vkCreateImage, create, "vkCreateImage");
 
         VkMemoryRequirements requirements{};
         vkGetImageMemoryRequirements(device.getHandle(), mHandle.get(), &requirements);
@@ -98,8 +99,8 @@ namespace Rtx
             .format = format,
             .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1 },
         };
-        checkVk(
-            vkCreateImageView(device.getHandle(), &view, nullptr, mView.put(device.getHandle())), "vkCreateImageView");
+        mView = Owned<VkImageView, vkDestroyImageView>::make(
+            device.getHandle(), vkCreateImageView, view, "vkCreateImageView");
 
         // Only where something will write through it. A storage descriptor is what this second
         // view exists for, and an image without the usage bit can have none — a chain that is only
@@ -108,13 +109,13 @@ namespace Rtx
         {
             VkImageViewCreateInfo first = view;
             first.subresourceRange.levelCount = 1;
-            checkVk(vkCreateImageView(device.getHandle(), &first, nullptr, mStorageView.put(device.getHandle())),
-                "vkCreateImageView");
-            device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mStorageView.get()), name);
+            mStorageView = Owned<VkImageView, vkDestroyImageView>::make(
+                device.getHandle(), vkCreateImageView, first, "vkCreateImageView");
+            device.setName(mStorageView.get(), name);
         }
 
-        device.setName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>(mHandle.get()), name);
-        device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mView.get()), name);
+        device.setName(mHandle.get(), name);
+        device.setName(mView.get(), name);
     }
 
     void Image::transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const
@@ -127,58 +128,47 @@ namespace Rtx
         return describeLevels(0, mMipLevels, from, to);
     }
 
+    void Image::clear(
+        VkCommandBuffer commands, const ImageUse& from, const VkClearColorValue& colour, const ImageUse& to) const
+    {
+        assert((mUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0 && "a clear of an image not made to be written");
+
+        transition(commands, from, Use::sClearWrite);
+
+        const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, mMipLevels, 0, 1 };
+        vkCmdClearColorImage(commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colour, 1, &whole);
+
+        transition(commands, Use::sClearWrite, to);
+    }
+
+    void Image::copyTo(
+        VkCommandBuffer commands, const Image& into, const VkImageLayout intoLayout, const VkExtent2D extent) const
+    {
+        assert(extent.width <= mWidth && extent.height <= mHeight && "a copy of more than this image holds");
+        assert(extent.width <= into.getWidth() && extent.height <= into.getHeight()
+            && "a copy of more than the target holds");
+
+        const VkImageCopy region{
+            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .extent = { extent.width, extent.height, 1 },
+        };
+        vkCmdCopyImage(
+            commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, into.getHandle(), intoLayout, 1, &region);
+    }
+
     VkImageMemoryBarrier2 Image::describeLevels(
         std::uint32_t base, std::uint32_t count, const ImageUse& from, const ImageUse& to) const
     {
-        return VkImageMemoryBarrier2{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = from.mStage,
-            .srcAccessMask = from.mAccess,
-            .dstStageMask = to.mStage,
-            .dstAccessMask = to.mAccess,
-            .oldLayout = from.mLayout,
-            .newLayout = to.mLayout,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = mHandle.get(),
-            .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, base, count, 0, 1 },
-        };
-    }
-
-    void Barriers::add(const VkImageMemoryBarrier2& barrier)
-    {
-        if (mCount == mBarriers.size())
-            flush();
-
-        mBarriers[mCount++] = barrier;
-    }
-
-    void Barriers::flush()
-    {
-        if (mCount == 0)
-            return;
-
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .imageMemoryBarrierCount = static_cast<std::uint32_t>(mCount),
-            .pImageMemoryBarriers = mBarriers.data(),
-        };
-        vkCmdPipelineBarrier2(mCommands, &dependency);
-
-        mCount = 0;
+        return imageBarrier(mHandle.get(), base, count, from, to);
     }
 
     void Image::transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count,
         const ImageUse& from, const ImageUse& to) const
     {
-        const VkImageMemoryBarrier2 barrier = describeLevels(base, count, from, to);
-
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &barrier,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
+        Barriers barriers(commands);
+        barriers.add(describeLevels(base, count, from, to));
+        barriers.flush();
     }
 
     void Image::buildMips(VkCommandBuffer commands) const
@@ -193,8 +183,7 @@ namespace Rtx
         // The written level becomes the first source; the rest hold whatever the last frame left,
         // which every blit below overwrites whole.
         transitionLevels(commands, 0, 1, Use::sComputeWrite, Use::sBlitRead);
-        transitionLevels(commands, 1, mMipLevels - 1,
-            ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_BLIT_BIT, 0 }, Use::sBlitWrite);
+        transitionLevels(commands, 1, mMipLevels - 1, Use::sDiscardForBlit, Use::sBlitWrite);
 
         std::uint32_t width = mWidth;
         std::uint32_t height = mHeight;
@@ -226,10 +215,7 @@ namespace Rtx
 
         // Both stages, because the wave tiles are what has a chain: the fog volume samples them as
         // a dispatch and the trace as a launch.
-        transitionLevels(commands, 0, mMipLevels, Use::sBlitRead,
-            ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT });
+        transitionLevels(commands, 0, mMipLevels, Use::sBlitRead, Use::sShaderSample);
     }
 
     VkDeviceSize Image::getReadBytes(const std::uint32_t level) const
@@ -263,7 +249,7 @@ namespace Rtx
         CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
     {
         const VkDeviceSize bytes = getReadBytes(level);
-        const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "read back");
 
         // Back where it was found. Reading an image is not a change to it, and a caller that
         // has to know a read moved it is one that will forget: the GUI's own table is sampled

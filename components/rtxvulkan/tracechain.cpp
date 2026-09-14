@@ -7,6 +7,7 @@
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/composite.h>
 
+#include "barriers.hpp"
 #include "compositepass.hpp"
 #include "gputimer.hpp"
 #include "scenebuffers.hpp"
@@ -35,7 +36,7 @@ namespace Rtx
         , mFogVolumeLayout(fog)
         , mColourUsage(colourUsage)
         , mColourName(colourName)
-        , mBins{ SpriteBin{ device }, SpriteBin{ device } }
+        , mBins([&](FrameSlot) { return SpriteBin{ device }; })
         , mAccumulate(device, shaders)
         , mFilter(device, shaders)
     {
@@ -48,8 +49,7 @@ namespace Rtx
         mWidth = width;
         mHeight = height;
 
-        mColour = std::make_unique<Image>(
-            mDevice, mWidth, mHeight, VK_FORMAT_R32G32B32A32_SFLOAT, mColourUsage, mColourName);
+        mColour = Image(mDevice, mWidth, mHeight, VK_FORMAT_R32G32B32A32_SFLOAT, mColourUsage, mColourName);
 
         mChannels = std::make_unique<GBuffer>(mDevice, mPool, mChannelLayout, mWidth, mHeight, layers);
         mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mWidth, mHeight);
@@ -97,14 +97,11 @@ namespace Rtx
     {
         assert(isBuilt() && "a trace into a chain that has no extent");
 
-        // Both written whole before anything reads them, but the last frame may still be reading
-        // them, so the discard is sourced at everything before it on the queue rather than at the
-        // top of the pipe, which would wait for nothing.
-        for (const Image* image : { static_cast<const Image*>(mColour.get()), what.mTarget })
-            image->transition(commands,
-                ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                Use::sComputeWrite);
+        // Both written whole before anything reads them. The last frame may still be reading
+        // them, and the head barrier `CommandPool::begin` recorded is what orders this buffer after
+        // it, so the discard itself waits for nothing.
+        for (const Image* image : { static_cast<const Image*>(&mColour), what.mTarget })
+            image->transition(commands, Use::sUndefined, Use::sComputeWrite);
 
         // Before the trace and outside its zone, because the sea is a function of the clock and of
         // nothing the camera does — one synthesis serves every ray. None where there is no water:
@@ -119,7 +116,7 @@ namespace Rtx
         // The sprite tiles are screen space, so they belong to the camera and not to the scene.
         // Binned on the device into this trace's own bin, ahead of the trace that reads it. Not at
         // all for a camera handed a list of its own, which is the one that draws none.
-        SpriteBin& bin = mBins[what.mBinSlot.get()];
+        SpriteBin& bin = mBins.at(what.mBinSlot);
         VisibilityInputs inputs = what.mInputs;
         inputs.mBin = &bin;
         if (inputs.mSpriteList == 0)
@@ -140,7 +137,7 @@ namespace Rtx
                 = &recordDenoise(commands, what.mSampled.mCamera, what.mSampled.mFar, what.mHistoryLost, what.mTimer);
 
         openZone(what.mTimer, commands, "composite");
-        what.mComposite->record(commands, *mChannels, *indirect, what.mSum, *mColour,
+        what.mComposite->record(commands, *mChannels, *indirect, what.mSum, mColour,
             Shaders::CompositeConstants{
                 .mWidth = what.mSampled.mCamera.mWidth,
                 .mHeight = what.mSampled.mCamera.mHeight,
@@ -150,8 +147,8 @@ namespace Rtx
 
         // Whatever comes next reads what the composite just wrote. The frame's scope is the wider of
         // the two — an upscaler, a lens and a curve against a picture's one curve — and covers both.
-        mColour->transition(commands, Use::sComputeWrite, Use::sAnyGeneralRead);
+        mColour.transition(commands, Use::sComputeWrite, Use::sAnyGeneralRead);
 
-        return *mColour;
+        return mColour;
     }
 }

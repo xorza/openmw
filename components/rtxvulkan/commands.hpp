@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
@@ -43,6 +44,10 @@ namespace Rtx
         /// Begins one of them, one-shot like everything this pool hands out.
         void begin(VkCommandBuffer commands);
 
+        /// Ends a recording nobody will submit this frame — a placement that placed nothing — so
+        /// the buffer can be begun again next frame. Not `discard`, which frees.
+        void end(VkCommandBuffer commands);
+
         /// Frees every buffer this pool has handed out, and forgets what they referenced: a
         /// recorded buffer keeps its resources alive as far as the layers are concerned, so an image
         /// a resize destroys cannot still be named by the recording that blitted from it. Nothing
@@ -62,7 +67,14 @@ namespace Rtx
         /// submit. Ends `commands`. What the deferred batches read from goes to `kept`, to be let
         /// go when the caller knows the queue has passed it. Returns the value the submit signals
         /// on the device's timeline, which is what says when that is.
-        std::uint64_t submit(VkCommandBuffer commands, Graveyard& kept);
+        ///
+        /// @param waits,signals binary semaphores the submit waits and signals beside the
+        ///        timeline: what a present's blit needs, and what nothing else does. Through here
+        ///        and not a submit of its own, because a submit that took a timeline value without
+        ///        carrying the deferred batches would let the graveyard free what they name before
+        ///        they run.
+        std::uint64_t submit(VkCommandBuffer commands, Graveyard& kept,
+            std::span<const VkSemaphoreSubmitInfo> waits = {}, std::span<const VkSemaphoreSubmitInfo> signals = {});
 
         /// Frees one-shot command buffers this pool handed out and the queue has finished with.
         void free(std::span<const VkCommandBuffer> commands);
@@ -80,7 +92,8 @@ namespace Rtx
         /// value of the timeline, which it returns. A deferred batch ends every upload and every
         /// build in a barrier, so what `commands` reads of them is what it would have read had
         /// they been recorded into it.
-        std::uint64_t submitWithDeferred(VkCommandBuffer commands);
+        std::uint64_t submitWithDeferred(VkCommandBuffer commands, std::span<const VkSemaphoreSubmitInfo> waits,
+            std::span<const VkSemaphoreSubmitInfo> signals);
 
         /// Lets go of what was deferred, once it has been submitted and whoever wanted its staging
         /// has taken it.
@@ -96,6 +109,7 @@ namespace Rtx
 
         /// Refilled per submit: a frame is three of them, and none allocates.
         std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
+        std::vector<VkSemaphoreSubmitInfo> mSignalScratch;
     };
 
     /// How much staging a batch takes at a time, sized so a town's tens of megabytes of textures
@@ -179,7 +193,8 @@ namespace Rtx
     /// A device-local buffer holding `bytes`, staged through host-visible memory. The copy is
     /// recorded into `batch` and ends in a barrier, so a structure can be built from it in the same
     /// batch.
-    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage);
+    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage,
+        std::string_view name);
 
     /// Makes every staged write recorded into `batch` visible to whatever reads it next — one
     /// dependency for a run of writes that are read together, rather than one barrier per buffer.
@@ -193,8 +208,9 @@ namespace Rtx
         std::span<VkBufferImageCopy> regions);
 
     template <class T>
-    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const T> data, VkBufferUsageFlags usage)
+    Buffer uploadBuffer(
+        const Device& device, Batch& batch, std::span<const T> data, VkBufferUsageFlags usage, std::string_view name)
     {
-        return uploadBuffer(device, batch, std::as_bytes(data), usage);
+        return uploadBuffer(device, batch, std::as_bytes(data), usage, name);
     }
 }

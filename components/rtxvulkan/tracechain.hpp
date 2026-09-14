@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -62,7 +61,7 @@ namespace Rtx
         std::uint32_t getHeight() const { return mHeight; }
 
         /// Whether the images exist, which is the same question as whether the extent is set.
-        bool isBuilt() const { return mColour != nullptr; }
+        bool isBuilt() const { return !mColour.isEmpty(); }
 
         /// Whether a picture this big fits what is built, which is what `grow` would leave alone.
         bool holds(std::uint32_t width, std::uint32_t height) const
@@ -72,7 +71,7 @@ namespace Rtx
 
         /// The composite's output: one picture in linear radiance, before anything upscales it and
         /// before the display curve.
-        const Image& getColour() const { return *mColour; }
+        const Image& getColour() const { return mColour; }
 
         /// What the trace writes and the composite reads: one picture's light, still in pieces.
         const GBuffer& getChannels() const { return *mChannels; }
@@ -111,13 +110,13 @@ namespace Rtx
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
 
-        std::unique_ptr<Image> mColour;
+        Image mColour;
         std::unique_ptr<GBuffer> mChannels;
         std::unique_ptr<FogVolume> mFogVolume;
 
         /// One sprite bin per frame in flight — `TraceRecording::mBinSlot` picks — so the frame
         /// behind keeps the tables its trace reads while this frame's bin writes its own.
-        std::array<SpriteBin, sFrameSlots> mBins;
+        PerSlot<SpriteBin> mBins;
 
         /// Held by value rather than built with the extent, because what they read is pushed at
         /// record time. The filter is not const only because it keeps a channel the size of the

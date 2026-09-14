@@ -14,6 +14,7 @@
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
@@ -307,20 +308,9 @@ namespace Rtx::Testing
 
     void orderStorageWrites(VkCommandBuffer commands)
     {
-        const VkMemoryBarrier2 between{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_HOST_BIT,
-            .dstAccessMask
-            = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_HOST_READ_BIT,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &between,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
+        handOver(commands, Use::sBufferComputeWrite,
+            BufferUse{ Use::sBufferComputeReadWrite.mStage | Use::sBufferHostRead.mStage,
+                Use::sBufferComputeReadWrite.mAccess | Use::sBufferHostRead.mAccess });
     }
 
     std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level)

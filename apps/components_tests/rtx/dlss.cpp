@@ -39,10 +39,9 @@ namespace Rtx
         /// `SAMPLED` because DLSS samples its inputs and an image it cannot sample reads as zero —
         /// no error, no validation message, a black frame. `TRANSFER_DST` so a clear can fill it and
         /// `TRANSFER_SRC` so the result can be read back.
-        std::unique_ptr<Image> makeImage(
-            const Device& device, VkExtent2D extent, VkFormat format, std::string_view name)
+        Image makeImage(const Device& device, VkExtent2D extent, VkFormat format, std::string_view name)
         {
-            return std::make_unique<Image>(device, extent.width, extent.height, format,
+            return Image(device, extent.width, extent.height, format,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
                     | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                 name);
@@ -200,57 +199,53 @@ namespace Rtx
             //
             // The colour and the output are not the g-buffer's: `VulkanRenderer` makes both at full
             // float directly, and these follow that.
-            const std::unique_ptr<Image> colour
-                = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-colour");
-            const std::unique_ptr<Image> diffuse = makeImage(device, render, GBUFFER_ALBEDO, "test-diffuse");
-            const std::unique_ptr<Image> specular = makeImage(device, render, GBUFFER_ALBEDO, "test-specular");
-            const std::unique_ptr<Image> normals = makeImage(device, render, GBUFFER_GUIDE, "test-normals");
-            const std::unique_ptr<Image> depth = makeImage(device, render, GBUFFER_DEPTH, "test-depth");
-            const std::unique_ptr<Image> motion = makeImage(device, render, GBUFFER_MOTION, "test-motion");
-            const std::unique_ptr<Image> reflections = makeImage(device, render, GBUFFER_MOTION, "test-reflections");
-            const std::unique_ptr<Image> particles = makeImage(device, render, GBUFFER_MASK, "test-particles");
-            const std::unique_ptr<Image> bias = makeImage(device, render, GBUFFER_MASK, "test-bias");
-            const std::unique_ptr<Image> layer = makeImage(device, render, GBUFFER_LAYER, "test-transparency");
-            const std::unique_ptr<Image> layerOpacity
-                = makeImage(device, render, GBUFFER_LAYER_OPACITY, "test-transparency-opacity");
-            const std::unique_ptr<Image> layerMotion
-                = makeImage(device, render, GBUFFER_MOTION, "test-transparency-motion");
-            const std::unique_ptr<Image> output
-                = makeImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
+            const Image colour = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-colour");
+            const Image diffuse = makeImage(device, render, GBUFFER_ALBEDO, "test-diffuse");
+            const Image specular = makeImage(device, render, GBUFFER_ALBEDO, "test-specular");
+            const Image normals = makeImage(device, render, GBUFFER_GUIDE, "test-normals");
+            const Image depth = makeImage(device, render, GBUFFER_DEPTH, "test-depth");
+            const Image motion = makeImage(device, render, GBUFFER_MOTION, "test-motion");
+            const Image reflections = makeImage(device, render, GBUFFER_MOTION, "test-reflections");
+            const Image particles = makeImage(device, render, GBUFFER_MASK, "test-particles");
+            const Image bias = makeImage(device, render, GBUFFER_MASK, "test-bias");
+            const Image layer = makeImage(device, render, GBUFFER_LAYER, "test-transparency");
+            const Image layerOpacity = makeImage(device, render, GBUFFER_LAYER_OPACITY, "test-transparency-opacity");
+            const Image layerMotion = makeImage(device, render, GBUFFER_MOTION, "test-transparency-motion");
+            const Image output = makeImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
 
             // A frame with nothing in it to resolve: uniform radiance over a flat wall halfway down
             // the depth range, facing the camera, stationary and fully rough.
-            fill(pool, *colour, { 0.25f, 0.5f, 0.75f, 1.0f });
-            fill(pool, *diffuse, { 0.5f, 0.5f, 0.5f, 1.0f });
-            fill(pool, *specular, { 0.04f, 0.04f, 0.04f, 1.0f });
-            fill(pool, *normals, { 0.0f, 0.0f, 1.0f, 1.0f });
-            fill(pool, *depth, { 0.5f, 0.0f, 0.0f, 0.0f });
-            fill(pool, *motion, { 0.0f, 0.0f, 0.0f, 0.0f });
+            fill(pool, colour, { 0.25f, 0.5f, 0.75f, 1.0f });
+            fill(pool, diffuse, { 0.5f, 0.5f, 0.5f, 1.0f });
+            fill(pool, specular, { 0.04f, 0.04f, 0.04f, 1.0f });
+            fill(pool, normals, { 0.0f, 0.0f, 1.0f, 1.0f });
+            fill(pool, depth, { 0.5f, 0.0f, 0.0f, 0.0f });
+            fill(pool, motion, { 0.0f, 0.0f, 0.0f, 0.0f });
             // No sprite reached this frame and nothing about it is untrustworthy, which is the
             // state that has to leave the picture alone.
-            fill(pool, *reflections, { 0.0f, 0.0f, 0.0f, 0.0f });
-            fill(pool, *particles, { 0.0f, 0.0f, 0.0f, 0.0f });
-            fill(pool, *bias, { 0.0f, 0.0f, 0.0f, 0.0f });
-            fill(pool, *output, { 0.0f, 0.0f, 0.0f, 0.0f });
+            fill(pool, reflections, { 0.0f, 0.0f, 0.0f, 0.0f });
+            fill(pool, particles, { 0.0f, 0.0f, 0.0f, 0.0f });
+            fill(pool, bias, { 0.0f, 0.0f, 0.0f, 0.0f });
+            fill(pool, output, { 0.0f, 0.0f, 0.0f, 0.0f });
 
             mHarness->mInstance->getValidationLog()->clear();
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 pass->record(commands,
                     DlssInputs{
-                        .mColour = *colour,
-                        .mDiffuseAlbedo = *diffuse,
-                        .mSpecularAlbedo = *specular,
-                        .mNormalRoughness = *normals,
-                        .mDepth = *depth,
-                        .mMotion = *motion,
-                        .mReflectionMotion = *reflections,
-                        .mParticleMask = *particles,
-                        .mTransparency = *layer,
-                        .mTransparencyOpacity = *layerOpacity,
-                        .mTransparencyMotion = *layerMotion,
-                        .mBiasMask = *bias,
-                        .mOutput = *output,
+                        .mColour = colour,
+                        .mDiffuseAlbedo = diffuse,
+                        .mSpecularAlbedo = specular,
+                        .mNormalRoughness = normals,
+                        .mDepth = depth,
+                        .mMotion = motion,
+                        .mReflectionMotion = reflections,
+                        .mParticleMask = particles,
+                        .mTransparency = layer,
+                        .mTransparencyOpacity = layerOpacity,
+                        .mTransparencyMotion = layerMotion,
+                        .mBiasMask = bias,
+                        .mOutput = output,
                         .mJitter = osg::Vec2f(0.0f, 0.0f),
                         // The first frame has no history, which is what a reset means.
                         .mReset = true,
@@ -258,7 +253,7 @@ namespace Rtx
             });
 
             std::vector<std::uint8_t> bytes;
-            output->read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes);
+            output.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes);
             ASSERT_EQ(bytes.size(), std::size_t{ sOutput.width } * sOutput.height * 16);
 
             std::vector<float> pixels(bytes.size() / sizeof(float));

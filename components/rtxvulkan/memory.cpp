@@ -139,13 +139,13 @@ namespace Rtx
         return std::min(ceiling, wanted);
     }
 
-    DeviceMemory MemoryAllocator::place(std::uint32_t at, Run run, VkDeviceSize alignment)
+    DeviceMemory MemoryAllocator::place(const BlockRun& placed, VkDeviceSize alignment)
     {
-        const Block& block = mBlocks[at];
-        const VkDeviceSize offset = alignUp(VkDeviceSize{ run.mOffset } * sPage, alignment);
+        const Block& block = mBlocks.at(placed.mBlock);
+        const VkDeviceSize offset = alignUp(VkDeviceSize{ placed.mRun.mOffset } * sPage, alignment);
         void* const mapped = block.mMapped == nullptr ? nullptr : static_cast<std::byte*>(block.mMapped) + offset;
 
-        return DeviceMemory(*this, at, run, block.mHandle.get(), offset, mapped);
+        return DeviceMemory(*this, placed.mBlock, placed.mRun, block.mHandle.get(), offset, mapped);
     }
 
     DeviceMemory MemoryAllocator::take(
@@ -162,110 +162,79 @@ namespace Rtx
         if (pool >= mBlocksInPool.size())
             mBlocksInPool.resize(pool + 1, 0);
 
-        // A slot whose allocation went back to the device stands nothing and can hold nothing. It
-        // is remembered on the way past, because a block made below goes into one rather than
-        // lengthening the list: a range names its block by index, and every index handed out has to
-        // go on meaning what it meant.
-        std::size_t retired = mBlocks.size();
+        // Out of a block of the resource's own pool, or a new one for that pool. Built whole
+        // before it joins the list, so that a device out of memory leaves the allocator holding
+        // what it held rather than a block with no allocation behind it.
+        const BlockRun placed = mBlocks.take(
+            pages, [pool](const Block& block) { return block.mPool == pool; },
+            [&](const std::uint32_t needed, std::uint32_t) {
+                const std::uint32_t made
+                    = std::max(static_cast<std::uint32_t>(blockBytes(type, mBlocksInPool[pool]) / sPage), needed);
 
-        for (std::size_t at = 0; at < mBlocks.size(); ++at)
-        {
-            Block& block = mBlocks[at];
-            if (block.mPages == 0)
-            {
-                retired = std::min(retired, at);
-                continue;
-            }
+                Block block;
+                block.mPool = pool;
 
-            if (block.mPool != pool)
-                continue;
+                // Every block, because a pool cannot know what will be put in it. The flag costs
+                // a device nothing it does not already pay for `bufferDeviceAddress`, which this
+                // renderer requires; a pool that carried it only where the first resource asked
+                // would refuse the second one that did.
+                const VkMemoryAllocateFlagsInfo flags{
+                    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
+                    .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
+                };
 
-            // Asked for and given back rather than measured first, which is what
-            // `StructureStorage` says of the same allocator: where a run goes is best fit over a
-            // free list, and asking whether one would fit is that rule written a second time.
-            const Run run = block.mRuns.allocate(pages);
-            if (block.mRuns.getEnd() <= block.mPages)
-                return place(static_cast<std::uint32_t>(at), run, requirements.alignment);
+                const auto ask = [&](const std::uint32_t wanted) {
+                    const VkMemoryAllocateInfo allocate{
+                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                        .pNext = &flags,
+                        .allocationSize = VkDeviceSize{ wanted } * sPage,
+                        .memoryTypeIndex = type,
+                    };
 
-            block.mRuns.release(run);
-        }
+                    const VkResult result = vkAllocateMemory(mDevice, &allocate, nullptr, block.mHandle.put(mDevice));
+                    if (result == VK_SUCCESS)
+                        block.mCapacity = wanted;
 
-        const std::uint32_t made
-            = std::max(static_cast<std::uint32_t>(blockBytes(type, mBlocksInPool[pool]) / sPage), pages);
+                    return result;
+                };
 
-        // Built whole before it joins the list, so that a device out of memory leaves the
-        // allocator holding what it held rather than a block with no allocation behind it.
-        Block block;
-        block.mPool = pool;
+                // The room the block wants is a preference; the room the resource needs is not.
+                // A block is sized from the heap, which is what the device has rather than what
+                // is left of it, so another process holding most of the card turns the first
+                // request into a refusal where the pages this one resource asked for would still
+                // have fitted.
+                VkResult allocated = ask(made);
+                if (allocated != VK_SUCCESS && made != needed)
+                    allocated = ask(needed);
 
-        // Every block, because a pool cannot know what will be put in it. The flag costs a
-        // device nothing it does not already pay for `bufferDeviceAddress`, which this renderer
-        // requires; a pool that carried it only where the first resource asked would refuse the
-        // second one that did.
-        const VkMemoryAllocateFlagsInfo flags{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
-            .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
-        };
+                checkVk(allocated, "vkAllocateMemory");
 
-        const auto ask = [&](const std::uint32_t wanted) {
-            const VkMemoryAllocateInfo allocate{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .pNext = &flags,
-                .allocationSize = VkDeviceSize{ wanted } * sPage,
-                .memoryTypeIndex = type,
-            };
+                // Mapped here rather than by whoever holds a range of it, so the pointer goes when
+                // the block does, and once for the whole block rather than once per resource in it.
+                if ((mMemory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
+                    checkVk(
+                        vkMapMemory(mDevice, block.mHandle.get(), 0, VK_WHOLE_SIZE, 0, &block.mMapped), "vkMapMemory");
 
-            const VkResult result = vkAllocateMemory(mDevice, &allocate, nullptr, block.mHandle.put(mDevice));
-            if (result == VK_SUCCESS)
-                block.mPages = wanted;
+                ++mBlocksInPool[pool];
+                return block;
+            });
 
-            return result;
-        };
-
-        // The room the block wants is a preference; the room the resource needs is not. A block
-        // is sized from the heap, which is what the device has rather than what is left of it, so
-        // another process holding most of the card turns the first request into a refusal where the
-        // pages this one resource asked for would still have fitted.
-        VkResult allocated = ask(made);
-        if (allocated != VK_SUCCESS && made != pages)
-            allocated = ask(pages);
-
-        checkVk(allocated, "vkAllocateMemory");
-
-        // Mapped here rather than by whoever holds a range of it, so the pointer goes when the
-        // block does, and once for the whole block rather than once per resource in it.
-        if ((mMemory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
-            checkVk(vkMapMemory(mDevice, block.mHandle.get(), 0, VK_WHOLE_SIZE, 0, &block.mMapped), "vkMapMemory");
-
-        ++mBlocksInPool[pool];
-
-        const bool append = retired == mBlocks.size();
-        if (append)
-            mBlocks.push_back(std::move(block));
-        else
-            mBlocks[retired] = std::move(block);
-
-        const auto at = static_cast<std::uint32_t>(append ? mBlocks.size() - 1 : retired);
-
-        return place(at, mBlocks[at].mRuns.allocate(pages), requirements.alignment);
+        return place(placed, requirements.alignment);
     }
 
     void MemoryAllocator::give(std::uint32_t block, Run run)
     {
         const std::lock_guard<std::mutex> locked(mLock);
 
-        Block& held = mBlocks[block];
-        held.mRuns.release(run);
-
         // The last block of a pool stays whatever happens: a pool that emptied and refilled would
         // otherwise free and allocate on alternate frames.
-        if (held.mRuns.getEnd() > 0 || mBlocksInPool[held.mPool] <= 1)
-            return;
+        mBlocks.give(BlockRun{ block, run }, [&](const Block& emptied) {
+            if (mBlocksInPool[emptied.mPool] <= 1)
+                return false;
 
-        held.mHandle.reset();
-        held.mMapped = nullptr;
-        held.mPages = 0;
-        --mBlocksInPool[held.mPool];
+            --mBlocksInPool[emptied.mPool];
+            return true;
+        });
     }
 
     MemoryReport MemoryAllocator::report() const
@@ -291,11 +260,11 @@ namespace Rtx
 
         for (const Block& block : mBlocks)
         {
-            if (block.mPages == 0)
+            if (block.mCapacity == 0)
                 continue;
 
             const std::uint32_t type = typeOf(block.mPool);
-            const VkDeviceSize reserved = VkDeviceSize{ block.mPages } * sPage;
+            const VkDeviceSize reserved = VkDeviceSize{ block.mCapacity } * sPage;
             const VkDeviceSize live = VkDeviceSize{ block.mRuns.getUsed() } * sPage;
 
             if ((mMemory.memoryTypes[type].propertyFlags & sHostWritten) == sHostWritten)
@@ -340,6 +309,6 @@ namespace Rtx
         const std::lock_guard<std::mutex> held(mLock);
 
         return static_cast<std::size_t>(
-            std::count_if(mBlocks.begin(), mBlocks.end(), [](const Block& block) { return block.mPages > 0; }));
+            std::count_if(mBlocks.begin(), mBlocks.end(), [](const Block& block) { return block.mCapacity > 0; }));
     }
 }

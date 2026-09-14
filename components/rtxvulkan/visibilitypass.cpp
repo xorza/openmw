@@ -13,6 +13,7 @@
 #include <components/rtx/parallel.hpp>
 #include <components/rtx/shaders/bindings.h>
 
+#include "barriers.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "dispatch.hpp"
@@ -142,10 +143,10 @@ namespace Rtx
         VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
         bool countHits, bool countCrossings)
         : mDevice(device)
-        , mBlueNoise(
-              uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
+        , mBlueNoise(uploadBuffer(
+              device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise"))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
-              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
+              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCountHits(countHits ? 1u : 0u)
         , mCountCrossings(countCrossings ? 1u : 0u)
         , mChannelLayout(channelLayout.get())
@@ -252,140 +253,66 @@ namespace Rtx
 
     void VisibilityPass::writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const
     {
-        // Both directions, because one buffer serves every trace: the write has to wait for the
-        // last dispatch that read it and for the last write, and the next dispatch for the write.
-        const VkBufferMemoryBarrier2 beforeWrite{
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
-                | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-            .srcAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = mConstants.getHandle(),
-            .size = VK_WHOLE_SIZE,
-        };
-        const VkDependencyInfo settle{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .bufferMemoryBarrierCount = 1,
-            .pBufferMemoryBarriers = &beforeWrite,
-        };
-        vkCmdPipelineBarrier2(commands, &settle);
-
-        // A few hundred bytes, so an inline write that runs in queue order. The specification files
-        // `vkCmdUpdateBuffer` under the clear commands, so the stage on either side is the clear's.
-        vkCmdUpdateBuffer(commands, mConstants.getHandle(), 0, sizeof(described), &described);
-
-        const VkBufferMemoryBarrier2 written{
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            .dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = mConstants.getHandle(),
-            .size = VK_WHOLE_SIZE,
-        };
-        const VkDependencyInfo handOver{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .bufferMemoryBarrierCount = 1,
-            .pBufferMemoryBarriers = &written,
-        };
-        vkCmdPipelineBarrier2(commands, &handOver);
+        // A few hundred bytes, so an inline write that runs in queue order, against the launches
+        // and the dispatch that read the block as a uniform.
+        mConstants.updateInline(commands, Use::sBufferUniformRead, std::as_bytes(std::span(&described, 1)));
     }
 
-    void VisibilityPass::pushInputs(VkCommandBuffer commands, VkPipelineBindPoint bindPoint, VkPipelineLayout layout,
-        const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const
+    void VisibilityPass::pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs,
+        const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const
     {
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
             .accelerationStructureCount = 1,
             .pAccelerationStructures = &inputs.mScene,
         };
-        // The two buffers still bound: the hit counter, and the frame block every table is reached
-        // through.
-        const VkDescriptorBufferInfo hitWrite{ hitCount.getHandle(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo frameWrite{ mConstants.getHandle(), 0, VK_WHOLE_SIZE };
 
         // The tiles' widths come off the pass that built them, so what the shader divides by is
-        // what is actually bound rather than a second statement of the same table.
+        // what is actually bound rather than a second statement of the same table. Sampled from
+        // `GENERAL` rather than moved to a read-only layout, for the reason `BloomPass` gives:
+        // these are written as storage images and read as sampled ones a few dispatches apart, and
+        // `GENERAL` is the one layout both accesses are legal from.
         std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> surfaces{};
         std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> curvatures{};
         for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
         {
             const VkSampler sampler = inputs.mWaves->getSampler();
-            surfaces[cascade] = { sampler, inputs.mWaves->getSurface(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
-            curvatures[cascade] = { sampler, inputs.mWaves->getCurvature(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+            surfaces[cascade] = inputs.mWaves->getSurface(cascade).describeSampled(sampler);
+            curvatures[cascade] = inputs.mWaves->getCurvature(cascade).describeSampled(sampler);
         }
 
-        // Nothing bound here may be nothing: a null handle at the dispatch is undefined and cost
-        // this renderer a device before the layers were asked.
-        [[maybe_unused]] const auto bound
-            = [](const VkDescriptorBufferInfo& write) { return write.buffer != VK_NULL_HANDLE; };
-        assert(bound(hitWrite) && bound(frameWrite) && "an input bound as nothing");
+        // Appended in binding order rather than indexed, so a channel added cannot silently move
+        // two writes on top of each other; the count is checked below rather than maintained.
+        DescriptorWrites<sBindings.size(), 2 * Shaders::WAVE_CASCADES + 1> writes;
+        writes.structure(Shaders::BIND_SCENE, sceneWrite);
 
-        // Appended rather than indexed, so a channel added cannot silently move two writes on top
-        // of each other; the count below is checked rather than maintained.
-        std::array<VkWriteDescriptorSet, sBindings.size()> writes{};
-        std::uint32_t filled = 0;
+        // The two buffers still bound: the hit counter, and the frame block every table is reached
+        // through. Nothing bound here may be nothing: a null handle at the dispatch is undefined
+        // and cost this renderer a device before the layers were asked.
+        assert(!hitCount.isEmpty() && !mConstants.isEmpty() && "an input bound as nothing");
+        writes.buffer(Shaders::BIND_HITS, hitCount.describe());
+        writes.buffer(Shaders::BIND_FRAME, mConstants.describe(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
-        const auto append
-            = [&](std::uint32_t binding, VkDescriptorType type, const void* next, const VkDescriptorImageInfo* image,
-                  const VkDescriptorBufferInfo* block, std::uint32_t count = 1) {
-                  assert(filled < writes.size() && "more descriptor writes than the layout has bindings");
-                  writes[filled++] = VkWriteDescriptorSet{
-                      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                      .pNext = next,
-                      .dstBinding = binding,
-                      .descriptorCount = count,
-                      .descriptorType = type,
-                      .pImageInfo = image,
-                      .pBufferInfo = block,
-                  };
-              };
-        const auto appendBuffer = [&](std::uint32_t binding, const VkDescriptorBufferInfo& block) {
-            append(binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, nullptr, &block);
-        };
-        const auto appendUniform = [&](std::uint32_t binding, const VkDescriptorBufferInfo& block) {
-            append(binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, nullptr, &block);
-        };
-        const auto appendImages
-            = [&](std::uint32_t binding, const std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES>& images) {
-                  append(binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, images.data(), nullptr,
-                      Shaders::WAVE_CASCADES);
-              };
+        writes.images(Shaders::BIND_WAVE_SURFACE, surfaces, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writes.images(Shaders::BIND_WAVE_CURVATURE, curvatures, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-        // The one write whose payload hangs off `pNext` rather than off a pointer field.
-        append(Shaders::BIND_SCENE, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, &sceneWrite, nullptr, nullptr);
-
-        appendBuffer(Shaders::BIND_HITS, hitWrite);
-        appendUniform(Shaders::BIND_FRAME, frameWrite);
-
-        // Sampled from `GENERAL` rather than moved to a read-only layout, for the reason
-        // `BloomPass` gives: these are written as storage images and read as sampled ones a few
-        // dispatches apart, and `GENERAL` is the one layout both accesses are legal from.
-        appendImages(Shaders::BIND_WAVE_SURFACE, surfaces);
-        appendImages(Shaders::BIND_WAVE_CURVATURE, curvatures);
-
-        const VkDescriptorImageInfo fogWrite{ inputs.mFog->getSampler(), inputs.mFog->getField().getView(),
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-        append(Shaders::BIND_FOG_FIELD, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, &fogWrite, nullptr);
+        writes.image(Shaders::BIND_FOG_FIELD,
+            inputs.mFog->getField().describeSampled(
+                inputs.mFog->getSampler(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.
-        assert(filled == writes.size() && "a binding the layout declares was left unwritten");
+        assert(writes.size() == sBindings.size() && "a binding the layout declares was left unwritten");
 
-        vkCmdPushDescriptorSet(commands, bindPoint, layout, 0, filled, writes.data());
+        pushDescriptors(commands, pipeline, writes.get());
 
         // The three sets nothing pushes: the bindless textures a scene brought, the channels the
         // trace writes, and the air in front of the camera. Each is written when what it names is
         // made, and bound as it is.
         const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(),
             inputs.mFogVolume->getSet(frame) };
-        vkCmdBindDescriptorSets(
-            commands, bindPoint, layout, 1, static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
+        bindSets(commands, pipeline, sets);
     }
 
     void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
@@ -441,7 +368,7 @@ namespace Rtx
         // trace runs, because the placement buried what it displaced in the graveyard and nothing
         // between here and the submit grows a table.
         inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
-        described.mTables.mBlueNoise = mBlueNoise.getDeviceAddress();
+        described.mTables.mBlueNoise = mBlueNoise.addressFor();
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
 
         // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
@@ -478,9 +405,8 @@ namespace Rtx
 
         // Where each column's ray stops, before anything is drawn along it. One ray a
         // column, and the froxels of the column keep their draws short of the answer.
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, mDepthPipeline->getHandle());
-        pushInputs(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, mDepthPipeline->getLayout(), inputs, buffer,
-            hitCount, constants.mFrame);
+        bind(commands, *mDepthPipeline);
+        pushInputs(commands, *mDepthPipeline, inputs, buffer, hitCount, constants.mFrame);
 
         mDepthPipeline->traceRays(commands, columns, rows);
 
@@ -490,7 +416,7 @@ namespace Rtx
         // the same layout at the same bind point, so what was pushed for the first is still bound
         // for the others — and pushing set zero again would be six descriptor writes for a pass
         // that reads a handful of images out of another set.
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, scatter.getHandle());
+        bind(commands, scatter);
 
         scatter.traceRays(commands, columns, rows, Shaders::FOG_VOLUME_SLICES);
 
@@ -502,9 +428,8 @@ namespace Rtx
 
         // The integrate pass is a dispatch and reads what the launches wrote, so it is handed the
         // set again at its own bind point.
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getHandle());
-        pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getLayout(), inputs, buffer, hitCount,
-            constants.mFrame);
+        bind(commands, *mIntegratePipeline);
+        pushInputs(commands, *mIntegratePipeline, inputs, buffer, hitCount, constants.mFrame);
 
         vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
             groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
@@ -516,7 +441,7 @@ namespace Rtx
         openZone(timer, commands, "trace");
 
         const TracePipeline& pipeline = pipelineFor(variant);
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getHandle());
+        bind(commands, pipeline);
 
         // One invocation a pixel and no tail, where the dispatch it replaces covered the picture
         // in whole workgroups and had every one of them test whether it had run off the edge.
@@ -524,21 +449,8 @@ namespace Rtx
 
         closeZone(timer, commands);
 
-        // The count is read on the host after the frame's fence, and a fence makes nothing visible
-        // to the host — its access scope holds device access only — so the host's read is named
-        // here, where the write is.
-        const VkMemoryBarrier2 counted{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
-            .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &counted,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
+        // The host's read of the count is ordered by whoever reads it: `renderFrame` records
+        // `Buffer::orderForHostRead` after every pass that could add to it, and a picture's count
+        // is read by nobody.
     }
 }

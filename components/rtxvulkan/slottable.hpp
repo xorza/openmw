@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -35,9 +34,9 @@ namespace Rtx
         /// @param usage what the device does with the copies.
         void open(const Device& device, std::uint32_t slots, VkBufferUsageFlags usage, std::string_view name)
         {
-            assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies");
             mDevice = &device;
-            mSlots = slots;
+            mCopies.open(slots);
+            mOwed.open(slots);
             mUsage = usage;
             mName = name;
         }
@@ -52,8 +51,8 @@ namespace Rtx
         {
             assert(at < mRows.size() && "a row past the end of the table; grow it first");
 
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mOwed[slot].owe(std::span<const Index>(&at, 1));
+            for (RowDebt& owed : mOwed.live())
+                owed.owe(std::span<const Index>(&at, 1));
 
             return mRows[at];
         }
@@ -70,8 +69,8 @@ namespace Rtx
             mRows.resize(rows);
             if (rows < had)
             {
-                for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                    mOwed[slot].shrinkTo(rows);
+                for (RowDebt& owed : mOwed.live())
+                    owed.shrinkTo(rows);
 
                 return;
             }
@@ -81,17 +80,13 @@ namespace Rtx
             for (std::size_t at = had; at < rows; ++at)
                 mAppended.push_back(static_cast<Index>(at));
 
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mOwed[slot].owe(mAppended);
+            for (RowDebt& owed : mOwed.live())
+                owed.owe(mAppended);
         }
 
         /// Whether `slot`'s copy would change if it were synced now — what an early return asks,
         /// because a copy can carry a debt from frames ago while the scene stands still.
-        bool owes(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mOwed[slot.get()].owesAnything();
-        }
+        bool owes(FrameSlot slot) const { return mOwed.at(slot).owesAnything(); }
 
         /// Writes what `slot`'s copy owes and clears the debt.
         ///
@@ -99,16 +94,14 @@ namespace Rtx
         ///        be reading.
         void sync(FrameSlot slot, Graveyard& graveyard)
         {
-            assert(slot.get() < mSlots);
             assert(mDevice != nullptr && "sync before open");
 
-            Buffer& copy = mCopies[slot.get()];
-            RowDebt& owed = mOwed[slot.get()];
+            Buffer& copy = mCopies.at(slot);
+            RowDebt& owed = mOwed.at(slot);
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
             // The copy about to be written is the one the frame before last read, and the ring
-            // waited that frame out before this placement began. This is what says it did.
-            assert(mDevice->getTimeline().hasFinished(copy) && "a host write over a copy a submit still reads");
+            // waited that frame out before this placement began; the write asserts that it did.
 
             // A copy made again is empty whatever the debt says. Doubled only where it does not
             // fit, because `growTo` remakes whatever is larger than what it has. A byte where the
@@ -116,8 +109,8 @@ namespace Rtx
             const VkDeviceSize least = std::max(needed, VkDeviceSize{ 1 });
             if (copy.getSize() < least)
             {
-                graveyard.bury(growTo(copy, *mDevice, std::max(least, copy.getSize() * 2), mUsage));
-                mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(copy.getHandle()), mName);
+                graveyard.bury(growTo(
+                    copy, *mDevice, BufferKind::HostWritten, std::max(least, copy.getSize() * 2), mUsage, mName));
                 owed.oweEverything();
             }
 
@@ -133,60 +126,37 @@ namespace Rtx
             owed.settle();
         }
 
-        VkDeviceAddress getDeviceAddress(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mCopies[slot.get()].getDeviceAddress();
-        }
-
-        /// Says a submit signalling `value` reads `slot`'s copy — `Buffer::nameFor`.
-        void nameFor(FrameSlot slot, std::uint64_t value) const
-        {
-            assert(slot.get() < mSlots);
-            mCopies[slot.get()].nameFor(value);
-        }
+        /// Where `slot`'s copy is, as a recording takes it — `Buffer::addressFor`.
+        VkDeviceAddress addressFor(FrameSlot slot) const { return mCopies.at(slot).addressFor(); }
 
         VkDeviceSize getBytes() const
         {
             VkDeviceSize total = 0;
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                total += mCopies[slot].getSize();
+            for (const Buffer& copy : mCopies.live())
+                total += copy.getSize();
 
             return total;
         }
 
         // Read by the tests and by nothing else.
         /// What one copy's buffer occupies, which says whether it keeps growing.
-        VkDeviceSize getCopyBytes(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mCopies[slot.get()].getSize();
-        }
+        VkDeviceSize getCopyBytes(FrameSlot slot) const { return mCopies.at(slot).getSize(); }
 
         /// What `slot` would write if it were synced now, which says whether the bookkeeping is
         /// right rather than whether the picture is.
-        std::span<const Index> getOwed(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mOwed[slot.get()].getRows();
-        }
+        std::span<const Index> getOwed(FrameSlot slot) const { return mOwed.at(slot).getRows(); }
 
-        bool owesEverything(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mOwed[slot.get()].owesEverything();
-        }
+        bool owesEverything(FrameSlot slot) const { return mOwed.at(slot).owesEverything(); }
 
     private:
         const Device* mDevice = nullptr;
-        std::uint32_t mSlots = 1;
         VkBufferUsageFlags mUsage = 0;
         /// A literal, which is what every caller passes and all a debug name is asked to be.
         std::string_view mName;
 
         std::vector<Row> mRows;
-        std::array<Buffer, sFrameSlots> mCopies;
-        std::array<RowDebt, sFrameSlots> mOwed;
+        PerSlot<Buffer> mCopies;
+        PerSlot<RowDebt> mOwed;
 
         /// Cleared and refilled by `resize`, never freed: the rows one growth appended.
         std::vector<Index> mAppended;
@@ -199,32 +169,37 @@ namespace Rtx
     {
     public:
         SlotBlocks(std::uint32_t blockSize, std::uint32_t stride)
-            : mCopies{ BlockedBuffer{ blockSize, stride }, BlockedBuffer{ blockSize, stride } }
+            : mCopies([=](FrameSlot) {
+                return BlockedBuffer{ blockSize, stride };
+            })
         {
         }
 
         void open(const Device& device, std::uint32_t slots, VkBufferUsageFlags usage, std::string_view name)
         {
-            assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies");
-            mSlots = slots;
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mCopies[slot].open(device, usage, name);
+            mCopies.open(slots);
+            mOwed.open(slots);
+            for (BlockedBuffer& copy : mCopies.live())
+                copy.open(device, usage, name);
         }
+
+        /// How many copies a scene keeps, and so how many frames may trace it at once.
+        std::uint32_t count() const { return mCopies.count(); }
 
         /// Makes room in every copy for `elements`. Nothing already written moves, which is what a
         /// block table is for, so this owes nothing on its own.
         void reserve(Batch& batch, std::uint32_t elements)
         {
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mCopies[slot].reserve(batch, elements);
+            for (BlockedBuffer& copy : mCopies.live())
+                copy.reserve(batch, elements);
         }
 
         /// Says that `at`'s run has changed, so every copy owes it — once, however often it is
         /// named before that copy is filled.
         void write(Index at)
         {
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mOwed[slot].addMakingRoom(at);
+            for (SlotSet& owed : mOwed.live())
+                owed.addMakingRoom(at);
         }
 
         void write(std::span<const Index> runs)
@@ -235,11 +210,7 @@ namespace Rtx
 
         /// Says that `slot`'s copy holds everything there is to hold, which is what a load ends
         /// with: a load writes every copy through `at` and this is what tells the account.
-        void settle(FrameSlot slot)
-        {
-            assert(slot.get() < mSlots);
-            mOwed[slot.get()].clear();
-        }
+        void settle(FrameSlot slot) { mOwed.at(slot).clear(); }
 
         /// Writes the runs `slot`'s copy owes and clears the debt.
         ///
@@ -248,50 +219,36 @@ namespace Rtx
         template <class Fill>
         void sync(FrameSlot slot, Fill&& fill)
         {
-            assert(slot.get() < mSlots);
-            for (const Index at : mOwed[slot.get()].getSlots())
-                fill(at, mCopies[slot.get()]);
+            SlotSet& owed = mOwed.at(slot);
+            for (const Index at : owed.getSlots())
+                fill(at, mCopies.at(slot));
 
-            mOwed[slot.get()].clear();
+            owed.clear();
         }
 
         /// One copy, written or read behind the account's back, because an arrival fills every
         /// copy whole and then says so with `settle`. Per-frame writes go through `write` and
         /// `sync`.
-        BlockedBuffer& at(FrameSlot slot)
-        {
-            assert(slot.get() < mSlots);
-            return mCopies[slot.get()];
-        }
-
-        const BlockedBuffer& at(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mCopies[slot.get()];
-        }
+        BlockedBuffer& at(FrameSlot slot) { return mCopies.at(slot); }
+        const BlockedBuffer& at(FrameSlot slot) const { return mCopies.at(slot); }
 
         VkDeviceSize getBytes() const
         {
             VkDeviceSize total = 0;
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                total += mCopies[slot].getBytes();
+            for (const BlockedBuffer& copy : mCopies.live())
+                total += copy.getBytes();
 
             return total;
         }
 
         // Read by the tests and by nothing else.
-        std::span<const Index> getOwed(FrameSlot slot) const
-        {
-            assert(slot.get() < mSlots);
-            return mOwed[slot.get()].getSlots();
-        }
+        std::span<const Index> getOwed(FrameSlot slot) const { return mOwed.at(slot).getSlots(); }
 
     private:
-        std::uint32_t mSlots = 1;
-        std::array<BlockedBuffer, sFrameSlots> mCopies;
+        PerSlot<BlockedBuffer> mCopies;
 
         /// A set and not a `RowDebt`, because a block table's data is the scene's and there is no
         /// "everything" here to owe. Cleared and refilled, never freed.
-        std::array<SlotSet, sFrameSlots> mOwed;
+        PerSlot<SlotSet> mOwed;
     };
 }

@@ -213,8 +213,11 @@ namespace Rtx
             {
                 const auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
                     vkGetInstanceProcAddr(mHandle, "vkCreateDebugUtilsMessengerEXT"));
-                if (create == nullptr)
-                    throw Unsupported("the validation layer is loaded but vkCreateDebugUtilsMessengerEXT is missing");
+                mDestroyMessenger = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+                    vkGetInstanceProcAddr(mHandle, "vkDestroyDebugUtilsMessengerEXT"));
+                if (create == nullptr || mDestroyMessenger == nullptr)
+                    throw Unsupported(
+                        "the validation layer is loaded but the debug messenger's entry points are missing");
 
                 checkVk(create(mHandle, &messengerInfo, nullptr, &mMessenger), "vkCreateDebugUtilsMessengerEXT");
             }
@@ -230,12 +233,7 @@ namespace Rtx
     Instance::~Instance()
     {
         if (mMessenger != VK_NULL_HANDLE)
-        {
-            const auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-                vkGetInstanceProcAddr(mHandle, "vkDestroyDebugUtilsMessengerEXT"));
-            if (destroy != nullptr)
-                destroy(mHandle, mMessenger, nullptr);
-        }
+            mDestroyMessenger(mHandle, mMessenger, nullptr);
 
         if (mHandle != VK_NULL_HANDLE)
             vkDestroyInstance(mHandle, nullptr);

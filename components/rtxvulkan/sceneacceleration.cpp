@@ -14,7 +14,6 @@
 #include "device.hpp"
 #include "gputimer.hpp"
 #include "graveyard.hpp"
-#include "result.hpp"
 #include "timeline.hpp"
 
 namespace Rtx
@@ -25,9 +24,6 @@ namespace Rtx
         constexpr std::uint8_t sRowCutout = 1;
         constexpr std::uint8_t sRowWater = 2;
         constexpr std::uint8_t sRowMedium = 4;
-
-        constexpr VkBufferUsageFlags sStorageUsage
-            = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     }
 
     VkTransformMatrixKHR toVulkanTransform(const Transform3x4& transform)
@@ -43,11 +39,8 @@ namespace Rtx
     SceneAcceleration::SceneAcceleration(
         const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
-        , mSlots(slots)
         , mBottomLevel(device)
     {
-        assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
-
         mPoses.open(device, slots, sBuildInputUsage, "poses");
         mRowTable.open(device, slots, sBuildInputUsage, "instances");
         mIndices.open(device, sBuildInputUsage, "indices");
@@ -61,26 +54,20 @@ namespace Rtx
 
         // Every copy holds a bind pose for every body the scene arrived with, so what a copy owes
         // from now on is the poses it missed.
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+        for (std::uint32_t slot = 0; slot < mPoses.count(); ++slot)
             mPoses.settle(FrameSlot{ slot });
     }
 
     void SceneAcceleration::build(
         Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
     {
-        assert(mBottomLevel.size() == 0 && mTopLevel == VK_NULL_HANDLE && "a scene built twice");
+        assert(mBottomLevel.size() == 0 && mTopLevel.isEmpty() && "a scene built twice");
 
         // The rows after the structures, because a row names the address of the structure it places.
         mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, graveyard);
         writeRows(records, {});
         prepareTopLevel(scene, FrameSlot{}, graveyard);
         recordTopLevel(batch.getCommands(), nullptr);
-    }
-
-    SceneAcceleration::~SceneAcceleration()
-    {
-        if (mTopLevel != VK_NULL_HANDLE)
-            mDevice.getFunctions().mDestroyAccelerationStructure(mDevice.getHandle(), mTopLevel, nullptr);
     }
 
     void SceneAcceleration::writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes)
@@ -102,7 +89,7 @@ namespace Rtx
             // dispatched for it still has to hold something a refit can read. A static mesh has no
             // run here at all: `buildMeshes` stages its vertices for the build and nothing else.
             if (range.mDeform != Deform::None)
-                for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                for (std::uint32_t slot = 0; slot < mPoses.count(); ++slot)
                     mPoses.at(FrameSlot{ slot })
                         .writeAt(batch, range.mBindOffset, scene.meshes().getMeshPositions(mesh));
 
@@ -160,10 +147,7 @@ namespace Rtx
 
         const auto count = static_cast<std::uint32_t>(deformed.size());
 
-        const VkDeviceSize scratchAlignment
-            = mDevice.getPhysicalDevice()
-                  .getProperties()
-                  .mAccelerationStructure.minAccelerationStructureScratchOffsetAlignment;
+        const VkDeviceSize scratchAlignment = mDevice.getPhysicalDevice().getStructureScratchAlignment();
 
         VkDeviceSize scratchTotal = 0;
         for (const Index mesh : deformed)
@@ -173,10 +157,10 @@ namespace Rtx
             scratchTotal = alignUp(scratchTotal + mBottomLevel.getUpdateScratch(mesh), scratchAlignment);
         }
 
-        if (mRefitScratch.getSize() < scratchTotal)
-            graveyard.bury(std::exchange(mRefitScratch, Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage)));
+        graveyard.bury(
+            growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "refit scratch"));
 
-        const VkDeviceAddress scratchAddress = mRefitScratch.getDeviceAddress();
+        const VkDeviceAddress scratchAddress = mRefitScratch.addressFor();
 
         mRefit.sizeTo(count);
 
@@ -234,8 +218,6 @@ namespace Rtx
     bool SceneAcceleration::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
         std::span<const Index> changed, const Placing& placing)
     {
-        assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the rows for");
-
         prepareRefit(scene, placing.mSlot, placing.mGraveyard);
 
         // What this copy owes, and not what the scene moved: a world that stands still owes
@@ -327,12 +309,11 @@ namespace Rtx
         mRowTable.sync(slot, graveyard);
 
         const auto count = static_cast<std::uint32_t>(mRowTable.size());
-        if (mTopLevel == VK_NULL_HANDLE || count > mTopLevelSlots)
+        if (mTopLevel.isEmpty() || count > mTopLevelSlots)
             sizeTopLevel(count, graveyard);
 
         // The top level is built from this frame's copy, so the address moves with the slot.
-        mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.getDeviceAddress(slot);
-        mRowTable.nameFor(slot, mDevice.getTimeline().getNext());
+        mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.addressFor(slot);
 
         mCounts.mPlaced = scene.placements().getPlacedCount();
     }
@@ -446,34 +427,23 @@ namespace Rtx
         // The old structure is buried, and its storage with it where that has to grow. A cell
         // arriving is what brings this here, and an arrival waits every frame out first — but the
         // rule is one rule, and burying costs nothing where nothing is in flight.
-        graveyard.bury(mTopLevel);
-        mTopLevel = VK_NULL_HANDLE;
+        graveyard.bury(std::move(mTopLevel));
 
         mTopLevelBytes = sizes.accelerationStructureSize;
         mTopLevelSlots = slots;
 
         // Grown to the high-water mark and kept, both of them. A structure is created at offset zero
         // of whatever this holds and asks only that it be large enough.
-        if (mTopLevelStorage.getSize() < sizes.accelerationStructureSize)
-            graveyard.bury(std::exchange(
-                mTopLevelStorage, Buffer::deviceLocal(mDevice, sizes.accelerationStructureSize, sStorageUsage)));
+        graveyard.bury(growTo(mTopLevelStorage, mDevice, BufferKind::DeviceLocal, sizes.accelerationStructureSize,
+            sStructureStorageUsage, "top level storage"));
+        graveyard.bury(growTo(mTopLevelScratch, mDevice, BufferKind::DeviceLocal, sizes.buildScratchSize, sScratchUsage,
+            "top level scratch"));
 
-        if (mTopLevelScratch.getSize() < sizes.buildScratchSize)
-            graveyard.bury(
-                std::exchange(mTopLevelScratch, Buffer::deviceLocal(mDevice, sizes.buildScratchSize, sScratchUsage)));
+        mTopLevel
+            = AccelerationStructure::topLevel(mDevice, mTopLevelStorage, sizes.accelerationStructureSize, "scene");
 
-        const VkAccelerationStructureCreateInfoKHR create{
-            .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
-            .buffer = mTopLevelStorage.getHandle(),
-            .size = sizes.accelerationStructureSize,
-            .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-        };
-        checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &mTopLevel),
-            "vkCreateAccelerationStructureKHR");
-        mDevice.setName(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR, reinterpret_cast<std::uint64_t>(mTopLevel), "scene");
-
-        mTopLevelBuild.dstAccelerationStructure = mTopLevel;
-        mTopLevelBuild.scratchData.deviceAddress = mTopLevelScratch.getDeviceAddress();
+        mTopLevelBuild.dstAccelerationStructure = mTopLevel.getHandle();
+        mTopLevelBuild.scratchData.deviceAddress = mTopLevelScratch.addressFor();
     }
 
     void SceneAcceleration::recordTopLevel(VkCommandBuffer commands, GpuTimer* timer)

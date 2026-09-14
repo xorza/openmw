@@ -7,6 +7,7 @@
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtx/shaders/look.h>
 
+#include "barriers.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
 
@@ -34,7 +35,7 @@ namespace Rtx
 
     void BloomPass::resize(std::uint32_t width, std::uint32_t height)
     {
-        if (!mLevels.empty() && mLevels.front()->getWidth() == width / 2 && mLevels.front()->getHeight() == height / 2)
+        if (!mLevels.empty() && mLevels.front().getWidth() == width / 2 && mLevels.front().getHeight() == height / 2)
             return;
 
         mLevels.clear();
@@ -50,9 +51,9 @@ namespace Rtx
             // `TRANSFER_SRC` because the levels are the whole of what this pass produces and so the
             // only thing a reader can check it by — `GBuffer::sReadable` carries the bit for the
             // same reason, and it costs no memory either.
-            mLevels.push_back(std::make_unique<Image>(mDevice, width, height, BLOOM_LEVEL,
+            mLevels.emplace_back(mDevice, width, height, BLOOM_LEVEL,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                std::format("bloom level {}", level)));
+                std::format("bloom level {}", level));
         }
     }
 
@@ -67,12 +68,9 @@ namespace Rtx
         // Sampled from `GENERAL` rather than moved to a read-only layout. A level is written as
         // a storage image and read as a sampled one within a few dispatches of each other, and the
         // layout this renderer keeps everything in is one both accesses are legal from.
-        const std::array<VkDescriptorImageInfo, 2> images{
-            VkDescriptorImageInfo{ mSampler.get(), source.getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, target.getView(), VK_IMAGE_LAYOUT_GENERAL },
-        };
-
-        const std::array<VkWriteDescriptorSet, 2> writes = imageWrites(images, sBindings);
+        DescriptorWrites<2> writes;
+        writes.image(0, source.describeSampled(mSampler.get()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writes.image(1, target.describeStorage());
 
         const Shaders::BloomConstants constants{
             .mWidth = target.getWidth(),
@@ -82,7 +80,7 @@ namespace Rtx
             .mMix = mix,
         };
 
-        dispatch(commands, pipeline, writes, constants, groupsFor(target.getWidth(), Shaders::BLOOM_WORKGROUP),
+        dispatch(commands, pipeline, writes.get(), constants, groupsFor(target.getWidth(), Shaders::BLOOM_WORKGROUP),
             groupsFor(target.getHeight(), Shaders::BLOOM_WORKGROUP));
     }
 
@@ -95,38 +93,38 @@ namespace Rtx
         if (mLevels.empty())
             return;
 
-        assert(mLevels.front()->getWidth() == frame.getWidth() / 2 && "record before resize");
+        assert(mLevels.front().getWidth() == frame.getWidth() / 2 && "record before resize");
 
         // Nothing has written the levels yet this frame, so the halvings may discard whatever the
         // last one left.
         Barriers opened(commands);
-        for (const std::unique_ptr<Image>& level : mLevels)
+        for (const Image& level : mLevels)
             opened.add(
-                level->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
+                level.describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
                     Use::sComputeWrite));
 
         opened.flush();
 
         const Image* source = &frame;
-        for (const std::unique_ptr<Image>& level : mLevels)
+        for (const Image& level : mLevels)
         {
-            run(commands, mHalvePipeline, *source, *level, 0.0f);
-            handOver(commands, *level);
-            source = level.get();
+            run(commands, mHalvePipeline, *source, level, 0.0f);
+            handOver(commands, level);
+            source = &level;
         }
 
         // Back up the pyramid, each level mixed into the one above it. The coarsest has nothing
         // coarser to take, which is why this starts one below the end.
         for (std::size_t level = mLevels.size() - 1; level > 0; --level)
         {
-            const Image& finer = *mLevels[level - 1];
+            const Image& finer = mLevels[level - 1];
 
             // The finer level is about to be read as well as written, and what it holds is its own
             // halving from the loop above — a write after a read after a write, all in one stage.
             finer.transition(commands, Use::sComputeWrite, Use::sComputeReadWrite);
 
-            run(commands, mSpreadPipeline, *mLevels[level], finer, Shaders::BLOOM_SCATTER);
+            run(commands, mSpreadPipeline, mLevels[level], finer, Shaders::BLOOM_SCATTER);
             handOver(commands, finer);
         }
     }

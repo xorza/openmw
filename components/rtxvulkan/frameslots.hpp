@@ -1,9 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <type_traits>
+#include <utility>
 
 #include <components/rtx/runs.hpp>
 #include <components/rtx/slots.hpp>
@@ -39,6 +42,59 @@ namespace Rtx
 
     private:
         std::uint32_t mIndex = 0;
+    };
+
+    /// One `T` per frame in flight, addressed by `FrameSlot`: the copies of every table a frame
+    /// writes. Room for `sFrameSlots` and `count()` of them live, so a scene told to keep fewer
+    /// copies keeps fewer — and the one assert on a slot lives here.
+    template <class T>
+    class PerSlot
+    {
+    public:
+        /// `sFrameSlots` default-made, every one live, for a member that is `open`ed later.
+        PerSlot() = default;
+
+        /// One per slot, each `make(slot)`, every one live: for a `T` that has no empty state.
+        template <class Make, class = std::enable_if_t<std::is_invocable_v<Make&, FrameSlot>>>
+        explicit PerSlot(Make&& make)
+            : PerSlot(make, std::make_index_sequence<sFrameSlots>{})
+        {
+        }
+
+        /// Says how many of them a scene keeps: at least one, at most all of them.
+        void open(const std::uint32_t count)
+        {
+            assert(count >= 1 && count <= sFrameSlots && "more frames in flight than there are copies");
+            mCount = count;
+        }
+
+        std::uint32_t count() const { return mCount; }
+
+        T& at(const FrameSlot slot)
+        {
+            assert(slot.get() < mCount && "a frame slot this keeps no copy for");
+            return mItems[slot.get()];
+        }
+
+        const T& at(const FrameSlot slot) const
+        {
+            assert(slot.get() < mCount && "a frame slot this keeps no copy for");
+            return mItems[slot.get()];
+        }
+
+        /// The live ones, for a write that every copy owes.
+        std::span<T> live() { return std::span<T>(mItems.data(), mCount); }
+        std::span<const T> live() const { return std::span<const T>(mItems.data(), mCount); }
+
+    private:
+        template <class Make, std::size_t... I>
+        PerSlot(Make& make, std::index_sequence<I...>)
+            : mItems{ make(FrameSlot{ static_cast<std::uint32_t>(I) })... }
+        {
+        }
+
+        std::array<T, sFrameSlots> mItems{};
+        std::uint32_t mCount = sFrameSlots;
     };
 
     /// What one copy of a double-buffered table still has to be told. Two frames in flight is two

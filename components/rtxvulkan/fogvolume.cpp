@@ -10,9 +10,9 @@
 #include <components/rtx/shaders/fogvolume.h>
 #include <components/rtx/shaders/scene.h>
 
+#include "barriers.hpp"
 #include "commands.hpp"
-#include "device.hpp"
-#include "result.hpp"
+#include "dispatch.hpp"
 
 namespace Rtx
 {
@@ -66,25 +66,32 @@ namespace Rtx
 
         std::uint32_t columnsFor(std::uint32_t pixels)
         {
-            return (pixels + Shaders::FOG_VOLUME_SCALE - 1) / Shaders::FOG_VOLUME_SCALE;
+            return groupsFor(pixels, Shaders::FOG_VOLUME_SCALE);
         }
+
+        /// Sampled where a pass reads and storage where it writes. One image is named twice wherever
+        /// both happen, because Vulkan has no one descriptor that is both. One table serves the
+        /// layout and the pool that holds two sets of it.
+        constexpr std::array<VkDescriptorSetLayoutBinding, sBindings> sLayoutBindings = [] {
+            std::array<VkDescriptorSetLayoutBinding, sBindings> bindings{};
+            for (std::uint32_t binding = 0; binding < bindings.size(); ++binding)
+                bindings[binding] = VkDescriptorSetLayoutBinding{ binding,
+                    sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                    1,
+                    // The volume writes these as a dispatch, and the trace samples them from its
+                    // ray generation shader and from the closest-hit shaders that shade what a
+                    // bounce found.
+                    VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+                        | VK_SHADER_STAGE_MISS_BIT_KHR,
+                    nullptr };
+
+            return bindings;
+        }();
     }
 
     SetLayout FogVolume::describeLayout(const Device& device)
     {
-        // Sampled where a pass reads and storage where it writes. One image is named twice wherever
-        // both happen, because Vulkan has no one descriptor that is both.
-        std::array<VkDescriptorSetLayoutBinding, sBindings> bindings{};
-        for (std::uint32_t binding = 0; binding < bindings.size(); ++binding)
-            bindings[binding] = VkDescriptorSetLayoutBinding{ binding,
-                sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                // The volume writes these as a dispatch, and the trace samples them from its ray
-                // generation shader and from the closest-hit shaders that shade what a bounce found.
-                VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
-                    | VK_SHADER_STAGE_MISS_BIT_KHR,
-                nullptr };
-
-        return makeSetLayout(device, bindings);
+        return makeSetLayout(device, sLayoutBindings);
     }
 
     FogVolume::FogVolume(
@@ -107,34 +114,12 @@ namespace Rtx
         , mColumnMoons(device, mColumns, mRows, FOG_MOONS_FORMAT,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column moons", 1, Shaders::MOON_COUNT)
         , mSampler(makeTargetSampler(device, "fog volume"))
+        , mSets(device, sLayoutBindings, layout.get(), sParities)
     {
-        const auto sets = static_cast<std::uint32_t>(mSets.size());
-        const std::array<VkDescriptorPoolSize, 2> sizes{
-            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sSampled * sets },
-            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (sBindings - sSampled) * sets },
-        };
-        const VkDescriptorPoolCreateInfo describePool{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .maxSets = sets,
-            .poolSizeCount = static_cast<std::uint32_t>(sizes.size()),
-            .pPoolSizes = sizes.data(),
-        };
-        checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, mPool.put(device.getHandle())),
-            "vkCreateDescriptorPool");
-
-        const std::array<VkDescriptorSetLayout, 2> shapes{ layout.get(), layout.get() };
-        const VkDescriptorSetAllocateInfo allocate{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = mPool.get(),
-            .descriptorSetCount = static_cast<std::uint32_t>(shapes.size()),
-            .pSetLayouts = shapes.data(),
-        };
-        checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, mSets.data()), "vkAllocateDescriptorSets");
-
         // Sampled from `GENERAL` rather than moved to a read-only layout, for the reason
         // `BloomPass` gives: these are written as storage images and read as sampled ones a
         // dispatch apart, and `GENERAL` is the one layout both accesses are legal from.
-        for (std::size_t parity = 0; parity < mSets.size(); ++parity)
+        for (std::size_t parity = 0; parity < sParities; ++parity)
         {
             const std::size_t written = parity;
             const std::size_t history = 1 - parity;
@@ -159,25 +144,15 @@ namespace Rtx
             named[Shaders::BIND_FOG_COLUMN_DEPTH] = &mColumnDepth;
             named[Shaders::BIND_FOG_COLUMN_MOONS] = &mColumnMoons;
 
-            std::array<VkDescriptorImageInfo, sBindings> views{};
-            std::array<VkWriteDescriptorSet, sBindings> writes{};
+            DescriptorWrites<sBindings> writes(mSets.get(parity));
             for (std::uint32_t binding = 0; binding < sBindings; ++binding)
-            {
-                views[binding] = VkDescriptorImageInfo{ sampledAt(binding) ? mSampler.get() : VK_NULL_HANDLE,
-                    sampledAt(binding) ? named[binding]->getView() : named[binding]->getStorageView(),
-                    VK_IMAGE_LAYOUT_GENERAL };
-                writes[binding] = VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = mSets[parity],
-                    .dstBinding = binding,
-                    .descriptorCount = 1,
-                    .descriptorType
-                    = sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                    .pImageInfo = &views[binding],
-                };
-            }
+                if (sampledAt(binding))
+                    writes.image(binding, named[binding]->describeSampled(mSampler.get()),
+                        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+                else
+                    writes.image(binding, named[binding]->describeStorage());
 
-            vkUpdateDescriptorSets(device.getHandle(), sBindings, writes.data(), 0, nullptr);
+            updateSets(device, writes.get());
         }
 
         // Emptied and in `GENERAL` from the moment they exist: `begin` does not discard the point
@@ -185,18 +160,10 @@ namespace Rtx
         // range that is a departed image's bits rather than the driver's zeroed pages.
         pool.submitAndWait([&](VkCommandBuffer commands) {
             constexpr VkClearColorValue nothing{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
-            constexpr VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
             for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,
                      &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth, &mColumnMoons })
-            {
-                image->transition(commands, Use::sUndefined, Use::sClearWrite);
-
-                vkCmdClearColorImage(
-                    commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &nothing, 1, &whole);
-
-                image->transition(commands, Use::sClearWrite, Use::sAnyGeneral);
-            }
+                image->clear(commands, Use::sUndefined, nothing, Use::sAnyGeneral);
         });
     }
 
@@ -207,14 +174,13 @@ namespace Rtx
         // Discarded, because every texel of it is written before any is read; the other half of
         // the pair is this frame's history and survives, one loop down. The point pair, the lamps
         // and the column images are written by the two launches, the integrated ones by the
-        // dispatch after them.
-        constexpr ImageUse discarded{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT };
+        // dispatch after them. The last frame's readers are behind the head barrier
+        // `CommandPool::begin` recorded.
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mColumnDepth, &mColumnMoons })
-            barriers.add(image->describeTransition(discarded, Use::sTraceWrite));
+            barriers.add(image->describeTransition(Use::sUndefined, Use::sTraceWrite));
         for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
-            barriers.add(image->describeTransition(discarded, Use::sComputeWrite));
+            barriers.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
 
         // From `GENERAL` and not from undefined, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand
@@ -243,10 +209,7 @@ namespace Rtx
         // of these at a point (`puffLight`).
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
-            barriers.add(image->describeTransition(Use::sTraceWrite,
-                ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                    VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
+            barriers.add(image->describeTransition(Use::sTraceWrite, Use::sShaderSample));
 
         barriers.flush();
     }
@@ -255,17 +218,11 @@ namespace Rtx
     {
         Barriers barriers(commands);
         for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
-            barriers.add(image->describeTransition(Use::sComputeWrite,
-                ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                    VK_ACCESS_2_SHADER_SAMPLED_READ_BIT }));
+            barriers.add(image->describeTransition(Use::sComputeWrite, Use::sShaderSample));
 
         // The column depth the trace reads beside them, which `depthTaken` ordered only against the
         // launch and the dispatch between.
-        barriers.add(mColumnDepth.describeTransition(Use::sTraceWrite,
-            ImageUse{ VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT }));
+        barriers.add(mColumnDepth.describeTransition(Use::sTraceWrite, Use::sShaderStorageRead));
 
         barriers.flush();
     }

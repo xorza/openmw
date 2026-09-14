@@ -5,6 +5,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
 
+#include "barriers.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
 #include "gputimer.hpp"
@@ -14,24 +15,21 @@ namespace Rtx
 {
     namespace
     {
+        /// Whether a mesh has a pose to compute. A slot owed from before it went, or one taken over
+        /// by a mesh that stands, has nothing: its run in the poses holds what the arrival wrote.
+        bool posable(const MeshRange& mesh)
+        {
+            return mesh.mDeform != Deform::None && !mesh.mVertices.empty();
+        }
+
         /// Orders the dispatches just recorded against everything that reads what they wrote: the
         /// refit, which reads the positions as build input, and the trace, which reads the normals.
-        void handOver(VkCommandBuffer commands)
+        void posed(VkCommandBuffer commands)
         {
-            const VkMemoryBarrier2 barrier{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
-                    | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            };
-            const VkDependencyInfo dependency{
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .memoryBarrierCount = 1,
-                .pMemoryBarriers = &barrier,
-            };
-            vkCmdPipelineBarrier2(commands, &dependency);
+            handOver(commands, Use::sBufferComputeWrite,
+                BufferUse{ VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+                        | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                    VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT });
         }
     }
 
@@ -39,6 +37,66 @@ namespace Rtx
         : mSkin(device, {}, sizeof(Shaders::SkinConstants), {}, shaderDirectory / "skin.comp.spv", "skin")
         , mMorph(device, {}, sizeof(Shaders::MorphConstants), {}, shaderDirectory / "morph.comp.spv", "morph")
     {
+    }
+
+    void SkinPass::pose(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, const Index index,
+        SkinTables& tables, const SkinTables::Rows rows, BlockedBuffer& into, BlockedBuffer& normalsInto,
+        const ComputePipeline*& bound) const
+    {
+        const MeshRange& mesh = scene.meshes().getRows()[index];
+        assert(posable(mesh) && "a pose of a mesh with nothing to pose");
+
+        // The pose table is indexed by the bind offset and the normals by the scene's own. A hit
+        // reads a normal out of the shared table, so every mesh has a run there; nothing reads a
+        // position at a hit, so only the bodies have one here.
+        const VkDeviceAddress posed = into.addressOf(mesh.mBindOffset);
+        const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertices.mOffset);
+
+        if (mesh.mDeform == Deform::Rig)
+        {
+            const Rig& rig = scene.deformers().getRigs()[mesh.mDeformer];
+            const Shaders::SkinConstants push{
+                .mBindPositions = tables.getBindPositions(mesh),
+                .mBindNormals = tables.getBindNormals(mesh),
+                .mRuns = tables.getRuns(rig),
+                .mInfluences = tables.getInfluences(rig),
+                .mBones = tables.writeBones(scene, slot, index, rows),
+                .mPositions = posed,
+                .mNormals = shaded,
+                .mCount = mesh.mVertices.mCount,
+                .mPadding = 0,
+            };
+
+            if (bound != &mSkin)
+            {
+                bind(commands, mSkin);
+                bound = &mSkin;
+            }
+
+            pushConstants(commands, mSkin, push);
+        }
+        else
+        {
+            const Morph& morph = scene.deformers().getMorphs()[mesh.mDeformer];
+            const Shaders::MorphConstants push{
+                .mBase = tables.getBindPositions(mesh),
+                .mOffsets = tables.getMorphOffsets(morph),
+                .mWeights = tables.writeWeights(scene, slot, index, rows),
+                .mPositions = posed,
+                .mCount = mesh.mVertices.mCount,
+                .mTargets = morph.mTargetCount,
+            };
+
+            if (bound != &mMorph)
+            {
+                bind(commands, mMorph);
+                bound = &mMorph;
+            }
+
+            pushConstants(commands, mMorph, push);
+        }
+
+        vkCmdDispatch(commands, groupsFor(mesh.mVertices.mCount, Shaders::SKIN_WORKGROUP), 1, 1);
     }
 
     bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, SkinTables& tables,
@@ -55,11 +113,7 @@ namespace Rtx
 
         BlockedBuffer& normalsInto = normals.at(slot);
         poses.sync(slot, [&](const Index index, BlockedBuffer& into) {
-            const MeshRange& mesh = scene.meshes().getRows()[index];
-
-            // A slot owed from before it went, or one taken over by a mesh that stands: nothing
-            // to pose. Its run in the poses holds what the arrival wrote.
-            if (mesh.mDeform == Deform::None || mesh.mVertices.empty())
+            if (!posable(scene.meshes().getRows()[index]))
                 return;
 
             if (!recorded)
@@ -68,64 +122,38 @@ namespace Rtx
                 recorded = true;
             }
 
-            // The pose table is indexed by the bind offset and the normals by the scene's own.
-            // A hit reads a normal out of the shared table, so every mesh has a run there; nothing
-            // reads a position at a hit, so only the bodies have one here.
-            const VkDeviceAddress posed = into.addressOf(mesh.mBindOffset);
-            const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertices.mOffset);
-
-            if (mesh.mDeform == Deform::Rig)
-            {
-                const Rig& rig = scene.deformers().getRigs()[mesh.mDeformer];
-                const Shaders::SkinConstants push{
-                    .mBindPositions = tables.getBindPositions(mesh),
-                    .mBindNormals = tables.getBindNormals(mesh),
-                    .mRuns = tables.getRuns(rig),
-                    .mInfluences = tables.getInfluences(rig),
-                    .mBones = tables.writeBones(scene, slot, index),
-                    .mPositions = posed,
-                    .mNormals = shaded,
-                    .mCount = mesh.mVertices.mCount,
-                    .mPadding = 0,
-                };
-
-                if (bound != &mSkin)
-                {
-                    vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mSkin.getHandle());
-                    bound = &mSkin;
-                }
-
-                vkCmdPushConstants(commands, mSkin.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-            }
-            else
-            {
-                const Morph& morph = scene.deformers().getMorphs()[mesh.mDeformer];
-                const Shaders::MorphConstants push{
-                    .mBase = tables.getBindPositions(mesh),
-                    .mOffsets = tables.getMorphOffsets(morph),
-                    .mWeights = tables.writeWeights(scene, slot, index),
-                    .mPositions = posed,
-                    .mCount = mesh.mVertices.mCount,
-                    .mTargets = morph.mTargetCount,
-                };
-
-                if (bound != &mMorph)
-                {
-                    vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mMorph.getHandle());
-                    bound = &mMorph;
-                }
-
-                vkCmdPushConstants(commands, mMorph.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-            }
-
-            vkCmdDispatch(commands, groupsFor(mesh.mVertices.mCount, Shaders::SKIN_WORKGROUP), 1, 1);
+            pose(commands, scene, slot, index, tables, SkinTables::Rows::Placed, into, normalsInto, bound);
         });
 
         if (!recorded)
             return false;
 
-        handOver(commands);
+        posed(commands);
         closeZone(timer, commands);
+        return true;
+    }
+
+    bool SkinPass::recordArrived(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot,
+        const std::span<const Index> arrived, SkinTables& tables, SlotBlocks& poses, SlotBlocks& normals) const
+    {
+        const ComputePipeline* bound = nullptr;
+        bool recorded = false;
+
+        BlockedBuffer& into = poses.at(slot);
+        BlockedBuffer& normalsInto = normals.at(slot);
+        for (const Index index : arrived)
+        {
+            if (!posable(scene.meshes().getRows()[index]))
+                continue;
+
+            pose(commands, scene, slot, index, tables, SkinTables::Rows::Arrived, into, normalsInto, bound);
+            recorded = true;
+        }
+
+        if (!recorded)
+            return false;
+
+        posed(commands);
         return true;
     }
 }

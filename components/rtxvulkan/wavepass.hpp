@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 
 #include <osg/Vec2f>
 #include <vulkan/vulkan_core.h>
@@ -54,9 +53,9 @@ namespace Rtx
         VkSampler getSampler() const { return mSampler.get(); }
 
         /// The two slopes, their own second moment, and the elevation squared.
-        const Image& getSurface(std::size_t cascade) const { return *mTiles[cascade].mSurface; }
+        const Image& getSurface(std::size_t cascade) const { return mTiles[cascade].mSurface; }
 
-        const Image& getCurvature(std::size_t cascade) const { return *mTiles[cascade].mCurvature; }
+        const Image& getCurvature(std::size_t cascade) const { return mTiles[cascade].mCurvature; }
 
         /// How wide this tile is in world units, which is what turns a world position into a
         /// texture coordinate and a cone width into a level.
@@ -88,8 +87,8 @@ namespace Rtx
             /// The three packed spectra laid end to end, transformed in place.
             Buffer mField;
 
-            std::unique_ptr<Image> mSurface;
-            std::unique_ptr<Image> mCurvature;
+            Image mSurface;
+            Image mCurvature;
         };
 
         /// Orders the dispatch just recorded against the one about to read what it wrote.

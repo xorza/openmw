@@ -10,6 +10,7 @@
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/runs.hpp>
 
+#include "blocklist.hpp"
 #include "owned.hpp"
 
 namespace Rtx
@@ -76,13 +77,13 @@ namespace Rtx
         std::uint32_t mBlock = 0;
     };
 
-    /// Every `vkAllocateMemory` the renderer holds, and the ranges of them nothing is using. The
-    /// same shape as `StructureStorage`, over device memory: a block is made once, a `RunAllocator`
-    /// says where inside it a resource goes, and a range given back is merged with what it touches,
-    /// so a cell that leaves hands its textures' memory to the cell that arrives. A pool per memory
-    /// type and per tiling, which keeps a buffer and an image off the same
-    /// `bufferImageGranularity` page. Locked, because `VisibilityPass::compileEvery` reaches `take`
-    /// from a thread per core; uncontended on the frame path.
+    /// Every `vkAllocateMemory` the renderer holds, and the ranges of them nothing is using. A
+    /// `BlockList` over device memory, the shape `StructureStorage` is over buffers: a block is
+    /// made once, a `RunAllocator` says where inside it a resource goes, and a range given back is
+    /// merged with what it touches, so a cell that leaves hands its textures' memory to the cell
+    /// that arrives. A pool per memory type and per tiling, which keeps a buffer and an image off
+    /// the same `bufferImageGranularity` page. Locked, because `VisibilityPass::compileEvery`
+    /// reaches `take` from a thread per core; uncontended on the frame path.
     class MemoryAllocator
     {
     public:
@@ -118,14 +119,21 @@ namespace Rtx
 
         /// One `vkAllocateMemory` and what has been handed out inside it. The allocator has no
         /// block boundary of its own: this allocation *is* the block, and what stops a range
-        /// leaving it is `mPages` checked against `getEnd`.
+        /// leaving it is the capacity in pages checked against `getEnd`.
         struct Block
         {
             Owned<VkDeviceMemory, vkFreeMemory> mHandle;
             void* mMapped = nullptr;
             RunAllocator mRuns;
-            std::uint32_t mPages = 0;
+            std::uint32_t mCapacity = 0;
             std::uint32_t mPool = 0;
+
+            void retire()
+            {
+                mHandle.reset();
+                mMapped = nullptr;
+                mCapacity = 0;
+            }
         };
 
         /// The index of a memory type satisfying `properties`, out of those `typeBits` allows.
@@ -134,8 +142,8 @@ namespace Rtx
         /// How large a block of `type` is made, before what a single resource may force.
         VkDeviceSize blockBytes(std::uint32_t type, std::uint32_t held) const;
 
-        /// `run` in block `at`, as the range a resource of `alignment` is bound in.
-        DeviceMemory place(std::uint32_t at, Run run, VkDeviceSize alignment);
+        /// `placed`, as the range a resource of `alignment` is bound in.
+        DeviceMemory place(const BlockRun& placed, VkDeviceSize alignment);
 
         /// Gives a range back, and hands the block behind it to the device where that was the last
         /// range in it — at most one `vkFreeMemory` per range, never a sweep. The last block of a
@@ -154,10 +162,8 @@ namespace Rtx
         /// what it asked for itself.
         bool mBudget = false;
 
-        /// Every block of every pool, in one list. A block's slot is never removed, so the index a
-        /// range carries names the same block for the allocator's life; a slot whose allocation
-        /// went back to the device is taken over by the next block that pool needs.
-        std::vector<Block> mBlocks;
+        /// Every block of every pool, in one list.
+        BlockList<Block> mBlocks;
 
         /// How many blocks of each pool hold an allocation, kept rather than counted, because
         /// `give` runs per resource.

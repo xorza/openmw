@@ -12,6 +12,7 @@
 
 #include <components/rtx/shaders/gbuffer.h>
 
+#include "barriers.hpp"
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
@@ -45,6 +46,15 @@ namespace Rtx
             return 3 * grid * grid;
         }
 
+        /// What a capture calls one of a cascade's objects, or nothing where no build names any:
+        /// the formatting is a trip to the heap for a name that goes nowhere.
+        std::string tileName([[maybe_unused]] std::string_view what, [[maybe_unused]] std::size_t cascade)
+        {
+            if constexpr (Device::wantsNames())
+                return std::format("wave {} {}", what, cascade);
+            else
+                return {};
+        }
     }
 
     WavePass::WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
@@ -67,13 +77,11 @@ namespace Rtx
             const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
             const std::uint32_t levels = levelsFor(sWaveTiles[index].mGrid);
 
-            tile.mField = Buffer::deviceLocal(
-                mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            tile.mField = Buffer::deviceLocal(mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("field", index));
 
-            tile.mSurface = std::make_unique<Image>(
-                mDevice, grid, grid, GBUFFER_ALBEDO, usage, std::format("wave surface {}", index), levels);
-            tile.mCurvature = std::make_unique<Image>(
-                mDevice, grid, grid, GBUFFER_ALBEDO, usage, std::format("wave curvature {}", index), levels);
+            tile.mSurface = Image(mDevice, grid, grid, GBUFFER_ALBEDO, usage, tileName("surface", index), levels);
+            tile.mCurvature = Image(mDevice, grid, grid, GBUFFER_ALBEDO, usage, tileName("curvature", index), levels);
         }
 
         describe(mSea);
@@ -94,10 +102,12 @@ namespace Rtx
         Batch batch(mPool);
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
-            mTiles[index].mAmplitudes = uploadBuffer(mDevice, batch,
-                std::span<const osg::Vec2f>(cascades[index].mAmplitudes), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-            mTiles[index].mFrequencies = uploadBuffer(mDevice, batch,
-                std::span<const float>(cascades[index].mFrequencies), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            mTiles[index].mAmplitudes
+                = uploadBuffer(mDevice, batch, std::span<const osg::Vec2f>(cascades[index].mAmplitudes),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("amplitudes", index));
+            mTiles[index].mFrequencies
+                = uploadBuffer(mDevice, batch, std::span<const float>(cascades[index].mFrequencies),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("frequencies", index));
         }
         batch.flush();
 
@@ -106,32 +116,22 @@ namespace Rtx
 
     void WavePass::handOver(VkCommandBuffer commands) const
     {
-        const VkMemoryBarrier2 between{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            // The synthesis is a dispatch and the trace that samples what it left is a launch.
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-
-            // Written as well as read, because the transform runs in place and a dependency naming
-            // only the read leaves the two writes unordered.
-            .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &between,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
+        // The synthesis is a dispatch and the trace that samples what it left is a launch. Written
+        // as well as read, because the transform runs in place and a dependency naming only the
+        // read leaves the two writes unordered.
+        Rtx::handOver(commands, Use::sBufferComputeWrite,
+            BufferUse{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT });
     }
 
     void WavePass::transform(VkCommandBuffer commands, const Tile& tile, std::uint32_t count) const
     {
-        const VkDescriptorBufferInfo field{ tile.mField.getHandle(), 0, VK_WHOLE_SIZE };
-        const VkWriteDescriptorSet write = bufferWrite(0, field);
+        // Bound and pushed once for the six dispatches below, which differ in their constants alone.
+        DescriptorWrites<1> writes;
+        writes.buffer(0, tile.mField.describe());
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mLinePipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mLinePipeline.getLayout(), 0, 1, &write);
+        bind(commands, mLinePipeline);
+        pushDescriptors(commands, mLinePipeline, writes.get());
 
         // Three packed fields, each transformed along its rows and then along its columns — which is
         // the same shader with its two strides swapped, because a separable transform is the
@@ -146,8 +146,7 @@ namespace Rtx
                     .mOffset = pair * count * count,
                 };
 
-                vkCmdPushConstants(
-                    commands, mLinePipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(along), &along);
+                pushConstants(commands, mLinePipeline, along);
                 vkCmdDispatch(commands, count, 1, 1);
                 handOver(commands);
             }
@@ -160,63 +159,41 @@ namespace Rtx
             const Tile& tile = mTiles[index];
             const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
 
-            // Every level is written whole below, so none needs what the last frame left in it —
-            // but the last frame's trace may still be sampling it, and the last frame's chain may
-            // still be blitting it, so the discard waits for everything ahead of it on the queue.
+            // Every level is written whole below, so none needs what the last frame left in it.
+            // The last frame's trace may still be sampling it, and the head barrier
+            // `CommandPool::begin` recorded is what orders this buffer after that.
             Barriers opened(commands);
-            for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
-                opened.add(
-                    image->describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                                  VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                        Use::sComputeWrite));
+            for (const Image* image : { &tile.mSurface, &tile.mCurvature })
+                opened.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
 
             opened.flush();
 
-            const std::array<VkDescriptorBufferInfo, 3> blocks{
-                VkDescriptorBufferInfo{ tile.mAmplitudes.getHandle(), 0, VK_WHOLE_SIZE },
-                VkDescriptorBufferInfo{ tile.mFrequencies.getHandle(), 0, VK_WHOLE_SIZE },
-                VkDescriptorBufferInfo{ tile.mField.getHandle(), 0, VK_WHOLE_SIZE },
-            };
-            const std::array<VkWriteDescriptorSet, 3> forms{
-                bufferWrite(0, blocks[0]),
-                bufferWrite(1, blocks[1]),
-                bufferWrite(2, blocks[2]),
-            };
+            DescriptorWrites<3> forms;
+            forms.buffer(0, tile.mAmplitudes.describe());
+            forms.buffer(1, tile.mFrequencies.describe());
+            forms.buffer(2, tile.mField.describe());
+
             const Shaders::WaveFormConstants shaped{
                 .mCount = grid,
                 .mExtent = sWaveTiles[index].mExtent,
                 .mTime = seconds,
             };
-
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mFormPipeline.getHandle());
-            vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mFormPipeline.getLayout(), 0,
-                static_cast<std::uint32_t>(forms.size()), forms.data());
-            vkCmdPushConstants(
-                commands, mFormPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(shaped), &shaped);
-            vkCmdDispatch(commands, groupsFor(grid, sWaveWorkgroup), groupsFor(grid, sWaveWorkgroup), 1);
+            dispatch(commands, mFormPipeline, forms.get(), shaped, groupsFor(grid, sWaveWorkgroup),
+                groupsFor(grid, sWaveWorkgroup));
             handOver(commands);
 
             transform(commands, tile, grid);
 
-            const std::array<VkDescriptorImageInfo, 2> images{
-                VkDescriptorImageInfo{ VK_NULL_HANDLE, tile.mSurface->getStorageView(), VK_IMAGE_LAYOUT_GENERAL },
-                VkDescriptorImageInfo{ VK_NULL_HANDLE, tile.mCurvature->getStorageView(), VK_IMAGE_LAYOUT_GENERAL },
-            };
-            const std::array<VkWriteDescriptorSet, 3> composes{
-                bufferWrite(0, blocks[2]),
-                imageWrite(1, images[0]),
-                imageWrite(2, images[1]),
-            };
+            DescriptorWrites<3> composes;
+            composes.buffer(0, tile.mField.describe());
+            composes.image(1, tile.mSurface.describeStorage());
+            composes.image(2, tile.mCurvature.describeStorage());
+
             const Shaders::WaveComposeConstants unpacked{ .mCount = grid };
+            dispatch(commands, mComposePipeline, composes.get(), unpacked, groupsFor(grid, sWaveWorkgroup),
+                groupsFor(grid, sWaveWorkgroup));
 
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mComposePipeline.getHandle());
-            vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mComposePipeline.getLayout(), 0,
-                static_cast<std::uint32_t>(composes.size()), composes.data());
-            vkCmdPushConstants(
-                commands, mComposePipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(unpacked), &unpacked);
-            vkCmdDispatch(commands, groupsFor(grid, sWaveWorkgroup), groupsFor(grid, sWaveWorkgroup), 1);
-
-            for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
+            for (const Image* image : { &tile.mSurface, &tile.mCurvature })
                 image->buildMips(commands);
         }
     }

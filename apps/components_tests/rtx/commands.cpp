@@ -70,11 +70,11 @@ namespace Rtx
         TEST_F(RtxBatchTest, aBatchAbandonedByAnExceptionSubmitsNothing)
         {
             const Buffer source = Buffer::staging(getDevice(), sizeof(std::uint32_t),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             *static_cast<std::uint32_t*>(source.map()) = 0x5eaf00d;
 
             const Buffer target = Buffer::staging(getDevice(), sizeof(std::uint32_t),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             *static_cast<std::uint32_t*>(target.map()) = 0;
 
             struct Abandoned

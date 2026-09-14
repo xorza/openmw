@@ -130,18 +130,17 @@ namespace Rtx
             + " times and lengthened its list every time";
     }
 
-    void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience)
+    void checkVkWait(const Device& device, const VkResult result, const char* what, const std::uint64_t patience)
     {
-        const VkResult result = vkWaitForFences(device.getHandle(), 1, &fence, VK_TRUE, patience);
-        if (result == VK_SUCCESS)
-            return;
-
-        // Named apart from the other failures, because it is the one that says nothing about what
-        // the device thought was wrong — only that it stopped saying anything at all.
         if (result == VK_TIMEOUT)
             throw Error(timedOut(what, patience));
 
         checkVk(device, result, what);
+    }
+
+    void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience)
+    {
+        checkVkWait(device, vkWaitForFences(device.getHandle(), 1, &fence, VK_TRUE, patience), what, patience);
     }
 
     void reportTornDown(const std::string_view failure, const char* const raised)

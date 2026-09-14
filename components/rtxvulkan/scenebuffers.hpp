@@ -1,8 +1,8 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include <osg/Vec2f>
@@ -107,10 +107,6 @@ namespace Rtx
             VkDeviceSize getBytes() const;
         };
 
-        /// Grows one of this object's tables to exactly `bytes`, burying what that displaced. A thin
-        /// name over `growTo`, where the rule that a table is never nothing lives.
-        void reserve(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
-
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
         /// copy of the normals — and rewrites the per-mesh row table. Per mesh and not per scene,
         /// because that is what an arrival is.
@@ -121,7 +117,6 @@ namespace Rtx
         void shade(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
 
         const Device* mDevice = nullptr;
-        std::uint32_t mSlots = 1;
 
         // What the scene is made of, written on arrival and read by every frame: one copy, because
         // an arrival waits for the frames in flight before it writes. The colours too, where the
@@ -137,7 +132,7 @@ namespace Rtx
         // Host-visible and rewritten from `place`, not uploaded once: anything that animates a
         // state set gives the mirror a new material every frame, and only the rows the scene says
         // it wrote go over — the masks are megabytes and a flipbook turning changes none of them.
-        std::array<Tables, sFrameSlots> mTables;
+        PerSlot<Tables> mTables;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;
         std::vector<Shaders::GpuLayer> mLayerScratch;

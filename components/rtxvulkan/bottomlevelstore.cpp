@@ -35,12 +35,19 @@ namespace Rtx
     {
     }
 
-    BottomLevelStore::~BottomLevelStore()
+    void BottomLevelStore::retire(const Index slot, Graveyard& graveyard)
     {
-        const DeviceFunctions& functions = mDevice.getFunctions();
-        for (const VkAccelerationStructureKHR structure : mStructures)
-            if (structure != VK_NULL_HANDLE)
-                functions.mDestroyAccelerationStructure(mDevice.getHandle(), structure, nullptr);
+        Row& row = mRows[slot];
+
+        Compaction& state = row.mCompaction;
+        if (state.mTightness == Tightness::Answered)
+        {
+            mCompactableNow -= state.mBuiltSize;
+            mCompactableTight -= state.mTightSize;
+        }
+
+        state.mTightness = Tightness::None;
+        graveyard.bury(std::move(row.mStructure));
     }
 
     void BottomLevelStore::release(std::span<const Index> meshes, Graveyard& graveyard)
@@ -49,16 +56,10 @@ namespace Rtx
         {
             // A slot this never held: a scene can add a mesh and sweep it in the same window,
             // before anything was handed over to build it.
-            if (mesh >= mStructures.size())
+            if (mesh >= mRows.size())
                 continue;
 
-            forget(mesh);
-            graveyard.bury(mStructures[mesh]);
-            graveyard.bury(mStorage, mRooms[mesh]);
-
-            mStructures[mesh] = VK_NULL_HANDLE;
-            mAddresses[mesh] = 0;
-            mRooms[mesh] = StructureRoom{};
+            retire(mesh, graveyard);
         }
     }
 
@@ -71,22 +72,14 @@ namespace Rtx
         // Grown to what the scene now holds, and the scene never shrinks. Asserted and not guarded,
         // because a mesh table that shrank has no right answer: the `resize` below would drop the
         // handles above the new end and leak their structures.
-        assert(held >= mStructures.size() && "the scene's mesh table shrank under the structures");
-        mStructures.resize(held, VK_NULL_HANDLE);
-        mAddresses.resize(held, 0);
-        mRooms.resize(held);
-        mUpdateScratch.resize(held, 0);
-        mUpdatable.resize(held, 0);
-        mCompaction.resize(held);
+        assert(held >= mRows.size() && "the scene's mesh table shrank under the structures");
+        mRows.resize(held);
 
         mBuild.sizeTo(meshes.size());
         mLiveBuilds.clear();
         mLiveBuilds.reserve(meshes.size());
 
-        const VkDeviceSize scratchAlignment
-            = mDevice.getPhysicalDevice()
-                  .getProperties()
-                  .mAccelerationStructure.minAccelerationStructureScratchOffsetAlignment;
+        const VkDeviceSize scratchAlignment = mDevice.getPhysicalDevice().getStructureScratchAlignment();
 
         // Sized before anything is created, so a load's structures land in one storage block rather
         // than one per mesh. An arrival asks for nothing and gets a block big enough for itself.
@@ -117,10 +110,8 @@ namespace Rtx
         // address outlives the move: it belongs to the handle, which the batch now holds until its
         // submit has run — the same keeping the build's own scratch gets below.
         Buffer arrived = Buffer::deviceLocal(
-            mDevice, std::max(arrivedBytes, VkDeviceSize{ 1 }), sBuildInputUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-        mDevice.setName(
-            VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(arrived.getHandle()), "arrived positions");
-        const VkDeviceAddress arrivedAddress = arrived.getDeviceAddress();
+            mDevice, arrivedBytes, sBuildInputUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "arrived positions");
+        const VkDeviceAddress arrivedAddress = arrived.addressFor();
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -142,19 +133,12 @@ namespace Rtx
         {
             const Index slot = meshes[at];
             const MeshRange& mesh = scene.meshes().getRows()[slot];
+            Row& row = mRows[slot];
 
             // A slot handed out again arrives holding different geometry. Whatever was there is
-            // destroyed and its room given back before this one asks for room of its own, so the
+            // buried and its room given back before this one asks for room of its own, so the
             // two can be the same run.
-            if (mStructures[slot] != VK_NULL_HANDLE)
-            {
-                forget(slot);
-                graveyard.bury(mStructures[slot]);
-                graveyard.bury(mStorage, mRooms[slot]);
-                mStructures[slot] = VK_NULL_HANDLE;
-                mAddresses[slot] = 0;
-                mRooms[slot] = StructureRoom{};
-            }
+            retire(slot, graveyard);
 
             // A pose or an arrival's staging, and which one is what the mesh is. A deforming
             // mesh is built over what `SkinPass` wrote into the first copy ahead of this, so its
@@ -175,7 +159,7 @@ namespace Rtx
             // Only a mesh that deforms is built to be refitted. The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
             // thousands of static meshes around them do not.
-            mUpdatable[slot] = mesh.mDeform != Deform::None ? 1 : 0;
+            row.mUpdatable = mesh.mDeform != Deform::None;
 
             // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
             // the structure, which is the whole reason nothing here binds a vertex buffer.
@@ -208,7 +192,7 @@ namespace Rtx
             // acceleration structure can be created at.
             if (triangles == 0)
             {
-                mUpdateScratch[slot] = 0;
+                row.mUpdateScratch = 0;
                 continue;
             }
 
@@ -226,7 +210,7 @@ namespace Rtx
 
             // Kept so a refit of this one mesh does not have to ask the driver its size again. The
             // same geometry describes it, so the answer cannot have changed.
-            mUpdateScratch[slot] = sizes.updateScratchSize;
+            row.mUpdateScratch = sizes.updateScratchSize;
 
             mBuild.mRanges[at] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = triangles };
         }
@@ -237,8 +221,8 @@ namespace Rtx
         // Scratch is transient: it is read and written by the build and never again. It is handed to
         // the batch below rather than left to this scope, because the build it feeds has only been
         // recorded when this function returns — and the batch frees it the moment the flush does.
-        Buffer scratch = Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage);
-        const VkDeviceAddress scratchAddress = scratch.getDeviceAddress();
+        Buffer scratch = Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage, "build scratch");
+        const VkDeviceAddress scratchAddress = scratch.addressFor();
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -246,38 +230,20 @@ namespace Rtx
                 continue;
 
             const Index slot = meshes[at];
-            mRooms[slot] = mStorage.take(mDevice, mBuilding[at].mSize, wanted);
+            Row& row = mRows[slot];
+            row.mStructure = AccelerationStructure::bottomLevel(
+                mDevice, mStorage, mStorage.take(mDevice, mBuilding[at].mSize, wanted), mBuilding[at].mSize);
 
-            const VkAccelerationStructureCreateInfoKHR create{
-                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
-                .buffer = mStorage.getBuffer(mRooms[slot]),
-                .offset = mStorage.getOffset(mRooms[slot]),
-                .size = mBuilding[at].mSize,
-                .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-            };
-            checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &mStructures[slot]),
-                "vkCreateAccelerationStructureKHR");
-
-            mBuild.mBuilds[at].dstAccelerationStructure = mStructures[slot];
+            mBuild.mBuilds[at].dstAccelerationStructure = row.mStructure.getHandle();
             mBuild.mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuilding[at].mScratchOffset;
-
-            // Asked once each, here, and never again. A handle lasts until the mesh is released
-            // and its address with it, so the alternative is the same question per instance per
-            // frame — fifty thousand driver round trips on a nine-by-nine exterior for fifty
-            // thousand answers that cannot have changed.
-            const VkAccelerationStructureDeviceAddressInfoKHR address{
-                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
-                .accelerationStructure = mStructures[slot],
-            };
-            mAddresses[slot] = functions.mGetAccelerationStructureDeviceAddress(mDevice.getHandle(), &address);
 
             // Kept per slot so the figure compaction is judged against covers the whole scene rather
             // than the meshes this call happened to build.
-            mCompaction[slot].mBuiltSize = mBuilding[at].mSize;
+            row.mCompaction.mBuiltSize = mBuilding[at].mSize;
 
             // Built loose whatever stood in the slot before, and a mesh that refits keeps its
             // slack: a refit writes back into it.
-            mCompaction[slot].mTightness = mUpdatable[slot] != 0 ? Tightness::None : Tightness::Loose;
+            row.mCompaction.mTightness = row.mUpdatable ? Tightness::None : Tightness::Loose;
 
             mLiveBuilds.push_back(mBuild.mBuilds[at]);
             mBuild.mRangePointers.push_back(&mBuild.mRanges[at]);
@@ -293,21 +259,9 @@ namespace Rtx
         batch.keep(std::move(scratch));
     }
 
-    void BottomLevelStore::forget(const Index slot)
-    {
-        Compaction& state = mCompaction[slot];
-        if (state.mTightness == Tightness::Answered)
-        {
-            mCompactableNow -= state.mBuiltSize;
-            mCompactableTight -= state.mTightSize;
-        }
-
-        state.mTightness = Tightness::None;
-    }
-
     void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands, Graveyard& graveyard)
     {
-        const auto held = static_cast<std::uint32_t>(mStructures.size());
+        const auto held = static_cast<std::uint32_t>(mRows.size());
         if (held > mCompactablePool)
         {
             // Twice what it held, so a route's arrivals make a pool a logarithmic number of times
@@ -324,13 +278,12 @@ namespace Rtx
                 .queryType = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
                 .queryCount = wanted,
             };
-            checkVk(vkCreateQueryPool(mDevice.getHandle(), &create, nullptr, mCompactable.put(mDevice.getHandle())),
-                "vkCreateQueryPool");
+            mCompactable = QueryPool::make(mDevice.getHandle(), vkCreateQueryPool, create, "vkCreateQueryPool");
             mCompactablePool = wanted;
 
-            for (Compaction& state : mCompaction)
-                if (state.mTightness == Tightness::Asked)
-                    state.mTightness = Tightness::Loose;
+            for (Row& row : mRows)
+                if (row.mCompaction.mTightness == Tightness::Asked)
+                    row.mCompaction.mTightness = Tightness::Loose;
         }
 
         // One reset and one write per run of consecutive slots, which is what a cell's
@@ -345,7 +298,7 @@ namespace Rtx
         mAskScratch.clear();
         for (std::uint32_t slot = 0; slot < held; ++slot)
         {
-            Compaction& state = mCompaction[slot];
+            Compaction& state = mRows[slot].mCompaction;
             if (state.mTightness != Tightness::Loose)
             {
                 askRun(commands, first);
@@ -354,7 +307,7 @@ namespace Rtx
 
             if (mAskScratch.empty())
                 first = slot;
-            mAskScratch.push_back(mStructures[slot]);
+            mAskScratch.push_back(mRows[slot].mStructure.getHandle());
 
             state.mTightness = Tightness::Asked;
             state.mAskedAt = rides;
@@ -404,19 +357,22 @@ namespace Rtx
                 static_cast<std::uint32_t>(count), count * sizeof(VkDeviceSize), mReadScratch.data(),
                 sizeof(VkDeviceSize), VK_QUERY_RESULT_64_BIT);
 
-            // Asked again next placement where the answers are simply not there yet.
+            // Asked again next placement where the answers are simply not there yet. Anything else
+            // is a fault, and a lost device shows up here first: read as "no saving", it was a
+            // frame of tight structures and a message that came a submit later.
             if (read == VK_NOT_READY)
                 break;
+
+            checkVk(mDevice, read, "vkGetQueryPoolResults");
 
             for (std::size_t at = 0; at < count; ++at)
             {
                 const Index slot = mAsked.at(at).mSlot;
-                Compaction& state = mCompaction[slot];
+                Compaction& state = mRows[slot].mCompaction;
 
-                // A driver that refuses outright leaves its structures as they were built, and so
-                // does one that says a tight copy would be no smaller: the copy would spend a room
-                // and a command to change nothing.
-                const VkDeviceSize tight = read == VK_SUCCESS ? mReadScratch[at] : 0;
+                // A driver that says a tight copy would be no smaller leaves the structure as it
+                // was built: the copy would spend a room and a command to change nothing.
+                const VkDeviceSize tight = mReadScratch[at];
                 if (tight == 0 || tight >= state.mBuiltSize)
                 {
                     state.mTightness = Tightness::Tight;
@@ -443,8 +399,6 @@ namespace Rtx
 
         readAnswers();
 
-        const DeviceFunctions& functions = mDevice.getFunctions();
-
         VkDeviceSize taken = 0;
         while (!mAnswered.empty() && taken < sCompactionPerPlacement)
         {
@@ -454,28 +408,22 @@ namespace Rtx
             // The slot may have been handed out again since it answered. A cell that left took
             // its meshes with it, and whatever stands here now is not what this answer is about —
             // its own question is.
-            Compaction& state = mCompaction[slot];
+            Row& row = mRows[slot];
+            Compaction& state = row.mCompaction;
             if (state.mTightness != Tightness::Answered)
                 continue;
 
+            // Made in a room of its own while the loose one stands, because the copy reads the
+            // loose one; the top level can be built over the tight one in this same command
+            // buffer, because its address is its own from the moment it is made.
             const VkDeviceSize tight = state.mTightSize;
-            const StructureRoom room = mStorage.take(mDevice, tight, sCompactionPerPlacement);
-            const VkAccelerationStructureCreateInfoKHR create{
-                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
-                .buffer = mStorage.getBuffer(room),
-                .offset = mStorage.getOffset(room),
-                .size = tight,
-                .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-            };
-
-            VkAccelerationStructureKHR made = VK_NULL_HANDLE;
-            checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &made),
-                "vkCreateAccelerationStructureKHR");
+            AccelerationStructure made = AccelerationStructure::bottomLevel(
+                mDevice, mStorage, mStorage.take(mDevice, tight, sCompactionPerPlacement), tight);
 
             mCompactionCopies.push_back(VkCopyAccelerationStructureInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR,
-                .src = mStructures[slot],
-                .dst = made,
+                .src = row.mStructure.getHandle(),
+                .dst = made.getHandle(),
                 .mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR,
             });
 
@@ -483,27 +431,15 @@ namespace Rtx
             // once the frame this is recorded into retires, and the copy runs inside that frame —
             // so what the fence covers is both this read and whatever earlier frame is still
             // tracing the structure through the top level it was named in.
-            graveyard.bury(mStructures[slot]);
-            graveyard.bury(mStorage, mRooms[slot]);
+            graveyard.bury(std::exchange(row.mStructure, std::move(made)));
 
             // The pair the report prints follows the copy, so what it says is what is left to save
             // rather than what was saved once.
             mCompactableNow -= state.mBuiltSize;
             mCompactableTight -= tight;
 
-            mStructures[slot] = made;
-            mRooms[slot] = room;
             state.mBuiltSize = tight;
             state.mTightness = Tightness::Tight;
-
-            // Asked before the copy has run, which is what makes the top level buildable in this
-            // same command buffer: an address belongs to the structure from the moment it is
-            // created, and what the barrier orders is the contents arriving.
-            const VkAccelerationStructureDeviceAddressInfoKHR address{
-                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
-                .accelerationStructure = made,
-            };
-            mAddresses[slot] = functions.mGetAccelerationStructureDeviceAddress(mDevice.getHandle(), &address);
 
             mMovedMeshes.addMakingRoom(slot);
             taken += tight;

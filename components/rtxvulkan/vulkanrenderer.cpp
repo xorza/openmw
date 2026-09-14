@@ -133,8 +133,10 @@ namespace Rtx
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
-        , mNoSprites(Buffer::hostWritten(mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
-        , mViewCounts(Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+        , mNoSprites(Buffer::hostWritten(
+              mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "no sprites"))
+        , mViewCounts(
+              Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice, mPool)
     {
@@ -151,7 +153,8 @@ namespace Rtx
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
         if (options.mWindow != nullptr)
-            mPresenter = std::make_unique<Presenter>(mDevice, mInstance.getHandle(), options.mWindow);
+            mPresenter
+                = std::make_unique<Presenter>(mDevice, mPool, mGraveyard, mInstance.getHandle(), options.mWindow);
 
         const VkExtent2D output
             = mPresenter != nullptr ? mPresenter->getExtent() : VkExtent2D{ options.mWidth, options.mHeight };
@@ -161,8 +164,8 @@ namespace Rtx
     VulkanRenderer::~VulkanRenderer()
     {
         // What the interface handed over, before the pool holding it is taken apart. A GUI
-        // texture write waits for nothing and rides the next submit this pool makes; there is no
-        // next submit here, and `Presenter`'s destructor resets the pool underneath it.
+        // texture write waits for nothing and rides the next submit this pool makes, and there is
+        // no next submit here.
         tearDown("the interface's last writes were not submitted", [&] { mGuiTextures.finish(); });
 
         // Every frame in flight, and the presenter's last blit, before anything they name goes.
@@ -207,6 +210,20 @@ namespace Rtx
 #endif
     }
 
+    void VulkanRenderer::drain()
+    {
+        mPool.finishDeferred();
+        mRing.finishAll();
+        mDevice.waitIdle();
+        mGraveyard.clear();
+    }
+
+    void VulkanRenderer::finishTraces()
+    {
+        mPool.finishDeferred();
+        mRing.finishAll();
+    }
+
     void VulkanRenderer::setUpscale(Upscale upscale)
     {
         if (upscale == mUpscaling.mMode)
@@ -219,10 +236,8 @@ namespace Rtx
 
         mUpscaling.mMode = upscale;
 
-        // The same wait a resize makes, and for the same reason: what is about to be replaced may
-        // still be in flight.
-        mRing.finishAll();
-        mDevice.waitIdle();
+        // What is about to be replaced may still be in flight.
+        drain();
         createTargets(mOutputWidth, mOutputHeight);
     }
 
@@ -231,9 +246,10 @@ namespace Rtx
         if (sea == mWaves.getSea())
             return;
 
-        // A frame in flight may still be synthesising from the spectrum this replaces.
-        mRing.finishAll();
-        mDevice.waitIdle();
+        // A frame in flight may still be synthesising from the spectrum this replaces, and so may
+        // a picture recorded and not yet carried: `describe` submits the deferred batches itself,
+        // after it has destroyed the amplitudes they read.
+        drain();
         mWaves.describe(sea);
     }
 
@@ -266,7 +282,7 @@ namespace Rtx
         // of resolutions, and the image it writes is sixteen bytes a pixel of the output, so neither
         // is left behind for a mode that may not come back.
         mUpscaler.reset();
-        mUpscaled.reset();
+        mUpscaled = Image();
 
         if (upscaling())
         {
@@ -274,7 +290,7 @@ namespace Rtx
             // summed. The peak linear radiance a frame of this game reaches is under nine, measured
             // over the view suite and a camera pointed at the noon sun, so a half carries it with
             // four orders of magnitude to spare at a step finer than the display's.
-            mUpscaled = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
+            mUpscaled = Image(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");
 
             // Building uploads the network's weights, which is once per resolution rather than
@@ -298,7 +314,7 @@ namespace Rtx
 
         // Dropped rather than resized, because most runs never make one: sixteen bytes a pixel is
         // worth it to the reference mode and nothing to a window. The first averaging frame asks.
-        mSum.reset();
+        mSum = Image();
     }
 
     std::string VulkanRenderer::describeDevice() const
@@ -368,7 +384,7 @@ namespace Rtx
             .mWaves = &mWaves,
             .mFog = &mFog,
             .mFogVolume = volume,
-            .mSpriteList = (rayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.getDeviceAddress(),
+            .mSpriteList = (rayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.addressFor(),
             .mWater = held.mAcceleration->getInstanceCounts().mWater > 0,
         };
     }
@@ -411,10 +427,7 @@ namespace Rtx
         // waits: for a picture recorded against the old scene and not yet carried, for the frames
         // tracing it, and for a placement the frame being recorded may have submitted without a
         // fence of its own.
-        mPool.finishDeferred();
-        mDevice.waitIdle();
-        mRing.finishAll();
-        mGraveyard.clear();
+        drain();
 
         // Torn down before anything is built, so a second scene does not hold two of everything at
         // once — a cell's structures and textures are most of what this renderer occupies. The pass
@@ -435,7 +448,7 @@ namespace Rtx
             // A sum over one scene means nothing over the next, so it goes back with the scene
             // rather than being carried empty into one it cannot describe. Neither does a motion
             // vector, which would point at where something stood in a world that is no longer there.
-            mSum.reset();
+            mSum = Image();
             mPreviousCamera = Shaders::VisibilityConstants{};
         }
 
@@ -524,10 +537,10 @@ namespace Rtx
             held.mAcceleration->extend(setup, scene, graveyard);
 
             // Posed before it is built, as `setScene` does, into the first copy, which is what the
-            // build reads. Untimed, so the frame's report carries one `skin` zone and it is the
-            // placement's.
-            mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
-                held.mBuffers->getNormals(), nullptr);
+            // build reads — and only the meshes that arrived, whose rows nothing in flight names.
+            // `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
+            mSkinPass.recordArrived(setup.getCommands(), scene, FrameSlot{}, scene.meshes().getArrived(),
+                *held.mSkinTables, held.mAcceleration->getPoses(), held.mBuffers->getNormals());
             held.mAcceleration->buildArrived(setup, scene, timer, graveyard);
             held.mBuiltMeshes = scene.meshes().getRevision();
         }
@@ -661,7 +674,7 @@ namespace Rtx
                 }))
             mPool.submit(placement, mGraveyard);
         else
-            checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
+            mPool.end(placement);
 
         held.mSlot = into;
 
@@ -705,8 +718,7 @@ namespace Rtx
         if (mPresenter == nullptr)
             return;
 
-        // The swapchain goes with the command pool a handed-over batch is sitting in, exactly as a
-        // resize does.
+        // A handed-over batch is submitted first, exactly as a resize does.
         mGuiTextures.finish();
         mPresenter->setVerticalSync(mode);
     }
@@ -726,9 +738,9 @@ namespace Rtx
         if (mPresenter != nullptr)
         {
             // Asked before anything is drained, because `fitToWindow` calls this every settled
-            // frame. Same reason as the destructor's: remaking a swapchain resets the command
-            // pool, and a batch handed over is sitting in it waiting for a submit. What that costs
-            // where no rebuild follows is `Presenter::wantsResize`.
+            // frame. Same reason as the destructor's: remaking a swapchain waits the device idle
+            // and frees the blit's buffers, and a batch handed over is sitting beside them waiting
+            // for a submit. What that costs where no rebuild follows is `Presenter::wantsResize`.
             if (mPresenter->wantsResize(VkExtent2D{ width, height }))
             {
                 mGuiTextures.finish();
@@ -747,8 +759,7 @@ namespace Rtx
             return;
 
         // The images about to be replaced may still be in flight.
-        mRing.finishAll();
-        mDevice.waitIdle();
+        drain();
         createTargets(width, height);
     }
 
@@ -794,10 +805,12 @@ namespace Rtx
         // the same signal.
         mGuiTextures.startFrame(mGraveyard);
 
-        mGraveyard.bury(growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-        assert(
-            mDevice.getTimeline().hasFinished(gui.mGuiVertices) && "the interface's vertices rewritten under a draw");
+        mGraveyard.bury(growTo(gui.mGuiVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "gui vertices"));
         gui.mGuiVertices.write(vertices);
+
+        // Named by hand, because a vertex buffer is bound by handle and not handed out as an
+        // address or a descriptor.
         gui.mGuiVertices.nameFor(mDevice.getTimeline().getNext());
 
         mGuiDraws.clear();
@@ -893,11 +906,7 @@ namespace Rtx
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
         // this is the write a frame that never reads it was still paying for.
         if (mCountHits || mCountCrossings)
-        {
-            assert(mDevice.getTimeline().hasFinished(frame.mHitCount) && "a frame's counts cleared under its trace");
-            *static_cast<FrameCounts*>(frame.mHitCount.map()) = FrameCounts{};
-            frame.mHitCount.nameFor(mDevice.getTimeline().getNext());
-        }
+            frame.mHitCount.writable<FrameCounts>(0, 1).front() = FrameCounts{};
 
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
@@ -910,10 +919,10 @@ namespace Rtx
         const VisibilityInputs inputs = describeInputs(mWorld, &mFrame.getFogVolume(), camera.mRayMask);
 
         // Made by the first frame that averages, and that frame is the one that fills it.
-        const bool fresh = options.mAccumulate > 0 && mSum == nullptr;
+        const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
         if (fresh)
-            mSum = std::make_unique<Image>(mDevice, mFrame.getWidth(), mFrame.getHeight(),
-                VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "sum");
+            mSum = Image(mDevice, mFrame.getWidth(), mFrame.getHeight(), VK_FORMAT_R32G32B32A32_SFLOAT,
+                VK_IMAGE_USAGE_STORAGE_BIT, "sum");
 
         // A history is worthless after a jump no motion vector can describe: walking through a
         // door once left the previous camera intact and a reprojection fetched one room onto
@@ -931,19 +940,16 @@ namespace Rtx
 #ifdef OPENMW_RTX_DLSS
         // `createTargets` makes the pass and its image together and releases them together, so
         // nothing below asks whether they are there.
-        assert(!upscaling() || (mUpscaler != nullptr && mUpscaled != nullptr));
+        assert(!upscaling() || (mUpscaler != nullptr && !mUpscaled.isEmpty()));
 
         if (upscaling())
-            mUpscaled->transition(commands,
-                ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                Use::sAnyGeneralWrite);
+            mUpscaled.transition(commands, Use::sUndefined, Use::sAnyGeneralWrite);
 #endif
 
         // The first write needs no contents and nothing to wait on; every one after reads what
         // the last left, which the queue orders and does not make visible.
-        if (mSum != nullptr)
-            mSum->transition(commands,
+        if (!mSum.isEmpty())
+            mSum.transition(commands,
                 ImageUse{ fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
                     fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
@@ -971,7 +977,7 @@ namespace Rtx
                 .mSampled = sampled,
                 .mCounts = &frame.mHitCount,
                 .mTarget = &claimTarget(),
-                .mSum = mSum.get(),
+                .mSum = mSum.isEmpty() ? nullptr : &mSum,
                 .mAccumulate = options.mAccumulate,
                 .mAirLost = airLost,
                 .mHistoryLost = historyLost,
@@ -998,7 +1004,7 @@ namespace Rtx
                     .mTransparencyOpacity = channels.get(Channel::TransparencyOpacity),
                     .mTransparencyMotion = channels.get(Channel::TransparencyMotion),
                     .mBiasMask = channels.get(Channel::BiasMask),
-                    .mOutput = *mUpscaled,
+                    .mOutput = mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
                     .mReset = historyLost,
@@ -1008,10 +1014,10 @@ namespace Rtx
             // bloom samples what it left, rather than loading it — `BloomPass` binds the frame as
             // a combined image sampler — so a visibility scope of storage reads alone would leave
             // that read uncovered.
-            mUpscaled->transition(commands, Use::sAnyGeneralWrite, Use::sComputeReadOrSample);
+            mUpscaled.transition(commands, Use::sAnyGeneralWrite, Use::sComputeReadOrSample);
 
             timer.close(commands);
-            shown = mUpscaled.get();
+            shown = &mUpscaled;
         }
 #endif
 
@@ -1095,10 +1101,7 @@ namespace Rtx
         // need never be traced — so it is given back here rather than to a scene that has gone. A
         // picture of it recorded this frame and not yet carried goes first, or it would be carried
         // over a scene that no longer exists.
-        mPool.finishDeferred();
-        mDevice.waitIdle();
-        mRing.finishAll();
-        mGraveyard.clear();
+        drain();
 
         mViewScenes[scene.getViewIndex()].reset();
         mFreeViewScenes.free(scene.getViewIndex());
@@ -1110,14 +1113,11 @@ namespace Rtx
             return;
 
         // The one drain a picture still pays, and only the first picture of a new size pays it.
-        // A picture recorded and not yet carried, or carried and not yet finished, names the images
-        // about to be replaced.
-        mPool.finishDeferred();
-        mRing.finishAll();
+        finishTraces();
 
         mView.grow(width, height, false);
 
-        mViewTarget = std::make_unique<Image>(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
+        mViewTarget = Image(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
     }
 
@@ -1173,17 +1173,17 @@ namespace Rtx
                     .mAsked = camera,
                     .mSampled = sampled,
                     .mCounts = &mViewCounts,
-                    .mTarget = mViewTarget.get(),
+                    .mTarget = &mViewTarget,
                 });
 
             // One, and measured off nothing, or the same armour would be a different brightness
             // in two windows; out of its own buffer, for what `ExposurePass::getPictureExposure`
             // says. And no lens, because a map tile is a diagram.
             mTone->record(commands, mView.getColour(), mExposure.getPictureExposure(),
-                channels.get(Channel::StarsShown), nullptr, inputs.mTextures, *mViewTarget,
+                channels.get(Channel::StarsShown), nullptr, inputs.mTextures, mViewTarget,
                 toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
 
-            mViewTarget->transition(commands, Use::sComputeWrite, Use::sCopyRead);
+            mViewTarget.transition(commands, Use::sComputeWrite, Use::sCopyRead);
 
             // Borrowed rather than transitioned. Where a GUI texture rests between writes is
             // `GuiTextures`' to say, and a caller that said it here had to keep a barrier's scope in
@@ -1195,26 +1195,17 @@ namespace Rtx
                 // cover it all: what the trace fills is as much of the texture as the widget is
                 // currently wide, and the rest has to be the clear colour rather than what a wider
                 // picture left there the last time this was drawn.
+                // Both are transfer writes to the same image and nothing orders two of those, so
+                // the clear is left as what the copy meets.
                 if (options.mWidth < into.getWidth() || options.mHeight < into.getHeight())
-                {
-                    const VkClearColorValue clear{ .float32
-                        = { options.mClear[0], options.mClear[1], options.mClear[2], options.mClear[3] } };
-                    const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-                    vkCmdClearColorImage(commands, into.getHandle(), layout, &clear, 1, &whole);
+                    into.clear(commands, Use::sTransferWrite,
+                        VkClearColorValue{
+                            .float32 = { options.mClear[0], options.mClear[1], options.mClear[2], options.mClear[3] } },
+                        Use::sCopyWrite);
 
-                    // Both are transfer writes to the same image and nothing orders two of those.
-                    into.transition(commands,
-                        ImageUse{ layout, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT },
-                        ImageUse{ layout, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT });
-                }
-
-                const VkImageCopy region{
-                    .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-                    .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-                    .extent = { options.mWidth, options.mHeight, 1 },
-                };
-                vkCmdCopyImage(commands, mViewTarget->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    into.getHandle(), layout, 1, &region);
+                assert(layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                    && "a texture lent in another layout than a copy takes");
+                mViewTarget.copyTo(commands, into, layout, VkExtent2D{ options.mWidth, options.mHeight });
             });
 
             if (options.mReadBack)
@@ -1235,10 +1226,7 @@ namespace Rtx
 
     void VulkanRenderer::finishGuiTraces()
     {
-        // Both, because a picture is in one of two places: recorded and carried by nothing, or
-        // carried by a frame still in flight.
-        mPool.finishDeferred();
-        mRing.finishAll();
+        finishTraces();
         mGuiTextures.landTraces();
     }
 

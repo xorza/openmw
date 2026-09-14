@@ -3,7 +3,6 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <span>
 #include <vector>
 
@@ -67,7 +66,7 @@ namespace Rtx
 
         bool holds(GuiSlot slot) const
         {
-            return !slot.isNone() && slot.get() < mImages.size() && mImages[slot.get()] != nullptr;
+            return !slot.isNone() && slot.get() < mImages.size() && !mImages[slot.get()].isEmpty();
         }
 
         /// Lends the texture in `slot` to a caller that writes it with transfer commands:
@@ -84,7 +83,7 @@ namespace Rtx
 
             assert(holds(slot) && "a write to a slot nothing holds");
 
-            const Image& image = *mImages[slot.get()];
+            const Image& image = mImages[slot.get()];
 
             image.transition(commands, Use::sFragmentSample, Use::sTransferWrite);
 
@@ -131,7 +130,7 @@ namespace Rtx
         const Device& mDevice;
         CommandPool& mPool;
 
-        std::vector<std::unique_ptr<Image>> mImages;
+        std::vector<Image> mImages;
 
         /// What a trace left for the host, per slot: the buffer, and the frame whose fence says
         /// it has arrived. `sNever` where nothing was asked.
@@ -139,7 +138,7 @@ namespace Rtx
         {
             static constexpr std::uint64_t sNever = ~std::uint64_t{ 0 };
 
-            std::unique_ptr<Buffer> mBuffer;
+            Buffer mBuffer;
             std::uint64_t mTracedOn = sNever;
             bool mLanded = false;
         };
@@ -169,7 +168,7 @@ namespace Rtx
         VkDeviceSize mLentAt = 0;
 
         /// Textures given back, held until `startFrame` hands them to a frame's graveyard.
-        std::vector<std::unique_ptr<Image>> mRetired;
+        std::vector<Image> mRetired;
 
         /// Last, so that it is destroyed first: its own destructor flushes, and what it has
         /// recorded names images, retired images and staging that must still exist when that

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 
+#include "bufferusage.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
 
@@ -10,10 +11,6 @@ namespace Rtx
 {
     namespace
     {
-        // Addressable and never bound: a dispatch is handed every run's address in its push
-        // constants, and no descriptor names one of these.
-        constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-
         /// What a reference to a row of `GpuBone`s claims of every address it is constructed from.
         /// A claim larger than the truth is undefined behaviour with no message, so the host checks
         /// it where the address is made.
@@ -33,22 +30,13 @@ namespace Rtx
     SkinTables::SkinTables(
         const Device& device, const SceneDesc& scene, const std::uint32_t slots, Graveyard& graveyard)
         : mDevice(&device)
-        , mSlots(slots)
     {
-        assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
+        mBones.open(slots);
+        mWeights.open(slots);
 
-        // Every table exists from here, whether or not anything has been written to it. A
-        // scene with no actor in it poses nothing and reads none of these, and a scene that gains
-        // one grows them; what `growTo` guarantees is that there is a buffer to grow.
-        for (Buffer* table : { &mBindPositions, &mBindNormals, &mRuns, &mInfluences, &mMorphOffsets })
-            graveyard.bury(growTo(*table, device, 0, sTableUsage));
-
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-        {
-            graveyard.bury(growTo(mBones[slot], device, 0, sTableUsage));
-            graveyard.bury(growTo(mWeights[slot], device, 0, sTableUsage));
-        }
-
+        // Every table exists from here, whether or not anything has been written to it: `outgrow`
+        // makes a table that is empty whatever it is asked for, so a scene with no actor in it
+        // still has a buffer at every address a dispatch could be handed.
         extend(scene, graveyard);
     }
 
@@ -60,29 +48,31 @@ namespace Rtx
         // arrivals are what a frame with an actor walking in costs; a table made again is what a
         // cell full of them costs, once per doubling.
         const VkDeviceSize bind = VkDeviceSize{ scene.deformers().getBindVertexCount() } * sizeof(osg::Vec3f);
-        const bool bindMoved = outgrow(mBindPositions, device, bind, sTableUsage, graveyard)
-            | outgrow(mBindNormals, device, bind, sTableUsage, graveyard);
+        const bool bindMoved
+            = outgrow(mBindPositions, device, BufferKind::HostWritten, bind, sTableUsage, "bind positions", graveyard)
+            | outgrow(mBindNormals, device, BufferKind::HostWritten, bind, sTableUsage, "bind normals", graveyard);
         writeBind(scene, scene.meshes().getArrived(), bindMoved);
 
         const bool rigsMoved
-            = outgrow(mRuns, device, scene.deformers().getRuns().size() * sizeof(std::uint32_t), sTableUsage, graveyard)
-            | outgrow(mInfluences, device, scene.deformers().getInfluences().size() * sizeof(Shaders::GpuInfluence),
-                sTableUsage, graveyard);
+            = outgrow(mRuns, device, BufferKind::HostWritten,
+                  scene.deformers().getRuns().size() * sizeof(std::uint32_t), sTableUsage, "rig runs", graveyard)
+            | outgrow(mInfluences, device, BufferKind::HostWritten,
+                scene.deformers().getInfluences().size() * sizeof(Shaders::GpuInfluence), sTableUsage, "rig influences",
+                graveyard);
         writeRigs(scene, scene.deformers().getArrivedRigs(), rigsMoved);
 
-        const bool morphsMoved = outgrow(mMorphOffsets, device,
-            scene.deformers().getMorphOffsets().size() * sizeof(osg::Vec3f), sTableUsage, graveyard);
+        const bool morphsMoved = outgrow(mMorphOffsets, device, BufferKind::HostWritten,
+            scene.deformers().getMorphOffsets().size() * sizeof(osg::Vec3f), sTableUsage, "morph offsets", graveyard);
         writeMorphs(scene, scene.deformers().getArrivedMorphs(), morphsMoved);
 
         // Nothing is written into these on arrival: a mesh's rows reach a copy in the placement
         // that dispatches over them, and not before.
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-        {
-            outgrow(mBones[slot], device, scene.deformers().getBones().size() * sizeof(Shaders::GpuBone), sTableUsage,
-                graveyard);
-            outgrow(
-                mWeights[slot], device, scene.deformers().getWeights().size() * sizeof(float), sTableUsage, graveyard);
-        }
+        for (Buffer& bones : mBones.live())
+            outgrow(bones, device, BufferKind::HostWritten,
+                scene.deformers().getBones().size() * sizeof(Shaders::GpuBone), sTableUsage, "bones", graveyard);
+        for (Buffer& weights : mWeights.live())
+            outgrow(weights, device, BufferKind::HostWritten, scene.deformers().getWeights().size() * sizeof(float),
+                sTableUsage, "weights", graveyard);
     }
 
     void SkinTables::writeBind(const SceneDesc& scene, std::span<const Index> meshes, const bool whole)
@@ -94,9 +84,11 @@ namespace Rtx
             if (mesh.mDeform == Deform::None || mesh.mVertices.mCount == 0)
                 continue;
 
+            // Appended and not rewritten: an arrival's run is one no frame in flight reads, and a
+            // table made again is read by nothing yet.
             const VkDeviceSize at = VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
-            mBindPositions.writeAt(at, scene.meshes().getMeshPositions(index));
-            mBindNormals.writeAt(at, mesh.mVertices.in(scene.meshes().getNormals()));
+            mBindPositions.appendAt(at, scene.meshes().getMeshPositions(index));
+            mBindNormals.appendAt(at, mesh.mVertices.in(scene.meshes().getNormals()));
         }
     }
 
@@ -110,9 +102,9 @@ namespace Rtx
             if (rig.mRuns.empty())
                 continue;
 
-            mRuns.writeAt(
+            mRuns.appendAt(
                 VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t), rig.mRuns.in(scene.deformers().getRuns()));
-            mInfluences.writeAt(VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence),
+            mInfluences.appendAt(VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence),
                 rig.mInfluences.in(scene.deformers().getInfluences()));
         }
     }
@@ -126,66 +118,74 @@ namespace Rtx
             if (morph.mOffsets.empty())
                 continue;
 
-            mMorphOffsets.writeAt(VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f),
+            mMorphOffsets.appendAt(VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f),
                 morph.mOffsets.in(scene.deformers().getMorphOffsets()));
         }
     }
 
-    VkDeviceAddress SkinTables::writeBones(const SceneDesc& scene, const FrameSlot slot, const Index mesh)
+    VkDeviceAddress SkinTables::writeBones(
+        const SceneDesc& scene, const FrameSlot slot, const Index mesh, const Rows rows)
     {
-        assert(slot.get() < mSlots);
-
         const MeshRange& range = scene.meshes().getRows()[mesh];
         const VkDeviceSize at = VkDeviceSize{ range.mPoseOffset } * sizeof(Shaders::GpuBone);
-        mBones[slot.get()].writeAt(at, scene.getMeshBones(mesh));
+        const Buffer& into = mBones.at(slot);
+        if (rows == Rows::Arrived)
+            into.appendAt(at, scene.getMeshBones(mesh));
+        else
+            into.writeAt(at, scene.getMeshBones(mesh));
 
-        const VkDeviceAddress address = mBones[slot.get()].getDeviceAddress() + at;
+        const VkDeviceAddress address = into.addressFor() + at;
         assert(address % sBoneAlignment == 0 && "a run of rows the kernel's reference claims more of than is true");
         return address;
     }
 
-    VkDeviceAddress SkinTables::writeWeights(const SceneDesc& scene, const FrameSlot slot, const Index mesh)
+    VkDeviceAddress SkinTables::writeWeights(
+        const SceneDesc& scene, const FrameSlot slot, const Index mesh, const Rows rows)
     {
-        assert(slot.get() < mSlots);
-
         const MeshRange& range = scene.meshes().getRows()[mesh];
         const VkDeviceSize at = VkDeviceSize{ range.mPoseOffset } * sizeof(float);
-        mWeights[slot.get()].writeAt(at, scene.getMeshWeights(mesh));
+        const Buffer& into = mWeights.at(slot);
+        if (rows == Rows::Arrived)
+            into.appendAt(at, scene.getMeshWeights(mesh));
+        else
+            into.writeAt(at, scene.getMeshWeights(mesh));
 
-        return mWeights[slot.get()].getDeviceAddress() + at;
+        return into.addressFor() + at;
     }
 
     VkDeviceAddress SkinTables::getBindPositions(const MeshRange& mesh) const
     {
-        return mBindPositions.getDeviceAddress() + VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
+        return mBindPositions.addressFor() + VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
     }
 
     VkDeviceAddress SkinTables::getBindNormals(const MeshRange& mesh) const
     {
-        return mBindNormals.getDeviceAddress() + VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
+        return mBindNormals.addressFor() + VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
     }
 
     VkDeviceAddress SkinTables::getRuns(const Rig& rig) const
     {
-        return mRuns.getDeviceAddress() + VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t);
+        return mRuns.addressFor() + VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t);
     }
 
     VkDeviceAddress SkinTables::getInfluences(const Rig& rig) const
     {
-        return mInfluences.getDeviceAddress() + VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence);
+        return mInfluences.addressFor() + VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence);
     }
 
     VkDeviceAddress SkinTables::getMorphOffsets(const Morph& morph) const
     {
-        return mMorphOffsets.getDeviceAddress() + VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f);
+        return mMorphOffsets.addressFor() + VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f);
     }
 
     VkDeviceSize SkinTables::getBytes() const
     {
         VkDeviceSize total = mBindPositions.getSize() + mBindNormals.getSize() + mRuns.getSize() + mInfluences.getSize()
             + mMorphOffsets.getSize();
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            total += mBones[slot].getSize() + mWeights[slot].getSize();
+        for (const Buffer& bones : mBones.live())
+            total += bones.getSize();
+        for (const Buffer& weights : mWeights.live())
+            total += weights.getSize();
 
         return total;
     }

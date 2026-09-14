@@ -11,7 +11,10 @@ namespace Rtx
     ComputePipeline::ComputePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
         std::uint32_t pushConstantBytes, std::span<const VkDescriptorSetLayout> laterSets,
         const std::filesystem::path& module, std::string_view name, std::span<const std::uint32_t> specialization)
-        : mLayout(device, bindings, pushConstantBytes, VK_SHADER_STAGE_COMPUTE_BIT, laterSets)
+        : Pipeline(
+            PipelineLayout(device, bindings,
+                VkPushConstantRange{ .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = pushConstantBytes }, laterSets),
+            VK_PIPELINE_BIND_POINT_COMPUTE)
     {
         const ShaderModule compiled = loadShaderModule(device, module);
         const Specialization constants(specialization);
@@ -36,7 +39,7 @@ namespace Rtx
                     mHandle.put(device.getHandle())),
             "vkCreateComputePipelines");
 
-        device.setName(VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<std::uint64_t>(mHandle.get()), name);
+        device.setName(mHandle.get(), name);
         device.reportPipeline(mHandle.get(), name);
     }
 }

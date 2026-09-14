@@ -9,6 +9,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
@@ -169,8 +170,8 @@ namespace Rtx
 
             const VkDeviceSize poseBytes = VkDeviceSize{ posedVertices } * sizeof(osg::Vec3f);
             const VkDeviceSize normalBytes = VkDeviceSize{ vertices } * sizeof(osg::Vec3f);
-            const Buffer readPositions = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-            const Buffer readNormals = Buffer::staging(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            const Buffer readPositions = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const Buffer readNormals = Buffer::staging(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
 
             /// Poses what `slot` owes and copies its whole first block back.
             const auto poseAndRead = [&](FrameSlot slot) {
@@ -178,26 +179,11 @@ namespace Rtx
                 pool.submitAndWait([&](VkCommandBuffer commands) {
                     recorded = pass.record(commands, scene, slot, tables, poses, normals, nullptr);
 
-                    const VkMemoryBarrier2 barrier{
-                        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-                        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-                    };
-                    const VkDependencyInfo dependency{
-                        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                        .memoryBarrierCount = 1,
-                        .pMemoryBarriers = &barrier,
-                    };
-                    vkCmdPipelineBarrier2(commands, &dependency);
+                    handOver(commands, Use::sBufferComputeWrite,
+                        BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });
 
-                    const VkBufferCopy wholePoses{ .size = poseBytes };
-                    const VkBufferCopy wholeNormals{ .size = normalBytes };
-                    vkCmdCopyBuffer(
-                        commands, poses.at(slot).getBlock(0).getHandle(), readPositions.getHandle(), 1, &wholePoses);
-                    vkCmdCopyBuffer(
-                        commands, normals.at(slot).getBlock(0).getHandle(), readNormals.getHandle(), 1, &wholeNormals);
+                    poses.at(slot).getBlock(0).copyTo(commands, readPositions, poseBytes);
+                    normals.at(slot).getBlock(0).copyTo(commands, readNormals, normalBytes);
                 });
 
                 return recorded;

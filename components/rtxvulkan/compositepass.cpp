@@ -46,17 +46,15 @@ namespace Rtx
         if (sum == nullptr)
             mNoSum.transition(commands, Use::sComputeWrite, Use::sComputeReadWrite);
 
-        const std::array<VkDescriptorImageInfo, 5> images{
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Direct).getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, indirect.getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Albedo).getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, bound.getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, colour.getView(), VK_IMAGE_LAYOUT_GENERAL },
-        };
+        DescriptorWrites<5> writes;
+        writes.image(0, buffer.get(Channel::Direct).describeStorage());
+        writes.image(1, indirect.describeStorage());
+        writes.image(2, buffer.get(Channel::Albedo).describeStorage());
+        writes.image(3, bound.describeStorage());
+        writes.image(4, colour.describeStorage());
 
-        const std::array<VkWriteDescriptorSet, 5> writes = storageImageWrites(images);
-
-        dispatch(commands, mPipeline, writes, constants, groupsFor(constants.mWidth, Shaders::COMPOSITE_WORKGROUP),
+        dispatch(commands, mPipeline, writes.get(), constants,
+            groupsFor(constants.mWidth, Shaders::COMPOSITE_WORKGROUP),
             groupsFor(constants.mHeight, Shaders::COMPOSITE_WORKGROUP));
     }
 }

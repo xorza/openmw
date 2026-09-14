@@ -1,13 +1,16 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 
 #include <vulkan/vulkan_core.h>
 
+#include "barriers.hpp"
 #include "computepipeline.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {
@@ -37,89 +40,110 @@ namespace Rtx
         return bindings;
     }
 
-    /// One descriptor write. `info` is read when the write is submitted and not here, so it has
-    /// to outlive the array this goes into — which is what keeps every caller's infos a local.
-    constexpr VkWriteDescriptorSet imageWrite(std::uint32_t binding, const VkDescriptorImageInfo& info,
-        VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-    {
-        return VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = binding,
-            .descriptorCount = 1,
-            .descriptorType = type,
-            .pImageInfo = &info,
-        };
-    }
-
-    constexpr VkWriteDescriptorSet bufferWrite(std::uint32_t binding, const VkDescriptorBufferInfo& info,
-        VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-    {
-        return VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = binding,
-            .descriptorCount = 1,
-            .descriptorType = type,
-            .pBufferInfo = &info,
-        };
-    }
-
-    /// A write per image, binding `i` from image `i`, each taking the type its own binding was
-    /// declared with, so a binding that changes kind cannot be a silent mismatch. `images` has to
-    /// outlive the writes, as `imageWrite` says.
-    template <std::size_t Count>
-    std::array<VkWriteDescriptorSet, Count> imageWrites(const std::array<VkDescriptorImageInfo, Count>& images,
-        const std::array<VkDescriptorSetLayoutBinding, Count>& bindings)
-    {
-        std::array<VkWriteDescriptorSet, Count> writes{};
-        for (std::uint32_t at = 0; at < Count; ++at)
-            writes[at] = imageWrite(at, images[at], bindings[at].descriptorType);
-
-        return writes;
-    }
-
-    template <std::size_t Count>
-    std::array<VkWriteDescriptorSet, Count> storageImageWrites(const std::array<VkDescriptorImageInfo, Count>& images)
-    {
-        std::array<VkWriteDescriptorSet, Count> writes{};
-        for (std::uint32_t at = 0; at < Count; ++at)
-            writes[at] = imageWrite(at, images[at]);
-
-        return writes;
-    }
-
-    /// Orders one dispatch's writes against what reads or writes them next.
-    inline void handOver(VkCommandBuffer commands, VkPipelineStageFlags2 from, VkAccessFlags2 wrote,
-        VkPipelineStageFlags2 to, VkAccessFlags2 reads)
-    {
-        const VkMemoryBarrier2 barrier{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = from,
-            .srcAccessMask = wrote,
-            .dstStageMask = to,
-            .dstAccessMask = reads,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &barrier,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
-    }
-
-    /// Binds, pushes and launches: the four calls every compute pass in this backend ends with.
+    /// The writes one push or one set update is made of, and the infos they point at, in one
+    /// object: a write names its info by address, so the two live together and neither moves —
+    /// which is why this is neither copied nor moved, and why it is a local of the pass that
+    /// fills it. Appended in binding order, so a binding a shader grew and a pass did not is a
+    /// count the pass can check.
     ///
-    /// @param constants the whole push range, at offset zero. Taken by reference and copied by
-    ///        Vulkan before this returns.
+    /// @tparam Bindings how many writes there are room for.
+    /// @tparam Images how many image infos, where a binding is an array of them.
+    template <std::size_t Bindings, std::size_t Images = Bindings>
+    class DescriptorWrites
+    {
+    public:
+        /// For a push: no set is named, and the layout is the pipeline's.
+        DescriptorWrites() = default;
+
+        /// For an update of `set`, through `vkUpdateDescriptorSets`.
+        explicit DescriptorWrites(VkDescriptorSet set)
+            : mSet(set)
+        {
+        }
+
+        DescriptorWrites(const DescriptorWrites&) = delete;
+        DescriptorWrites& operator=(const DescriptorWrites&) = delete;
+
+        void image(std::uint32_t binding, const VkDescriptorImageInfo& info,
+            VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+        {
+            images(binding, std::span<const VkDescriptorImageInfo>(&info, 1), type);
+        }
+
+        /// One binding that is an array of `infos.size()` images.
+        void images(std::uint32_t binding, std::span<const VkDescriptorImageInfo> infos, VkDescriptorType type)
+        {
+            assert(mImageCount + infos.size() <= mImages.size() && "more image infos than there is room for");
+
+            const VkDescriptorImageInfo* const at = mImages.data() + mImageCount;
+            for (const VkDescriptorImageInfo& info : infos)
+                mImages[mImageCount++] = info;
+
+            append(binding, type, static_cast<std::uint32_t>(infos.size()), nullptr, at, nullptr);
+        }
+
+        void buffer(std::uint32_t binding, const VkDescriptorBufferInfo& info,
+            VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+        {
+            assert(mBufferCount < mBuffers.size() && "more buffer infos than there is room for");
+
+            mBuffers[mBufferCount] = info;
+            append(binding, type, 1, nullptr, nullptr, &mBuffers[mBufferCount++]);
+        }
+
+        /// The one write whose payload hangs off `pNext` rather than off a pointer field. `next`
+        /// has to outlive the push, as the structure it names does.
+        void structure(std::uint32_t binding, const VkWriteDescriptorSetAccelerationStructureKHR& next)
+        {
+            append(binding, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, &next, nullptr, nullptr);
+        }
+
+        std::span<const VkWriteDescriptorSet> get() const
+        {
+            return std::span<const VkWriteDescriptorSet>(mWrites.data(), mCount);
+        }
+
+        std::size_t size() const { return mCount; }
+
+    private:
+        void append(std::uint32_t binding, VkDescriptorType type, std::uint32_t count, const void* next,
+            const VkDescriptorImageInfo* image, const VkDescriptorBufferInfo* block)
+        {
+            assert(mCount < mWrites.size() && "more descriptor writes than the layout has bindings");
+
+            mWrites[mCount++] = VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = next,
+                .dstSet = mSet,
+                .dstBinding = binding,
+                .descriptorCount = count,
+                .descriptorType = type,
+                .pImageInfo = image,
+                .pBufferInfo = block,
+            };
+        }
+
+        VkDescriptorSet mSet = VK_NULL_HANDLE;
+        std::array<VkDescriptorImageInfo, Images> mImages{};
+        std::array<VkDescriptorBufferInfo, Bindings> mBuffers{};
+        std::array<VkWriteDescriptorSet, Bindings> mWrites{};
+        std::size_t mImageCount = 0;
+        std::size_t mBufferCount = 0;
+        std::size_t mCount = 0;
+    };
+
+    /// Binds, pushes and launches: the calls every compute pass in this backend ends with. A
+    /// pipeline with no bindings pushes nothing, because a push of nought writes is not a push
+    /// Vulkan takes.
     template <class Constants>
     void dispatch(VkCommandBuffer commands, const ComputePipeline& pipeline,
         std::span<const VkWriteDescriptorSet> writes, const Constants& constants, std::uint32_t groupsX,
         std::uint32_t groupsY = 1, std::uint32_t groupsZ = 1)
     {
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
-        vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0,
-            static_cast<std::uint32_t>(writes.size()), writes.data());
-        vkCmdPushConstants(
-            commands, pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
+        bind(commands, pipeline);
+        if (!writes.empty())
+            pushDescriptors(commands, pipeline, writes);
+        pushConstants(commands, pipeline, constants);
         vkCmdDispatch(commands, groupsX, groupsY, groupsZ);
     }
 }

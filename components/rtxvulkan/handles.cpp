@@ -1,5 +1,6 @@
 #include "handles.hpp"
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -10,7 +11,6 @@
 #include <components/rtx/error.hpp>
 
 #include "device.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
@@ -52,16 +52,45 @@ namespace Rtx
             .pCode = words.data(),
         };
 
-        ShaderModule handle;
-        checkVk(vkCreateShaderModule(device.getHandle(), &createInfo, nullptr, handle.put(device.getHandle())),
-            "vkCreateShaderModule");
+        ShaderModule handle
+            = ShaderModule::make(device.getHandle(), vkCreateShaderModule, createInfo, "vkCreateShaderModule");
 
         // The name is built from a path, so it can throw — and a handle already made is destroyed
         // on the way out.
-        device.setName(VK_OBJECT_TYPE_SHADER_MODULE, reinterpret_cast<std::uint64_t>(handle.get()),
-            Files::pathToUnicodeString(path.filename()).c_str());
+        device.setName(handle.get(), Files::pathToUnicodeString(path.filename()).c_str());
 
         return handle;
+    }
+
+    Semaphore makeSemaphore(const Device& device)
+    {
+        const VkSemaphoreCreateInfo create{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+        return Semaphore::make(device.getHandle(), vkCreateSemaphore, create, "vkCreateSemaphore");
+    }
+
+    Semaphore makeTimelineSemaphore(const Device& device, const std::string_view name)
+    {
+        const VkSemaphoreTypeCreateInfo type{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+            .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+            .initialValue = 0,
+        };
+        const VkSemaphoreCreateInfo create{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = &type,
+        };
+        Semaphore handle = Semaphore::make(device.getHandle(), vkCreateSemaphore, create, "vkCreateSemaphore");
+        device.setName(handle.get(), name);
+        return handle;
+    }
+
+    Fence makeSignalledFence(const Device& device)
+    {
+        const VkFenceCreateInfo create{
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+        };
+        return Fence::make(device.getHandle(), vkCreateFence, create, "vkCreateFence");
     }
 
     SetLayout makeSetLayout(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
@@ -74,21 +103,16 @@ namespace Rtx
             .bindingCount = static_cast<std::uint32_t>(bindings.size()),
             .pBindings = bindings.data(),
         };
-        SetLayout handle;
-        checkVk(vkCreateDescriptorSetLayout(device.getHandle(), &describe, nullptr, handle.put(device.getHandle())),
-            "vkCreateDescriptorSetLayout");
-
-        return handle;
+        return SetLayout::make(
+            device.getHandle(), vkCreateDescriptorSetLayout, describe, "vkCreateDescriptorSetLayout");
     }
 
     namespace
     {
         Sampler createSampler(const Device& device, const VkSamplerCreateInfo& describe, std::string_view name)
         {
-            Sampler handle;
-            checkVk(vkCreateSampler(device.getHandle(), &describe, nullptr, handle.put(device.getHandle())),
-                "vkCreateSampler");
-            device.setName(VK_OBJECT_TYPE_SAMPLER, reinterpret_cast<std::uint64_t>(handle.get()), name);
+            Sampler handle = Sampler::make(device.getHandle(), vkCreateSampler, describe, "vkCreateSampler");
+            device.setName(handle.get(), name);
             return handle;
         }
     }
@@ -129,29 +153,28 @@ namespace Rtx
     }
 
     PipelineLayout::PipelineLayout(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
-        std::uint32_t pushConstantBytes, VkShaderStageFlags pushStages,
-        std::span<const VkDescriptorSetLayout> laterSets)
+        const VkPushConstantRange& push, std::span<const VkDescriptorSetLayout> laterSets)
         : mSetLayout(makeSetLayout(device, bindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT))
+        , mPush(push)
+        , mLaterSets(static_cast<std::uint32_t>(laterSets.size()))
     {
+        assert(push.offset == 0 && "a push range that does not start at nought");
+
         // Set zero is this pipeline's own; whatever the caller named follows it, in order.
         std::vector<VkDescriptorSetLayout> sets;
         sets.reserve(laterSets.size() + 1);
         sets.push_back(mSetLayout.get());
         sets.insert(sets.end(), laterSets.begin(), laterSets.end());
 
-        const VkPushConstantRange range{
-            .stageFlags = pushStages,
-            .size = pushConstantBytes,
-        };
-        const bool pushes = pushConstantBytes > 0;
+        const bool pushes = push.size > 0;
         const VkPipelineLayoutCreateInfo pipelineLayout{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = static_cast<std::uint32_t>(sets.size()),
             .pSetLayouts = sets.data(),
             .pushConstantRangeCount = pushes ? 1u : 0u,
-            .pPushConstantRanges = pushes ? &range : nullptr,
+            .pPushConstantRanges = pushes ? &push : nullptr,
         };
-        checkVk(vkCreatePipelineLayout(device.getHandle(), &pipelineLayout, nullptr, mHandle.put(device.getHandle())),
-            "vkCreatePipelineLayout");
+        mHandle = Owned<VkPipelineLayout, vkDestroyPipelineLayout>::make(
+            device.getHandle(), vkCreatePipelineLayout, pipelineLayout, "vkCreatePipelineLayout");
     }
 }

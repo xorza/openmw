@@ -73,7 +73,7 @@ namespace MWRender
     std::uint32_t rayMaskOf(osg::Node::NodeMask cullMask);
 
     /// The picture as rays find it: a window, a mirror of the scene graph, and a trace. It names a
-    /// graphics API in one line — the constructor makes the `Rtx::VulkanRenderer` — and initialises
+    /// graphics API in one line — the constructor calls `Rtx::createVulkanRenderer` — and initialises
     /// no OpenGL anywhere: the window is an SDL surface the backend builds on. It drives the frame
     /// itself, the scene-graph half of what `osgViewer::Viewer` does, with no cull because rays go
     /// everywhere; the mirror runs after the update traversal and the present after the mirror.

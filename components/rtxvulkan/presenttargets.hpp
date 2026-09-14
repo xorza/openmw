@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
+#include <utility>
 
 #include <vulkan/vulkan_core.h>
 
@@ -29,7 +29,7 @@ namespace Rtx
         /// whether or not a frame was traced into it.
         void resize(const Device& device, CommandPool& pool, std::uint32_t width, std::uint32_t height);
 
-        bool isOpen() const { return mTarget != nullptr; }
+        bool isOpen() const { return !mTarget.isEmpty(); }
 
         /// The one this frame writes, made writable: `wait` is called with it on the first claim
         /// after a present and not again. At the first write rather than at the present, because
@@ -42,37 +42,40 @@ namespace Rtx
         {
             if (!mClaimed)
             {
-                wait(*mTarget);
+                wait(mTarget);
                 mClaimed = true;
             }
 
-            return *mTarget;
+            return mTarget;
         }
 
         /// The one this frame writes, for a record after the claim and for a read.
-        Image& current() { return *mTarget; }
-        const Image& current() const { return *mTarget; }
+        Image& current() { return mTarget; }
+        const Image& current() const { return mTarget; }
 
-        /// Says the current one has just been presented, and hands the next frame the other one.
+        /// Says the current one has just been presented, and hands the next frame the other one:
+        /// the two swap places, so what was presented is the spare from here.
         void presented()
         {
-            mPresented = mTarget.get();
-            mTarget.swap(mSpare);
+            std::swap(mTarget, mSpare);
+            mSparePresented = true;
             mClaimed = false;
         }
 
         /// The one the last present read, or null where nothing was presented at all — named apart
         /// because that null is the whole question `readPixels` asks, and a headless run never
         /// answers it.
-        const Image* lastPresented() const { return mPresented; }
+        const Image* lastPresented() const { return mSparePresented ? &mSpare : nullptr; }
 
     private:
         /// Numbered rather than named: which one is being written changes every present, so a name
         /// that said so would be wrong on half the frames it appeared in.
-        std::unique_ptr<Image> mTarget;
-        std::unique_ptr<Image> mSpare;
+        Image mTarget;
+        Image mSpare;
 
-        const Image* mPresented = nullptr;
+        /// Whether any present has happened since `resize`, which is whether the spare is what a
+        /// present last read.
+        bool mSparePresented = false;
 
         /// Whether the current one's last reader has been waited for since it became current.
         bool mClaimed = false;

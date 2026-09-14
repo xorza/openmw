@@ -6,9 +6,9 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "descriptorsets.hpp"
 #include "handles.hpp"
 #include "image.hpp"
-#include "owned.hpp"
 
 namespace Rtx
 {
@@ -61,7 +61,7 @@ namespace Rtx
 
         /// The set every pass binds for a frame of this parity: the point pair as it stood last
         /// frame, the same pair and the lamps to write this frame, and the integrated pair.
-        VkDescriptorSet getSet(std::uint64_t frame) const { return mSets[writtenAt(frame)]; }
+        VkDescriptorSet getSet(std::uint64_t frame) const { return mSets.get(writtenAt(frame)); }
 
         /// Takes every image for what the frame ahead does to it, waiting on whatever read them for
         /// the frame before. Only what is written whole before it is read comes from undefined.
@@ -78,6 +78,9 @@ namespace Rtx
         void handOver(VkCommandBuffer commands) const;
 
     private:
+        /// The point pair, and so the sets: one wired each way round.
+        static constexpr std::uint32_t sParities = 2;
+
         /// Which of the point pair a frame writes, the other being its history. The set at that
         /// index is the one wired that way round.
         static std::size_t writtenAt(std::uint64_t frame) { return frame & 1; }
@@ -87,12 +90,12 @@ namespace Rtx
 
         /// What the air scatters and takes out at a point: the sky, both moons and every lamp in
         /// `rgb`, the extinction per world unit in `a`. The pair a frame reprojects and averages.
-        std::array<Image, 2> mScatter;
+        std::array<Image, sParities> mScatter;
 
         /// The sun's transport to that point with the phase divided out in `r`, what the lamp ray
         /// found in `g`, what the ambient's found in `b`: three answers of one ray each, filtered
         /// together because each is nought or one at an edge the grid cannot resolve.
-        std::array<Image, 2> mSunward;
+        std::array<Image, sParities> mSunward;
 
         /// What every lamp reaching a froxel delivers into it, per steradian, integrated over the
         /// froxel's stretch. One image, because an integral carries no draw to average away and a
@@ -120,7 +123,6 @@ namespace Rtx
         /// charged for.
         Sampler mSampler;
 
-        Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
-        std::array<VkDescriptorSet, 2> mSets{};
+        DescriptorSets mSets;
     };
 }

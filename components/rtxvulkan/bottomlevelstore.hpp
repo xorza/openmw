@@ -10,8 +10,9 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/slots.hpp>
 
+#include "accelerationstructure.hpp"
 #include "blockedbuffer.hpp"
-#include "owned.hpp"
+#include "handles.hpp"
 #include "structurebuild.hpp"
 #include "structurestorage.hpp"
 
@@ -55,7 +56,6 @@ namespace Rtx
     {
     public:
         explicit BottomLevelStore(const Device& device);
-        ~BottomLevelStore();
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
         /// A slot that already holds one has it destroyed first: a slot the scene handed out again
@@ -72,18 +72,18 @@ namespace Rtx
         /// `graveyard`: the last frame's top level still names them.
         void release(std::span<const Index> meshes, Graveyard& graveyard);
 
-        std::size_t size() const { return mStructures.size(); }
-        VkAccelerationStructureKHR getStructure(const Index mesh) const { return mStructures[mesh]; }
-        VkDeviceAddress getAddress(const Index mesh) const { return mAddresses[mesh]; }
+        std::size_t size() const { return mRows.size(); }
+        VkAccelerationStructureKHR getStructure(const Index mesh) const { return mRows[mesh].mStructure.getHandle(); }
+        VkDeviceAddress getAddress(const Index mesh) const { return mRows[mesh].mStructure.getAddress(); }
 
         /// Whether `mesh`'s structure was built with `ALLOW_UPDATE`, which is whether the scene's
         /// `MeshRange::mDeform` named a kind at the time it was built. A mesh's kind is fixed when
         /// it arrives, so this is also whether the mesh can ever be refitted.
-        bool isUpdatable(const Index mesh) const { return mUpdatable[mesh] != 0; }
+        bool isUpdatable(const Index mesh) const { return mRows[mesh].mUpdatable; }
 
         /// What a refit of `mesh` asks for, so a frame does not have to ask the driver again.
         /// Nought for a mesh that was not built to be refitted.
-        VkDeviceSize getUpdateScratch(const Index mesh) const { return mUpdateScratch[mesh]; }
+        VkDeviceSize getUpdateScratch(const Index mesh) const { return mRows[mesh].mUpdateScratch; }
 
         /// Reads every compaction answer whose placement has certainly run, and makes a tight
         /// structure for as many of the answered as this placement's budget takes. The set it
@@ -165,30 +165,37 @@ namespace Rtx
         /// waiting on a later one.
         bool isOutstanding(const Ask& ask) const
         {
-            const Compaction& state = mCompaction[ask.mSlot];
+            const Compaction& state = mRows[ask.mSlot].mCompaction;
             return state.mTightness == Tightness::Asked && state.mAskedAt == ask.mAt;
         }
 
-        /// Drops what the compaction knew about `slot`, ahead of its structure going.
-        void forget(Index slot);
+        /// Buries `slot`'s structure and forgets what the compaction knew about it, ahead of the
+        /// slot being built again or given back. Idempotent: a slot holding nothing buries nothing.
+        void retire(Index slot, Graveyard& graveyard);
+
+        /// One mesh slot: its structure, in its room, and what the refit and the compaction know
+        /// about it. One row and not six lists, so a slot cannot be half updated.
+        struct Row
+        {
+            AccelerationStructure mStructure;
+
+            /// What a refit asks for, kept so a frame does not ask the driver again. Nought for a
+            /// mesh not built to be refitted.
+            VkDeviceSize mUpdateScratch = 0;
+
+            /// Whether the structure was built with `ALLOW_UPDATE`.
+            bool mUpdatable = false;
+
+            Compaction mCompaction;
+        };
 
         const Device& mDevice;
 
-        StructureStorage mStorage{ VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR
-                | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-            "bottom level structures" };
+        // Before the rows, which give their rooms back to it as they go.
+        StructureStorage mStorage{ sStructureStorageUsage, "bottom level structures" };
 
-        std::vector<VkAccelerationStructureKHR> mStructures;
-
-        /// Where each of those sits in the storage, so a released mesh can give its room back.
-        std::vector<StructureRoom> mRooms;
-
-        /// Each of those structures' device address, asked for once when it was made: a
-        /// nine-by-nine exterior asking per instance is fifty thousand driver calls a frame.
-        std::vector<VkDeviceAddress> mAddresses;
-
-        std::vector<VkDeviceSize> mUpdateScratch;
-        std::vector<std::uint8_t> mUpdatable;
+        /// One row per mesh slot, grown with the mesh table.
+        std::vector<Row> mRows;
 
         /// What one run of `build` describes.
         StructureBuildBatch mBuild;
@@ -212,13 +219,10 @@ namespace Rtx
         /// at nought bytes — a mesh with no triangles is described by nobody and built by nobody.
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mLiveBuilds;
 
-        /// The compaction's state per slot, grown with the mesh table.
-        std::vector<Compaction> mCompaction;
-
         /// One query per slot, grown with the mesh table. The pool it outgrows is buried and not
         /// destroyed — a batch in flight may still be writing into it — and whoever was asked
         /// through it is asked again through the new one.
-        Owned<VkQueryPool, vkDestroyQueryPool> mCompactable;
+        QueryPool mCompactable;
         std::uint32_t mCompactablePool = 0;
 
         /// The questions outstanding, oldest first, and the slots answered and not yet copied.

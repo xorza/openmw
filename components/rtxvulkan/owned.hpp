@@ -4,6 +4,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "result.hpp"
+
 namespace Rtx
 {
     /// A Vulkan handle the device destroys, and the device it belongs to: the one place
@@ -57,6 +59,18 @@ namespace Rtx
             reset();
             mDevice = device;
             return &mHandle;
+        }
+
+        /// One made by `create(device, &info, allocator, out)`, which is the shape every
+        /// `vkCreateX` this backend calls has but the pipelines' — checked, and named by `call`
+        /// in the message a failure carries. The string stays: nothing in C++ names a function
+        /// pointer's function.
+        template <class Create, class Info>
+        static Owned make(VkDevice device, Create create, const Info& info, const char* call)
+        {
+            Owned made;
+            checkVk(create(device, &info, nullptr, made.put(device)), call);
+            return made;
         }
 
         void reset()

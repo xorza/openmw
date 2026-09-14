@@ -10,7 +10,7 @@
 #include <components/rtx/renderer.hpp>
 
 #include "device.hpp"
-#include "owned.hpp"
+#include "handles.hpp"
 
 namespace Rtx
 {
@@ -42,7 +42,7 @@ namespace Rtx
 
     private:
         const Device& mDevice;
-        Owned<VkQueryPool, vkDestroyQueryPool> mHandle;
+        QueryPool mHandle;
 
         /// Nanoseconds a tick of the device's clock is worth, and how many of its bits count.
         double mPeriod = 1.0;

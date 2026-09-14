@@ -148,10 +148,9 @@ namespace Rtx
         void writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const;
 
         /// Pushes set zero — everything both passes read — and binds the three sets nothing pushes.
-        /// A layout and a bind point rather than a pipeline, because the volume reads the same
-        /// world the trace does.
-        void pushInputs(VkCommandBuffer commands, VkPipelineBindPoint bindPoint, VkPipelineLayout layout,
-            const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
+        /// Any of the pipelines here, because the volume reads the same world the trace does.
+        void pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs,
+            const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;

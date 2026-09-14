@@ -29,7 +29,7 @@ namespace Rtx
         const double milliseconds)
         : mPipeline(
             device, sBindings, sizeof(Shaders::StressConstants), {}, shaderDirectory / "stress.comp.spv", "stress")
-        , mSink(Buffer::deviceLocal(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+        , mSink(Buffer::deviceLocal(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "stress sink"))
     {
         GpuTimer timer(device);
         double lastMs = 0.0;
@@ -60,9 +60,9 @@ namespace Rtx
     {
         timer.open(commands, "stress");
 
-        const VkDescriptorBufferInfo sink{ mSink.getHandle(), 0, VK_WHOLE_SIZE };
-        const std::array<VkWriteDescriptorSet, 1> writes{ bufferWrite(0, sink) };
-        dispatch(commands, mPipeline, writes, Shaders::StressConstants{ .mIterations = mIterations }, 1);
+        DescriptorWrites<1> writes;
+        writes.buffer(0, mSink.describe());
+        dispatch(commands, mPipeline, writes.get(), Shaders::StressConstants{ .mIterations = mIterations }, 1);
 
         timer.close(commands);
     }

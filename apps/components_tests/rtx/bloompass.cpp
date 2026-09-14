@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -31,9 +30,9 @@ namespace Rtx
         /// What the pass is handed, made the way the renderer makes its own frame: storage because
         /// the composite writes it, sampled because the first halving reads it, and both transfer
         /// bits so a test can fill it.
-        std::unique_ptr<Image> makeFrame(const Device& device, std::uint32_t width, std::uint32_t height)
+        Image makeFrame(const Device& device, std::uint32_t width, std::uint32_t height)
         {
-            return std::make_unique<Image>(device, width, height, VK_FORMAT_R32G32B32A32_SFLOAT,
+            return Image(device, width, height, VK_FORMAT_R32G32B32A32_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
                     | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                 "test-bloom-frame");
@@ -43,7 +42,8 @@ namespace Rtx
         /// path leaves it.
         void paint(CommandPool& pool, const Device& device, const Image& image, std::span<const float> pixels)
         {
-            const Buffer staging = Buffer::hostWritten(device, pixels.size_bytes(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            const Buffer staging
+                = Buffer::hostWritten(device, pixels.size_bytes(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
             staging.writeAt(0, pixels);
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
@@ -75,7 +75,7 @@ namespace Rtx
         {
             CommandPool mPool;
             BloomPass mBloom;
-            std::unique_ptr<Image> mFrame;
+            Image mFrame;
 
             Bloomed(const Device& device, std::uint32_t width, std::uint32_t height)
                 : mPool(device)
@@ -89,8 +89,8 @@ namespace Rtx
             /// pyramid.
             std::vector<float> over(const Device& device, std::span<const float> pixels)
             {
-                paint(mPool, device, *mFrame, pixels);
-                mPool.submitAndWait([&](VkCommandBuffer commands) { mBloom.record(commands, *mFrame); });
+                paint(mPool, device, mFrame, pixels);
+                mPool.submitAndWait([&](VkCommandBuffer commands) { mBloom.record(commands, mFrame); });
 
                 const Image* pyramid = mBloom.getPyramid();
                 return pyramid != nullptr ? Testing::readHalves(mPool, *pyramid) : std::vector<float>();

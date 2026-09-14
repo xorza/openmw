@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-#include <components/rtx/error.hpp>
-
 #include "device.hpp"
 #include "result.hpp"
 
@@ -11,19 +9,8 @@ namespace Rtx
 {
     Timeline::Timeline(const Device& device)
         : mDevice(device)
+        , mHandle(makeTimelineSemaphore(device, "queue timeline"))
     {
-        const VkSemaphoreTypeCreateInfo type{
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
-            .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
-            .initialValue = 0,
-        };
-        const VkSemaphoreCreateInfo create{
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-            .pNext = &type,
-        };
-        checkVk(vkCreateSemaphore(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())),
-            "vkCreateSemaphore");
-        device.setName(VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<std::uint64_t>(mHandle.get()), "queue timeline");
     }
 
     bool Timeline::hasFinished(const std::uint64_t value) const
@@ -52,11 +39,7 @@ namespace Rtx
             .pSemaphores = &handle,
             .pValues = &value,
         };
-        const VkResult result = vkWaitSemaphores(mDevice.getHandle(), &wait, sPatience);
-        if (result == VK_TIMEOUT)
-            throw Error(timedOut(what, sPatience));
-
-        checkVk(mDevice, result, what);
+        checkVkWait(mDevice, vkWaitSemaphores(mDevice.getHandle(), &wait, sPatience), what, sPatience);
         mFinished = std::max(mFinished, value);
     }
 

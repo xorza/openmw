@@ -18,6 +18,7 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/pipeline.hpp>
 
 #include "harness.hpp"
 
@@ -42,8 +43,8 @@ namespace Rtx
         std::vector<osg::Vec2f> transform(
             const Device& device, const ComputePipeline& pipeline, CommandPool& pool, std::span<const osg::Vec2f> grid)
         {
-            const Buffer field = Buffer::staging(
-                device, grid.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            const Buffer field = Buffer::staging(device, grid.size_bytes(),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
 
             void* mapped = field.map();
             std::memcpy(mapped, grid.data(), grid.size_bytes());
@@ -58,8 +59,8 @@ namespace Rtx
             };
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
-                vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0, 1, &write);
+                bind(commands, pipeline);
+                pushDescriptors(commands, pipeline, std::span(&write, 1));
 
                 for (int pass = 0; pass < 2; ++pass)
                 {
@@ -72,8 +73,7 @@ namespace Rtx
                         .mOffset = 0,
                     };
 
-                    vkCmdPushConstants(
-                        commands, pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
+                    pushConstants(commands, pipeline, constants);
                     vkCmdDispatch(commands, sCount, 1, 1);
                     Testing::orderStorageWrites(commands);
                 }

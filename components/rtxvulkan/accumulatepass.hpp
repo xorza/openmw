@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 
 #include <vulkan/vulkan_core.h>
 
@@ -61,14 +60,14 @@ namespace Rtx
 
         /// Two of each, because this frame reads what the last one wrote: the mean, written by the
         /// cascade; the surface it belongs to, for the reprojection; and the two moments of its
-        /// luminance, where the variance and the frame count sit. Null until `resize`.
-        std::array<std::unique_ptr<Image>, 2> mColour;
-        std::array<std::unique_ptr<Image>, 2> mSurface;
-        std::array<std::unique_ptr<Image>, 2> mMoments;
+        /// luminance, where the variance and the frame count sit. Empty until `resize`.
+        std::array<Image, 2> mColour;
+        std::array<Image, 2> mSurface;
+        std::array<Image, 2> mMoments;
 
         /// Where the blend goes, in the cascade's format because the cascade both reads and
-        /// overwrites it. Readable, so `FrameImage::Accumulated` can hand it back. Null until `resize`.
-        std::unique_ptr<Image> mBlended;
+        /// overwrites it. Readable, so `FrameImage::Accumulated` can hand it back. Empty until `resize`.
+        Image mBlended;
 
         /// Which half of each pair this frame writes. Flipped by `record`.
         std::size_t mCurrent = 0;

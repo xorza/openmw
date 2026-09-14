@@ -335,7 +335,7 @@ namespace Rtx
         TEST_F(RtxSlotTableTest, aTableWithNoRowsStillHasABufferToAddress)
         {
             sync(0);
-            EXPECT_NE(mTable.getDeviceAddress(FrameSlot{ 0 }), 0u);
+            EXPECT_NE(mTable.addressFor(FrameSlot{ 0 }), 0u);
         }
     }
 }

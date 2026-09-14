@@ -8,8 +8,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include "handles.hpp"
-#include "owned.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {
@@ -50,11 +49,8 @@ namespace Rtx
         VkSpecializationInfo mInfo{};
     };
 
-    /// A compute pipeline, the descriptor set layout it is addressed through, and the pipeline
-    /// layout that ties the two together — one object because they fail as one: a constructor
-    /// that throws gets no destructor, so a pass that made these itself left a layout behind for
-    /// `vkDestroyDevice` to find. `TracePipeline` is the same object for a launch.
-    class ComputePipeline
+    /// A compute pipeline and its layout. `TracePipeline` is the same object for a launch.
+    class ComputePipeline : public Pipeline
     {
     public:
         /// Neither span outlives the call.
@@ -70,14 +66,5 @@ namespace Rtx
             std::uint32_t pushConstantBytes, std::span<const VkDescriptorSetLayout> laterSets,
             const std::filesystem::path& module, std::string_view name,
             std::span<const std::uint32_t> specialization = {});
-
-        VkPipeline getHandle() const { return mHandle.get(); }
-
-        /// What descriptors are pushed against and push constants are written through.
-        VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
-
-    private:
-        PipelineLayout mLayout;
-        Owned<VkPipeline, vkDestroyPipeline> mHandle;
     };
 }

@@ -2,15 +2,15 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
 
+#include "accelerationstructure.hpp"
 #include "buffer.hpp"
 #include "image.hpp"
-#include "structurestorage.hpp"
 #include "texture.hpp"
 
 namespace Rtx
@@ -35,21 +35,14 @@ namespace Rtx
         /// displaced without asking whether it displaced anything.
         void bury(Buffer&& buffer);
         void bury(Texture&& texture);
+        void bury(Image&& image);
 
-        /// By pointer where the others are by value, because `Image` is not movable: what owns one
-        /// owns it through a `unique_ptr` and hands that over.
-        void bury(std::unique_ptr<Image>&& image);
-        void bury(VkAccelerationStructureKHR structure);
-
-        /// A descriptor pool and every set allocated from it, which a dispatch in flight may still
-        /// be reading through.
-        void bury(VkDescriptorPool pool);
+        /// A structure and the room it stands in, given back together once nothing can be built
+        /// or traced in it.
+        void bury(AccelerationStructure&& structure);
 
         /// A query pool a batch in flight may still be writing answers into.
         void bury(VkQueryPool pool);
-
-        /// A room in `storage`, given back once nothing can be built or traced in it.
-        void bury(StructureStorage& storage, const StructureRoom& room);
 
         /// A one-shot command buffer the pool handed out, freed once it has run.
         void bury(VkCommandBuffer commands);
@@ -65,17 +58,11 @@ namespace Rtx
         // Read by the tests and by nothing else.
         std::size_t getHeldCount() const
         {
-            return mBuffers.size() + mTextures.size() + mImages.size() + mStructures.size() + mPools.size()
-                + mQueryPools.size() + mRooms.size() + mCommands.size();
+            return mBuffers.size() + mTextures.size() + mImages.size() + mStructures.size() + mQueryPools.size()
+                + mCommands.size();
         }
 
     private:
-        struct Room
-        {
-            StructureStorage* mStorage = nullptr;
-            StructureRoom mRoom;
-        };
-
         /// One thing buried and the value it is held until. In burial order, which is stamp
         /// order, so what `collect` frees is a prefix.
         template <class T>
@@ -102,11 +89,9 @@ namespace Rtx
         // buries settles at the busiest frame so far.
         std::vector<Held<Buffer>> mBuffers;
         std::vector<Held<Texture>> mTextures;
-        std::vector<Held<std::unique_ptr<Image>>> mImages;
-        std::vector<Held<VkAccelerationStructureKHR>> mStructures;
-        std::vector<Held<VkDescriptorPool>> mPools;
+        std::vector<Held<Image>> mImages;
+        std::vector<Held<AccelerationStructure>> mStructures;
         std::vector<Held<VkQueryPool>> mQueryPools;
-        std::vector<Held<Room>> mRooms;
         std::vector<Held<VkCommandBuffer>> mCommands;
     };
 
@@ -114,6 +99,6 @@ namespace Rtx
     /// holds where that is more, so the table is made again a logarithmic number of times rather
     /// than once per arrival — and buries what that displaced. True where it was made again, which
     /// is a table holding nothing that the caller has to fill whole.
-    bool outgrow(
-        Buffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage, Graveyard& graveyard);
+    bool outgrow(Buffer& held, const Device& device, BufferKind kind, VkDeviceSize bytes, VkBufferUsageFlags usage,
+        std::string_view name, Graveyard& graveyard);
 }

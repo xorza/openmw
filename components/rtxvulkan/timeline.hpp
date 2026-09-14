@@ -5,7 +5,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
-#include "owned.hpp"
+#include "handles.hpp"
 
 namespace Rtx
 {
@@ -60,7 +60,7 @@ namespace Rtx
 
     private:
         const Device& mDevice;
-        Owned<VkSemaphore, vkDestroySemaphore> mHandle;
+        Semaphore mHandle;
         std::uint64_t mSubmitted = 0;
 
         /// The highest value the device has been seen to pass. Mutable because asking is not a

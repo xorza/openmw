@@ -370,17 +370,18 @@ namespace Rtx
         if (mGetQueueCheckpointData == nullptr)
             return {};
 
-        std::uint32_t count = 0;
-        mGetQueueCheckpointData(mQueue, &count, nullptr);
-        if (count == 0)
+        const std::vector<VkCheckpointDataNV> passed = enumerateVk<VkCheckpointDataNV>(
+            "vkGetQueueCheckpointDataNV",
+            [&](std::uint32_t* count, VkCheckpointDataNV* into) {
+                mGetQueueCheckpointData(mQueue, count, into);
+                return VK_SUCCESS;
+            },
+            VkCheckpointDataNV{ .sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV });
+        if (passed.empty())
             return "\nthe queue passed no checkpoint";
 
-        std::vector<VkCheckpointDataNV> passed(
-            count, VkCheckpointDataNV{ .sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV });
-        mGetQueueCheckpointData(mQueue, &count, passed.data());
-
         std::string report;
-        for (std::uint32_t at = 0; at < count; ++at)
+        for (std::size_t at = 0; at < passed.size(); ++at)
         {
             const auto* checkpoint = static_cast<const Checkpoint*>(passed[at].pCheckpointMarker);
             if (checkpoint == nullptr)

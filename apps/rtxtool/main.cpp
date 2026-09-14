@@ -35,7 +35,7 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
-#include <components/rtxvulkan/vulkanrenderer.hpp>
+#include <components/rtxvulkan/createrenderer.hpp>
 
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
@@ -231,7 +231,7 @@ namespace RtxTool
             // them from source, kept nothing, and left the next `shot` to compile them again.
             try
             {
-                const auto renderer = std::make_unique<Rtx::VulkanRenderer>(Rtx::RendererOptions{
+                const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createVulkanRenderer(Rtx::RendererOptions{
                     .mShaderDirectory = command.mResources / "rtx" / "shaders",
                     .mCacheDirectory = command.mConfig.getCachePath(),
                     .mWidth = 1,

@@ -28,6 +28,7 @@
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "handles.hpp"
+#include "image.hpp"
 #include "instance.hpp"
 #include "placing.hpp"
 #include "presenttargets.hpp"
@@ -45,8 +46,6 @@ namespace Rtx
     class Dlss;
     class DlssPass;
 #endif
-    class Image;
-
     class Presenter;
     class SceneAcceleration;
     class SceneBuffers;
@@ -104,8 +103,8 @@ namespace Rtx
         };
 
     public:
-        /// Throws `Error` where this machine cannot run it. `createVulkanRenderer` is what turns
-        /// that into a reason a caller can act on.
+        /// Throws `Unsupported` where this machine cannot run it and `Error` where it should have.
+        /// `createVulkanRenderer` is how a host makes one.
         explicit VulkanRenderer(const RendererOptions& options);
         ~VulkanRenderer() override;
 
@@ -195,6 +194,19 @@ namespace Rtx
         /// Brings the upscaler's runtime up if it is not already, and throws where it cannot be.
         void startUpscaler();
 
+        /// Everything the queue was given and everything waiting to be given it, finished, and
+        /// everything buried let go: what a rebuild, a resize and a scene going away do before
+        /// what they replace can go. In the one order that is right — a deferred batch first,
+        /// because it rides the next submit and nothing else will make one; the frames in flight,
+        /// so the ring's account is settled; the device, for the interface's and the presenter's
+        /// submits the ring does not count; and the graveyard last, once nothing can be reading.
+        void drain();
+
+        /// The part of `drain` a picture inside the interface owes and no more: a picture recorded
+        /// and not yet carried, or carried and not yet finished, names what a resize of the
+        /// picture chain replaces — and the frame's own chain is left alone.
+        void finishTraces();
+
         /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
         /// second. The one answer the build decides, so that no reader of the three members below
@@ -259,11 +271,11 @@ namespace Rtx
         /// says why there are two.
         PresentTargets mTargets;
 
-        /// The running sum a reference is built out of, and null until a frame asks for one. Not a
-        /// history and nothing here reprojects: a plain per-pixel total over however many frames
+        /// The running sum a reference is built out of, and empty until a frame asks for one. Not
+        /// a history and nothing here reprojects: a plain per-pixel total over however many frames
         /// the caller asked to average. Whether it exists is also whether anything has written it,
         /// because the frame that makes one fills it.
-        std::unique_ptr<Image> mSum;
+        Image mSum;
 
         /// What every `GBuffer` here is shaped by — one description, however many of them the
         /// frame's size brings and takes away. Declared before both chains, which allocate from it.
@@ -347,13 +359,13 @@ namespace Rtx
         std::vector<std::unique_ptr<ViewScene>> mViewScenes;
         SlotPool mFreeViewScenes;
 
-        /// The picture as bytes, which is what the interface's texture is copied out of. Null
+        /// The picture as bytes, which is what the interface's texture is copied out of. Empty
         /// until something asks for a picture, and grown with `mView`.
-        std::unique_ptr<Image> mViewTarget;
+        Image mViewTarget;
 
         /// Null where nothing asked for a window. Last, so it is destroyed first: its command
-        /// buffers still hold recordings that blit out of `mTarget`, and destroying that image while
-        /// a recording names it is `VUID-vkDestroyImage-image-01000`.
+        /// buffers, out of `mPool`, still hold recordings that blit out of `mTarget`, and destroying
+        /// that image while a recording names it is `VUID-vkDestroyImage-image-01000`.
         std::unique_ptr<Presenter> mPresenter;
 
 #ifdef OPENMW_RTX_DLSS
@@ -367,7 +379,7 @@ namespace Rtx
         std::unique_ptr<DlssPass> mUpscaler;
 
         /// What it writes: the frame at the output extent, still in linear radiance.
-        std::unique_ptr<Image> mUpscaled;
+        Image mUpscaled;
 
 #endif
     };

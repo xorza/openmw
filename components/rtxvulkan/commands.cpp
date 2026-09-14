@@ -7,10 +7,11 @@
 #include <iterator>
 #include <utility>
 
+#include "barriers.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "image.hpp"
-#include "imageuse.hpp"
+#include "memory.hpp"
 #include "result.hpp"
 #include "timeline.hpp"
 
@@ -24,8 +25,8 @@ namespace Rtx
             .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
             .queueFamilyIndex = device.getQueueFamily(),
         };
-        checkVk(vkCreateCommandPool(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())),
-            "vkCreateCommandPool");
+        mHandle = Owned<VkCommandPool, vkDestroyCommandPool>::make(
+            device.getHandle(), vkCreateCommandPool, create, "vkCreateCommandPool");
     }
 
     void CommandPool::reset()
@@ -44,7 +45,8 @@ namespace Rtx
         std::move(staging.begin(), staging.end(), std::back_inserter(mDeferredStaging));
     }
 
-    std::uint64_t CommandPool::submitWithDeferred(VkCommandBuffer commands)
+    std::uint64_t CommandPool::submitWithDeferred(VkCommandBuffer commands,
+        const std::span<const VkSemaphoreSubmitInfo> waits, const std::span<const VkSemaphoreSubmitInfo> signals)
     {
         mSubmitScratch.clear();
         mSubmitScratch.reserve(mDeferred.size() + 1);
@@ -58,15 +60,22 @@ namespace Rtx
             .commandBuffer = commands,
         });
 
+        // The timeline's signal and then whatever the caller adds, which is a present's.
         Timeline& timeline = mDevice.getTimeline();
         const std::uint64_t value = timeline.next();
-        const VkSemaphoreSubmitInfo signal = timeline.signal(value);
+        mSignalScratch.clear();
+        mSignalScratch.reserve(signals.size() + 1);
+        mSignalScratch.push_back(timeline.signal(value));
+        mSignalScratch.insert(mSignalScratch.end(), signals.begin(), signals.end());
+
         const VkSubmitInfo2 submit{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount = static_cast<std::uint32_t>(waits.size()),
+            .pWaitSemaphoreInfos = waits.data(),
             .commandBufferInfoCount = static_cast<std::uint32_t>(mSubmitScratch.size()),
             .pCommandBufferInfos = mSubmitScratch.data(),
-            .signalSemaphoreInfoCount = 1,
-            .pSignalSemaphoreInfos = &signal,
+            .signalSemaphoreInfoCount = static_cast<std::uint32_t>(mSignalScratch.size()),
+            .pSignalSemaphoreInfos = mSignalScratch.data(),
         };
         checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, VK_NULL_HANDLE), "vkQueueSubmit2");
         return value;
@@ -86,7 +95,8 @@ namespace Rtx
         submitAndWait([](VkCommandBuffer) {});
     }
 
-    std::uint64_t CommandPool::submit(VkCommandBuffer commands, Graveyard& kept)
+    std::uint64_t CommandPool::submit(VkCommandBuffer commands, Graveyard& kept,
+        const std::span<const VkSemaphoreSubmitInfo> waits, const std::span<const VkSemaphoreSubmitInfo> signals)
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
@@ -97,7 +107,7 @@ namespace Rtx
         for (Buffer& staging : mDeferredStaging)
             kept.bury(std::move(staging));
 
-        const std::uint64_t value = submitWithDeferred(commands);
+        const std::uint64_t value = submitWithDeferred(commands, waits, signals);
         forgetDeferred();
         return value;
     }
@@ -145,20 +155,14 @@ namespace Rtx
         // One full barrier at the head says it for every pass at once, whatever the pass, which is
         // what a dependency derived from each resource's state would say pass by pass and at far
         // greater length. A full barrier between passes already costs this renderer nothing it
-        // could measure; four a frame at the seams cost the same.
-        const VkMemoryBarrier2 head{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &head,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
+        // could measure; a handful a frame at the seams cost the same — and every discard and
+        // every first read of a copy in the buffer leans on it, sourcing itself at nothing.
+        handOver(commands, Use::sBufferAnyReadWrite, Use::sBufferAnyReadWrite);
+    }
+
+    void CommandPool::end(VkCommandBuffer commands)
+    {
+        checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
     }
 
     VkCommandBuffer CommandPool::begin()
@@ -180,7 +184,7 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        mDevice.getTimeline().waitFor(submitWithDeferred(commands), "a one-off submit");
+        mDevice.getTimeline().waitFor(submitWithDeferred(commands, {}, {}), "a one-off submit");
 
         // The copies have run, so this is where a deferred batch's staging stops being read, and
         // where every buffer that carried one can go back to the pool.
@@ -218,12 +222,12 @@ namespace Rtx
 
     StagingRun Batch::stage(const Device& device, std::span<const std::byte> bytes)
     {
-        VkDeviceSize at = (mFilled + sStagingAlignment - 1) / sStagingAlignment * sStagingAlignment;
+        VkDeviceSize at = alignUp(mFilled, sStagingAlignment);
 
         if (mBlocks.empty() || at + bytes.size() > mBlocks.back().getSize())
         {
-            mBlocks.push_back(Buffer::staging(
-                device, std::max<VkDeviceSize>(bytes.size(), sStagingBlock), VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
+            mBlocks.push_back(Buffer::staging(device, std::max<VkDeviceSize>(bytes.size(), sStagingBlock),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "staging block"));
             at = 0;
         }
 
@@ -286,40 +290,24 @@ namespace Rtx
         vkCmdCopyBuffer(batch.getCommands(), staged.mBuffer, into.getHandle(), 1, &region);
     }
 
-    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage)
+    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage,
+        std::string_view name)
     {
         // Host memory and not the aperture. These bytes are written once and read once by the
         // copy below, so putting them in the video memory the host writes into spends the scarcest
         // heap on a card without resizable BAR for a buffer that is gone by the next submit.
-        Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "upload staging");
         staging.write(bytes);
 
-        Buffer result = Buffer::deviceLocal(device, bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        Buffer result = Buffer::deviceLocal(device, bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, name);
 
         const VkCommandBuffer commands = batch.getCommands();
-        const VkBufferCopy region{ .size = bytes.size() };
-        vkCmdCopyBuffer(commands, staging.getHandle(), result.getHandle(), 1, &region);
+        staging.copyTo(commands, result, bytes.size());
 
         // What makes an upload self-contained. Batched, the next thing recorded may be an
         // acceleration structure built out of exactly these bytes, and without this it would read
         // them before the copy had run.
-        const VkBufferMemoryBarrier2 copied{
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = result.getHandle(),
-            .size = VK_WHOLE_SIZE,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .bufferMemoryBarrierCount = 1,
-            .pBufferMemoryBarriers = &copied,
-        };
-        vkCmdPipelineBarrier2(commands, &dependency);
+        result.transition(commands, Use::sBufferCopyWrite, Use::sBufferAnyRead);
 
         batch.keep(std::move(staging));
 
@@ -340,25 +328,11 @@ namespace Rtx
         vkCmdCopyBufferToImage(commands, staged.mBuffer, image.getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             static_cast<std::uint32_t>(regions.size()), regions.data());
 
-        image.transition(commands, Use::sCopyWrite,
-            ImageUse{ VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT });
+        image.transition(commands, Use::sCopyWrite, Use::sTextureSample);
     }
+
     void orderStagedWrites(Batch& batch)
     {
-        const VkMemoryBarrier2 copied{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
-        };
-        const VkDependencyInfo dependency{
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .memoryBarrierCount = 1,
-            .pMemoryBarriers = &copied,
-        };
-        vkCmdPipelineBarrier2(batch.getCommands(), &dependency);
+        handOver(batch.getCommands(), Use::sBufferCopyWrite, Use::sBufferAnyRead);
     }
 }

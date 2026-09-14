@@ -5,19 +5,11 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "bufferusage.hpp"
+
 namespace Rtx
 {
     struct MeshRange;
-
-    // Addressable as well as build input, because the shader reads the indices back at a hit
-    // through the same address the build read them at, and there is no reason for a second copy
-    // of them to exist. No descriptor names any of these, so nothing else is asked for.
-    inline constexpr VkBufferUsageFlags sBuildInputUsage
-        = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-        | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-
-    inline constexpr VkBufferUsageFlags sScratchUsage
-        = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     /// One mesh's triangles as the builder takes them, out of addresses a caller worked out.
     /// `maxVertex` is guarded, because a freed slot holds a count of zero and subtracting one

@@ -6,6 +6,7 @@
 
 #include <components/rtx/renderer.hpp>
 
+#include "dispatch.hpp"
 #include "image.hpp"
 
 namespace Rtx
@@ -106,23 +107,17 @@ namespace Rtx
             const GraphicsPipeline& pipeline = draw.mBlend == Blend::Additive ? mAdditive : mOver;
             if (&pipeline != bound)
             {
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getHandle());
+                bind(commands, pipeline);
                 bound = &pipeline;
             }
 
-            const VkDescriptorImageInfo texture{ mSampler.get(), draw.mTexture,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            const VkWriteDescriptorSet write{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &texture,
-            };
-
             // Against the layout of the pipeline that is bound: the two are identical, but a push
             // is only defined against the one in force.
-            vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.getLayout(), 0, 1, &write);
+            DescriptorWrites<1> texture;
+            texture.image(0,
+                VkDescriptorImageInfo{ mSampler.get(), draw.mTexture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+            pushDescriptors(commands, pipeline, texture.get());
             vkCmdDraw(commands, draw.mVertexCount, 1, draw.mFirstVertex, 0);
         }
 

@@ -7,6 +7,7 @@
 
 #include <components/rtx/shaders/tone.h>
 
+#include "buffer.hpp"
 #include "computepipeline.hpp"
 #include "handles.hpp"
 #include "image.hpp"
@@ -44,7 +45,7 @@ namespace Rtx
         /// @param bloom the pyramid's finest level, in `VK_IMAGE_LAYOUT_GENERAL`, or null where
         ///        nothing built one — a doll, a map tile, a frame too small to halve.
         /// @param target the displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.
-        void record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
+        void record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure, const Image& starsShown,
             const Image* bloom, VkDescriptorSet textures, const Image& target, Shaders::ToneConstants constants) const;
 
     private:

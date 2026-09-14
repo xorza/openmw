@@ -8,6 +8,7 @@
 
 #include <components/rtx/runs.hpp>
 
+#include "blocklist.hpp"
 #include "buffer.hpp"
 
 namespace Rtx
@@ -16,19 +17,13 @@ namespace Rtx
 
     /// Where one bottom-level structure sits: which block of storage, and the run inside it. Empty
     /// for a mesh slot that has no structure — a slot the scene took back and has not filled.
-    struct StructureRoom
-    {
-        std::uint32_t mBlock = 0;
-        Run mRun;
-
-        bool empty() const { return mRun.empty(); }
-    };
+    using StructureRoom = BlockRun;
 
     /// Room for bottom-level acceleration structures, as a list of buffers nothing ever moves: one
-    /// buffer sized to the scene is what made a cell arriving rebuild the world. A `RunAllocator`
-    /// over each block, in units of the structure alignment. A room is given back through a
-    /// `Graveyard` and never straight to `give`, because a frame that traced the structure may
-    /// still be on the queue.
+    /// buffer sized to the scene is what made a cell arriving rebuild the world. A `BlockList` over
+    /// buffers, in units of the structure alignment. A room is given back through an
+    /// `AccelerationStructure`'s end and never straight to `give`, because a frame that traced the
+    /// structure may still be on the queue.
     class StructureStorage
     {
     public:
@@ -54,7 +49,7 @@ namespace Rtx
         /// every structure it holds before it gives back a single room.
         void give(const StructureRoom& room);
 
-        VkBuffer getBuffer(const StructureRoom& room) const { return mBlocks[room.mBlock].mBuffer.getHandle(); }
+        VkBuffer getBuffer(const StructureRoom& room) const { return mBlocks.at(room.mBlock).mBuffer.getHandle(); }
         VkDeviceSize getOffset(const StructureRoom& room) const;
 
         /// How much storage exists, which is what the device was asked for.
@@ -73,15 +68,20 @@ namespace Rtx
             Buffer mBuffer;
             RunAllocator mRuns;
 
-            /// How long the block is, and nought where it has been given back: a retired block
-            /// keeps its place so that no room is renumbered, and `take` fills the place again.
-            std::uint32_t mUnits = 0;
+            /// How long the block is in units, and nought where it has been given back.
+            std::uint32_t mCapacity = 0;
+
+            void retire()
+            {
+                mBuffer = Buffer();
+                mCapacity = 0;
+            }
         };
 
         /// How many places hold a block, which is what says whether this is the last one.
         std::size_t countLive() const;
 
-        std::vector<Block> mBlocks;
+        BlockList<Block> mBlocks;
 
         VkBufferUsageFlags mUsage = 0;
         std::string mName;

@@ -1,9 +1,7 @@
 #pragma once
 
-#include <array>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -13,10 +11,10 @@
 #include <components/rtx/slots.hpp>
 #include <components/rtx/texturedata.hpp>
 
+#include "descriptorsets.hpp"
 #include "frameslots.hpp"
 #include "handles.hpp"
 #include "image.hpp"
-#include "owned.hpp"
 
 namespace Rtx
 {
@@ -41,21 +39,31 @@ namespace Rtx
         Texture(Texture&&) noexcept = default;
         Texture& operator=(Texture&&) noexcept = default;
 
-        /// What a sampler reads, or nothing where the slot holds no texture.
-        VkImageView getView() const { return mImage == nullptr ? VK_NULL_HANDLE : mImage->getView(); }
+        /// Whether the slot holds no texture.
+        bool isEmpty() const { return mImage.isEmpty(); }
 
-        /// The shading map beside it, likewise.
-        VkImageView getShadingView() const { return mShading == nullptr ? VK_NULL_HANDLE : mShading->getView(); }
+        /// The texture and its shading map as a sampled descriptor takes them, through `sampler`,
+        /// from the read-only layout an upload leaves them in.
+        VkDescriptorImageInfo describe(VkSampler sampler) const
+        {
+            return mImage.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        VkDescriptorImageInfo describeShading(VkSampler sampler) const
+        {
+            return mShading.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        // Read by the tests and by nothing else: the interface's pass draws with one.
+        VkImageView getView() const { return mImage.getView(); }
 
         /// The size of the data uploaded, the map's included, which for a block-compressed image is
         /// what it occupies.
         VkDeviceSize getBytes() const { return mBytes; }
 
     private:
-        /// By pointer, because `Image` is not movable and a texture is: the array holds them in
-        /// a vector, and a slot given back is buried under the frame that may still be reading it.
-        std::unique_ptr<Image> mImage;
-        std::unique_ptr<Image> mShading;
+        Image mImage;
+        Image mShading;
 
         VkDeviceSize mBytes = 0;
     };
@@ -114,7 +122,7 @@ namespace Rtx
         VkDescriptorSet getSet(FrameSlot slot) const
         {
             assert(slot.get() < sFrameSlots);
-            return mSets[slot.get()].mSet;
+            return mSets.get(slot.get());
         }
 
         /// How long the array is, which is where an append begins and what an uploader compares a
@@ -126,17 +134,11 @@ namespace Rtx
         TexturesHeld getHeld() const;
 
     private:
-        /// A descriptor set and the pool it was taken from, which is what frees it.
-        struct SetPool
-        {
-            Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
-            VkDescriptorSet mSet = VK_NULL_HANDLE;
-        };
-
-        /// Queues a write of `view` into `set` at `binding[slot]`, behind the image info the write
+        /// Queues a write of `image` into `set` at `binding[slot]`, behind the image info the write
         /// names by address.
-        void queueWrite(VkDescriptorSet set, std::uint32_t binding, std::uint32_t slot, VkImageView view,
-            std::vector<VkDescriptorImageInfo>& images, std::vector<VkWriteDescriptorSet>& writes) const;
+        static void queueWrite(VkDescriptorSet set, std::uint32_t binding, std::uint32_t slot,
+            const VkDescriptorImageInfo& image, std::vector<VkDescriptorImageInfo>& images,
+            std::vector<VkWriteDescriptorSet>& writes);
 
         /// Grows the array to reach `slot`, and refuses one past what the binding holds.
         void reserveSlot(std::uint32_t slot);
@@ -156,9 +158,11 @@ namespace Rtx
 
         Sampler mSampler;
         SetLayout mLayout;
-        std::array<SetPool, sFrameSlots> mSets;
+
+        /// One set per frame in flight, both bindings at the maximum the layout declares.
+        DescriptorSets mSets;
 
         /// The slots each set has yet to be told, each once however often it was written.
-        std::array<SlotSet, sFrameSlots> mOwed;
+        PerSlot<SlotSet> mOwed;
     };
 }

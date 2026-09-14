@@ -37,13 +37,18 @@ namespace Rtx
     /// budget: the longest honest submit measured is a scene rebuild at a fifth of a second.
     inline constexpr std::uint64_t sPatience = 10'000'000'000ull;
 
-    /// Waits for `fences` and throws `Error` naming `what` if the device does not answer in time.
+    /// `checkVk` for a wait that was given `patience`: `VK_TIMEOUT` is named apart from the
+    /// other failures, because it is the one that says nothing about what the device thought was
+    /// wrong — only that it stopped saying anything at all.
+    void checkVkWait(const Device& device, VkResult result, const char* what, std::uint64_t patience);
+
+    /// Waits for `fence` and throws `Error` naming `what` if the device does not answer in time.
     /// A deadline, because with `UINT64_MAX` a stalled submit took the whole test suite with it.
     ///
     /// @param patience nanoseconds to allow; a parameter so a test can reach the failure.
     void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience = sPatience);
 
-    /// What a wait that ran out is called, so the two places that can say it say it the same way.
+    /// What a wait that ran out is called.
     std::string timedOut(const char* what, std::uint64_t patience);
 
     /// What an enumeration whose list never stopped growing is called.

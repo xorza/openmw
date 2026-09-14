@@ -1,12 +1,11 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
@@ -14,7 +13,6 @@
 #include "buffer.hpp"
 #include "frameslots.hpp"
 #include "gputimer.hpp"
-#include "owned.hpp"
 
 namespace Rtx
 {
@@ -107,7 +105,10 @@ namespace Rtx
         FrameRecord& recording();
 
         /// The slot `frame` used, for a caller counting on a ring of its own — the interface's.
-        FrameRecord& slotOf(std::uint64_t frame) { return mSlots[frame % sFrameSlots]; }
+        FrameRecord& slotOf(std::uint64_t frame)
+        {
+            return mSlots.at(FrameSlot{ static_cast<std::uint32_t>(frame % sFrameSlots) });
+        }
 
         /// How many frames have been submitted, which is the number the next one will carry.
         std::uint64_t getRecording() const { return mFrame; }
@@ -165,7 +166,7 @@ namespace Rtx
         bool mCountHits = false;
         bool mCountCrossings = false;
 
-        std::array<FrameRecord, sFrameSlots> mSlots;
+        PerSlot<FrameRecord> mSlots;
 
         /// The next frame to record and the next to finish. Everything from `mFinished` to `mFrame`
         /// is in flight, and there are never more of those than there are slots.

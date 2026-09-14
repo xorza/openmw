@@ -12,6 +12,7 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/surface.hpp>
 
+#include "bufferusage.hpp"
 #include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
@@ -22,13 +23,6 @@ namespace Rtx
 {
     namespace
     {
-        // Addressable and never bound: the frame block carries where every table is, and no
-        // descriptor names one.
-        constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-
-        // The sprites are the one table a trace's bin copies out of on the device.
-        constexpr VkBufferUsageFlags sSpriteUsage = sTableUsage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-
         /// What a material's vertex-colour mode is worth to the shader: one bit, or none. The
         /// shader does a `mix` against a weight, and the host settles which colour the weight picks.
         std::uint32_t vertexColourFlag(const VertexColour colour)
@@ -141,28 +135,13 @@ namespace Rtx
     SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
         std::span<const InstanceRecord> records, const std::uint32_t slots, Graveyard& graveyard)
         : mDevice(&device)
-        , mSlots(slots)
     {
-        assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the tables");
-
+        mTables.open(slots);
         mTexCoords.open(device, sTableUsage, "uvs");
         mColours.open(device, sTableUsage, "vertex colours");
         mInstanceTable.open(device, slots, sTableUsage, "instance rows");
         mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
-
-        // Every table exists from here, whether or not anything is written to it: a frame carries
-        // the address of all of them, and a table bound as nothing at all is undefined.
-        graveyard.bury(growTo(mMeshes, device, 0, sTableUsage));
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-        {
-            Tables& tables = mTables[slot];
-
-            for (Buffer* table :
-                { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightList, &tables.mEmitters })
-                graveyard.bury(growTo(*table, device, 0, sTableUsage));
-            graveyard.bury(growTo(tables.mSprites, device, 0, sSpriteUsage));
-        }
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
         std::vector<Index> every(scene.meshes().getRows().size());
@@ -173,7 +152,7 @@ namespace Rtx
 
         // Every copy of the normals holds every mesh from here, so what a copy owes from now on is
         // the poses it missed.
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+        for (std::uint32_t slot = 0; slot < mNormalTable.count(); ++slot)
             mNormalTable.settle(FrameSlot{ slot });
 
         // The frame tables come from `place`, which is also where they are written when a material
@@ -204,7 +183,7 @@ namespace Rtx
                 continue;
 
             const std::span<const osg::Vec3f> normals = range.mVertices.in(scene.meshes().getNormals());
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+            for (std::uint32_t slot = 0; slot < mNormalTable.count(); ++slot)
                 mNormalTable.at(FrameSlot{ slot }).writeAt(batch, range.mVertices.mOffset, normals);
 
             mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.meshes().getTexCoords()));
@@ -235,31 +214,22 @@ namespace Rtx
         // scene handed out again holds another mesh's offsets in the same row — which the frame
         // behind, still tracing the mesh that was there, would read as that mesh's geometry. One
         // copy is the versioned kind, and a version is never written in place.
-        const VkDeviceSize bytes = std::max<VkDeviceSize>(mMeshScratch.size() * sizeof(Shaders::GpuMesh), 1);
-        graveyard.bury(std::exchange(mMeshes, Buffer::hostWritten(*mDevice, bytes, sTableUsage)));
+        const VkDeviceSize bytes = mMeshScratch.size() * sizeof(Shaders::GpuMesh);
+        graveyard.bury(std::exchange(mMeshes, Buffer::hostWritten(*mDevice, bytes, sTableUsage, "meshes")));
         mMeshes.write(std::span<const Shaders::GpuMesh>(mMeshScratch));
-        mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mMeshes.getHandle()), "meshes");
-    }
-
-    void SceneBuffers::reserve(Buffer& held, const VkDeviceSize bytes, Graveyard& graveyard)
-    {
-        graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
     SpriteSource SceneBuffers::describeSprites(const FrameSlot slot) const
     {
-        assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
-
         // The bin copies the one and reads the other in the submit it records into, which is
-        // the next one.
-        const Tables& tables = mTables[slot.get()];
-        const std::uint64_t reads = mDevice->getTimeline().getNext();
-        tables.mSprites.nameFor(reads);
-        tables.mEmitters.nameFor(reads);
+        // the next one: the address says so of the emitters, and the copy's source is named by
+        // hand because a copy takes a handle and not an address.
+        const Tables& tables = mTables.at(slot);
+        tables.mSprites.nameFor(mDevice->getTimeline().getNext());
 
         return SpriteSource{
             .mSprites = &tables.mSprites,
-            .mEmitters = tables.mEmitters.getDeviceAddress(),
+            .mEmitters = tables.mEmitters.addressFor(),
             .mSpriteCount = tables.mSpriteCount,
             .mEmitterCount = tables.mEmitterCount,
         };
@@ -300,16 +270,17 @@ namespace Rtx
         const Shaders::GpuLayer noLayer{};
         constexpr float noMask = 1.0f;
 
-        // Every copy, because a run only ever arrives with a chunk, and a chunk arriving is an
-        // arrival the caller waited every frame out for. Nothing is reading the other copies, so
-        // they take the runs now rather than owing them; what a flipbook does every frame never
-        // touches these tables.
-        for (std::uint32_t each = 0; each < mSlots; ++each)
+        // Every copy, because a run only ever arrives with a chunk. An arrival does not wait the
+        // frames in flight out, and the other copy may be under a trace — but a run only just
+        // handed out is one no trace names, which is what `appendAt` promises, so every copy takes
+        // its runs now rather than owing them; what a flipbook does every frame never touches
+        // these tables.
+        for (Tables& copy : mTables.live())
         {
-            Tables& copy = mTables[each];
 
-            if (outgrow(copy.mLayers, *mDevice, std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer),
-                    sTableUsage, graveyard))
+            if (outgrow(copy.mLayers, *mDevice, BufferKind::HostWritten,
+                    std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer), sTableUsage, "layers",
+                    graveyard))
             {
                 mLayerScratch.clear();
                 mLayerScratch.reserve(layers.size());
@@ -330,28 +301,26 @@ namespace Rtx
                     for (const MaterialLayer& layer : run.in(layers))
                         mLayerScratch.push_back(toGpu(layer));
 
-                    copy.mLayers.writeAt(
+                    copy.mLayers.appendAt(
                         run.mOffset * sizeof(Shaders::GpuLayer), std::span<const Shaders::GpuLayer>(mLayerScratch));
                 }
             }
 
-            if (outgrow(copy.mMasks, *mDevice, std::max<std::size_t>(masks.size(), 1) * sizeof(float), sTableUsage,
-                    graveyard))
+            if (outgrow(copy.mMasks, *mDevice, BufferKind::HostWritten,
+                    std::max<std::size_t>(masks.size(), 1) * sizeof(float), sTableUsage, "masks", graveyard))
                 copy.mMasks.write(masks.empty() ? std::span<const float>(&noMask, 1) : masks);
             else
                 for (const Run run : scene.materials().getArrived().mMasks)
-                    copy.mMasks.writeAt(run.mOffset * sizeof(float), run.in(masks));
+                    copy.mMasks.appendAt(run.mOffset * sizeof(float), run.in(masks));
         }
     }
 
     void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
         std::span<const Index> changed, const FrameSlot slot, Graveyard& graveyard)
     {
-        assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
-
         shade(scene, slot, graveyard);
 
-        Tables& tables = mTables[slot.get()];
+        Tables& tables = mTables.at(slot);
 
         // The sentinel material sits one past the real ones, which is where `shade` put it.
         const auto sentinel = static_cast<std::uint32_t>(scene.materials().getRows().size());
@@ -419,23 +388,22 @@ namespace Rtx
         mLightGrid.rebuild(scene.lights());
 
         // The tables go over as they are, empty ones included. Something has to stand at every
-        // address the frame carries, and `growTo` is what guarantees it for all of them at once —
-        // a stand-in per table is one table without one, and that costs a device. What stops the
-        // shader reading an empty table is its count.
+        // address the frame carries, and `growTo` makes a table that is empty rather than leaving
+        // the slot empty — a stand-in per table is one table without one, and that costs a
+        // device. What stops the shader reading an empty table is its count.
         const std::span<const Shaders::GpuLight> lights(mLightScratch);
         const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
         const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
 
-        reserve(tables.mLights, lights.size_bytes(), graveyard);
-        reserve(tables.mLightList, lightList.size_bytes(), graveyard);
-        reserve(tables.mEmitters, emitters.size_bytes(), graveyard);
-        graveyard.bury(growTo(tables.mSprites, *mDevice, sprites.size_bytes(), sSpriteUsage));
-
-        assert(mDevice->getTimeline().hasFinished(tables.mLights)
-            && mDevice->getTimeline().hasFinished(tables.mLightList)
-            && mDevice->getTimeline().hasFinished(tables.mEmitters)
-            && mDevice->getTimeline().hasFinished(tables.mSprites) && "a host write over a copy a submit still reads");
+        graveyard.bury(
+            growTo(tables.mLights, *mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights"));
+        graveyard.bury(growTo(
+            tables.mLightList, *mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list"));
+        graveyard.bury(growTo(
+            tables.mEmitters, *mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters"));
+        graveyard.bury(growTo(tables.mSprites, *mDevice, BufferKind::HostWritten, sprites.size_bytes(),
+            sTableCopiedFromUsage, "sprites"));
 
         tables.mLights.write(lights);
         tables.mLightList.write(lightList);
@@ -452,37 +420,23 @@ namespace Rtx
 
     void SceneBuffers::describeTables(const FrameSlot slot, Shaders::GpuTables& into) const
     {
-        assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
+        const Tables& tables = mTables.at(slot);
 
-        const Tables& tables = mTables[slot.get()];
-
+        // What the block hands out, the submit it is recorded into reads — which is the next one,
+        // whether it is a frame's trace or a picture's deferred batch — and `addressFor` is what
+        // says so of each. Every host write of any of these then checks the stamp, so a table
+        // rewritten under a trace is an assert and not a fault.
         into.mNormalBlocks = mNormalTable.at(slot).getTableAddress();
         into.mTexCoordBlocks = mTexCoords.getTableAddress();
         into.mColourBlocks = mColours.getTableAddress();
-        into.mMeshes = mMeshes.getDeviceAddress();
-        into.mInstances = mInstanceTable.getDeviceAddress(slot);
-        into.mMaterials = mMaterialTable.getDeviceAddress(slot);
-        into.mLayers = tables.mLayers.getDeviceAddress();
-        into.mMasks = tables.mMasks.getDeviceAddress();
-        into.mLights = tables.mLights.getDeviceAddress();
-        into.mLightList = tables.mLightList.getDeviceAddress();
-        into.mEmitters = tables.mEmitters.getDeviceAddress();
-
-        // What the block hands out, the submit it is recorded into reads — which is the next one,
-        // whether it is a frame's trace or a picture's deferred batch. Every host write of any of
-        // these checks the stamp, so a table rewritten under a trace is an assert and not a fault.
-        const std::uint64_t reads = mDevice->getTimeline().getNext();
-        mNormalTable.at(slot).nameTableFor(reads);
-        mTexCoords.nameTableFor(reads);
-        mColours.nameTableFor(reads);
-        mMeshes.nameFor(reads);
-        mInstanceTable.nameFor(slot, reads);
-        mMaterialTable.nameFor(slot, reads);
-        tables.mLayers.nameFor(reads);
-        tables.mMasks.nameFor(reads);
-        tables.mLights.nameFor(reads);
-        tables.mLightList.nameFor(reads);
-        tables.mEmitters.nameFor(reads);
+        into.mMeshes = mMeshes.addressFor();
+        into.mInstances = mInstanceTable.addressFor(slot);
+        into.mMaterials = mMaterialTable.addressFor(slot);
+        into.mLayers = tables.mLayers.addressFor();
+        into.mMasks = tables.mMasks.addressFor();
+        into.mLights = tables.mLights.addressFor();
+        into.mLightList = tables.mLightList.addressFor();
+        into.mEmitters = tables.mEmitters.addressFor();
     }
 
     VkDeviceSize SceneBuffers::Tables::getBytes() const
@@ -497,8 +451,8 @@ namespace Rtx
         // its own size.
         VkDeviceSize total = mTexCoords.getBytes() + mColours.getBytes() + mMeshes.getSize() + mInstanceTable.getBytes()
             + mMaterialTable.getBytes() + mNormalTable.getBytes();
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            total += mTables[slot].getBytes();
+        for (const Tables& tables : mTables.live())
+            total += tables.getBytes();
 
         return total;
     }

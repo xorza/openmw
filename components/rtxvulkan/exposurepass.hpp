@@ -40,20 +40,14 @@ namespace Rtx
         void recordFixed(VkCommandBuffer commands, float value) const;
 
         /// One float, written by whichever of the two calls above ran.
-        VkBuffer getExposure() const { return mExposure.getHandle(); }
+        const Buffer& getExposure() const { return mExposure; }
 
         /// One float holding one, which is what a picture inside the interface is mapped at. Its
         /// own buffer, or every local-map tile a cell arrives with would throw the frame's
         /// adaptation away and the brightness would step at every cell boundary.
-        VkBuffer getPictureExposure() const { return mPicture.getHandle(); }
+        const Buffer& getPictureExposure() const { return mPicture; }
 
     private:
-        /// Orders the previous frame's reads against the writes about to replace them.
-        void beforeWrite(VkCommandBuffer commands) const;
-
-        /// Orders whatever wrote the buffer against the pass about to read it.
-        void handOver(VkCommandBuffer commands) const;
-
         ComputePipeline mHistogramPipeline;
         ComputePipeline mReducePipeline;
 

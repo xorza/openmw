@@ -10,8 +10,8 @@
 namespace Rtx
 {
     GraphicsPipeline::GraphicsPipeline(const Device& device, const GraphicsPipelineOptions& options)
-        : mLayout(device, options.mBindings, options.mPushConstantBytes,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, {})
+        : Pipeline(
+            PipelineLayout(device, options.mBindings, VkPushConstantRange{}, {}), VK_PIPELINE_BIND_POINT_GRAPHICS)
     {
         const ShaderModule vertex = loadShaderModule(device, options.mVertexModule);
         const ShaderModule fragment = loadShaderModule(device, options.mFragmentModule);
@@ -125,7 +125,7 @@ namespace Rtx
                     mHandle.put(device.getHandle())),
             "vkCreateGraphicsPipelines");
 
-        device.setName(VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<std::uint64_t>(mHandle.get()), options.mName);
+        device.setName(mHandle.get(), options.mName);
         device.reportPipeline(mHandle.get(), options.mName);
     }
 }

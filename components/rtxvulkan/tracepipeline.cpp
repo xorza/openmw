@@ -15,8 +15,9 @@ namespace Rtx
     TracePipeline::TracePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
         std::span<const VkDescriptorSetLayout> laterSets, const TraceShaders& shaders, std::string_view name,
         std::span<const std::uint32_t> specialization)
-        : mDevice(device)
-        , mLayout(device, bindings, 0, VK_SHADER_STAGE_RAYGEN_BIT_KHR, laterSets)
+        : Pipeline(
+            PipelineLayout(device, bindings, VkPushConstantRange{}, laterSets), VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
+        , mDevice(device)
     {
         const bool anyHitWanted = !shaders.mAnyHit.empty();
         const std::size_t hitRecords = shaders.mHit.size() * shaders.mHitRecordsPerShader;
@@ -107,7 +108,7 @@ namespace Rtx
                     device.getPipelineCache(), 1, &pipeline, nullptr, mHandle.put(device.getHandle())),
             "vkCreateRayTracingPipelinesKHR");
 
-        device.setName(VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<std::uint64_t>(mHandle.get()), name);
+        device.setName(mHandle.get(), name);
         device.reportPipeline(mHandle.get(), name);
 
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& limits
@@ -145,7 +146,7 @@ namespace Rtx
         mHit = region(at, hitStride, hitRecords);
 
         mTable = Buffer::hostWritten(
-            device, at, VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+            device, at, VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, name);
         mTable.clear();
 
         std::vector<std::uint8_t> handles(groups.size() * limits.shaderGroupHandleSize);

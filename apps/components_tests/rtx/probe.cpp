@@ -13,10 +13,12 @@
 #include <osg/Vec4f>
 
 #include <components/rtx/shaders/probe.h>
+#include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/dispatch.hpp>
 
 #include "harness.hpp"
 
@@ -86,7 +88,7 @@ namespace Rtx
         /// `bytes` in resizable-BAR video memory, which is where the normals are.
         Buffer placeHostWritten(const Device& device, CommandPool&, std::span<const std::byte> bytes)
         {
-            Buffer held = Buffer::hostWritten(device, bytes.size(), sUsage);
+            Buffer held = Buffer::hostWritten(device, bytes.size(), sUsage, "test");
             held.write(bytes);
             return held;
         }
@@ -96,7 +98,7 @@ namespace Rtx
         Buffer placeStaged(const Device& device, CommandPool& pool, std::span<const std::byte> bytes)
         {
             Batch upload(pool);
-            Buffer held = uploadBuffer(device, upload, bytes, sUsage);
+            Buffer held = uploadBuffer(device, upload, bytes, sUsage, "test");
             upload.flush();
             return held;
         }
@@ -117,10 +119,10 @@ namespace Rtx
         Readings runProbe(const Device& device, const ComputePipeline& pipeline, CommandPool& pool, VkBuffer source,
             VkDeviceAddress address, const Buffer& blocks, const Buffer& addresses)
         {
-            const Buffer readings = Buffer::staging(
-                device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-            const Buffer rowReadings
-                = Buffer::staging(device, sizeof(Shaders::ProbeRow) * sCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            const Buffer readings = Buffer::staging(device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
+            const Buffer rowReadings = Buffer::staging(
+                device, sizeof(Shaders::ProbeRow) * sCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
             const VkDescriptorBufferInfo from{ source, 0, VK_WHOLE_SIZE };
             const VkDescriptorBufferInfo into{ readings.getHandle(), 0, VK_WHOLE_SIZE };
@@ -143,33 +145,12 @@ namespace Rtx
             const Shaders::ProbeConstants constants{ .mSource = address, .mCount = sCount, .mBlock = sBlock };
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
-                vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0,
-                    static_cast<std::uint32_t>(writes.size()), writes.data());
-                vkCmdPushConstants(
-                    commands, pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
-                vkCmdDispatch(commands, (sCount + Shaders::PROBE_WORKGROUP - 1) / Shaders::PROBE_WORKGROUP, 1, 1);
+                dispatch(commands, pipeline, writes, constants, groupsFor(sCount, Shaders::PROBE_WORKGROUP));
 
-                const auto written = [](const Buffer& buffer) {
-                    return VkBufferMemoryBarrier2{
-                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
-                        .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
-                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .buffer = buffer.getHandle(),
-                        .size = VK_WHOLE_SIZE,
-                    };
-                };
-                const std::array<VkBufferMemoryBarrier2, 2> barriers{ written(readings), written(rowReadings) };
-                const VkDependencyInfo dependency{
-                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .bufferMemoryBarrierCount = static_cast<std::uint32_t>(barriers.size()),
-                    .pBufferMemoryBarriers = barriers.data(),
-                };
-                vkCmdPipelineBarrier2(commands, &dependency);
+                Barriers written(commands);
+                written.add(readings.describeBarrier(Use::sBufferComputeWrite, Use::sBufferHostRead));
+                written.add(rowReadings.describeBarrier(Use::sBufferComputeWrite, Use::sBufferHostRead));
+                written.flush();
             });
 
             Readings read;
@@ -208,7 +189,7 @@ namespace Rtx
             ASSERT_EQ(addresses.size(), 3u) << "the block arithmetic is only exercised by more than one block";
 
             Buffer table = Buffer::hostWritten(
-                device, addresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                device, addresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             table.write(std::span<const VkDeviceAddress>(addresses));
 
             // The rows in the same memory as the pattern, and both addresses in a uniform block.
@@ -219,7 +200,7 @@ namespace Rtx
             ASSERT_EQ(named.mRows % Shaders::PROBE_ROW_ALIGN, 0u)
                 << "the rows' reference claims an alignment the buffer does not have";
 
-            Buffer uniform = Buffer::hostWritten(device, sizeof(named), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+            Buffer uniform = Buffer::hostWritten(device, sizeof(named), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "test");
             uniform.write(std::span<const Shaders::ProbeAddresses>(&named, 1));
 
             const Readings read = runProbe(device, pipeline, pool, whole.getHandle(), named.mSource, table, uniform);

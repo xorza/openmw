@@ -15,7 +15,6 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
-#include "result.hpp"
 
 namespace Rtx
 {
@@ -73,15 +72,15 @@ namespace Rtx
         /// The layout every array declares, sized to the maximum and not to the scene, because a
         /// pipeline outlives a cell and two set layouts are compatible only where they are
         /// identically defined. The maximum costs a few hundred kilobytes of pool, paid once.
+        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
+            VkDescriptorSetLayoutBinding{
+                sTextureBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
+            VkDescriptorSetLayoutBinding{
+                sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
+        };
+
         SetLayout makeLayout(const Device& device)
         {
-            const std::array<VkDescriptorSetLayoutBinding, 2> bindings{
-                VkDescriptorSetLayoutBinding{
-                    sTextureBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
-                VkDescriptorSetLayoutBinding{
-                    sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
-            };
-
             // Partially bound because a scene with fewer textures than the array can hold leaves the
             // tail unwritten. Update after bind, because an arrival writes this set while work that
             // named it is still on the queue — legal as long as no pending command reads that
@@ -96,32 +95,7 @@ namespace Rtx
             };
 
             return makeSetLayout(
-                device, bindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
-        }
-
-        /// A set of `layout` from a pool of its own, both bindings at the maximum the layout
-        /// declares.
-        void allocateSet(const Device& device, VkDescriptorSetLayout layout,
-            Owned<VkDescriptorPool, vkDestroyDescriptorPool>& pool, VkDescriptorSet& set)
-        {
-            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * sMaxTextures };
-            const VkDescriptorPoolCreateInfo describePool{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT,
-                .maxSets = 1,
-                .poolSizeCount = 1,
-                .pPoolSizes = &size,
-            };
-            checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, pool.put(device.getHandle())),
-                "vkCreateDescriptorPool");
-
-            const VkDescriptorSetAllocateInfo allocate{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .descriptorPool = pool.get(),
-                .descriptorSetCount = 1,
-                .pSetLayouts = &layout,
-            };
-            checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &set), "vkAllocateDescriptorSets");
+                device, sBindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
         }
     }
 
@@ -131,7 +105,7 @@ namespace Rtx
         assert(!data.mLevels.empty());
 
         const auto levels = static_cast<std::uint32_t>(data.mLevels.size());
-        mImage = std::make_unique<Image>(device, data.mWidth, data.mHeight, toVulkanFormat(data.mFormat),
+        mImage = Image(device, data.mWidth, data.mHeight, toVulkanFormat(data.mFormat),
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, levels);
 
         // Every level in one submit: the levels are already contiguous in the source, so this is one
@@ -145,7 +119,7 @@ namespace Rtx
                 .imageExtent = { data.mLevels[level].mWidth, data.mLevels[level].mHeight, 1 },
             });
 
-        uploadImage(device, batch, *mImage, data.mBytes, regions);
+        uploadImage(device, batch, mImage, data.mBytes, regions);
 
         // The map, in the same batch and left where the same sampler expects it. One level and
         // no chain: the map is read at level nought whatever the cone, because it has no detail for
@@ -159,14 +133,14 @@ namespace Rtx
         if constexpr (Device::wantsNames())
             shadingName = std::string(name) + " shading";
 
-        mShading = std::make_unique<Image>(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT,
-            VK_FORMAT_R16_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
+        mShading = Image(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
 
         VkBufferImageCopy region{
             .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             .imageExtent = { Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, 1 },
         };
-        uploadImage(device, batch, *mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
+        uploadImage(device, batch, mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
 
         mBytes = data.mBytes.size() + sizeof(stored);
     }
@@ -176,17 +150,15 @@ namespace Rtx
         : mDevice(device)
         , mSampler(makeContentSampler(device, "textures"))
         , mLayout(makeLayout(device))
+        // Allocated at the maximum the layout declares, not at what this scene brought. Sizing the
+        // set to the cell is what made a texture arriving mean a new set, a new pool and every
+        // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
+        // is paid once. `write` then only ever owes the slots that are new.
+        , mSets(device, sBindings, mLayout.get(), sFrameSlots, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT)
     {
         if (slots > sMaxTextures)
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "
                 + std::to_string(sMaxTextures) + " this array holds");
-
-        // Allocated at the maximum the layout declares, not at what this scene brought. Sizing
-        // the set to the cell is what made a texture arriving mean a new set, a new pool and every
-        // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
-        // is paid once. `write` then only ever owes the slots that are new.
-        for (SetPool& set : mSets)
-            allocateSet(device, mLayout.get(), set.mPool, set.mSet);
 
         // Sized to the table before anything is written into it, so a description lands in the
         // slot it names whatever sits either side of it. Every entry starts holding no image and no
@@ -230,16 +202,14 @@ namespace Rtx
             graveyard.bury(
                 std::exchange(mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch)));
 
-            for (SlotSet& owed : mOwed)
+            for (SlotSet& owed : mOwed.live())
                 owed.addMakingRoom(texture.mSlot);
         }
     }
 
     void TextureArray::sync(const FrameSlot slot)
     {
-        assert(slot.get() < sFrameSlots);
-
-        SlotSet& owed = mOwed[slot.get()];
+        SlotSet& owed = mOwed.at(slot);
         if (owed.empty())
             return;
 
@@ -252,22 +222,20 @@ namespace Rtx
         mImageScratch.reserve(2 * slots.size());
         mWriteScratch.reserve(2 * slots.size());
 
-        const VkDescriptorSet set = mSets[slot.get()].mSet;
+        const VkDescriptorSet set = mSets.get(slot.get());
         for (const Index at : slots)
         {
             // Owed and since dropped: the slot holds nothing, and a descriptor left naming what has
             // gone is what `drop` says is legal.
             const Texture& held = mTextures[at];
-            if (held.getView() == VK_NULL_HANDLE)
+            if (held.isEmpty())
                 continue;
 
-            queueWrite(set, sTextureBinding, at, held.getView(), mImageScratch, mWriteScratch);
-            queueWrite(set, sShadingBinding, at, held.getShadingView(), mImageScratch, mWriteScratch);
+            queueWrite(set, sTextureBinding, at, held.describe(mSampler.get()), mImageScratch, mWriteScratch);
+            queueWrite(set, sShadingBinding, at, held.describeShading(mSampler.get()), mImageScratch, mWriteScratch);
         }
 
-        if (!mWriteScratch.empty())
-            vkUpdateDescriptorSets(mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()),
-                mWriteScratch.data(), 0, nullptr);
+        updateSets(mDevice, mWriteScratch);
 
         owed.clear();
     }
@@ -288,14 +256,10 @@ namespace Rtx
     }
 
     void TextureArray::queueWrite(const VkDescriptorSet set, const std::uint32_t binding, const std::uint32_t slot,
-        const VkImageView view, std::vector<VkDescriptorImageInfo>& images,
-        std::vector<VkWriteDescriptorSet>& writes) const
+        const VkDescriptorImageInfo& image, std::vector<VkDescriptorImageInfo>& images,
+        std::vector<VkWriteDescriptorSet>& writes)
     {
-        images.push_back(VkDescriptorImageInfo{
-            .sampler = mSampler.get(),
-            .imageView = view,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        });
+        images.push_back(image);
         writes.push_back(VkWriteDescriptorSet{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = set,
@@ -313,9 +277,9 @@ namespace Rtx
 
         for (const Texture& texture : mTextures)
         {
-            // The view and not the size: a slot stands a texture or it does not, and a content file
-            // carrying an empty level is a texture that exists.
-            if (texture.getView() == VK_NULL_HANDLE)
+            // Whether it is there and not its size: a slot stands a texture or it does not, and a
+            // content file carrying an empty level is a texture that exists.
+            if (texture.isEmpty())
                 continue;
 
             ++held.mCount;

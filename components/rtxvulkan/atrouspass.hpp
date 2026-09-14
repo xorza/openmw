@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 
 #include <vulkan/vulkan_core.h>
 
@@ -51,7 +50,7 @@ namespace Rtx
         ComputePipeline mPipeline;
 
         /// The other half of the ping-pong, the size of a frame and the format of the channel it
-        /// takes turns with. Null until `resize`.
-        std::unique_ptr<Image> mScratch;
+        /// takes turns with. Empty until `resize`.
+        Image mScratch;
     };
 }

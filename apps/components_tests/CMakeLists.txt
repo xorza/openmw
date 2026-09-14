@@ -115,8 +115,10 @@ target_link_libraries(components-tests
 )
 
 if (OPENMW_RTX)
+    # Vulkan itself as well, because these tests reach into the backend's own headers, which a host
+    # does not: the backend keeps Vulkan private behind `createrenderer.hpp`.
     target_link_libraries(components-tests openmw-rtx openmw-rtx-bench
-                          openmw-rtx-vulkan openmw-rtxtool-lib)
+                          openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan)
 
     # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
     # only the latter are ours to keep warning-free.

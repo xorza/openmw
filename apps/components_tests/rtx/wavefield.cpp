@@ -18,8 +18,10 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/dispatch.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
+#include <components/rtxvulkan/pipeline.hpp>
 
 #include "harness.hpp"
 
@@ -91,11 +93,12 @@ namespace Rtx
             const ComputePipeline& line = passes.mLine;
             const ComputePipeline& composing = passes.mComposing;
 
-            const Buffer table = Buffer::staging(device, amplitudes.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            const Buffer table
+                = Buffer::staging(device, amplitudes.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             const Buffer turning
-                = Buffer::staging(device, frequencies.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                = Buffer::staging(device, frequencies.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             const Buffer field
-                = Buffer::staging(device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                = Buffer::staging(device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
             std::memcpy(table.map(), amplitudes.data(), amplitudes.size_bytes());
             std::memcpy(turning.map(), frequencies.data(), frequencies.size_bytes());
@@ -137,17 +140,12 @@ namespace Rtx
                     buffer(2, whole[2]) };
                 const Shaders::WaveFormConstants shaped{ .mCount = sCount, .mExtent = sExtent, .mTime = time };
 
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, forming.getHandle());
-                vkCmdPushDescriptorSet(
-                    commands, VK_PIPELINE_BIND_POINT_COMPUTE, forming.getLayout(), 0, 3, forms.data());
-                vkCmdPushConstants(
-                    commands, forming.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(shaped), &shaped);
-                vkCmdDispatch(commands, (sCount + 7) / 8, (sCount + 7) / 8, 1);
+                dispatch(commands, forming, forms, shaped, groupsFor(sCount, 8), groupsFor(sCount, 8));
                 Testing::orderStorageWrites(commands);
 
                 const std::array<VkWriteDescriptorSet, 1> lines{ buffer(0, whole[2]) };
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, line.getHandle());
-                vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, line.getLayout(), 0, 1, lines.data());
+                bind(commands, line);
+                pushDescriptors(commands, line, lines);
 
                 for (std::uint32_t pair = 0; pair < 3; ++pair)
                     for (int pass = 0; pass < 2; ++pass)
@@ -159,8 +157,7 @@ namespace Rtx
                             .mOffset = pair * static_cast<std::uint32_t>(sCells),
                         };
 
-                        vkCmdPushConstants(
-                            commands, line.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(along), &along);
+                        pushConstants(commands, line, along);
                         vkCmdDispatch(commands, sCount, 1, 1);
                         Testing::orderStorageWrites(commands);
                     }
@@ -169,12 +166,7 @@ namespace Rtx
                     stored(2, images[1]) };
                 const Shaders::WaveComposeConstants unpacked{ .mCount = sCount };
 
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, composing.getHandle());
-                vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, composing.getLayout(), 0,
-                    static_cast<std::uint32_t>(composes.size()), composes.data());
-                vkCmdPushConstants(
-                    commands, composing.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(unpacked), &unpacked);
-                vkCmdDispatch(commands, (sCount + 7) / 8, (sCount + 7) / 8, 1);
+                dispatch(commands, composing, composes, unpacked, groupsFor(sCount, 8), groupsFor(sCount, 8));
             });
 
             const std::vector<float> heights = Testing::readHalves(pool, surface);

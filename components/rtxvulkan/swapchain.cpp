@@ -164,8 +164,8 @@ namespace Rtx
             .presentMode = mPresentMode,
             .clipped = VK_TRUE,
         };
-        checkVk(vkCreateSwapchainKHR(mDevice.getHandle(), &create, nullptr, mHandle.put(mDevice.getHandle())),
-            "vkCreateSwapchainKHR");
+        mHandle = Owned<VkSwapchainKHR, vkDestroySwapchainKHR>::make(
+            mDevice.getHandle(), vkCreateSwapchainKHR, create, "vkCreateSwapchainKHR");
 
         mImages = enumerateVk<VkImage>("vkGetSwapchainImagesKHR", [&](std::uint32_t* count, VkImage* into) {
             return vkGetSwapchainImagesKHR(mDevice.getHandle(), mHandle.get(), count, into);
@@ -216,13 +216,10 @@ namespace Rtx
         if (result == VK_ERROR_OUT_OF_DATE_KHR)
             return false;
 
-        if (result == VK_TIMEOUT)
-            throw Error(timedOut("the presentation engine's next image", sPatience));
-
         // Suboptimal still produces a usable image; taking it and rebuilding after the present keeps
         // the semaphore that was just signalled from being left dangling.
         if (result != VK_SUBOPTIMAL_KHR)
-            checkVk(mDevice, result, "vkAcquireNextImageKHR");
+            checkVkWait(mDevice, result, "the presentation engine's next image", sPatience);
 
         return true;
     }

@@ -48,6 +48,9 @@ namespace Rtx
         std::unique_ptr<ValidationLog> mValidationLog;
         VkInstance mHandle = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT mMessenger = VK_NULL_HANDLE;
+
+        /// Resolved with the create half, once, so the destructor does not ask the loader again.
+        PFN_vkDestroyDebugUtilsMessengerEXT mDestroyMessenger = nullptr;
         std::uint32_t mApiVersion = 0;
         bool mDebugUtils = false;
     };

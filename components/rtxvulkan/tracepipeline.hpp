@@ -9,8 +9,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
-#include "handles.hpp"
-#include "owned.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {
@@ -46,7 +45,7 @@ namespace Rtx
     /// not a dispatch, because a hit object runs a shader picked by traversal rather than by a
     /// branch, so the divergent half of a trace becomes one small program per kind of hit. Nothing
     /// recurses: the shaders a launch invokes trace again with inline ray queries.
-    class TracePipeline
+    class TracePipeline : public Pipeline
     {
     public:
         /// Nothing passed outlives the call.
@@ -62,19 +61,12 @@ namespace Rtx
             std::span<const VkDescriptorSetLayout> laterSets, const TraceShaders& shaders, std::string_view name,
             std::span<const std::uint32_t> specialization = {});
 
-        VkPipeline getHandle() const { return mHandle.get(); }
-
-        VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
-
         /// Launches `width` by `height` by `depth` invocations of the ray generation stage.
         void traceRays(
             VkCommandBuffer commands, std::uint32_t width, std::uint32_t height, std::uint32_t depth = 1) const;
 
     private:
         const Device& mDevice;
-
-        PipelineLayout mLayout;
-        Owned<VkPipeline, vkDestroyPipeline> mHandle;
 
         /// Every group's handle, in video memory the host wrote it straight into.
         Buffer mTable;

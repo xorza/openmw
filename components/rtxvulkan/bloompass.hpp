@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
@@ -41,7 +40,7 @@ namespace Rtx
         /// The finest level, which after `record` holds the blur of every level under it — or null
         /// where the frame was too small to halve. Left in `VK_IMAGE_LAYOUT_GENERAL` and already
         /// ordered against a sampled read.
-        const Image* getPyramid() const { return mLevels.empty() ? nullptr : mLevels.front().get(); }
+        const Image* getPyramid() const { return mLevels.empty() ? nullptr : &mLevels.front(); }
 
         /// How many halvings the last `resize` had room for, which is `BLOOM_LEVELS` for any frame
         /// anyone plays at and fewer for the small ones a test and a thumbnail render.
@@ -66,6 +65,6 @@ namespace Rtx
         Sampler mSampler;
 
         /// Finest first, each half the one before it. Empty until `resize`.
-        std::vector<std::unique_ptr<Image>> mLevels;
+        std::vector<Image> mLevels;
     };
 }

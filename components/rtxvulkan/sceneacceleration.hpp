@@ -11,6 +11,7 @@
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/shaders/scene.h>
 
+#include "accelerationstructure.hpp"
 #include "blockedbuffer.hpp"
 #include "bottomlevelstore.hpp"
 #include "buffer.hpp"
@@ -45,7 +46,6 @@ namespace Rtx
         /// @param slots how many frames may be tracing this scene at once, which is how many copies
         ///        there are of the rows and of the positions a refit reads.
         SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
-        ~SceneAcceleration();
 
         /// Builds every mesh's structure, writes every row, and builds the top level, in one submit
         /// with each stage ending in the barrier the next one needs. Once, after the constructor.
@@ -86,7 +86,7 @@ namespace Rtx
         /// Destroys the structures of `meshes` and gives their storage back.
         void release(std::span<const Index> meshes, Graveyard& graveyard) { mBottomLevel.release(meshes, graveyard); }
 
-        VkAccelerationStructureKHR getTopLevel() const { return mTopLevel; }
+        VkAccelerationStructureKHR getTopLevel() const { return mTopLevel.getHandle(); }
 
         /// Where the index blocks are, as a shader reads them at a hit. Here rather than in
         /// `SceneBuffers` because the build had to have them first. The address of a table of
@@ -156,7 +156,6 @@ namespace Rtx
         /// nowhere else. Nothing reads these at a hit, which gets its vertices out of the structure
         /// through position fetch.
         SlotBlocks mPoses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
-        std::uint32_t mSlots = 1;
 
         BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };
 
@@ -170,7 +169,7 @@ namespace Rtx
         /// Kept across frames and built into again, made anew only when the slot table grows
         /// past what it was sized for: destroyed and created every frame, it would ask the driver
         /// for a size and a handle to build the same structure it had just thrown away.
-        VkAccelerationStructureKHR mTopLevel = VK_NULL_HANDLE;
+        AccelerationStructure mTopLevel;
 
         /// How many rows the top level was made for, which is what its build ranges over.
         std::uint32_t mTopLevelSlots = 0;

@@ -49,8 +49,8 @@ namespace Rtx
             const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
             GpuTimer* timer, Graveyard& graveyard);
 
-        VkDeviceAddress getSpritesAddress() const { return mSprites.getDeviceAddress(); }
-        VkDeviceAddress getTileListAddress() const { return mTileList.getDeviceAddress(); }
+        VkDeviceAddress getSpritesAddress() const { return mSprites.addressFor(); }
+        VkDeviceAddress getTileListAddress() const { return mTileList.addressFor(); }
 
         VkDeviceSize getBytes() const;
 

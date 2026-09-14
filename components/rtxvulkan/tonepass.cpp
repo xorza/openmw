@@ -1,6 +1,5 @@
 #include "tonepass.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cassert>
 #include <span>
@@ -35,8 +34,9 @@ namespace Rtx
     {
     }
 
-    void TonePass::record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
-        const Image* bloom, VkDescriptorSet textures, const Image& target, Shaders::ToneConstants constants) const
+    void TonePass::record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure,
+        const Image& starsShown, const Image* bloom, VkDescriptorSet textures, const Image& target,
+        Shaders::ToneConstants constants) const
     {
         assert(constants.mWidth <= target.getWidth() && constants.mHeight <= target.getHeight());
 
@@ -48,29 +48,18 @@ namespace Rtx
         constants.mBloomTexel
             = osg::Vec2f(1.0f / static_cast<float>(spread.getWidth()), 1.0f / static_cast<float>(spread.getHeight()));
 
-        const std::array<VkDescriptorImageInfo, 3> images{
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, colour.getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, target.getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, starsShown.getView(), VK_IMAGE_LAYOUT_GENERAL },
-        };
-        const VkDescriptorBufferInfo scale{ exposure, 0, VK_WHOLE_SIZE };
-        const VkDescriptorImageInfo pyramid{ mSampler.get(), spread.getView(), VK_IMAGE_LAYOUT_GENERAL };
-
-        // The first three are storage images and the last two are not, so the shared filler covers
-        // the front of the set and the two below name themselves.
-        std::array<VkWriteDescriptorSet, 5> writes{};
-        const std::array<VkWriteDescriptorSet, 3> stored = storageImageWrites(images);
-        std::copy(stored.begin(), stored.end(), writes.begin());
-
-        writes[3] = bufferWrite(3, scale);
-        writes[4] = imageWrite(4, pyramid, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        DescriptorWrites<5> writes;
+        writes.image(0, colour.describeStorage());
+        writes.image(1, target.describeStorage());
+        writes.image(2, starsShown.describeStorage());
+        writes.buffer(3, exposure.describe());
+        writes.image(4, spread.describeSampled(mSampler.get()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
         // The scene's textures before the launch and beside set zero, which the two are
         // independent of: a pushed set and a bound one only have to be in place by the dispatch.
-        vkCmdBindDescriptorSets(
-            commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 1, 1, &textures, 0, nullptr);
+        bindSets(commands, mPipeline, std::span(&textures, 1));
 
-        dispatch(commands, mPipeline, writes, constants, groupsFor(constants.mWidth, Shaders::TONE_WORKGROUP),
+        dispatch(commands, mPipeline, writes.get(), constants, groupsFor(constants.mWidth, Shaders::TONE_WORKGROUP),
             groupsFor(constants.mHeight, Shaders::TONE_WORKGROUP));
     }
 }

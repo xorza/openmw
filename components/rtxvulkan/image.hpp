@@ -1,8 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -23,6 +21,10 @@ namespace Rtx
     class Image
     {
     public:
+        /// A slot with nothing in it yet: what a holder that has no extent until later keeps, and
+        /// what a moved-from image is left as.
+        Image() = default;
+
         /// @param name what a capture and a validation message call this image and its view.
         ///        Required, so a report naming one says which it was.
         /// @param mipLevels how many halvings the image holds, including the full one. Levels
@@ -41,6 +43,8 @@ namespace Rtx
 
         VkImage getHandle() const { return mHandle.get(); }
 
+        bool isEmpty() const { return mHandle.get() == VK_NULL_HANDLE; }
+
         /// The view a sampler reads, which covers every level.
         VkImageView getView() const { return mView.get(); }
 
@@ -51,6 +55,23 @@ namespace Rtx
         {
             return mStorageView.get() != VK_NULL_HANDLE ? mStorageView.get() : mView.get();
         }
+
+        /// This image as a storage descriptor takes it: the storage view, in `GENERAL`. Every
+        /// storage image this renderer binds rests in `GENERAL`, and the view is the one a chain
+        /// may not hand a storage descriptor — so a caller cannot pick the wrong one.
+        VkDescriptorImageInfo describeStorage() const
+        {
+            return VkDescriptorImageInfo{ VK_NULL_HANDLE, getStorageView(), VK_IMAGE_LAYOUT_GENERAL };
+        }
+
+        /// This image as a sampled descriptor takes it, through `sampler`, in `layout` — `GENERAL`
+        /// for what a pass wrote as storage a few dispatches ago, and the read-only layout for a
+        /// texture that rests there.
+        VkDescriptorImageInfo describeSampled(VkSampler sampler, VkImageLayout layout = VK_IMAGE_LAYOUT_GENERAL) const
+        {
+            return VkDescriptorImageInfo{ sampler, getView(), layout };
+        }
+
         std::uint32_t getWidth() const { return mWidth; }
         std::uint32_t getHeight() const { return mHeight; }
         VkFormat getFormat() const { return mFormat; }
@@ -65,6 +86,15 @@ namespace Rtx
 
         /// Moves every level of the image from one use to the next, recording into `commands`.
         void transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const;
+
+        /// Clears every level to `colour`, met as `from` and left as `to`. Needs `TRANSFER_DST`.
+        void clear(
+            VkCommandBuffer commands, const ImageUse& from, const VkClearColorValue& colour, const ImageUse& to) const;
+
+        /// Copies `extent` texels from this image's corner into `into`'s, this one in
+        /// `TRANSFER_SRC_OPTIMAL` and `into` in `intoLayout`, which is the caller's to arrange
+        /// either side.
+        void copyTo(VkCommandBuffer commands, const Image& into, VkImageLayout intoLayout, VkExtent2D extent) const;
 
         /// Fills every level below the first by halving the one above it, in `VK_FILTER_LINEAR` —
         /// a box filter, which is what a moment wants: a channel carrying a square averages to a
@@ -125,31 +155,4 @@ namespace Rtx
     /// pass's construction rather than to a frame.
     Image makeStandIn(
         const Device& device, CommandPool& pool, VkFormat format, VkImageUsageFlags usage, std::string_view name);
-
-    /// A run of image dependencies emitted as one `vkCmdPipelineBarrier2`: the G-buffer's fourteen
-    /// channels change state together twice a frame. No allocation, because this is a frame path;
-    /// a batch that fills up emits what it holds and carries on.
-    class Barriers
-    {
-    public:
-        explicit Barriers(VkCommandBuffer commands)
-            : mCommands(commands)
-        {
-        }
-
-        void add(const VkImageMemoryBarrier2& barrier);
-
-        /// Emits what has been added, and empties. Does nothing where nothing was added.
-        void flush();
-
-    private:
-        /// The longest run this renderer has: the G-buffer's channels, which change state together
-        /// twice a frame. A run longer than this emits what it holds and carries on, so the figure
-        /// bounds the array rather than the caller.
-        static constexpr std::size_t sMost = 16;
-
-        VkCommandBuffer mCommands = VK_NULL_HANDLE;
-        std::array<VkImageMemoryBarrier2, sMost> mBarriers{};
-        std::size_t mCount = 0;
-    };
 }

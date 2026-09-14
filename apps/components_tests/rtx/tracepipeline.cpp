@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -9,6 +10,7 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/pipeline.hpp>
 #include <components/rtxvulkan/tracepipeline.hpp>
 
 #include "harness.hpp"
@@ -61,7 +63,7 @@ namespace Rtx
 
             constexpr std::uint32_t sCount = sWidth * sHeight;
             const Buffer written
-                = Buffer::staging(device, sCount * sizeof(Launched), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                = Buffer::staging(device, sCount * sizeof(Launched), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
             constexpr std::uint32_t sUnwritten = 0xFFFFFFFFu;
             std::memset(written.map(), 0xFF, sCount * sizeof(Launched));
@@ -76,28 +78,11 @@ namespace Rtx
             };
 
             getPool().submitAndWait([&](VkCommandBuffer commands) {
-                vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getHandle());
-                vkCmdPushDescriptorSet(
-                    commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getLayout(), 0, 1, &write);
+                bind(commands, pipeline);
+                pushDescriptors(commands, pipeline, std::span(&write, 1));
                 pipeline.traceRays(commands, sWidth, sHeight);
 
-                const VkBufferMemoryBarrier2 done{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                    .srcStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                    .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
-                    .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
-                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .buffer = written.getHandle(),
-                    .size = VK_WHOLE_SIZE,
-                };
-                const VkDependencyInfo dependency{
-                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .bufferMemoryBarrierCount = 1,
-                    .pBufferMemoryBarriers = &done,
-                };
-                vkCmdPipelineBarrier2(commands, &dependency);
+                written.orderForHostRead(commands);
             });
 
             std::vector<Launched> read(sCount);

@@ -14,8 +14,8 @@ namespace Rtx
 {
     FrameRecord::FrameRecord(const Device& device)
         : mTimer(device)
-        , mHitCount(Buffer::staging(
-              device, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
+        , mHitCount(Buffer::staging(device, sizeof(FrameCounts),
+              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "hit count"))
     {
     }
 
@@ -26,7 +26,7 @@ namespace Rtx
         , mGraveyard(graveyard)
         , mCountHits(countHits)
         , mCountCrossings(countCrossings)
-        , mSlots{ { FrameRecord{ device }, FrameRecord{ device } } }
+        , mSlots([&](FrameSlot) { return FrameRecord{ device }; })
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
         // interface's — allocated once and recorded into again. A frame placed more than once takes
@@ -34,7 +34,7 @@ namespace Rtx
         const std::vector<VkCommandBuffer> commands = mPool.allocate(3 * sFrameSlots);
         for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
         {
-            FrameRecord& frame = mSlots[slot];
+            FrameRecord& frame = mSlots.at(FrameSlot{ slot });
             frame.mPlaceCommands.push_back(commands[3 * slot]);
             frame.mWorld.mCommands = commands[3 * slot + 1];
             frame.mGui.mCommands = commands[3 * slot + 2];

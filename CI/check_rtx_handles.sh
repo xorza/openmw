@@ -13,11 +13,19 @@
 #                                              for them.
 #   vkDestroySurfaceKHR                        takes the instance rather than the device. Two sites
 #   vkDestroyDebugUtilsMessengerEXT            is not worth a second template parameter on the
-#                                              twenty-odd that do take the device.
+#     (as `mDestroyMessenger`, the pointer      twenty-odd that do take the device.
+#      the instance loaded for it)
 #   graveyard.cpp                              destroys handles it was *given*, which is the
 #                                              counterpart of `Owned::release`: "Hands the handle
 #                                              over undestroyed, for a caller that buries it
 #                                              instead."
+#   accelerationstructure.cpp                  destroys through `mDestroyAccelerationStructure`,
+#                                              a pointer the device loaded: `Owned`'s template
+#                                              argument names a function the header declares, and
+#                                              this one is not. It is the `Owned` for that handle.
+#
+# A loaded destroyer is matched as well as a declared one, because the first of them stood in
+# three classes for a year with this gate reporting that every handle was held.
 #
 # Another belongs in this list only with its own reason beside it.
 #
@@ -28,13 +36,14 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Comments are stripped before the match, because `owned.hpp`'s own prose and half a dozen others
 # name these calls to explain them.
 found=$(
-    grep -rn --include='*.cpp' --include='*.hpp' -E 'vkDestroy[A-Za-z]+[[:space:]]*\(' \
+    grep -rn --include='*.cpp' --include='*.hpp' -E '(vk|m)Destroy[A-Za-z]+[[:space:]]*\(' \
         "$root/components/rtxvulkan" \
         | grep -v '/owned\.hpp:' \
         | grep -v '/graveyard\.cpp:' \
+        | grep -v '/accelerationstructure\.cpp:' \
         | sed -E 's@[[:space:]]*//.*$@@' \
-        | grep -E 'vkDestroy[A-Za-z]+[[:space:]]*\(' \
-        | grep -Ev 'vkDestroy(Instance|Device|SurfaceKHR|DebugUtilsMessengerEXT)[[:space:]]*\(' \
+        | grep -E '(vk|m)Destroy[A-Za-z]+[[:space:]]*\(' \
+        | grep -Ev '(vkDestroy(Instance|Device|SurfaceKHR|DebugUtilsMessengerEXT)|mDestroyMessenger)[[:space:]]*\(' \
         || true
 )
 

@@ -11,6 +11,7 @@
 #include "graveyard.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
+#include "memory.hpp"
 
 namespace Rtx
 {
@@ -32,22 +33,14 @@ namespace Rtx
 
     GuiSlot GuiTextures::add(std::uint32_t width, std::uint32_t height)
     {
-        auto image = std::make_unique<Image>(mDevice, width, height, VK_FORMAT_R8G8B8A8_UNORM,
+        Image image(mDevice, width, height, VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             "gui texture");
 
         // Cleared rather than left undefined. A slot is sampleable from the moment anything can
         // observe it, so a batch drawn before the first write shows nothing instead of whatever the
         // memory held — and the pass never has to ask whether a texture is ready.
-        const VkCommandBuffer commands = mBatch.getCommands();
-
-        image->transition(commands, Use::sUndefined, Use::sClearWrite);
-
-        const VkClearColorValue clear{};
-        const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-        vkCmdClearColorImage(commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &whole);
-
-        image->transition(commands, Use::sClearWrite, Use::sFragmentSample);
+        image.clear(mBatch.getCommands(), Use::sUndefined, VkClearColorValue{}, Use::sFragmentSample);
 
         if (const Index taken = mFree.take(); taken != sNoIndex)
         {
@@ -64,8 +57,8 @@ namespace Rtx
     {
         assert(mLentSlot.isNone() && "a second lend before the first was sent");
         assert(holds(slot) && "a write to a slot nothing holds");
-        assert(region.mX + region.mWidth <= mImages[slot.get()]->getWidth()
-            && region.mY + region.mHeight <= mImages[slot.get()]->getHeight()
+        assert(region.mX + region.mWidth <= mImages[slot.get()].getWidth()
+            && region.mY + region.mHeight <= mImages[slot.get()].getHeight()
             && "a region past the edge of the texture");
 
         const VkDeviceSize bytes = VkDeviceSize{ region.mWidth } * region.mHeight * 4;
@@ -93,7 +86,7 @@ namespace Rtx
         // The two transitions are what order this against the write before it: copies into one
         // image are otherwise unordered within a submit, and a picture written twice in a frame
         // would land in whichever order the device chose.
-        const Image& image = *mImages[slot.get()];
+        const Image& image = mImages[slot.get()];
         const VkCommandBuffer commands = mBatch.getCommands();
 
         image.transition(commands, Use::sFragmentSample, Use::sCopyWrite);
@@ -113,7 +106,7 @@ namespace Rtx
     VkDeviceSize GuiTextures::reserve(VkDeviceSize bytes)
     {
         Buffer& arena = mStaging[mArena];
-        VkDeviceSize at = (mStagingUsed + sCopyAlignment - 1) & ~(sCopyAlignment - 1);
+        VkDeviceSize at = alignUp(mStagingUsed, sCopyAlignment);
 
         if (at + bytes > arena.getSize())
         {
@@ -124,7 +117,7 @@ namespace Rtx
             at = 0;
 
             if (bytes > arena.getSize())
-                arena = Buffer::hostWritten(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+                arena = Buffer::hostWritten(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging");
         }
 
         mStagingUsed = at + bytes;
@@ -155,7 +148,7 @@ namespace Rtx
     {
         assert(mLentSlot.isNone() && "an interface frame that began with a lend outstanding");
 
-        for (std::unique_ptr<Image>& image : mRetired)
+        for (Image& image : mRetired)
             kept.bury(std::move(image));
 
         mRetired.clear();
@@ -185,18 +178,16 @@ namespace Rtx
     {
         assert(holds(slot) && "a read back of a slot nothing holds");
 
-        const Image& image = *mImages[slot.get()];
+        const Image& image = mImages[slot.get()];
         const VkDeviceSize bytes = image.getReadBytes();
 
+        // Buried and not destroyed where it has to grow: a batch recorded against it may not have
+        // run.
         Copy& copy = mCopies[slot.get()];
-        if (copy.mBuffer == nullptr || copy.mBuffer->getSize() < bytes)
-        {
-            if (copy.mBuffer != nullptr)
-                graveyard.bury(std::move(*copy.mBuffer));
-            copy.mBuffer = std::make_unique<Buffer>(Buffer::staging(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT));
-        }
+        graveyard.bury(growTo(
+            copy.mBuffer, mDevice, BufferKind::Staging, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "gui read back"));
 
-        image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, *copy.mBuffer);
+        image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, copy.mBuffer);
 
         copy.mTracedOn = frame;
         copy.mLanded = false;
@@ -215,8 +206,8 @@ namespace Rtx
 
         copy.mLanded = true;
 
-        const std::size_t bytes = std::min<std::size_t>(into.size(), copy.mBuffer->getSize());
-        std::memcpy(into.data(), copy.mBuffer->writable<std::uint8_t>(0, bytes).data(), bytes);
+        const std::size_t bytes = std::min<std::size_t>(into.size(), copy.mBuffer.getSize());
+        std::memcpy(into.data(), copy.mBuffer.map(), bytes);
         return true;
     }
 
@@ -235,7 +226,7 @@ namespace Rtx
         // its own copy — so the bytes it takes off the device are the ones just written.
         handOver();
 
-        mImages[slot.get()]->read(mPool, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pixels);
+        mImages[slot.get()].read(mPool, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pixels);
     }
 
     VkImageView GuiTextures::getView(const GuiSlot slot)
@@ -245,6 +236,6 @@ namespace Rtx
         if (!holds(slot))
             return VK_NULL_HANDLE;
 
-        return mImages[slot.get()]->getView();
+        return mImages[slot.get()].getView();
     }
 }

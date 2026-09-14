@@ -83,7 +83,7 @@ namespace Rtx
 
             // One frame on the queue, and a burial made while it is.
             submitEmpty(ring);
-            graveyard.bury(Buffer::hostWritten(getDevice(), 16, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
+            graveyard.bury(Buffer::hostWritten(getDevice(), 16, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test"));
             EXPECT_EQ(graveyard.getHeldCount(), 1u);
 
             // That frame done is not enough: the burial is stamped with the value of the submit

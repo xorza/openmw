@@ -11,13 +11,13 @@
 
 namespace Rtx
 {
-    bool outgrow(Buffer& held, const Device& device, const VkDeviceSize bytes, const VkBufferUsageFlags usage,
-        Graveyard& graveyard)
+    bool outgrow(Buffer& held, const Device& device, const BufferKind kind, const VkDeviceSize bytes,
+        const VkBufferUsageFlags usage, const std::string_view name, Graveyard& graveyard)
     {
-        if (held.getSize() >= bytes)
+        if (!held.isEmpty() && held.getSize() >= bytes)
             return false;
 
-        graveyard.bury(growTo(held, device, std::max(bytes, held.getSize() * 2), usage));
+        graveyard.bury(growTo(held, device, kind, std::max(bytes, held.getSize() * 2), usage, name));
         return true;
     }
 
@@ -45,20 +45,14 @@ namespace Rtx
 
     void Graveyard::bury(Texture&& texture)
     {
-        if (texture.getView() != VK_NULL_HANDLE)
+        if (!texture.isEmpty())
             mTextures.push_back({ stamp(), std::move(texture) });
     }
 
-    void Graveyard::bury(VkAccelerationStructureKHR structure)
+    void Graveyard::bury(AccelerationStructure&& structure)
     {
-        if (structure != VK_NULL_HANDLE)
-            mStructures.push_back({ stamp(), structure });
-    }
-
-    void Graveyard::bury(VkDescriptorPool pool)
-    {
-        if (pool != VK_NULL_HANDLE)
-            mPools.push_back({ stamp(), pool });
+        if (!structure.isEmpty())
+            mStructures.push_back({ stamp(), std::move(structure) });
     }
 
     void Graveyard::bury(VkQueryPool pool)
@@ -67,21 +61,15 @@ namespace Rtx
             mQueryPools.push_back({ stamp(), pool });
     }
 
-    void Graveyard::bury(StructureStorage& storage, const StructureRoom& room)
-    {
-        if (!room.empty())
-            mRooms.push_back({ stamp(), Room{ .mStorage = &storage, .mRoom = room } });
-    }
-
     void Graveyard::bury(VkCommandBuffer commands)
     {
         if (commands != VK_NULL_HANDLE)
             mCommands.push_back({ stamp(), commands });
     }
 
-    void Graveyard::bury(std::unique_ptr<Image>&& image)
+    void Graveyard::bury(Image&& image)
     {
-        if (image != nullptr)
+        if (!image.isEmpty())
             mImages.push_back({ stamp(), std::move(image) });
     }
 
@@ -108,22 +96,12 @@ namespace Rtx
 
     void Graveyard::freeThrough(const std::uint64_t finished)
     {
-        const DeviceFunctions& functions = mDevice.getFunctions();
-
-        // The structures before the rooms they stand in: a room given back is the next
-        // structure's, and one given back under a structure still standing is two of them in one
-        // place.
-        free(mStructures, finished, [&](const VkAccelerationStructureKHR structure) {
-            functions.mDestroyAccelerationStructure(mDevice.getHandle(), structure, nullptr);
-        });
-        free(mRooms, finished, [](const Room& room) { room.mStorage->give(room.mRoom); });
-        free(mPools, finished,
-            [&](const VkDescriptorPool pool) { vkDestroyDescriptorPool(mDevice.getHandle(), pool, nullptr); });
+        free(mStructures, finished, [](AccelerationStructure& structure) { structure = AccelerationStructure(); });
         free(mQueryPools, finished,
             [&](const VkQueryPool pool) { vkDestroyQueryPool(mDevice.getHandle(), pool, nullptr); });
         free(mBuffers, finished, [](Buffer& buffer) { buffer = Buffer(); });
         free(mTextures, finished, [](Texture& texture) { texture = Texture(); });
-        free(mImages, finished, [](std::unique_ptr<Image>& image) { image.reset(); });
+        free(mImages, finished, [](Image& image) { image = Image(); });
         free(mCommands, finished,
             [&](const VkCommandBuffer commands) { mPool.free(std::span<const VkCommandBuffer>(&commands, 1)); });
     }

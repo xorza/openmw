@@ -162,22 +162,32 @@ add_custom_target(openmw-rtx-vulkan-shaders ALL DEPENDS ${RTX_SHADER_OUTPUTS}
 set(RTX_VULKAN_FILES
     accumulatepass.cpp
     accumulatepass.hpp
+    accelerationstructure.cpp
+    accelerationstructure.hpp
     atrouspass.cpp
     atrouspass.hpp
+    barriers.cpp
+    barriers.hpp
     blockedbuffer.cpp
     blockedbuffer.hpp
+    blocklist.hpp
     bloompass.cpp
     bloompass.hpp
     bottomlevelstore.cpp
     bottomlevelstore.hpp
     buffer.cpp
     buffer.hpp
+    bufferusage.hpp
     commands.cpp
     commands.hpp
     compositepass.cpp
     compositepass.hpp
     computepipeline.cpp
     computepipeline.hpp
+    createrenderer.cpp
+    createrenderer.hpp
+    descriptorsets.cpp
+    descriptorsets.hpp
     device.cpp
     device.hpp
     dispatch.hpp
@@ -212,6 +222,7 @@ set(RTX_VULKAN_FILES
     owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
+    pipeline.hpp
     placing.hpp
     pipelinecache.cpp
     pipelinecache.hpp
@@ -275,7 +286,10 @@ source_group(components\\rtxvulkan FILES ${RTX_VULKAN_FILES})
 
 add_library(openmw-rtx-vulkan STATIC ${RTX_VULKAN_FILES})
 
-target_link_libraries(openmw-rtx-vulkan PUBLIC Vulkan::Vulkan openmw-rtx PRIVATE SDL2::SDL2 components)
+# Vulkan is private: a host reaches the backend through `createrenderer.hpp`, which names no
+# Vulkan type, so nothing a host compiles needs the headers. The tests reach into the backend and
+# link Vulkan themselves.
+target_link_libraries(openmw-rtx-vulkan PUBLIC openmw-rtx PRIVATE Vulkan::Vulkan SDL2::SDL2 components)
 
 target_compile_options(openmw-rtx-vulkan PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
 

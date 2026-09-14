@@ -9,9 +9,9 @@
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
+#include "descriptorsets.hpp"
 #include "handles.hpp"
 #include "image.hpp"
-#include "owned.hpp"
 
 namespace Rtx
 {
@@ -50,7 +50,7 @@ namespace Rtx
         /// Whether a channel is the frame's own extent rather than a stand-in nothing reads.
         bool carries(Channel channel) const { return bindingOf(channel) < mCarried; }
 
-        VkDescriptorSet getSet() const { return mSet; }
+        VkDescriptorSet getSet() const { return mSet.get(0); }
 
         std::uint32_t getWidth() const { return get(Channel::Direct).getWidth(); }
         std::uint32_t getHeight() const { return get(Channel::Direct).getHeight(); }
@@ -74,8 +74,7 @@ namespace Rtx
         /// layer channels. They are last, so one count says which.
         std::uint32_t mCarried;
 
-        /// The set goes with the pool it came out of, which is what one pool per buffer is for.
-        Owned<VkDescriptorPool, vkDestroyDescriptorPool> mPool;
-        VkDescriptorSet mSet = VK_NULL_HANDLE;
+        /// One set, in a pool of its own that goes with it.
+        DescriptorSets mSet;
     };
 }

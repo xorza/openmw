@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -36,13 +35,23 @@ namespace Rtx
         /// displaced and a table that stayed is written only at a run the arrival was just given.
         void extend(const SceneDesc& scene, Graveyard& graveyard);
 
+        /// Whether a mesh's rows are rewritten where a placement put them — which a submit in
+        /// flight may still be reading, and the write asserts is not so — or written into a run the
+        /// mesh was only just given, which nothing recorded before it names. An arrival is the
+        /// second, and it is what lets an arrival pose without waiting the frames in flight out.
+        enum class Rows
+        {
+            Placed,
+            Arrived,
+        };
+
         /// Writes `mesh`'s rows into `slot`'s copy and returns where they landed, for the dispatch
         /// about to read them. A `hostWritten` copy, so the write is a `memcpy` and the submit that
         /// follows sees it.
-        VkDeviceAddress writeBones(const SceneDesc& scene, FrameSlot slot, Index mesh);
+        VkDeviceAddress writeBones(const SceneDesc& scene, FrameSlot slot, Index mesh, Rows rows);
 
         /// The same for a morphed mesh's weights.
-        VkDeviceAddress writeWeights(const SceneDesc& scene, FrameSlot slot, Index mesh);
+        VkDeviceAddress writeWeights(const SceneDesc& scene, FrameSlot slot, Index mesh, Rows rows);
 
         /// Where `mesh`'s bind pose starts, in each of the two bind tables.
         VkDeviceAddress getBindPositions(const MeshRange& mesh) const;
@@ -63,7 +72,6 @@ namespace Rtx
         void writeMorphs(const SceneDesc& scene, std::span<const Index> morphs, bool whole);
 
         const Device* mDevice = nullptr;
-        std::uint32_t mSlots = 1;
 
         Buffer mBindPositions;
         Buffer mBindNormals;
@@ -71,8 +79,8 @@ namespace Rtx
         Buffer mInfluences;
         Buffer mMorphOffsets;
 
-        std::array<Buffer, sFrameSlots> mBones;
-        std::array<Buffer, sFrameSlots> mWeights;
+        PerSlot<Buffer> mBones;
+        PerSlot<Buffer> mWeights;
 
         /// Every mesh, rig or morph, for a table written whole. Kept so a growth allocates nothing
         /// of its own.
