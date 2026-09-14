@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BLOOM_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BLOOM_GLSL
 

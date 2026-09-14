@@ -1,6 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here: `glslc` warns
-// "'#pragma once' : not implemented" and carries on, so a header included twice by one
-// shader would redefine everything in it.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_WAVE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_WAVE_H
 
@@ -68,6 +65,10 @@ namespace Rtx::Shaders
     /// sea rather than of a place in it, and a mip chain has already summed them.
     const float WAVE_COARSEST = 32.0f;
 
+    /// The side of the square workgroup the form and compose passes run on, which is what their
+    /// dispatches are counted in.
+    const uint WAVE_TILE_WORKGROUP = 8u;
+
     /// Threads in a transform workgroup, one per butterfly.
     ///
     /// A radix-2 pass over `n` points is `n / 2` butterflies, so the largest grid wants half its own
@@ -126,6 +127,16 @@ namespace Rtx::Shaders
 
 #ifdef RTX_HOST
 }
+#endif
+
+// What a tile is made of, as a macro for the reason `gbuffer.h` gives. Half floats: a slope is a
+// fraction and a curvature a small number, and both are read at every water pixel through a mip
+// chain the sampler filters. The elevation squared in the last channel is the sea's own variance
+// and stays within a half's range at any sea state the weather asks for.
+#ifdef RTX_HOST
+#define WAVE_TILE_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
+#else
+#define WAVE_TILE_FORMAT rgba16f
 #endif
 
 // What both shading languages read and nothing on this side calls.

@@ -415,8 +415,7 @@ namespace Rtx
             // both renderers trace at — the upscaler only changes what happens after.
             Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
                 extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
-            camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
-            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
 
@@ -475,8 +474,7 @@ namespace Rtx
 
                 Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
                     extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
-                camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
-                camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+                camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
 
                 // Two, because an upscaler has no history on the first and the frame after one is
                 // where a feature built against the wrong extent would be read.
@@ -525,8 +523,7 @@ namespace Rtx
 
                 Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
                     extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
-                camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
-                camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+                camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
                 upscaling->renderFrame(camera, FrameOptions{});
 
                 return extents;
@@ -609,8 +606,7 @@ namespace Rtx
 
             Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(0.0f, -200.0f, 0.0f), osg::Vec3f(), 60.0f, width, height, 10000.0f);
-            camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
-            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
 
             // **The layer's vector for a sprite that travelled `moved`, at the middle of the
             // frame.** Two frames, because the first has no past to reproject against.

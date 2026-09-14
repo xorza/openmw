@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BINDINGS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BINDINGS_GLSL
 
@@ -28,6 +26,10 @@
 // not tidiness — the device allows 32 push descriptors and this had reached exactly 32, so every
 // list that keeps growing moved to the owner that already holds it.
 
+// The structure below is a query's, and every traversal in the libraries this reaches is a
+// query. Declared here and not in each stage, so a stage cannot reach the structure without it.
+#extension GL_EXT_ray_query : require
+
 #include "bindings.h"
 #include "fogvolume.h"
 #include "gbuffer.h"
@@ -35,6 +37,7 @@
 #include "visibility.h"
 #include "wave.h"
 
+#include "spritelist.glsl"
 #include "texturearray.glsl"
 
 layout(set = 0, binding = BIND_SCENE) uniform accelerationStructureEXT sceneTop;
@@ -42,7 +45,11 @@ layout(set = 0, binding = BIND_SCENE) uniform accelerationStructureEXT sceneTop;
 // Set two, in the order it is bound.
 
 /// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
-layout(set = 2, binding = CHANNEL_DIRECT, GBUFFER_RADIANCE) uniform writeonly image2D direct;
+///
+/// **No format on this or the bounce below**, because a run decides how wide they are —
+/// `gbuffer.h` says which run gets which — and a store with no format converts to whatever the
+/// view holds.
+layout(set = 2, binding = CHANNEL_DIRECT) uniform writeonly image2D direct;
 
 /// One bounce with the albedo divided out, times whatever the path took off it on the way to the
 /// eye — the only channel a filter is allowed to touch.
@@ -56,7 +63,7 @@ layout(set = 2, binding = CHANNEL_DIRECT, GBUFFER_RADIANCE) uniform writeonly im
 /// goes into `direct` and `a` belongs to whichever term it attenuated, which is this one. Putting
 /// it on the albedo instead made that channel a product of a surface and a path, and an upscaler
 /// asking what the surface is got the weather in the answer.
-layout(set = 2, binding = CHANNEL_INDIRECT, GBUFFER_RADIANCE) uniform writeonly image2D indirect;
+layout(set = 2, binding = CHANNEL_INDIRECT) uniform writeonly image2D indirect;
 
 /// The surface's own diffuse albedo, and nothing else.
 ///
@@ -154,7 +161,7 @@ layout(set = 0, binding = BIND_HITS) buffer HitCount
 // **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every
 // byte `maxPushConstantsSize` promises on this hardware; `VisibilityPass` writes it into a buffer of
 // its own instead. The name and the fields are the ones the push block had, so nothing that reads
-// `camera` knows the difference.
+// `frame` knows the difference.
 //
 // **Uniform and not storage**, which is worth a few per cent of the trace: every pixel reads half
 // of these fields several times over, and a uniform block is promoted to a constant bank the way a
@@ -284,16 +291,6 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     float at[];
 };
 
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer SpriteTable
-{
-    GpuSprite at[];
-};
-
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer EmitterTable
-{
-    GpuEmitter at[];
-};
-
 GpuMesh meshAt(uint index)
 {
     return MeshTable(frame.mTables.mMeshes).at[index];
@@ -357,14 +354,14 @@ GpuEmitter emitterAt(uint index)
 
 /// The sprite tiles' list, in the light grid's shape over the screen's tiles: where each tile's run
 /// starts, then every tile's sprites run together in tile order and ascending inside each run —
-/// which is the order they composite in.
+/// which is the order they composite in. `spritelist.glsl` states the shape.
 ///
 /// **Made on the device, by `SpriteBinPass`, ahead of the trace.** `spriterects.comp` says why the
 /// layer is binned per tile and the emitters are not, and `SPRITE_LIST_UNBINNED` what entry nought
 /// holds on the frame whose runs did not fit.
 uint spriteTileListAt(uint slot)
 {
-    return IndexList(frame.mTables.mSpriteTileList).at[slot];
+    return SpriteTileList(frame.mTables.mSpriteTileList).at[slot];
 }
 
 // The sea, as the tiles `WavePass` synthesised it into. One texture apiece per cascade, sampled

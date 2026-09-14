@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_REPROJECT_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_REPROJECT_GLSL
 
@@ -10,8 +8,7 @@
 // in the plane; and the sky, being infinitely far, moves only when the eye turns.
 
 #include "bindings.glsl"
-#include "sprites.glsl"
-#include "water.glsl"
+#include "records.glsl"
 
 /// How far a point moved between the last frame and this one, in world units.
 ///

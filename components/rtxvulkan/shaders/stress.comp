@@ -1,7 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
 
 // A loop that holds the queue for as long as it is told and reads nothing the frame has, so that a
 // frame recorded over it is a frame recorded over a device that is still busy — what

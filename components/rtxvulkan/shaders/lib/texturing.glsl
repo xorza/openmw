@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_TEXTURING_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_TEXTURING_GLSL
 
@@ -175,7 +173,10 @@ float maskWeight(GpuLayer layer, vec2 uv)
         return 1.0;
 
     const ivec2 grid = ivec2(layer.mMaskWidth, layer.mMaskHeight);
-    const vec2 at = uv * layer.mMaskTransform.xy + layer.mMaskTransform.zw;
+
+    // Held inside the mask, because a mask clamps at its edges where every other texture repeats:
+    // a transform that carried the point past one would read past the run.
+    const vec2 at = clamp(uv * layer.mMaskTransform.xy + layer.mMaskTransform.zw, 0.0, 1.0);
 
     // Texel centres sit at half-integers, so the bilinear footprint starts half a texel back.
     const vec2 texel = at * vec2(grid) - 0.5;

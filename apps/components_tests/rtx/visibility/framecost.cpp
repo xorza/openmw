@@ -80,7 +80,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            camera.mSun.mIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
 
             // The sampler's own frame, which advances across every leg: two legs handed the same one
             // would be two legs drawing one picture, and a renderer that noticed could skip work this

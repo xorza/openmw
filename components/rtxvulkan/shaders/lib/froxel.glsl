@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FROXEL_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FROXEL_GLSL
 
@@ -25,6 +23,28 @@
 float fogDepth(float fraction)
 {
     return fraction * fraction;
+}
+
+/// The other way: how far through the grid a distance stands, from nought to one, clamped at the
+/// reach. What a reader hands the sampler as the volume's depth coordinate.
+float fogDepthInverse(float distance)
+{
+    return sqrt(min(distance, FOG_REACH) / FOG_REACH);
+}
+
+/// Where a pixel stands across the volume, from nought to one over the image's columns.
+///
+/// **Normalised by the image and never by the frame.** A traced view is drawn into a volume grown
+/// to the largest one asked for, so the two are not the same number — and the scatter pass fills
+/// every column the image has for exactly that reason: the pixel at the edge interpolates against
+/// the column outside it.
+///
+/// @param pixel a position on the frame in pixels, with its half already added where a texel's
+///        centre is meant.
+/// @param columns how many columns and rows the volume holds, which is `mFogColumns`.
+vec2 fogVolumeAcross(vec2 pixel, uvec2 columns)
+{
+    return pixel / float(FOG_VOLUME_SCALE) / vec2(columns);
 }
 
 /// How far in front of the eye `slice` begins and ends, in world units.
@@ -92,6 +112,92 @@ struct FogSlice
     float mExtinction;
     float mSunward;
 };
+
+/// What the scatter pass measures at one froxel, as `fogscatter.rgen` packs it into two images
+/// and `fogintegrate.comp` and `puffLight` read it back.
+///
+/// **One record and one packing, because four sites spelled the channels for themselves.** The
+/// writer put the transport, the lamps' seeing and the ambient's in `xyz` of one image and the
+/// two readers swizzled the same letters back out, with nothing naming which was which. A field
+/// added or moved on one side compiled on the other and read a neighbour's number.
+struct FogSeeing
+{
+    /// The sun's transport with the irradiance and the phase left off, and what a ray found of
+    /// the lamp the froxel held and of the ambient over it — nought or one at an edge the grid
+    /// cannot resolve, averaged over frames and neighbours. The half a puff of smoke reads.
+    float mTransport;
+    float mLampsSeen;
+    float mAmbientSeen;
+};
+
+struct FogPoint
+{
+    /// What the air scatters at the point, and its extinction per world unit.
+    vec3 mInscatter;
+    float mExtinction;
+
+    FogSeeing mSeeing;
+};
+
+vec4 packFogScatter(FogPoint point)
+{
+    return vec4(point.mInscatter, point.mExtinction);
+}
+
+vec4 packFogSeeing(FogSeeing seeing)
+{
+    return vec4(seeing.mTransport, seeing.mLampsSeen, seeing.mAmbientSeen, 0.0);
+}
+
+FogSeeing unpackFogSeeing(vec4 sunward)
+{
+    return FogSeeing(sunward.x, sunward.y, sunward.z);
+}
+
+FogPoint unpackFogPoint(vec4 scatter, vec4 sunward)
+{
+    return FogPoint(scatter.xyz, scatter.w, unpackFogSeeing(sunward));
+}
+
+/// The accumulation up to a slice's far edge, as `fogintegrate.comp` packs it and
+/// `fogVolumeAlong` reads it: what scattered in, what is left of the ray, and the sun's transport
+/// alone.
+struct FogColumn
+{
+    vec3 mScattered;
+    float mTransmittance;
+    float mSunward;
+};
+
+vec4 packFogColumn(FogColumn column)
+{
+    return vec4(column.mScattered, column.mTransmittance);
+}
+
+float packFogColumnSunward(FogColumn column)
+{
+    return column.mSunward;
+}
+
+FogColumn unpackFogColumn(vec4 air, float sunward)
+{
+    return FogColumn(air.xyz, air.w, sunward);
+}
+
+vec4 packFogSlice(FogSlice slice)
+{
+    return vec4(slice.mInscatter, slice.mExtinction);
+}
+
+float packFogSliceSunward(FogSlice slice)
+{
+    return slice.mSunward;
+}
+
+FogSlice unpackFogSlice(vec4 slice, float sunward)
+{
+    return FogSlice(slice.xyz, slice.w, sunward);
+}
 
 FogSlice fogSliceBetween(FogSlice from, FogSlice to, float fraction)
 {

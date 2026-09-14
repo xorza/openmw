@@ -100,6 +100,9 @@ namespace MWRender
                 = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
             profile.mCountCrossings = Settings::rtx().mCountCrossings;
             profile.mDelight = Settings::rtx().mDelight;
+
+            // A played session shows every frame and sums none.
+            profile.mRadianceWidth = Rtx::RadianceWidth::Shown;
             profile.mShowAlbedo = Settings::rtx().mShowAlbedo;
             profile.mReconstruction.mFilter = Settings::rtx().mFilter;
             profile.mReconstruction.mJitter = Settings::rtx().mJitter;
@@ -272,6 +275,7 @@ namespace MWRender
         // frame drawn by the other were traced by two differently configured renderers.
         options.mCountCrossings = mProfile.mCountCrossings;
         options.mStressOverlapMs = mProfile.mStressOverlapMs;
+        options.mRadianceWidth = mProfile.mRadianceWidth;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the

@@ -70,8 +70,7 @@ namespace Rtx::Testing
                         .mMesh = scene.addMesh(MeshArrays{ .mPositions = occluder, .mIndices = sQuadIndices }) });
 
                 Shaders::VisibilityConstants camera = base;
-                camera.mSunPosition = -direction;
-                camera.mSunIrradiance = irradiance;
+                camera.mSun = Shaders::sunSource(-direction, irradiance);
                 camera.mSkyHorizon = sky;
                 camera.mSkyZenith = sky;
                 camera.mAmbientFromSky = 1.0f;
@@ -647,8 +646,8 @@ namespace Rtx::Testing
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-                camera.mSunPosition = lit / lit.length();
-                camera.mSunIrradiance = lamp ? osg::Vec3f() : osg::Vec3f(2.0f, 2.0f, 2.0f);
+                camera.mSun
+                    = Shaders::sunSource(lit / lit.length(), lamp ? osg::Vec3f() : osg::Vec3f(2.0f, 2.0f, 2.0f));
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
@@ -851,8 +850,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = lookAtTheWall();
             // The disc stands along -Y, so its light travels +Y and meets the wall's face square.
-            camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -1.0f, 0.0f), osg::Vec3f(2.0f, 2.0f, 2.0f));
 
             const std::vector<float> open = openFor(std::nullopt, sunDepth, camera);
             ASSERT_GT(open[(std::size_t{ sColumn } * sSize + sColumn) * 4], 0.0f) << "the sun lights the wall";
@@ -915,7 +913,7 @@ namespace Rtx::Testing
 
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mAmbientFromSky = fromSky;
 
@@ -973,8 +971,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
 
-                camera.mSunPosition = osg::Vec3f(std::sin(sLeaningNormal), 0.0f, upward * std::cos(sLeaningNormal));
-                camera.mSunIrradiance = osg::Vec3f(sunlight, sunlight, sunlight);
+                camera.mSun
+                    = Shaders::sunSource(osg::Vec3f(std::sin(sLeaningNormal), 0.0f, upward * std::cos(sLeaningNormal)),
+                        osg::Vec3f(sunlight, sunlight, sunlight));
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels, { .mFrames = 16 });
@@ -1031,7 +1030,7 @@ namespace Rtx::Testing
 
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
 

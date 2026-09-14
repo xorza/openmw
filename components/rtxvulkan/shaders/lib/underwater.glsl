@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_UNDERWATER_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_UNDERWATER_GLSL
 
@@ -179,17 +177,17 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         * daylightReaching(from);
 
     // The same test `fogAlong` makes before it spends anything on shafts: an interior and a night
-    // both answer no, and `mSunIrradiance` fades to nought across dusk rather than stepping.
+    // both answer no, and `mSun.mIrradiance` fades to nought across dusk rather than stepping.
     if (!sunUp())
         return WaterColumn(transmittance, sky);
 
-    const SunUnderWater sun = sunUnderWater(frame.mSunPosition);
+    const SunUnderWater sun = sunUnderWater(frame.mSun.mDirection);
 
     // Forward is the direction the light was already going, which is `mTravelling`; the eye receives
     // along `-direction`. `fogPhase` measures the same angle in air, where the light travels along
-    // `-mSunPosition` and the two spellings agree.
+    // `-mSun.mDirection` and the two spellings agree.
     const vec3 sunward
-        = frame.mSunIrradiance * henyeyGreenstein(WATER_ASYMMETRY, -dot(direction, sun.mTravelling));
+        = frame.mSun.mIrradiance * henyeyGreenstein(WATER_ASYMMETRY, -dot(direction, sun.mTravelling));
 
     const float depth = waterOver(from);
     const float g = 1.0 - sun.mSlant * direction.z;
@@ -239,7 +237,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         // across the gate, and a rock's edge has to be there whether or not the filaments are. The
         // draw is the march's own offset carried along the R2 steps, so each step aims its own way
         // inside the disc without a second draw a step.
-        const vec2 draw = fract(vec2(offset) + float(step) * vec2(STREAM_TURN[1], STREAM_TURN[2]));
+        const vec2 draw = fract(vec2(offset) + float(step) * R2_STEPS);
         const float visible = skyVisible(vec3(met, frame.mWaterLevel), SKY_SOURCE_SUN, draw);
 
         lit += weight * mix(1.0, caustic(met, under, footprint), show) * visible;

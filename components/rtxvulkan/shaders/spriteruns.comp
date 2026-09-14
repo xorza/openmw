@@ -1,9 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // Each tile's run, filled in ascending sprite order.
 //
@@ -37,17 +34,9 @@
 
 #include "spritebin.h"
 
+#include "lib/spritelist.glsl"
+
 layout(local_size_x = SPRITE_RUNS_WORKGROUP) in;
-
-layout(buffer_reference, buffer_reference_align = 8, scalar) readonly buffer Rects
-{
-    uvec2 at[];
-};
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer List
-{
-    uint at[];
-};
 
 layout(push_constant, scalar) uniform Push
 {
@@ -66,7 +55,7 @@ void main()
     const uint lane = gl_LocalInvocationID.x % SPRITE_RUNS_LANES;
     const uint tile = gl_GlobalInvocationID.x / SPRITE_RUNS_LANES;
 
-    List list = List(bin.mList);
+    SpriteTileList list = SpriteTileList(bin.mList);
 
     // Nothing to fill where the runs did not fit: the trace walks every sprite instead. Uniform
     // over the dispatch, so a workgroup leaves whole and no barrier below waits for it.
@@ -85,8 +74,8 @@ void main()
     {
         x = tile % across;
         y = tile / across;
-        slot = list.at[tile];
-        end = list.at[tile + 1u];
+        slot = list.at[spriteStartSlot(tile)];
+        end = list.at[spriteStartSlot(tile + 1u)];
     }
 
     if (lane == 0u)
@@ -97,7 +86,7 @@ void main()
     }
 
     const uint below = (1u << lane) - 1u;
-    Rects rects = Rects(bin.mRects);
+    SpriteRects rects = SpriteRects(bin.mRects);
 
     barrier();
 
@@ -109,10 +98,9 @@ void main()
         bool hit = false;
         if (present && sprite < bin.mCount)
         {
-            const uvec2 packed = rects.at[sprite];
-
-            const uvec2 from = uvec2(packed.x & 0xFFFFu, packed.x >> 16u);
-            const uvec2 to = uvec2(packed.y & 0xFFFFu, packed.y >> 16u);
+            uvec2 from;
+            uvec2 to;
+            unpackSpriteRect(rects.at[sprite], from, to);
 
             hit = x >= from.x && x <= to.x && y >= from.y && y <= to.y;
         }

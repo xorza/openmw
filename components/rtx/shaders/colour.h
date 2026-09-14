@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_COLOUR_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_COLOUR_H
 

@@ -791,8 +791,7 @@ namespace Rtx::Testing
                 // same climb, so `fogSunDepth` is the same for each and cancels.
                 osg::Vec3f towards(0.0f, towardsY, 0.5f);
                 towards.normalize();
-                camera.mSunPosition = towards;
-                camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
+                camera.mSun = Shaders::sunSource(towards, osg::Vec3f(irradiance, irradiance, irradiance));
                 camera.mFogExtinction = 3.0e-4f;
                 camera.mFogUniform = 1.0f;
 
@@ -881,8 +880,8 @@ namespace Rtx::Testing
                 // forward and every shadow ray still climbs into the lid.
                 osg::Vec3f travelling(0.0f, -0.6f, -0.8f);
                 travelling.normalize();
-                camera.mSunPosition = -travelling;
-                camera.mSunIrradiance = lit ? osg::Vec3f(irradiance, irradiance, irradiance) : osg::Vec3f();
+                camera.mSun = Shaders::sunSource(
+                    -travelling, lit ? osg::Vec3f(irradiance, irradiance, irradiance) : osg::Vec3f());
 
                 // Even air with a colour of its own, so the frame is never empty and the two sunless
                 // cases have something to agree about.
@@ -955,7 +954,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mFogColour = osg::Vec3f();
                 camera.mFogExtinction = extinction;
 
@@ -1020,7 +1019,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mFogColour = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
@@ -1112,7 +1111,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mFogColour = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;

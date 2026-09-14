@@ -1,6 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here: `glslc` warns
-// "'#pragma once' : not implemented" and carries on, so a header included twice by one
-// shader would redefine everything in it.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_ATROUS_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_ATROUS_H
 
@@ -58,39 +55,15 @@ namespace Rtx::Shaders
     {
         Camera mCamera;
 
-        /// The spacing of this level's taps, in pixels.
+        /// The spacing of this level's taps, in pixels. The three sigmas the taps are weighed by
+        /// are `look.h`'s, because nothing varies them per level or per frame.
         uint mStep;
-
-        /// How sharply the normals have to agree, as the exponent on their cosine.
-        ///
-        /// A hundred and twenty-eight keeps a tap at more than about six degrees of tilt from
-        /// contributing anything, which is what stops a wall bleeding into the floor it meets.
-        float mNormalPower;
-
-        /// How far off the centre pixel's tangent plane a tap may sit, in pixel footprints.
-        ///
-        /// **Off the plane, not away from the eye.** Terrain seen at a grazing angle steps a long
-        /// way in distance between neighbouring pixels while remaining one flat surface, so a test
-        /// on distance alone would refuse to filter exactly the ground that most needs it.
-        float mPlaneSigma;
-
-        /// How far a tap's brightness may differ from the centre's before it stops being the same
-        /// light, in standard deviations of what the centre has been measuring.
-        ///
-        /// **The term that wants a history**, because a variance is taken from one. With it the
-        /// filter can stop at an edge in the *light* — the line where a shadow ends on a flat wall,
-        /// which the normal test and the plane test both read as one surface and blur straight
-        /// through.
-        ///
-        /// Scaled by the estimator's own spread, so a pixel that is still noisy filters widely and a
-        /// settled one holds its detail. SVGF's own figure.
-        float mLuminanceSigma;
     };
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #ifdef RTX_HOST
-    static_assert(sizeof(AtrousConstants) == 76, "AtrousConstants must be scalar-packed on every side");
+    static_assert(sizeof(AtrousConstants) == 64, "AtrousConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

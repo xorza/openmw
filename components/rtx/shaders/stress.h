@@ -1,4 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here: `portable.h` says why.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_STRESS_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_STRESS_H
 

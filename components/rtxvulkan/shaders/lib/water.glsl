@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_WATER_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_WATER_GLSL
 
@@ -11,6 +9,7 @@
 #include "bindings.glsl"
 #include "camera.h"
 #include "sea.glsl"
+#include "records.glsl"
 #include "shading.glsl"
 #include "sky.glsl"
 #include "starfield.glsl"
@@ -35,23 +34,6 @@ const float WATER_MAX_PATH = 2000.0;
 /// scattering has settled long before that, so this is the sea's own asymptote and raising the
 /// number moves no pixel.
 const float WATER_UNBOUNDED_PATH = 40000.0;
-
-/// Whether a ray that found nothing was under the surface looking down, which is water and not sky.
-///
-/// **The plane has absolute sides**, so below it there is water whether or not this renderer was
-/// handed a bed far enough out to stop the ray. Read as sky instead, everything past the edge of the
-/// loaded terrain came back at the sky's own horizon colour — which is what `skyGradient` clamps to
-/// under the horizontal — through `mFar` of water rather than through the whole of it, and that drew
-/// the terrain's boundary across the sea as a row of dark panels. `waterRay` answers the same
-/// question the same way for a reflection and for a refraction.
-///
-/// **Asked by the miss shader and again by the launch**, which are the two that need it: one to
-/// draw no sky and one to measure the column the pixel is seen through. It is a plane test and a
-/// sign, and a payload word carrying it between them would cost more than asking twice.
-bool waterUnbounded(bool found, vec3 origin, vec3 direction)
-{
-    return !found && direction.z < 0.0 && waterOver(origin) > 0.0;
-}
 
 /// How squarely a wave facet has to face the ray that found it before it is tilted back toward the
 /// plane. Small: a guard against a facet turning away entirely, not a limit on the waves.
@@ -113,11 +95,7 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     {
         path.mDistance = hit.mDistance;
 
-        const float reaching
-            = ambientReaching(hit.mPosition, hit.mNormal, hit.mGeometric, hit.mTransmission,
-                seed + SEED_AMBIENT_REACHING);
-
-        path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition, reaching), seed, PATH_SEEN);
+        path.mRadiance = shadeAtPathEnd(hit, seed + SEED_AMBIENT_REACHING, seed, PATH_SEEN);
         return path;
     }
 
@@ -148,42 +126,40 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     return path;
 }
 
-/// What a water surface reflects, which is not where the water is.
-struct WaterMirror
+/// What a water surface answers with: what it sends back along the ray, what it is in the
+/// upscaler's terms, what it reflects, and how much of the pixel is water at all.
+struct WaterShading
 {
-    /// Where the reflected surface stands, in world units.
-    vec3 mAt;
+    /// The water's whole answer, as if there were water all the way down.
+    vec3 mRadiance;
 
-    /// The direction the reflection left along, for the case where it found no surface at all.
-    vec3 mAlong;
+    SurfaceResponse mResponse;
 
-    /// Which instance row it came off, so the frame can ask where that used to be.
-    uint mInstance;
+    /// What this surface reflects, for the motion vector that describes it. Not found where the
+    /// reflection reached only sky, or where the water is being looked at from underneath —
+    /// neither is a thing a mirrored reprojection has an answer for.
+    WaterMirror mMirror;
 
-    /// False where the reflection reached the sky, which is a reflection with no distance to it and
-    /// not a reflection of nothing: `mAlong` is the whole of the answer there.
-    bool mFound;
+    /// How much of the pixel is water at all, from nothing at the waterline to one over half a
+    /// metre of depth. **The caller mixes the ground in, and not `shadeWater`**, because what a
+    /// pixel with no water under it is is the ground the dry pixel beside it is — shaded the way
+    /// that pixel is shaded, with a bounce the water cannot gather. The reflection is already faded
+    /// toward the incident ray by this term, so that the two halves of a mixed pixel look at one
+    /// piece of ground.
+    float mShore;
 };
 
 /// What the water sends back along the ray that found it, as if there were water all the way down.
+///
 /// @param pixel which pixel this is, for the draw key the two reservoirs below each offset by their
 ///        own `SEED_LAMPS_` constant — what the water reflects and what is seen through it are two
 ///        surfaces shaded from one hit, and two reservoirs seeded alike keep one lamp.
-/// @param mirror what this surface reflects, for the motion vector that describes it. Not found
-///        where the reflection reached only sky, or where the water is being looked at from
-///        underneath — neither is a thing a mirrored reprojection has an answer for.
-/// @param shore how much of the pixel is water at all, from nothing at the waterline to one over
-///        half a metre of depth. **The caller mixes the ground in, and not this**, because what a
-///        pixel with no water under it is is the ground the dry pixel beside it is — shaded the
-///        way that pixel is shaded, with a bounce this function cannot gather. What is returned is
-///        the water's whole answer, and the reflection already faded toward the incident ray by
-///        this term so that the two halves of a mixed pixel look at one piece of ground.
-vec3 shadeWater(
-    Surface surface, vec3 incident, out SurfaceResponse response, out WaterMirror mirror, uvec2 pixel, out float shore)
+WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel)
 {
     const uint key = pixelKey(pixel);
 
-    mirror = WaterMirror(vec3(0.0), vec3(0.0), 0u, false);
+    WaterShading shaded;
+    shaded.mMirror = WaterMirror(vec3(0.0), vec3(0.0), 0u, false);
 
     // **Which side of the water a ray is on is a question about the plane, not about a wave.** At a
     // glancing angle a facet can tilt far enough to face away from the ray, and reading that as "the
@@ -238,7 +214,7 @@ vec3 shadeWater(
     // nought and that is the content's answer rather than a gap: `nifloader.cpp` forces specular to
     // black and glossiness to zero for every mesh at Morrowind's NIF version, because the game had
     // specular lighting disabled — measured across four cells, 831 materials, none with either.
-    response = SurfaceResponse(normal, vec3(0.0), vec3(fresnel), lobe);
+    shaded.mResponse = SurfaceResponse(normal, vec3(0.0), vec3(fresnel), lobe);
 
     // Offset along the *plane*, not the facet: what a ray has to clear to avoid finding this surface
     // again is the quad, and only the plane's normal is guaranteed to take it off that.
@@ -262,9 +238,9 @@ vec3 shadeWater(
     // `WATER_SHORE_FADE`, so a bed further down and a bed nowhere at all are the same answer — which
     // makes that length the ray's own limit, and stops every pixel of open water crossing the sea to
     // be told it is deep.
-    shore = 1.0;
+    shaded.mShore = 1.0;
     if (!fromBelow)
-        shore = smoothstep(0.0, WATER_SHORE_FADE,
+        shaded.mShore = smoothstep(0.0, WATER_SHORE_FADE,
             solidWithin(leaving, vec3(0.0, 0.0, -1.0), WATER_BIAS, WATER_SHORE_FADE, surface.mFootprint,
                 coneAt(frame.mCamera).mSpread));
 
@@ -275,7 +251,7 @@ vec3 shadeWater(
         reflected = throughWater(reflected,
             waterColumn(leaving, away, bounced.mDistance, surface.mFootprint, marchOffset));
     else
-        mirror = WaterMirror(bounced.mPosition, away, bounced.mInstance, bounced.mDistance < WATER_MAX_PATH);
+        shaded.mMirror = WaterMirror(bounced.mPosition, away, bounced.mInstance, bounced.mDistance < WATER_MAX_PATH);
 
     const vec3 bent = refract(incident, normal, fromBelow ? WATER_IOR : 1.0 / WATER_IOR);
     if (dot(bent, bent) < 1e-6)
@@ -288,15 +264,16 @@ vec3 shadeWater(
         // so the pixel is the reflection whatever the angle says. At the critical angle itself
         // Schlick gives 0.024, and reporting that of a pixel that is entirely a reflection tells the
         // upscaler to divide the specular light by forty.
-        response.mSpecular = vec3(1.0);
-        return reflected;
+        shaded.mResponse.mSpecular = vec3(1.0);
+        shaded.mRadiance = reflected;
+        return shaded;
     }
 
     // **Water that is not there cannot bend light.** The refraction is blended back toward the
     // incident by the same term that fades the surface, or the last pixel of water still shows a
     // piece of ground displaced by a fifth of a radian from the dry pixel beside it — a hard line
     // however faint the surface over it has been made.
-    const vec3 through = normalize(mix(incident, bent, shore));
+    const vec3 through = normalize(mix(incident, bent, shaded.mShore));
 
     // Refraction bends by a third of what reflection does, so what is seen *through* the surface is
     // blurred correspondingly less by the same lost slopes.
@@ -307,7 +284,8 @@ vec3 shadeWater(
         : throughWater(behind.mRadiance,
               waterColumn(leaving, through, behind.mDistance, surface.mFootprint, marchOffset));
 
-    return mix(refracted, reflected, fresnel);
+    shaded.mRadiance = mix(refracted, reflected, fresnel);
+    return shaded;
 }
 
 #endif

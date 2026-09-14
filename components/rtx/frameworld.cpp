@@ -65,8 +65,7 @@ namespace Rtx
         if (reading.mOutdoors)
             air.mColour = fogColour(budget.mMean, air.mColour);
 
-        constants.mSunPosition = light.mSun.mPosition;
-        constants.mSunIrradiance = light.mSun.mIrradiance;
+        constants.mSun = Shaders::sunSource(light.mSun.mPosition, light.mSun.mIrradiance);
         constants.mSunDiscColour = light.mSun.mDiscColour;
         constants.mAmbient = light.mAmbient;
         constants.mAmbientFromSky = reading.mOutdoors ? 1.0f : 0.0f;

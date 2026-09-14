@@ -1,13 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_ray_query : require
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_ray_tracing_position_fetch : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // What the weather's air holds at one froxel, and what lights it there.
 //
@@ -82,16 +76,13 @@ vec3 fogVolumeWas(vec3 fromEye)
     if (!screen.mFound)
         return vec3(-1.0);
 
-    // Normalised by the image and never by the frame, for the reason `fogVolumeAlong` gives.
-    const vec2 at = screen.mAt * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight))
-        / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns);
+    const vec2 at = fogVolumeAcross(
+        screen.mAt * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight)), frame.mFogColumns);
 
-    // The depth curve, inverted. A slice holds what its own jittered point read, so its texel centre
-    // is the slice's middle and a distance reads straight off the curve with no half-texel shift —
-    // which the *integrated* volume does need, because there a slice holds its far edge.
-    const float along = sqrt(min(length(was), FOG_REACH) / FOG_REACH);
-
-    return vec3(at, along);
+    // A slice holds what its own jittered point read, so its texel centre is the slice's middle
+    // and a distance reads straight off the curve with no half-texel shift — which the
+    // *integrated* volume does need, because there a slice holds its far edge.
+    return vec3(at, fogDepthInverse(length(was)));
 }
 
 void main()
@@ -282,14 +273,16 @@ void main()
 
     if (reprojected)
     {
-        inscatter = mix(inscatter, wasScatter.xyz, FOG_VOLUME_HISTORY);
-        density = mix(density, wasScatter.w, FOG_VOLUME_HISTORY);
-        transport = mix(transport, wasSunward.x, FOG_VOLUME_HISTORY);
-        seen = mix(seen, wasSunward.y, FOG_VOLUME_HISTORY);
-        ambient = mix(ambient, wasSunward.z, FOG_VOLUME_HISTORY);
+        const FogPoint was = unpackFogPoint(wasScatter, wasSunward);
+        inscatter = mix(inscatter, was.mInscatter, FOG_VOLUME_HISTORY);
+        density = mix(density, was.mExtinction, FOG_VOLUME_HISTORY);
+        transport = mix(transport, was.mSeeing.mTransport, FOG_VOLUME_HISTORY);
+        seen = mix(seen, was.mSeeing.mLampsSeen, FOG_VOLUME_HISTORY);
+        ambient = mix(ambient, was.mSeeing.mAmbientSeen, FOG_VOLUME_HISTORY);
     }
 
-    imageStore(fogScatterTarget, froxel, vec4(inscatter, density));
-    imageStore(fogSunwardTarget, froxel, vec4(transport, seen, ambient, 0.0));
+    const FogPoint point = FogPoint(inscatter, density, FogSeeing(transport, seen, ambient));
+    imageStore(fogScatterTarget, froxel, packFogScatter(point));
+    imageStore(fogSunwardTarget, froxel, packFogSeeing(point.mSeeing));
     imageStore(fogLampsTarget, froxel, vec4(lampScatter, 0.0));
 }

@@ -435,8 +435,7 @@ namespace Rtx
 
             // Travelling straight down onto a sheet that faces up, so it is lit square on and the
             // picture is something rather than a coverage mask with nothing in it.
-            camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
-            camera.mSunIrradiance = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(1.0f, 1.0f, 1.0f));
 
             return camera;
         }

@@ -1,9 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // One pattern of `vec3`s, read four ways, with every reading written out so the host can say which
 // of them is wrong rather than only that they disagree:
@@ -24,6 +21,7 @@
 // which cost a day and reached the wrong answer twice.
 
 #include "probe.h"
+#include "scene.h"
 
 layout(local_size_x = PROBE_WORKGROUP) in;
 
@@ -57,7 +55,7 @@ layout(set = 0, binding = 4, scalar) writeonly buffer RowReadings
 
 // The alignment the packed `vec3` tables in `SceneBuffers` would be reached at: four, because a
 // twelve-byte element at an arbitrary index is only ever float-aligned.
-layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Block
+layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Block
 {
     vec3 values[];
 };

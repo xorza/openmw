@@ -241,6 +241,9 @@ namespace Rtx
         /// `RendererOptions::mCountCrossings` says why that is a switch of its own.
         bool mCountCrossings = false;
 
+        /// How wide both chains store their radiance, decided once with the rest of the run.
+        RadianceWidth mRadianceWidth = RadianceWidth::Summed;
+
         /// The frames in flight and what each came to. After the two counters, which it borrows.
         FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits, mCountCrossings };
 

@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_VARIANTS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_VARIANTS_GLSL
 
@@ -27,8 +25,7 @@
 /// false the constant folds away and the buffer is never touched.
 layout(constant_id = 0) const bool COUNT_HITS = false;
 
-/// Whether the sun is over the horizon. `mSunIrradiance` is nought exactly where it is not, and
-/// fades to that across dusk rather than stepping, so an interior and a night are the same answer.
+/// Whether the sun is over the horizon: the constant half of `sunUp`, which says the rest.
 layout(constant_id = 1) const bool HAS_SUN = true;
 
 /// Whether either moon is drawn or lights anything. Both a disc with an alpha and a light with an

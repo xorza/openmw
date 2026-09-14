@@ -113,7 +113,7 @@ namespace Rtx
         return VisibilityVariant{
             // Nought exactly where the sun is not up, and it fades to that across dusk rather than
             // stepping — `VisibilityConstants::mSunIrradiance` says why there is no second field.
-            .mSun = frame.mSunIrradiance != Shaders::vec3(),
+            .mSun = frame.mSun.mIrradiance != Shaders::vec3(),
             .mMoons = moons,
 
             // Either half is water in the frame: a surface the eye can meet, or a level it can be

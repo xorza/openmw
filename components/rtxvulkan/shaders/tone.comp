@@ -1,13 +1,9 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
-// No format, because the two images that reach this binding are not one format.
-// `VulkanRenderer::createTargets` says why the upscaler's own output is the narrower of them.
+// No format, because the images that reach this binding are not one format: the composite's
+// frame at whichever width the run chose, or the upscaler's half floats.
 #extension GL_EXT_shader_image_load_formatted : require
-// `tone.h` compiles `VisibilityConstants`, which carries the scene's tables as 64-bit addresses.
-// Nothing here reads them, and the type still has to exist for the struct to compile.
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // Scene-referred radiance to bytes a display understands, and the sky's own points over it.
 //
@@ -58,7 +54,8 @@ layout(push_constant, scalar) uniform Push
 void main()
 {
     const uvec2 pixel = gl_GlobalInvocationID.xy;
-    if (outsideOf(pixel, uvec2(frame.mWidth, frame.mHeight)))
+    const uvec2 extent = uvec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
+    if (outsideOf(pixel, extent))
         return;
 
     const ivec2 at = ivec2(pixel);
@@ -69,7 +66,7 @@ void main()
     // added; `ToneConstants::mBloom` says why it lands here and not on the radiance image itself.
     if (frame.mBloom > 0.0)
     {
-        const vec2 uv = (vec2(pixel) + 0.5) / vec2(frame.mWidth, frame.mHeight);
+        const vec2 uv = (vec2(pixel) + 0.5) / vec2(extent);
         lit.rgb = mix(lit.rgb, bloomSpread(bloom, uv, frame.mBloomTexel), frame.mBloom);
     }
 
@@ -87,7 +84,7 @@ void main()
     // once in a while, and the four taps that would rule it out are four times the traffic for it.
     if (frame.mStars.mTexture != NO_TEXTURE)
     {
-        const vec2 across = vec2(frame.mTracedWidth, frame.mTracedHeight) / vec2(frame.mWidth, frame.mHeight);
+        const vec2 across = vec2(frame.mTracedWidth, frame.mTracedHeight) / vec2(extent);
         const vec3 shown = imageLoad(starsShown, ivec2(vec2(pixel) * across)).rgb;
 
         if (any(greaterThan(shown, vec3(0.0))))

@@ -10,8 +10,6 @@
 
 #include <osg/Vec2f>
 
-#include <components/rtx/shaders/gbuffer.h>
-
 #include "barriers.hpp"
 #include "commands.hpp"
 #include "device.hpp"
@@ -34,10 +32,6 @@ namespace Rtx
             computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
-
-        /// The side of the workgroup `wavecompose.comp` declares, which is what its dispatch has
-        /// to be counted in.
-        constexpr std::uint32_t sWaveWorkgroup = 8;
 
         /// How many complex numbers the transform runs over for one tile: three packed fields, each
         /// the grid itself.
@@ -80,8 +74,8 @@ namespace Rtx
             tile.mField = Buffer::deviceLocal(mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("field", index));
 
-            tile.mSurface = Image(mDevice, grid, grid, GBUFFER_ALBEDO, usage, tileName("surface", index), levels);
-            tile.mCurvature = Image(mDevice, grid, grid, GBUFFER_ALBEDO, usage, tileName("curvature", index), levels);
+            tile.mSurface = Image(mDevice, grid, grid, WAVE_TILE_FORMAT, usage, tileName("surface", index), levels);
+            tile.mCurvature = Image(mDevice, grid, grid, WAVE_TILE_FORMAT, usage, tileName("curvature", index), levels);
         }
 
         describe(mSea);
@@ -178,8 +172,8 @@ namespace Rtx
                 .mExtent = sWaveTiles[index].mExtent,
                 .mTime = seconds,
             };
-            dispatch(commands, mFormPipeline, forms.get(), shaped, groupsFor(grid, sWaveWorkgroup),
-                groupsFor(grid, sWaveWorkgroup));
+            dispatch(commands, mFormPipeline, forms.get(), shaped, groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP),
+                groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP));
             handOver(commands);
 
             transform(commands, tile, grid);
@@ -190,8 +184,8 @@ namespace Rtx
             composes.image(2, tile.mCurvature.describeStorage());
 
             const Shaders::WaveComposeConstants unpacked{ .mCount = grid };
-            dispatch(commands, mComposePipeline, composes.get(), unpacked, groupsFor(grid, sWaveWorkgroup),
-                groupsFor(grid, sWaveWorkgroup));
+            dispatch(commands, mComposePipeline, composes.get(), unpacked,
+                groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP), groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP));
 
             for (const Image* image : { &tile.mSurface, &tile.mCurvature })
                 image->buildMips(commands);

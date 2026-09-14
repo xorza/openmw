@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SHADING_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SHADING_GLSL
 
@@ -13,6 +11,7 @@
 #include "frame.glsl"
 #include "lights.glsl"
 #include "random.glsl"
+#include "records.glsl"
 #include "sky.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
@@ -35,20 +34,23 @@ const uint PATH_INDIRECT = 1u;
 /// One shadow ray per light that could reach at all, and none for a light the surface faces away
 /// from — the two tests before it are what keep a cell's worth of lamps affordable.
 ///
-/// @param side what decides which side of the surface a light has to stand on, which
-///        `Surface::mClosed` picks between the plane and the shading normal. `litCosine` says why
-///        neither answers for both.
-/// @param footprint how wide the cone that found this point had grown, which is the scale the
-///        caustics are allowed to resolve waves at.
+/// What it reads of the surface: where it is, its shading normal, which side a light has to stand
+/// on — `Surface::mClosed` picks between the plane and the shading normal, and `litCosine` says why
+/// neither answers for both — how wide the cone that found it had grown, which is the scale the
+/// caustics resolve waves at, and what a light on its far side is worth, `Surface::mTransmission`.
+///
 /// @param seed which draw sequence the lamp reservoir steps. **One per depth of the path**, because
 ///        a bounce shades a second surface and two reservoirs stepping one sequence would keep
 ///        correlated lamps at both ends of it.
-/// @param transmission what a light on the far side of the surface is worth to this side, which
-///        is `Surface::mTransmission`: nought for a solid, `SHEET_TRANSMISSION` for a leaf.
 /// @param path `PATH_SEEN` or `PATH_INDIRECT`. It decides whether the moons are asked at all, and
 ///        whether the rest of this is drawn at `INDIRECT_LIGHT_RATE` or spent on every hit.
-vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transmission, uint seed, uint path)
+vec3 gather(Surface surface, uint seed, uint path)
 {
+    const vec3 position = surface.mPosition;
+    const vec3 normal = surface.mNormal;
+    const vec3 side = surface.mClosed ? surface.mNormal : surface.mGeometric;
+    const float transmission = surface.mTransmission;
+
     vec3 radiance = vec3(0.0);
 
     // **Drawn before anything else and out of a sequence of its own**: the ordering below is what
@@ -128,7 +130,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
 
         const float chance = picked.mWeight / total;
 
-        radiance += picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, footprint)
+        radiance += picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, surface.mFootprint)
             * (picked.mCosine * INV_PI * skyVisible(picked.mSky, position, sunDraw) / chance);
     }
 
@@ -175,35 +177,6 @@ vec3 pathEnd(vec3 position, float reaching)
     return frame.mAmbient * (daylightReaching(position) * reaching);
 }
 
-/// What a shading model made of a surface, in the terms a temporal upscaler demodulates by.
-///
-/// **Reported by whatever shaded the pixel rather than guessed after it.** Ray Reconstruction
-/// separates a noisy pixel into a diffuse and a specular half using the albedos and the roughness it
-/// is handed, so those three have to describe what this renderer actually did — and only the
-/// function that did it knows. A constant roughness of one, a permanently zero specular albedo and
-/// the *flat quad's* normal for water is a description of a renderer nobody wrote.
-struct SurfaceResponse
-{
-    /// The normal the shading used, which for water is the wave's and not the plane's.
-    vec3 mNormal;
-
-    /// What the diffuse half is multiplied by, and nothing else: the surface's own albedo, with
-    /// none of what the path took off it between here and the eye.
-    vec3 mDiffuse;
-
-    /// What the specular half is multiplied by — the surface's reflectance at this angle.
-    vec3 mSpecular;
-
-    /// Nought for a mirror and one for Lambert.
-    float mRoughness;
-};
-
-/// A pixel with no surface behind it: the sky, or a ray that reached nothing.
-SurfaceResponse noResponse()
-{
-    return SurfaceResponse(vec3(0.0), vec3(0.0), vec3(0.0), 1.0);
-}
-
 /// What `shadeSurface` does, said in those terms. Perfectly rough and perfectly diffuse, because
 /// that is exactly what a Lambert model is — and until there is a material model saying otherwise,
 /// it is the true answer rather than a stand-in for one.
@@ -228,11 +201,7 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
     // The emissive *map* is the other way round, and that is the engine's doing too
     // (`objects.frag:244`): added after the multiply, so it glows through whatever the surface is
     // made of rather than being tinted by it.
-    return surface.mAlbedo
-        * (incoming
-            + gather(surface.mPosition, surface.mNormal, surface.mClosed ? surface.mNormal : surface.mGeometric,
-                surface.mFootprint, surface.mTransmission, seed, path)
-            + surface.mEmissiveColour * EMISSIVE_INTENSITY)
+    return surface.mAlbedo * (incoming + gather(surface, seed, path) + surface.mEmissiveColour * EMISSIVE_INTENSITY)
         + surface.mEmitted;
 }
 
@@ -339,6 +308,22 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
     return weight * lightThrough(position, towards, frame.mFar) / AMBIENT_EXTERIOR_RATE;
 }
 
+/// What a surface a path ends at sends back: `pathEnd`, dimmed by one occlusion ray of its own,
+/// through `shadeSurface`.
+///
+/// **One statement of the tail every path shares**, because three ended it for themselves: the
+/// pane the eye looks through, the far end of a water ray, and the hit the eye's bounce found.
+///
+/// @param ambientSeed the sequence the occlusion ray draws from, and `lampSeed` the one the lamp
+///        reservoir steps. Two, for the reason `SEED_AMBIENT_REACHING` gives.
+vec3 shadeAtPathEnd(Surface hit, uint ambientSeed, uint lampSeed, uint path)
+{
+    const float reaching
+        = ambientReaching(hit.mPosition, hit.mNormal, hit.mGeometric, hit.mTransmission, ambientSeed);
+
+    return shadeSurface(hit, pathEnd(hit.mPosition, reaching), lampSeed, path);
+}
+
 /// What a bounce brings back when it reaches nothing.
 ///
 /// The glow and not the disc: the sun is already a term of its own in `gather`, and a bounce that
@@ -352,8 +337,7 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
 ///
 /// Dimmed by the column of water over the point, on `daylightReaching`'s vertical approximation and
 /// for its reason: this ray left for the sky and the sky is above, so what stands between them is the
-/// depth. Without it a flooded floor reads brighter than the same floor seen from over the surface,
-/// which is the disagreement M6 closed.
+/// depth. Without it a flooded floor reads brighter than the same floor seen from over the surface.
 vec3 bounceEscape(vec3 position, vec3 towards, float weight)
 {
     if (!skyLights())
@@ -416,14 +400,12 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     if (!hit.mHit)
         return bounceEscape(surface.mPosition, towards, weight);
 
-    const float reaching = ambientReaching(
-        hit.mPosition, hit.mNormal, hit.mGeometric, hit.mTransmission, pixelKey(pixel) + SEED_AMBIENT_REACHING);
-
     // **Its glow is counted here, because this is the only path it takes.** Nothing gives a glowing
     // surface a lamp of its own — `EMISSIVE_INTENSITY` says what measuring that showed — so a ray
     // that lands on a mushroom cap is what carries the cap's glow back to whatever sent it.
     return weight
-        * shadeSurface(hit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE, PATH_INDIRECT);
+        * shadeAtPathEnd(
+            hit, pixelKey(pixel) + SEED_AMBIENT_REACHING, pixelKey(pixel) + SEED_LAMPS_BOUNCE, PATH_INDIRECT);
 }
 
 /// What a solid the eye found is: its direct light, the one bounce it gathers, and what it is in the

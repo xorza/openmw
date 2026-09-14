@@ -571,7 +571,11 @@ namespace RtxTool
         int commandBench(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const FrameRequest frame = frameFrom(command);
+            FrameRequest frame = frameFrom(command);
+
+            // A bench draws frames the way a player sees them and sums none of them, so it is
+            // measured at the width the game runs at. Every other verb keeps the reference's.
+            frame.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
 
             std::string suite;
             applyHostedSettings(frame);
@@ -669,8 +673,11 @@ namespace RtxTool
             request.mQuitAtEnd = frames > 0;
             request.mValidation = validationFrom(variables);
 
-            return runHosted(
-                variables, command.mConfig, command.mResources, frameFrom(command).mProfile, std::move(request), true);
+            // Watched and never summed, like a bench.
+            Rtx::RenderProfile profile = frameFrom(command).mProfile;
+            profile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+
+            return runHosted(variables, command.mConfig, command.mResources, profile, std::move(request), true);
         }
 
         /// Whether a place staged this way can answer `check` at all, which is a different question

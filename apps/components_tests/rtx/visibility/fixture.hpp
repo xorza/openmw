@@ -108,8 +108,8 @@ namespace Rtx::Testing
     /// tests name an exact value.
     inline void litThroughWater(Shaders::VisibilityConstants& camera, float zenith = sNearlyOverhead)
     {
-        camera.mSunPosition = sunStandingAt(zenith);
-        camera.mSunIrradiance = osg::Vec3f(sSunOverWater, sSunOverWater, sSunOverWater);
+        camera.mSun
+            = Shaders::sunSource(sunStandingAt(zenith), osg::Vec3f(sSunOverWater, sSunOverWater, sSunOverWater));
         camera.mSkyHorizon = osg::Vec3f();
         camera.mSkyZenith = osg::Vec3f();
         camera.mWaterLevel = 0.0f;
@@ -164,8 +164,7 @@ namespace Rtx::Testing
         const osg::Vec3f& origin = osg::Vec3f(100.0f, -100.0f, 0.0f), const osg::Vec3f& target = osg::Vec3f())
     {
         Shaders::VisibilityConstants camera = makeCamera(origin, target, 60.0f, size, size, 10000.0f);
-        camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-        camera.mSunIrradiance = irradiance;
+        camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -1.0f, 0.0f), irradiance);
 
         return camera;
     }

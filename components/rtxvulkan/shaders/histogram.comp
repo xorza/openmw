@@ -1,9 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
-// No format, because the two images that reach this binding are not one format.
-// `VulkanRenderer::createTargets` says why the upscaler's own output is the narrower of them.
 #extension GL_EXT_shader_image_load_formatted : require
 
 // How bright the frame is, as a histogram of log luminance.
@@ -39,17 +36,6 @@ layout(push_constant, scalar) uniform Push
 /// atomic each. The buffer then sees one atomic per bin per workgroup instead of one per pixel.
 shared uint localBins[EXPOSURE_BINS];
 
-uint binOf(float luminance)
-{
-    if (luminance < EXPOSURE_BLACK)
-        return 0u;
-
-    // Bin zero is reserved for black, so the resolved range starts at one.
-    const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
-    const float normalised = (log2(luminance) - MIN_LOG_LUMINANCE) / span;
-    return uint(clamp(normalised, 0.0, 1.0) * float(EXPOSURE_BINS - 2u)) + 1u;
-}
-
 void main()
 {
     localBins[gl_LocalInvocationIndex] = 0u;
@@ -59,7 +45,7 @@ void main()
     if (!outsideOf(pixel, uvec2(frame.mWidth, frame.mHeight)))
     {
         const float luminance = dot(imageLoad(source, ivec2(pixel)).rgb, LUMINANCE_WEIGHTS);
-        atomicAdd(localBins[binOf(luminance)], 1u);
+        atomicAdd(localBins[luminanceBin(luminance)], 1u);
     }
     barrier();
 

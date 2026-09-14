@@ -1,11 +1,9 @@
-// `#pragma once` everywhere else in this tree, and an include guard here: `glslc` warns
-// "'#pragma once' : not implemented" and carries on, so a header included twice by one
-// shader would redefine everything in it.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_VISIBILITY_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_VISIBILITY_H
 
 #include "camera.h"
 #include "hosttypes.h"
+#include "look.h"
 #include "portable.h"
 #include "scene.h"
 #include "sky.h"
@@ -99,26 +97,30 @@ namespace Rtx::Shaders
         /// answer and every pixel is opaque.
         uint mTransparentBackground;
 
-        /// Where the sun stands, unit, and how much of its light arrives on a surface square to it.
+        /// The sun as a light: where it stands, unit; how much of its light arrives on a surface
+        /// square to it; and the sine of the cone its shadow rays are drawn from, which is
+        /// `SUN_SHADOW_SINE` and not the disc's own half degree — `SUN_SHADOW_RADIUS` says why.
         ///
         /// One directional light, handled apart from the point lights because it has no position and
         /// no falloff: it is the same everywhere and its shadow ray runs to the end of the world.
+        /// **The same record a moon lights with**, so a surface and a froxel weigh the three sources
+        /// in the sky by one rule and `skySourceAt` derives nothing.
         ///
-        /// **One vector and not two**, so `-mSunPosition` is where the light travels. The game gives
-        /// its light a fixed climb and its disc a height of `swing - |east|`; a rasterizer can hold
-        /// both, and a tracer answering to each in turn gets a different sun in the shadows, the
-        /// water and the haze.
+        /// **One direction and not two**, so `-mDirection` is where the light travels. The game
+        /// gives its light a fixed climb and its disc a height of `swing - |east|`; a rasterizer can
+        /// hold both, and a tracer answering to each in turn gets a different sun in the shadows,
+        /// the water and the haze.
         ///
-        /// **And one test for whether there is a sun at all: `mSunIrradiance` is zero.** An
-        /// interior, a night, and either end of the day once the disc has gone into the horizon all
-        /// say it that way, and every use of the sun below is gated on it — the shadow ray, the
-        /// caustics, the shafts and the disc. There is deliberately no second field saying whether
-        /// the disc is drawn; `Rtx::makeSkylight` is where that is kept true and why.
+        /// **And one test for whether there is a sun at all: `mIrradiance` is zero.** An interior, a
+        /// night, and either end of the day once the disc has gone into the horizon all say it that
+        /// way, and every use of the sun below is gated on it — the shadow ray, the caustics, the
+        /// shafts and the disc. There is deliberately no second field saying whether the disc is
+        /// drawn; `Rtx::makeSkylight` is where that is kept true and why.
         ///
-        /// The position stays meaningful through the night even so, because a moon's crescent points
-        /// at where the sun would be. Where it is and whether it is there are separate questions.
-        vec3 mSunPosition;
-        vec3 mSunIrradiance;
+        /// The direction stays meaningful through the night even so, because a moon's crescent
+        /// points at where the sun would be. Where it is and whether it is there are separate
+        /// questions.
+        SkySource mSun;
 
         /// What the disc is painted with, linear.
         ///
@@ -411,18 +413,25 @@ namespace Rtx::Shaders
         ///
         /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
         /// pad the middle of a struct two languages have to agree on, and the offset asserted below
-        /// pins where it landed. Everything above it is four-aligned and sums to four short of a
-        /// multiple of eight, so four bytes are padded in front of it, on both sides alike; the
-        /// next four-byte field added above takes them.
+        /// pins where it landed. Everything above it is four-aligned and sums to a multiple of
+        /// eight, so nothing is padded in front of it; the next four-byte field added above puts
+        /// four bytes there, on both sides alike.
         GpuTables mTables;
     };
 
+#ifdef RTX_HOST
+    /// The sun as the frame carries it, with the one limb every sun is drawn from. The host's one
+    /// spelling of `mSun`, so a frame assembled by hand cannot leave the cone at nought and cast a
+    /// hard edge.
+    inline SkySource sunSource(const vec3& direction, const vec3& irradiance)
+    {
+        return SkySource{ direction, irradiance, SUN_SHADOW_SINE };
+    }
+
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#ifdef RTX_HOST
     static_assert(offsetof(VisibilityConstants, mTables) == 1016, "GpuTables must land eight-aligned and last");
     static_assert(sizeof(VisibilityConstants) == 1136, "VisibilityConstants must be scalar-packed on every side");
-
 #endif
 
 #ifdef RTX_HOST

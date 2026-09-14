@@ -68,6 +68,14 @@ namespace Rtx
                     return f.mFeatures2.features.shaderStorageImageReadWithoutFormat;
                 } },
 
+            // And the store's half: the trace writes the two radiance channels and the composite
+            // writes the frame at whichever width the run chose — `Rtx::RadianceWidth` — so those
+            // three declare no format either.
+            RequiredFeature{ "shaderStorageImageWriteWithoutFormat",
+                +[](DeviceFeatures& f) -> VkBool32& {
+                    return f.mFeatures2.features.shaderStorageImageWriteWithoutFormat;
+                } },
+
             RequiredFeature{ "bufferDeviceAddress",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.bufferDeviceAddress; } },
 

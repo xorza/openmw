@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_HITSTAGE_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_HITSTAGE_GLSL
 
@@ -10,6 +8,10 @@
 // apiece — which albedo `resolve` is allowed to build, and whether the surface is shaded as water —
 // and everything else about them is here. Three copies of this is how they would come to disagree
 // about a hit the launch can no longer see for itself.
+
+// `gl_HitTriangleVertexPositionsEXT`, which is the stage's own reading of what `traversal.glsl`
+// reads off a query.
+#extension GL_EXT_ray_tracing_position_fetch : require
 
 #include "camera.h"
 #include "scene.h"
@@ -86,11 +88,8 @@ void answerSolid(inout VisibilityPayload answer, Surface surface)
     if (isSeenThrough(surface.mOpacity) && record.mLayer < PEEL_LAYERS)
     {
         const uint key = pixelKey(pixel);
-        const float reaching = ambientReaching(surface.mPosition, surface.mNormal, surface.mGeometric,
-            surface.mTransmission, key + paneAmbientSeed(record.mLayer));
-
-        answer.mRadiance = shadeSurface(
-            surface, pathEnd(surface.mPosition, reaching), key + paneSeed(record.mLayer), PATH_SEEN);
+        answer.mRadiance
+            = shadeAtPathEnd(surface, key + paneAmbientSeed(record.mLayer), key + paneSeed(record.mLayer), PATH_SEEN);
         return;
     }
 
@@ -132,9 +131,12 @@ void answerWater(inout VisibilityPayload answer, Surface surface)
 
     answer.mWater = true;
 
-    float shore;
-    answer.mRadiance = shadeWater(surface, direction, answer.mResponse, answer.mMirror, pixel, shore);
+    const WaterShading water = shadeWater(surface, direction, pixel);
+    answer.mRadiance = water.mRadiance;
+    answer.mResponse = water.mResponse;
+    answer.mMirror = water.mMirror;
 
+    const float shore = water.mShore;
     if (shore >= 1.0)
         return;
 

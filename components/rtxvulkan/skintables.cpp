@@ -12,11 +12,6 @@ namespace Rtx
 {
     namespace
     {
-        /// What a reference to a row of `GpuBone`s claims of every address it is constructed from.
-        /// A claim larger than the truth is undefined behaviour with no message, so the host checks
-        /// it where the address is made.
-        constexpr VkDeviceAddress sBoneAlignment = 16;
-
         /// Every index below `count`, refilled into `into`.
         std::span<const Index> everyBelow(std::size_t count, std::vector<Index>& into)
         {
@@ -167,7 +162,8 @@ namespace Rtx
     {
         const VkDeviceAddress address
             = mBones.at(slot).addressFor() + VkDeviceSize{ mesh.mPoseOffset } * sizeof(Shaders::GpuBone);
-        assert(address % sBoneAlignment == 0 && "a run of rows the kernel's reference claims more of than is true");
+        assert(
+            address % Shaders::BONE_ALIGN == 0 && "a run of rows the kernel's reference claims more of than is true");
         return address;
     }
 

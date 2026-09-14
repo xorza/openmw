@@ -94,8 +94,6 @@ namespace Rtx
             shown.mHeight = height;
 
             return Shaders::ToneConstants{
-                .mWidth = width,
-                .mHeight = height,
                 .mTracedWidth = tracedWidth,
                 .mTracedHeight = tracedHeight,
                 .mCamera = shown,
@@ -114,6 +112,7 @@ namespace Rtx
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
         , mCountCrossings(options.mCountCrossings)
+        , mRadianceWidth(options.mRadianceWidth)
         , mUpscaling(options.mUpscaling)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
@@ -271,7 +270,7 @@ namespace Rtx
         // The layer channels only where something upscales, which is the same test
         // `mLayerCompositedAfter` makes of the shader: Ray Reconstruction is the one reader the
         // trace hands a separate layer to, and a frame nothing upscales composites its own.
-        mFrame.resize(render.width, render.height, upscaling());
+        mFrame.resize(render.width, render.height, upscaling(), mRadianceWidth);
 
         // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
@@ -286,10 +285,11 @@ namespace Rtx
 
         if (upscaling())
         {
-            // Half floats, where the trace's own composite is full ones: this one is shown and never
-            // summed. The peak linear radiance a frame of this game reaches is under nine, measured
-            // over the view suite and a camera pointed at the noon sun, so a half carries it with
-            // four orders of magnitude to spare at a step finer than the display's.
+            // Half floats whatever width the run gave the trace's own composite: this one is shown
+            // and never summed. The peak linear radiance a frame of this game reaches is under nine,
+            // measured over the view suite and a camera pointed at the noon sun, so a half carries
+            // it with four orders of magnitude to spare at a step finer than the display's — which
+            // is also `RadianceWidth::Shown`'s argument.
             mUpscaled = Image(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");
 
@@ -1115,7 +1115,7 @@ namespace Rtx
         // The one drain a picture still pays, and only the first picture of a new size pays it.
         finishTraces();
 
-        mView.grow(width, height, false);
+        mView.grow(width, height, false, mRadianceWidth);
 
         mViewTarget = Image(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");

@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdint>
 
 #include <gtest/gtest.h>
@@ -163,6 +164,20 @@ namespace Rtx
             // second here would turn a stop's sky to a weather the settings never wrote.
             EXPECT_FALSE(weatherIndex("clear").has_value());
             EXPECT_FALSE(weatherIndex("").has_value());
+        }
+
+        /// The sun's cone is drawn from a literal sine, and the literal is the angle's.
+        ///
+        /// **To within one step of what `sin` of the float angle gives**, because the shader folded
+        /// the sine before the host wrote the limb and its fold landed one step above this box's,
+        /// and the picture is held to what it was. A change to `SUN_SHADOW_RADIUS` fails here
+        /// until the sine is written out again.
+        TEST(RtxSkylightTest, theSunsShadowSineIsTheSineOfItsShadowRadius)
+        {
+            const float sine = std::sin(Rtx::Shaders::SUN_SHADOW_RADIUS);
+            EXPECT_LE(std::abs(Rtx::Shaders::SUN_SHADOW_SINE - sine), std::nextafter(sine, 1.0f) - sine);
+            EXPECT_EQ(Rtx::Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(1.0f, 1.0f, 1.0f)).mLimb,
+                Rtx::Shaders::SUN_SHADOW_SINE);
         }
 
         /// The hour holds an exposure back, and a noon does not.

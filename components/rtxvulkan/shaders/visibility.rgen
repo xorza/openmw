@@ -1,14 +1,8 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_ray_query : require
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_shader_invocation_reorder : require
-#extension GL_EXT_ray_tracing_position_fetch : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // The frame, composed. One ray per pixel against the top-level structure; what a pixel *shows* is
 // answered by whichever shader the hit table names, and this is the order those answers are put
@@ -149,13 +143,6 @@ void main()
     const Cone cone = coneAt(frame.mCamera);
     const bool submerged = waterOver(origin) > 0.0;
 
-    vec3 shaded = answer.mRadiance;
-    vec3 bounced = answer.mBounced;
-    SurfaceResponse response = answer.mResponse;
-    WaterMirror mirror = answer.mMirror;
-    float skyShown = answer.mSkyShown;
-    bool water = answer.mWater;
-
     // **The surfaces the eye is looking through, peeled off nearest first and kept.** A pane of
     // glass is one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance
     // fade at the edge of `actors processing range`. Each was met like any other surface and lit
@@ -195,7 +182,7 @@ void main()
     // stack is measured against below. Nothing at all where nothing was peeled.
     vec3 peeledScattered = vec3(0.0);
 
-    for (uint layer = 0u; layer < PEEL_LAYERS && hit && !water && isSeenThrough(answer.mOpacity); ++layer)
+    for (uint layer = 0u; layer < PEEL_LAYERS && hit && !answer.mWater && isSeenThrough(answer.mOpacity); ++layer)
     {
         const MediumAhead ahead = mediumAhead(
             pixel, origin, direction, distance, distance, cone.mWidth + cone.mSpread * distance, submerged);
@@ -203,7 +190,7 @@ void main()
         // The stretch of medium since the layer in front of this one, and then this layer over
         // everything short of it — both behind whatever the layers in front of it left.
         paneRadiance += paneThrough
-            * (ahead.mScattered - peeledScattered + ahead.mThrough * (shaded * answer.mOpacity));
+            * (ahead.mScattered - peeledScattered + ahead.mThrough * (answer.mRadiance * answer.mOpacity));
 
         paneThrough *= 1.0 - answer.mOpacity;
         peeledScattered = ahead.mScattered;
@@ -218,14 +205,12 @@ void main()
         hit = hitObjectIsHitEXT(found);
         distance = hitObjectGetRayTMaxEXT(found);
         instance = hitObjectGetInstanceCustomIndexEXT(found);
-
-        shaded = answer.mRadiance;
-        bounced = answer.mBounced;
-        response = answer.mResponse;
-        mirror = answer.mMirror;
-        skyShown = answer.mSkyShown;
-        water = answer.mWater;
     }
+
+    // **The last shader's answer, read where it is.** The payload holds what the surface behind the
+    // stack sent back, and everything below composes over it; the rest of the payload is read at
+    // the stores, and nothing between here and there changes it.
+    vec3 shaded = answer.mRadiance;
 
     // **What the surface is, kept apart from what the path did to it.** An albedo multiplied by
     // every transmittance on the way to the eye is what the composite wants back and is not what
@@ -422,10 +407,10 @@ void main()
     //
     // Filtering the bounce with the transmittance already in it averages a quantity that varies as
     // slowly as fog does, which is to say it changes nothing.
-    imageStore(indirect, at, vec4(bounced * transmittance, 1.0));
-    imageStore(albedo, at, vec4(response.mDiffuse, 1.0));
-    imageStore(specular, at, vec4(response.mSpecular, 1.0));
-    imageStore(guide, at, vec4(response.mNormal, response.mRoughness));
+    imageStore(indirect, at, vec4(answer.mBounced * transmittance, 1.0));
+    imageStore(albedo, at, vec4(answer.mResponse.mDiffuse, 1.0));
+    imageStore(specular, at, vec4(answer.mResponse.mSpecular, 1.0));
+    imageStore(guide, at, vec4(answer.mResponse.mNormal, answer.mResponse.mRoughness));
 
     // **A sprite that hides nothing still moves something.** Additive blending leaves the
     // transmittance at one by definition, so a flame or a spark shows up only in what it added —
@@ -491,13 +476,14 @@ void main()
     // **The one surface in this frame that shows something standing somewhere else.** Water is
     // shaded where it is seen, so the vector above describes the surface and not what is in it; this
     // is the other one, and the upscaler weighs the two by the specular albedo it was already given.
-    imageStore(reflectionMotion, at, vec4(water ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
+    imageStore(reflectionMotion, at,
+        vec4(answer.mWater ? mirrorMotionOf(pixel, origin, answer.mMirror) : vec2(0.0), 0.0, 0.0));
 
     // **What the display pass has to draw the star field through**, which is everything this frame
     // put between the field and the eye: the sky's own layers in `skyShown`, and the pane, the
     // water, the air and the sprites in the transmittance the light itself was already taken down
     // by. `starsShown` in `bindings.glsl` says why that pass cannot work any of it out for itself.
-    imageStore(starsShown, at, vec4(skyShown * transmittance, 1.0));
+    imageStore(starsShown, at, vec4(answer.mSkyShown * transmittance, 1.0));
 
     // A miss is as far away as anything can be, and the hit object already carries `mFar` for it.
     imageStore(depth, at, vec4(hit ? clipDepth(direction, distance) : 1.0, distance, 0.0, 0.0));

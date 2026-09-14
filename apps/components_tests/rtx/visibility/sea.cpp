@@ -479,8 +479,8 @@ namespace Rtx::Testing
             const auto lookAtTheSun = [&](float fov) {
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -500.0f, 0.0f), osg::Vec3f(0.0f, -501.0f, 1.0f), fov, size, size, 10000.0f);
-                camera.mSunPosition = sunStandingAt(osg::DegreesToRadians(45.0f));
-                camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
+                camera.mSun = Shaders::sunSource(
+                    sunStandingAt(osg::DegreesToRadians(45.0f)), osg::Vec3f(irradiance, irradiance, irradiance));
 
                 // **The disc is drawn because there is light, which is one fact and not two.** What
                 // it is painted with is still its own colour, and white is the plain noon of it.
@@ -568,8 +568,8 @@ namespace Rtx::Testing
                 // the disc in the water are never in the same picture.
                 osg::Vec3f view = at - eye;
                 view.normalize();
-                camera.mSunPosition = osg::Vec3f(view.x(), view.y(), -view.z());
-                camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
+                camera.mSun = Shaders::sunSource(
+                    osg::Vec3f(view.x(), view.y(), -view.z()), osg::Vec3f(irradiance, irradiance, irradiance));
                 camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mWaterLevel = 0.0f;
 
@@ -624,8 +624,7 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants camera
                     = makeOrthographicCameraFromView(view, across, across, size, size, 1.0f, 100000.0f);
 
-                camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
-                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+                camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
                 camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mSkyHorizon = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mSkyZenith = camera.mSkyHorizon;
@@ -696,15 +695,15 @@ namespace Rtx::Testing
                 {
                     osg::Vec3f view = at - eye;
                     view.normalize();
-                    camera.mSunPosition = osg::Vec3f(view.x(), view.y(), -view.z());
-                    camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
+                    camera.mSun = Shaders::sunSource(
+                        osg::Vec3f(view.x(), view.y(), -view.z()), osg::Vec3f(irradiance, irradiance, irradiance));
                     camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
                     camera.mSkyHorizon = osg::Vec3f();
                     camera.mSkyZenith = osg::Vec3f();
                 }
                 else
                 {
-                    camera.mSunIrradiance = osg::Vec3f();
+                    camera.mSun.mIrradiance = osg::Vec3f();
                     camera.mSkyHorizon = osg::Vec3f(0.1f, 0.1f, 0.1f);
                     camera.mSkyZenith = osg::Vec3f(0.9f, 0.9f, 0.9f);
                 }

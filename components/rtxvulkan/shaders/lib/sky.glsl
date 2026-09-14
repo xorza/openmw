@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SKY_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SKY_GLSL
 
@@ -280,7 +278,7 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
     const vec2 face = at / max(across, 1.0);
     const vec3 normal = vec3(face, sqrt(max(1.0 - dot(face, face), 0.0)));
 
-    const vec2 toward = vec2(dot(frame.mSunPosition, moon.mRight), dot(frame.mSunPosition, moon.mUp));
+    const vec2 toward = vec2(dot(frame.mSun.mDirection, moon.mRight), dot(frame.mSun.mDirection, moon.mUp));
     const float turn = dot(toward, toward) > 0.0 ? atan(toward.y, toward.x) : 0.0;
     const vec3 light
         = vec3(sin(moon.mPhaseAngle) * cos(turn), sin(moon.mPhaseAngle) * sin(turn), cos(moon.mPhaseAngle));
@@ -374,7 +372,7 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
     // second field saying whether to draw the disc is what once let a sun shadow out of an empty
     // sky, and there is no longer one to disagree with.
     const float edge = 2.0 * sin(0.5 * (SUN_ANGULAR_RADIUS + blur));
-    if (sunUp() && length(direction - frame.mSunPosition) < edge)
+    if (sunUp() && length(direction - frame.mSun.mDirection) < edge)
     {
         // **The sun's radiance is five orders of magnitude above the sky's** and this does not
         // pretend otherwise, so it saturates until there is an exposure stage to bring it down.
@@ -391,7 +389,7 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
         // Capped for the sake of what holds a history of it rather than for the picture, which
         // cannot tell this from the five figures the division gives. `MAX_SUN_RADIANCE` says why.
         const float radiance
-            = min(brightest(frame.mSunIrradiance) / (0.5 * TAU * edge * edge), MAX_SUN_RADIANCE);
+            = min(brightest(frame.mSun.mIrradiance) / (0.5 * TAU * edge * edge), MAX_SUN_RADIANCE);
 
         colour += radiance * frame.mSunDiscColour;
     }
@@ -405,7 +403,7 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
     // **This is also the whole of an eclipse**, and of one moon in front of the other: Masser is
     // nineteen degrees across against the sun's half a degree, so on the rare crossing it is total.
     if (HAS_MOONS)
-        for (uint moon = 0u; moon < 2u; ++moon)
+        for (uint moon = 0u; moon < MOON_COUNT; ++moon)
         {
             float covered;
             const vec3 face = moonFace(frame.mMoons[moon], direction, blur, covered);

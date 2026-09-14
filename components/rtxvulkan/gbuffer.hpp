@@ -7,6 +7,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
 #include "descriptorsets.hpp"
@@ -29,6 +30,13 @@ namespace Rtx
     ///
     /// Ray Reconstruction asks for exactly this — demodulated radiance, the albedo to put back,
     /// normals and depth — so the split earns its place whichever filter runs over it.
+    /// What the two radiance channels, and the frame composed from them, are made of at a width:
+    /// `Rtx::RadianceWidth` carries the argument for each.
+    constexpr VkFormat radianceFormat(const RadianceWidth width)
+    {
+        return width == RadianceWidth::Summed ? GBUFFER_RADIANCE_SUMMED : GBUFFER_RADIANCE_SHOWN;
+    }
+
     class GBuffer
     {
     public:
@@ -36,8 +44,10 @@ namespace Rtx
         ///        Only an upscaled frame does — `VisibilityConstants::mLayerCompositedAfter` is the
         ///        same question asked of the shader — and where nothing does, the three channels
         ///        are one texel each instead of the frame's own extent.
+        /// @param radiance how wide the two radiance channels are stored, which is the run's choice
+        ///        and `Rtx::RadianceWidth`'s argument.
         GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
-            std::uint32_t height, bool layers);
+            std::uint32_t height, bool layers, RadianceWidth radiance);
 
         /// The set every `GBuffer` is addressed through, made once and outliving all of them,
         /// because a pipeline layout names every set it will ever be handed, and the trace's

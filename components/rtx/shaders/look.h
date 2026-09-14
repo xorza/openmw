@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_LOOK_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_LOOK_H
 
@@ -46,6 +44,48 @@ namespace Rtx::Shaders
     /// Without it the dark areas of an interior pile into the lowest bin and drag the average down
     /// to meet them, and the exposure opens until the few lit surfaces are white.
     const float EXPOSURE_BLACK = 0.0001f;
+
+    /// The luminance a correctly exposed mid grey sits at. Eighteen per cent is the photographic
+    /// convention, and it is what puts an average scene in the middle of the curve rather than at
+    /// an end.
+    const float EXPOSURE_KEY = 0.18f;
+
+    /// How completely the eye adapts to what it is looking at.
+    ///
+    /// **One would be a renderer with no night in it.** Dividing by the mean normalises every frame
+    /// to the same brightness, so midnight, an interior and noon all come out within a couple of per
+    /// cent of each other — which is not what adaptation does. The response is compressive: a room
+    /// at dusk goes on looking dimmer than the same room at noon however long you sit in it.
+    ///
+    /// Rendered luminance is `KEY^a * mean^(1-a)`, so at three quarters a scene fifty times darker
+    /// comes out two and a half times darker rather than identical, and a scene already at the key
+    /// is left alone — the exponent moves what is *around* the middle grey without moving the
+    /// middle grey. Inherited from the reference implementation, which measured it; not measured
+    /// again here.
+    const float EXPOSURE_ADAPTATION = 0.75f;
+
+    /// Clamped rather than trusted: a frame that is almost entirely black would otherwise divide by
+    /// something near zero and hand back an exposure that turns the next frame's noise into a
+    /// snowstorm. `MAX_SUN_RADIANCE` is sized against the floor.
+    const float EXPOSURE_MIN = 0.05f;
+    const float EXPOSURE_MAX = 200.0f;
+
+    /// How long the exposure takes to open, as the time constant of an exponential approach, in
+    /// seconds.
+    ///
+    /// **The eye is not symmetric, so neither is this.** Adapting to darkness is the slow half —
+    /// minutes, in a real eye — and adapting to light is the fast one. Held to a second and a half
+    /// rather than to anything like the real figure, because a cave that stayed black for a minute
+    /// is a renderer nobody can play; what the asymmetry buys is that stepping out of a door still
+    /// dazzles and stepping into one still takes a moment to resolve.
+    ///
+    /// Set by eye, like `EXPOSURE_ADAPTATION` above. What is not by eye is the shape: a gap closed
+    /// at `1 - exp(-dt / tau)` closes by the same fraction per second whatever the frame rate, so
+    /// the picture does not change when the frame time does.
+    const float EXPOSURE_RISE_SECONDS = 1.5f;
+
+    /// And how long it takes to close, which is the eye meeting light rather than losing it.
+    const float EXPOSURE_FALL_SECONDS = 0.5f;
 
     /// How much the curve takes off the darkest channel once it has any to take. Khronos's own.
     const float TONE_SHADOW_OFFSET = 0.04f;
@@ -107,13 +147,23 @@ namespace Rtx::Shaders
     /// if this ever wants to follow the weather, that is the model to follow it with.
     const float SUN_SHADOW_RADIUS = 0.034907f;
 
+    /// Its sine, which is what a cone is drawn from: `SkySource::mLimb` for the sun.
+    ///
+    /// **A literal and not `sin(SUN_SHADOW_RADIUS)`**, because the host writes the frame's sun and
+    /// the shader used to fold the sine with its own library — and the two libraries need not
+    /// round alike in the last place, which is a penumbra a step wide differing between the two
+    /// sides. The literal is the float the shader's fold gave, to the bit, which is one step
+    /// above what this box's `sinf` gives; `RtxSkylightTest` holds it to within that step of the
+    /// angle.
+    const float SUN_SHADOW_SINE = 0.034899913f;
+
     /// The most radiance the sun's disc is drawn with.
     ///
     /// **A ceiling for a temporal history, not for a picture.** The sun's disc is drawn at its
     /// irradiance spread over its own solid angle, which at noon is `8 / (pi * 0.004654^2)` — a
     /// hundred and seventeen thousand. Nothing downstream can use it: the dimmest exposure the
-    /// renderer will choose is 0.05, so a radiance of 20 is already the top of the display range at
-    /// every exposure it can pick. What the number does reach is the upscaler, which reconstructs
+    /// renderer will choose is `EXPOSURE_MIN`, so a radiance of 20 is already the top of the display
+    /// range at every exposure it can pick. What the number does reach is the upscaler, which reconstructs
     /// from several frames of linear radiance and has to hold that value in a history — and a
     /// neighbourhood five orders of magnitude out of range is one it clears slowly, which is a
     /// blown pixel that stays blown for seconds after the sun has left the frame.
@@ -833,6 +883,14 @@ namespace Rtx::Shaders
     /// break a reflection where a drop lands, and gone again within the ring's life.
     const float RAIN_RING_STEEPNESS = 0.30f;
 
+    /// Where a sprite's rim starts, as a share of its radius, for the taper `spriteTaper` puts back
+    /// on a disc the mip chain averaged into its own square.
+    ///
+    /// Six tenths leaves the blob an artist painted alone and rounds off what a texture's border
+    /// became at the levels a spark is read at; earlier and the rim eats the flame, later and a
+    /// distant spark is a little rectangle again.
+    const float SPRITE_TAPER_START = 0.6f;
+
     /// The most a texel of a sprite may hide of what is behind it.
     ///
     /// **An alpha of one is an infinite optical depth, and no chord can thin one.** A sprite is
@@ -911,6 +969,22 @@ namespace Rtx::Shaders
     /// of history is a clamp that fires on nothing that is really there.
     const float ACCUMULATE_SIGMAS = 4.0f;
 
+    /// How squarely two normals must agree before their pixels are the same surface, and the
+    /// history at one may be carried to the other.
+    ///
+    /// A cosine and not the exponent the cascade uses: this is a yes or a no about whether to carry
+    /// a history at all, where the cascade is weighing how much of a neighbour to take.
+    const float ACCUMULATE_FACING = 0.9f;
+
+    /// How far off the centre pixel's distance a history may sit, as a share of that distance.
+    ///
+    /// **Relative, because a tolerance in world units means something different at every range.**
+    /// Two per cent is well inside a wall's thickness at arm's length and well outside the step a
+    /// grazing floor takes between neighbouring pixels at the far end of a view. The floor under it
+    /// is the one part that has to be converted, and `AccumulateConstants::mDistanceScale` is one
+    /// world unit in the units the distance is stored in.
+    const float ACCUMULATE_DEPTH = 0.02f;
+
     /// How many frames a pixel needs before its second moment describes a spread rather than a
     /// coincidence.
     ///
@@ -930,6 +1004,31 @@ namespace Rtx::Shaders
     /// 2%. Putting the far plane at 2^15 does neither: a surface a world unit from the eye stores
     /// 0.164, eleven binades clear of where a half stops holding proportion.
     const float ACCUMULATE_DISTANCE_RANGE = 32768.0f;
+
+    /// How sharply a tap's normal has to agree with the centre's, as the exponent on their cosine.
+    ///
+    /// A hundred and twenty-eight keeps a tap at more than about six degrees of tilt from
+    /// contributing anything, which is what stops a wall bleeding into the floor it meets. SVGF's
+    /// own.
+    const float ATROUS_NORMAL_POWER = 128.0f;
+
+    /// How far off the centre pixel's tangent plane a tap may sit, in pixel footprints.
+    ///
+    /// **Off the plane, not away from the eye.** Terrain seen at a grazing angle steps a long way in
+    /// distance between neighbouring pixels while remaining one flat surface, so a test on distance
+    /// alone would refuse to filter exactly the ground that most needs it. Measured in footprints
+    /// where SVGF divides by a depth gradient a ray tracer has no rasterizer to hand it.
+    const float ATROUS_PLANE_SIGMA = 2.0f;
+
+    /// How far a tap's brightness may differ from the centre's before it stops being the same
+    /// light, in standard deviations of what the centre has been measuring.
+    ///
+    /// **The term that wants a history**, because a variance is taken from one. With it the filter
+    /// can stop at an edge in the *light* — the line where a shadow ends on a flat wall, which the
+    /// normal test and the plane test both read as one surface and blur straight through. Scaled
+    /// by the estimator's own spread, so a pixel that is still noisy filters widely and a settled
+    /// one holds its detail. SVGF's own figure.
+    const float ATROUS_LUMINANCE_SIGMA = 4.0f;
 
     /// How far apart a level's taps stand, doubling each level: 1, 2, 4, 8, 16.
     ///

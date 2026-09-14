@@ -98,6 +98,10 @@ namespace Rtx
         /// default, because it is a second traversal on every pixel.
         bool mCountCrossings = false;
 
+        /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of
+        /// whether a run sums its frames or shows them.
+        RadianceWidth mRadianceWidth = RadianceWidth::Summed;
+
         /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
         /// hold it not at all. A held queue keeps the device that far behind the host, so every
         /// frame is recorded over a frame still running: what makes a hazard that needs the

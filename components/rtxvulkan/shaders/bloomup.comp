@@ -1,7 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
 
 // One doubling of the bloom pyramid, mixed into the level that was already there.
 //

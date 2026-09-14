@@ -87,7 +87,7 @@ namespace Rtx::Testing
             // Nothing else lights the floor, so what arrives is the moon's alone.
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
-            camera.mSunIrradiance = osg::Vec3f();
+            camera.mSun.mIrradiance = osg::Vec3f();
 
             Shaders::MoonDisc overhead{};
             overhead.mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f);
@@ -153,7 +153,7 @@ namespace Rtx::Testing
 
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
-            camera.mSunIrradiance = osg::Vec3f();
+            camera.mSun.mIrradiance = osg::Vec3f();
 
             const float root = std::sqrt(0.5f);
             Shaders::MoonDisc facing{};
@@ -178,8 +178,7 @@ namespace Rtx::Testing
 
             // The sun put exactly behind it, which is what an eclipse is and what the moons used to
             // take their share of alone.
-            camera.mSunPosition = facing.mDirection;
-            camera.mSunIrradiance = osg::Vec3f(8.0f, 8.0f, 8.0f);
+            camera.mSun = Shaders::sunSource(facing.mDirection, osg::Vec3f(8.0f, 8.0f, 8.0f));
             camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
             EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "the sun came through the moon";
 
@@ -221,8 +220,7 @@ namespace Rtx::Testing
             // Nothing else lights the floor, so what arrives is the sun's alone.
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
-            camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
-            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(2.0f, 2.0f, 2.0f));
 
             camera.mClouds = Shaders::CloudDeck{
                 .mOpacity = 1.0f,
@@ -281,7 +279,7 @@ namespace Rtx::Testing
 
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
-            camera.mSunIrradiance = osg::Vec3f();
+            camera.mSun.mIrradiance = osg::Vec3f();
 
             // A flat layer whose fade is far outside the piece of it this sees, so the deck is whole
             // across the frame and the only thing moving is the sheet against its mean.
@@ -340,7 +338,7 @@ namespace Rtx::Testing
 
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
-            camera.mSunIrradiance = osg::Vec3f();
+            camera.mSun.mIrradiance = osg::Vec3f();
 
             const auto brightest = [&](bool stars) {
                 camera.mStars = stars ? Shaders::StarField{ .mFade = 1.0f,

@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_HOSTTYPES_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_HOSTTYPES_H
 
@@ -48,7 +46,13 @@ namespace Rtx::Shaders
 // **A shader that spells no 64-bit type gains nothing by it.** `composite.comp` and
 // `wavecompose.comp` reach this header and neither declares `OpCapability Int64`: the extension
 // permits the type and the compiler emits the capability only where one is used.
+//
+// **The scalar layout and the reference type travel with it, for the same reason.** Every shared
+// structure is read in scalar layout and every 64-bit address in one becomes a reference, so a
+// shader that includes any of these headers wants all three.
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
 
 #define uint64 uint64_t
 

@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_LIGHTS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_LIGHTS_GLSL
 
@@ -20,13 +18,13 @@
 
 /// The `source`th light in the sky, read off the frame: `SKY_SOURCE_SUN`, then the two moons.
 ///
-/// **A function and not a fourth field**, because the frame already states each of these once —
-/// the sun as a position and an irradiance, a moon as its disc — and a second copy of a fact is
-/// what the sides come to disagree about. `SkySource` says what the three are one of.
+/// **Read and not assembled.** The frame carries the sun as the record this returns, and a moon's
+/// disc carries the same three fields among its own — so nothing here derives a fact the frame
+/// already states. `SkySource` says what the three are one of.
 SkySource skySourceAt(uint source)
 {
     if (source == SKY_SOURCE_SUN)
-        return SkySource(frame.mSunPosition, frame.mSunIrradiance, sin(SUN_SHADOW_RADIUS));
+        return frame.mSun;
 
     const MoonDisc disc = frame.mMoons[source - SKY_SOURCE_MASSER];
 

@@ -42,27 +42,31 @@ namespace Rtx
     {
     }
 
-    void TraceChain::resize(const std::uint32_t width, const std::uint32_t height, const bool layers)
+    void TraceChain::resize(
+        const std::uint32_t width, const std::uint32_t height, const bool layers, const RadianceWidth radiance)
     {
         assert(width > 0 && height > 0);
 
         mWidth = width;
         mHeight = height;
 
-        mColour = Image(mDevice, mWidth, mHeight, VK_FORMAT_R32G32B32A32_SFLOAT, mColourUsage, mColourName);
+        // As wide as the channels it is composed from: what is summed is summed out of this image,
+        // and what is shown is shown from it.
+        mColour = Image(mDevice, mWidth, mHeight, radianceFormat(radiance), mColourUsage, mColourName);
 
-        mChannels = std::make_unique<GBuffer>(mDevice, mPool, mChannelLayout, mWidth, mHeight, layers);
+        mChannels = std::make_unique<GBuffer>(mDevice, mPool, mChannelLayout, mWidth, mHeight, layers, radiance);
         mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mWidth, mHeight);
         mAccumulate.resize(mWidth, mHeight);
         mFilter.resize(mWidth, mHeight);
     }
 
-    void TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const bool layers)
+    void TraceChain::grow(
+        const std::uint32_t width, const std::uint32_t height, const bool layers, const RadianceWidth radiance)
     {
         if (holds(width, height))
             return;
 
-        resize(std::max(mWidth, width), std::max(mHeight, height), layers);
+        resize(std::max(mWidth, width), std::max(mHeight, height), layers, radiance);
     }
 
     const Image& TraceChain::recordDenoise(const VkCommandBuffer commands, const Shaders::Camera& camera,
@@ -121,7 +125,7 @@ namespace Rtx
         inputs.mBin = &bin;
         if (inputs.mSpriteList == 0)
             bin.record(*what.mSpriteShade, *what.mSpriteBin, what.mBuffers->describeSprites(inputs.mSlot),
-                what.mAsked.mOrigin, what.mAsked.mCamera, what.mAsked.mSunPosition, commands, what.mTimer,
+                what.mAsked.mOrigin, what.mAsked.mCamera, what.mAsked.mSun.mDirection, commands, what.mTimer,
                 *what.mGraveyard);
 
         mChannels->begin(commands);

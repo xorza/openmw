@@ -38,7 +38,7 @@ namespace Rtx
         const Image& starsShown, const Image* bloom, VkDescriptorSet textures, const Image& target,
         Shaders::ToneConstants constants) const
     {
-        assert(constants.mWidth <= target.getWidth() && constants.mHeight <= target.getHeight());
+        assert(constants.mCamera.mWidth <= target.getWidth() && constants.mCamera.mHeight <= target.getHeight());
 
         // Set from whether there is a pyramid, rather than asked of the caller. A strength with
         // no pyramid behind it is a sampled stand-in mixed into the picture, and the one place that
@@ -59,7 +59,8 @@ namespace Rtx
         // independent of: a pushed set and a bound one only have to be in place by the dispatch.
         bindSets(commands, mPipeline, std::span(&textures, 1));
 
-        dispatch(commands, mPipeline, writes.get(), constants, groupsFor(constants.mWidth, Shaders::TONE_WORKGROUP),
-            groupsFor(constants.mHeight, Shaders::TONE_WORKGROUP));
+        dispatch(commands, mPipeline, writes.get(), constants,
+            groupsFor(constants.mCamera.mWidth, Shaders::TONE_WORKGROUP),
+            groupsFor(constants.mCamera.mHeight, Shaders::TONE_WORKGROUP));
     }
 }

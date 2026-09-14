@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_PAYLOAD_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_PAYLOAD_GLSL
 
@@ -19,9 +17,7 @@
 // closest-hit shader is told, it reads off its shader-table record, and `Shaders::HitRecord` says
 // what measuring the other direction found.
 
-#include "shading.glsl"
-#include "traversal.glsl"
-#include "water.glsl"
+#include "records.glsl"
 
 /// Where the shading payload below sits. A literal at every call, as the extension wants.
 #define RTX_PAYLOAD 0

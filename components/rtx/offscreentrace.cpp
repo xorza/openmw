@@ -158,8 +158,7 @@ namespace Rtx
         if (mRowOrder == RowOrder::BottomFirst)
             camera.mCamera.mUp = -camera.mCamera.mUp;
 
-        camera.mSunPosition = mSun.mPosition;
-        camera.mSunIrradiance = mSun.mIrradiance;
+        camera.mSun = Shaders::sunSource(mSun.mPosition, mSun.mIrradiance);
         camera.mAmbient = mAmbient;
         camera.mTransparentBackground = mTransparent ? 1 : 0;
         camera.mRayMask = mRayMask;

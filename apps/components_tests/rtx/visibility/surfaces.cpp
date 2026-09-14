@@ -298,8 +298,7 @@ namespace Rtx::Testing
             // **Lit, and lit from the side.** An unlit wall is the same black whatever its normals
             // and its texture came to, which is a test that cannot fail. The sun crosses the face
             // rather than facing it, so the tilt below is the whole of what decides each pixel.
-            camera.mSunPosition = osg::Vec3f(-1.0f, -0.2f, 0.0f);
-            camera.mSunIrradiance = osg::Vec3f(3.0f, 3.0f, 3.0f);
+            camera.mSun = Shaders::sunSource(osg::Vec3f(-1.0f, -0.2f, 0.0f), osg::Vec3f(3.0f, 3.0f, 3.0f));
 
             // **Four different texels, so a texture coordinate read out of the wrong block shows.**
             // A flat texture gives the same pixel whatever the coordinates came to, and this test

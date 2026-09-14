@@ -78,8 +78,8 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
-                camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
-                camera.mSunIrradiance = source == Source::Sun ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f();
+                camera.mSun = Shaders::sunSource(
+                    osg::Vec3f(0.0f, 0.0f, 1.0f), source == Source::Sun ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f());
                 camera.mAmbient = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
@@ -149,7 +149,7 @@ namespace Rtx::Testing
 
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mAmbientFromSky = 0.0f;
 
@@ -216,7 +216,7 @@ namespace Rtx::Testing
                 camera.mSkyZenith = camera.mSkyHorizon;
                 camera.mAmbientFromSky = 1.0f;
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, sprited ? std::span<const TextureData>(puff) : std::span<const TextureData>(), camera,
@@ -262,7 +262,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, flame, camera, size, pixels);
@@ -313,7 +313,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, drop, camera, size, pixels);
@@ -396,8 +396,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
-                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+                camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, drop, camera, size, pixels);
@@ -466,7 +465,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
-                camera.mSunIrradiance = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, std::span(&layered.mData, 1), camera, size, pixels);
@@ -521,8 +520,7 @@ namespace Rtx::Testing
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
-                camera.mSunPosition = sun;
-                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+                camera.mSun = Shaders::sunSource(sun, osg::Vec3f(4.0f, 4.0f, 4.0f));
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, textures, camera, size, pixels);
@@ -584,8 +582,7 @@ namespace Rtx::Testing
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
-                camera.mSunPosition = osg::Vec3f(1.0f, 0.0f, 0.0f);
-                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+                camera.mSun = Shaders::sunSource(osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, puff, camera, size, pixels);

@@ -2,16 +2,6 @@
 
 #extension GL_GOOGLE_include_directive : require
 
-// **Declared and never used**, because set zero is one block of declarations and this pass is
-// addressed through the same layout as the one before it. What that block names — an acceleration
-// structure, the scene's buffer references, the bindless array — each needs its extension in scope
-// to be *declared*, and nothing here reads any of them.
-#extension GL_EXT_ray_query : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-
 // The air of one column, accumulated front to back, which is what a pixel reads.
 //
 // **A thread to a column, and that is the shape this half wants.** Transmittance can only be
@@ -122,8 +112,9 @@ FogSlice sliceAt(ivec2 column, uint slice, ivec2 grid, float surfaces[9])
     seeing /= total;
 
     const vec3 lamps = texelFetch(fogLamps, ivec3(column, int(slice)), 0).xyz;
+    const FogPoint held = unpackFogPoint(point, seeing);
 
-    return FogSlice(point.xyz + lamps * seeing.y, point.w, seeing.x);
+    return FogSlice(held.mInscatter + lamps * held.mSeeing.mLampsSeen, held.mExtinction, held.mSeeing.mTransport);
 }
 
 void main()
@@ -185,10 +176,11 @@ void main()
         // **The accumulation at the slice's far edge**, which is the depth `fogVolumeAlong` resolves
         // a distance to, and the slice's own sample beside it, which is what that read steps
         // through from the edge before.
-        imageStore(fogVolumeAirTarget, froxel, vec4(scattered, transmittance));
-        imageStore(fogVolumeSunwardTarget, froxel, vec4(sunward));
-        imageStore(fogSliceTarget, froxel, vec4(here.mInscatter, here.mExtinction));
-        imageStore(fogSliceSunwardTarget, froxel, vec4(here.mSunward));
+        const FogColumn accumulated = FogColumn(scattered, transmittance, sunward);
+        imageStore(fogVolumeAirTarget, froxel, packFogColumn(accumulated));
+        imageStore(fogVolumeSunwardTarget, froxel, vec4(packFogColumnSunward(accumulated)));
+        imageStore(fogSliceTarget, froxel, packFogSlice(here));
+        imageStore(fogSliceSunwardTarget, froxel, vec4(packFogSliceSunward(here)));
 
         behind = ahead;
         before = here;

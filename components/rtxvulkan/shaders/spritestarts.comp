@@ -1,17 +1,13 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // Where each tile's run starts, from how many sprites `spriterects.comp` counted into it.
 //
-// **`Rtx::RunList::place`, on the device and in place.** Entry `1 + t` holds tile `t`'s count on
-// the way in and its run's end on the way out, which is tile `t + 1`'s start; entry nought is where
-// the runs begin. One workgroup: each lane sums a contiguous chunk of the counts, the chunk totals
-// are scanned in shared memory, and each lane then walks its chunk again turning counts into
-// starts from where its chunk begins.
+// **`Rtx::RunList::place`, on the device and in place.** `spritelist.glsl` says which entry holds
+// what on the way in and on the way out. One workgroup: each lane sums a contiguous chunk of the
+// counts, the chunk totals are scanned in shared memory, and each lane then walks its chunk again
+// turning counts into starts from where its chunk begins.
 //
 // **The one place that knows whether the runs fit**, so it is where the list's degenerate form is
 // written and where the frame's need is reported. `SPRITE_LIST_UNBINNED` says what the trace does
@@ -19,14 +15,11 @@
 
 #include "spritebin.h"
 
+#include "lib/spritelist.glsl"
+
 layout(local_size_x = SPRITE_SCAN_WORKGROUP) in;
 
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer List
-{
-    uint at[];
-};
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) writeonly buffer Report
+layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) writeonly buffer Report
 {
     uint at[];
 };
@@ -48,11 +41,11 @@ void main()
     const uint first = lane * per;
     const uint last = min(first + per, tiles);
 
-    List list = List(bin.mList);
+    SpriteTileList list = SpriteTileList(bin.mList);
 
     uint own = 0u;
     for (uint tile = first; tile < last; ++tile)
-        own += list.at[1u + tile];
+        own += list.at[spriteCountSlot(tile)];
 
     chunkEnds[lane] = own;
     barrier();
@@ -74,8 +67,8 @@ void main()
     uint running = head + chunkEnds[lane] - own;
     for (uint tile = first; tile < last; ++tile)
     {
-        running += list.at[1u + tile];
-        list.at[1u + tile] = running;
+        running += list.at[spriteCountSlot(tile)];
+        list.at[spriteCountSlot(tile)] = running;
     }
 
     if (lane != 0u)

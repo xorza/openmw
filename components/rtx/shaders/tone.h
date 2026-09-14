@@ -1,6 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here: `glslc` warns
-// "'#pragma once' : not implemented" and carries on, so a header included twice by one
-// shader would redefine everything in it.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_TONE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_TONE_H
 
@@ -30,19 +27,17 @@ namespace Rtx::Shaders
     /// sky's point sources are drawn here.
     struct ToneConstants
     {
-        uint mWidth;
-        uint mHeight;
-
         /// The trace's own extent, which is what `GBuffer::getStarsShown` is written at.
         ///
-        /// **Two extents because an upscaler stands between them.** What this pass writes is one
-        /// pixel of the picture; what it asks about a pixel — how much of the star field is left in
-        /// front of what is drawn there — was answered at whatever the trace ran at, and at
-        /// `performance` that is a quarter as many pixels.
+        /// **Two extents because an upscaler stands between them**, and the other is the camera's.
+        /// What this pass writes is one pixel of the picture; what it asks about a pixel — how much
+        /// of the star field is left in front of what is drawn there — was answered at whatever the
+        /// trace ran at, and at `performance` that is a quarter as many pixels.
         uint mTracedWidth;
         uint mTracedHeight;
 
-        /// The frame's camera at *this* pass's extent, with no jitter.
+        /// The frame's camera at *this* pass's extent, with no jitter — and so the extent the pass
+        /// covers.
         ///
         /// **The same basis and a different grid.** `rayAt` divides by the camera's own extent, so a
         /// camera carrying the output's is what turns an output pixel into the ray it shows. The

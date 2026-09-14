@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FOG_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FOG_GLSL
 
@@ -265,7 +263,7 @@ struct FogSources
 {
     /// Whether there is a sun at all, which an interior and a night both answer no to.
     ///
-    /// Nothing here has to know what hour it is — `mSunIrradiance` is zero exactly when there is no
+    /// Nothing here has to know what hour it is — `mSun.mIrradiance` is zero exactly when there is no
     /// sun, and it fades to that across dusk rather than stepping.
     bool mSunlit;
 
@@ -315,7 +313,7 @@ struct FogSources
 /// in an image of its own for exactly that reason: both are functions of the direction alone, so
 /// they factor out of the integral and the trace puts them back at the pixel's own angle.
 ///
-/// **Nothing here asks the hour.** At night `mSunPosition` points below the horizon, the floor in
+/// **Nothing here asks the hour.** At night `mSun.mDirection` points below the horizon, the floor in
 /// `fogBeamDepth` pins it, and the beam comes back as nothing at all.
 ///
 /// **And nothing here asks what water stands over the point**, which is what keeps this one channel
@@ -327,7 +325,7 @@ struct FogSources
 /// @param visible what a shadow ray found between the point and the sun.
 float sunInAir(float extinction, float visible)
 {
-    return visible * exp(-fogBeamDepth(extinction, frame.mSunPosition));
+    return visible * exp(-fogBeamDepth(extinction, frame.mSun.mDirection));
 }
 
 /// What the two moons put into one point of the air.
@@ -424,10 +422,8 @@ FogSlice fogSliceAt(vec2 across, float depth)
     // those are neighbouring pixels — regrouped, the volume came back sampled against a neighbour
     // that was somewhere else, and the picture changed everywhere. The volume has one level, so
     // this is the level it always meant.
-    const vec4 slice = textureLod(fogSlice, vec3(across, depth), 0.0);
-    const float sunward = textureLod(fogSliceSunward, vec3(across, depth), 0.0).x;
-
-    return FogSlice(slice.xyz, slice.w, sunward);
+    return unpackFogSlice(textureLod(fogSlice, vec3(across, depth), 0.0),
+        textureLod(fogSliceSunward, vec3(across, depth), 0.0).x);
 }
 
 /// What the weather's own air takes out of what is behind it, and what it puts in on the way.
@@ -451,15 +447,11 @@ FogSlice fogSliceAt(vec2 across, float depth)
 /// column's. `Rtx::FogVolume` says why the moons do not.
 vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
 {
-    // The column this pixel stands in, normalised by the image and never by the frame. A traced
-    // view is drawn into a volume grown to the largest one asked for, so the two are not the same
-    // number — and the pass fills every column the image has for exactly that reason: the pixel at
-    // the edge interpolates against the column outside it.
-    const vec2 across = (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns);
+    const vec2 across = fogVolumeAcross(vec2(pixel) + 0.5, frame.mFogColumns);
 
     const float slices = float(FOG_VOLUME_SLICES);
     const float reach = min(distance, FOG_REACH);
-    const float along = sqrt(reach / FOG_REACH) * slices;
+    const float along = fogDepthInverse(reach) * slices;
 
     // The slice the surface stands in, and how far through it — the reach itself lands in the last
     // slice at the whole of it.
@@ -470,8 +462,9 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     // the texel before for every other — exactly on its centre, so the sampler weighs no neighbour
     // along the depth.
     const float edge = (float(slice) - 0.5) / slices;
-    vec4 air = slice > 0u ? textureLod(fogVolumeAir, vec3(across, edge), 0.0) : vec4(0.0, 0.0, 0.0, 1.0);
-    float sunward = slice > 0u ? textureLod(fogVolumeSunward, vec3(across, edge), 0.0).x : 0.0;
+    FogColumn air = slice > 0u ? unpackFogColumn(textureLod(fogVolumeAir, vec3(across, edge), 0.0),
+                                     textureLod(fogVolumeSunward, vec3(across, edge), 0.0).x)
+                               : FogColumn(vec3(0.0), 1.0, 0.0);
 
     // The near half of the slice, as far as the surface reaches into it; then the far half, likewise.
     // A straight piece's mean is its own middle, which is what each read is taken at.
@@ -479,11 +472,13 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     const float middle = froxelMiddle(slice);
     if (through <= 0.5)
     {
-        fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + 0.5 * through) / slices), reach - behind);
+        fogThrough(air.mTransmittance, air.mScattered, air.mSunward,
+            fogSliceAt(across, (float(slice) + 0.5 * through) / slices), reach - behind);
     }
     else
     {
-        fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + 0.25) / slices), middle - behind);
+        fogThrough(air.mTransmittance, air.mScattered, air.mSunward,
+            fogSliceAt(across, (float(slice) + 0.25) / slices), middle - behind);
 
         // **Flat where the next slice starts past the column's own surface**, which is the rule
         // the integrate pass carried the same half by: that slice holds none of this column's air,
@@ -491,13 +486,14 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
         // stood in. A pixel that sees past the column's surface is in a later slice and bends.
         const float surface = imageLoad(fogColumnDepth, ivec2(pixel / FOG_VOLUME_SCALE)).x;
         const float onward = froxelNear(slice + 1u) < surface ? 0.25 + 0.5 * through : 0.5;
-        fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + onward) / slices), reach - middle);
+        fogThrough(air.mTransmittance, air.mScattered, air.mSunward,
+            fogSliceAt(across, (float(slice) + onward) / slices), reach - middle);
     }
 
     const vec3 sun
-        = HAS_SUN ? frame.mSunIrradiance * (sunward * fogPhase(dot(direction, frame.mSunPosition))) : vec3(0.0);
+        = HAS_SUN ? frame.mSun.mIrradiance * (air.mSunward * fogPhase(dot(direction, frame.mSun.mDirection))) : vec3(0.0);
 
-    return vec4(air.xyz + sun, air.w);
+    return vec4(air.mScattered + sun, air.mTransmittance);
 }
 
 /// What a column of air along one ray is, before anything says how far to follow it.

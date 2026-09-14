@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_GBUFFER_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_GBUFFER_H
 
@@ -55,9 +53,16 @@
 // it parses anything, and `VK_FORMAT_*` is an enumerator. The preprocessor is the one thing both
 // languages share, which is what lets one line define both.
 
+// **The two radiance channels are the one pair with no format here.** How wide they are is a
+// run's choice — `Rtx::RadianceWidth` says which run gets which and why — so the host picks
+// between `GBUFFER_RADIANCE_SHOWN` and `GBUFFER_RADIANCE_SUMMED` at creation, and every shader that
+// reads or writes one declares it with no format at all and lets the load or the store convert.
+// `requirements.cpp` asks the device for both halves of that.
+
 #ifdef RTX_HOST
 
-#define GBUFFER_RADIANCE VK_FORMAT_R32G32B32A32_SFLOAT
+#define GBUFFER_RADIANCE_SHOWN VK_FORMAT_R16G16B16A16_SFLOAT
+#define GBUFFER_RADIANCE_SUMMED VK_FORMAT_R32G32B32A32_SFLOAT
 #define GBUFFER_ALBEDO VK_FORMAT_R16G16B16A16_SFLOAT
 #define GBUFFER_GUIDE VK_FORMAT_R16G16B16A16_SFLOAT
 #define GBUFFER_MOTION VK_FORMAT_R16G16_SFLOAT
@@ -69,7 +74,6 @@
 
 #else
 
-#define GBUFFER_RADIANCE rgba32f
 #define GBUFFER_ALBEDO rgba16f
 #define GBUFFER_GUIDE rgba16f
 #define GBUFFER_MOTION rg16f

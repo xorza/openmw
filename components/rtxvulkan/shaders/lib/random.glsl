@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_RANDOM_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_RANDOM_GLSL
 
@@ -7,6 +5,7 @@
 // numbers becomes when a shadow ray or a bounce asks for a direction.
 
 #include "scene.h"
+#include "basis.glsl"
 #include "bindings.glsl"
 
 /// Which sequence a lamp reservoir draws on. **One per depth, because a path shades twice** — the
@@ -114,6 +113,10 @@ const uint SEED_BOUNCE_TRACED = SEED_AMBIENT_PANE + PEEL_LAYERS;
 /// turning by the same step differ only by where they started and converge on the same sweep.
 const float STREAM_TURN[RANDOM_STREAMS] = float[](0.6180340, 0.7548777, 0.5698403, 0.4142136);
 
+/// The bounce's pair on its own, for a march that carries one draw along its own steps rather
+/// than through the frames: each step turns by the same two irrationals the frames turn by.
+const vec2 R2_STEPS = vec2(STREAM_TURN[STREAM_BOUNCE], STREAM_TURN[STREAM_BOUNCE + 1u]);
+
 /// One number in `[0, 1)` for `pixel`, from this frame's `stream`th draw.
 ///
 /// **Blue noise across the screen, a low-discrepancy sequence along time.** The tile decides how a
@@ -202,16 +205,6 @@ float randomNext(inout uint state)
 
     // Twenty-four bits, which is every one a float can hold without rounding two of them together.
     return float(word >> 8u) * (1.0 / 16777216.0);
-}
-
-/// A unit vector square to `axis`, to build a basis on.
-///
-/// Any vector not parallel to it will do, and which one is arbitrary — so the only thing this owes
-/// a caller is that the cross product it takes never collapses.
-vec3 tangentTo(vec3 axis)
-{
-    const vec3 aside = abs(axis.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-    return normalize(cross(aside, axis));
 }
 
 /// A direction inside the cone about `axis` that a source subtends, drawn evenly over its solid

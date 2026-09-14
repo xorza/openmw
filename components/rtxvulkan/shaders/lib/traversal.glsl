@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_TRAVERSAL_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_TRAVERSAL_GLSL
 
@@ -8,6 +6,10 @@
 // **No light here.** That is what lets water shade by tracing again: a reflection's hit is
 // resolved by this same `trace` and shaded by `shadeSurface`, and neither calls back into
 // water — which a shader with no recursion could not survive.
+
+// A candidate's and a committed hit's corners come out of the query itself, which is what a
+// traversal needs to build the plane without a vertex buffer bound for it.
+#extension GL_EXT_ray_tracing_position_fetch : require
 
 #include "look.h"
 #include "scene.h"
@@ -602,17 +604,6 @@ struct Surface
     float mTransmission;
 };
 
-/// What a hit is made of.
-///
-/// **Everything a hit leads to and nothing the traversal already answered.** Every table this reads
-/// is keyed on where the ray landed — the instance, its mesh, its material, its textures — and
-/// `Hit` is what the traversal answered.
-///
-/// @param layered whether ground that kept its layer stack can reach this hit. **A literal at every
-///        call**, so the stack's loop and the four tables it walks are compiled out of a shader no
-///        such hit can arrive at. A closest-hit shader is picked by the instance's own material
-///        kind, so the two that are not terrain's know the answer is no — which is the register
-///        relief Stage 2 is for, and which no driver here will report a number for.
 /// A ray that met nothing, as far away as anything can be: what `resolveFor` answers with for a
 /// miss, and what it fills in from for a hit.
 Surface noSurface(vec3 origin)
@@ -636,6 +627,17 @@ Surface noSurface(vec3 origin)
     return surface;
 }
 
+/// What a hit is made of.
+///
+/// **Everything a hit leads to and nothing the traversal already answered.** Every table this reads
+/// is keyed on where the ray landed — the instance, its mesh, its material, its textures — and
+/// `Hit` is what the traversal answered.
+///
+/// @param layered whether ground that kept its layer stack can reach this hit. **A literal at every
+///        call**, so the stack's loop and the four tables it walks are compiled out of a shader no
+///        such hit can arrive at. A closest-hit shader is picked by the instance's own material
+///        kind, so the two that are not terrain's know the answer is no — register relief no
+///        driver here will report a number for.
 Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 {
     Surface surface = noSurface(origin);

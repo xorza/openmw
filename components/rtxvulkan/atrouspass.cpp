@@ -36,18 +36,6 @@ namespace Rtx
         /// the guide and the depth, neutral; packing it to eight bytes, worse, because the
         /// octahedral `normalize` over 125 taps costs more than a fetch. What the pass spends is
         /// the two `exp` and the guide tap. A profiler is what the next attempt should start from.
-
-        /// How sharply a tap's normal has to agree with the centre's, and how far off its plane it
-        /// may sit. The exponent is SVGF's own; the sigma measures a distance off a plane in pixel
-        /// footprints where the paper divides by a depth gradient. Not a setting, because the
-        /// reference mode is what will say what to set them to.
-        constexpr float sNormalPower = 128.0f;
-        constexpr float sPlaneSigma = 2.0f;
-
-        /// How far a tap's brightness may differ from the centre's, in standard deviations of what
-        /// the centre has been measuring. SVGF's own, and for the first time there is a variance to
-        /// scale it by.
-        constexpr float sLuminanceSigma = 4.0f;
     }
 
     AtrousPass::AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -86,9 +74,6 @@ namespace Rtx
         Shaders::AtrousConstants level{
             .mCamera = camera,
             .mStep = 1,
-            .mNormalPower = sNormalPower,
-            .mPlaneSigma = sPlaneSigma,
-            .mLuminanceSigma = sLuminanceSigma,
         };
 
         // Three images take turns and not two, because the first level's answer is the mean the

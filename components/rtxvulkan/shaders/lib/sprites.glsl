@@ -1,5 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here for the reason
-// `components/rtx/shaders/portable.h` gives.
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SPRITES_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SPRITES_GLSL
 
@@ -11,6 +9,7 @@
 #include "scene.h"
 #include "bindings.glsl"
 #include "fog.glsl"
+#include "records.glsl"
 #include "frame.glsl"
 #include "underwater.glsl"
 
@@ -57,7 +56,7 @@ const float CYLINDER_SHARE = 4.0 * INV_PI;
 /// @param along unit, the axis the streak hangs on.
 PuffShape streakPuff(vec3 along)
 {
-    return PuffShape(CYLINDER_SHARE * length(cross(along, frame.mSunPosition)), 1.0);
+    return PuffShape(CYLINDER_SHARE * length(cross(along, frame.mSun.mDirection)), 1.0);
 }
 
 /// What a puff of smoke is lit by, per unit of albedo, out of the froxel it stands in.
@@ -95,21 +94,20 @@ PuffShape streakPuff(vec3 along)
 ///        `PuffShape`, whose fields say which is which.
 vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
 {
-    // The column this pixel stands in and the depth the puff stands at, on `fogVolumeAlong`'s own
-    // mapping — the volume's slices are square-rooted in range, so the near air keeps its detail.
-    // The level named for the reason `fogSliceAt` gives.
-    const vec3 at = vec3((vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(frame.mFogColumns),
-        sqrt(min(seen, FOG_REACH) / FOG_REACH));
+    // The column this pixel stands in and the depth the puff stands at. The level named for the
+    // reason `fogSliceAt` gives.
+    const vec3 at = vec3(fogVolumeAcross(vec2(pixel) + 0.5, frame.mFogColumns), fogDepthInverse(seen));
 
-    const vec3 seeing = textureLod(fogSunward, at, 0.0).xyz;
+    const FogSeeing seeing = unpackFogSeeing(textureLod(fogSunward, at, 0.0));
     const vec3 lamps = textureLod(fogLamps, at, 0.0).xyz;
 
     const vec3 daylight = daylightReaching(frame.mOrigin + direction * seen);
 
-    const vec3 sun = HAS_SUN ? frame.mSunIrradiance * daylight * (seeing.x * INV_PI * wrapped.mSunLit) : vec3(0.0);
+    const vec3 sun
+        = HAS_SUN ? frame.mSun.mIrradiance * daylight * (seeing.mTransport * INV_PI * wrapped.mSunLit) : vec3(0.0);
 
-    return frame.mAmbient * daylight * (seeing.z * wrapped.mAmbientLit) + sun
-        + lamps * (seeing.y * wrapped.mAmbientLit);
+    return frame.mAmbient * daylight * (seeing.mAmbientSeen * wrapped.mAmbientLit) + sun
+        + lamps * (seeing.mLampsSeen * wrapped.mAmbientLit);
 }
 
 /// What a painted alpha hides over `crossings` of the thickness it was painted for.
@@ -161,7 +159,7 @@ float ballWrap(vec3 normal, vec3 toward)
 /// thrown.
 float smokeThrow(vec3 direction)
 {
-    return henyeyGreenstein(SMOKE_ANISOTROPY, dot(frame.mSunPosition, direction)) / INV_FOUR_PI;
+    return henyeyGreenstein(SMOKE_ANISOTROPY, dot(frame.mSun.mDirection, direction)) / INV_FOUR_PI;
 }
 
 /// The shape of a ball of smoke met at `normal`: the sun thrown forward and wrapped round the side
@@ -178,7 +176,7 @@ float smokeThrow(vec3 direction)
 /// @param thrownForward `smokeThrow` for the ray, which a walk evaluates once for every ball on it.
 PuffShape ballPuff(vec3 normal, float thrownForward)
 {
-    return PuffShape(thrownForward * ballWrap(normal, frame.mSunPosition),
+    return PuffShape(thrownForward * ballWrap(normal, frame.mSun.mDirection),
         mix(1.0, ballWrap(normal, vec3(0.0, 0.0, 1.0)), frame.mAmbientFromSky));
 }
 
@@ -210,20 +208,6 @@ float sixWayThrough(vec3 toward, vec3 planeAcross, vec3 planeUp, vec3 facing, ve
                + negative.z * back)
         / weight;
 }
-
-/// One puff's case for owning a pixel's motion vector.
-struct PuffClaim
-{
-    /// Where the eye stood relative to the puff.
-    vec3 mToward;
-
-    /// How far it travelled since the last frame, in world units.
-    vec3 mMoved;
-
-    /// How strong the case is, in whatever its kind is judged by — the share it hid, or the light
-    /// it added. Nought for a claim nothing filled.
-    float mWeight;
-};
 
 /// What the puffs between the eye and a surface add to the frame, and what they leave of it.
 ///
@@ -311,7 +295,133 @@ float spriteTaper(float radial, float lod)
 {
     // Written the way round GLSL defines: `smoothstep` with its first edge above its second is
     // undefined, however reliably it happens to produce the descending ramp.
-    return mix(1.0, 1.0 - smoothstep(0.6, 1.0, radial), clamp(0.5 * lod, 0.0, 1.0));
+    return mix(1.0, 1.0 - smoothstep(SPRITE_TAPER_START, 1.0, radial), clamp(0.5 * lod, 0.0, 1.0));
+}
+
+/// Where a ray crosses one sprite: the things the rest of the walk needs, and the only place the
+/// two kinds of sprite differ.
+struct SpriteCrossing
+{
+    /// Whether the ray meets the sprite at all before `limit`.
+    bool mFound;
+
+    /// How far along the ray the eye sees the sprite, and what share of the sprite's own depth
+    /// that is.
+    float mSeen;
+    float mFraction;
+
+    /// Where across the sprite the ray crossed, in units of its own half-extents, and how far out
+    /// that is as a fraction of the radius.
+    vec2 mAt;
+    float mRadial;
+
+    /// How far the sprite's surface stands toward the eye there. Nought for a quad.
+    float mLift;
+
+    /// How densely the sprite carries texels, per unit of the cone's width where it stands.
+    float mRate;
+
+    /// The axis a streak hangs on, unit. Nought for a ball, which hangs on nothing.
+    vec3 mAlong;
+};
+
+/// A crossing the ray did not make.
+SpriteCrossing noCrossing()
+{
+    return SpriteCrossing(false, 0.0, 0.0, vec2(0.0), 0.0, 0.0, 0.0, vec3(0.0));
+}
+
+/// **A quad that hangs in the world**, so the ray meets a plane rather than a ball. A rain streak
+/// is a thin thing, and where it meets a wall is where the drop does.
+///
+/// **The axis it hangs on is the sprite's; which way its width faces is not.** `osgParticle`
+/// commits a `FIXED` system's quad to the plane its two axes span, because a rasterizer has to
+/// commit it to some plane, and Morrowind's rain commits it to the world's X–Z one — so a drop
+/// looked at from along X is a polygon seen edge-on and thins away to nothing, and the same storm
+/// reads three times heavier facing north than facing east. That is a fact about drawing quads
+/// rather than about rain, and it is the sort of thing rays are here to stop answering with.
+///
+/// So the streak's axis is kept exactly as the particle carries it — its length, its fall, the
+/// lean the wind gave it — and only the width is swung about that axis to meet the ray. Seen
+/// face-on, where the content was authored and judged, nothing moves.
+///
+/// @param width how wide the emitter's quads are against their own axis, `GpuEmitter::mWidth`.
+/// @param texels the texture's extent along each of the quad's axes.
+SpriteCrossing quadCrossing(GpuSprite sprite, vec3 toSprite, vec3 direction, float limit, float width, vec2 texels)
+{
+    const vec3 axis = sprite.mAxis;
+    const vec3 swung = cross(axis, direction);
+    const float swing = length(swung);
+
+    // Looking straight down the streak's own axis, where no swing presents any width: the quad is
+    // edge-on to this ray and there is nothing of it to see.
+    if (swing <= 1.0e-4)
+        return noCrossing();
+
+    const float inverseAxis = inversesqrt(dot(axis, axis));
+
+    const vec3 quadAcross = swung * (width * sprite.mRadius / swing);
+    const vec3 quadUpward = axis * sprite.mRadius;
+    const vec3 normal = cross(quadAcross, quadUpward);
+
+    const float facing = dot(normal, direction);
+    if (abs(facing) <= 1.0e-6)
+        return noCrossing();
+
+    const float depth = dot(toSprite, normal) / facing;
+    if (depth <= 0.0 || depth >= limit)
+        return noCrossing();
+
+    const vec3 offset = direction * depth - toSprite;
+    const vec2 at = vec2(
+        dot(offset, quadAcross) / dot(quadAcross, quadAcross), dot(offset, quadUpward) / dot(quadUpward, quadUpward));
+    if (max(abs(at.x), abs(at.y)) >= 1.0)
+        return noCrossing();
+
+    // **Both of the quad's own axes, and the denser one decides.** A rain streak carries eight
+    // texels across a fifth of its own height and thirty-two down the whole of it, so its width
+    // resolves two and a half times finer than its length — and a level chosen from the length
+    // alone reads the width sharper than the ray can carry, which is a drop that aliases into a
+    // hard mark instead of fading. A disc is the same extent both ways, which is why one number
+    // served until a quad hung in the world.
+    const float rate = 0.5 * max(texels.x / width, texels.y * inverseAxis) / sprite.mRadius;
+
+    return SpriteCrossing(true, depth, 1.0, at, length(at), 0.0, rate, axis * inverseAxis);
+}
+
+/// **A ball and not a disc, and what the eye sees of it is a chord.** The disc the rasterizer drew
+/// is the ball's silhouette, and everything it painted is kept: in the open the chord is whole and
+/// the sprite composites exactly as the quad did. What the ball adds is an inside, so where it runs
+/// into a wall — or the wall into it, or the eye into either — the chord is cut at the surface and
+/// the sprite fades along the ray instead of being clipped at its centre. That is the spherical
+/// billboard, and it is the exact form of what a rasterizer's soft particle approximates with a
+/// depth fade.
+///
+/// Perpendicular to the ray rather than to the camera's axis, so a sprite at the corner of the
+/// frame faces the eye and not the screen.
+///
+/// @param across,upward the screen's own axes, unit, which the disc's texture is read along.
+SpriteCrossing ballCrossing(
+    GpuSprite sprite, vec3 toSprite, vec3 direction, float limit, vec3 across, vec3 upward, vec2 texels)
+{
+    const float depth = dot(toSprite, direction);
+    const vec3 offset = toSprite - direction * depth;
+    const float radial2 = dot(offset, offset) / (sprite.mRadius * sprite.mRadius);
+    if (radial2 >= 1.0)
+        return noCrossing();
+
+    const float lift = sqrt(1.0 - radial2);
+    const float halfChord = sprite.mRadius * lift;
+    const float from = max(depth - halfChord, 0.0);
+    const float until = min(depth + halfChord, limit);
+    if (until <= from)
+        return noCrossing();
+
+    const vec2 at = -vec2(dot(offset, across), dot(offset, upward)) / sprite.mRadius;
+    const float rate = 0.5 * max(texels.x, texels.y) / sprite.mRadius;
+
+    return SpriteCrossing(
+        true, 0.5 * (from + until), (until - from) / (2.0 * halfChord), at, sqrt(radial2), lift, rate, vec3(0.0));
 }
 
 /// Every emitter's sprites the ray crosses, composited.
@@ -362,8 +472,8 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // march as it was before the tiles: `SPRITE_LIST_UNBINNED` says when a frame is handed it. The
     // run is then every index in turn, so a slot names its sprite directly.
     const bool unbinned = spriteTileListAt(0u) == SPRITE_LIST_UNBINNED;
-    uint slot = unbinned ? 0u : spriteTileListAt(tile);
-    const uint last = unbinned ? spriteTileListAt(1u) : spriteTileListAt(tile + 1u);
+    uint slot = unbinned ? 0u : spriteTileListAt(spriteStartSlot(tile));
+    const uint last = unbinned ? spriteTileListAt(1u) : spriteTileListAt(spriteStartSlot(tile + 1u));
 
     // **Per emitter and not per sprite, across a walk with no emitter loop.** The tile's sprites
     // are in ascending index, and a sprite's index is contiguous within its emitter, so an
@@ -384,7 +494,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // answer they never look at. Negative until read, which no alpha can be.
     float layerMean = -1.0;
 
-    const vec3 toSun = frame.mSunPosition;
+    const vec3 toSun = frame.mSun.mDirection;
 
     // **The sun's share thrown forward, which is one angle for the whole ray.** A directional source
     // holds its angle to a straight ray, so the phase function is one evaluation for every sprite on
@@ -435,108 +545,16 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
         const vec3 toSprite = sprite.mPosition - origin;
 
-        // How far along the ray the eye sees the sprite, what share of the sprite's own depth that
-        // is, where across it the ray crossed in units of its own half-extents, how far out that is
-        // as a fraction, how far the sprite's surface stands toward the eye there, how densely it
-        // carries texels and which way it hangs — the things the rest needs, and the only place the
-        // two kinds of sprite differ.
-        float seen;
-        float fraction;
-        vec2 at;
-        float radial;
-        float lift = 0.0;
-        float rate;
-        vec3 alongUnit = vec3(0.0);
-
+        // The only place the two kinds of sprite differ. An `if` and not a select, so the kind the
+        // emitter is not costs nothing.
+        SpriteCrossing crossing;
         if (oriented)
-        {
-            // **A quad that hangs in the world**, so the ray meets a plane rather than a ball. A
-            // rain streak is a thin thing, and where it meets a wall is where the drop does.
-            //
-            // **The axis it hangs on is the sprite's; which way its width faces is not.**
-            // `osgParticle` commits a `FIXED` system's quad to the plane its two axes span,
-            // because a rasterizer has to commit it to some plane, and Morrowind's rain commits
-            // it to the world's X–Z one — so a drop looked at from along X is a polygon seen
-            // edge-on and thins away to nothing, and the same storm reads three times heavier
-            // facing north than facing east. That is a fact about drawing quads rather than
-            // about rain, and it is the sort of thing rays are here to stop answering with.
-            //
-            // So the streak's axis is kept exactly as the particle carries it — its length, its
-            // fall, the lean the wind gave it — and only the width is swung about that axis to
-            // meet the ray. Seen face-on, where the content was authored and judged, nothing moves.
-            const vec3 axis = sprite.mAxis;
-            const vec3 swung = cross(axis, direction);
-            const float swing = length(swung);
-
-            // Looking straight down the streak's own axis, where no swing presents any width: the
-            // quad is edge-on to this ray and there is nothing of it to see.
-            if (swing <= 1.0e-4)
-                continue;
-
-            const float inverseAxis = inversesqrt(dot(axis, axis));
-            alongUnit = axis * inverseAxis;
-
-            // **Both of the quad's own axes, and the denser one decides.** A rain streak carries
-            // eight texels across a fifth of its own height and thirty-two down the whole of it, so
-            // its width resolves two and a half times finer than its length — and a level chosen
-            // from the length alone reads the width sharper than the ray can carry, which is a drop
-            // that aliases into a hard mark instead of fading. A disc is the same extent both ways,
-            // which is why one number served until a quad hung in the world.
-            rate = 0.5 * max(texels.x / width, texels.y * inverseAxis) / sprite.mRadius;
-
-            const vec3 quadAcross = swung * (width * sprite.mRadius / swing);
-            const vec3 quadUpward = axis * sprite.mRadius;
-            const vec3 normal = cross(quadAcross, quadUpward);
-
-            const float facing = dot(normal, direction);
-            if (abs(facing) <= 1.0e-6)
-                continue;
-
-            const float depth = dot(toSprite, normal) / facing;
-            if (depth <= 0.0 || depth >= limit)
-                continue;
-
-            const vec3 offset = direction * depth - toSprite;
-            at = vec2(dot(offset, quadAcross) / dot(quadAcross, quadAcross),
-                dot(offset, quadUpward) / dot(quadUpward, quadUpward));
-            if (max(abs(at.x), abs(at.y)) >= 1.0)
-                continue;
-
-            radial = length(at);
-            seen = depth;
-            fraction = 1.0;
-        }
+            crossing = quadCrossing(sprite, toSprite, direction, limit, width, texels);
         else
-        {
-            // **A ball and not a disc, and what the eye sees of it is a chord.** The disc the
-            // rasterizer drew is the ball's silhouette, and everything it painted is kept: in the
-            // open the chord is whole and the sprite composites exactly as the quad did. What the
-            // ball adds is an inside, so where it runs into a wall — or the wall into it, or the eye
-            // into either — the chord is cut at the surface and the sprite fades along the ray
-            // instead of being clipped at its centre. That is the spherical billboard, and it is the
-            // exact form of what a rasterizer's soft particle approximates with a depth fade.
-            //
-            // Perpendicular to the ray rather than to the camera's axis, so a sprite at the corner
-            // of the frame faces the eye and not the screen.
-            const float depth = dot(toSprite, direction);
-            const vec3 offset = toSprite - direction * depth;
-            const float radial2 = dot(offset, offset) / (sprite.mRadius * sprite.mRadius);
-            if (radial2 >= 1.0)
-                continue;
+            crossing = ballCrossing(sprite, toSprite, direction, limit, across, upward, texels);
 
-            lift = sqrt(1.0 - radial2);
-            const float halfChord = sprite.mRadius * lift;
-            const float from = max(depth - halfChord, 0.0);
-            const float until = min(depth + halfChord, limit);
-            if (until <= from)
-                continue;
-
-            fraction = (until - from) / (2.0 * halfChord);
-            seen = 0.5 * (from + until);
-            radial = sqrt(radial2);
-            at = -vec2(dot(offset, across), dot(offset, upward)) / sprite.mRadius;
-            rate = 0.5 * max(texels.x, texels.y) / sprite.mRadius;
-        }
+        if (!crossing.mFound)
+            continue;
 
         // How many texels the pixel's cone covers where the sprite stands, which is the level that
         // resolves it: the cone has spread to `mWidth + mSpread * seen` there, and `rate` is what
@@ -544,31 +562,31 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // because an eye inside the ball sees it at no distance. `coneAt` and not `mSpreadAngle`,
         // for the reason it gives: a map tile's cone never widens and is a pixel of the box wide
         // from the start, where the angle alone read every sprite in it at level zero.
-        const float lod = log2(max(rate * (cone.mWidth + cone.mSpread * seen), 1.0));
+        const float lod = log2(max(crossing.mRate * (cone.mWidth + cone.mSpread * crossing.mSeen), 1.0));
 
         // The quad `osgParticle` would have drawn: texture coordinate zero at `-right -up` and
         // one at `+right +up`, about a centre at half.
-        const vec2 uv = at * 0.5 + 0.5;
+        const vec2 uv = crossing.mAt * 0.5 + 0.5;
 
         const vec4 texel = textureLod(textures[nonuniformEXT(emitter.mTexture)], uv, lod);
 
         // **The rim is put back on a disc and left alone on a quad.** What the taper restores is
         // a round blob the mip chain averaged into the square it was cut to; a rain streak is
         // authored as that rectangle, and tapering it would round off the drop.
-        const float painted = texel.a * sprite.mAlpha * (oriented ? 1.0 : spriteTaper(radial, lod));
+        const float painted = texel.a * sprite.mAlpha * (oriented ? 1.0 : spriteTaper(crossing.mRadial, lod));
         if (!(painted > 0.0))
             continue;
 
         // What the eye's share of the chord hides, which is `paintedOver`'s own law: the whole of
         // what was painted for a whole chord, and less for part of one.
-        const float alpha = paintedOver(painted, fraction);
+        const float alpha = paintedOver(painted, crossing.mFraction);
         const vec3 colour = texel.rgb * sprite.mColour;
         // **The layer taken exactly and the band taken once.** A sheet of sprites and the wall
         // behind it are one distance from the eye and were fading at two rates: the wall goes
         // through the volume, which integrates the height falloff, and these charged one density
         // over the whole path — so a puff seen down a slope kept a third more of itself than the
         // air left it.
-        const float reaching = exp(-fogColumnOver(air, seen) * band);
+        const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
 
         if (emitter.mAdditive != 0u)
         {
@@ -585,13 +603,13 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // added, and what twenty add saturates at the white the original's framebuffer clamped
             // to, rather than at twenty times it. The chord cuts a flame at a log the way it cuts
             // smoke at a wall.
-            const vec3 glow = paintedOver(colour * painted, fraction) * reaching;
+            const vec3 glow = paintedOver(colour * painted, crossing.mFraction) * reaching;
             addedThrough *= 1.0 - glow;
 
             const float lit = dot(glow, LUMINANCE_WEIGHTS) * FLAME_INTENSITY;
 
             if (lit > layer.mAdding.mWeight)
-                layer.mAdding = PuffClaim(direction * seen, sprite.mMoved, lit);
+                layer.mAdding = PuffClaim(direction * crossing.mSeen, sprite.mMoved, lit);
 
             continue;
         }
@@ -603,13 +621,13 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
         if (oriented)
         {
-            wrapped = streakPuff(alongUnit);
+            wrapped = streakPuff(crossing.mAlong);
         }
         else
         {
             // Where the ray entered the ball, as a normal: `at` across the disc, and the ball's
             // surface lifted toward the eye by what is left of the radius there.
-            const vec3 normal = normalize(across * at.x + upward * at.y - direction * lift);
+            const vec3 normal = normalize(across * crossing.mAt.x + upward * crossing.mAt.y - direction * crossing.mLift);
 
             wrapped = ballPuff(normal, thrownForward);
 
@@ -652,15 +670,15 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             }
         }
 
-        covered += colour * puffLight(pixel, direction, seen, wrapped) * (alpha * reaching);
+        covered += colour * puffLight(pixel, direction, crossing.mSeen, wrapped) * (alpha * reaching);
         coverage += alpha;
-        coveredAt += seen * alpha;
+        coveredAt += crossing.mSeen * alpha;
         layer.mTransmittance *= 1.0 - alpha;
 
         // **By what it hid and not by what it was lit by.** An unlit puff of smoke sends back no
         // light at all and still decides the whole of what the pixel shows.
         if (alpha > layer.mCovering.mWeight)
-            layer.mCovering = PuffClaim(direction * seen, sprite.mMoved, alpha);
+            layer.mCovering = PuffClaim(direction * crossing.mSeen, sprite.mMoved, alpha);
     }
 
     if (coverage > 0.0)

@@ -1,13 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_ray_query : require
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_ray_tracing_position_fetch : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // The sky, for a ray that reached nothing.
 //
@@ -24,7 +18,6 @@
 #include "lib/frame.glsl"
 #include "lib/payload.glsl"
 #include "lib/sky.glsl"
-#include "lib/water.glsl"
 
 layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload answer;
 

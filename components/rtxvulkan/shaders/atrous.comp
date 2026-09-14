@@ -1,7 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
 
 // `texelFetch` without a sampler, which is what the four read-only inputs below are declared as.
 #extension GL_EXT_samplerless_texture_functions : require
@@ -129,7 +128,7 @@ void main()
     // **How noisy this pixel still is, which is what makes the brightness test mean anything.** A
     // difference of one against a variance of four is nothing; the same difference against a settled
     // pixel is an edge. The epsilon is a divide guard and nothing else.
-    const float spread = level.mLuminanceSigma * sqrt(texelFetch(moments, at, 0).b) + 1e-4;
+    const float spread = ATROUS_LUMINANCE_SIGMA * sqrt(texelFetch(moments, at, 0).b) + 1e-4;
     const float here = dot(texelFetch(source, at, 0).rgb, LUMINANCE_WEIGHTS);
 
     vec3 sum = vec3(0.0);
@@ -139,7 +138,7 @@ void main()
         for (int x = -2; x <= 2; ++x)
         {
             const ivec2 tap = at + ivec2(x, y) * int(level.mStep);
-            if (tap.x < 0 || tap.y < 0 || tap.x >= int(level.mCamera.mWidth) || tap.y >= int(level.mCamera.mHeight))
+            if (outsideOf(tap, uvec2(level.mCamera.mWidth, level.mCamera.mHeight)))
                 continue;
 
             const vec3 facingThere = texelFetch(guide, tap, 0).xyz;
@@ -153,9 +152,9 @@ void main()
             // vector rounded to eleven bits a component has a length just off one, so a dot with a
             // normal that matches — the centre tap's with its own, above all — can pass one, and a
             // hundred and twenty-eight powers of that is a weight an eighth too heavy.
-            const float facing = pow(clamp(dot(normal, facingThere), 0.0, 1.0), level.mNormalPower);
+            const float facing = pow(clamp(dot(normal, facingThere), 0.0, 1.0), ATROUS_NORMAL_POWER);
             const float offset = abs(dot(normal, positionAt(tap, texelFetch(depth, tap, 0).g) - position));
-            const float coplanar = exp(-offset / (level.mPlaneSigma * footprint));
+            const float coplanar = exp(-offset / (ATROUS_PLANE_SIGMA * footprint));
 
             // The third of SVGF's three, and the only one about the light rather than the surface.
             const vec3 light = texelFetch(source, tap, 0).rgb;

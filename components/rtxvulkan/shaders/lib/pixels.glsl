@@ -18,4 +18,10 @@ bool outsideOf(uvec2 pixel, uvec2 extent)
     return any(greaterThanEqual(pixel, extent));
 }
 
+/// The same for a tap that may have stepped off the near edge as well as the far one.
+bool outsideOf(ivec2 pixel, uvec2 extent)
+{
+    return any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(uvec2(pixel), extent));
+}
+
 #endif

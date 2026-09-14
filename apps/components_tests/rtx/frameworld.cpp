@@ -191,8 +191,8 @@ namespace Rtx
             describeWorld(read, constants);
 
             const Skylight& light = read.mDaylight.mLight;
-            EXPECT_EQ(constants.mSunPosition, light.mSun.mPosition);
-            EXPECT_EQ(constants.mSunIrradiance, light.mSun.mIrradiance);
+            EXPECT_EQ(constants.mSun.mDirection, light.mSun.mPosition);
+            EXPECT_EQ(constants.mSun.mIrradiance, light.mSun.mIrradiance);
             EXPECT_EQ(constants.mSunDiscColour, light.mSun.mDiscColour);
             EXPECT_EQ(constants.mAmbient, light.mAmbient);
             EXPECT_EQ(constants.mSkyHorizon, read.mDaylight.mSkyHorizon);
@@ -327,7 +327,7 @@ namespace Rtx
 
             // **One statement of "no sun", and the disc reads it too.** There is no second field to
             // leave set: a frame with no irradiance draws no disc, casts nothing and lights no haze.
-            EXPECT_EQ(constants.mSunIrradiance, osg::Vec3f()) << "no sun, and so no disc of one";
+            EXPECT_EQ(constants.mSun.mIrradiance, osg::Vec3f()) << "no sun, and so no disc of one";
             EXPECT_EQ(constants.mSunDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f)) << "a plain white one when there is";
             EXPECT_EQ(constants.mMoons[0].mAlpha, 0.0f) << "and no moons";
             EXPECT_EQ(constants.mMoons[0].mFace, Rtx::Shaders::NO_TEXTURE) << "and no portrait to draw";

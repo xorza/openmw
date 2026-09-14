@@ -12,13 +12,6 @@ namespace Rtx
 {
     namespace
     {
-        /// Full floats for the three radiance channels, and not halves: a reference is a sum of a
-        /// thousand frames, and rounding every term before adding it only averages away if the
-        /// error is random, which it is not — `direct` is all but identical from frame to frame,
-        /// and the sampler is a low-discrepancy sequence. In halves, the converged mean of a flat
-        /// surface comes out low by more than the test's tolerance.
-        constexpr VkFormat sRadiance = GBUFFER_RADIANCE;
-
         /// Half floats, and `gbuffer.h` has the angles the width is derived from. A normal is
         /// compared against a neighbour's and thrown away, never summed.
         constexpr VkFormat sGuide = GBUFFER_GUIDE;
@@ -72,13 +65,13 @@ namespace Rtx
 
         /// What each channel is made of, at its own binding, placed by name so a channel added to
         /// `Rtx::Channel` and forgotten here is a compile error rather than an image bound at the
-        /// wrong number.
-        const ChannelFormat& formatOf(const Channel channel)
+        /// wrong number. The two radiance channels take the run's width and the rest are fixed.
+        ChannelFormat formatOf(const Channel channel, const RadianceWidth width)
         {
             static constexpr auto sFormats = [] {
                 std::array<ChannelFormat, sChannelCount> every{};
-                every[bindingOf(Channel::Direct)] = { sRadiance, sUsage };
-                every[bindingOf(Channel::Indirect)] = { sRadiance, sReadable };
+                every[bindingOf(Channel::Direct)] = { VK_FORMAT_UNDEFINED, sUsage };
+                every[bindingOf(Channel::Indirect)] = { VK_FORMAT_UNDEFINED, sReadable };
                 every[bindingOf(Channel::Albedo)] = { sAlbedo, sUsage };
                 every[bindingOf(Channel::Specular)] = { sAlbedo, sUsage };
                 every[bindingOf(Channel::Guide)] = { sGuide, sUsage };
@@ -98,7 +91,11 @@ namespace Rtx
             static_assert(std::ranges::none_of(sFormats, [](const ChannelFormat& one) { return one.mUsage == 0; }),
                 "a channel the format table did not fill");
 
-            return sFormats[bindingOf(channel)];
+            ChannelFormat described = sFormats[bindingOf(channel)];
+            if (described.mFormat == VK_FORMAT_UNDEFINED)
+                described.mFormat = radianceFormat(width);
+
+            return described;
         }
 
         /// Every channel is a storage image the trace writes, bound one per number from nought,
@@ -116,7 +113,7 @@ namespace Rtx
     }
 
     GBuffer::GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, const std::uint32_t width,
-        const std::uint32_t height, const bool layers)
+        const std::uint32_t height, const bool layers, const RadianceWidth radiance)
         : mCarried(layers ? sChannelCount : bindingOf(Channel::Transparency))
         , mSet(device, sBindings, layout.get(), 1)
     {
@@ -128,7 +125,7 @@ namespace Rtx
         mChannels.reserve(sChannelCount);
         for (const Channel channel : sEveryChannel)
         {
-            const ChannelFormat& described = formatOf(channel);
+            const ChannelFormat described = formatOf(channel, radiance);
 
             // One texel where nothing will read the channel, which is sixteen bytes a pixel of the
             // frame; a store outside an image is discarded by the specification, and

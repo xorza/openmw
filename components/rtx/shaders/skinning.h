@@ -1,6 +1,3 @@
-// `#pragma once` everywhere else in this tree, and an include guard here: `glslc` warns
-// "'#pragma once' : not implemented" and carries on, so a header included twice by one
-// shader would redefine everything in it.
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_SKINNING_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_SKINNING_H
 
@@ -32,6 +29,13 @@ namespace Rtx::Shaders
     /// twenty-four bits of `first` three orders of magnitude of room.
     const uint RUN_COUNT_BITS = 8u;
     const uint RUN_COUNT_MASK = 0xFFu;
+
+    /// What a reference to a run of `GpuBone`s claims of every address it is constructed from: a
+    /// row is forty-eight bytes and its three `vec4` sit on sixteen. A claim larger than the truth
+    /// is undefined behaviour with no message, so the host asserts the run it hands over against
+    /// the same number the kernel declares. The other runs a pose reads are `scene.h`'s
+    /// `TABLE_ALIGN_ROWS`.
+    const uint BONE_ALIGN = 16u;
 
     /// One bone's share of one vertex.
     ///

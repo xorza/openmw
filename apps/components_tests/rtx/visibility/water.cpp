@@ -615,14 +615,15 @@ namespace Rtx::Testing
                     osg::Vec3f(0.0f, sign * 1000.0f, -1000.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mWaterLevel = 0.0f;
-                camera.mSunPosition = sunStandingAt(osg::DegreesToRadians(70.0f));
+                camera.mSun.mDirection = sunStandingAt(osg::DegreesToRadians(70.0f));
+                camera.mSun.mLimb = Shaders::SUN_SHADOW_SINE;
 
                 // A hundred times the sun the other water tests use. What the water scatters
                 // sideways out of a beam is a fraction of a per cent of it, and at the usual
                 // brightness both frames land in the first ten values of a byte — where the
                 // quantisation is the measurement rather than the phase function.
                 constexpr float blazing = 100.0f * sSunOverWater;
-                camera.mSunIrradiance = osg::Vec3f(blazing, blazing, blazing);
+                camera.mSun.mIrradiance = osg::Vec3f(blazing, blazing, blazing);
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });

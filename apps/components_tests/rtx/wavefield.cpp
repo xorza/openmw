@@ -12,7 +12,6 @@
 
 #include <osg/Vec2f>
 
-#include <components/rtx/shaders/gbuffer.h>
 #include <components/rtx/shaders/wave.h>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
@@ -104,8 +103,8 @@ namespace Rtx
             std::memcpy(turning.map(), frequencies.data(), frequencies.size_bytes());
 
             constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-            const Image surface(device, sCount, sCount, GBUFFER_ALBEDO, usage, "test-wave-surface");
-            const Image curvature(device, sCount, sCount, GBUFFER_ALBEDO, usage, "test-wave-curvature");
+            const Image surface(device, sCount, sCount, WAVE_TILE_FORMAT, usage, "test-wave-surface");
+            const Image curvature(device, sCount, sCount, WAVE_TILE_FORMAT, usage, "test-wave-curvature");
 
             const auto buffer = [](std::uint32_t binding, const VkDescriptorBufferInfo& info) {
                 return VkWriteDescriptorSet{
@@ -140,7 +139,8 @@ namespace Rtx
                     buffer(2, whole[2]) };
                 const Shaders::WaveFormConstants shaped{ .mCount = sCount, .mExtent = sExtent, .mTime = time };
 
-                dispatch(commands, forming, forms, shaped, groupsFor(sCount, 8), groupsFor(sCount, 8));
+                dispatch(commands, forming, forms, shaped, groupsFor(sCount, Shaders::WAVE_TILE_WORKGROUP),
+                    groupsFor(sCount, Shaders::WAVE_TILE_WORKGROUP));
                 Testing::orderStorageWrites(commands);
 
                 const std::array<VkWriteDescriptorSet, 1> lines{ buffer(0, whole[2]) };
@@ -166,7 +166,8 @@ namespace Rtx
                     stored(2, images[1]) };
                 const Shaders::WaveComposeConstants unpacked{ .mCount = sCount };
 
-                dispatch(commands, composing, composes, unpacked, groupsFor(sCount, 8), groupsFor(sCount, 8));
+                dispatch(commands, composing, composes, unpacked, groupsFor(sCount, Shaders::WAVE_TILE_WORKGROUP),
+                    groupsFor(sCount, Shaders::WAVE_TILE_WORKGROUP));
             });
 
             const std::vector<float> heights = Testing::readHalves(pool, surface);

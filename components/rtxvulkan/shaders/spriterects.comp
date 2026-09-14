@@ -1,9 +1,6 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 // Which tiles of the screen each sprite can be met from, and how many sprites each tile holds.
 //
@@ -24,30 +21,9 @@
 
 #include "spritebin.h"
 
+#include "lib/spritelist.glsl"
+
 layout(local_size_x = SPRITE_BIN_WORKGROUP) in;
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Sprites
-{
-    GpuSprite at[];
-};
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Emitters
-{
-    GpuEmitter at[];
-};
-
-layout(buffer_reference, buffer_reference_align = 8, scalar) writeonly buffer Rects
-{
-    uvec2 at[];
-};
-
-/// The list's head, where each tile's count is gathered ahead of the scan that turns it into a
-/// start. Tile `t`'s count sits at `1 + t`, which is where its start will sit — the shape
-/// `Rtx::RunList::count` fills on the host.
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Counts
-{
-    uint at[];
-};
 
 layout(push_constant, scalar) uniform Push
 {
@@ -259,12 +235,6 @@ TileRect capsuleTiles(Bound bound, Frame frame, uint across, uint down)
     return tilesOf(rect);
 }
 
-/// A rectangle as the pass over tiles reads it.
-uvec2 pack(TileRect rect)
-{
-    return uvec2(rect.mFrom.x | (rect.mFrom.y << 16u), rect.mTo.x | (rect.mTo.y << 16u));
-}
-
 void main()
 {
     const uint sprite = gl_GlobalInvocationID.x / SPRITE_BIN_LANES;
@@ -272,8 +242,8 @@ void main()
     if (sprite >= bin.mCount)
         return;
 
-    const GpuSprite held = Sprites(bin.mSprites).at[sprite];
-    const GpuEmitter emitter = Emitters(bin.mEmitters).at[held.mEmitter];
+    const GpuSprite held = SpriteTable(bin.mSprites).at[sprite];
+    const GpuEmitter emitter = EmitterTable(bin.mEmitters).at[held.mEmitter];
 
     const uint across = spriteTilesOver(bin.mCamera.mWidth);
     const uint down = spriteTilesOver(bin.mCamera.mHeight);
@@ -283,7 +253,7 @@ void main()
     const TileRect rect = capsuleTiles(boundOf(held, emitter), frameOf(bin.mCamera), across, down);
 
     if (lane == 0u)
-        Rects(bin.mRects).at[sprite] = pack(rect);
+        SpriteRects(bin.mRects).at[sprite] = packSpriteRect(rect.mFrom, rect.mTo);
 
     if (isEmpty(rect))
         return;
@@ -296,6 +266,6 @@ void main()
         const uint x = rect.mFrom.x + cell % wide;
         const uint y = rect.mFrom.y + cell / wide;
 
-        atomicAdd(Counts(bin.mList).at[1u + y * across + x], 1u);
+        atomicAdd(SpriteTileList(bin.mList).at[spriteCountSlot(y * across + x)], 1u);
     }
 }

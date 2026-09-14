@@ -129,6 +129,7 @@ endforeach()
 # reads it. Named here so an IDE lists them beside the shaders they belong to, which is the only
 # thing the build wants them for.
 set(RTX_SHADER_LIB
+    shaders/lib/basis.glsl
     shaders/lib/bindings.glsl
     shaders/lib/bloom.glsl
     shaders/lib/fog.glsl
@@ -142,10 +143,12 @@ set(RTX_SHADER_LIB
     shaders/lib/payload.glsl
     shaders/lib/pixels.glsl
     shaders/lib/random.glsl
+    shaders/lib/records.glsl
     shaders/lib/reproject.glsl
     shaders/lib/sea.glsl
     shaders/lib/shading.glsl
     shaders/lib/sky.glsl
+    shaders/lib/spritelist.glsl
     shaders/lib/sprites.glsl
     shaders/lib/starfield.glsl
     shaders/lib/texturearray.glsl

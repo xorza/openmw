@@ -138,6 +138,24 @@ namespace Rtx
         }
     };
 
+    /// How wide the radiance the trace writes is stored: `direct`, `indirect` and the composite's
+    /// own frame.
+    ///
+    /// **Full floats where a reference sums them, and half floats where a frame is shown.** A
+    /// reference is a sum of a thousand frames, and rounding every term before adding it only
+    /// averages away if the error is random, which it is not — the direct light is all but
+    /// identical from frame to frame and the sampler is a low-discrepancy sequence, so in halves
+    /// the converged mean of a flat surface comes out low by more than a test's tolerance. A frame
+    /// that is shown is never summed: the peak linear radiance a frame of this game reaches is
+    /// under nine, which a half carries with four orders of magnitude to spare at a step finer than
+    /// the display's — and sixteen bytes a pixel written three times and read six a frame is what
+    /// the full width costs a picture that cannot tell.
+    enum class RadianceWidth
+    {
+        Shown,
+        Summed,
+    };
+
     /// Everything a run decides once about how the picture is made, in one bag for both hosts.
     /// Nothing here changes while a run is being made, so a frame reads what it was handed rather
     /// than asking the registry per knob per frame.
@@ -164,5 +182,9 @@ namespace Rtx
 
         /// `RendererOptions::mStressOverlapMs`, carried whole.
         double mStressOverlapMs = 0.0;
+
+        /// `RendererOptions::mRadianceWidth`, carried whole. The reference's width unless a run says
+        /// it only shows its frames, so that a run that forgot to say is exact rather than fast.
+        RadianceWidth mRadianceWidth = RadianceWidth::Summed;
     };
 }
