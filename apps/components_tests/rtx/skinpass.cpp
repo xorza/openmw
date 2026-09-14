@@ -165,7 +165,9 @@ namespace Rtx
             }
 
             Graveyard graveyard(device, pool);
-            SkinTables tables(device, scene, 2, graveyard);
+            Batch tableSetup(pool);
+            SkinTables tables(device, tableSetup, scene, 2, graveyard);
+            tableSetup.flush();
             const SkinPass pass(device, Testing::getShaderDirectory());
 
             const VkDeviceSize poseBytes = VkDeviceSize{ posedVertices } * sizeof(osg::Vec3f);
@@ -245,6 +247,61 @@ namespace Rtx
             EXPECT_EQ(positionOf(blended, 2), osg::Vec3f(1.0f, 1.0f, 7.0f));
 
             EXPECT_FALSE(poseAndRead(FrameSlot{ 0 })) << "a copy that owed nothing recorded a dispatch";
+
+            // **A run handed out again reaches the copy through the batch.** `blended` goes and a
+            // mesh on a new two-bone rig takes every run it held — the slot,
+            // the bind run, the rows and the rig's runs and influences, each asserted, because the
+            // reuse is what is being tested. Its bind is the quad shifted along x, its rig blends the
+            // third corner half and half, and its bones stand at one and three: 0.5 · 1 + 0.5 · 3 =
+            // 2 there and 1 elsewhere, so a stale bind, a stale row or a stale influence would each
+            // show as a different number.
+            const MeshRange went = scene.meshes().getRows()[blended];
+            const Rig wentRig = scene.deformers().getRigs()[twoBones];
+            scene.clearArrivals();
+            const std::array kept{ raised, still, turned, lifted };
+            ASSERT_TRUE(scene.release(kept, {}));
+
+            const std::array halfAndHalf{
+                Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f },
+                Shaders::GpuInfluence{ .mBone = 0, .mWeight = 0.5f },
+                Shaders::GpuInfluence{ .mBone = 1, .mWeight = 0.5f },
+            };
+            const Index twoMore = scene.deformers().addRig(twoRuns, halfAndHalf, 2);
+            std::array<osg::Vec3f, 4> shifted = Testing::sUnitQuad;
+            for (osg::Vec3f& corner : shifted)
+                corner += osg::Vec3f(1.0f, 0.0f, 0.0f);
+            const Index arrived = scene.addMesh(
+                MeshArrays{ .mPositions = shifted, .mNormals = upward, .mIndices = Testing::sQuadIndices }, {},
+                Deform::Rig, twoMore);
+            const MeshRange& taken = scene.meshes().getRows()[arrived];
+            ASSERT_EQ(arrived, blended) << "the slot was not handed out again";
+            ASSERT_EQ(taken.mBindOffset, went.mBindOffset) << "the bind run was not handed out again";
+            ASSERT_EQ(taken.mPoseOffset, went.mPoseOffset) << "the rows were not handed out again";
+            ASSERT_EQ(scene.deformers().getRigs()[twoMore].mRuns, wentRig.mRuns) << "the run words were not";
+            ASSERT_EQ(scene.deformers().getRigs()[twoMore].mInfluences, wentRig.mInfluences)
+                << "the influences were not";
+
+            const std::array oneAndThree{ boneUp(1.0f), boneUp(3.0f) };
+            scene.poseRig(arrived, oneAndThree, anywhere);
+
+            {
+                Batch arrival(pool);
+                tables.extend(arrival, scene, graveyard);
+                EXPECT_TRUE(pass.recordArrived(
+                    arrival.getCommands(), scene, FrameSlot{ 0 }, scene.meshes().getArrived(), tables, poses, normals))
+                    << "an arrival with nothing to pose";
+
+                handOver(arrival.getCommands(), Use::sBufferComputeWrite,
+                    BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });
+                poses.at(FrameSlot{ 0 }).getBlock(0).copyTo(arrival.getCommands(), readPositions, poseBytes);
+                arrival.flush();
+            }
+
+            EXPECT_EQ(positionOf(arrived, 2), osg::Vec3f(2.0f, 1.0f, 2.0f));
+            EXPECT_EQ(positionOf(arrived, 0), osg::Vec3f(1.0f, 0.0f, 1.0f));
+            EXPECT_EQ(positionOf(arrived, 1), osg::Vec3f(2.0f, 0.0f, 1.0f));
+            EXPECT_EQ(positionOf(arrived, 3), osg::Vec3f(1.0f, 1.0f, 1.0f));
+            EXPECT_EQ(positionOf(raised, 2), osg::Vec3f(1.0f, 1.0f, 5.0f)) << "an arrival touched a neighbour";
         }
     }
 }

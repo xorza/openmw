@@ -54,6 +54,7 @@ namespace Rtx
     {
         const Run run = mMasks.allocate(weights);
         mArrived.mMasks.push_back(run);
+        ++mRunRevision;
         return run;
     }
 
@@ -61,6 +62,7 @@ namespace Rtx
     {
         const Run run = mLayers.allocate(layers);
         mArrived.mLayers.push_back(run);
+        ++mRunRevision;
         return run;
     }
 

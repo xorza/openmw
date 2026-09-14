@@ -69,6 +69,11 @@ namespace Rtx
         std::span<const Index> getWritten() const { return mWritten.getSlots(); }
         const ArrivedRuns& getArrived() const { return mArrived; }
 
+        /// How many runs have been placed, ever. What a backend checks it staged the arrivals
+        /// against: a run is written on arrival and never again, so one that arrived where the
+        /// backend was not told would be read stale for its life.
+        std::uint64_t getRunRevision() const { return mRunRevision; }
+
         /// Frees every slot the last `mark` did not name, and says how many that was.
         std::size_t sweep();
 
@@ -104,6 +109,7 @@ namespace Rtx
         SlotSet mWritten;
 
         ArrivedRuns mArrived;
+        std::uint64_t mRunRevision = 0;
 
         /// A material's layers, and the weights a layer places — runs and not slots, because a
         /// terrain chunk's layer run is as long as the ground types under it.

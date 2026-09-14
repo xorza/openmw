@@ -49,6 +49,7 @@ namespace Rtx
         if (writes.empty())
             return;
 
-        vkUpdateDescriptorSets(device.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(
+            device.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 }

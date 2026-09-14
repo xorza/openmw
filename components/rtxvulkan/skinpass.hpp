@@ -39,19 +39,27 @@ namespace Rtx
             SlotBlocks& poses, SlotBlocks& normals, GpuTimer* timer) const;
 
         /// The same for the deforming meshes among `arrived`, and those alone, into `slot`'s copy,
-        /// for the build over them: nothing is owed or paid, and the rows go into runs the meshes
-        /// were only just given. An arrival does not wait the frames in flight out, so it may not
-        /// touch a row a placement in flight reads — which posing every mesh the copy owed did.
-        /// Untimed: the frame's report carries one `skin` zone and it is the placement's.
+        /// for the build over them: nothing is owed or paid, and the rows are the ones
+        /// `SkinTables::extend` staged into that copy. An arrival does not wait the frames in
+        /// flight out, so it may not write a row a placement in flight reads — which posing every
+        /// mesh the copy owed did. Untimed: the frame's report carries one `skin` zone and it is
+        /// the placement's.
         bool recordArrived(VkCommandBuffer commands, const SceneDesc& scene, FrameSlot slot,
             std::span<const Index> arrived, SkinTables& tables, SlotBlocks& poses, SlotBlocks& normals) const;
 
     private:
+        /// Whether a dispatch writes the mesh's rows into the copy first, which a placement does,
+        /// or reads the rows `SkinTables::extend` staged there for an arrival.
+        enum class Rows
+        {
+            Written,
+            Staged,
+        };
+
         /// One mesh's dispatch, binding whichever of the two pipelines it needs where `bound` is
         /// not already it. The mesh deforms and has vertices, which the caller asked first.
         void pose(VkCommandBuffer commands, const SceneDesc& scene, FrameSlot slot, Index mesh, SkinTables& tables,
-            SkinTables::Rows rows, BlockedBuffer& into, BlockedBuffer& normalsInto,
-            const ComputePipeline*& bound) const;
+            Rows rows, BlockedBuffer& into, BlockedBuffer& normalsInto, const ComputePipeline*& bound) const;
 
         ComputePipeline mSkin;
         ComputePipeline mMorph;

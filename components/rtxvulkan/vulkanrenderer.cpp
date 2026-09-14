@@ -472,7 +472,7 @@ namespace Rtx
         // that one is still tracing.
         held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, sFrameSlots);
         held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords, sFrameSlots, graveyard);
-        held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, sFrameSlots, graveyard);
+        held.mSkinTables = std::make_unique<SkinTables>(mDevice, setup, scene, sFrameSlots, graveyard);
 
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures, graveyard);
@@ -514,10 +514,10 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
-        // An arrival does not wait for the frames in flight: what arrives is written into room no
-        // frame holds, and the writes end in the barrier `orderStagedWrites` records. It opens
-        // the frame it lands in, because `beginFrame` clears the timer and a zone opened before
-        // it would be forgotten.
+        // An arrival does not wait for the frames in flight: what arrives is written on the queue,
+        // behind whatever a frame in flight still reads of the room it was given, and the writes
+        // end in the barrier `orderStagedWrites` records. It opens the frame it lands in, because
+        // `beginFrame` clears the timer and a zone opened before it would be forgotten.
         GpuTimer* timer = nullptr;
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
@@ -533,12 +533,12 @@ namespace Rtx
         if (scene.meshes().getRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(setup, scene, graveyard);
-            held.mSkinTables->extend(scene, graveyard);
+            held.mSkinTables->extend(setup, scene, graveyard);
             held.mAcceleration->extend(setup, scene, graveyard);
 
             // Posed before it is built, as `setScene` does, into the first copy, which is what the
-            // build reads — and only the meshes that arrived, whose rows nothing in flight names.
-            // `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
+            // build reads — and only the meshes that arrived, over the rows `SkinTables::extend`
+            // staged. `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
             mSkinPass.recordArrived(setup.getCommands(), scene, FrameSlot{}, scene.meshes().getArrived(),
                 *held.mSkinTables, held.mAcceleration->getPoses(), held.mBuffers->getNormals());
             held.mAcceleration->buildArrived(setup, scene, timer, graveyard);

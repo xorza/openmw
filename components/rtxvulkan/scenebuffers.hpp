@@ -39,10 +39,12 @@ namespace Rtx
         SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
             std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
 
-        /// Takes in the attributes of the meshes the scene says arrived. The blocks are appended to
-        /// rather than replaced, and a departure needs nothing here. With nothing in flight, which
-        /// the caller guarantees: an arrival writes every copy of the normals and the whole mesh
-        /// table.
+        /// Takes in the attributes of the meshes the scene says arrived, and the layer and mask
+        /// runs that arrived with them. The blocks are appended to rather than replaced, and a
+        /// departure needs nothing here. Through `batch`, with frames in flight: a run an arrival
+        /// was given may be one a material that went held until the last sweep, and the frame
+        /// that shaded its hits can still be reading it. Ends in the barrier whatever reads them
+        /// needs.
         void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
 
         /// Rewrites what a moving world changes — where things are and what is lit — leaving what
@@ -87,8 +89,6 @@ namespace Rtx
         /// its own account: `mInstanceTable`, `mMaterialTable` and `mNormalTable`.
         struct Tables
         {
-            Buffer mLayers;
-            Buffer mMasks;
             Buffer mLights;
             Buffer mLightList;
 
@@ -109,33 +109,46 @@ namespace Rtx
 
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
         /// copy of the normals — and rewrites the per-mesh row table. Per mesh and not per scene,
-        /// because that is what an arrival is.
+        /// because that is what an arrival is. Nothing is ordered here.
         void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
 
-        /// Writes the material rows `slot`'s copy owes, and the layer and mask runs that arrived into
-        /// every copy — or a table whole where it had to be made again to hold them.
+        /// Stages the layer and mask runs that arrived — or a table whole where it had to be made
+        /// again to hold them. Nothing is ordered here.
+        void writeMaterialRuns(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
+
+        /// Writes the material rows `slot`'s copy owes.
         void shade(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
 
         const Device* mDevice = nullptr;
 
         // What the scene is made of, written on arrival and read by every frame: one copy, because
-        // an arrival waits for the frames in flight before it writes. The colours too, where the
-        // normals are one per frame in flight: a skin recomputes a body's normals and never
+        // an arrival writes it on the queue, behind every frame in flight. The colours too, where
+        // the normals are one per frame in flight: a skin recomputes a body's normals and never
         // repaints it.
         BlockedBuffer mTexCoords{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec2f) };
         BlockedBuffer mColours{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+
+        /// A material's layers and the weights a layer places, one copy each for the same reason.
+        /// Plain buffers grown by doubling, because a shader reaches a run by its offset from one
+        /// address; the masks are megabytes, which is what a copy per frame in flight cost.
+        Buffer mLayers;
+        Buffer mMasks;
 
         /// One row a mesh slot, so a hit can turn its slot into offsets into the tables above.
         /// Rewritten whole whenever a mesh arrives or leaves, which is a few kilobytes.
         Buffer mMeshes;
 
-        // Host-visible and rewritten from `place`, not uploaded once: anything that animates a
-        // state set gives the mirror a new material every frame, and only the rows the scene says
-        // it wrote go over — the masks are megabytes and a flipbook turning changes none of them.
+        // Host-visible and rewritten from `place`, not uploaded once.
         PerSlot<Tables> mTables;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;
         std::vector<Shaders::GpuLayer> mLayerScratch;
+
+        /// What the material table's runs stood at when they were last staged, which `shade` checks
+        /// against: a run that arrived without an `extend` to stage it would be shaded stale for its
+        /// life, and only a terrain chunk makes one — with its mesh, which is what brings the
+        /// `extend`.
+        std::uint64_t mStagedRuns = 0;
 
         /// What a hit turns its slot into: the mesh, the material, the opacity and the motion. Its
         /// own table rather than a field of `Tables`, because the copies and what each of them

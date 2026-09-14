@@ -40,7 +40,7 @@ namespace Rtx
     }
 
     void SkinPass::pose(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, const Index index,
-        SkinTables& tables, const SkinTables::Rows rows, BlockedBuffer& into, BlockedBuffer& normalsInto,
+        SkinTables& tables, const Rows rows, BlockedBuffer& into, BlockedBuffer& normalsInto,
         const ComputePipeline*& bound) const
     {
         const MeshRange& mesh = scene.meshes().getRows()[index];
@@ -60,7 +60,7 @@ namespace Rtx
                 .mBindNormals = tables.getBindNormals(mesh),
                 .mRuns = tables.getRuns(rig),
                 .mInfluences = tables.getInfluences(rig),
-                .mBones = tables.writeBones(scene, slot, index, rows),
+                .mBones = rows == Rows::Written ? tables.writeBones(scene, slot, index) : tables.getBones(mesh, slot),
                 .mPositions = posed,
                 .mNormals = shaded,
                 .mCount = mesh.mVertices.mCount,
@@ -81,7 +81,8 @@ namespace Rtx
             const Shaders::MorphConstants push{
                 .mBase = tables.getBindPositions(mesh),
                 .mOffsets = tables.getMorphOffsets(morph),
-                .mWeights = tables.writeWeights(scene, slot, index, rows),
+                .mWeights
+                = rows == Rows::Written ? tables.writeWeights(scene, slot, index) : tables.getWeights(mesh, slot),
                 .mPositions = posed,
                 .mCount = mesh.mVertices.mCount,
                 .mTargets = morph.mTargetCount,
@@ -122,7 +123,7 @@ namespace Rtx
                 recorded = true;
             }
 
-            pose(commands, scene, slot, index, tables, SkinTables::Rows::Placed, into, normalsInto, bound);
+            pose(commands, scene, slot, index, tables, Rows::Written, into, normalsInto, bound);
         });
 
         if (!recorded)
@@ -146,7 +147,7 @@ namespace Rtx
             if (!posable(scene.meshes().getRows()[index]))
                 continue;
 
-            pose(commands, scene, slot, index, tables, SkinTables::Rows::Arrived, into, normalsInto, bound);
+            pose(commands, scene, slot, index, tables, Rows::Staged, into, normalsInto, bound);
             recorded = true;
         }
 

@@ -144,7 +144,8 @@ namespace Rtx
         /// `count` elements of the buffer at `offset` bytes in, to be written in place and never
         /// read, for a caller that produces the bytes where they land — what MyGUI's `lock` and
         /// `unlock` are. `writeAt` is this for a caller that already holds them. Asserts that no
-        /// submit still reads the buffer; a run nothing in flight reads is `appendAt`'s.
+        /// submit still reads the buffer: a write into one a submit may still read goes through
+        /// the queue, by `stageInto` or `updateInline`.
         template <class T>
         std::span<T> writable(VkDeviceSize offset, VkDeviceSize count) const
         {
@@ -164,16 +165,6 @@ namespace Rtx
         void write(std::span<const T> data) const
         {
             writeAt(0, data);
-        }
-
-        /// `writeAt` into a run no submit in flight reads: what an arrival writes, because a run
-        /// only just handed out is one nothing recorded before it names. The caller promises that,
-        /// and the whole-buffer stamp cannot check it — the buffer is named as a whole by every
-        /// frame that traces it.
-        template <class T>
-        void appendAt(VkDeviceSize offset, std::span<const T> data) const
-        {
-            std::memcpy(reach<T>(offset, data.size()).data(), data.data(), data.size_bytes());
         }
 
         /// Zeroes the whole buffer, for a block, which is made longer than what will be put in it:
