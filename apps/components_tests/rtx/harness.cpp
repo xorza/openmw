@@ -15,9 +15,11 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/barriers.hpp>
+#include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
+#include <components/rtxvulkan/result.hpp>
 #include <components/rtxvulkan/validation.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 
@@ -311,6 +313,52 @@ namespace Rtx::Testing
         handOver(commands, Use::sBufferComputeWrite,
             BufferUse{ Use::sBufferComputeReadWrite.mStage | Use::sBufferHostRead.mStage,
                 Use::sBufferComputeReadWrite.mAccess | Use::sBufferHostRead.mAccess });
+    }
+
+    HeldSubmit::HeldSubmit(const Device& device)
+        : mDevice(device)
+        , mGate(makeTimelineSemaphore(device, "test hold"))
+    {
+    }
+
+    HeldSubmit::~HeldSubmit()
+    {
+        if (mOpener.joinable())
+            mOpener.join();
+
+        if (!mReleased)
+            release();
+    }
+
+    std::uint64_t HeldSubmit::submit(CommandPool& pool, VkCommandBuffer commands, Graveyard& graveyard)
+    {
+        const VkSemaphoreSubmitInfo wait{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = mGate.get(),
+            .value = 1,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        return pool.submit(commands, graveyard, std::span(&wait, 1));
+    }
+
+    void HeldSubmit::releaseAfter(const std::chrono::milliseconds delay)
+    {
+        mOpener = std::thread([this, delay] {
+            std::this_thread::sleep_for(delay);
+            release();
+        });
+    }
+
+    void HeldSubmit::release()
+    {
+        mReleased = true;
+
+        const VkSemaphoreSignalInfo signal{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO,
+            .semaphore = mGate.get(),
+            .value = 1,
+        };
+        checkVk(mDevice, vkSignalSemaphore(mDevice.getHandle(), &signal), "vkSignalSemaphore");
     }
 
     std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level)

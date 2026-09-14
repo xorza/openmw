@@ -454,7 +454,7 @@ namespace Rtx
 
         // The copies are new and alike, so nothing has read either.
         held.mSlot = FrameSlot{};
-        held.mReadBy.fill(sNeverRead);
+        held.mPictureRides.fill(0);
 
         // Made here for the same reason a frame's are: both of the two below want them, and this is
         // the only place that knows both.
@@ -563,6 +563,14 @@ namespace Rtx
             readStats(held);
     }
 
+    void VulkanRenderer::ViewScene::finishReads(const FrameSlot slot) const
+    {
+        mBuffers->finishReads(slot);
+        mAcceleration->finishReads(slot);
+        mSkinTables->finishReads(slot);
+        mTextures->finishReads(slot);
+    }
+
     SceneHeld VulkanRenderer::describeHeld(const SceneSlot slot) const
     {
         const ViewScene& held = sceneAt(slot);
@@ -621,21 +629,22 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
 
-        // The copy this placement writes is the one the last frame did not trace, and whatever
-        // frame last traced it is waited for here — usually a comparison, and where the GPU is
-        // behind, the right place for the CPU to stand still. The other copy and not a parity of
-        // its own, because a frame need not place.
+        // The copy this placement writes is the one the last frame did not trace. The other copy
+        // and not a parity of its own, because a frame need not place.
         const FrameSlot into = held.mSlot.next();
-        if (held.mReadBy[into.get()] != sNeverRead)
-        {
-            // A picture recorded this frame and carried by nothing yet reads this copy too, and
-            // the ring cannot wait for a frame that was never submitted. Two placements of one
-            // scene inside one frame is the only way here, which a game never takes.
-            if (held.mReadBy[into.get()] >= mRing.getRecording())
-                mPool.finishDeferred();
 
-            mRing.finishThrough(held.mReadBy[into.get()]);
-        }
+        // A picture of this copy recorded and carried by nothing yet is carried first, for what
+        // `ViewScene::mPictureRides` says. Three placements of one scene inside one frame is the
+        // only way here, which a game never takes.
+        if (held.mPictureRides[into.get()] == mDevice.getTimeline().getNext())
+            mPool.finishDeferred();
+
+        // Whatever last read or wrote this copy on the queue is waited for here, and each table
+        // says what that was: the frame before last's trace, which `collectFrame` has usually
+        // waited out already, so this is a comparison; an arrival's pose over the first copy,
+        // carried by a placement's submit; a picture carried by the interface's own. Where the
+        // device is behind, this is the right place for the CPU to stand still.
+        held.finishReads(into);
 
         // A picture inside the interface is placed into a batch that rides the next submit, neither
         // timed nor opening the frame's report; the trace that follows is deferred the same way, and
@@ -790,13 +799,12 @@ namespace Rtx
         if (vertices.empty() || batches.empty())
             return;
 
-        // The interface drawn two frames ago drew out of this slot; its value passed is what says
-        // the vertices may be written over.
+        // The interface drawn two frames ago drew out of this slot, and the vertices carry the
+        // submit that bound them: that passed is what says they may be written over.
         FrameRecord& gui = mRing.slotOf(mGuiFrame);
-        if (gui.mGui.mPending)
+        if (!gui.mGuiVertices.isIdle())
         {
-            mDevice.getTimeline().waitFor(gui.mGui.mSubmitted, "the interface drawn two frames ago");
-            gui.mGui.mPending = false;
+            gui.mGuiVertices.waitIdle("the interface drawn two frames ago");
             mGraveyard.collect();
         }
 
@@ -831,9 +839,8 @@ namespace Rtx
         // world has been drawn and there is nothing to gain by holding the frame open for it; the
         // queue draws it after the frame, the present blits after both, and the wait is for the
         // vertices alone.
-        mPool.begin(gui.mGui.mCommands);
-
-        const VkCommandBuffer commands = gui.mGui.mCommands;
+        const VkCommandBuffer commands = gui.mGuiCommands;
+        mPool.begin(commands);
         claimTarget().transition(commands, Use::sComputeWrite, Use::sColourAttachment);
 
         mGuiPass.record(commands, mTargets.current(), gui.mGuiVertices.getHandle(), mGuiDraws);
@@ -845,8 +852,7 @@ namespace Rtx
                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT },
             Use::sAnyGeneralRead);
 
-        gui.mGui.mSubmitted = mPool.submit(commands, mGraveyard);
-        gui.mGui.mPending = true;
+        mPool.submit(commands, mGraveyard);
         ++mGuiFrame;
     }
 
@@ -1061,7 +1067,6 @@ namespace Rtx
         if (mCountHits || mCountCrossings)
             frame.mHitCount.orderForHostRead(commands);
 
-        mWorld.mReadBy[mWorld.mSlot.get()] = mRing.getRecording();
         mRing.submit(frame);
 
         // What the next frame reprojects against, and the camera as the caller gave it: a jitter is
@@ -1151,8 +1156,9 @@ namespace Rtx
         sampled.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
         // Recorded into a batch that rides the next submit, and waited for by nobody here: the
-        // next placement of this scene waits through `mReadBy`, and what it writes nothing else
-        // reads. Not counted and not timed, because the hit count and the report are the frame's.
+        // next placement of this scene waits for what its tables say, and what it writes nothing
+        // else reads. Not counted and not timed, because the hit count and the report are the
+        // frame's.
         Batch trace(mPool);
         {
             const VkCommandBuffer commands = trace.getCommands();
@@ -1213,10 +1219,9 @@ namespace Rtx
         }
         trace.defer();
 
-        // Conservative where it is not exact. The batch rides the next submit this pool makes,
-        // which is this frame's or an earlier one's GUI; a later frame's wait covers either by
-        // queue order.
-        traced.mReadBy[traced.mSlot.get()] = mRing.getRecording();
+        // The value the batch rides: the next submit this pool makes, whichever that is. The
+        // tables it reads were named the same value as they were handed out above.
+        traced.mPictureRides[traced.mSlot.get()] = mDevice.getTimeline().getNext();
     }
 
     bool VulkanRenderer::takeGuiCopy(const GuiSlot texture, const std::span<std::uint8_t> into)

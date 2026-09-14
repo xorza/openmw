@@ -288,6 +288,12 @@ namespace Rtx
             .size = bytes.size(),
         };
         vkCmdCopyBuffer(batch.getCommands(), staged.mBuffer, into.getHandle(), 1, &region);
+
+        // A copy takes a handle and names nothing on its own, and a host write over the destination
+        // while the copy is still on the queue is a race between two writers: named, so `isIdle`
+        // says so. The source needs no stamp: a staging block is the batch's, held until the
+        // submit that carries it has been waited on.
+        into.nameFor(device.getTimeline().getNext());
     }
 
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage,

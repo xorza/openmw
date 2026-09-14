@@ -89,16 +89,13 @@ namespace Rtx
 
     bool Buffer::isIdle() const
     {
-        if (mDevice == nullptr)
-            return true;
+        return mDevice == nullptr || mRead.isIdle(mDevice->getTimeline());
+    }
 
-        // A stamp for the next submit is not a hazard: that submit has not been made, and a host
-        // write made before it is what it sees — which is how a placement writes a mesh's rows,
-        // hands their address out, and writes the next mesh's. The stamp keeps only the last
-        // value, so this says nothing about an older submit still reading; a buffer handed to two
-        // submits in flight is what the two copies of every table a frame writes exist to prevent.
-        const Timeline& timeline = mDevice->getTimeline();
-        return mNamedUntil >= timeline.getNext() || timeline.hasFinished(mNamedUntil);
+    void Buffer::waitIdle(const char* const what) const
+    {
+        if (mDevice != nullptr)
+            mRead.waitIdle(mDevice->getTimeline(), what);
     }
 
     VkDeviceAddress Buffer::addressFor() const
@@ -157,6 +154,12 @@ namespace Rtx
     void Buffer::copyTo(const VkCommandBuffer commands, const Buffer& into, const VkDeviceSize bytes) const
     {
         assert(bytes <= mSize && bytes <= into.mSize && "a copy of more than either buffer holds");
+
+        // Both ends, because a copy takes handles and an address names nothing: a host write over
+        // either end while the copy is on the queue is the hazard `isIdle` is asked about.
+        const std::uint64_t next = mDevice->getTimeline().getNext();
+        nameFor(next);
+        into.nameFor(next);
 
         const VkBufferCopy region{ .size = bytes };
         vkCmdCopyBuffer(commands, mHandle.get(), into.mHandle.get(), 1, &region);

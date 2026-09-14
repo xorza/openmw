@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -13,6 +12,7 @@
 #include "imageuse.hpp"
 #include "memory.hpp"
 #include "owned.hpp"
+#include "readstamp.hpp"
 
 namespace Rtx
 {
@@ -73,20 +73,21 @@ namespace Rtx
         BufferKind getKind() const { return mKind; }
 
         /// Says a submit signalling `value` names this buffer. `addressFor` and `describe` say it
-        /// for the next submit as they hand the buffer out; this is for a hand-out by handle — a
-        /// copy's source, a vertex buffer bound — which names nothing on its own. What `isIdle`
-        /// checks a host write against. `const`, because naming is not a change to the bytes, and
-        /// the callers that name are const.
-        void nameFor(std::uint64_t value) const { mNamedUntil = std::max(mNamedUntil, value); }
+        /// for the next submit as they hand the buffer out, and `copyTo` and `stageInto` for a
+        /// copy's ends; this is for a hand-out by handle nothing else covers — a vertex buffer
+        /// bound. What `isIdle` checks a host write against.
+        void nameFor(std::uint64_t value) const { mRead.nameFor(value); }
 
         /// The last value a submit naming this buffer signals, or nought where nothing has.
-        std::uint64_t getNamedUntil() const { return mNamedUntil; }
+        std::uint64_t getNamedUntil() const { return mRead.getNamedUntil(); }
 
-        /// Whether every submit that names this buffer has run — what a host write of it asserts,
-        /// because a host write over a submit still reading is the one hazard the layers cannot
-        /// see. True of a buffer nothing has named, which is why every hand-out to a recording goes
-        /// through `addressFor` or `describe`.
+        /// Whether every submit that names this buffer has run — what a host write of it asserts.
+        /// `ReadStamp::isIdle` says what a stamp for a submit not yet made means.
         bool isIdle() const;
+
+        /// Blocks until `isIdle`, where a submit naming this buffer is still on the queue. `what`
+        /// names the wait in the error a device that stops answering produces.
+        void waitIdle(const char* what) const;
 
         /// The GPU-side address, for a caller that compares or asserts on it and hands it to no
         /// recording — `addressFor` is for the rest. Only valid when the buffer was created with
@@ -200,7 +201,7 @@ namespace Rtx
         bool mAddressable = false;
         VkDeviceAddress mAddress = 0;
 
-        mutable std::uint64_t mNamedUntil = 0;
+        ReadStamp mRead;
     };
 
     /// Grows `held` so it can hold `bytes`, and never leaves it holding nothing: an empty slot is

@@ -68,6 +68,10 @@ namespace Rtx
         bool place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
             const Placing& placing);
 
+        /// Waits until no build on the queue reads `slot`'s copy of the rows, ahead of the
+        /// placement that writes it.
+        void finishReads(FrameSlot slot) const { mRowTable.finishReads(slot); }
+
         /// Takes in the geometry of the meshes the scene says arrived and lets go of the ones it says
         /// went. `buildArrived` builds their structures, once the pass has posed them. Every
         /// structure already built stays where it is, and the top level picks the change up for

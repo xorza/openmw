@@ -64,7 +64,7 @@ namespace Rtx
         // timeline says the report has landed; a picture's bin behind another's on the queue keeps
         // the capacity it has, which `SpriteListSize` never shrinks anyway.
         const std::uint32_t reported
-            = timeline.hasFinished(mReport) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
+            = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
         mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
 
         graveyard.bury(growTo(

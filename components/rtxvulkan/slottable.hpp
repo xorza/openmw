@@ -100,8 +100,9 @@ namespace Rtx
             RowDebt& owed = mOwed.at(slot);
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
-            // The copy about to be written is the one the frame before last read, and the ring
-            // waited that frame out before this placement began; the write asserts that it did.
+            // The copy about to be written is the one the frame before last read, and
+            // `finishReads` waited that out before this placement began; the write asserts that
+            // it did.
 
             // A copy made again is empty whatever the debt says. Doubled only where it does not
             // fit, because `growTo` remakes whatever is larger than what it has. A byte where the
@@ -128,6 +129,9 @@ namespace Rtx
 
         /// Where `slot`'s copy is, as a recording takes it — `Buffer::addressFor`.
         VkDeviceAddress addressFor(FrameSlot slot) const { return mCopies.at(slot).addressFor(); }
+
+        /// Waits until nothing on the queue reads `slot`'s copy, ahead of the `sync` that writes it.
+        void finishReads(FrameSlot slot) const { mCopies.at(slot).waitIdle("a submit still reading a table's copy"); }
 
         VkDeviceSize getBytes() const
         {

@@ -30,8 +30,7 @@ namespace Rtx
         std::uint32_t mCrossingsMost = 0;
     };
 
-    /// One command buffer and the timeline value it was submitted under. Held twice per frame,
-    /// because a frame submits twice: the world, and the interface over it.
+    /// One command buffer and the timeline value it was submitted under.
     struct Submission
     {
         VkCommandBuffer mCommands = VK_NULL_HANDLE;
@@ -60,8 +59,8 @@ namespace Rtx
         Submission mWorld;
 
         /// The interface's own ring beside the frame's: it is drawn after the frame is submitted
-        /// and waited for on its own, so its vertices are guarded by its own value.
-        Submission mGui;
+        /// and waited for on its own, by the stamp its vertices carry.
+        VkCommandBuffer mGuiCommands = VK_NULL_HANDLE;
 
         /// Begun by a placement or a trace and not yet submitted.
         bool mBegun = false;
@@ -136,9 +135,6 @@ namespace Rtx
         /// The oldest report in hand, waiting only where the ring has no room for the next frame
         /// — `Renderer::collectFrame`.
         std::optional<FrameResult> collectFinished();
-
-        /// Waits until `frame` is finished, where it was ever submitted.
-        void finishThrough(std::uint64_t frame);
 
         /// Waits for every frame in flight. What an arrival, a rebuild, a resize and a picture
         /// inside the interface do first.

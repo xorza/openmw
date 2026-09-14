@@ -207,11 +207,26 @@ namespace Rtx
         }
     }
 
+    VkDescriptorSet TextureArray::getSet(const FrameSlot slot) const
+    {
+        assert(slot.get() < sFrameSlots);
+        mBound.at(slot).nameFor(mDevice.getTimeline().getNext());
+        return mSets.get(slot.get());
+    }
+
+    void TextureArray::finishReads(const FrameSlot slot) const
+    {
+        mBound.at(slot).waitIdle(mDevice.getTimeline(), "a trace still sampling a texture set");
+    }
+
     void TextureArray::sync(const FrameSlot slot)
     {
         SlotSet& owed = mOwed.at(slot);
         if (owed.empty())
             return;
+
+        assert(
+            mBound.at(slot).isIdle(mDevice.getTimeline()) && "a descriptor written under a submit still bound to it");
 
         // One write per slot and per array rather than one over a range: the arrivals are wherever
         // the scene's free list put them, and a run is no longer what they are. Reserved before

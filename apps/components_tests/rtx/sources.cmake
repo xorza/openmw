@@ -84,6 +84,7 @@ set(RTX_TEST_FILES
     rtx/terraincomposite.cpp
     rtx/templatewalk.cpp
     rtx/testtexture.hpp
+    rtx/texturearray.cpp
     rtx/texturebuilder.cpp
     rtx/tracepipeline.cpp
     rtx/visibility/filter.cpp

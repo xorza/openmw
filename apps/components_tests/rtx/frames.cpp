@@ -1,6 +1,8 @@
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -330,6 +332,55 @@ namespace Rtx
             EXPECT_EQ(finishedHits(), 0u) << "the second, moved behind it";
             EXPECT_EQ(finishedHits(), sEveryPixel) << "the third, moved back";
             EXPECT_FALSE(mRenderer->finishFrame().has_value());
+        }
+
+        /// A picture still deferred traces the copy it was placed with, however many placements of
+        /// its scene follow it in the frame.
+        ///
+        /// **Content, not memory.** A picture inside the interface is a deferred batch: its
+        /// placement built the top level from the rows of the moment and its trace reads that
+        /// copy's instance table, both carried by the next submit. A third placement of the scene
+        /// in the same frame writes that copy again from the host, ahead of the submit — no race,
+        /// because nothing is on the queue yet, and so nothing the tables' stamps would wait for.
+        /// The picture would then trace the first placement's top level against the third's rows,
+        /// and here read the wall's opacity as the fade the third placement wrote and see through
+        /// it. So a placement into a copy whose picture is still deferred carries the picture
+        /// first, and a placement into the other copy does not.
+        TEST_F(RtxFramesTest, aPlacementIntoTheCopyADeferredPictureReadsCarriesThePictureFirst)
+        {
+            // A scene of its own, because a picture's placements are deferred like its trace: the
+            // world's placement would carry the picture on its own submit.
+            const SceneSlot doll = mRenderer->addViewScene();
+            SceneDesc scene;
+            const Index wall
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::wallAt(200.0f), .mIndices = Testing::sQuadIndices });
+            const Index standing
+                = scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
+            mRenderer->setScene(doll, scene, {});
+
+            const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
+            std::vector<std::uint8_t> copy(std::size_t{ sSize } * sSize * 4);
+
+            // The picture, of the copy the load wrote, with the wall whole. Over nothing, so a
+            // pixel the wall does not cover is the one number that says so.
+            Shaders::VisibilityConstants camera = ahead();
+            camera.mTransparentBackground = 1;
+            mRenderer->traceGuiTexture(texture, camera,
+                GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mScene = doll, .mReadBack = true });
+
+            // Faded out, and placed twice: into the other copy, which leaves the picture deferred,
+            // and then into the picture's own.
+            scene.placements().fade(standing, 0.0f);
+            mRenderer->placeScene(doll, scene);
+            EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "a placement into the other copy carried it";
+            mRenderer->placeScene(doll, scene);
+
+            mRenderer->finishGuiTraces();
+            ASSERT_TRUE(mRenderer->takeGuiCopy(texture, copy));
+            EXPECT_EQ(copy[3], 255) << "the picture saw through the fade a later placement wrote into its copy";
+
+            mRenderer->dropGuiTexture(texture);
+            mRenderer->dropViewScene(doll);
         }
     }
 }

@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -7,6 +8,7 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/timeline.hpp>
 
 #include "harness.hpp"
 
@@ -98,6 +100,29 @@ namespace Rtx
 
             EXPECT_EQ(*static_cast<const std::uint32_t*>(target.map()), 0u)
                 << "an abandoned batch's copy reached the device";
+        }
+
+        /// A staged write names its destination for the submit the batch rides.
+        ///
+        /// **The other way a table is written on the queue**, and the one an arrival's rows take
+        /// into the first copy of the skin tables: a placement then writes that copy from the host,
+        /// and unnamed, the staged copy and the host write were two writers nobody had ordered.
+        TEST_F(RtxBatchTest, aStagedWriteNamesItsDestination)
+        {
+            const Buffer target = Buffer::staging(getDevice(), sizeof(std::uint32_t),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            *static_cast<std::uint32_t*>(target.map()) = 0;
+
+            const std::uint32_t staged = 0xf00d;
+            Batch batch(getPool());
+            stageInto(batch, getDevice(), target, 0, std::as_bytes(std::span(&staged, 1)));
+
+            EXPECT_EQ(target.getNamedUntil(), getDevice().getTimeline().getNext())
+                << "the staged copy's destination was not named";
+
+            batch.flush();
+            EXPECT_TRUE(target.isIdle()) << "the batch was waited for";
+            EXPECT_EQ(*static_cast<const std::uint32_t*>(target.map()), staged);
         }
     }
 }

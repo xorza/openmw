@@ -61,6 +61,11 @@ namespace Rtx
         void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
             FrameSlot slot, Graveyard& graveyard);
 
+        /// Waits until nothing on the queue reads `slot`'s copy of any table `place` writes, ahead
+        /// of the placement that writes it. Each copy carries its own stamp, so this waits for the
+        /// submit that last read the copy whatever carried it — a frame's trace or a picture's.
+        void finishReads(FrameSlot slot) const;
+
         /// The sprites `slot`'s copy holds and the emitters that placed them, for the bin a trace
         /// records against them (`SpriteBin::record`).
         SpriteSource describeSprites(FrameSlot slot) const;

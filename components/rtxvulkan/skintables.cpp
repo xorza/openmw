@@ -142,6 +142,12 @@ namespace Rtx
         }
     }
 
+    void SkinTables::finishReads(const FrameSlot slot) const
+    {
+        mBones.at(slot).waitIdle("an arrival's pose over the rows a placement writes");
+        mWeights.at(slot).waitIdle("an arrival's morph over the weights a placement writes");
+    }
+
     VkDeviceAddress SkinTables::writeBones(const SceneDesc& scene, const FrameSlot slot, const Index mesh)
     {
         const MeshRange& range = scene.meshes().getRows()[mesh];

@@ -233,6 +233,7 @@ set(RTX_VULKAN_FILES
     presenttargets.cpp
     presenttargets.hpp
     presenter.hpp
+    readstamp.hpp
     requirements.cpp
     requirements.hpp
     result.cpp

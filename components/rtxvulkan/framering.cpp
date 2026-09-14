@@ -37,7 +37,7 @@ namespace Rtx
             FrameRecord& frame = mSlots.at(FrameSlot{ slot });
             frame.mPlaceCommands.push_back(commands[3 * slot]);
             frame.mWorld.mCommands = commands[3 * slot + 1];
-            frame.mGui.mCommands = commands[3 * slot + 2];
+            frame.mGuiCommands = commands[3 * slot + 2];
         }
     }
 
@@ -155,12 +155,6 @@ namespace Rtx
         const FrameResult report = mReports.front();
         mReports.erase(mReports.begin());
         return report;
-    }
-
-    void FrameRing::finishThrough(const std::uint64_t frame)
-    {
-        while (mFinished < mFrame && mFinished <= frame)
-            finishOldest();
     }
 
     void FrameRing::finishAll()

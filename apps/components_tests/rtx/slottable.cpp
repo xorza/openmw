@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -336,6 +337,44 @@ namespace Rtx
         {
             sync(0);
             EXPECT_NE(mTable.addressFor(FrameSlot{ 0 }), 0u);
+        }
+
+        /// A copy's sync waits for the submit that took the copy's address, and for nothing else.
+        ///
+        /// **The copy knows its reader; nothing beside it does.** A placement writes the copy the
+        /// frame before last read, and what says that frame is done used to be a count of frames
+        /// kept by the renderer — exact for a frame's trace and wrong for a picture the interface's
+        /// own submit carried. `addressFor` stamps the copy with the value of whatever submit takes
+        /// it, and `finishReads` waits for that value. Held on the queue while this thread waits,
+        /// so the wait cannot return before the hold opens and lasts at least the hold's length.
+        TEST_F(RtxSlotTableTest, syncingWaitsForTheSubmitThatTookTheCopysAddress)
+        {
+            mTable.resize(1);
+            mTable.write(0).mValue = 1;
+            sync(0);
+
+            Testing::HeldSubmit hold(getDevice());
+            const VkCommandBuffer reader = getPool().allocate(1).front();
+            getPool().begin(reader);
+            EXPECT_NE(mTable.addressFor(FrameSlot{ 0 }), 0u);
+            hold.submit(getPool(), reader, *mGraveyard);
+
+            constexpr std::chrono::milliseconds held{ 20 };
+            const auto asked = std::chrono::steady_clock::now();
+            hold.releaseAfter(held);
+
+            mTable.finishReads(FrameSlot{ 0 });
+            EXPECT_GE(std::chrono::steady_clock::now() - asked, held) << "the sync did not wait for the copy's reader";
+
+            // A wait that returned early writes this over a submit the hold still keeps on the
+            // queue, which is the write the assert fires on.
+            mTable.write(0).mValue = 2;
+            sync(0);
+
+            // And the other copy, which nothing took, waits for nothing.
+            const auto other = std::chrono::steady_clock::now();
+            mTable.finishReads(FrameSlot{ 1 });
+            EXPECT_LT(std::chrono::steady_clock::now() - other, held);
         }
     }
 }

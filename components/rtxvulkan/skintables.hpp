@@ -43,6 +43,13 @@ namespace Rtx
         /// arrivals needs.
         void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
 
+        /// Waits until nothing on the queue reads or writes `slot`'s rows and weights, ahead of a
+        /// placement that writes them from the host. The reader is usually the placement before
+        /// last's dispatch, long finished; after an arrival it is `extend`'s staged rows and the
+        /// pose over them, carried by whatever submit came next. Each copy carries the value, so
+        /// the wait is for that submit and not for the frame behind it.
+        void finishReads(FrameSlot slot) const;
+
         /// Writes `mesh`'s rows into `slot`'s copy and returns where they landed, for the dispatch
         /// about to read them. A `hostWritten` copy, so the write is a `memcpy` and the submit that
         /// follows sees it — and a placement's copy, whose last reader the caller waited for, which

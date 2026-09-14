@@ -4,7 +4,6 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include "buffer.hpp"
 #include "handles.hpp"
 
 namespace Rtx
@@ -37,11 +36,6 @@ namespace Rtx
         /// The counter as the queue has advanced it, asked of the device only where the cached
         /// reading is not enough: a value once passed stays passed.
         bool hasFinished(std::uint64_t value) const;
-
-        /// Whether every submit that names `buffer` has run — what a host write of it asserts in a
-        /// build that asserts, because a host write over a submit still reading is the one hazard
-        /// the layers cannot see.
-        bool hasFinished(const Buffer& buffer) const { return hasFinished(buffer.getNamedUntil()); }
 
         /// The counter as the queue has advanced it, asked of the device now.
         std::uint64_t getFinished() const;

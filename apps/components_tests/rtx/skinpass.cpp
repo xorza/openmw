@@ -1,4 +1,5 @@
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -302,6 +303,136 @@ namespace Rtx
             EXPECT_EQ(positionOf(arrived, 1), osg::Vec3f(2.0f, 0.0f, 1.0f));
             EXPECT_EQ(positionOf(arrived, 3), osg::Vec3f(1.0f, 1.0f, 1.0f));
             EXPECT_EQ(positionOf(raised, 2), osg::Vec3f(1.0f, 1.0f, 5.0f)) << "an arrival touched a neighbour";
+        }
+
+        /// A placement into the first copy waits for the arrival that posed it there, and for
+        /// nothing longer.
+        ///
+        /// **The reader the frame ring does not count.** An arrival stages its rows into the first
+        /// copy and dispatches over them from a batch that rides whatever submit comes next — the
+        /// placement's, in a game — and no trace stamps that read. The next placement into that
+        /// copy waited for the frame that last traced it, which was submitted ahead of the arrival,
+        /// and then wrote the rows from the host under a dispatch still reading them: the assert
+        /// in `Buffer::writable` is what the game hit. `SkinTables::finishReads` is the wait, and
+        /// it is measured off the tables' own stamp rather than the ring's.
+        ///
+        /// **A held submit, opened while this thread waits.** The wait cannot return before the
+        /// hold opens, so it lasts at least the hold's length — and without it the placement would
+        /// run at once, into rows a submit still reads, which the assert catches in a build that
+        /// asserts and the bound catches in one that does not.
+        TEST_F(RtxSkinPassTest, aPlacementWaitsForTheArrivalThatPosedTheFirstCopy)
+        {
+            Device& device = getDevice();
+            CommandPool& pool = getPool();
+
+            SceneDesc scene;
+
+            const std::array oneRuns{ run(0, 1), run(0, 1), run(0, 1), run(0, 1) };
+            const std::array oneInfluence{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
+            const Index oneBone = scene.deformers().addRig(oneRuns, oneInfluence, 1);
+
+            const std::array upward{
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+            };
+            const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
+
+            const Index first = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
+                {}, Deform::Rig, oneBone);
+            const std::array atFive{ boneUp(5.0f) };
+            scene.poseRig(first, atFive, anywhere);
+
+            constexpr VkBufferUsageFlags readable
+                = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+            SlotBlocks poses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+            SlotBlocks normals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+            poses.open(device, 2, readable, "posed positions");
+            normals.open(device, 2, readable, "posed normals");
+
+            Graveyard graveyard(device, pool);
+            const SkinPass pass(device, Testing::getShaderDirectory());
+
+            // The load: the tables and the room for one quad, into every copy.
+            Batch load(pool);
+            poses.reserve(load, 4);
+            normals.reserve(load, 4);
+            SkinTables tables(device, load, scene, 2, graveyard);
+            load.flush();
+            for (std::uint32_t slot = 0; slot < 2; ++slot)
+            {
+                poses.settle(FrameSlot{ slot });
+                normals.settle(FrameSlot{ slot });
+            }
+
+            // The arrival: a second quad on the same rig, its rows staged into the first copy and
+            // posed there, in a batch deferred to the next submit — which is held.
+            scene.clearArrivals();
+            scene.clearPlacement();
+            const Index second = scene.addMesh(
+                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
+                {}, Deform::Rig, oneBone);
+            const std::array atTwo{ boneUp(2.0f) };
+            scene.poseRig(second, atTwo, anywhere);
+            ASSERT_EQ(scene.meshes().getArrived().size(), 1u);
+
+            {
+                Batch arrival(pool);
+                poses.reserve(arrival, 8);
+                normals.reserve(arrival, 8);
+                tables.extend(arrival, scene, graveyard);
+                EXPECT_TRUE(pass.recordArrived(
+                    arrival.getCommands(), scene, FrameSlot{ 0 }, scene.meshes().getArrived(), tables, poses, normals));
+                arrival.defer();
+            }
+
+            Testing::HeldSubmit hold(device);
+            const VkCommandBuffer carrier = pool.allocate(1).front();
+            pool.begin(carrier);
+            hold.submit(pool, carrier, graveyard);
+
+            // Asked before the hold starts its clock, so the bound below is exact: the hold opens
+            // no sooner than `held` after this, and the wait cannot return before it opens.
+            constexpr std::chrono::milliseconds held{ 20 };
+            const auto asked = std::chrono::steady_clock::now();
+            hold.releaseAfter(held);
+
+            tables.finishReads(FrameSlot{ 0 });
+            EXPECT_GE(std::chrono::steady_clock::now() - asked, held)
+                << "the placement did not wait for the arrival's submit";
+
+            // The placement into the first copy, which writes the rows of every mesh it owes —
+            // both quads, moved since the load — and reads the whole block back. A wait that
+            // returned early records this over a submit the hold still keeps on the queue, which
+            // is the write the assert fires on.
+            const std::array atOne{ boneUp(1.0f) };
+            scene.poseRig(first, atOne, anywhere);
+            const std::array atThree{ boneUp(3.0f) };
+            scene.poseRig(second, atThree, anywhere);
+
+            const VkDeviceSize poseBytes = 8 * sizeof(osg::Vec3f);
+            const Buffer read = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            pool.submitAndWait([&](VkCommandBuffer commands) {
+                EXPECT_TRUE(pass.record(commands, scene, FrameSlot{ 0 }, tables, poses, normals, nullptr));
+
+                handOver(commands, Use::sBufferComputeWrite,
+                    BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });
+                poses.at(FrameSlot{ 0 }).getBlock(0).copyTo(commands, read, poseBytes);
+            });
+
+            const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
+                return readVector(read, scene.meshes().getRows()[mesh].mBindOffset + vertex);
+            };
+            for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
+            {
+                EXPECT_EQ(positionOf(first, vertex), Testing::sUnitQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 1.0f))
+                    << vertex;
+                EXPECT_EQ(positionOf(second, vertex), Testing::sUnitQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 3.0f))
+                    << vertex;
+            }
         }
     }
 }

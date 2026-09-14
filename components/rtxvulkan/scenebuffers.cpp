@@ -224,10 +224,8 @@ namespace Rtx
     SpriteSource SceneBuffers::describeSprites(const FrameSlot slot) const
     {
         // The bin copies the one and reads the other in the submit it records into, which is
-        // the next one: the address says so of the emitters, and the copy's source is named by
-        // hand because a copy takes a handle and not an address.
+        // the next one: the address says so of the emitters, and the copy of the sprites.
         const Tables& tables = mTables.at(slot);
-        tables.mSprites.nameFor(mDevice->getTimeline().getNext());
 
         return SpriteSource{
             .mSprites = &tables.mSprites,
@@ -424,6 +422,18 @@ namespace Rtx
 
         // The normals of anything skinned are not written here: a cell's are the same from one
         // frame to the next, and a body's are what `SkinPass` computed into this copy ahead of this.
+    }
+
+    void SceneBuffers::finishReads(const FrameSlot slot) const
+    {
+        mInstanceTable.finishReads(slot);
+        mMaterialTable.finishReads(slot);
+
+        const Tables& tables = mTables.at(slot);
+        tables.mLights.waitIdle("a trace still reading a copy's lights");
+        tables.mLightList.waitIdle("a trace still reading a copy's light list");
+        tables.mEmitters.waitIdle("a trace still reading a copy's emitters");
+        tables.mSprites.waitIdle("a trace's bin still copying a copy's sprites");
     }
 
     void SceneBuffers::describeTables(const FrameSlot slot, Shaders::GpuTables& into) const

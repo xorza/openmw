@@ -15,6 +15,7 @@
 #include "frameslots.hpp"
 #include "handles.hpp"
 #include "image.hpp"
+#include "readstamp.hpp"
 
 namespace Rtx
 {
@@ -106,9 +107,13 @@ namespace Rtx
         /// descriptors are owed to every set and written by `sync`.
         void write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard);
 
-        /// Writes the descriptors `slot`'s set owes. Before the placement that binds it, after the
-        /// ring has waited out the frame that last read it.
+        /// Writes the descriptors `slot`'s set owes. Before the placement that binds it, after
+        /// `finishReads`: the bindings allow an update after a bind, but not of a descriptor a
+        /// pending submit samples, and a trace samples whichever slots its materials name.
         void sync(FrameSlot slot);
+
+        /// Waits until nothing on the queue binds `slot`'s set, ahead of the `sync` that writes it.
+        void finishReads(FrameSlot slot) const;
 
         /// Destroys the images of `slots`, leaving the slots themselves where they are. The
         /// descriptors are left naming what has gone, which `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT`
@@ -118,12 +123,9 @@ namespace Rtx
 
         VkDescriptorSetLayout getLayout() const { return mLayout.get(); }
 
-        /// The set `slot`'s frame binds, which `sync(slot)` brought up to date.
-        VkDescriptorSet getSet(FrameSlot slot) const
-        {
-            assert(slot.get() < sFrameSlots);
-            return mSets.get(slot.get());
-        }
+        /// The set `slot`'s frame binds, which `sync(slot)` brought up to date. A hand-out, so it
+        /// names the set for the next submit the way `Buffer::addressFor` names a buffer.
+        VkDescriptorSet getSet(FrameSlot slot) const;
 
         /// How long the array is, which is where an append begins and what an uploader compares a
         /// scene's table against. Not how many textures there are: see `getHeld`.
@@ -161,6 +163,11 @@ namespace Rtx
 
         /// One set per frame in flight, both bindings at the maximum the layout declares.
         DescriptorSets mSets;
+
+        /// The last submit that bound each set: a set is bound by handle and carries no stamp of
+        /// its own, and a descriptor written under a trace still sampling it is the same hazard as
+        /// a table written under one.
+        PerSlot<ReadStamp> mBound;
 
         /// The slots each set has yet to be told, each once however often it was written.
         PerSlot<SlotSet> mOwed;

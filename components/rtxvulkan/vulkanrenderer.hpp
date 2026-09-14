@@ -55,8 +55,6 @@ namespace Rtx
     /// `Renderer` over Vulkan.
     class VulkanRenderer final : public Renderer
     {
-        static constexpr std::uint64_t sNeverRead = ~std::uint64_t{ 0 };
-
         /// Everything one scene is traced against — the world's, or a picture's in the interface —
         /// the same objects for both, which is what lets `Rtx::SceneUploader` hand a doll over
         /// exactly as a cell. `VisibilityPass` and `SkinPass` are shared: every texture array
@@ -98,8 +96,17 @@ namespace Rtx
             /// places exactly as the world does.
             FrameSlot mSlot;
 
-            /// The last frame that traced each copy, or `sNeverRead`.
-            std::array<std::uint64_t, sFrameSlots> mReadBy{ sNeverRead, sNeverRead };
+            /// The submit a picture of each copy rides, as the timeline value it was recorded for.
+            /// A picture is deferred, and until it is carried its trace has to find the copy as it
+            /// was placed for it: the top level a deferred placement built and the rows a later
+            /// placement wrote from the host would otherwise disagree about which instance is
+            /// which. So a placement into a copy whose picture is still deferred carries the
+            /// picture first. Not a memory hazard, which the tables' own stamps answer.
+            std::array<std::uint64_t, sFrameSlots> mPictureRides{};
+
+            /// Waits until nothing on the queue reads or writes `slot`'s copy of any table a
+            /// placement writes from the host. Asked of each table, which carries the value itself.
+            void finishReads(FrameSlot slot) const;
         };
 
     public:
