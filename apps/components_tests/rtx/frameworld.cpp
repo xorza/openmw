@@ -91,6 +91,7 @@ namespace Rtx
                 },
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
+                .mSkySeconds = 47.5,
                 .mRainOnWater = 0.35f,
             };
         }
@@ -216,12 +217,19 @@ namespace Rtx
             // **And the frame is handed the distance blown, never the wind times the clock.** The
             // first reading has no earlier one to measure from, so the fog has gone nowhere yet;
             // one second on, at `FOG_GALE` units a second of wind, it has gone (0.27, 0.36) × 1400.
+            // A second of the water's clock carries no air: the wind blows on the sky's.
             EXPECT_FLOAT_EQ(constants.mClouds.mBearing.x(), 0.8f);
             EXPECT_FLOAT_EQ(constants.mClouds.mBearing.y(), 0.6f);
             EXPECT_EQ(constants.mFogDrift, osg::Vec2f());
 
+            WorldReading waterLater = read;
+            waterLater.mSeconds = read.mSeconds + 1.0f;
+            Shaders::VisibilityConstants waterMoved{};
+            describeWorld(waterLater, drift, waterMoved);
+            EXPECT_EQ(waterMoved.mFogDrift, osg::Vec2f());
+
             WorldReading later = read;
-            later.mSeconds = read.mSeconds + 1.0f;
+            later.mSkySeconds = read.mSkySeconds + 1.0;
             Shaders::VisibilityConstants blown{};
             describeWorld(later, drift, blown);
             EXPECT_FLOAT_EQ(blown.mFogDrift.x(), 378.0f);
@@ -236,7 +244,7 @@ namespace Rtx
             // door is not a wind: what would move on the way through it is the whole of the drift.
             WorldReading still = later;
             still.mOutdoors = false;
-            still.mSeconds = later.mSeconds + 1.0f;
+            still.mSkySeconds = later.mSkySeconds + 1.0;
             Shaders::VisibilityConstants becalmed{};
             describeWorld(still, drift, becalmed);
             EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
@@ -250,6 +258,7 @@ namespace Rtx
             // water and the water disagree.
             EXPECT_EQ(constants.mWaterLevel, read.mWaterLevel - Shaders::WATER_TIE_BREAK);
             EXPECT_EQ(constants.mTime, read.mSeconds) << "the game wrote this nowhere either";
+            EXPECT_EQ(constants.mSkyTime, 47.5f) << "the sky's clock, and not the water's";
             EXPECT_EQ(constants.mRainOnWater, read.mRainOnWater);
 
             // The deck and the stars come out of the builders both hosts share, and this is the one

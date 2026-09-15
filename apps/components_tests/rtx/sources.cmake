@@ -112,6 +112,7 @@ set(RTX_TEST_FILES
     rtxtool/options.cpp
     rtxtool/run.cpp
     rtxtool/verify.cpp
+    sky/skyclock.cpp
     sky/timeofday.cpp
 )
 

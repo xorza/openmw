@@ -387,7 +387,7 @@ add_component_dir (fallback
     )
 
 add_component_dir (sky
-    moonstate timeofday
+    moonstate skyclock timeofday
     )
 
 add_component_dir (lua_ui

@@ -355,7 +355,7 @@ namespace MWRender
                 .mBlend = world.mCloudBlend,
                 .mDirection = world.mCloudDirection,
                 .mNextDirection = world.mNextCloudDirection,
-                .mScroll = world.mCloudScroll,
+                .mScroll = world.mSkyCloudScroll,
             },
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
@@ -365,6 +365,7 @@ namespace MWRender
             // What the sea is animated by, in elapsed seconds rather than frames, or the sea would
             // slow down whenever the frame did.
             .mSeconds = seconds,
+            .mSkySeconds = world.mSkySeconds,
             .mRainOnWater = world.mRainOnWater,
         };
     }

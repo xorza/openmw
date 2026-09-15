@@ -53,8 +53,9 @@ local function nextWeather(player)
     local chosen = allowed[at % #allowed + 1]
     asked = chosen.weather.recordId
 
-    -- A change is a transition of 1 / Transition_Delta real seconds — a minute for most, half
-    -- that for a storm — and a press during one queues behind the weather arriving.
+    -- A change is a transition of 1 / Transition_Delta seconds of the sky's clock — a minute for
+    -- most, half that for a storm, and F8 speeds it — and a press during one queues behind the
+    -- weather arriving.
     local arriving = core.weather.getNext(cell)
     local how = 'arriving'
     if arriving and arriving.recordId ~= chosen.weather.recordId then

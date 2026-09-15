@@ -204,6 +204,11 @@ namespace Rtx::Shaders
         /// path passes its own clock.
         float mTime;
 
+        /// How long the sky has been running, in seconds of its own clock: what the fog churns by.
+        /// Not `mTime`, because the sky's clock is the game's and a sped-up game is a time-lapse of
+        /// the weather, while water sped up the same way is noise. `Sky::skyStep` is the clock.
+        float mSkyTime;
+
         /// How hard it rains on the water, from nought to one.
         ///
         /// **The precipitation's own alpha where its kind rings the surface, and nought where it
@@ -415,9 +420,9 @@ namespace Rtx::Shaders
         ///
         /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
         /// pad the middle of a struct two languages have to agree on, and the offset asserted below
-        /// pins where it landed. Everything above it is four-aligned and sums to a multiple of
-        /// eight, so nothing is padded in front of it; the next four-byte field added above puts
-        /// four bytes there, on both sides alike.
+        /// pins where it landed. Everything above it is four-aligned and sums to four short of a
+        /// multiple of eight, so four bytes are padded in front of it, on both sides alike; the next
+        /// four-byte field added above takes them back.
         GpuTables mTables;
     };
 
@@ -432,8 +437,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1016, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1136, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1024, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1144, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

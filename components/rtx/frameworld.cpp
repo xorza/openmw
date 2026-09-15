@@ -50,12 +50,12 @@ namespace Rtx
         return none;
     }
 
-    void FogDrift::advance(const osg::Vec2f& heading, const float wind, const float seconds)
+    void FogDrift::advance(const osg::Vec2f& heading, const float wind, const double seconds)
     {
         if (mLastSeconds.has_value())
         {
             assert(seconds >= *mLastSeconds && "the clock the air is carried by ran backwards");
-            mCarried += heading * (wind * Shaders::FOG_GALE * (seconds - *mLastSeconds));
+            mCarried += heading * (wind * Shaders::FOG_GALE * static_cast<float>(seconds - *mLastSeconds));
         }
 
         mLastSeconds = seconds;
@@ -120,7 +120,7 @@ namespace Rtx
         // and sine of the rotation from north, which for a unit `(x, y)` is `(y, x)`. Integrated
         // and not multiplied by the clock — `FogDrift` says what the product cost.
         const osg::Vec2f heading(constants.mClouds.mBearing.y(), constants.mClouds.mBearing.x());
-        drift.advance(heading, air.mWind, reading.mSeconds);
+        drift.advance(heading, air.mWind, reading.mSkySeconds);
         constants.mFogDrift = drift.get();
 
         // The sea runs the way the deck does, and as its tiles were drawn where nothing blows.
@@ -132,6 +132,7 @@ namespace Rtx
         // water level and where the surface actually is stay one number.
         constants.mWaterLevel = reading.mWaterLevel - Shaders::WATER_TIE_BREAK;
         constants.mTime = reading.mSeconds;
+        constants.mSkyTime = static_cast<float>(reading.mSkySeconds);
         constants.mRainOnWater = reading.mRainOnWater;
 
         return light.mExposureBias;

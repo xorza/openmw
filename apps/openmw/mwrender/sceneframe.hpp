@@ -115,9 +115,17 @@ namespace MWRender
         /// How far the cloud deck has scrolled, in texture units, and how far the star sphere has
         /// rolled, in radians. Clocks the game advances while the sky is on, because the deck runs
         /// on the weather's speed and the stars come round once in four days; neither is a function
-        /// of the hour.
+        /// of the hour. The scroll is the rasterizer's, at upstream's pace.
         float mCloudScroll = 0.0f;
         float mStarRoll = 0.0f;
+
+        /// The sky's own clock, in seconds, and how far the deck has scrolled by it, in texture
+        /// units: what the ray tracer runs its weather on, so that a sped-up `timescale` carries
+        /// the deck and the fog with the sun. `Sky::skyStep` says why it is real time at the
+        /// shipped `timescale`. A double, because the fog's drift is the difference of two
+        /// readings, and ten hours in a float resolves 0.0039 s — a quarter of a frame at sixty.
+        double mSkySeconds = 0.0;
+        float mSkyCloudScroll = 0.0f;
 
         /// The weather the world settled on, whole, for a renderer that draws a dome out of it the
         /// way `SkyManager::setWeather` does; null until the weather has run, which it does only

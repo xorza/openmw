@@ -720,7 +720,7 @@ namespace Rtx::Testing
                     = makeCamera(eye, eye + osg::Vec3f(0.0f, -10000.0f, 0.0f), 90.0f, size, size, 100000.0f);
                 camera.mFogUniform = 0.0f;
                 camera.mFogDrift = blown;
-                camera.mTime = seconds;
+                camera.mSkyTime = seconds;
 
                 std::vector<float> luminance;
                 airThrough(camera, size, luminance);

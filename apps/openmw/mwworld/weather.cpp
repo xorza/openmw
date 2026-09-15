@@ -4,6 +4,7 @@
 #include <components/settings/values.hpp>
 
 #include <components/misc/rng.hpp>
+#include <components/sky/skyclock.hpp>
 
 #include <components/esm3/esmreader.hpp>
 #include <components/esm3/esmwriter.hpp>
@@ -21,6 +22,7 @@
 #include "../mwrender/renderingmanager.hpp"
 
 #include "cellstore.hpp"
+#include "datetimemanager.hpp"
 #include "esmstore.hpp"
 #include "player.hpp"
 
@@ -736,6 +738,10 @@ namespace MWWorld
     void WeatherManager::update(float duration, bool paused, const TimeStamp& time, bool isExterior)
     {
         MWWorld::ConstPtr player = MWMechanics::getPlayer();
+
+        // The sky's clock and not the frame's, so a sped-up `timescale` carries the crossings and
+        // the thunder with the sun. `Sky::skyStep` says why the shipped scale is real time.
+        duration = Sky::skyStep(duration, MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale());
 
         if (!paused || mFastForward)
         {

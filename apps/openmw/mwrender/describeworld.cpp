@@ -18,6 +18,7 @@
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/lightmanager.hpp>
+#include <components/sky/skyclock.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
@@ -37,6 +38,16 @@
 
 namespace MWRender
 {
+    namespace
+    {
+        /// The deck's sheet repeats every four texture units, which is where a scroll wraps.
+        float scrolled(const float scroll, const float delta)
+        {
+            const float advanced = scroll + delta;
+            return advanced >= 4.f ? advanced - 4.f : advanced;
+        }
+    }
+
     void RenderingManager::setWeather(const WeatherResult& weather)
     {
         mPrecipitation->setWeather(weather);
@@ -96,12 +107,16 @@ namespace MWRender
         if (mTimescaleClouds)
             cloudDelta *= timeScale / 60.f;
 
-        mWorld.mCloudScroll += cloudDelta;
-        if (mWorld.mCloudScroll >= 4.f)
-            mWorld.mCloudScroll -= 4.f;
+        mWorld.mCloudScroll = scrolled(mWorld.mCloudScroll, cloudDelta);
 
         // rotate the stars by 360 degrees every 4 days
         mWorld.mStarRoll += timeScale * dt * osg::DegreesToRadians(360.f) / (3600 * 96.f);
+
+        // The same scroll on the sky's clock: the deck's speed is a rate over real seconds, which
+        // the sky's clock is at the shipped `timescale`.
+        const float skyDt = Sky::skyStep(dt, timeScale);
+        mWorld.mSkySeconds += skyDt;
+        mWorld.mSkyCloudScroll = scrolled(mWorld.mSkyCloudScroll, skyDt * mWeather.mCloudSpeed / 400.f);
     }
 
     EyeState RenderingManager::describeEye() const

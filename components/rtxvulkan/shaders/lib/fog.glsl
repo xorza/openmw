@@ -59,7 +59,7 @@ vec2 fogFieldAt(vec3 position, float tile, float spacing, vec3 churn)
     const float texel = tile / float(FOG_FIELD_SIZE);
     const float level = clamp(log2(max(spacing / texel, 1.0)), 0.0, FOG_FIELD_COARSEST);
 
-    return textureLod(fogField, (position + churn * frame.mTime) / tile, level).xy;
+    return textureLod(fogField, (position + churn * frame.mSkyTime) / tile, level).xy;
 }
 
 /// The fog's shape at a point: one volume read at three scales, over a domain the coarsest drags.

@@ -88,6 +88,20 @@ namespace MWRender
             EXPECT_EQ(air.mEdge, 0.0f);
         }
 
+        /// The deck scrolls and the fog churns by the sky's clock, and not by the rasterizer's
+        /// scroll beside it, which keeps upstream's pace whatever `timescale` says.
+        TEST(RtxReadWorldTest, theDeckAndTheFogReadTheSkysClock)
+        {
+            WorldState world = standingIn(Location::Exterior);
+            world.mCloudScroll = 3.0f;
+            world.mSkyCloudScroll = 1.25f;
+            world.mSkySeconds = 1234.5;
+
+            const Rtx::WorldReading reading = readFrom(world);
+            EXPECT_EQ(reading.mClouds.mScroll, 1.25f);
+            EXPECT_EQ(reading.mSkySeconds, 1234.5);
+        }
+
         /// A room is lit by its own record, and the record is the only thing that decides it.
         ///
         /// **The alternative the two above are not.** A cell that is a room carries an `AMBI`, has

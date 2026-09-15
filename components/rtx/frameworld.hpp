@@ -75,33 +75,38 @@ namespace Rtx
         CloudCrossing mClouds;
 
         float mWaterLevel = -std::numeric_limits<float>::infinity();
+
+        /// What the water moves by, and what the sky does: the simulation's seconds and the sky's
+        /// own clock. Two, because a sped-up sky is a time-lapse and sped-up water is noise.
         float mSeconds = 0.0f;
+        double mSkySeconds = 0.0;
+
         float mRainOnWater = 0.0f;
     };
 
     /// How far the air has been carried downwind since a run began, in world units: the integral
-    /// of the wind over the clock, kept across frames by whoever traces them. What the shader
-    /// takes off a position is a displacement, and a wind times the clock is not one: it jumps by
-    /// the whole clock's worth of the difference whenever the wind changes, which every weather
-    /// transition does over the minute it takes, and turns with the storm the moment one arrives.
-    /// Ten minutes into a session, clear's 0.1 becoming a thunderstorm's 0.5 moved the field by
-    /// six hundred seconds of the difference — 336,000 units over the transition's 67 seconds,
-    /// seventy metres a second where the gale itself blows ten. Stepped by what the clock moved,
-    /// so a change of wind changes the speed and nothing else.
+    /// of the wind over the sky's clock, kept across frames by whoever traces them. What the
+    /// shader takes off a position is a displacement, and a wind times the clock is not one: it
+    /// jumps by the whole clock's worth of the difference whenever the wind changes, which every
+    /// weather transition does over the minute it takes, and turns with the storm the moment one
+    /// arrives. Ten minutes into a session, clear's 0.1 becoming a thunderstorm's 0.5 moved the
+    /// field by six hundred seconds of the difference — 336,000 units over the transition's 67
+    /// seconds, seventy metres a second where the gale itself blows ten. Stepped by what the clock
+    /// moved, so a change of wind changes the speed and nothing else.
     class FogDrift
     {
     public:
-        /// Carries the air on by what the clock moved since the last call, along `heading` at
+        /// Carries the air on by what the sky's clock moved since the last call, along `heading` at
         /// `wind` — `Fog::mWind`, in the units `FOG_GALE` converts. The first call moves nothing,
-        /// and the clock never runs backwards: it is the rendering simulation time, which only
-        /// `Engine::go` writes and only by adding a step.
-        void advance(const osg::Vec2f& heading, float wind, float seconds);
+        /// and the clock never runs backwards: `Sky::skyStep` holds it under a negative
+        /// `timescale`, and the host only ever adds to it.
+        void advance(const osg::Vec2f& heading, float wind, double seconds);
 
         const osg::Vec2f& get() const { return mCarried; }
 
     private:
         osg::Vec2f mCarried;
-        std::optional<float> mLastSeconds;
+        std::optional<double> mLastSeconds;
     };
 
     /// Writes the frame's world half into the constants it is traced with, and answers what to hold
