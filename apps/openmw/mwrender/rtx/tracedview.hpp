@@ -55,13 +55,21 @@ namespace MWRender
     /// and which the harness draws a doll with. This owns the `MyGUI::ITexture` the trace writes
     /// into, the copy in main memory the global map asks for, and the one piece of scheduling only
     /// the game has: a map tile asked for before there is a world to draw it against.
-    class TracedView final : public OffscreenView
+    ///
+    /// **One class for both kinds of picture**, answering `SubjectView` and handed out as the base
+    /// for a tile: the trace underneath is one object either way, and what a subject adds — an
+    /// extent, a rebuild, a pick — the trace already answers for a subject and is never asked for
+    /// a tile.
+    class TracedView final : public SubjectView
     {
     public:
         /// **`traversals` is the one sequence every mirror walk here poses at** — the world's and
         /// every view's. A subtree both can reach would otherwise be posed by whichever counter
         /// got there first and frozen for the other.
-        TracedView(const OffscreenViewSpec& spec, RtxRenderer& host, Rtx::Traversals& traversals);
+        ///
+        /// @param subject the spec's scene where the picture is of a subject, null where it is of
+        ///        the world — `Rtx::ViewRequest::mSubject`'s own word.
+        TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host, Rtx::Traversals& traversals);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }

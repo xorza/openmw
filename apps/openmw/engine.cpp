@@ -25,8 +25,6 @@
 
 #include <components/compiler/extensions0.hpp>
 
-#include <components/stereo/stereomanager.hpp>
-
 #include <components/sceneutil/workqueue.hpp>
 
 #include <components/files/configurationmanager.hpp>
@@ -277,10 +275,8 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
         stats->setAttribute(frameNumber, "StringRefId Count", static_cast<double>(ESM::StringRefId::totalCount()));
     }
 
-    if (Stereo::getStereo())
-        Stereo::Manager::instance().updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
-
     mRenderer->eventTraversal();
+    mWorld->getRenderingManager()->describeFrame();
     mRenderer->updateTraversal();
 
     // update focus object for GUI
@@ -447,7 +443,7 @@ void OMW::Engine::prepareEngine()
     mEnvironment.setStateManager(*mStateManager);
 
     osg::ref_ptr<osg::Group> rootNode(new osg::Group);
-    mRenderer->setSceneRoot(*rootNode);
+    mRenderer->setTraversalRoot(*rootNode);
 
     mVFS = std::make_unique<VFS::Manager>();
 
@@ -455,7 +451,7 @@ void OMW::Engine::prepareEngine()
 
     mResourceSystem = std::make_unique<Resource::ResourceSystem>(
         mVFS.get(), Settings::cells().mCacheExpiryDelay, &mEncoder.get()->getStatelessEncoder());
-    mResourceSystem->getSceneManager()->getShaderManager().setMaxTextureUnits(mRenderer->getMaxTextureUnits());
+    mRenderer->prepareResources(*mResourceSystem->getSceneManager());
     mResourceSystem->getSceneManager()->setUnRefImageDataAfterApply(
         false); // keep to Off for now to allow better state sharing
     mResourceSystem->getSceneManager()->setFilterSettings(Settings::general().mTextureMagFilter,
@@ -522,8 +518,6 @@ void OMW::Engine::prepareEngine()
     osg::ref_ptr<osg::Group> guiRoot = new osg::Group;
     guiRoot->setName("GUI Root");
     guiRoot->setNodeMask(MWRender::Mask_GUI);
-    if (Stereo::getStereo())
-        Stereo::Manager::instance().disableStereoForNode(guiRoot);
     rootNode->addChild(guiRoot);
 
     mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, guiRoot, mResourceSystem.get(),

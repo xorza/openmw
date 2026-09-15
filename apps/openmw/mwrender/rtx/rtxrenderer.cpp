@@ -18,6 +18,7 @@
 #include <SDL.h>
 #include <osg/Camera>
 #include <osg/FrameStamp>
+#include <osg/Group>
 #include <osg/Image>
 #include <osg/Matrixf>
 #include <osg/Node>
@@ -30,6 +31,7 @@
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/resource/resourcesystem.hpp>
+#include <components/resource/scenemanager.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameclock.hpp>
@@ -47,11 +49,9 @@
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
+#include <components/terrain/world.hpp>
+#include <components/vfs/manager.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/world.hpp"
-
-#include "../camera.hpp"
 #include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
@@ -388,8 +388,58 @@ namespace MWRender
         return mMirror.getReach();
     }
 
+    void RtxRenderer::prepareResources(Resource::SceneManager& scene)
+    {
+        scene.setShadersEnabled(false);
+    }
+
+    osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot(Resource::ResourceSystem& resources)
+    {
+        return new osg::Group;
+    }
+
+    Ground RtxRenderer::createGround(const GroundSpec& spec)
+    {
+        Ground ground;
+        ground.mTerrain
+            = std::make_unique<Terrain::World>(&spec.mSceneRoot, &spec.mStorage, Mask_Terrain, spec.mWorldspace);
+        return ground;
+    }
+
+    void RtxRenderer::addCell(const MWWorld::CellStore* cell)
+    {
+        mMirror.standSea(*cell);
+    }
+
+    void RtxRenderer::listAssetsToPreload(
+        std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures)
+    {
+        // What `WorldMirror::attach` reads for its sky: the cloud shell, the star sphere, the two
+        // moons' full faces. The rasterizer's sky manager used to list them for both. A missing
+        // model aborts the whole preload, and the second star sphere is an expansion's.
+        models.push_back(Settings::models().mSkyclouds);
+        if (mResources->getVFS()->exists(Settings::models().mSkynight02.get()))
+            models.push_back(Settings::models().mSkynight02);
+        models.push_back(Settings::models().mSkynight01);
+
+        textures.emplace_back("textures/tx_masser_full.dds");
+        textures.emplace_back("textures/tx_secunda_full.dds");
+    }
+
+    bool RtxRenderer::toggleRenderMode(const RenderMode mode)
+    {
+        if (mode == Render_Scene)
+            return mWorldToggled = !mWorldToggled;
+
+        return false;
+    }
+
     void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
     {
+        // Straight under the root: the rasterizer hangs its shadowed scene between the two, and
+        // this renderer has nothing to put there.
+        worldRoot.addChild(world.getSceneRoot());
+
         // Only for the pictures inside the interface: a doll resolves its own textures, and this is
         // where they come from. Nothing about the frame needs it — the mirror is handed an image
         // manager by whoever drives it.
@@ -397,7 +447,7 @@ namespace MWRender
         mMirror.attach(*mResources);
     }
 
-    void RtxRenderer::adoptSceneRoot(osg::Group& root)
+    void RtxRenderer::adoptTraversalRoot(osg::Group& root)
     {
         // Under the camera, whose matrices are what put a viewport ray in the world; parented once
         // however often it is said.
@@ -472,7 +522,7 @@ namespace MWRender
         // this says by not walking. The eye below still updates, as it does under that blanked mask:
         // the master camera's own bits are not among the ones it clears.
         if (drawsWorld())
-            getSceneRoot().accept(*mUpdateVisitor);
+            getTraversalRoot().accept(*mUpdateVisitor);
 
         // **And the eye, which is not in the graph.** `MWRender::Camera` puts where the player is
         // looking onto the master camera from an update callback, exactly as the viewer's own update
@@ -667,9 +717,14 @@ namespace MWRender
         getScreenshotWriter()(*taken, 0);
     }
 
-    std::unique_ptr<OffscreenView> RtxRenderer::createOffscreenView(const OffscreenViewSpec& spec)
+    std::unique_ptr<OffscreenView> RtxRenderer::createWorldView(const OffscreenViewSpec& spec)
     {
-        return std::make_unique<TracedView>(spec, *this, mMirror.getTraversals());
+        return std::make_unique<TracedView>(spec, nullptr, *this, mMirror.getTraversals());
+    }
+
+    std::unique_ptr<SubjectView> RtxRenderer::createSubjectView(const OffscreenViewSpec& spec)
+    {
+        return std::make_unique<TracedView>(spec, &spec.mScene, *this, mMirror.getTraversals());
     }
 
     void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
@@ -677,6 +732,14 @@ namespace MWRender
         mRenderer->setVerticalSync(mode);
     }
 
+    void RtxRenderer::processChangedSettings(const Settings::CategorySettingVector& changed)
+    {
+        if (changed.contains({ "RTX", "upscale" }))
+            setUpscale(Settings::rtx().mUpscale.get());
+    }
+
+    /// A name a renderer cannot read, or a mode this machine cannot reach, is reported and left
+    /// where it was, because what asks is somebody choosing from a menu.
     void RtxRenderer::setUpscale(const std::string_view name)
     {
         const std::optional<Rtx::Upscale> upscale = Rtx::sUpscaleNames.named(name);
@@ -726,17 +789,18 @@ namespace MWRender
     }
 
     std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(osg::Group& guiRoot,
-        Resource::ImageManager& images, Shader::ShaderManager& shaders, const VFS::Manager& vfs, float scalingFactor,
-        VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
+        Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
+        const std::filesystem::path& logPath)
     {
         // **MyGUI over the ray tracer, and nothing of OpenSceneGraph in it.** `guiRoot` is where the
         // rasterizer hangs its GUI camera; there is no graph to hang anything off here, and the
         // backend is called by this renderer's own frame instead — `updateTraversal` for the widget
         // animation and `renderFrame` for the triangles.
-        auto manager = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, &images, scalingFactor);
+        auto manager
+            = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, resources.getImageManager(), scalingFactor);
         mGui = manager.get();
 
-        return std::make_unique<MyGUIPlatform::Platform>(std::move(manager), &vfs, resourcePath, logPath);
+        return std::make_unique<MyGUIPlatform::Platform>(std::move(manager), resources.getVFS(), resourcePath, logPath);
     }
 
     void RtxRenderer::notifyWorldSpaceChanged()
@@ -779,10 +843,9 @@ namespace MWRender
             return;
         }
 
-        // **Asked of the camera and not of the session**, because what settles it is whether the eye
+        // **Off the frame and not off the session**, because what settles it is whether the eye
         // is the player's, and a session is only the thing that usually makes it not.
-        mMirror.setShowsPlayer(MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera()->getMode()
-            != Camera::Mode::Static);
+        mMirror.setShowsPlayer(frame.mEye.mPlayersEye);
 
         // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror. The
         // harness times the same stretch, which is what lets the two rows be read against each
@@ -904,7 +967,7 @@ namespace MWRender
                 frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
 
             // What the game decided the eye sees, read where the rasterizer reads it.
-            constants.mRayMask = rayMaskOf(frame.mCamera.getCullMask());
+            constants.mRayMask = rayMaskOf(getViewMask());
             return constants;
         }
         catch (const Rtx::Error& what)

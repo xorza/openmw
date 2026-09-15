@@ -7,16 +7,17 @@
 #include "renderingmanager.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <optional>
 
 #include <osg/Camera>
 #include <osg/FrameStamp>
+#include <osg/Math>
 #include <osg/PositionAttitudeTransform>
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/lightmanager.hpp>
-#include <components/sceneutil/stateupdater.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
@@ -24,29 +25,33 @@
 #include "../mwmechanics/actorutil.hpp"
 
 #include "../mwworld/cellstore.hpp"
+#include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/ptr.hpp"
 #include "../mwworld/timestamp.hpp"
 
 #include "camera.hpp"
 #include "fogmanager.hpp"
+#include "precipitation.hpp"
 #include "renderer.hpp"
 #include "sceneframe.hpp"
-#include "sky.hpp"
-#include "water.hpp"
 
 namespace MWRender
 {
     void RenderingManager::setWeather(const WeatherResult& weather)
     {
-        mSky->setWeather(weather);
+        mPrecipitation->setWeather(weather);
+
+        // Whole, for the dome: the rasterizer's sky manager reads the same record upstream handed
+        // it, off the frame instead.
+        mWeather = weather;
+        mWorld.mWeather = &mWeather;
 
         // Kept apart rather than multiplied together: the alpha is how much of the sun is over the
         // horizon and the glare is how much of it this weather lets through, and only the first of
         // them says whether there is a sun to light anything at all.
         // **Everything `WorldState` says about the sky is taken from here**, off the weather the
-        // world settled on, and nothing is read back out of the sky manager. It answers only when it
-        // has been created, and it is created by whichever renderer is drawing — so a ray-traced
-        // frame that asked it for the sky's colour got the black an unbuilt one starts at.
+        // world settled on, and nothing is read back out of a dome: the rasterizer's sky manager is
+        // its own, built lazily, and answered black before it was built.
         mWorld.mSkyColour = weather.mSkyColor;
         mWorld.mCloudFog = weather.mFogColor;
         mWorld.mCloudDirection = weather.mStormDirection;
@@ -77,9 +82,26 @@ namespace MWRender
     {
         mWorld.mMoons[0] = masser;
         mWorld.mMoons[1] = secunda;
+    }
 
-        mSky->setMasserState(masser);
-        mSky->setSecundaState(secunda);
+    void RenderingManager::updateSkyClocks(float dt)
+    {
+        if (!mWorld.mSkyEnabled)
+            return;
+
+        const float timeScale = MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale();
+
+        // UV Scroll the clouds
+        float cloudDelta = dt * mWeather.mCloudSpeed / 400.f;
+        if (mTimescaleClouds)
+            cloudDelta *= timeScale / 60.f;
+
+        mWorld.mCloudScroll += cloudDelta;
+        if (mWorld.mCloudScroll >= 4.f)
+            mWorld.mCloudScroll -= 4.f;
+
+        // rotate the stars by 360 degrees every 4 days
+        mWorld.mStarRoll += timeScale * dt * osg::DegreesToRadians(360.f) / (3600 * 96.f);
     }
 
     EyeState RenderingManager::describeEye() const
@@ -87,15 +109,17 @@ namespace MWRender
         return EyeState{
             .mNearClip = mNearClip,
             .mViewDistance = mViewDistance,
-            .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),
+            .mProjectionMatrix = mProjectionMatrix,
             .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
+            .mPlayersEye = mCamera->getMode() != Camera::Mode::Static,
+            .mScreenResolution = mScreenResolution,
         };
     }
 
     WorldState RenderingManager::describeWorld() const
     {
         const MWBase::World& simulation = *MWBase::Environment::get().getWorld();
-        const bool underwater = mWater->isUnderwater(mCamera->getPosition());
+        const bool underwater = isUnderwater(mCamera->getPosition());
 
         // The simulation's "no transition" is -1, and `WorldState` would rather say it in the type.
         const int next = simulation.getNextWeatherScriptId();
@@ -109,13 +133,14 @@ namespace MWRender
         described.mAmbientColour = mSunLight->getAmbient();
         described.mNightEye = mSunLight->getAmbient() - mAmbientColor;
 
-        // **The sky manager's, and read rather than kept.** It exists under both renderers — only its
-        // nodes are built lazily — so its clock and its particle systems are the one copy of each.
-        described.mRain = mSky->getRainNode();
-        described.mWeatherEffect = mSky->getParticleNode();
-        described.mRainOnWater = mSky->getRainRipplesEnabled() ? mSky->getPrecipitationAlpha() : 0.f;
-        described.mCloudScroll = mSky->getCloudAnimationTimer();
-        described.mStarRoll = mSky->getAtmosphereNightRoll();
+        // **The precipitation's, and read rather than kept.** Its particle systems are the one copy
+        // both renderers walk.
+        described.mRain = mPrecipitation->getRainNode();
+        described.mWeatherEffect = mPrecipitation->getParticleNode();
+        described.mRainOnWater
+            = mPrecipitation->getRainRipplesEnabled() ? mPrecipitation->getPrecipitationAlpha() : 0.f;
+        described.mPrecipitating = mPrecipitation->isOccluded();
+        described.mPrecipitationRange = mPrecipitation->getOcclusionRange();
 
         described.mLocation = simulation.isCellExterior() ? Location::Exterior
             : simulation.isCellQuasiExterior()            ? Location::QuasiExterior
@@ -146,9 +171,11 @@ namespace MWRender
         }
 
         described.mUnderwater = underwater;
-        described.mWaterHeight = mWater->getHeight();
-        described.mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) };
+        described.mWaterEnabled = mWaterEnabled && mWaterToggled;
+        described.mWaterHeight = mWaterHeight;
         described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
+        described.mWaterFog = { mFog->getFogColor(true), mFog->getFogStart(true), mFog->getFogEnd(true) };
+        described.mPlayerPosition = player.getRefData().getPosition().asVec3();
 
         described.mGameHour = simulation.getTimeStamp().getHour();
         described.mWeatherId = simulation.getCurrentWeatherScriptId();
@@ -159,29 +186,37 @@ namespace MWRender
         return described;
     }
 
-    void RenderingManager::renderFrame()
+    void RenderingManager::describeFrame()
     {
-        // **Where the eye is, told to the sky before the frame.** The cull traversal tells it the
-        // same thing under the rasterizer; a renderer that culls nothing has to say it here, or the
-        // underwater switch that freezes the rain reads the point the last cull left. Here and not
-        // in `update`, because `Camera::updateCamera` writes the view matrix from the update
-        // traversal, which runs between the two.
-        mSky->setViewPoint(mRenderer.getCamera().getInverseViewMatrix().getTrans());
+        mFrameWorld = describeWorld();
+        mFrameEye = describeEye();
 
-        const WorldState world = describeWorld();
-        const EyeState seenFrom = describeEye();
-
-        const SceneFrame frame{
+        mFrame.emplace(SceneFrame{
             .mScene = *mSceneRoot,
             .mCamera = mRenderer.getCamera(),
             .mWhen = mRenderer.getFrameStamp(),
-            .mWorld = world,
-            .mEye = seenFrom,
+            .mWorld = mFrameWorld,
+            .mEye = mFrameEye,
             .mImages = *mResourceSystem->getImageManager(),
             .mTerrain = *mTerrain,
             .mObjectStorage = mObjectStorage,
-        };
+            .mDeltaTime = mFrameDelta,
+            .mPaused = mFramePaused,
+        });
 
-        mRenderer.renderFrame(frame);
+        mRenderer.describeFrame(*mFrame);
+    }
+
+    void RenderingManager::renderFrame()
+    {
+        // **Where the eye is, told to the precipitation before the frame.** The cull traversal
+        // tells it the same thing under the rasterizer; a renderer that culls nothing has to say it
+        // here, or the underwater switch that freezes the rain reads the point the last cull left.
+        // Here and not in `describeFrame`, because `Camera::updateCamera` writes the view matrix
+        // from the update traversal, which runs between the two.
+        mPrecipitation->setViewPoint(mRenderer.getCamera().getInverseViewMatrix().getTrans());
+
+        assert(mFrame.has_value() && "a frame is described before it is drawn");
+        mRenderer.renderFrame(*mFrame);
     }
 }

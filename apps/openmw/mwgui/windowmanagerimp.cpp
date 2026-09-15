@@ -210,9 +210,8 @@ namespace MWGui
 
         mScalingFactor = Settings::gui().mScalingFactor * (dw / w);
         constexpr VFS::Path::NormalizedView resourcePath("mygui");
-        mGuiPlatform = mRenderer.createGuiPlatform(*guiRoot, *resourceSystem->getImageManager(),
-            resourceSystem->getSceneManager()->getShaderManager(), *resourceSystem->getVFS(), mScalingFactor,
-            resourcePath, logpath / "MyGUI.log");
+        mGuiPlatform = mRenderer.createGuiPlatform(
+            *guiRoot, *resourceSystem, mScalingFactor, resourcePath, logpath / "MyGUI.log");
 
         mGui = std::make_unique<MyGUI::Gui>();
         mGui->initialise({});
@@ -301,8 +300,7 @@ namespace MWGui
         MyGUI::ClipboardManager::getInstance().eventClipboardRequested
             += MyGUI::newDelegate(this, &WindowManager::onClipboardRequested);
 
-        // No viewer: the vertical sync is asked of the renderer instead
-        mVideoWrapper = std::make_unique<SDLUtil::VideoWrapper>(window, nullptr);
+        mVideoWrapper = std::make_unique<SDLUtil::VideoWrapper>(window);
         mVideoWrapper->setGammaContrast(Settings::video().mGamma, Settings::video().mContrast);
 
         mStatsWatcher = std::make_unique<StatsWatcher>();
@@ -784,17 +782,12 @@ namespace MWGui
                 MWBase::Environment::get().getInputManager()->update(dt, true, false);
 
                 if (!mWindowVisible)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                else
                 {
-                    mRenderer.eventTraversal();
-                    mRenderer.updateTraversal();
-                    mRenderer.renderGui();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
                 }
-                // at the time this function is called we are in the middle of a frame,
-                // so out of order calls are necessary to get a correct frameNumber for the next frame.
-                // refer to the advance() and frame() order in Engine::go()
-                mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
+                else
+                    mRenderer.renderGuiFrame();
 
                 frameRateLimiter.limit();
             }
@@ -1445,17 +1438,12 @@ namespace MWGui
 
     void WindowManager::setCullMask(uint32_t mask)
     {
-        mRenderer.getCamera().setCullMask(mask);
-
-        // We could check whether stereo is enabled here, but these methods are
-        // trivial and have no effect in mono or multiview so just call them regardless.
-        mRenderer.getCamera().setCullMaskLeft(mask);
-        mRenderer.getCamera().setCullMaskRight(mask);
+        mRenderer.setViewMask(mask);
     }
 
     uint32_t WindowManager::getCullMask()
     {
-        return mRenderer.getCamera().getCullMask();
+        return mRenderer.getViewMask();
     }
 
     void WindowManager::popGuiMode(bool forceExit)
@@ -2125,6 +2113,7 @@ namespace MWGui
             {
                 mVideoWidget->pause();
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
             }
             else
             {
@@ -2133,14 +2122,8 @@ namespace MWGui
 
                 mVideoWidget->commitFrame();
 
-                mRenderer.eventTraversal();
-                mRenderer.updateTraversal();
-                mRenderer.renderGui();
+                mRenderer.renderGuiFrame();
             }
-            // at the time this function is called we are in the middle of a frame,
-            // so out of order calls are necessary to get a correct frameNumber for the next frame.
-            // refer to the advance() and frame() order in Engine::go()
-            mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
 
             frameRateLimiter.limit();
         }
@@ -2364,12 +2347,9 @@ namespace MWGui
 
     void WindowManager::togglePostProcessorHud()
     {
-        // Null under a renderer with no shader chain
+        // Null under a renderer with no shader chain, which to the player is a chain that is off
         const MWRender::PostProcessor* processor = MWBase::Environment::get().getWorld()->getPostProcessor();
-        if (processor == nullptr)
-            return;
-
-        if (!processor->isEnabled())
+        if (processor == nullptr || !processor->isEnabled())
         {
             messageBox("#{OMWEngine:PostProcessingIsNotEnabled}");
             return;

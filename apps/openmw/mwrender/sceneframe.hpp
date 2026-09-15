@@ -5,6 +5,7 @@
 #include <optional>
 
 #include <osg/Matrixf>
+#include <osg/Vec2i>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
@@ -31,6 +32,7 @@ namespace Terrain
 
 namespace MWRender
 {
+    struct WeatherResult;
 
     /// What kind of place the player is standing in, as the cell record says. Three and not two,
     /// because a quasi-exterior — Vivec's cantons — is an interior cell with a sky and weather: the
@@ -53,9 +55,9 @@ namespace MWRender
     };
 
     /// What the world is doing this frame. Read off where it settled — `mSunLight`, `FogManager`,
-    /// `Water`, `SkyManager` — wherever something keeps the value, so it cannot disagree with what
-    /// is drawn; and kept here by the setter that decided it where nothing else does: the drawn
-    /// sun, the water switch, the weather and the moons. In the world's own numbers, undecoded:
+    /// `Precipitation` — wherever something keeps the value, so it cannot disagree with what is
+    /// drawn; and kept here by the setter that decided it where nothing else does: the drawn sun,
+    /// the water switch, the weather and the moons. In the world's own numbers, undecoded:
     /// every colour is a content file's three bytes over 255, and what that means is a question
     /// about a renderer's transport.
     struct WorldState
@@ -96,22 +98,44 @@ namespace MWRender
         osg::Vec4f mCloudFog;
 
         /// What the weather drops: the rain box and the driven effect, or null where there is none.
-        /// Nodes rather than a description, because they are `osgParticle` systems the sky manager
-        /// builds and both renderers walk. Both are camera-relative and a walk stands them at the
-        /// eye.
+        /// Nodes rather than a description, because they are `osgParticle` systems the game's
+        /// `Precipitation` builds and both renderers walk. Both are camera-relative and a walk
+        /// stands them at the eye.
         osg::Node* mRain = nullptr;
         osg::Node* mWeatherEffect = nullptr;
+
+        /// Whether what is falling is kept out from under roofs, and over what range about the eye:
+        /// the state the precipitation says its occluder is in, for the renderer that has one.
+        bool mPrecipitating = false;
+        osg::Vec3f mPrecipitationRange;
 
         /// How much of what is falling rings the water, nought to one: the precipitation's alpha
         /// where its kind makes ripples. `Water::setRainIntensity` takes the same number.
         float mRainOnWater = 0.0f;
 
         /// How far the cloud deck has scrolled, in texture units, and how far the star sphere has
-        /// rolled, in radians. Advanced by the sky manager and read here, because the deck runs on
-        /// the weather's speed and the stars come round once in four days; neither is a function of
-        /// the hour.
+        /// rolled, in radians. Clocks the game advances while the sky is on, because the deck runs
+        /// on the weather's speed and the stars come round once in four days; neither is a function
+        /// of the hour.
         float mCloudScroll = 0.0f;
         float mStarRoll = 0.0f;
+
+        /// The weather the world settled on, whole, for a renderer that draws a dome out of it the
+        /// way `SkyManager::setWeather` does; null until the weather has run, which it does only
+        /// outdoors. A pointer, because the record holds strings and the frame is built per frame.
+        const WeatherResult* mWeather = nullptr;
+
+        /// Whether there is a sky to draw: outdoors, and `tsky` has not turned it off. What
+        /// `RenderingManager::setSkyEnabled` was last told.
+        bool mSkyEnabled = false;
+
+        /// Whether the disc is drawn at this hour — the weather manager hides it through the night
+        /// — and how far the glare has come up since sunrise, nought to one over the day.
+        bool mSunEnabled = true;
+        float mGlareFade = 1.0f;
+
+        /// Whether a script has painted Secunda red, `Moons_Script_Color`.
+        bool mMoonRed = false;
 
         /// Includes the night-eye effect and, in a room, the lift `configureAmbient` gives it.
         /// `mRoom` is the record.
@@ -129,12 +153,16 @@ namespace MWRender
         float mWaterHeight = 0.0f;
         bool mUnderwater = false;
 
-        /// Fog as it is right now, which under water is the water.
-        FogBand mFog;
-
         /// Fog above the water, which a renderer whose fog is a medium reads even with the eye
         /// submerged, because what it models down there is the water itself.
         FogBand mAir;
+
+        /// Fog with the eye under the water: the water. Both bands every frame, because the
+        /// rasterizer's shaders carry both and switch per fragment.
+        FogBand mWaterFog;
+
+        /// Where the player stands, which the rasterizer's vegetation bends away from.
+        osg::Vec3f mPlayerPosition;
 
         /// What the content recorded, before `FogManager` made a ramp of it: a weather's blended
         /// `Land_Fog_Depth` outdoors, a cell's `AMBI` density indoors. The ramp's start and end
@@ -211,6 +239,14 @@ namespace MWRender
         /// The one the world settled on: the override wherever something asked for one, and the
         /// setting only where nothing did.
         float mFieldOfView = 0.0f;
+
+        /// Whether the eye is the player's, as against a camera a script or a harness parked
+        /// somewhere: what decides whether the player's own body is in the picture.
+        bool mPlayersEye = true;
+
+        /// The size the picture is made at, in pixels: the window's, or what the rasterizer's
+        /// chain last asked for through `RenderingManager::setScreenRes`.
+        osg::Vec2i mScreenResolution;
     };
 
     /// What there is to draw, and what the world is doing while it is drawn. Handed down rather
@@ -241,6 +277,11 @@ namespace MWRender
         /// What the content files say stands where: the lights of the cells the paging leaves
         /// dark, which `Rtx::DistantLights` reads out of here because the paging stands no `LIGH`.
         const Terrain::ObjectStorage& mObjectStorage;
+
+        /// How long the frame stands for, in seconds, and whether the simulation stood still over
+        /// it: what `RenderingManager::update` was handed, for the objects that step by it.
+        float mDeltaTime = 0.0f;
+        bool mPaused = false;
     };
 }
 

@@ -80,9 +80,24 @@ namespace MWRender
         explicit RtxRenderer(const RendererSpec& spec);
         ~RtxRenderer() override;
 
+        /// No GLSL is compiled here, so no model is given a program: the shader visitor is off, and
+        /// a model's state is read as the loader left it.
+        void prepareResources(Resource::SceneManager& scene) override;
+
+        /// A plain group: the lights are gathered on this renderer's own walk, so nothing here
+        /// wants a light manager's method.
+        osg::ref_ptr<osg::Group> createSceneRoot(Resource::ResourceSystem& resources) override;
+
+        void listAssetsToPreload(
+            std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures) override;
+
+        /// Where the sea stands: `WorldMirror::standSea` says why a cell decides it.
+        void addCell(const MWWorld::CellStore* cell) override;
+
         /// The ground is `Rtx::CellRing`'s, read off the land records; a chunk the game built beside
-        /// it would be one nothing traces.
-        bool buildsTerrainChunks() const override { return false; }
+        /// it would be one nothing traces. A world that holds the storage, the worldspace and the
+        /// active grid and builds none.
+        Ground createGround(const GroundSpec& spec) override;
 
         void enableReference(ESM::RefNum refnum, bool enabled) override;
         void detachWorld() override;
@@ -91,9 +106,15 @@ namespace MWRender
         SDL_Window* getWindow() const override { return mWindow; }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
-        void adoptSceneRoot(osg::Group& root) override;
+        void adoptTraversalRoot(osg::Group& root) override;
+
+        /// Read off `getViewMask` at the trace, so nothing to put anywhere.
+        void applyViewMask(unsigned int mask) override {}
         void showWorld(bool shown) override { mWorldShown = shown; }
-        bool toggleWorld() override { return mWorldToggled = !mWorldToggled; }
+
+        /// `Render_Scene` is a word here; `Render_Wireframe` is a rasterizer's polygon mode and
+        /// stays off.
+        bool toggleRenderMode(RenderMode mode) override;
 
         void tickSchedule() override;
         double beginFrame(double measured) override;
@@ -108,7 +129,8 @@ namespace MWRender
         /// A trace into a texture the GUI draws from. A picture of the world traces against the
         /// scene this renderer holds; a subject that stands in no cell is mirrored into a scene of
         /// its own.
-        std::unique_ptr<OffscreenView> createOffscreenView(const OffscreenViewSpec& spec) override;
+        std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec& spec) override;
+        std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec& spec) override;
 
         /// The frame just presented, read back into a GUI texture. One black texel before anything
         /// has been presented, which is the very first load.
@@ -123,11 +145,11 @@ namespace MWRender
 
         /// A present mode: off is mailbox rather than immediate, and adaptive is relaxed FIFO.
         void setVSync(SDLUtil::VSyncMode mode) override;
-        void setUpscale(std::string_view name) override;
+        void processChangedSettings(const Settings::CategorySettingVector& changed) override;
 
-        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, Resource::ImageManager& images,
-            Shader::ShaderManager& shaders, const VFS::Manager& vfs, float scalingFactor,
-            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
+        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot,
+            Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
+            const std::filesystem::path& logPath) override;
 
         osg::Timer_t getStartTick() const override { return mStartTick; }
 
@@ -228,6 +250,10 @@ namespace MWRender
         /// same renderer with nobody watching.
         void createWindow(bool hidden);
 
+        /// How hard the upscaler between the trace and the picture works, as `RTX / upscale`
+        /// names it.
+        void setUpscale(std::string_view name);
+
         /// Sizes the trace, the surface and the viewport to the window once its size has settled.
         /// Asked every frame, because a Wayland surface has no size of its own — its `currentExtent`
         /// is `0xFFFFFFFF` by specification — so a present succeeds for ever and the compositor
@@ -275,7 +301,7 @@ namespace MWRender
 
         /// Whether the player asked to see the world at all. The `tws` console command, and a
         /// second answer rather than the same one: a loading screen that ends while `tws` is off
-        /// must not bring the world back. `Renderer::toggleWorld`.
+        /// must not bring the world back. `Renderer::toggleRenderMode(Render_Scene)`.
         bool mWorldToggled = true;
 
         /// Whether this frame has a world in it: both of the answers above, said once so a frame

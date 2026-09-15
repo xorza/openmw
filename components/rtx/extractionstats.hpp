@@ -88,11 +88,10 @@ namespace Rtx
         std::uint32_t mUndescribedSurfaces = 0;
 
         /// Particle systems the walk met and could not draw, because nothing described them or what
-        /// did named no diffuse map. One of these is the rasterizer's `MWRender::RippleSimulation`,
-        /// built by hand under `Mask_Water` in every world, and the traced path draws no ripple
-        /// sprites (`VisibilityConstants::mRainOnWater`), so it is a canary and not a deficit. Three
-        /// counts and not one, because an undescribed surface, an undescribed ground pass and a
-        /// missing plume each cost something different.
+        /// did named no diffuse map. A canary that should be zero now that the rasterizer's
+        /// `MWRender::RippleSimulation`, built by hand under `Mask_Water`, is the rasterizer's own
+        /// and stands in no world this walks. Three counts and not one, because an undescribed
+        /// surface, an undescribed ground pass and a missing plume each cost something different.
         std::uint32_t mSpritelessEmitters = 0;
 
         FormatCensus mFormats;

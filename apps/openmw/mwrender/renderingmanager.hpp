@@ -1,11 +1,13 @@
 #ifndef OPENMW_MWRENDER_RENDERINGMANAGER_H
 #define OPENMW_MWRENDER_RENDERINGMANAGER_H
 
+#include "ground.hpp"
 #include "objects.hpp"
 #include "objectstorage.hpp"
 #include "renderinginterface.hpp"
 #include "rendermode.hpp"
 #include "sceneframe.hpp"
+#include "skyutil.hpp"
 
 #include <components/settings/settings.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -17,6 +19,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <span>
 #include <unordered_map>
 
@@ -66,13 +69,8 @@ namespace Fallback
 
 namespace SceneUtil
 {
-    class ShadowManager;
     class WorkQueue;
-    class LightManager;
     class UnrefQueue;
-    class PerViewUniformStateUpdater;
-    class SharedUniformStateUpdater;
-    class StateUpdater;
     class Light;
 }
 
@@ -89,11 +87,6 @@ namespace MWWorld
     class Cell;
 }
 
-namespace Debug
-{
-    struct DebugDrawer;
-}
-
 namespace MWRender
 {
     class IntersectionVisitorWithIgnoreList;
@@ -101,11 +94,10 @@ namespace MWRender
     class EffectManager;
     class ScreenshotManager;
     class FogManager;
-    class SkyManager;
+    class Precipitation;
     class NpcAnimation;
     class Pathgrid;
     class Camera;
-    class Water;
     class TerrainStorage;
     class LandManager;
     class NavMesh;
@@ -115,7 +107,6 @@ namespace MWRender
     class Groundcover;
     class PostProcessor;
     class Renderer;
-    struct WeatherResult;
 
     class RenderingManager : public MWRender::RenderingInterface
     {
@@ -139,7 +130,15 @@ namespace MWRender
 
         double getReferenceTime() const;
 
-        SceneUtil::LightManager* getLightRoot();
+        osg::Group* getSceneRoot();
+
+        /// The sun's light as the game keeps it: colours, position, what the weather settled on.
+        /// The rasterizer lights through it, the ray tracer reads it off the frame.
+        SceneUtil::Light& getSunLight() { return *mSunLight; }
+
+        /// The node the rain and the weather effect hang under, for a renderer that wants state on
+        /// it: the rasterizer's shadow and normals exclusions, and its occluder's depth map.
+        osg::Group& getPrecipitationRoot();
 
         void setNightEyeFactor(float factor);
 
@@ -148,6 +147,12 @@ namespace MWRender
         int skyGetMasserPhase() const;
         int skyGetSecundaPhase() const;
         void skySetMoonColour(bool red);
+
+        /// What the weather manager decides about the sky each frame, kept for whichever renderer
+        /// draws a dome: the storm's direction is the precipitation's, the rest is the frame's.
+        void setStormParticleDirection(const osg::Vec3f& direction);
+        void setSunEnabled(bool enabled);
+        void setGlareFade(float fade);
 
         const osg::Vec4f& getSunLightPosition() const;
         void setSunDirection(const osg::Vec3f& direction);
@@ -207,8 +212,6 @@ namespace MWRender
 
         bool toggleRenderMode(RenderMode mode);
 
-        SkyManager* getSkyManager();
-
         void spawnEffect(VFS::Path::NormalizedView model, std::string_view texture, const osg::Vec3f& worldPosition,
             float scale = 1.f, bool isMagicVFX = true, bool useAmbientLight = true, std::string_view effectId = {},
             bool loop = false);
@@ -223,7 +226,10 @@ namespace MWRender
 
         void update(float dt, bool paused);
 
-        /// Describes this frame and asks the renderer for it. See Renderer::renderFrame.
+        /// Describes this frame and hands it to the renderer, then asks for it drawn: two calls,
+        /// because the description has to land before the scene's update traversal and the drawing
+        /// after it. See `Renderer::describeFrame` and `Renderer::renderFrame`.
+        void describeFrame();
         void renderFrame();
 
         Animation* getAnimation(const MWWorld::Ptr& ptr);
@@ -270,8 +276,6 @@ namespace MWRender
         void exportSceneGraph(
             const MWWorld::Ptr& ptr, const std::filesystem::path& filename, const std::string& format);
 
-        Debug::DebugDrawer& getDebugDrawer() const { return *mDebugDraw; }
-
         LandManager* getLandManager() const;
 
         bool toggleBorders();
@@ -308,14 +312,11 @@ namespace MWRender
         WorldState describeWorld() const;
         EyeState describeEye() const;
 
+        bool isUnderwater(const osg::Vec3f& position) const;
+
         void updateTextureFiltering();
         void updateAmbient();
-        struct WorldspaceChunkMgr
-        {
-            std::unique_ptr<Terrain::World> mTerrain;
-            std::unique_ptr<ObjectPaging> mObjectPaging;
-            std::unique_ptr<Groundcover> mGroundcover;
-        };
+        using WorldspaceChunkMgr = Ground;
 
         WorldspaceChunkMgr& getWorldspaceChunkMgr(ESM::RefId worldspace);
 
@@ -325,7 +326,10 @@ namespace MWRender
 
         void updateRecastMesh();
 
-        const bool mSkyBlending;
+        /// The cloud deck's scroll and the star sphere's roll, advanced by a frame's time while the
+        /// sky is on — upstream's `SkyManager::update` arithmetic, kept by the game since the
+        /// dome is one renderer's and the clocks are both's.
+        void updateSkyClocks(float dt);
 
         osg::ref_ptr<osgUtil::IntersectionVisitor> getIntersectionVisitor(osgUtil::Intersector* intersector,
             bool ignorePlayer, bool ignoreActors, bool ignoreTerrain, std::span<const MWWorld::Ptr> ignoreList = {});
@@ -334,7 +338,7 @@ namespace MWRender
 
         Renderer& mRenderer;
         osg::ref_ptr<osg::Group> mRootNode;
-        osg::ref_ptr<SceneUtil::LightManager> mSceneRoot;
+        osg::ref_ptr<osg::Group> mSceneRoot;
         Resource::ResourceSystem* mResourceSystem;
 
         osg::ref_ptr<SceneUtil::WorkQueue> mWorkQueue;
@@ -348,27 +352,48 @@ namespace MWRender
         std::unique_ptr<RecastMesh> mRecastMesh;
         std::unique_ptr<Pathgrid> mPathgrid;
         std::unique_ptr<Objects> mObjects;
-        std::unique_ptr<Water> mWater;
+        /// The water's level and whether there is any: what the game decides about it, read by
+        /// both renderers off the frame. The plane, the reflection and the ripples are the
+        /// rasterizer's.
+        float mWaterHeight = 0.f;
+        bool mWaterEnabled = false;
+        bool mWaterToggled = true;
         std::unordered_map<ESM::RefId, WorldspaceChunkMgr> mWorldspaceChunks;
         Terrain::World* mTerrain;
         std::unique_ptr<TerrainStorage> mTerrainStorage;
         ObjectStorage mObjectStorage;
         ObjectPaging* mObjectPaging;
         Groundcover* mGroundcover;
-        std::unique_ptr<SkyManager> mSky;
+        std::unique_ptr<Precipitation> mPrecipitation;
         std::unique_ptr<FogManager> mFog;
         // The fields of WorldState that nothing else keeps, written by the setter that decided them
         WorldState mWorld;
+        /// The weather the world settled on, copied so that `mWorld.mWeather` points at something
+        /// the frame owns. Its strings keep their capacity across the same weather.
+        WeatherResult mWeather{};
+        const bool mTimescaleClouds;
         std::unique_ptr<EffectManager> mEffectManager;
-        std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
         osg::ref_ptr<NpcAnimation> mPlayerAnimation;
         osg::ref_ptr<SceneUtil::PositionAttitudeTransform> mPlayerNode;
         std::unique_ptr<Camera> mCamera;
-        osg::ref_ptr<Debug::DebugDrawer> mDebugDraw;
 
-        osg::ref_ptr<SceneUtil::StateUpdater> mStateUpdater;
-        osg::ref_ptr<SceneUtil::SharedUniformStateUpdater> mSharedUniformStateUpdater;
-        osg::ref_ptr<SceneUtil::PerViewUniformStateUpdater> mPerViewUniformStateUpdater;
+        /// What `updateProjectionMatrix` settled on, for the frame: the reversed-depth form where
+        /// the depth buffer is reversed, which is what a shader reads.
+        osg::Matrixf mProjectionMatrix;
+
+        /// What `update` was last handed, for the frame that follows it.
+        float mFrameDelta = 0.f;
+        bool mFramePaused = false;
+
+        /// The size the picture is made at, as the window settings say or as the post-processing
+        /// chain last said through `setScreenRes`.
+        osg::Vec2i mScreenResolution;
+
+        /// This frame, from `describeFrame` to `renderFrame`, and the two records it refers to;
+        /// empty before the first.
+        WorldState mFrameWorld;
+        EyeState mFrameEye;
+        std::optional<SceneFrame> mFrame;
 
         osg::Vec4f mAmbientColor;
         float mNightEyeFactor;
@@ -383,7 +408,6 @@ namespace MWRender
         bool mNight = false;
         osg::Vec2f mProjectionOffset;
         const MWWorld::GroundcoverStore& mGroundCoverStore;
-        std::map<std::string, std::string> mAppliedShadowDefines;
 
         void operator=(const RenderingManager&);
         RenderingManager(const RenderingManager&);

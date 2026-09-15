@@ -56,7 +56,7 @@ namespace MWRender
         , mInterior(false)
     {
         SceneUtil::FindByNameVisitor find("Scene Root");
-        renderer.getSceneRoot().accept(find);
+        renderer.getTraversalRoot().accept(find);
         mSceneRoot = find.mFoundNode;
         if (!mSceneRoot)
             throw std::runtime_error("no scene root found");
@@ -159,9 +159,8 @@ namespace MWRender
             spec.mSun.mDirection = osg::Vec3f(-0.3f, -0.3f, 0.7f);
             spec.mSun.mDiffuse = osg::Vec4f(0.7f, 0.7f, 0.7f, 1.f);
             spec.mSun.mAmbient = osg::Vec4f(0.3f, 0.3f, 0.3f, 1.f);
-            spec.mFromWorld = true;
 
-            segment.mView = mRenderer.createOffscreenView(spec);
+            segment.mView = mRenderer.createWorldView(spec);
             segment.mZMin = zmin;
             segment.mZMax = zmax;
         }

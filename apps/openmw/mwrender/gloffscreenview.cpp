@@ -1,7 +1,6 @@
 #include "gloffscreenview.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <variant>
 
 #include <osg/BlendFunc>
@@ -320,7 +319,8 @@ namespace MWRender
         }
     }
 
-    GlOffscreenView::GlOffscreenView(
+    template <class View>
+    GlOffscreenView<View>::GlOffscreenView(
         SceneUtil::RTTNode& node, osg::Group& parent, const osg::FrameStamp& frameStamp, osg::StateSet* blend)
         : mParent(&parent)
         , mNode(&node)
@@ -334,17 +334,20 @@ namespace MWRender
             static_cast<osg::Texture2D*>(mNode->getColorTexture(nullptr)), blend);
     }
 
-    GlOffscreenView::~GlOffscreenView()
+    template <class View>
+    GlOffscreenView<View>::~GlOffscreenView()
     {
         mParent->removeChild(mNode);
     }
 
-    MyGUI::ITexture& GlOffscreenView::getTexture() const
+    template <class View>
+    MyGUI::ITexture& GlOffscreenView<View>::getTexture() const
     {
         return *mTexture;
     }
 
-    void GlOffscreenView::keepCopy()
+    template <class View>
+    void GlOffscreenView<View>::keepCopy()
     {
         if (mCopy)
             return;
@@ -358,10 +361,11 @@ namespace MWRender
 
         // A draw already made carried no copy; one still pending will carry this one
         if (!isPending())
-            redraw();
+            this->redraw();
     }
 
-    const osg::Image* GlOffscreenView::getCopy()
+    template <class View>
+    const osg::Image* GlOffscreenView<View>::getCopy()
     {
         if (!mCopy || !mCopy->valid() || isPending() || getDrawnFrame() == 0)
             return nullptr;
@@ -374,8 +378,11 @@ namespace MWRender
         return mCopy;
     }
 
+    template class GlOffscreenView<OffscreenView>;
+    template class GlOffscreenView<SubjectView>;
+
     // Upstream's, from InventoryPreview::getSlotSelected.
-    bool GlOffscreenView::pick(float x, float y, osg::NodePath& hit) const
+    bool GlDollView::pick(float x, float y, osg::NodePath& hit) const
     {
         // With Intersector::WINDOW, the intersection ratios are slightly inaccurate. Seems to be a
         // precision issue - compiling with OSG_USE_FLOAT_MATRIX=0, Intersector::WINDOW works ok.
@@ -391,7 +398,7 @@ namespace MWRender
         // works correctly
         visitor.setTraversalNumber(getDrawnFrame());
 
-        auto* camera = mNode->getCamera(nullptr);
+        auto* camera = getNode().getCamera(nullptr);
         osg::Node::NodeMask nodeMask = camera->getNodeMask();
         camera->setNodeMask(~0u);
         camera->accept(visitor);
@@ -486,12 +493,6 @@ namespace MWRender
     void GlTileView::setView(const osg::Matrixf& view)
     {
         mTile.mViewMatrix = view;
-    }
-
-    void GlTileView::setExtent(int width, int height)
-    {
-        assert(width == static_cast<int>(mTile.width()) && height == static_cast<int>(mTile.height())
-            && "a map tile is drawn whole");
     }
 
     void GlTileView::redraw()

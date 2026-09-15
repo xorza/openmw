@@ -41,6 +41,11 @@ namespace VFS
     class Manager;
 }
 
+namespace SceneUtil
+{
+    class LightManager;
+}
+
 namespace Shader
 {
     class ShaderManager;
@@ -49,6 +54,7 @@ namespace Shader
 namespace MWRender
 {
     class RenderingManager;
+    class SkyManager;
     class Water;
     class PingPongCull;
     class PingPongCanvas;
@@ -101,8 +107,8 @@ namespace MWRender
             Status_Unchanged
         };
 
-        PostProcessor(
-            RenderingManager& rendering, osgViewer::Viewer* viewer, osg::Group* rootNode, const VFS::Manager* vfs);
+        PostProcessor(RenderingManager& rendering, osgViewer::Viewer* viewer, osg::Group* rootNode,
+            const VFS::Manager* vfs, SceneUtil::LightManager& lights, SkyManager& sky);
 
         ~PostProcessor();
 
@@ -241,6 +247,8 @@ namespace MWRender
         std::unordered_set<VFS::Path::Normalized, VFS::Path::Hash, std::equal_to<>> mTechniqueFiles;
 
         RenderingManager& mRendering;
+        SceneUtil::LightManager& mLights;
+        SkyManager& mSky;
         osgViewer::Viewer* mViewer;
         const VFS::Manager* mVFS;
 

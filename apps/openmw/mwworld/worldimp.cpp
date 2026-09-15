@@ -247,7 +247,7 @@ namespace MWWorld
         mRendering = std::make_unique<MWRender::RenderingManager>(
             renderer, rootNode, mResourceSystem, workQueue, *mNavigator, mGroundcoverStore, unrefQueue);
         mProjectileManager = std::make_unique<ProjectileManager>(
-            mRendering->getLightRoot()->asGroup(), mResourceSystem, mRendering.get(), mPhysics.get());
+            mRendering->getSceneRoot(), mResourceSystem, mRendering.get(), mPhysics.get());
         mRendering->preloadCommonAssets();
 
         mWeatherStore = std::make_unique<MWWorld::WeatherStore>();

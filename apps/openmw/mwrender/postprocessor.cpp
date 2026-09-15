@@ -116,12 +116,14 @@ namespace
 
 namespace MWRender
 {
-    PostProcessor::PostProcessor(
-        RenderingManager& rendering, osgViewer::Viewer* viewer, osg::Group* rootNode, const VFS::Manager* vfs)
+    PostProcessor::PostProcessor(RenderingManager& rendering, osgViewer::Viewer* viewer, osg::Group* rootNode,
+        const VFS::Manager* vfs, SceneUtil::LightManager& lights, SkyManager& sky)
         : osg::Group()
         , mRootNode(rootNode)
         , mHUDCamera(new osg::Camera)
         , mRendering(rendering)
+        , mLights(lights)
+        , mSky(sky)
         , mViewer(viewer)
         , mVFS(vfs)
         , mUsePostProcessing(Settings::postProcessing().mEnabled)
@@ -290,7 +292,7 @@ namespace MWRender
     void PostProcessor::disable()
     {
         mUsePostProcessing = false;
-        mRendering.getSkyManager()->setSunglare(true);
+        mSky.setSunglare(true);
     }
 
     void PostProcessor::traverse(osg::NodeVisitor& nv)
@@ -443,8 +445,8 @@ namespace MWRender
                 shaderManager.setGlobalDefines(defines);
             }
 
-            mRendering.getLightRoot()->setCollectPPLights(mPassLights);
-            mStateUpdater->bindPointLights(mPassLights ? mRendering.getLightRoot()->getPPLightsBuffer() : nullptr);
+            mLights.setCollectPPLights(mPassLights);
+            mStateUpdater->bindPointLights(mPassLights ? mLights.getPPLightsBuffer() : nullptr);
             mStateUpdater->reset();
 
             mViewer->startThreading();
@@ -738,7 +740,7 @@ namespace MWRender
             hud->updateTechniques();
 
         if (mUsePostProcessing)
-            mRendering.getSkyManager()->setSunglare(sunglare);
+            mSky.setSunglare(sunglare);
 
         if (dirtyAttachments)
             mCanvases[frameId]->setDirtyAttachments(attachmentsToDirty);

@@ -1,5 +1,7 @@
 #include "glrenderer.hpp"
 
+#include <cassert>
+#include <cmath>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -23,15 +25,17 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/debug/gldebug.hpp>
-#include <components/fx/stateupdater.hpp>
+#include <components/esm3/loadcell.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguiplatform/myguirendermanager.hpp>
 #include <components/myguiplatform/myguitexture.hpp>
+#include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/resource/stats.hpp>
 #include <components/sceneutil/color.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/glextensions.hpp>
+#include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/sceneutil/workqueue.hpp>
@@ -39,15 +43,21 @@
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/stereomanager.hpp>
+#include <components/terrain/quadtreeworld.hpp>
+#include <components/terrain/terraingrid.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../profile.hpp"
 #include "gloffscreenview.hpp"
+#include "glworld.hpp"
+#include "groundcover.hpp"
+#include "objectpaging.hpp"
 #include "postprocessor.hpp"
 #include "renderingmanager.hpp"
 #include "sceneframe.hpp"
 #include "screenshotmanager.hpp"
+#include "util.hpp"
 #include "vismask.hpp"
 
 namespace
@@ -109,39 +119,6 @@ namespace
     private:
         int mMaxTextureImageUnits = 0;
     };
-
-    /// Hands the post-processor what its techniques read about the world, off the one description
-    /// both renderers are given.
-    void describe(
-        MWRender::PostProcessor& postProcessor, const MWRender::WorldState& world, const MWRender::EyeState& eye)
-    {
-        Fx::StateUpdater& state = *postProcessor.getStateUpdater();
-        state.setSunPos(world.mSunPosition, world.mSunAtNight);
-        state.setSunVec(world.mSunVector);
-        state.setSunColor(world.mSunColour);
-        state.setSunVis(world.mSunVisibility);
-        state.setAmbientColor(world.mAmbientColour);
-        state.setSkyColor(world.mSkyColour);
-        state.setIsInterior(world.isInteriorCell());
-        state.setIsWaterEnabled(world.mWaterEnabled);
-        state.setWaterHeight(world.mWaterHeight);
-        state.setIsUnderwater(world.mUnderwater);
-        state.setFogColor(world.mFog.mColour);
-        state.setFogRange(world.mFog.mStart, world.mFog.mEnd);
-        state.setNearFar(eye.mNearClip, eye.mViewDistance);
-        state.setProjectionMatrix(eye.mProjectionMatrix);
-        state.setFov(eye.mFieldOfView);
-        state.setGameHour(world.mGameHour);
-        state.setWeatherId(world.mWeatherId);
-        // -1 for no transition, which is what the world hands over and what a technique reads.
-        state.setNextWeatherId(world.mNextWeatherId.value_or(-1));
-        state.setWeatherTransition(world.mWeatherTransition);
-        state.setWindSpeed(world.mWindSpeed);
-        // Which techniques run at all. A quasi-exterior is outside here and inside for the
-        // `isInterior` uniform above, which is why `WorldState` answers the two apart.
-        postProcessor.setUnderwaterFlag(world.mUnderwater);
-        postProcessor.setExteriorFlag(world.isOutdoors());
-    }
 }
 
 namespace MWRender
@@ -391,25 +368,72 @@ namespace MWRender
         return Settings::terrain().mDistantTerrain ? Settings::camera().mViewingDistance : 0.f;
     }
 
+    // Upstream's, from RenderingManager's constructor: what the shader visitor is told before it
+    // meets a model.
+    void GlRenderer::prepareResources(Resource::SceneManager& scene)
+    {
+        scene.getShaderManager().setMaxTextureUnits(mMaxTextureUnits);
+
+        scene.setAutoUseNormalMaps(Settings::shaders().mAutoUseObjectNormalMaps);
+        scene.setNormalMapPattern(Settings::shaders().mNormalMapPattern);
+        scene.setNormalHeightMapPattern(Settings::shaders().mNormalHeightMapPattern);
+        scene.setAutoUseSpecularMaps(Settings::shaders().mAutoUseObjectSpecularMaps);
+        scene.setSpecularMapPattern(Settings::shaders().mSpecularMapPattern);
+        scene.setConvertAlphaTestToAlphaToCoverage(shouldAddMSAAIntermediateTarget());
+        scene.setAdjustCoverageForAlphaTest(Settings::shaders().mAdjustCoverageForAlphaTest);
+        scene.setWeatherParticleOcclusion(Settings::shaders().mWeatherParticleOcclusion);
+    }
+
+    // Upstream's, from RenderingManager's constructor: the light manager and what it is told
+    // about the lighting method it settled on.
+    osg::ref_ptr<osg::Group> GlRenderer::createSceneRoot(Resource::ResourceSystem& resources)
+    {
+        // Let LightManager choose which backend to use based on our hint.
+        // Ultimately dependent on support for various OpenGL extensions.
+        osg::ref_ptr<SceneUtil::LightManager> sceneRoot = new SceneUtil::LightManager(
+            SceneUtil::LightSettings{
+                .mClusteredLighting = Settings::shaders().mClusteredLighting,
+                .mMaxLights = Settings::shaders().mMaxLights,
+                .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
+                .mLightFadeStart = Settings::shaders().mLightFadeStart,
+                .mLightRadiusMultiplier = Settings::shaders().mLightRadiusMultiplier,
+            },
+            &resources);
+
+        resources.getSceneManager()->setSupportsClusteredLighting(sceneRoot->isClusteredSupported());
+
+        // Sync clustered lighting setting so it's more intuitive when viewed in the in-game setting panel
+        Settings::shaders().mClusteredLighting.set(sceneRoot->getClusteredLighting());
+
+        sceneRoot->setLightingMask(Mask_Lighting);
+
+        mSceneRoot = sceneRoot;
+        return sceneRoot;
+    }
+
     void GlRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
     {
         mResources = world.getResourceSystem();
 
-        // **The chain goes above the world and becomes what is traversed.** Its constructor reads
-        // `GLExtensions` off the camera's graphics context, which is why no renderer without one can
-        // have it and why nothing above this line decides whether to build it.
-        mPostProcessor = new PostProcessor(world, mViewer, &worldRoot, mResources->getVFS());
-        setSceneRoot(*mPostProcessor);
+        assert(mSceneRoot != nullptr && "the world is built under a root this renderer made");
+        mWorld = std::make_unique<GlWorld>(*mViewer, world, worldRoot, *mSceneRoot, *mResources);
 
-        Resource::SceneManager& scene = *world.getResourceSystem()->getSceneManager();
-        scene.setOpaqueDepthTex(mPostProcessor->getTexture(PostProcessor::Tex_OpaqueDepth, 0),
-            mPostProcessor->getTexture(PostProcessor::Tex_OpaqueDepth, 1));
-        scene.setOpaqueColorTex(mPostProcessor->getTexture(PostProcessor::Tex_OpaqueColor, 0),
-            mPostProcessor->getTexture(PostProcessor::Tex_OpaqueColor, 1));
-        scene.setSupportsNormalsRT(mPostProcessor->getSupportsNormalsRT());
+        // **The chain goes above the world and becomes what is traversed.**
+        setTraversalRoot(mWorld->getPostProcessor());
     }
 
-    void GlRenderer::adoptSceneRoot(osg::Group& root)
+    void GlRenderer::detachWorld()
+    {
+        mWorld.reset();
+        mSceneRoot = nullptr;
+    }
+
+    PostProcessor* GlRenderer::getPostProcessor()
+    {
+        return mWorld ? &mWorld->getPostProcessor() : nullptr;
+    }
+
+    void GlRenderer::adoptTraversalRoot(osg::Group& root)
     {
         mViewer->setSceneData(&root);
     }
@@ -427,25 +451,32 @@ namespace MWRender
         if (!shown && mViewer->getCamera()->getCullMask() != sCoveredCullMask)
         {
             mShownUpdateMask = mViewer->getUpdateVisitor()->getTraversalMask();
-            mShownCullMask = mViewer->getCamera()->getCullMask();
             mViewer->getUpdateVisitor()->setTraversalMask(sCoveredCullMask);
             cull(sCoveredCullMask);
         }
         else if (shown && mViewer->getCamera()->getCullMask() == sCoveredCullMask)
         {
             mViewer->getUpdateVisitor()->setTraversalMask(mShownUpdateMask);
-            cull(mShownCullMask);
+            cull(getViewMask());
         }
     }
 
-    bool GlRenderer::toggleWorld()
+    void GlRenderer::applyViewMask(const unsigned int mask)
     {
-        // **Edited where the shown mask actually is.** `showWorld` parks it in `mShownCullMask`
-        // while a screen covers the world, so writing the camera's own mask then would edit the two
-        // bits the interface is drawn with — and the toggle would be thrown away when the screen
-        // ended and the parked mask came back.
-        const bool covered = mViewer->getCamera()->getCullMask() == sCoveredCullMask;
-        unsigned int mask = covered ? mShownCullMask : mViewer->getCamera()->getCullMask();
+        // **Not while a screen covers the world.** The camera then carries the two bits the
+        // interface is drawn with, and `showWorld` writes the seam's word when the screen ends.
+        if (mViewer->getCamera()->getCullMask() != sCoveredCullMask)
+            cull(mask);
+    }
+
+    bool GlRenderer::toggleRenderMode(const RenderMode mode)
+    {
+        if (mode == Render_Wireframe)
+            return mWorld->toggleWireframe();
+
+        assert(mode == Render_Scene && "the other modes are the game's");
+
+        unsigned int mask = getViewMask();
 
         const bool shown = (mask & sToggleWorldMask) == 0;
         if (shown)
@@ -453,11 +484,8 @@ namespace MWRender
         else
             mask &= ~sToggleWorldMask;
 
-        if (covered)
-            mShownCullMask = mask;
-        else
-            cull(mask);
-
+        setViewMask(mask);
+        mWorld->setWorldShown(shown);
         return shown;
     }
 
@@ -476,14 +504,20 @@ namespace MWRender
         mViewer->updateTraversal();
     }
 
-    // The world is already in the graph and the cull is what finds it, so the rasterizer has
-    // nothing to read off the frame it is handed, and nothing to leave out when there is none. Both
-    // of these are one traversal, and which of the two it was is a question only a renderer that
-    // mirrors the graph has to answer.
+    void GlRenderer::describeFrame(const SceneFrame& frame)
+    {
+        // The settings and not `frame.mEye`, which follows a Lua `setViewDistance`: what upstream fed
+        // the stereo manager, exactly. Read by the stereo update callback, so before the traversal.
+        mStereoManager->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
+
+        mWorld->describe(frame);
+    }
+
+    // The world is already in the graph and the cull is what finds it, so nothing is left out when
+    // there is none: this and `renderGui` are one traversal, and which of the two it was is a
+    // question only a renderer that mirrors the graph has to answer.
     void GlRenderer::renderFrame(const SceneFrame& frame)
     {
-        describe(*mPostProcessor, frame.mWorld, frame.mEye);
-
         mViewer->renderingTraversals();
     }
 
@@ -534,14 +568,66 @@ namespace MWRender
         return *mFrozenFrameTexture;
     }
 
-    std::unique_ptr<OffscreenView> GlRenderer::createOffscreenView(const OffscreenViewSpec& spec)
+    // Upstream's, from RenderingManager::getWorldspaceChunkMgr.
+    Ground GlRenderer::createGround(const GroundSpec& spec)
     {
-        // Above the post-processing chain rather than inside it: a pre-render camera has to be
-        // reached before the frame it feeds, and what it draws is not part of that frame.
-        if (spec.mFromWorld)
-            return std::make_unique<GlTileView>(spec, getSceneRoot(), getFrameStamp());
+        Ground ground;
+        const ESM::RefId worldspace = spec.mWorldspace;
+        osg::Group* sceneRoot = &spec.mSceneRoot;
+        osg::Group* rootNode = &spec.mWorldRoot;
+        Resource::ResourceSystem* resourceSystem = &spec.mResources;
+        Terrain::Storage* storage = &spec.mStorage;
 
-        return std::make_unique<GlDollView>(spec, getSceneRoot(), getFrameStamp(), *mResources);
+        const float lodFactor = Settings::terrain().mLodFactor;
+        const bool groundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
+        const bool distantTerrain = Settings::terrain().mDistantTerrain;
+        const double expiryDelay = Settings::cells().mCacheExpiryDelay;
+        if (distantTerrain || groundcover)
+        {
+            const int compMapResolution = Settings::terrain().mCompositeMapResolution;
+            const int compMapPower = Settings::terrain().mCompositeMapLevel;
+            const float compMapLevel = static_cast<float>(std::pow(2, compMapPower));
+            const int vertexLodMod = Settings::terrain().mVertexLodMod;
+            const float maxCompGeometrySize = Settings::terrain().mMaxCompositeGeometrySize;
+            const bool debugChunks = Settings::terrain().mDebugChunks;
+            auto quadTreeWorld = std::make_unique<Terrain::QuadTreeWorld>(sceneRoot, rootNode, resourceSystem, storage,
+                Mask_Terrain, Mask_PreCompile, Mask_Debug, compMapResolution, compMapLevel, lodFactor, vertexLodMod,
+                maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
+            if (Settings::terrain().mObjectPaging)
+            {
+                ground.mObjectPaging = std::make_unique<ObjectPaging>(resourceSystem->getSceneManager(), worldspace);
+                quadTreeWorld->addChunkManager(ground.mObjectPaging.get());
+                resourceSystem->addResourceManager(ground.mObjectPaging.get());
+            }
+            if (groundcover)
+            {
+                const float groundcoverDistance = Settings::groundcover().mRenderingDistance;
+                const float density = Settings::groundcover().mDensity;
+
+                ground.mGroundcover = std::make_unique<Groundcover>(
+                    resourceSystem->getSceneManager(), density, groundcoverDistance, spec.mGroundcoverStore);
+                quadTreeWorld->addChunkManager(ground.mGroundcover.get());
+                resourceSystem->addResourceManager(ground.mGroundcover.get());
+            }
+            ground.mTerrain = std::move(quadTreeWorld);
+        }
+        else
+            ground.mTerrain = std::make_unique<Terrain::TerrainGrid>(sceneRoot, rootNode, resourceSystem, storage,
+                Mask_Terrain, worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
+
+        return ground;
+    }
+
+    // Both above the post-processing chain rather than inside it: a pre-render camera has to be
+    // reached before the frame it feeds, and what it draws is not part of that frame.
+    std::unique_ptr<OffscreenView> GlRenderer::createWorldView(const OffscreenViewSpec& spec)
+    {
+        return std::make_unique<GlTileView>(spec, getTraversalRoot(), getFrameStamp());
+    }
+
+    std::unique_ptr<SubjectView> GlRenderer::createSubjectView(const OffscreenViewSpec& spec)
+    {
+        return std::make_unique<GlDollView>(spec, getTraversalRoot(), getFrameStamp(), *mResources);
     }
 
     void GlRenderer::renderGui()
@@ -598,8 +684,49 @@ namespace MWRender
         return mViewer->getIncrementalCompileOperation();
     }
 
-    // `SDLUtil::VideoWrapper::setSyncToVBlank`, with the viewer this renderer owns: the wrapper
-    // `WindowManager` holds has no viewer and keeps only the gamma ramp.
+    void GlRenderer::processChangedSettings(const Settings::CategorySettingVector& changed)
+    {
+        if (mWorld)
+            mWorld->processChangedSettings(changed);
+    }
+
+    void GlRenderer::addCell(const MWWorld::CellStore* cell)
+    {
+        mWorld->addCell(cell);
+    }
+
+    void GlRenderer::removeCell(const MWWorld::CellStore* cell)
+    {
+        mWorld->removeCell(cell);
+    }
+
+    void GlRenderer::addWaterRippleEmitter(const MWWorld::Ptr& ptr)
+    {
+        mWorld->addWaterRippleEmitter(ptr);
+    }
+
+    void GlRenderer::removeWaterRippleEmitter(const MWWorld::Ptr& ptr)
+    {
+        mWorld->removeWaterRippleEmitter(ptr);
+    }
+
+    void GlRenderer::emitWaterRipple(const osg::Vec3f& position)
+    {
+        mWorld->emitWaterRipple(position);
+    }
+
+    void GlRenderer::notifyWorldSpaceChanged()
+    {
+        mWorld->clearRipples();
+    }
+
+    void GlRenderer::listAssetsToPreload(
+        std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures)
+    {
+        mWorld->listAssetsToPreload(models, textures);
+    }
+
+    // Upstream's `SDLUtil::VideoWrapper::setSyncToVBlank`, with the viewer this renderer owns.
     void GlRenderer::setVSync(SDLUtil::VSyncMode mode)
     {
         osgViewer::Viewer::Windows windows;
@@ -621,18 +748,22 @@ namespace MWRender
     }
 
     std::unique_ptr<MyGUIPlatform::Platform> GlRenderer::createGuiPlatform(osg::Group& guiRoot,
-        Resource::ImageManager& images, Shader::ShaderManager& shaders, const VFS::Manager& vfs, float scalingFactor,
-        VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
+        Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
+        const std::filesystem::path& logPath)
     {
-        auto manager = std::make_unique<MyGUIPlatform::RenderManager>(mViewer, &guiRoot, &images, scalingFactor);
+        mStereoManager->disableStereoForNode(&guiRoot);
+
+        auto manager = std::make_unique<MyGUIPlatform::RenderManager>(
+            mViewer, &guiRoot, resources.getImageManager(), scalingFactor);
         MyGUIPlatform::RenderManager& gui = *manager;
 
-        auto platform = std::make_unique<MyGUIPlatform::Platform>(std::move(manager), &vfs, resourcePath, logPath);
+        auto platform
+            = std::make_unique<MyGUIPlatform::Platform>(std::move(manager), resources.getVFS(), resourcePath, logPath);
 
         // **Which program the GUI is drawn with is this renderer's business**, and it is settled
         // after the platform rather than before it: the drawable the program goes on is made by the
         // `initialise` the platform's constructor calls.
-        gui.enableShaders(shaders);
+        gui.enableShaders(resources.getSceneManager()->getShaderManager());
 
         return platform;
     }

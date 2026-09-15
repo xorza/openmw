@@ -39,18 +39,19 @@ namespace MWRender
     /// An offscreen view as OpenSceneGraph draws one: a pre-render camera hung off the top of the
     /// graph, culled and drawn by the same traversal as everything else.
     ///
-    /// The glue every such picture shares — the GUI texture, the copy in main memory, the pick —
-    /// over whichever of upstream's two render-to-texture nodes a subclass owns. The nodes are
-    /// upstream's own, moved from `characterpreview.cpp` and `localmap.cpp`, so what a doll or a
-    /// map tile looks like is what it looked like before there was a second renderer.
-    class GlOffscreenView : public OffscreenView
+    /// The glue every such picture shares — the GUI texture and the copy in main memory — over
+    /// whichever of upstream's two render-to-texture nodes a subclass owns, under whichever of the
+    /// seam's two interfaces the subclass answers. The nodes are upstream's own, moved from
+    /// `characterpreview.cpp` and `localmap.cpp`, so what a doll or a map tile looks like is what
+    /// it looked like before there was a second renderer.
+    template <class View>
+    class GlOffscreenView : public View
     {
     public:
         ~GlOffscreenView() override;
 
         void keepCopy() override;
         const osg::Image* getCopy() override;
-        bool pick(float x, float y, osg::NodePath& hit) const override;
         MyGUI::ITexture& getTexture() const override;
 
     protected:
@@ -65,6 +66,8 @@ namespace MWRender
         /// Whether a draw has been asked for and not yet made.
         virtual bool isPending() const = 0;
 
+        SceneUtil::RTTNode& getNode() const { return *mNode; }
+
     private:
         osg::ref_ptr<osg::Group> mParent;
         osg::ref_ptr<SceneUtil::RTTNode> mNode;
@@ -76,7 +79,7 @@ namespace MWRender
     /// A picture of a subtree the game assembled for it alone — the inventory doll, the race
     /// preview — drawn by upstream's `CharacterPreviewRTTNode` under the light rig, the sample count
     /// and the premultiplied alpha that `CharacterPreview` used to set up for itself.
-    class GlDollView final : public GlOffscreenView
+    class GlDollView final : public GlOffscreenView<SubjectView>
     {
     public:
         GlDollView(const OffscreenViewSpec& spec, osg::Group& parent, const osg::FrameStamp& frameStamp,
@@ -87,6 +90,7 @@ namespace MWRender
         void setExtent(int width, int height) override;
         void sceneChanged() override;
         void redraw() override;
+        bool pick(float x, float y, osg::NodePath& hit) const override;
 
     protected:
         unsigned int getDrawnFrame() const override;
@@ -104,19 +108,12 @@ namespace MWRender
 
     /// A tile of the world seen straight down, drawn by upstream's `LocalMapRenderToTexture` with
     /// the frame's own light manager under it and the sun overridden, as the local map always was.
-    class GlTileView final : public GlOffscreenView
+    class GlTileView final : public GlOffscreenView<OffscreenView>
     {
     public:
         GlTileView(const OffscreenViewSpec& spec, osg::Group& parent, const osg::FrameStamp& frameStamp);
 
         void setView(const osg::Matrixf& view) override;
-
-        /// A tile is drawn whole; asking for less is a caller's mistake.
-        void setExtent(int width, int height) override;
-
-        /// Nothing in a tile is composited over what is behind it.
-        void sceneChanged() override {}
-
         void redraw() override;
 
     protected:

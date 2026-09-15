@@ -50,7 +50,9 @@ namespace Sky
 
         float mRotationFromHorizon;
         float mRotationFromNorth;
-        Phase mPhase;
+        /// Unspecified until the weather has placed the moon, which is what a script's phase
+        /// question gets as nought — the answer the rasterizer's unbuilt moon gave.
+        Phase mPhase = Phase::Unspecified;
         float mShadowBlend;
         float mMoonAlpha;
 

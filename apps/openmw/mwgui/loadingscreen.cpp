@@ -129,7 +129,7 @@ namespace MWGui
         // Assign dummy bounding sphere callback to avoid the bounding sphere of the entire scene being recomputed after
         // each frame of loading We are already using node masks to avoid the scene from being updated/rendered, but
         // node masks don't work for computeBound()
-        mRenderer.getSceneRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
+        mRenderer.getTraversalRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
 
         if (const osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
         {
@@ -167,8 +167,8 @@ namespace MWGui
         else
             mImportantLabel = false; // label was already shown on loading screen
 
-        mRenderer.getSceneRoot().setComputeBoundingSphereCallback(nullptr);
-        mRenderer.getSceneRoot().dirtyBound();
+        mRenderer.getTraversalRoot().setComputeBoundingSphereCallback(nullptr);
+        mRenderer.getTraversalRoot().dirtyBound();
 
         setVisible(false);
 
@@ -299,13 +299,7 @@ namespace MWGui
             ico->setMaximumNumOfObjectsToCompilePerFrame(1000);
         }
 
-        // at the time this function is called we are in the middle of a frame,
-        // so out of order calls are necessary to get a correct frameNumber for the next frame.
-        // refer to the advance() and frame() order in Engine::go()
-        mRenderer.eventTraversal();
-        mRenderer.updateTraversal();
-        mRenderer.renderGui();
-        mRenderer.advance(mRenderer.getFrameStamp().getSimulationTime());
+        mRenderer.renderGuiFrame();
 
         mLastRenderTime = mTimer.time_m();
     }

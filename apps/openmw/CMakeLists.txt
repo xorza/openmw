@@ -24,7 +24,7 @@ add_openmw_dir (mwrender
     renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectpaging groundcover
     postprocessor pingpongcull luminancecalculator pingpongcanvas transparentpass opaqueblit waterawaretransparentbin precipitationocclusion ripples
     actorutil distortion animationpriority bonegroup blendmask animblendcontroller
-    renderer describeworld objectstorage glrenderer gloffscreenview pixels
+    renderer describeworld objectstorage precipitation ground glrenderer glworld gloffscreenview pixels
     )
 
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.

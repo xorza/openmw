@@ -19,7 +19,6 @@
 #include "../mwsound/sound.hpp"
 
 #include "../mwrender/renderingmanager.hpp"
-#include "../mwrender/sky.hpp"
 
 #include "cellstore.hpp"
 #include "esmstore.hpp"
@@ -787,13 +786,13 @@ namespace MWWorld
             && mResult.mParticleEffect != Settings::models().mWeatherashcloud.get();
 
         mStormDirection = calculateStormDirection(mResult.mParticleEffect);
-        mRendering.getSkyManager()->setStormParticleDirection(mStormDirection);
+        mRendering.setStormParticleDirection(mStormDirection);
 
         // disable sun during night
         if (time.getHour() >= mTimeSettings.mNightStart || time.getHour() <= mSunriseTime)
-            mRendering.getSkyManager()->sunDisable();
+            mRendering.setSunEnabled(false);
         else
-            mRendering.getSkyManager()->sunEnable();
+            mRendering.setSunEnabled(true);
 
         // Update the sun direction.  Run it east to west at a fixed angle from overhead.
         // The sun's speed at day and night may differ, since mSunriseTime and mNightStart
@@ -840,7 +839,7 @@ namespace MWWorld
         else
             glareFade = 1.f - (time.getHour() - peakHour) / (mTimeSettings.mNightStart - peakHour);
 
-        mRendering.getSkyManager()->setGlareTimeOfDayFade(glareFade);
+        mRendering.setGlareFade(glareFade);
 
         mRendering.setMoonStates(mMasser.calculateState(time), mSecunda.calculateState(time));
 

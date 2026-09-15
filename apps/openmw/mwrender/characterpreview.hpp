@@ -12,6 +12,8 @@
 
 #include "../mwworld/ptr.hpp"
 
+#include "offscreenview.hpp"
+
 namespace MyGUI
 {
     class ITexture;
@@ -26,7 +28,6 @@ namespace MWRender
 {
 
     class NpcAnimation;
-    class OffscreenView;
     class Renderer;
 
     class CharacterPreview
@@ -64,7 +65,7 @@ namespace MWRender
         // What the view draws. An update callback here runs during the view's own update.
         osg::ref_ptr<osg::Group> mScene;
 
-        std::unique_ptr<OffscreenView> mView;
+        std::unique_ptr<SubjectView> mView;
 
         osg::Vec3f mPosition;
         osg::Vec3f mLookAt;

@@ -223,6 +223,10 @@ namespace Resource
 
         void setWeatherParticleOcclusion(bool value) { mWeatherParticleOcclusion = value; }
 
+        /// Whether a loaded model is given the shader programs the rasterizer draws it with. Off for
+        /// a renderer that compiles no GLSL, which then reads a model's state as the loader left it.
+        void setShadersEnabled(bool enabled) { mShadersEnabled = enabled; }
+
     private:
         osg::ref_ptr<Shader::ShaderVisitor> createShaderVisitor(const std::string& shaderPrefix = "objects");
         osg::ref_ptr<osg::Node> loadErrorMarker();
@@ -258,6 +262,7 @@ namespace Resource
         bool mAdjustCoverageForAlphaTest = false;
         bool mSupportsNormalsRT = false;
         bool mWeatherParticleOcclusion = false;
+        bool mShadersEnabled = true;
         bool mUnRefImageDataAfterApply = false;
 
         SceneManager(const SceneManager&) = delete;

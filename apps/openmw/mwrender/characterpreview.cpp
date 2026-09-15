@@ -66,7 +66,7 @@ namespace MWRender
         spec.mSun.mDiffuse = osg::Vec4f(diffuseR, diffuseG, diffuseB, 1);
         spec.mSun.mAmbient = osg::Vec4f(ambientR, ambientG, ambientB, 1);
 
-        mView = renderer.createOffscreenView(spec);
+        mView = renderer.createSubjectView(spec);
 
         mCharacter.mCell = nullptr;
     }

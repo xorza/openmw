@@ -64,16 +64,30 @@ namespace MWRender
         return *mStats;
     }
 
-    osg::Group& Renderer::getSceneRoot() const
+    osg::Group& Renderer::getTraversalRoot() const
     {
-        assert(mSceneRoot != nullptr && "nothing is topmost until a renderer says so");
-        return *mSceneRoot;
+        assert(mTraversalRoot != nullptr && "nothing is topmost until a renderer says so");
+        return *mTraversalRoot;
     }
 
-    void Renderer::setSceneRoot(osg::Group& root)
+    void Renderer::renderGuiFrame()
     {
-        mSceneRoot = &root;
-        adoptSceneRoot(root);
+        eventTraversal();
+        updateTraversal();
+        renderGui();
+        advance(getFrameStamp().getSimulationTime());
+    }
+
+    void Renderer::setViewMask(const unsigned int mask)
+    {
+        mViewMask = mask;
+        applyViewMask(mask);
+    }
+
+    void Renderer::setTraversalRoot(osg::Group& root)
+    {
+        mTraversalRoot = &root;
+        adoptTraversalRoot(root);
     }
 
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec)

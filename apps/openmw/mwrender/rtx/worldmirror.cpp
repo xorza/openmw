@@ -6,13 +6,16 @@
 #include <limits>
 #include <memory>
 
+#include <osg/Geometry>
 #include <osg/Image>
 #include <osg/Node>
+#include <osg/PositionAttitudeTransform>
 #include <osg/ref_ptr>
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
+#include <components/misc/constants.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -23,10 +26,13 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/residency.hpp>
 #include <components/rtx/texturebuilder.hpp>
+#include <components/sceneutil/waterutil.hpp>
 #include <components/settings/values.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/terrain/world.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "../../mwworld/cellstore.hpp"
 
 #include "../sceneframe.hpp"
 #include "../vismask.hpp"
@@ -107,8 +113,16 @@ namespace MWRender
         // a hidden bone.
         mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
 
-        // What is left of the two is the world's own water, and it is the sea.
+        // What is left of the two is the sea, which this renderer stands: upstream's plane, as
+        // `MWRender::Water` makes it, on a transform a frame moves.
         mExtractor.setWaterMask(Mask_Water);
+
+        osg::ref_ptr<osg::Geometry> sea = SceneUtil::createWaterGeometry(Constants::CellSizeInUnits * 150, 40, 900);
+        sea->setNodeMask(Mask_Water);
+        sea->setName("Sea Geometry");
+        mSea = new osg::PositionAttitudeTransform;
+        mSea->setName("Sea Root");
+        mSea->addChild(sea);
 
         // The roots the game marks, so a camera's cull mask can keep or leave out what stands
         // under them — `rayMaskOf` is the other half.
@@ -132,6 +146,20 @@ namespace MWRender
 
         mContent.reset();
         mResources = nullptr;
+    }
+
+    void WorldMirror::standSea(const MWWorld::CellStore& cell)
+    {
+        if (!cell.getCell()->isExterior())
+        {
+            mSeaCentre = osg::Vec2f(0.f, 0.f);
+            return;
+        }
+
+        constexpr int half = Constants::CellSizeInUnits / 2;
+        const int x = cell.getCell()->getGridX() * Constants::CellSizeInUnits + half;
+        const int y = cell.getCell()->getGridY() * Constants::CellSizeInUnits + half;
+        mSeaCentre = osg::Vec2f(static_cast<float>(x), static_cast<float>(y));
     }
 
     void WorldMirror::setShowsPlayer(const bool shows)
@@ -179,6 +207,12 @@ namespace MWRender
         mEye = eye;
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mRain, eye, frame.mWorld.mUnderwater, frameNumber);
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mWeatherEffect, eye, frame.mWorld.mUnderwater, frameNumber);
+
+        // The sea, where the frame says there is one: hidden by its mask otherwise, as the
+        // rasterizer's `updateVisible` hid the same plane, so the walk leaves no placement of it.
+        mSea->setPosition(osg::Vec3f(mSeaCentre.x(), mSeaCentre.y(), frame.mWorld.mWaterHeight));
+        mSea->setNodeMask(frame.mWorld.mWaterEnabled ? ~0u : 0u);
+        mExtractor.extract(*mSea, osg::Matrixf::identity(), 0, frameNumber);
 
         // The same eye, the same reach and the world's own grid, said once to both residencies: what
         // the game has stood for itself is what neither may stand again.

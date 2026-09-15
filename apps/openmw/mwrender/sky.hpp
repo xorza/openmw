@@ -10,7 +10,6 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "precipitationocclusion.hpp"
 #include "skyutil.hpp"
 
 namespace osg
@@ -18,13 +17,6 @@ namespace osg
     class Group;
     class Node;
     class PositionAttitudeTransform;
-    class Camera;
-}
-
-namespace osgParticle
-{
-    class ParticleSystem;
-    class BoxPlacer;
 }
 
 namespace Resource
@@ -40,17 +32,17 @@ namespace SceneUtil
 
 namespace MWRender
 {
-    ///@brief The SkyManager handles rendering of the sky domes, celestial bodies as well as other objects that need to
-    /// be rendered
-    /// relative to the camera (e.g. weather particle effects)
+    ///@brief The SkyManager handles rendering of the sky domes and celestial bodies
     class SkyManager
     {
     public:
-        SkyManager(osg::Group* parentNode, osg::Group* rootNode, osg::Camera* camera,
-            Resource::SceneManager* sceneManager, bool enableSkyRTT);
+        SkyManager(osg::Group* parentNode, Resource::SceneManager* sceneManager, bool enableSkyRTT);
         ~SkyManager();
 
-        void update(float duration);
+        /// Where the two clocks stand: how far the cloud deck has scrolled, in texture units, and
+        /// how far the star sphere has rolled, in radians. The game advances them, since one
+        /// renderer draws no dome and both draw the same sky.
+        void update(float cloudAnimationTimer, float atmosphereNightRoll);
 
         void setEnabled(bool enabled);
 
@@ -73,26 +65,12 @@ namespace MWRender
 
         bool isEnabled();
 
-        bool hasRain() const;
-
-        bool getRainRipplesEnabled() const;
-
-        float getPrecipitationAlpha() const;
-
-        void setStormParticleDirection(const osg::Vec3f& direction);
-
         void setSunDirection(const osg::Vec3f& direction);
 
         void setMasserState(const MoonState& state);
         void setSecundaState(const MoonState& state);
 
         void setGlareTimeOfDayFade(float val);
-
-        /// Enable or disable the water plane (used to remove underwater weather particles)
-        void setWaterEnabled(bool enabled);
-
-        /// Set height of water plane (used to remove underwater weather particles)
-        void setWaterHeight(float height);
 
         void listAssetsToPreload(
             std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures);
@@ -105,36 +83,15 @@ namespace MWRender
 
         osg::Vec4f getSkyColor() const { return mSkyColour; }
 
-        /// The rain box and the driven effect, or null where there is none. Both are camera-relative.
-        osg::Group* getRainNode() { return mRainNode; }
-        osg::PositionAttitudeTransform* getParticleNode() { return mParticleNode; }
-
-        float getCloudAnimationTimer() const { return mCloudAnimationTimer; }
-        float getAtmosphereNightRoll() const { return mAtmosphereNightRoll; }
-
-        /// What the cull traversal tells the sky's root; a renderer that culls nothing says it here
-        void setViewPoint(const osg::Vec3f& eye) { mSkyRootNode->setLastViewPoint(eye); }
-
     private:
         void create();
         ///< no need to call this, automatically done on first enable()
 
-        void createRain();
-        void destroyRain();
-        void switchUnderwaterRain();
-        void updateRainParameters();
-
         Resource::SceneManager* mSceneManager;
-
-        osg::Camera* mCamera;
 
         osg::ref_ptr<CameraRelativeTransform> mSkyRootNode;
         osg::ref_ptr<osg::Group> mSkyNode;
         osg::ref_ptr<osg::Group> mEarlyRenderBinRoot;
-
-        osg::ref_ptr<osg::PositionAttitudeTransform> mParticleNode;
-        osg::ref_ptr<osg::Node> mParticleEffect;
-        osg::ref_ptr<UnderwaterSwitchCallback> mUnderwaterSwitch;
 
         osg::ref_ptr<osg::Group> mCloudNode;
 
@@ -146,7 +103,6 @@ namespace MWRender
         osg::ref_ptr<osg::Node> mAtmosphereDay;
 
         osg::ref_ptr<osg::PositionAttitudeTransform> mAtmosphereNightNode;
-        float mAtmosphereNightRoll;
         osg::ref_ptr<AtmosphereNightUpdater> mAtmosphereNightUpdater;
 
         osg::ref_ptr<AtmosphereUpdater> mAtmosphereUpdater;
@@ -155,24 +111,10 @@ namespace MWRender
         std::unique_ptr<Moon> mMasser;
         std::unique_ptr<Moon> mSecunda;
 
-        osg::ref_ptr<osg::Group> mRainNode;
-        osg::ref_ptr<osgParticle::ParticleSystem> mRainParticleSystem;
-        osg::ref_ptr<osgParticle::BoxPlacer> mPlacer;
-        osg::ref_ptr<RainCounter> mCounter;
-        osg::ref_ptr<RainShooter> mRainShooter;
-
-        bool mPrecipitationOcclusion = false;
-        std::unique_ptr<PrecipitationOccluder> mPrecipitationOccluder;
-
         bool mCreated;
 
         bool mIsStorm;
 
-        bool mTimescaleClouds;
-        float mCloudAnimationTimer;
-
-        // particle system rotation is independent of cloud rotation internally
-        osg::Vec3f mStormParticleDirection;
         osg::Vec3f mStormDirection;
         osg::Vec3f mNextStormDirection;
 
@@ -186,25 +128,10 @@ namespace MWRender
         osg::Vec4f mSkyColour;
         osg::Vec4f mFogColour;
 
-        VFS::Path::Normalized mCurrentParticleEffect;
-
-        std::string mRainEffect;
-        float mRainSpeed;
-        float mRainDiameter;
-        float mRainMinHeight;
-        float mRainMaxHeight;
-        float mRainEntranceSpeed;
-        int mRainMaxRaindrops;
-        bool mRainRipplesEnabled;
-        bool mSnowRipplesEnabled;
-        float mWindSpeed;
         float mBaseWindSpeed;
 
         bool mEnabled;
         bool mSunglareEnabled;
-
-        float mPrecipitationAlpha;
-        bool mDirtyParticlesEffect;
 
         osg::Vec4f mMoonScriptColor;
 

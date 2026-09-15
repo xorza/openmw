@@ -3,6 +3,10 @@
 #include <cstddef>
 #include <memory>
 
+#include <osg/PositionAttitudeTransform>
+#include <osg/Vec2f>
+#include <osg/ref_ptr>
+
 #include <components/esm3/refnum.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/compositequeue.hpp>
@@ -20,6 +24,11 @@ namespace Resource
 {
     class ImageManager;
     class ResourceSystem;
+}
+
+namespace MWWorld
+{
+    class CellStore;
 }
 
 namespace Rtx
@@ -62,9 +71,17 @@ namespace MWRender
 
         /// Walks this frame's world into the scene, and says what the walk found.
         ///
-        /// The precipitation goes in as a second root: those nodes hang under the sky's
-        /// camera-relative transform, which the first walk is masked out of.
+        /// The precipitation and the sea go in as roots of their own: the precipitation because it
+        /// hangs under a camera-relative transform the world walk is masked out of, the sea because
+        /// this renderer stands it — the plane the rasterizer's `Water` stood was the sea a ray met,
+        /// and that object is the rasterizer's now.
         Rtx::ExtractionStats mirror(const SceneFrame& frame, std::size_t frameNumber);
+
+        /// A cell the scene added, which is what the sea is centred on: upstream's
+        /// `Water::changeCell`, verbatim in effect — the middle of the cell outdoors, the origin
+        /// indoors, the last one added winning. The plane is a hundred and fifty cells wide, so
+        /// where its middle is does not show; kept the rasterizer's so the two pictures agree.
+        void standSea(const MWWorld::CellStore& cell);
 
         /// Hands the scene to `renderer`, building only what has to be built.
         Rtx::SceneUpload hand(Rtx::Renderer& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend);
@@ -140,6 +157,12 @@ namespace MWRender
 
         /// The lights of the cells the game has not stood.
         Rtx::DistantLights mDistantLights;
+
+        /// The sea: upstream's water geometry under `Mask_Water`, which is how the extractor
+        /// knows a sea from a floor, stood at the frame's water height and hidden where the frame
+        /// says there is none. Made once; a frame moves it.
+        osg::ref_ptr<osg::PositionAttitudeTransform> mSea;
+        osg::Vec2f mSeaCentre;
 
         /// The cells themselves: their ground off the land records, and their statics as instances
         /// of their templates. After the scene, which it adopts into.
