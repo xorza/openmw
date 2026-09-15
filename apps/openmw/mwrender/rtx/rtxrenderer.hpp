@@ -163,6 +163,9 @@ namespace MWRender
         /// on a later frame than the one that asked, needs back from the renderer that made it.
         Rtx::Renderer& getBackend() { return *mRenderer; }
 
+        /// The knobs this run was made with, for a stop that writes a picture by the same rules.
+        const Rtx::RenderProfile& getProfile() const { return mProfile; }
+
         /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
         std::optional<PoseMoment> describePose();
 
@@ -373,8 +376,8 @@ namespace MWRender
         std::unique_ptr<Session> mSession;
 
         /// The one clock a frame is measured by: how far the simulation steps, how long the trace
-        /// is told the frame took, and what OpenMW ages its caches by. `[RTX] fixed step` fills it
-        /// once, because it cannot change while a run is being made.
+        /// is told the frame took, and what OpenMW ages its caches by. A run's step fills it once,
+        /// because it cannot change while a run is being made; a played session follows the wall.
         Rtx::FrameClock mClock;
 
         /// The knobs a measurement turns, read once at construction. The harness hands them over

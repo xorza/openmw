@@ -723,7 +723,7 @@ void OMW::Engine::go()
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
     while (!mRenderer->done() && !mStateManager->hasQuitRequest())
     {
-        // What the wall says the last frame took, which Renderer::beginFrame may overrule with a fixed step
+        // What the wall says the last frame took, which Renderer::beginFrame may overrule with a run's step
         const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
             std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
                                     .count();

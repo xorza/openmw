@@ -174,8 +174,9 @@ depending on motion or on cells arriving. `check` asserts what the tree claims a
 for what only a window shows — how something moves, whether an artefact is a still or a shimmer —
 and it is the game, with the player's own camera and collision off; `--frames N` closes it.
 
-**A run is the same run twice.** `[RTX] fixed step` is how far the simulation steps and how long the
-renderer is told a frame took, and a stop's own frame count is what the trace's sampler and the
+**A run is the same run twice.** `Rtx::SessionRequest::mStep` is how far the simulation steps and how
+long the renderer is told a frame took — a run's, never a setting's, so a played game cannot be
+made to step by frames — and a stop's own frame count is what the trace's sampler and the
 upscaler's jitter are walked by. A game's frame number counts loading-screen frames, which is why it
 is not that.
 

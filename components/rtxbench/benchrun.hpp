@@ -250,6 +250,12 @@ namespace Rtx
         /// Which validation layers the run wants. Carried here and never in a settings file, for
         /// the reason `sValidationByDefault` gives.
         ValidationOptions mValidation;
+
+        /// How long every frame stands for, in seconds. Everything the world animates steps by it,
+        /// so ten seconds of world is six hundred frames on every machine, and two runs of one
+        /// build are the same run. A run's and never a setting's: a played game times each frame
+        /// off the wall, and a file that could say otherwise once turned one into a run for good.
+        float mStep = sStepSeconds;
     };
 
     /// What a launcher reads back once `Engine::go` has returned.

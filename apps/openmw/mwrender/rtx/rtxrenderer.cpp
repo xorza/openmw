@@ -87,10 +87,14 @@ namespace MWRender
 
     namespace
     {
-        /// What `[RTX]` says the trace is configured by, which is what a played binary runs.
+        /// What a played binary runs: the two choices `[RTX]` leaves a player, and for the rest the
+        /// one answer a played frame has. The knobs a measurement turns — delight, albedo, the
+        /// filter, the exposure, the crossings — are a run's, handed over in `RendererSpec::mRtx`
+        /// by the harness that makes one, and a settings file cannot reach them: one that could
+        /// once turned a played game into a fixed-step run for good.
         ///
         /// **Here and not in `components/rtx`**, because the settings registry is a global the core
-        /// has no other reason to read: a harness hands its profile over in `RendererSpec::mRtx`.
+        /// has no other reason to read.
         Rtx::RenderProfile profileFromSettings()
         {
             Rtx::RenderProfile profile;
@@ -98,18 +102,10 @@ namespace MWRender
             profile.mUpscaling.mMode = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
             profile.mUpscaling.mPreset
                 = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
-            profile.mCountCrossings = Settings::rtx().mCountCrossings;
-            profile.mDelight = Settings::rtx().mDelight;
 
-            // A played session shows every frame and sums none.
+            // A played session shows every frame and sums none, and measures its exposure off each.
             profile.mRadianceWidth = Rtx::RadianceWidth::Shown;
-            profile.mShowAlbedo = Settings::rtx().mShowAlbedo;
-            profile.mReconstruction.mFilter = Settings::rtx().mFilter;
-            profile.mReconstruction.mJitter = Settings::rtx().mJitter;
-
-            // Nought is how a settings file says "measure it", there being no way to write nothing.
-            if (const float exposure = Settings::rtx().mExposure; exposure > 0.0f)
-                profile.mExposure = exposure;
+            profile.mExposure = std::nullopt;
 
             return profile;
         }
@@ -202,15 +198,16 @@ namespace MWRender
         adopt(*camera, *frameStamp, nullptr, *stats);
 
         // **Read before anything is built, because it decides how the window opens and what the
-        // trace counts.** A harness hands a whole run over in the spec; a played binary can only
-        // name one in its settings, and a session that asked for neither behaves exactly as it did.
+        // trace counts.** A harness hands a whole run over in the spec; a played binary has none,
+        // and runs at what its settings say.
         mProfile
             = spec.mRtx != nullptr && spec.mRtx->mProfile.has_value() ? *spec.mRtx->mProfile : profileFromSettings();
 
         if (spec.mRtx != nullptr && spec.mRtx->mSession.has_value())
-            mSession = std::make_unique<Session>(*spec.mRtx->mSession, spec.mRtx->mInto);
-        else if (std::optional<Rtx::SessionRequest> setting = readSessionSetting())
-            mSession = std::make_unique<Session>(std::move(*setting), nullptr);
+        {
+            assert(spec.mRtx->mInto != nullptr && "a run installed with nowhere to write its answer");
+            mSession = std::make_unique<Session>(*spec.mRtx->mSession, *spec.mRtx->mInto);
+        }
 
         createWindow(mSession != nullptr && mSession->isHeadless());
 
@@ -305,9 +302,11 @@ namespace MWRender
         // otherwise run on the wall. The eye adapts in real time and the upscaler tunes itself
         // against how fast a motion vector was travelled, so a played session leaves this empty and
         // each reader times what it is about. A measured run cannot: two runs of one build would
-        // adapt by different amounts and draw different pictures.
-        if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
-            mClock = Rtx::FrameClock(step);
+        // adapt by different amounts and draw different pictures. So the step is the run's and
+        // nothing else's — a setting that could state one made a played game step by frames, and
+        // at two hundred of them a second the world ran three times over.
+        if (mSession != nullptr)
+            mClock = Rtx::FrameClock(mSession->getStep());
 
         // **The same step decides whether the ground waits, unless the run says otherwise.** A
         // composite comes back whenever the baker finishes it, so which frame it lands on is a

@@ -12,7 +12,6 @@
 #include <components/fallback/fallback.hpp>
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
-#include <components/rtxbench/benchspec.hpp>
 #include <components/settings/values.hpp>
 #include <components/toutf8/toutf8.hpp>
 
@@ -46,10 +45,6 @@ namespace RtxTool
         // choice is read once inside `Engine::go` and never revisited, so it is set here rather
         // than left to whichever value a played session was last configured with.
         Settings::rtx().mEnabled.set(true);
-
-        // **Every run this tool makes is a measured one**, so the world steps by the frame index
-        // and never by the clock — which is what makes two runs of one build the same run.
-        Settings::rtx().mFixedStep.set(Rtx::sStepSeconds);
 
         // **The limiter comes off, because there is nobody to pace for.** A hosted run is measured
         // or it is written to a file, and a frame held back to meet a refresh is a frame spent

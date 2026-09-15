@@ -44,7 +44,6 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
-#include <components/settings/values.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -319,8 +318,8 @@ namespace MWRender
         Rtx::SceneTextures described;
         described.describeAll(scene, *resources->getImageManager());
 
-        const Rtx::ContactSheet drawn
-            = Rtx::writeContactSheet(described.getDescriptions(), sheet, Settings::rtx().mDelight);
+        const float delight = into.mContext.mRenderer.getProfile().mDelight;
+        const Rtx::ContactSheet drawn = Rtx::writeContactSheet(described.getDescriptions(), sheet, delight);
         if (drawn.mCount == 0)
         {
             into.mRecord.note("the world uses no textures\n");
@@ -334,8 +333,8 @@ namespace MWRender
         for (std::size_t at = 0; at < paths.size(); ++at)
             into.mRecord.note(std::format("  {}  {}\n", at, paths[at].value()));
 
-        into.mRecord.note(std::format("wrote {}, {} textures at delight {}\n", Files::pathToUnicodeString(sheet),
-            drawn.mCount, static_cast<float>(Settings::rtx().mDelight)));
+        into.mRecord.note(std::format(
+            "wrote {}, {} textures at delight {}\n", Files::pathToUnicodeString(sheet), drawn.mCount, delight));
     }
 
     void StopWriter::writeView(const Writing& into, OffscreenView& view, const std::filesystem::path& file)

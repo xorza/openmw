@@ -79,46 +79,11 @@ namespace MWRender
         constexpr int sBoostedGold = 10'000'000;
     }
 
-    std::optional<Rtx::SessionRequest> readSessionSetting()
-    {
-        const std::string spelling = Settings::rtx().mSession;
-        if (spelling.empty())
-            return std::nullopt;
-
-        std::string complaint;
-        const std::optional<Rtx::BenchSpec> spec = Rtx::readSpec(spelling, complaint);
-
-        // **A run nobody can read the settings of is not a run.** Starting anyway would hand
-        // somebody a number for a length they did not ask for.
-        if (!spec.has_value())
-        {
-            Log(Debug::Error) << "[RTX] session: " << complaint;
-            return std::nullopt;
-        }
-
-        Rtx::Stop stop;
-        stop.mName = "the game";
-        stop.mSchedule.mSpec = *spec;
-        if (spec->mSpeed > 0.0f)
-            stop.mSchedule.mRoute = Rtx::Route{ .mSpeed = spec->mSpeed };
-
-        Rtx::SessionRequest request;
-        request.mStops.push_back(std::move(stop));
-
-        // **A window, because somebody asked for this in a game they can see.** The harness hides
-        // its own; a settings file is read by the binary a player runs.
-        request.mHeadless = false;
-        request.mValidation.mEnabled = Rtx::sValidationByDefault;
-
-        return request;
-    }
-
-    Session::Session(Rtx::SessionRequest request, Rtx::SessionResult* const into)
+    Session::Session(Rtx::SessionRequest request, Rtx::SessionResult& into)
         : mRequest(std::move(request))
         , mInto(into)
         , mProfiling(mRequest.mPerfControl)
     {
-
         if (!mRequest.mAgainst.empty())
             mRecord.readReference(mRequest.mAgainst);
 
@@ -138,17 +103,7 @@ namespace MWRender
 
     Session::~Session()
     {
-        if (mInto != nullptr)
-        {
-            *mInto = mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
-            return;
-        }
-
-        // **Nobody installed this run, so nobody is waiting for what it came to.** A settings file
-        // starts a session inside a played binary, where the log is the only reader there is — and
-        // a report built and then dropped is a run nobody can read.
-        if (const std::string& report = mRecord.getReport(); !report.empty())
-            Log(Debug::Info) << "Ray tracing session:\n" << report;
+        mInto = mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
     }
 
     void Session::noteStanding()

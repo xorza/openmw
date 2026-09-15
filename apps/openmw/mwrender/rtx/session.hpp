@@ -32,19 +32,13 @@ namespace MWRender
         /// Nothing where the harness turned no knob, which is a run at whatever the settings say.
         std::optional<Rtx::RenderProfile> mProfile;
 
-        /// Nothing where the harness asked for no measured run — `[RTX] session` is the other way
-        /// in, and a played binary has only that one.
+        /// Nothing where the harness asked for no measured run, which is every played session.
         std::optional<Rtx::SessionRequest> mSession;
 
-        /// Where the run's answer goes. The caller's own, and it has to outlive `Engine::go`: the
-        /// session fills it from its own destructor, which `~Engine` runs.
+        /// Where the run's answer goes, wherever `mSession` is set. The caller's own, and it has to
+        /// outlive `Engine::go`: the session fills it from its own destructor, which `~Engine` runs.
         Rtx::SessionResult* mInto = nullptr;
     };
-
-    /// The run `[RTX] session` asks for, or nothing where nobody asked for one: what lets the plain
-    /// game measure itself, where a played binary can say only how long and how fast, and where it
-    /// stands is the savegame's.
-    std::optional<Rtx::SessionRequest> readSessionSetting();
 
     /// Drives a run of the game and measures it — the game, because a staged world never pays for
     /// the whole-graph walk, the sweep or a cell arriving, which are what cost a frame. It reads
@@ -53,13 +47,16 @@ namespace MWRender
     class Session
     {
     public:
-        Session(Rtx::SessionRequest request, Rtx::SessionResult* into);
+        Session(Rtx::SessionRequest request, Rtx::SessionResult& into);
         ~Session();
 
         bool isHeadless() const { return mRequest.mHeadless; }
 
         /// Which layers the run asked for.
         const Rtx::ValidationOptions& getValidation() const { return mRequest.mValidation; }
+
+        /// How long every frame of the run stands for, which the renderer's clock is made from.
+        float getStep() const { return mRequest.mStep; }
 
         /// Whether this run states for itself that the ground waits, or nothing to let the frame
         /// clock decide. `Rtx::SessionRequest::mSettled` says which runs state one.
@@ -202,9 +199,8 @@ namespace MWRender
 
         Rtx::SessionRequest mRequest;
 
-        /// Where the run's answer goes, or null where a settings file asked for the run and nobody
-        /// is waiting on it.
-        Rtx::SessionResult* mInto = nullptr;
+        /// Where the run's answer goes, written as this is destroyed.
+        Rtx::SessionResult& mInto;
 
         /// Which stop is running, and whether it has been started.
         std::size_t mAt = 0;
