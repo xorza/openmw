@@ -185,8 +185,7 @@ namespace MWRender
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
-        : mScreenshotWriter(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
-        , mUpdateVisitor(new Rtx::PoseUpdate)
+        : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
     {
         // **Made here, because there is no viewer to make them.** Every renderer needs the four and
@@ -213,7 +212,7 @@ namespace MWRender
         else if (std::optional<Rtx::SessionRequest> setting = readSessionSetting())
             mSession = std::make_unique<Session>(std::move(*setting), nullptr);
 
-        createWindow(spec.mResourceDir, mSession != nullptr && mSession->isHeadless());
+        createWindow(mSession != nullptr && mSession->isHeadless());
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -334,9 +333,8 @@ namespace MWRender
     // Out of line because the members it destroys are only forward declared in the header.
     RtxRenderer::~RtxRenderer()
     {
-        // Before the renderer, because a write still on the queue holds an image of a frame this
-        // owns the memory for.
-        mScreenshotWriter->stop();
+        // `Engine` has stopped the screenshot writer by now, so no write on the queue still holds
+        // an image of a frame this owns the memory for.
 
         // Its slot is in the renderer's table, so it goes back before the table does.
         mFrozenFrameTexture.reset();
@@ -347,7 +345,7 @@ namespace MWRender
             SDL_DestroyWindow(mWindow);
     }
 
-    void RtxRenderer::createWindow(const std::filesystem::path& resourceDir, const bool hidden)
+    void RtxRenderer::createWindow(const bool hidden)
     {
         // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** No GL context is
         // ever made, which is the point of the whole path.
@@ -362,8 +360,6 @@ namespace MWRender
         mWindow = SDL_CreateWindow("OpenMW", placement.mX, placement.mY, placement.mWidth, placement.mHeight, flags);
         if (mWindow == nullptr)
             throw std::runtime_error(std::string("failed to create SDL window: ") + SDL_GetError());
-
-        MWRender::setWindowIcon(*mWindow, resourceDir);
     }
 
     void RtxRenderer::updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor)
@@ -399,9 +395,15 @@ namespace MWRender
         // manager by whoever drives it.
         mResources = world.getResourceSystem();
         mMirror.attach(*mResources);
+    }
 
-        // Nothing goes between the world and the screen: what the trace writes is the picture.
-        setSceneRoot(worldRoot);
+    void RtxRenderer::adoptSceneRoot(osg::Group& root)
+    {
+        // Under the camera, whose matrices are what put a viewport ray in the world; parented once
+        // however often it is said.
+        osg::Camera& camera = getCamera();
+        if (!camera.containsNode(&root))
+            camera.addChild(&root);
     }
 
     double RtxRenderer::beginFrame(const double measured)
@@ -461,9 +463,6 @@ namespace MWRender
         // overlay at different strengths on the same frame.
         assert(mGui != nullptr && "a frame before the interface was made");
         mGui->update(static_cast<float>(mClock.getStep()));
-
-        if (!hasSceneRoot())
-            return;
 
         mUpdateVisitor->reset();
         mUpdateVisitor->setFrameStamp(&getFrameStamp());
@@ -665,7 +664,7 @@ namespace MWRender
             return;
         }
 
-        (*mScreenshotWriter)(*taken, 0);
+        getScreenshotWriter()(*taken, 0);
     }
 
     std::unique_ptr<OffscreenView> RtxRenderer::createOffscreenView(const OffscreenViewSpec& spec)

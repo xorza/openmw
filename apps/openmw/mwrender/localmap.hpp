@@ -17,11 +17,6 @@ namespace MWWorld
     class CellStore;
 }
 
-namespace MyGUI
-{
-    class ITexture;
-}
-
 namespace ESM
 {
     struct FogTexture;
@@ -55,7 +50,7 @@ namespace MWRender
 
         /**
          * Request a map render for the given cell. Render textures will be immediately created and can be retrieved
-         * with the getMapTexture function.
+         * with the getMapView function.
          */
         void requestMap(const MWWorld::CellStore* cell);
 
@@ -64,8 +59,10 @@ namespace MWRender
 
         void removeCell(MWWorld::CellStore* cell);
 
-        /// The picture of this segment, for a widget to show, or null where the cell has not been mapped
-        MyGUI::ITexture* getMapTexture(int x, int y);
+        /// The picture of this segment, for a widget to show, or null where the cell has not been mapped. Shared,
+        /// so that a widget still showing it keeps it alive after the segment has been dropped or redrawn into a
+        /// new view.
+        std::shared_ptr<const OffscreenView> getMapView(int x, int y);
 
         osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
 
@@ -131,8 +128,7 @@ namespace MWRender
             std::uint8_t mLastRenderNeighbourFlags = 0;
             bool mHasFogState = false;
 
-            bool mCopyAsked = false;
-            std::unique_ptr<OffscreenView> mView;
+            std::shared_ptr<OffscreenView> mView;
 
             // The depth range mView was described with; another one rebuilds it
             float mZMin = 0.f;

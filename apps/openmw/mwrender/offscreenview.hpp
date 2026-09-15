@@ -83,7 +83,9 @@ namespace MWRender
         virtual void redraw() = 0;
 
         /// Also keep the picture in main memory from now on. Costs a transfer off the device every
-        /// time it is drawn, so it is asked for rather than always done.
+        /// time it is drawn, so it is asked for rather than always done. A view whose last picture
+        /// was drawn without the copy draws once more, so that asking and then reading `getCopy`
+        /// every frame is all a caller has to do; asking again is free.
         virtual void keepCopy() = 0;
 
         /// That copy, or null while the most recent `redraw()` has not reached it, which is frames

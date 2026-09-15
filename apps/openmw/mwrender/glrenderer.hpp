@@ -2,7 +2,6 @@
 #define GAME_RENDER_GLRENDERER_H
 
 #include <memory>
-#include <optional>
 
 #include <osg/ref_ptr>
 
@@ -61,9 +60,7 @@ namespace MWRender
     /// **The rasterizer is not modified, wrapped or conditionally compiled around — it is gathered.**
     /// Every threading, realize and traversal decision here is upstream's, moved rather than
     /// rewritten, which is what makes "does the other renderer do this correctly" answerable by
-    /// comparison (`CLAUDE.md`). One deviation: `retireFreezeFrame` takes the loading screen's
-    /// framebuffer copy back out of the frame once it has run, where upstream leaves it copying the
-    /// whole screen on every frame after the first load. The picture is the same.
+    /// comparison (`CLAUDE.md`).
     class GlRenderer final : public Renderer
     {
     public:
@@ -95,14 +92,13 @@ namespace MWRender
         bool done() const override;
 
         void capture(osg::Image& image, int width, int height) override;
+        void setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer) override;
         void saveScreenshot() override;
 
         void suspendDraw() override;
         void resumeDraw() override;
 
         osgUtil::IncrementalCompileOperation* getCompileOperation() const override;
-        void setPreparationBudget(const PreparationBudget& budget) override;
-        void resetPreparationBudget() override;
 
         void setVSync(SDLUtil::VSyncMode mode) override;
 
@@ -120,7 +116,7 @@ namespace MWRender
     private:
         /// Makes the SDL window and the OpenGL context in it, retrying at half the antialiasing
         /// each time the driver refuses. Upstream's loop, unchanged.
-        void createWindow(const std::filesystem::path& resourceDir);
+        void createWindow();
 
         /// Spreads the compiling of what a loader hands over across frames.
         ///
@@ -128,9 +124,6 @@ namespace MWRender
         /// question**: a ray tracer builds no OpenGL objects and keeps none.
         void compileIncrementally();
 
-        /// Takes the framebuffer copy back out of the frame once it has run. Left in, it would copy
-        /// the whole screen into a texture on every frame from the first loading screen onwards.
-        void retireFreezeFrame();
         int mMaxTextureUnits = 0;
 
         /// What an offscreen view's light rig is built out of. Known from `attachWorld` onwards,
@@ -151,11 +144,6 @@ namespace MWRender
         unsigned int mShownUpdateMask = 0;
         unsigned int mShownCullMask = 0;
 
-        /// What the compile operation spent per frame before a loading screen widened it, for the
-        /// same reason: upstream restored what it found and not a default. Empty while nothing is
-        /// widened, and the first `setPreparationBudget` of a screen is the one that fills it.
-        std::optional<PreparationBudget> mRestingBudget;
-
         /// Writes `mask` to the master camera and to the stereo pair, which are no-ops in mono.
         void cull(unsigned int mask);
 
@@ -164,19 +152,17 @@ namespace MWRender
 
         std::unique_ptr<Stereo::Manager> mStereoManager;
 
-        osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenCaptureOperation;
         osg::ref_ptr<osgViewer::ScreenCaptureHandler> mScreenCaptureHandler;
         std::unique_ptr<ScreenshotManager> mScreenshotManager;
 
         /// This renderer's frame graph. Everything between the scene and the screen.
         osg::ref_ptr<PostProcessor> mPostProcessor;
 
-        /// The last frame, copied off the framebuffer where it stands. Made the first time the
-        /// loading screen asks for one and re-armed every time after.
+        /// The last frame, copied off the framebuffer where it stands: upstream's loading-screen
+        /// texture and its copy callback, made the first time the screen asks for them.
         osg::ref_ptr<osg::Texture2D> mFrozenFrame;
         osg::ref_ptr<CopyFramebufferToTextureCallback> mFreezeFrame;
         std::unique_ptr<MyGUIPlatform::OSGTexture> mFrozenFrameTexture;
-        bool mFreezing = false;
     };
 }
 

@@ -30,6 +30,7 @@
 
 #include "../mwrender/globalmap.hpp"
 #include "../mwrender/localmap.hpp"
+#include "../mwrender/offscreenview.hpp"
 
 #include "confirmationdialog.hpp"
 
@@ -458,7 +459,7 @@ namespace MWGui
             }
             entry.mMapWidget->setRenderItemTexture(nullptr);
             entry.mFogWidget->setRenderItemTexture(nullptr);
-            entry.mMapTexture = nullptr;
+            entry.mMapView.reset();
             entry.mFogTexture.reset();
             entry.mFogAsked = false;
         };
@@ -617,16 +618,17 @@ namespace MWGui
             if (!entry.mMapWidget->getVisible() || widgetCropped(entry.mMapWidget, mLocalMap))
                 continue;
 
-            if (!entry.mMapTexture)
+            if (!entry.mMapView)
             {
                 if (mActiveCell->isExterior())
                     requestMapRender(&MWBase::Environment::get().getWorldModel()->getExterior(
                         ESM::ExteriorCellLocation(entry.mCellX, entry.mCellY, ESM::Cell::sDefaultWorldspaceId)));
 
-                if (MyGUI::ITexture* texture = mLocalMapRender->getMapTexture(entry.mCellX, entry.mCellY))
+                if (std::shared_ptr<const MWRender::OffscreenView> view
+                    = mLocalMapRender->getMapView(entry.mCellX, entry.mCellY))
                 {
-                    entry.mMapTexture = texture;
-                    entry.mMapWidget->setRenderItemTexture(texture);
+                    entry.mMapView = std::move(view);
+                    entry.mMapWidget->setRenderItemTexture(&entry.mMapView->getTexture());
                     // The widget is Y-down, the offscreen picture is Y-up, so this UV is inverted
                     entry.mMapWidget->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
                     needRedraw = true;

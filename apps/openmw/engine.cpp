@@ -5,9 +5,10 @@
 #include <future>
 #include <system_error>
 
-#include <SDL.h>
+#include <osgDB/ReaderWriter>
+#include <osgDB/Registry>
 
-#include <osg/Version>
+#include <SDL.h>
 
 #include <components/debug/debuglog.hpp>
 
@@ -16,6 +17,8 @@
 
 #include <components/vfs/manager.hpp>
 #include <components/vfs/registerarchives.hpp>
+
+#include <components/sdlutil/imagetosurface.hpp>
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -37,6 +40,7 @@
 
 #include <components/misc/frameratelimiter.hpp>
 
+#include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/unrefqueue.hpp>
 
 #include <components/settings/shadermanager.hpp>
@@ -74,6 +78,34 @@
 #include "mwstate/statemanagerimp.hpp"
 
 #include "profile.hpp"
+
+namespace
+{
+    struct ScreenCaptureMessageBox
+    {
+        void operator()(std::string filePath) const
+        {
+            if (filePath.empty())
+            {
+                MWBase::Environment::get().getWindowManager()->scheduleMessageBox(
+                    "#{OMWEngine:ScreenshotFailed}", MWGui::ShowInDialogueMode_Never);
+
+                return;
+            }
+
+            auto l10n = MWBase::Environment::get().getL10nManager()->getContext("OMWEngine");
+            std::string message = l10n->formatMessage("ScreenshotMade", { "file" }, { L10n::toUnicode(filePath) });
+
+            MWBase::Environment::get().getWindowManager()->scheduleMessageBox(
+                std::move(message), MWGui::ShowInDialogueMode_Never);
+        }
+    };
+
+    struct IgnoreString
+    {
+        void operator()(std::string) const {}
+    };
+}
 
 void OMW::Engine::executeLocalScripts()
 {
@@ -303,6 +335,12 @@ OMW::Engine::Engine(Files::ConfigurationManager& configurationManager)
 
 OMW::Engine::~Engine()
 {
+    if (mScreenCaptureOperation != nullptr)
+    {
+        mScreenCaptureOperation->stop();
+        mScreenCaptureOperation = nullptr;
+    }
+
     mMechanicsManager = nullptr;
     mDialogueManager = nullptr;
     mJournal = nullptr;
@@ -378,6 +416,31 @@ void OMW::Engine::setSkipMenu(bool skipMenu, bool newGame)
     mNewGame = newGame;
 }
 
+void OMW::Engine::setWindowIcon()
+{
+    std::ifstream windowIconStream;
+    const auto windowIcon = mResDir / "openmw.png";
+    windowIconStream.open(windowIcon, std::ios_base::in | std::ios_base::binary);
+    if (windowIconStream.fail())
+        Log(Debug::Error) << "Error: Failed to open " << windowIcon;
+    osgDB::ReaderWriter* reader = osgDB::Registry::instance()->getReaderWriterForExtension("png");
+    if (!reader)
+    {
+        Log(Debug::Error) << "Error: Failed to read window icon, no png readerwriter found";
+        return;
+    }
+    osgDB::ReaderWriter::ReadResult result = reader->readImage(windowIconStream);
+    if (!result.success())
+        Log(Debug::Error) << "Error: Failed to read " << windowIcon << ": " << result.message() << " code "
+                          << result.status();
+    else
+    {
+        osg::ref_ptr<osg::Image> image = result.getImage();
+        auto surface = SDLUtil::imageToSurface(image, true);
+        SDL_SetWindowIcon(mRenderer->getWindow(), surface.get());
+    }
+}
+
 void OMW::Engine::prepareEngine()
 {
     mStateManager = std::make_unique<MWState::StateManager>(mCfgMgr.getUserDataPath() / "saves", mContentFiles);
@@ -400,7 +463,16 @@ void OMW::Engine::prepareEngine()
         static_cast<float>(Settings::general().mAnisotropy));
     mEnvironment.setResourceSystem(*mResourceSystem);
 
+    mWorkQueue = new SceneUtil::WorkQueue(Settings::cells().mPreloadNumThreads);
     mUnrefQueue = std::make_unique<SceneUtil::UnrefQueue>();
+
+    mScreenCaptureOperation = new SceneUtil::AsyncScreenCaptureOperation(mWorkQueue,
+        new SceneUtil::WriteScreenshotToFileOperation(mCfgMgr.getScreenshotPath(),
+            Settings::general().mScreenshotFormat,
+            Settings::general().mNotifyOnSavedScreenshot ? std::function<void(std::string)>(ScreenCaptureMessageBox{})
+                                                         : std::function<void(std::string)>(IgnoreString{})));
+
+    mRenderer->setScreenshotWriter(*mScreenCaptureOperation);
 
     mL10nManager = std::make_unique<L10n::Manager>(mVFS.get());
     mL10nManager->setPreferredLocales(Settings::general().mPreferredLocales, Settings::general().mGmstOverridesL10n);
@@ -583,19 +655,17 @@ void OMW::Engine::go()
     // Create encoder
     mEncoder = std::make_unique<ToUTF8::Utf8Encoder>(mEncoding);
 
-    mWorkQueue = new SceneUtil::WorkQueue(Settings::cells().mPreloadNumThreads);
     // Decided once, before the window exists
     const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
     Log(Debug::Info) << "Renderer: " << wanted;
 
     mRenderer = MWRender::createRenderer(wanted,
         MWRender::RendererSpec{
-            .mWorkQueue = *mWorkQueue,
             .mResourceDir = mResDir,
-            .mScreenshotPath = mCfgMgr.getScreenshotPath(),
             .mCachePath = mCfgMgr.getCachePath(),
             .mRtx = mRtxSetup,
         });
+    setWindowIcon();
 
     mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);
 

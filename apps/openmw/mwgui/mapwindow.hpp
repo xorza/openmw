@@ -17,6 +17,7 @@ namespace MWRender
 {
     class GlobalMap;
     class LocalMap;
+    class OffscreenView;
 }
 
 namespace ESM
@@ -139,8 +140,8 @@ namespace MWGui
 
             MyGUI::ImageBox* mMapWidget;
             MyGUI::ImageBox* mFogWidget;
-            // The local map's, which owns it for as long as the cell is loaded
-            MyGUI::ITexture* mMapTexture = nullptr;
+            // Shared with the local map, so the picture outlives a segment dropped or redrawn under it
+            std::shared_ptr<const MWRender::OffscreenView> mMapView;
             std::unique_ptr<MyGUI::ITexture> mFogTexture;
             // Whether this entry has asked for a fog texture and been told there is none
             bool mFogAsked = false;

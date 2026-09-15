@@ -65,11 +65,6 @@ namespace Sky
     };
 
     using MoonPhase = MoonState::Phase;
-
-    constexpr unsigned int phaseToInt(MoonPhase phase)
-    {
-        return MoonState::phaseToInt(phase);
-    }
 }
 
 #endif

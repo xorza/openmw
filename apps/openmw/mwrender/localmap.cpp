@@ -142,11 +142,7 @@ namespace MWRender
 
         // Rebuilt where the depth range moved, because the range is in the projection and a view is described once
         if (segment.mView && (segment.mZMin != zmin || segment.mZMax != zmax))
-        {
             segment.mView.reset();
-
-            segment.mCopyAsked = false;
-        }
 
         if (!segment.mView)
         {
@@ -215,14 +211,14 @@ namespace MWRender
             mInteriorSegments.clear();
     }
 
-    MyGUI::ITexture* LocalMap::getMapTexture(int x, int y)
+    std::shared_ptr<const OffscreenView> LocalMap::getMapView(int x, int y)
     {
         auto& segments(mInterior ? mInteriorSegments : mExteriorSegments);
         SegmentMap::iterator found = segments.find(std::make_pair(x, y));
-        if (found == segments.end() || !found->second.mView)
+        if (found == segments.end())
             return nullptr;
 
-        return &found->second.mView->getTexture();
+        return found->second.mView;
     }
 
     const osg::Image* LocalMap::getMapImage(int x, int y)
@@ -232,17 +228,9 @@ namespace MWRender
         if (found == segments.end() || !found->second.mView)
             return nullptr;
 
-        MapSegment& segment = found->second;
-
-        // The first ask starts the copy and answers nothing; asking again must not redraw, or the copy never lands
-        if (!segment.mCopyAsked)
-        {
-            segment.mCopyAsked = true;
-            segment.mView->keepCopy();
-            segment.mView->redraw();
-        }
-
-        return segment.mView->getCopy();
+        OffscreenView& view = *found->second.mView;
+        view.keepCopy();
+        return view.getCopy();
     }
 
     float LocalMap::getGroundReach() const

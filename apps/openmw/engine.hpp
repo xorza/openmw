@@ -22,6 +22,7 @@ namespace Resource
 namespace SceneUtil
 {
     class WorkQueue;
+    class AsyncScreenCaptureOperation;
     class UnrefQueue;
 }
 
@@ -132,6 +133,7 @@ namespace OMW
         std::vector<std::string> mArchives;
         std::filesystem::path mResDir;
         std::unique_ptr<MWRender::Renderer> mRenderer;
+        osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenCaptureOperation;
         std::string mCellName;
         std::vector<std::string> mContentFiles;
         std::vector<std::string> mGroundcoverFiles;
@@ -173,6 +175,8 @@ namespace OMW
 
         /// Prepare engine for game play
         void prepareEngine();
+
+        void setWindowIcon();
 
     public:
         Engine(Files::ConfigurationManager& configurationManager);

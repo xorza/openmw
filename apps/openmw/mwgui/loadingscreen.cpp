@@ -2,10 +2,11 @@
 
 #include <array>
 
-#include <osg/Camera>
 #include <osg/FrameStamp>
 #include <osg/Group>
 #include <osg/Stats>
+
+#include <osgUtil/IncrementalCompileOperation>
 
 #include <MyGUI_Gui.h>
 #include <MyGUI_ScrollBar.h>
@@ -130,6 +131,12 @@ namespace MWGui
         // node masks don't work for computeBound()
         mRenderer.getSceneRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
 
+        if (const osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
+        {
+            mOldIcoMin = ico->getMinimumTimeAvailableForGLCompileAndDeletePerFrame();
+            mOldIcoMax = ico->getMaximumNumOfObjectsToCompilePerFrame();
+        }
+
         setVisible(true);
 
         mShowWallpaper = MWBase::Environment::get().getStateManager()->getState() == MWBase::StateManager::State_NoGame;
@@ -165,7 +172,11 @@ namespace MWGui
 
         setVisible(false);
 
-        mRenderer.resetPreparationBudget();
+        if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
+        {
+            ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(mOldIcoMin);
+            ico->setMaximumNumOfObjectsToCompilePerFrame(mOldIcoMax);
+        }
 
         MWBase::Environment::get().getWindowManager()->removeGuiMode(GM_Loading);
         MWBase::Environment::get().getWindowManager()->removeGuiMode(GM_LoadingWallpaper);
@@ -282,9 +293,11 @@ namespace MWGui
         stats->setAttribute(frameNumber, "Loading", 1);
 
         mResourceSystem->reportStats(frameNumber, stats);
-        // Widened while the screen is up; resetPreparationBudget puts it back
-        mRenderer.setPreparationBudget(
-            MWRender::PreparationBudget{ .mSecondsPerFrame = 1.0 / getTargetFrameRate(), .mObjectsPerFrame = 1000 });
+        if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
+        {
+            ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(1.f / getTargetFrameRate());
+            ico->setMaximumNumOfObjectsToCompilePerFrame(1000);
+        }
 
         // at the time this function is called we are in the middle of a frame,
         // so out of order calls are necessary to get a correct frameNumber for the next frame.

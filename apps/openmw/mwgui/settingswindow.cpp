@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <string_view>
 
 #include <unicode/locid.h>
 
@@ -26,7 +27,6 @@
 #include <components/misc/strings/algorithm.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtx/upscale.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
@@ -638,11 +638,11 @@ namespace MWGui
     void SettingsWindow::onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos)
     {
         // A layout with more entries than there are modes
-        const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(pos);
+        const std::optional<std::string_view> chosen = Settings::RTXCategory::upscaleMenuName(pos);
         if (!chosen.has_value())
             return;
 
-        Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(*chosen)));
+        Settings::rtx().mUpscale.set(std::string(*chosen));
         apply();
     }
 
@@ -1035,7 +1035,8 @@ namespace MWGui
     void SettingsWindow::updateRayTracingSettings()
     {
         // Nothing selected where the setting names a mode the menu does not offer, or the list would overwrite it
-        const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
+        const std::optional<std::size_t> offered
+            = Settings::RTXCategory::upscaleMenuIndex(Settings::rtx().mUpscale.get());
 
         mRayTracingUpscale->setIndexSelected(offered.value_or(MyGUI::ITEM_NONE));
     }

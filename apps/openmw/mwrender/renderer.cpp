@@ -1,8 +1,6 @@
 #include "renderer.hpp"
 
 #include <cassert>
-#include <fstream>
-#include <functional>
 #include <stdexcept>
 #include <string>
 
@@ -12,24 +10,12 @@
 #include <osg/Camera>
 #include <osg/FrameStamp>
 #include <osg/Group>
-#include <osg/Image>
 #include <osg/Stats>
-
-#include <osgDB/ReaderWriter>
-#include <osgDB/Registry>
 
 #include <osgGA/EventQueue>
 
-#include <components/debug/debuglog.hpp>
-#include <components/l10n/manager.hpp>
 #include <components/sceneutil/screencapture.hpp>
-#include <components/sceneutil/workqueue.hpp>
-#include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
-
-#include "../mwbase/environment.hpp"
-#include "../mwbase/windowmanager.hpp"
-#include "../mwgui/messagebox.hpp"
 
 #include "glrenderer.hpp"
 
@@ -39,35 +25,18 @@
 
 namespace MWRender
 {
-    namespace
+    Renderer::~Renderer() = default;
+
+    void Renderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)
     {
-        struct ScreenCaptureMessageBox
-        {
-            void operator()(std::string filePath) const
-            {
-                if (filePath.empty())
-                {
-                    MWBase::Environment::get().getWindowManager()->scheduleMessageBox(
-                        "#{OMWEngine:ScreenshotFailed}", MWGui::ShowInDialogueMode_Never);
-
-                    return;
-                }
-
-                auto l10n = MWBase::Environment::get().getL10nManager()->getContext("OMWEngine");
-                std::string message = l10n->formatMessage("ScreenshotMade", { "file" }, { L10n::toUnicode(filePath) });
-
-                MWBase::Environment::get().getWindowManager()->scheduleMessageBox(
-                    std::move(message), MWGui::ShowInDialogueMode_Never);
-            }
-        };
-
-        struct IgnoreString
-        {
-            void operator()(std::string) const {}
-        };
+        mScreenshotWriter = &writer;
     }
 
-    Renderer::~Renderer() = default;
+    SceneUtil::AsyncScreenCaptureOperation& Renderer::getScreenshotWriter() const
+    {
+        assert(mScreenshotWriter != nullptr && "the screenshot writer is Engine's to hand over, and it has not yet");
+        return *mScreenshotWriter;
+    }
 
     void Renderer::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats)
     {
@@ -104,11 +73,6 @@ namespace MWRender
     void Renderer::setSceneRoot(osg::Group& root)
     {
         mSceneRoot = &root;
-
-        osg::Camera& camera = getCamera();
-        if (!camera.containsNode(&root))
-            camera.addChild(&root);
-
         adoptSceneRoot(root);
     }
 
@@ -157,46 +121,5 @@ namespace MWRender
         SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, Settings::video().mMinimizeOnFocusLoss ? "1" : "0");
 
         return placement;
-    }
-
-    void setWindowIcon(SDL_Window& window, const std::filesystem::path& resourceDir)
-    {
-        const std::filesystem::path windowIcon = resourceDir / "openmw.png";
-
-        std::ifstream stream(windowIcon, std::ios_base::in | std::ios_base::binary);
-        if (stream.fail())
-        {
-            Log(Debug::Error) << "Error: Failed to open " << windowIcon;
-            return;
-        }
-
-        osgDB::ReaderWriter* reader = osgDB::Registry::instance()->getReaderWriterForExtension("png");
-        if (reader == nullptr)
-        {
-            Log(Debug::Error) << "Error: Failed to read window icon, no png readerwriter found";
-            return;
-        }
-
-        osgDB::ReaderWriter::ReadResult result = reader->readImage(stream);
-        if (!result.success())
-        {
-            Log(Debug::Error) << "Error: Failed to read " << windowIcon << ": " << result.message() << " code "
-                              << result.status();
-            return;
-        }
-
-        const osg::ref_ptr<osg::Image> image = result.getImage();
-        const auto surface = SDLUtil::imageToSurface(image, true);
-        SDL_SetWindowIcon(&window, surface.get());
-    }
-
-    osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> makeScreenshotWriter(
-        SceneUtil::WorkQueue& queue, const std::filesystem::path& screenshotPath)
-    {
-        return new SceneUtil::AsyncScreenCaptureOperation(&queue,
-            new SceneUtil::WriteScreenshotToFileOperation(screenshotPath, Settings::general().mScreenshotFormat,
-                Settings::general().mNotifyOnSavedScreenshot
-                    ? std::function<void(std::string)>(ScreenCaptureMessageBox{})
-                    : std::function<void(std::string)>(IgnoreString{})));
     }
 }

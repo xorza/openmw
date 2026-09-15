@@ -53,11 +53,6 @@ namespace Rtx
     class Renderer;
 }
 
-namespace SceneUtil
-{
-    class AsyncScreenCaptureOperation;
-}
-
 namespace MyGUIRtx
 {
     class RenderManager;
@@ -96,6 +91,7 @@ namespace MWRender
         SDL_Window* getWindow() const override { return mWindow; }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
+        void adoptSceneRoot(osg::Group& root) override;
         void showWorld(bool shown) override { mWorldShown = shown; }
         bool toggleWorld() override { return mWorldToggled = !mWorldToggled; }
 
@@ -230,7 +226,7 @@ namespace MWRender
 
         /// Makes the SDL window the backend builds its surface on; `hidden` is a headless run, the
         /// same renderer with nobody watching.
-        void createWindow(const std::filesystem::path& resourceDir, bool hidden);
+        void createWindow(bool hidden);
 
         /// Sizes the trace, the surface and the viewport to the window once its size has settled.
         /// Asked every frame, because a Wayland surface has no size of its own — its `currentExtent`
@@ -311,10 +307,6 @@ namespace MWRender
         /// on the first freeze and the image under it swapped on every one after.
         osg::ref_ptr<osg::Texture2D> mFrozenFrame;
         std::unique_ptr<MyGUI::ITexture> mFrozenFrameTexture;
-
-        /// The same writer the OpenGL renderer hands its screenshots to, so the two write the same
-        /// file the same way.
-        osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
 
         /// What a frame is read back into, refilled per read and never freed.
         std::vector<std::uint8_t> mReadBack;

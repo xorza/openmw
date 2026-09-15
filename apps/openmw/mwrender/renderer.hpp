@@ -53,7 +53,6 @@ namespace Resource
 namespace SceneUtil
 {
     class AsyncScreenCaptureOperation;
-    class WorkQueue;
 }
 
 namespace Shader
@@ -75,23 +74,11 @@ namespace MWRender
     struct SceneFrame;
     struct RtxSetup;
 
-    /// What a renderer may spend per frame on preparing what a loader handed it.
-    struct PreparationBudget
-    {
-        double mSecondsPerFrame = 0.0;
-        unsigned int mObjectsPerFrame = 0;
-    };
-
     /// What every renderer needs to exist, whatever it draws with.
     struct RendererSpec
     {
-        /// For work a frame must not wait on — writing a screenshot to disk, so far.
-        SceneUtil::WorkQueue& mWorkQueue;
-
-        /// Where the window icon is read from.
+        /// Where a renderer's own files are read from: the ray tracer's shaders.
         std::filesystem::path mResourceDir;
-
-        std::filesystem::path mScreenshotPath;
 
         /// Where a renderer keeps what it compiled: regenerable, so the cache directory.
         std::filesystem::path mCachePath;
@@ -150,9 +137,7 @@ namespace MWRender
         virtual void attachWorld(RenderingManager& world, osg::Group& worldRoot) = 0;
 
         /// Whatever the renderer wants culled and drawn — the rasterizer's post-processing group
-        /// rather than the world's own root. Hung off the camera, whose matrices are what put
-        /// `RenderingManager::castCameraToViewportRay`'s ray in the world; parented once however
-        /// often it is said.
+        /// rather than the world's own root.
         void setSceneRoot(osg::Group& root);
 
         /// The camera, the frame stamp, the input queue and the stats, adopted from whichever
@@ -163,7 +148,6 @@ namespace MWRender
         osg::Stats& getStats() const;
 
         osg::Group& getSceneRoot() const;
-        bool hasSceneRoot() const { return mSceneRoot != nullptr; }
 
         /// Whether the world is being shown at all; the interface is drawn either way. A loading
         /// screen and the main menu's cover say no, and want nothing animating behind them. Said as
@@ -234,22 +218,21 @@ namespace MWRender
         /// thumbnails; blocks until the frame it asked for has been drawn.
         virtual void capture(osg::Image& image, int width, int height) = 0;
 
-        /// The screenshot key, which writes a file rather than handing back an image.
+        /// The screenshot key, which writes a file rather than handing back an image, through the
+        /// writer `Engine` handed over.
         virtual void saveScreenshot() = 0;
+
+        /// The writer both renderers hand a captured frame to: `Engine`'s, alive for as long as the
+        /// renderer is. Handed over after construction, where upstream built it.
+        virtual void setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer);
 
         /// Between these two nothing is reading the scene graph, so it can be mutated. A renderer
         /// that draws on the calling thread has nothing to hold still.
         virtual void suspendDraw() {}
         virtual void resumeDraw() {}
 
-        /// What the loading screen asks a renderer to spend on compiling while it is up: a budget
-        /// and not the compile operation, which is an OpenGL object. `reset` puts back what the
-        /// first `set` since the last reset found. A renderer with nothing to prepare ignores both.
-        virtual void setPreparationBudget(const PreparationBudget& budget) {}
-        virtual void resetPreparationBudget() {}
-
-        /// The operation an OSG loader compiles through, or null: what `Resource::SceneManager` and
-        /// the paging hand their new nodes to.
+        /// The operation an OSG loader compiles through, or null: what `Resource::SceneManager`, the
+        /// paging and the loading screen's per-frame budget go through.
         virtual osgUtil::IncrementalCompileOperation* getCompileOperation() const { return nullptr; }
 
         virtual void setVSync(SDLUtil::VSyncMode mode) = 0;
@@ -288,10 +271,14 @@ namespace MWRender
         /// queue, because what SDL would put in one is read by `osgViewer` handlers it has not got.
         void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats);
 
-        /// What a renderer does with the root beyond hanging it off the camera.
-        virtual void adoptSceneRoot(osg::Group& root) {}
+        /// Parents the root where this renderer's traversals start from: the viewer's scene data,
+        /// or the camera the ray tracer walks from.
+        virtual void adoptSceneRoot(osg::Group& root) = 0;
+
+        SceneUtil::AsyncScreenCaptureOperation& getScreenshotWriter() const;
 
     private:
+        osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;
         osg::ref_ptr<osgGA::EventQueue> mEvents;
@@ -318,14 +305,6 @@ namespace MWRender
     /// surface: `SDL_WINDOW_OPENGL` for the rasterizer.
     WindowPlacement describeWindow(std::uint32_t surfaceFlag);
 
-    /// Reads `openmw.png` from beside the resources and gives it to the window. Logs and carries on
-    /// wherever it cannot: a window with no icon is still a window.
-    void setWindowIcon(SDL_Window& window, const std::filesystem::path& resourceDir);
-
-    /// The writer both renderers hand a captured frame to, so the two write the same files to the
-    /// same place and say the same thing afterwards.
-    osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> makeScreenshotWriter(
-        SceneUtil::WorkQueue& queue, const std::filesystem::path& screenshotPath);
 }
 
 #endif

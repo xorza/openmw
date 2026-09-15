@@ -335,11 +335,11 @@ namespace MWWorld
     MWRender::MoonState MoonModel::calculateState(const TimeStamp& gameTime) const
     {
         float rotationFromHorizon = angle(gameTime.getDay(), gameTime.getHour());
+        const float daylightFade = hourlyAlpha(gameTime.getHour());
         MWRender::MoonState state = { rotationFromHorizon,
             mAxisOffset, // Reverse engineered from Morrowind's scene graph rotation matrices.
-            phase(gameTime), shadowBlend(rotationFromHorizon),
-            earlyMoonShadowAlpha(rotationFromHorizon) * hourlyAlpha(gameTime.getHour()),
-            hourlyAlpha(gameTime.getHour()) };
+            phase(gameTime), shadowBlend(rotationFromHorizon), earlyMoonShadowAlpha(rotationFromHorizon) * daylightFade,
+            daylightFade };
 
         return state;
     }
@@ -641,7 +641,7 @@ namespace MWWorld
         , mRegions()
         , mResult()
     {
-        mTimeSettings = Sky::TimeOfDaySettings::shared();
+        mTimeSettings = Sky::TimeOfDaySettings::fromFallback();
 
         mWeatherStore->reset(mStore);
 

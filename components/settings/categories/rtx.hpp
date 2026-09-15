@@ -1,7 +1,12 @@
 #ifndef OPENMW_COMPONENTS_SETTINGS_CATEGORIES_RTX_H
 #define OPENMW_COMPONENTS_SETTINGS_CATEGORIES_RTX_H
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include <components/settings/settingvalue.hpp>
 
@@ -34,6 +39,34 @@ namespace Settings
         /// rather than defaults. Changing it rebuilds every target, and a machine that cannot reach
         /// the mode keeps the one it had and says so in the log.
         SettingValue<std::string> mUpscale{ mIndex, "RTX", "upscale" };
+
+        /// The modes the launcher and the settings window offer, in the order both list them,
+        /// spelled as `mUpscale` takes them: fewest pixels traced first, every pixel last. `off` is
+        /// not among them: Ray Reconstruction is the renderer's denoiser, so a menu that offered
+        /// it would offer a worse picture as a speed setting.
+        static constexpr std::array<std::string_view, 5> sUpscaleMenu{ "ultraperformance", "performance", "balanced",
+            "quality", "dlaa" };
+
+        /// Where the mode `name` spells sits in that menu, or nothing for one it does not offer.
+        static std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
+        {
+            const auto* found = std::find(sUpscaleMenu.begin(), sUpscaleMenu.end(), name);
+            if (found == sUpscaleMenu.end())
+                return std::nullopt;
+
+            return static_cast<std::size_t>(found - sUpscaleMenu.begin());
+        }
+
+        /// The mode at `index` of that menu, or nothing where the menu is shorter than that — asked
+        /// rather than indexed, because the list of entries lives in a layout file, and a menu with
+        /// an entry the list has no mode for would otherwise read past the end of it.
+        static std::optional<std::string_view> upscaleMenuName(std::size_t index)
+        {
+            if (index >= sUpscaleMenu.size())
+                return std::nullopt;
+
+            return sUpscaleMenu[index];
+        }
 
         /// Which Ray Reconstruction network runs, as `Rtx::sPresetNames` spells them.
         SettingValue<std::string> mPreset{ mIndex, "RTX", "preset" };

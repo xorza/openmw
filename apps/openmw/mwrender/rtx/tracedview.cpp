@@ -122,6 +122,11 @@ namespace MWRender
         mCopy = new osg::Image;
         mCopy->allocateImage(mWidth, mHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE);
         std::memset(mCopy->data(), 0, mCopy->getTotalSizeInBytes());
+
+        // The copy is left by the trace that is told to leave one, so a picture already traced
+        // without it is traced again; one still queued carries it.
+        if (!mRedrawPending)
+            redraw();
     }
 
     const osg::Image* TracedView::getCopy()

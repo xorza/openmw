@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -27,6 +28,7 @@
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
+#include <components/settings/categories/rtx.hpp>
 
 #include "testtexture.hpp"
 
@@ -549,24 +551,26 @@ namespace Rtx
             EXPECT_LT(fine.mRenderWidth, fine.mOutputWidth);
             EXPECT_GT(fine.mRenderWidth, fast.mRenderWidth) << "quality traces more of each side than performance";
 
-            // **Every mode a menu offers, in the order it offers them.** Each traces at least as
-            // many pixels as the one before it and DLAA traces every one, which is the whole of what
-            // the list means — and a mode the network refuses would fail here rather than in a menu.
+            // **Every mode a menu offers, in the order it offers them.** The menu is a list of
+            // names beside the setting, so a name that spells no mode fails here rather than in a
+            // menu; then each traces at least as many pixels as the one before it and DLAA traces
+            // every one, which is the whole of what the list means.
             std::uint32_t before = 0;
-            for (const Upscale mode : sUpscaleMenu)
+            for (const std::string_view name : Settings::RTXCategory::sUpscaleMenu)
             {
-                upscaling->setUpscale(mode);
-                ASSERT_EQ(upscaling->getUpscale(), mode) << sUpscaleNames.name(mode);
+                const std::optional<Upscale> mode = sUpscaleNames.named(name);
+                ASSERT_TRUE(mode.has_value()) << name << " is on the menu and spells no mode";
+
+                upscaling->setUpscale(*mode);
+                ASSERT_EQ(upscaling->getUpscale(), *mode) << name;
 
                 const FrameExtents at = drawAndRead();
-                EXPECT_GT(at.mRenderWidth, before)
-                    << sUpscaleNames.name(mode) << " traced no more than the mode before it";
-                EXPECT_LE(at.mRenderWidth, at.mOutputWidth)
-                    << sUpscaleNames.name(mode) << " traced more than it showed";
+                EXPECT_GT(at.mRenderWidth, before) << name << " traced no more than the mode before it";
+                EXPECT_LE(at.mRenderWidth, at.mOutputWidth) << name << " traced more than it showed";
                 before = at.mRenderWidth;
             }
 
-            EXPECT_EQ(sUpscaleMenu.back(), Upscale::Dlaa);
+            EXPECT_EQ(sUpscaleNames.named(Settings::RTXCategory::sUpscaleMenu.back()), Upscale::Dlaa);
             EXPECT_EQ(upscaling->getExtents().mRenderWidth, upscaling->getExtents().mOutputWidth)
                 << "the last mode a menu offers traces every pixel it shows";
         }

@@ -1,6 +1,5 @@
 #include "glrenderer.hpp"
 
-#include <atomic>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -172,23 +171,15 @@ namespace MWRender
         // without substituting those references is a bug that shows up frames later.
         adopt(*mViewer->getCamera(), *mViewer->getFrameStamp(), mViewer->getEventQueue(), *mViewer->getViewerStats());
 
-        createWindow(spec.mResourceDir);
+        createWindow();
 
         compileIncrementally();
-
-        mScreenCaptureOperation = makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath);
-
-        mScreenCaptureHandler = new osgViewer::ScreenCaptureHandler(mScreenCaptureOperation);
-        mViewer->addEventHandler(mScreenCaptureHandler);
 
         mScreenshotManager = std::make_unique<ScreenshotManager>(mViewer);
     }
 
     GlRenderer::~GlRenderer()
     {
-        if (mScreenCaptureOperation != nullptr)
-            mScreenCaptureOperation->stop();
-
         mScreenshotManager.reset();
         mStereoManager.reset();
         mViewer = nullptr;
@@ -203,7 +194,7 @@ namespace MWRender
             SDL_DestroyWindow(mWindow);
     }
 
-    void GlRenderer::createWindow(const std::filesystem::path& resourceDir)
+    void GlRenderer::createWindow()
     {
         const SDLUtil::VSyncMode vsync = Settings::video().mVsyncMode;
         unsigned antialiasing = static_cast<unsigned>(Settings::video().mAntialiasing);
@@ -265,8 +256,6 @@ namespace MWRender
             {
                 SDL_SetWindowSize(mWindow, width / (dw / w), height / (dh / h));
             }
-
-            MWRender::setWindowIcon(*mWindow, resourceDir);
 
             osg::ref_ptr<osg::GraphicsContext::Traits> traits = new osg::GraphicsContext::Traits;
             SDL_GetWindowPosition(mWindow, &traits->x, &traits->y);
@@ -493,43 +482,35 @@ namespace MWRender
     // mirrors the graph has to answer.
     void GlRenderer::renderFrame(const SceneFrame& frame)
     {
-        retireFreezeFrame();
-
         describe(*mPostProcessor, frame.mWorld, frame.mEye);
 
         mViewer->renderingTraversals();
     }
 
-    /// Copies the framebuffer into a texture. Installed as an *initial* draw callback, so what it
-    /// copies is the frame before the one about to be drawn — which is the one the player was
-    /// looking at when the load began.
     class CopyFramebufferToTextureCallback : public osg::Camera::DrawCallback
     {
     public:
-        explicit CopyFramebufferToTextureCallback(osg::Texture2D* texture)
-            : mTexture(texture)
+        CopyFramebufferToTextureCallback(osg::Texture2D* texture)
+            : mOneshot(true)
+            , mTexture(texture)
         {
         }
 
         void operator()(osg::RenderInfo& renderInfo) const override
         {
             const osg::Viewport* viewPort = renderInfo.getCurrentCamera()->getViewport();
-            const int w = static_cast<int>(viewPort->width());
-            const int h = static_cast<int>(viewPort->height());
+            int w = static_cast<int>(viewPort->width());
+            int h = static_cast<int>(viewPort->height());
             mTexture->copyTexImage2D(*renderInfo.getState(), 0, 0, w, h);
 
-            mCopied.store(true, std::memory_order_release);
+            mOneshot = false;
         }
 
-        /// Whether it has run, read from the frame loop so that the callback can be taken out again.
-        /// A full-screen copy is not something to keep paying for once the frame is frozen.
-        bool copied() const { return mCopied.load(std::memory_order_acquire); }
-
-        void arm() { mCopied.store(false, std::memory_order_release); }
+        void reset() { mOneshot = true; }
 
     private:
+        mutable bool mOneshot;
         osg::ref_ptr<osg::Texture2D> mTexture;
-        mutable std::atomic<bool> mCopied{ false };
     };
 
     MyGUI::ITexture& GlRenderer::freezeFrame()
@@ -546,37 +527,25 @@ namespace MWRender
             mFrozenFrameTexture = std::make_unique<MyGUIPlatform::OSGTexture>(mFrozenFrame);
         }
 
-        // Removed and added rather than left in place: the callback is what makes the copy happen,
-        // and a loading screen wants the frame that was on the screen when it started, not the one
-        // that was there when the last load did.
-        mFreezeFrame->arm();
         getCamera().removeInitialDrawCallback(mFreezeFrame);
         getCamera().addInitialDrawCallback(mFreezeFrame);
-        mFreezing = true;
+        mFreezeFrame->reset();
 
         return *mFrozenFrameTexture;
-    }
-
-    void GlRenderer::retireFreezeFrame()
-    {
-        if (!mFreezing || !mFreezeFrame->copied())
-            return;
-
-        getCamera().removeInitialDrawCallback(mFreezeFrame);
-        mFreezing = false;
     }
 
     std::unique_ptr<OffscreenView> GlRenderer::createOffscreenView(const OffscreenViewSpec& spec)
     {
         // Above the post-processing chain rather than inside it: a pre-render camera has to be
         // reached before the frame it feeds, and what it draws is not part of that frame.
-        return std::make_unique<GlOffscreenView>(spec, getSceneRoot(), *mResources);
+        if (spec.mFromWorld)
+            return std::make_unique<GlTileView>(spec, getSceneRoot(), getFrameStamp());
+
+        return std::make_unique<GlDollView>(spec, getSceneRoot(), getFrameStamp(), *mResources);
     }
 
     void GlRenderer::renderGui()
     {
-        retireFreezeFrame();
-
         mViewer->renderingTraversals();
     }
 
@@ -588,6 +557,14 @@ namespace MWRender
     void GlRenderer::capture(osg::Image& image, int width, int height)
     {
         mScreenshotManager->screenshot(&image, width, height);
+    }
+
+    void GlRenderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)
+    {
+        Renderer::setScreenshotWriter(writer);
+
+        mScreenCaptureHandler = new osgViewer::ScreenCaptureHandler(&writer);
+        mViewer->addEventHandler(mScreenCaptureHandler);
     }
 
     void GlRenderer::saveScreenshot()
@@ -619,35 +596,6 @@ namespace MWRender
     osgUtil::IncrementalCompileOperation* GlRenderer::getCompileOperation() const
     {
         return mViewer->getIncrementalCompileOperation();
-    }
-
-    void GlRenderer::setPreparationBudget(const PreparationBudget& budget)
-    {
-        osgUtil::IncrementalCompileOperation* const ico = mViewer->getIncrementalCompileOperation();
-        if (ico == nullptr)
-            return;
-
-        // Once per screen: the loading screen sets this on every draw, and what is put back is
-        // what stood before the first of them.
-        if (!mRestingBudget.has_value())
-            mRestingBudget = PreparationBudget{
-                .mSecondsPerFrame = ico->getMinimumTimeAvailableForGLCompileAndDeletePerFrame(),
-                .mObjectsPerFrame = ico->getMaximumNumOfObjectsToCompilePerFrame(),
-            };
-
-        ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(budget.mSecondsPerFrame);
-        ico->setMaximumNumOfObjectsToCompilePerFrame(budget.mObjectsPerFrame);
-    }
-
-    void GlRenderer::resetPreparationBudget()
-    {
-        osgUtil::IncrementalCompileOperation* const ico = mViewer->getIncrementalCompileOperation();
-        if (ico == nullptr || !mRestingBudget.has_value())
-            return;
-
-        ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(mRestingBudget->mSecondsPerFrame);
-        ico->setMaximumNumOfObjectsToCompilePerFrame(mRestingBudget->mObjectsPerFrame);
-        mRestingBudget.reset();
     }
 
     // `SDLUtil::VideoWrapper::setSyncToVBlank`, with the viewer this renderer owns: the wrapper

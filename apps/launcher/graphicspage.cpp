@@ -20,8 +20,7 @@
 #include <cmath>
 #include <cstddef>
 #include <optional>
-
-#include <components/rtx/upscale.hpp>
+#include <string_view>
 
 Launcher::GraphicsPage::GraphicsPage(QWidget* parent)
     : QWidget(parent)
@@ -101,7 +100,7 @@ bool Launcher::GraphicsPage::loadSettings()
         rayTracingCheckBox->setCheckState(Qt::Checked);
 
     // Nothing selected where the setting names a mode the list does not offer, so saveSettings leaves it alone
-    const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
+    const std::optional<std::size_t> offered = Settings::RTXCategory::upscaleMenuIndex(Settings::rtx().mUpscale.get());
     rayTracingUpscaleComboBox->setCurrentIndex(offered ? static_cast<int>(*offered) : -1);
 
     rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
@@ -168,8 +167,9 @@ void Launcher::GraphicsPage::saveSettings()
     // Nothing chosen leaves the setting alone, see loadSettings
     const int chosenIndex = rayTracingUpscaleComboBox->currentIndex();
     if (chosenIndex >= 0)
-        if (const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(static_cast<std::size_t>(chosenIndex)))
-            Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(*chosen)));
+        if (const std::optional<std::string_view> chosen
+            = Settings::RTXCategory::upscaleMenuName(static_cast<std::size_t>(chosenIndex)))
+            Settings::rtx().mUpscale.set(std::string(*chosen));
     Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
 
     int cWidth = 0;

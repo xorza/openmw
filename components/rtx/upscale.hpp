@@ -1,9 +1,6 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
-#include <cstddef>
-#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -18,7 +15,7 @@ namespace Rtx
     {
         /// Trace and present at the same size, with no upscaler in the frame at all — what every
         /// test and every reference render uses. Reachable by name and offered by no menu
-        /// (`sUpscaleMenu`).
+        /// (`Settings::RTXCategory::sUpscaleMenu`).
         Off,
 
         /// A third of the output's width and height, so a ninth of its pixels — 1280×720 internal
@@ -48,42 +45,4 @@ namespace Rtx
         std::pair{ Upscale::Quality, std::string_view("quality") },
         std::pair{ Upscale::Dlaa, std::string_view("dlaa") },
     } };
-
-    /// The modes a menu offers, in the order it lists them: fewest pixels traced first, every pixel
-    /// last, and each of them denoised. One list, because the launcher and the settings window both
-    /// offer it. `Off` is not among them: Ray Reconstruction is this renderer's denoiser, so
-    /// turning it off hands the frame to the wavelet filter and the picture is worse in every way.
-    inline constexpr std::array sUpscaleMenu{ Upscale::UltraPerformance, Upscale::Performance, Upscale::Balanced,
-        Upscale::Quality, Upscale::Dlaa };
-
-    /// Where `mode` sits in that menu, or nothing for one it does not offer.
-    inline std::optional<std::size_t> upscaleMenuIndex(Upscale mode)
-    {
-        const auto* found = std::find(sUpscaleMenu.begin(), sUpscaleMenu.end(), mode);
-        if (found == sUpscaleMenu.end())
-            return std::nullopt;
-
-        return static_cast<std::size_t>(found - sUpscaleMenu.begin());
-    }
-
-    /// The mode at `index` of that menu, or nothing where the menu is shorter than that — asked
-    /// rather than indexed, because the list of entries lives in a layout file, and a menu with an
-    /// entry the list has no mode for would otherwise read past the end of it.
-    inline std::optional<Upscale> upscaleAtMenu(std::size_t index)
-    {
-        if (index >= sUpscaleMenu.size())
-            return std::nullopt;
-
-        return sUpscaleMenu[index];
-    }
-
-    /// Where the mode `name` spells sits in the menu — nothing where it spells no mode at all, and
-    /// nothing where it spells one the menu does not offer.
-    inline std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
-    {
-        if (const std::optional<Upscale> mode = sUpscaleNames.named(name))
-            return upscaleMenuIndex(*mode);
-
-        return std::nullopt;
-    }
 }
