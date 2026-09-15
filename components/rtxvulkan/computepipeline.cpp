@@ -1,7 +1,5 @@
 #include "computepipeline.hpp"
 
-#include <vector>
-
 #include "device.hpp"
 #include "handles.hpp"
 #include "result.hpp"

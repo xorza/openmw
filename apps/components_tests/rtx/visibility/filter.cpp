@@ -1,5 +1,12 @@
+#include <components/rtx/camera.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/look.h>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
 
+#include "../geometry.hpp"
 #include "fixture.hpp"
 
 #include <algorithm>
@@ -10,6 +17,12 @@
 #include <optional>
 #include <utility>
 #include <vector>
+
+#include <gtest/gtest.h>
+
+#include <osg/Math>
+#include <osg/Matrixf>
+#include <osg/Vec3f>
 
 namespace Rtx::Testing
 {

@@ -1,11 +1,16 @@
 #pragma once
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <MyGUI_IRenderTarget.h>
+#include <MyGUI_RenderFormat.h>
+#include <MyGUI_RenderManager.h>
+#include <MyGUI_RenderTargetInfo.h>
+#include <MyGUI_Types.h>
 
 #include <components/myguiplatform/guirendermanager.hpp>
 #include <components/rtx/renderer.hpp>

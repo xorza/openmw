@@ -2,13 +2,20 @@
 
 #include <cassert>
 
+#include <components/rtx/deformertable.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
 
 #include "barriers.hpp"
+#include "blockedbuffer.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "frameslots.hpp"
 #include "gputimer.hpp"
+#include "imageuse.hpp"
+#include "pipeline.hpp"
 #include "skintables.hpp"
 
 namespace Rtx

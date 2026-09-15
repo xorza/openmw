@@ -7,10 +7,16 @@
 // the header that declares them, and sorted alphabetically it would come first.
 #include <nvsdk_ngx_helpers_vk.h>
 
+#include <nvsdk_ngx_defs.h>
+#include <nvsdk_ngx_defs_dlssd.h>
+#include <nvsdk_ngx_defs_vk.h>
 #include <nvsdk_ngx_helpers_dlssd_vk.h>
+#include <nvsdk_ngx_params.h>
+#include <nvsdk_ngx_params_dlssd.h>
 #include <nvsdk_ngx_vk.h>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/upscale.hpp>
 
 #include "image.hpp"
 #include "ngx.hpp"

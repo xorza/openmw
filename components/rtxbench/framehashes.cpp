@@ -11,16 +11,27 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <tuple>
 #include <utility>
 
+#include <osg/BoundingBox>
+#include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <smhasher/MurmurHash3.h>
 
 #include <components/files/conversion.hpp>
+#include <components/rtx/deformertable.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/skinning.h>
+#include <components/rtx/shapefold.hpp>
+#include <components/rtx/sprite.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace Rtx

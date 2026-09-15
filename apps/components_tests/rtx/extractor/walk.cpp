@@ -2,6 +2,21 @@
 
 #include <vector>
 
+#include <osg/Array>
+#include <osg/Math>
+#include <osg/Matrix>
+#include <osg/NodeVisitor>
+#include <osg/Sequence>
+#include <osg/Switch>
+#include <osg/Transform>
+#include <osg/Vec2f>
+#include <osg/Vec3d>
+#include <osg/Vec3f>
+#include <osg/ref_ptr>
+
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/meshtable.hpp>
+
 namespace Rtx::Testing
 {
     namespace

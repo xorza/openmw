@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 
+#include <components/rtx/renderer.hpp>
 #include <components/rtx/shaders/stress.h>
 
 #include "commands.hpp"

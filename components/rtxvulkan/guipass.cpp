@@ -8,6 +8,7 @@
 
 #include "dispatch.hpp"
 #include "image.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {

@@ -2,16 +2,20 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Array>
 #include <osg/FrameStamp>
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/MatrixTransform>
+#include <osg/Node>
+#include <osg/PrimitiveSet>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
 #include <components/vfs/manager.hpp>
 
 #include "countingrenderer.hpp"

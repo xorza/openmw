@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <span>
-#include <string_view>
 #include <vector>
 
 #include <osg/Vec2f>
@@ -11,7 +10,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightgrid.hpp>
-#include <components/rtx/shaders/camera.h>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 
 #include "blockedbuffer.hpp"

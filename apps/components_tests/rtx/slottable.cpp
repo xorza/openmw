@@ -10,9 +10,12 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtxvulkan/buffer.hpp>
+#include <vulkan/vulkan_core.h>
+
+#include <components/rtx/runs.hpp>
+#include <components/rtxvulkan/blockedbuffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
-#include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/slottable.hpp>
 

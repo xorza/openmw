@@ -3,7 +3,6 @@
 #include <vector>
 
 #include <osg/Matrix>
-#include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/NodeVisitor>
 

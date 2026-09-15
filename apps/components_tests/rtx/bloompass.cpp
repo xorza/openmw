@@ -1,13 +1,13 @@
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <span>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtxvulkan/bloompass.hpp>

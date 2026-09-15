@@ -4,6 +4,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/upscale.hpp>
 
 #include "dlss.hpp"
 

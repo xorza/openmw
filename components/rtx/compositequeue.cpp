@@ -14,6 +14,7 @@
 #include <components/resource/imagemanager.hpp>
 
 #include "error.hpp"
+#include "material.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx

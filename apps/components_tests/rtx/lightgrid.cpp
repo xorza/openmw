@@ -7,8 +7,11 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Vec3f>
+#include <osg/Vec3ui>
+
+#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/lightgrid.hpp>
-#include <components/rtx/scenedesc.hpp>
 
 #include "allocations.hpp"
 

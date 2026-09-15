@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Node>
 #include <osg/NodeVisitor>
+#include <osg/StateSet>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 #include <osg/Vec4i>
@@ -12,8 +14,14 @@
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadligh.hpp>
+#include <components/esm3/refnum.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/distantlights.hpp>
+#include <components/rtx/extractionstats.hpp>
+#include <components/rtx/materialresolver.hpp>
+#include <components/rtx/meshreader.hpp>
+#include <components/rtx/residency.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/terrain/objectstorage.hpp>

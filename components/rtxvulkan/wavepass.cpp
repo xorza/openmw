@@ -1,12 +1,12 @@
 #include "wavepass.hpp"
 
 #include <array>
-#include <bit>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <span>
+#include <string>
+#include <string_view>
 
 #include <osg/Vec2f>
 
@@ -14,6 +14,8 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "imageuse.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {

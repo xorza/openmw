@@ -3,11 +3,15 @@
 #include <array>
 #include <cassert>
 
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/shaders/atrous.h>
+#include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/look.h>
 
 #include "barriers.hpp"
 #include "dispatch.hpp"
 #include "gbuffer.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

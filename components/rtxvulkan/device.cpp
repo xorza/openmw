@@ -16,6 +16,7 @@
 #include "instance.hpp"
 #include "memory.hpp"
 #include "pipelinecache.hpp"
+#include "requirements.hpp"
 #include "result.hpp"
 #include "timeline.hpp"
 

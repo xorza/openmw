@@ -3,8 +3,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <numbers>
+#include <variant>
 
+#include <osg/CullSettings>
 #include <osg/FrameStamp>
+#include <osg/Matrix>
+#include <osg/NodeVisitor>
 #include <osg/Transform>
 #include <osg/Viewport>
 #include <osgUtil/CullVisitor>
@@ -21,6 +25,8 @@
 #include "poseupdate.hpp"
 #include "scenedesc.hpp"
 #include "sceneextractor.hpp"
+#include "shaders/visibility.h"
+#include "slot.hpp"
 
 namespace Rtx
 {

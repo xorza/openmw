@@ -1,4 +1,15 @@
+#include <components/rtx/camera.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/look.h>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/texturedata.hpp>
+#include <components/rtx/wavecascade.hpp>
+#include <components/rtx/wavespectrum.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "fixture.hpp"
 
@@ -8,10 +19,21 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <random>
 #include <span>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include <osg/Math>
+#include <osg/Matrixf>
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+
+#include "../geometry.hpp"
 #include "../statistics.hpp"
+#include "../testtexture.hpp"
+#include "../wavemoments.hpp"
 
 namespace Rtx::Testing
 {

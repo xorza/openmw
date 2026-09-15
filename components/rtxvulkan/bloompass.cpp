@@ -4,12 +4,15 @@
 #include <cassert>
 #include <format>
 
+#include <osg/Vec2f>
+
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtx/shaders/look.h>
 
 #include "barriers.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

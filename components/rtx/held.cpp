@@ -1,7 +1,5 @@
 #include "held.hpp"
 
-#include <utility>
-
 namespace Rtx
 {
     void CellHolds::holdTexture(const PreparedTexture& texture)

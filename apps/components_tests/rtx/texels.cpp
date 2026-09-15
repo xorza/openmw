@@ -5,9 +5,13 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/GL>
 #include <osg/Image>
+#include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/rtx/texels.hpp>
+#include <components/rtx/texturedata.hpp>
 
 namespace Rtx
 {

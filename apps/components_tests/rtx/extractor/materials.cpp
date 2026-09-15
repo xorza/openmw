@@ -4,9 +4,38 @@
 #include <string_view>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include <osg/BlendFunc>
+#include <osg/GL>
+#include <osg/Geometry>
+#include <osg/Group>
+#include <osg/Image>
+#include <osg/Matrix>
+#include <osg/MatrixTransform>
+#include <osg/Node>
+#include <osg/NodeVisitor>
+#include <osg/StateAttribute>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+#include <osg/ref_ptr>
+#include <osgUtil/UpdateVisitor>
+
+#include <components/rtx/extractionstats.hpp>
+#include <components/rtx/instancerecord.hpp>
+#include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/sceneextractor.hpp>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/surface.hpp>
+#include <components/sceneutil/material.hpp>
+#include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/texmat.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "../allocations.hpp"
+#include "../graphlight.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

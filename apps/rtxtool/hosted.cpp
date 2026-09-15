@@ -8,15 +8,15 @@
 
 #include <boost/program_options/variables_map.hpp>
 
+#include <apps/openmw/engine.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/debug/debugging.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
+#include <components/files/multidircollection.hpp>
 #include <components/settings/values.hpp>
 #include <components/toutf8/toutf8.hpp>
-
-#include <apps/openmw/engine.hpp>
-#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 
 #include "session.hpp"
 

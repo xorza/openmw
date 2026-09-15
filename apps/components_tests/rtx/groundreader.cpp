@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <span>
 #include <vector>
 
@@ -10,9 +11,11 @@
 #include <osg/Image>
 #include <osg/Node>
 #include <osg/PrimitiveSet>
+#include <osg/Vec2f>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
+#include <osg/Vec4ub>
 #include <osg/ref_ptr>
 
 #include <components/esm/refid.hpp>
@@ -22,6 +25,7 @@
 #include <components/rtx/prepared.hpp>
 #include <components/rtx/residency.hpp>
 #include <components/terrain/buffercache.hpp>
+#include <components/terrain/defs.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "fakeland.hpp"

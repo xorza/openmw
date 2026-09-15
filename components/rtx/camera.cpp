@@ -7,6 +7,8 @@
 #include <osg/Math>
 
 #include "error.hpp"
+#include "shaders/camera.h"
+#include "shaders/scene.h"
 
 namespace Rtx
 {

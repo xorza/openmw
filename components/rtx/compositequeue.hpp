@@ -15,6 +15,7 @@
 #include <osg/Image>
 #include <osg/ref_ptr>
 
+#include "material.hpp"
 #include "monitor.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"

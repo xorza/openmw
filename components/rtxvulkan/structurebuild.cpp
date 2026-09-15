@@ -1,6 +1,7 @@
 #include "structurebuild.hpp"
 
 #include "barriers.hpp"
+#include "imageuse.hpp"
 
 #include <osg/Vec3f>
 

@@ -3,11 +3,15 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Math>
+#include <osg/Vec3f>
+
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/shaders/colour.h>
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
+#include <components/sky/moonstate.hpp>
 
 #include "allocations.hpp"
 

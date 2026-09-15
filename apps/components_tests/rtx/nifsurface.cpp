@@ -1,7 +1,14 @@
-#include "../nif/node.hpp"
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <vector>
+
+#include <gtest/gtest.h>
 
 #include <osg/Drawable>
+#include <osg/NodeVisitor>
 #include <osg/StateSet>
+#include <osg/ref_ptr>
 
 #include <components/nif/data.hpp>
 #include <components/nif/node.hpp>
@@ -13,11 +20,14 @@
 #include <components/rtx/surface.hpp>
 #include <components/vfs/manager.hpp>
 
-#include <gtest/gtest.h>
-
-#include <initializer_list>
-#include <optional>
-#include <vector>
+#include "../nif/node.hpp"
+#include <components/nif/base.hpp>
+#include <components/nif/niffile.hpp>
+#include <components/nif/nifkey.hpp>
+#include <components/nif/record.hpp>
+#include <components/nif/recordptr.hpp>
+#include <components/sceneutil/controller.hpp>
+#include <components/vfs/pathutil.hpp>
 
 namespace Rtx
 {

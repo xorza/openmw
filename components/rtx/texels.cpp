@@ -6,7 +6,10 @@
 #include <cstring>
 #include <vector>
 
+#include <osg/GL>
 #include <osg/Image>
+#include <osg/Vec3d>
+#include <osg/ref_ptr>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 

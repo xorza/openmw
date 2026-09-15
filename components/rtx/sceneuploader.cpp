@@ -6,7 +6,9 @@
 #include "compositequeue.hpp"
 #include "frameclock.hpp"
 #include "renderer.hpp"
+#include "runs.hpp"
 #include "scenedesc.hpp"
+#include "slot.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx

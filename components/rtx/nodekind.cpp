@@ -1,9 +1,6 @@
 #include "nodekind.hpp"
 
-#include <osg/Drawable>
-#include <osg/Node>
 #include <osg/Sequence>
-
 #include <osgParticle/ParticleProcessor>
 #include <osgParticle/ParticleSystem>
 #include <osgParticle/ParticleSystemUpdater>

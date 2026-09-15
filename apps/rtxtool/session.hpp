@@ -3,22 +3,19 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <vector>
 
-#include <osg/Node>
 #include <osg/Vec3f>
 
+#include <apps/openmw/mwrender/rtx/framereport.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/runrecord.hpp>
-
-#include <apps/openmw/mwrender/rtx/framereport.hpp>
-#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 
 #include "stopwriter.hpp"
 

@@ -1,6 +1,4 @@
-#include <array>
 #include <cstddef>
-#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -8,8 +6,12 @@
 #include <osg/Matrixf>
 
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/surface.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"

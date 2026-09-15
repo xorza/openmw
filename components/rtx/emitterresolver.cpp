@@ -2,17 +2,20 @@
 
 #include <cstdint>
 
+#include <osg/Vec3f>
+#include <osg/Vec4f>
 #include <osgParticle/Particle>
 #include <osgParticle/ParticleSystem>
 
-#include "surface.hpp"
 #include <components/vfs/pathutil.hpp>
 
 #include "colour.hpp"
 #include "extractionstats.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
+#include "sprite.hpp"
 #include "spritelight.hpp"
+#include "surface.hpp"
 
 namespace Rtx
 {

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <components/misc/constants.hpp>
+#include <components/rtx/shaders/scene.h>
 #include <components/rtx/wavespectrum.hpp>
 
 namespace Rtx

@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <span>
 
-#include <osg/Vec3f>
-
 #include "shaders/look.h"
 #include "shaders/scene.h"
 

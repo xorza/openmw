@@ -1,25 +1,27 @@
 #include "materialresolver.hpp"
 
-#include <algorithm>
-#include <array>
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 
+#include <osg/Callback>
+#include <osg/CopyOp>
 #include <osg/Image>
 #include <osg/StateSet>
+#include <osg/Vec2f>
+#include <osg/Vec4f>
 
-#include "surface.hpp"
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "alphaimage.hpp"
 #include "colour.hpp"
 #include "extractionstats.hpp"
+#include "material.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
+#include "surface.hpp"
 
 namespace Rtx
 {

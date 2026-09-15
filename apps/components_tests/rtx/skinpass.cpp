@@ -8,12 +8,24 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/BoundingBox>
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
+
+#include <components/rtx/deformertable.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/skinning.h>
 #include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
+#include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
+#include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/skinpass.hpp>
 #include <components/rtxvulkan/skintables.hpp>
 #include <components/rtxvulkan/slottable.hpp>

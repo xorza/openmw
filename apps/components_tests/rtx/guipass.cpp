@@ -10,16 +10,17 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
+#include <components/rtxvulkan/graphicspipeline.hpp>
 #include <components/rtxvulkan/guipass.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
-#include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/texture.hpp>
-#include <components/rtxvulkan/validation.hpp>
 
 #include "guiquad.hpp"
 #include "harness.hpp"

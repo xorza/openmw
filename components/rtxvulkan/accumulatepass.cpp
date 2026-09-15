@@ -4,11 +4,16 @@
 #include <cassert>
 #include <cstddef>
 
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/shaders/accumulate.h>
+#include <components/rtx/shaders/atrous.h>
+#include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/look.h>
 
 #include "barriers.hpp"
 #include "dispatch.hpp"
 #include "gbuffer.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

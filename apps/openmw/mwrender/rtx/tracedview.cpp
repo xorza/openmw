@@ -1,16 +1,21 @@
 #include "tracedview.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <optional>
 #include <span>
 #include <string>
 
 #include <MyGUI_ITexture.h>
+#include <MyGUI_RenderFormat.h>
 #include <MyGUI_RenderManager.h>
+#include <osg/GL>
 #include <osg/Image>
 
 #include <components/myguirtx/texture.hpp>
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/walk.hpp>
 
 #include "rtxrenderer.hpp"
 

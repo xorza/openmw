@@ -3,10 +3,14 @@
 #include <cassert>
 #include <cstdint>
 
+#include <components/rtx/shaders/scene.h>
+
+#include "barriers.hpp"
 #include "buffer.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
 #include "gputimer.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

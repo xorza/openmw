@@ -1,5 +1,6 @@
 #include "visibilitypass.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -10,16 +11,24 @@
 
 #include <components/rtx/bluenoise.hpp>
 #include <components/rtx/lightgrid.hpp>
+#include <components/rtx/material.hpp>
 #include <components/rtx/parallel.hpp>
 #include <components/rtx/shaders/bindings.h>
+#include <components/rtx/shaders/hosttypes.h>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
+#include <components/rtx/shaders/wave.h>
+#include <components/rtx/wavecascade.hpp>
 
-#include "barriers.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "dispatch.hpp"
 #include "fogvolume.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
+#include "handles.hpp"
+#include "imageuse.hpp"
+#include "pipeline.hpp"
 #include "scenebuffers.hpp"
 #include "spritebin.hpp"
 #include "validation.hpp"

@@ -10,6 +10,7 @@
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/skylight.hpp>
 #include <components/sky/timeofday.hpp>

@@ -1,5 +1,6 @@
 #include "spritebin.hpp"
 
+#include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/spritebin.h>
 #include <components/rtx/shaders/spriteshade.h>
 
@@ -7,6 +8,7 @@
 #include "device.hpp"
 #include "gputimer.hpp"
 #include "graveyard.hpp"
+#include "imageuse.hpp"
 #include "spritepasses.hpp"
 #include "timeline.hpp"
 

@@ -19,6 +19,20 @@
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 
+#include <apps/openmw/mwbase/environment.hpp>
+#include <apps/openmw/mwbase/windowmanager.hpp>
+#include <apps/openmw/mwbase/world.hpp>
+#include <apps/openmw/mwrender/camera.hpp>
+#include <apps/openmw/mwrender/characterpreview.hpp>
+#include <apps/openmw/mwrender/localmap.hpp>
+#include <apps/openmw/mwrender/offscreenview.hpp>
+#include <apps/openmw/mwrender/renderer.hpp>
+#include <apps/openmw/mwrender/renderingmanager.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
+#include <apps/openmw/mwworld/cell.hpp>
+#include <apps/openmw/mwworld/cellstore.hpp>
+#include <apps/openmw/mwworld/manualref.hpp>
+#include <apps/openmw/mwworld/ptr.hpp>
 #include <components/esm/refid.hpp>
 #include <components/files/conversion.hpp>
 #include <components/misc/constants.hpp>
@@ -39,24 +53,6 @@
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
 #include <components/vfs/pathutil.hpp>
-
-#include <apps/openmw/mwbase/environment.hpp>
-#include <apps/openmw/mwbase/windowmanager.hpp>
-#include <apps/openmw/mwbase/world.hpp>
-#include <apps/openmw/mwworld/cell.hpp>
-#include <apps/openmw/mwworld/cellstore.hpp>
-#include <apps/openmw/mwworld/esmstore.hpp>
-#include <apps/openmw/mwworld/manualref.hpp>
-#include <apps/openmw/mwworld/ptr.hpp>
-#include <apps/openmw/mwworld/refdata.hpp>
-
-#include <apps/openmw/mwrender/camera.hpp>
-#include <apps/openmw/mwrender/characterpreview.hpp>
-#include <apps/openmw/mwrender/localmap.hpp>
-#include <apps/openmw/mwrender/offscreenview.hpp>
-#include <apps/openmw/mwrender/renderer.hpp>
-#include <apps/openmw/mwrender/renderingmanager.hpp>
-#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
 
 namespace RtxTool
 {

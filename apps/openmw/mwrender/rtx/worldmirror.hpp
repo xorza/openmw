@@ -5,12 +5,14 @@
 
 #include <osg/PositionAttitudeTransform>
 #include <osg/Vec2f>
+#include <osg/Vec3f>
 #include <osg/ref_ptr>
 
 #include <components/esm3/refnum.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/distantlights.hpp>
+#include <components/rtx/extractionstats.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
@@ -19,6 +21,7 @@
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/skybuilder.hpp>
+#include <components/rtx/walk.hpp>
 
 namespace Resource
 {

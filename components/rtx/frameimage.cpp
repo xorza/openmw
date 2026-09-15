@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstring>
 
+#include <osg/GL>
+
 namespace Rtx
 {
     osg::ref_ptr<osg::Image> frameImage(

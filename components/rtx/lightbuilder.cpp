@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include <osg/Vec4f>
+
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>

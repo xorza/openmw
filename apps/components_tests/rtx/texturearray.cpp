@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtx/texturedata.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>

@@ -1,4 +1,3 @@
-#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -9,10 +8,13 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/Vec4ub>
+#include <osg/ref_ptr>
 
 #include <components/rtx/extractionstats.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/meshreader.hpp>
 #include <components/rtx/meshresolver.hpp>
+#include <components/rtx/nodekind.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/walk.hpp>

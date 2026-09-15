@@ -11,6 +11,7 @@
 
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/material.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>

@@ -4,12 +4,33 @@
 #include <span>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include <osg/Matrixf>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 
+#include <components/rtx/camera.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/visibility.h>
 #include <components/rtx/shadingmap.hpp>
+#include <components/rtx/slot.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/rtx/texturedata.hpp>
+#include <components/rtxvulkan/commands.hpp>
+#include <components/rtxvulkan/frameslots.hpp>
+#include <components/rtxvulkan/scenebuffers.hpp>
 #include <components/rtxvulkan/spritebin.hpp>
+#include <components/vfs/pathutil.hpp>
 
+#include "../geometry.hpp"
+#include "../harness.hpp"
+#include "../testtexture.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

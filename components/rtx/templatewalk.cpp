@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <osg/Drawable>
+#include <osg/Matrixf>
 #include <osg/Sequence>
 #include <osg/StateSet>
 #include <osg/Transform>

@@ -4,6 +4,8 @@
 
 #include <osg/Group>
 #include <osg/MatrixTransform>
+#include <osg/Node>
+#include <osg/Object>
 #include <osg/Sequence>
 #include <osg/ref_ptr>
 #include <osgParticle/ModularEmitter>

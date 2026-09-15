@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -16,6 +17,7 @@
 #include <osg/Vec2f>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
+#include <osg/Vec4ub>
 #include <osg/ref_ptr>
 
 #include <components/esm/exteriorcelllocation.hpp>

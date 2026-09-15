@@ -1,6 +1,7 @@
 #include "placementtable.hpp"
 
 #include <cassert>
+#include <cstddef>
 
 namespace Rtx
 {

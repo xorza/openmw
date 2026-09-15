@@ -17,6 +17,10 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/vfs/pathutil.hpp>

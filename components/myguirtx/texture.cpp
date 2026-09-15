@@ -8,12 +8,16 @@
 #include <stdexcept>
 #include <utility>
 
+#include <MyGUI_RenderFormat.h>
+#include <osg/GL>
 #include <osg/Image>
 #include <osg/Texture2D>
+#include <osg/Vec4f>
 
 #include <components/debug/debuglog.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/slot.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace MyGUIRtx

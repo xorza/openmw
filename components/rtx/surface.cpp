@@ -7,8 +7,10 @@
 #include <string_view>
 
 #include <osg/AlphaFunc>
+#include <osg/GL>
 #include <osg/Material>
 #include <osg/Matrixf>
+#include <osg/StateAttribute>
 #include <osg/StateSet>
 #include <osg/Texture>
 #include <osg/Uniform>

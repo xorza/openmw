@@ -3,7 +3,6 @@
 #include <cstdint>
 
 #include <osg/Vec3f>
-
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/camera.h>

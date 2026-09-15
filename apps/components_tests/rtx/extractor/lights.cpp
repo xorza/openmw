@@ -1,7 +1,21 @@
 #include "fixture.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <span>
+
+#include <osg/Matrix>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+#include <osg/ref_ptr>
+
+#include <components/esm3/loadligh.hpp>
+#include <components/rtx/lightbuilder.hpp>
+#include <components/sceneutil/lightcommon.hpp>
+#include <components/sceneutil/lightcontroller.hpp>
+#include <components/sceneutil/lightmanager.hpp>
+
+#include "../graphlight.hpp"
 
 namespace Rtx::Testing
 {

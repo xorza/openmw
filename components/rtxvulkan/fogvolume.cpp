@@ -9,10 +9,12 @@
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/shaders/fogvolume.h>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
 
 #include "barriers.hpp"
 #include "commands.hpp"
 #include "dispatch.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

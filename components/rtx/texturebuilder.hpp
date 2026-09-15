@@ -7,10 +7,12 @@
 #include <vector>
 
 #include <osg/Image>
+#include <osg/ref_ptr>
+
+#include <components/vfs/pathutil.hpp>
 
 #include "alphaimage.hpp"
 #include "mipchain.hpp"
-#include "prepared.hpp"
 #include "runs.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"

@@ -7,19 +7,25 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/GL>
 #include <osg/Image>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/held.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/mipchain.hpp>
 #include <components/rtx/prepared.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturebuilder.hpp>
+#include <components/rtx/texturedata.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 

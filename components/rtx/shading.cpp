@@ -3,6 +3,7 @@
 #include <string>
 
 #include <osg/BlendFunc>
+#include <osg/StateAttribute>
 #include <osg/StateSet>
 #include <osg/Uniform>
 

@@ -4,14 +4,14 @@
 #include <cstdint>
 #include <vector>
 
-#include <osg/BoundingBox>
-#include <osg/Vec2f>
+#include <osg/Array>
 #include <osg/Vec3f>
 
 // For `RigGeometry::InfluenceData`, which is what a rig is keyed on: a nested type cannot be
 // forward-declared. It brings `osg::Vec3Array`, which a morph is keyed on, with it.
 #include <components/sceneutil/riggeometry.hpp>
 
+#include "extractionstats.hpp"
 #include "meshreader.hpp"
 #include "mirroridentity.hpp"
 #include "runs.hpp"

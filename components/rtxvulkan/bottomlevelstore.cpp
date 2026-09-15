@@ -11,6 +11,7 @@
 #include <components/rtx/scenedesc.hpp>
 
 #include "buffer.hpp"
+#include "bufferusage.hpp"
 #include "commands.hpp"
 #include "device.hpp"
 #include "gputimer.hpp"

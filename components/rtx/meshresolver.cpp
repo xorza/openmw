@@ -6,7 +6,12 @@
 #include <span>
 #include <string>
 
+#include <osg/Array>
+#include <osg/BoundingBox>
+#include <osg/BoundingSphere>
 #include <osg/Geometry>
+#include <osg/Matrix>
+#include <osg/Matrixf>
 
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -16,6 +21,7 @@
 #include "error.hpp"
 #include "extractionstats.hpp"
 #include "instancerecord.hpp"
+#include "mesh.hpp"
 #include "scenedesc.hpp"
 
 namespace Rtx

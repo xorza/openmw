@@ -7,6 +7,7 @@
 
 #include <components/terrain/objectstorage.hpp>
 
+#include "extractionstats.hpp"
 #include "residency.hpp"
 
 namespace osg

@@ -9,10 +9,19 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+
 #include <components/rtx/camera.hpp>
-#include <components/rtx/instancerecord.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/sprite.hpp>
+#include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"

@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtx/error.hpp>
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>

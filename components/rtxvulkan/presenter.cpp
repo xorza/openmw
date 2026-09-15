@@ -3,6 +3,9 @@
 #include <span>
 #include <string>
 
+#include <SDL_error.h>
+#include <SDL_stdinc.h>
+#include <SDL_video.h>
 #include <SDL_vulkan.h>
 
 #include <components/rtx/error.hpp>

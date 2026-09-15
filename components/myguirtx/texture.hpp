@@ -2,15 +2,16 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string>
 #include <vector>
 
+#include <MyGUI_IRenderTarget.h>
 #include <MyGUI_ITexture.h>
-
+#include <MyGUI_RenderFormat.h>
 #include <osg/ref_ptr>
 
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/slot.hpp>
 
 namespace osg
 {

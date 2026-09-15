@@ -1,14 +1,13 @@
 #pragma once
 
 #include <array>
-#include <cstdint>
 
 #include <osg/Vec3f>
 
 #include <components/vfs/pathutil.hpp>
 
 #include "runs.hpp"
-#include "shaders/visibility.h"
+#include "shaders/sky.h"
 
 namespace Resource
 {

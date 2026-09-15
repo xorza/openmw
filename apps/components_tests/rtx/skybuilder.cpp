@@ -5,8 +5,14 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+
 #include <components/rtx/cloudshell.hpp>
+#include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
 #include <components/rtx/skybuilder.hpp>
 #include <components/rtx/skylight.hpp>
 

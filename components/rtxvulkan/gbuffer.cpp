@@ -7,6 +7,7 @@
 
 #include "barriers.hpp"
 #include "dispatch.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

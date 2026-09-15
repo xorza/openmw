@@ -11,11 +11,14 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
+#include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>

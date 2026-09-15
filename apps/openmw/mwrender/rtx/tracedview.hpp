@@ -1,13 +1,14 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 
 #include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/ref_ptr>
 
 #include <components/rtx/offscreentrace.hpp>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/walk.hpp>
 
 #include "../offscreenview.hpp"
 

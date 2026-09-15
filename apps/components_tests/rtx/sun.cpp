@@ -2,6 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Math>
+#include <osg/Vec3f>
+
 #include <components/rtx/skylight.hpp>
 #include <components/sky/timeofday.hpp>
 

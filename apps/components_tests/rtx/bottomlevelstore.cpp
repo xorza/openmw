@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
@@ -14,6 +15,7 @@
 #include <components/rtx/slots.hpp>
 #include <components/rtxvulkan/blockedbuffer.hpp>
 #include <components/rtxvulkan/bottomlevelstore.hpp>
+#include <components/rtxvulkan/bufferusage.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/graveyard.hpp>

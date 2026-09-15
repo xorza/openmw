@@ -12,12 +12,14 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <components/rtx/error.hpp>
 #include <components/rtxbench/frametimes.hpp>
 
 #include "../rtx/allocations.hpp"
+#include <components/rtx/renderer.hpp>
 
 namespace Rtx
 {

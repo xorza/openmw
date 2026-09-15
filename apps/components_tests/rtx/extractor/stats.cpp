@@ -3,6 +3,14 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <osg/CullFace>
+#include <osg/GL>
+#include <osg/StateAttribute>
+#include <osg/ref_ptr>
+
+#include <components/rtx/runs.hpp>
+#include <components/rtx/texturedata.hpp>
+
 namespace Rtx::Testing
 {
     namespace

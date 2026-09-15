@@ -4,8 +4,6 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/shaders/exposure.h>
-
 #include "buffer.hpp"
 #include "computepipeline.hpp"
 

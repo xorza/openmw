@@ -2,13 +2,16 @@
 
 #include <string>
 
+// First, because NGX's Vulkan header names Vulkan's handle types without including them.
+#include <vulkan/vulkan_core.h>
+
 #include <nvsdk_ngx_defs.h>
 #include <nvsdk_ngx_defs_dlssd.h>
+#include <nvsdk_ngx_vk.h>
 
 #include <components/rtx/error.hpp>
 #include <components/rtx/reconstruction.hpp>
-
-#include "dlss.hpp"
+#include <components/rtx/upscale.hpp>
 
 namespace Rtx
 {

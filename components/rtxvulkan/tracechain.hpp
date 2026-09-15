@@ -16,6 +16,7 @@
 #include "fogvolume.hpp"
 #include "frameslots.hpp"
 #include "gbuffer.hpp"
+#include "handles.hpp"
 #include "image.hpp"
 #include "spritebin.hpp"
 

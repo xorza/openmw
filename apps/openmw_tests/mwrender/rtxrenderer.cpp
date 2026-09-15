@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <osg/Callback>
 #include <osg/Camera>
 #include <osg/Group>
-#include <osg/NodeCallback>
-
+#include <osg/Node>
+#include <osg/NodeVisitor>
+#include <osg/ref_ptr>
 #include <osgUtil/UpdateVisitor>
 
 #include "apps/openmw/mwrender/rtx/rtxrenderer.hpp"

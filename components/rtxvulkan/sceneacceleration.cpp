@@ -7,13 +7,17 @@
 #include <utility>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/slots.hpp>
 
+#include "bufferusage.hpp"
 #include "commands.hpp"
 #include "device.hpp"
 #include "gputimer.hpp"
 #include "graveyard.hpp"
+#include "memory.hpp"
 #include "timeline.hpp"
 
 namespace Rtx

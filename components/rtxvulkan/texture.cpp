@@ -1,14 +1,13 @@
 #include "texture.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cassert>
-#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shadingmap.hpp>
 

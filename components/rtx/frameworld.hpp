@@ -2,15 +2,14 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <optional>
 
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
-#include "fogbuilder.hpp"
 #include "moonbuilder.hpp"
+#include "shaders/sky.h"
 #include "shaders/visibility.h"
 #include "skybuilder.hpp"
 #include "skylight.hpp"

@@ -5,6 +5,10 @@
 #include <cstring>
 #include <span>
 
+#include <MyGUI_Diagnostic.h>
+#include <MyGUI_ITexture.h>
+#include <MyGUI_IVertexBuffer.h>
+#include <MyGUI_RenderFormat.h>
 #include <MyGUI_VertexData.h>
 
 #include <components/debug/debuglog.hpp>

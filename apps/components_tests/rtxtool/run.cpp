@@ -14,6 +14,7 @@
 #include <apps/rtxtool/run.hpp>
 
 #include "../rtx/harness.hpp"
+#include <components/rtxbench/benchrun.hpp>
 
 namespace RtxTool
 {

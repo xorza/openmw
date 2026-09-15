@@ -5,7 +5,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/shaders/atrous.h>
+#include <components/rtx/shaders/camera.h>
 
 #include "computepipeline.hpp"
 #include "image.hpp"

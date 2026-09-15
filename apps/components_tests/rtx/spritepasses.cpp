@@ -11,12 +11,17 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Matrixf>
+#include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/camera.hpp>
+#include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/spritebin.h>
 #include <components/rtx/shaders/spriteshade.h>
+#include <components/rtx/shaders/visibility.h>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/spritepasses.hpp>

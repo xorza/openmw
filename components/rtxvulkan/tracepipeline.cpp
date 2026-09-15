@@ -8,6 +8,7 @@
 #include "computepipeline.hpp"
 #include "device.hpp"
 #include "handles.hpp"
+#include "memory.hpp"
 #include "result.hpp"
 
 namespace Rtx

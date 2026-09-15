@@ -5,9 +5,11 @@
 
 #include <osg/Matrixf>
 
+#include "fogbuilder.hpp"
 #include "sceneextractor.hpp"
 #include "shaders/look.h"
 #include "shaders/scene.h"
+#include "shaders/sky.h"
 
 namespace Rtx
 {

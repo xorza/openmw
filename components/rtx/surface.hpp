@@ -5,6 +5,7 @@
 #include <optional>
 #include <string_view>
 
+#include <osg/CopyOp>
 #include <osg/Image>
 #include <osg/Vec2f>
 #include <osg/ref_ptr>

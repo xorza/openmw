@@ -4,10 +4,13 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <exception>
 #include <fstream>
+#include <ios>
 #include <random>
 #include <span>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>

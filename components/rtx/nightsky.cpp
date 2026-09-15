@@ -5,10 +5,15 @@
 #include <cstddef>
 #include <vector>
 
+#include <osg/Array>
 #include <osg/Geometry>
+#include <osg/Math>
 #include <osg/NodeVisitor>
+#include <osg/StateAttribute>
+#include <osg/StateSet>
 #include <osg/Texture2D>
 #include <osg/TriangleIndexFunctor>
+#include <osg/Vec2f>
 
 #include <components/debug/debuglog.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -16,7 +21,6 @@
 
 #include "scenedesc.hpp"
 #include "shaders/look.h"
-#include "shaders/scene.h"
 #include "texels.hpp"
 
 namespace Rtx

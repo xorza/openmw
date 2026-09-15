@@ -1,4 +1,3 @@
-#include <cstddef>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -7,12 +6,15 @@
 #include <osg/Group>
 #include <osg/LOD>
 #include <osg/Material>
+#include <osg/Matrix>
 #include <osg/MatrixTransform>
 #include <osg/Matrixf>
+#include <osg/Node>
 #include <osg/Sequence>
 #include <osg/StateSet>
 #include <osg/Switch>
 #include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/rtx/prepared.hpp>
 #include <components/rtx/runs.hpp>

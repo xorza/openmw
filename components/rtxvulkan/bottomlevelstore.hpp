@@ -12,6 +12,7 @@
 
 #include "accelerationstructure.hpp"
 #include "blockedbuffer.hpp"
+#include "bufferusage.hpp"
 #include "handles.hpp"
 #include "structurebuild.hpp"
 #include "structurestorage.hpp"

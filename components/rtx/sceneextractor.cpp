@@ -1,7 +1,6 @@
 #include "sceneextractor.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -10,9 +9,10 @@
 #include <span>
 
 #include <osg/FrameStamp>
-#include <osg/Geometry>
+#include <osg/Matrix>
 #include <osg/NodeVisitor>
 #include <osg/Sequence>
+#include <osg/ref_ptr>
 #include <osgParticle/Particle>
 #include <osgParticle/ParticleProcessor>
 #include <osgParticle/ParticleSystem>
@@ -23,11 +23,13 @@
 #include <components/sceneutil/skeleton.hpp>
 // `terraindrawable.hpp` holds `osg::ref_ptr`s to composite-map types it only forward-declares, so it
 // does not compile on its own. This is what completes them.
-#include <components/terrain/compositemaprenderer.hpp>
-#include <components/terrain/terraindrawable.hpp>
 
 #include "lightbuilder.hpp"
+#include "material.hpp"
+#include "meshreader.hpp"
+#include "mirroridentity.hpp"
 #include "nodekind.hpp"
+#include "runs.hpp"
 #include "worlddescent.hpp"
 
 namespace Rtx

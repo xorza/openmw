@@ -15,7 +15,9 @@
 #include "frameimage.hpp"
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
+#include "shaders/visibility.h"
 #include "skylight.hpp"
+#include "slot.hpp"
 #include "walk.hpp"
 
 namespace osg

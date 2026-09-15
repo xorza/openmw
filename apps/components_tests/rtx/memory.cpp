@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/memory.hpp>

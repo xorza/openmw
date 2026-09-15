@@ -4,6 +4,7 @@
 #include <bit>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <vector>
 
 #include <osg/Vec3f>

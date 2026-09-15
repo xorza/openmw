@@ -4,6 +4,10 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Vec2f>
+
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/wave.h>
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
 

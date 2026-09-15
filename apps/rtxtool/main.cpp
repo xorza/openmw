@@ -4,32 +4,29 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <format>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <set>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
-#include <boost/program_options.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
+#include <osg/Vec3f>
 
 #include <components/debug/debugging.hpp>
-#include <components/debug/debuglog.hpp>
-#include <components/esm/refid.hpp>
-#include <components/esm3/loadcell.hpp>
-#include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
-#include <components/files/conversion.hpp>
-#include <components/misc/constants.hpp>
 #include <components/platform/platform.hpp>
-#include <components/resource/scenemanager.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -37,9 +34,9 @@
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
-
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
+#include <components/settings/windowmode.hpp>
 
 #include "compare.hpp"
 #include "options.hpp"

@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
 

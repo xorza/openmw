@@ -12,7 +12,9 @@
 #include <gtest/gtest.h>
 
 #include <osg/Vec2f>
+#include <vulkan/vulkan_core.h>
 
+#include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/wave.h>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>

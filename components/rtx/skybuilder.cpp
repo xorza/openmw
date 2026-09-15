@@ -8,6 +8,7 @@
 
 #include <osg/Image>
 #include <osg/Vec2f>
+#include <osg/ref_ptr>
 
 #include <components/fallback/fallback.hpp>
 #include <components/misc/resourcehelpers.hpp>
@@ -19,6 +20,8 @@
 #include "scenedesc.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
+#include "shaders/scene.h"
+#include "shaders/sky.h"
 #include "skylight.hpp"
 #include "texels.hpp"
 #include "texturebuilder.hpp"

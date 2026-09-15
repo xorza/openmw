@@ -3,7 +3,14 @@
 #include <cstddef>
 #include <span>
 
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+
+#include "material.hpp"
+#include "mesh.hpp"
+#include "runs.hpp"
 #include "shaders/scene.h"
+#include "shaders/skinning.h"
 
 namespace Rtx
 {

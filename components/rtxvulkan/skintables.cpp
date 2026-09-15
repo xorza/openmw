@@ -3,6 +3,13 @@
 #include <cassert>
 #include <cstddef>
 
+#include <osg/Vec3f>
+
+#include <components/rtx/deformertable.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/skinning.h>
+
 #include "bufferusage.hpp"
 #include "commands.hpp"
 #include "device.hpp"

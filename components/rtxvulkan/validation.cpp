@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <utility>
 
+#include <vulkan/vk_platform.h>
+
 #include <components/debug/debuglog.hpp>
 
 namespace Rtx

@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include <components/rtx/framespend.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>

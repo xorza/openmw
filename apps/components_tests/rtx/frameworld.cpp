@@ -7,15 +7,24 @@
 #include <osg/Geode>
 #include <osg/Geometry>
 #include <osg/Group>
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/rtx/cloudshell.hpp>
+#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameworld.hpp>
+#include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/nightsky.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/skybuilder.hpp>
+#include <components/rtx/skylight.hpp>
 
 #include "extractor/fixture.hpp"
 

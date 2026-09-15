@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtx/shaders/wave.h>
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>

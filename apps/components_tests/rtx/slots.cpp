@@ -1,9 +1,9 @@
 #include <array>
-#include <cstddef>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <components/rtx/runs.hpp>
 #include <components/rtx/slots.hpp>
 
 namespace Rtx

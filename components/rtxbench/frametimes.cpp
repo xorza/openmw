@@ -12,6 +12,7 @@
 #include <utility>
 
 #include <fcntl.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <components/files/conversion.hpp>

@@ -1,13 +1,15 @@
 #include "exposurepass.hpp"
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <span>
+
+#include <components/rtx/shaders/exposure.h>
 
 #include "barriers.hpp"
 #include "dispatch.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

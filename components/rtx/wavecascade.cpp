@@ -1,10 +1,10 @@
 #include "wavecascade.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <cstdint>
 
+#include "shaders/scene.h"
 #include "wavespectrum.hpp"
 
 namespace Rtx

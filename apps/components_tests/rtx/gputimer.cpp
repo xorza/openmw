@@ -3,15 +3,22 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <ratio>
 #include <span>
 #include <string>
 #include <string_view>
 
 #include <gtest/gtest.h>
 
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+
 #include <components/rtx/camera.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
 
 #include "geometry.hpp"
 #include "harness.hpp"

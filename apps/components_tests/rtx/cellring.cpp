@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -11,16 +12,19 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/GL>
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/Image>
 #include <osg/Matrix>
 #include <osg/MatrixTransform>
 #include <osg/Matrixf>
+#include <osg/Node>
 #include <osg/Quat>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 #include <osg/Vec4i>
+#include <osg/ref_ptr>
 
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
@@ -34,6 +38,7 @@
 #include <components/rtx/residency.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/terrain/objectstorage.hpp>
 #include <components/vfs/pathutil.hpp>

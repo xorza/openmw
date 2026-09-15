@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,20 +12,6 @@
 
 #include <osg/Vec3d>
 #include <osg/Vec3f>
-
-#include <components/debug/debuglog.hpp>
-#include <components/esm/attr.hpp>
-#include <components/esm/position.hpp>
-#include <components/esm/refid.hpp>
-#include <components/esm3/loadregn.hpp>
-#include <components/esm3/loadskil.hpp>
-#include <components/rtx/renderer.hpp>
-#include <components/rtx/skylight.hpp>
-#include <components/rtxbench/benchrecord.hpp>
-#include <components/rtxbench/framehashes.hpp>
-#include <components/rtxbench/frametimes.hpp>
-#include <components/rtxbench/gpuclock.hpp>
-#include <components/settings/values.hpp>
 
 #include <apps/openmw/mwbase/environment.hpp>
 #include <apps/openmw/mwbase/statemanager.hpp>
@@ -43,8 +30,21 @@
 #include <apps/openmw/mwworld/esmstore.hpp>
 #include <apps/openmw/mwworld/globals.hpp>
 #include <apps/openmw/mwworld/ptr.hpp>
-#include <apps/openmw/mwworld/refdata.hpp>
 #include <apps/openmw/mwworld/timestamp.hpp>
+#include <components/debug/debuglog.hpp>
+#include <components/esm/attr.hpp>
+#include <components/esm/position.hpp>
+#include <components/esm/refid.hpp>
+#include <components/esm3/loadregn.hpp>
+#include <components/esm3/loadskil.hpp>
+#include <components/rtx/framespend.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtx/skylight.hpp>
+#include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/benchspec.hpp>
+#include <components/rtxbench/framehashes.hpp>
+#include <components/rtxbench/frametimes.hpp>
+#include <components/rtxbench/gpuclock.hpp>
 
 namespace RtxTool
 {

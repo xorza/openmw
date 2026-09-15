@@ -6,10 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
-
-#include <apps/openmw/mwrender/rtx/framereport.hpp>
 
 namespace osg
 {

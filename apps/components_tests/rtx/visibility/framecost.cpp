@@ -2,10 +2,31 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
-#include <components/rtx/shadingmap.hpp>
+#include <gtest/gtest.h>
 
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+
+#include <components/rtx/camera.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/shadingmap.hpp>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/texturedata.hpp>
+#include <components/rtxvulkan/commands.hpp>
+#include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/graveyard.hpp>
+#include <components/rtxvulkan/texture.hpp>
+
+#include "../allocations.hpp"
+#include "../geometry.hpp"
+#include "../harness.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

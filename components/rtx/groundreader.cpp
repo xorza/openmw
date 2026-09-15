@@ -1,6 +1,7 @@
 #include "groundreader.hpp"
 
 #include <cassert>
+#include <utility>
 
 #include <osg/Array>
 #include <osg/GL>
@@ -10,6 +11,7 @@
 #include <osg/Vec4ub>
 #include <osg/ref_ptr>
 
+#include <components/esm/exteriorcelllocation.hpp>
 #include <components/esm/util.hpp>
 
 #include "colour.hpp"

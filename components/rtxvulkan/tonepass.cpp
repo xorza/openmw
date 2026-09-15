@@ -4,11 +4,14 @@
 #include <cassert>
 #include <span>
 
+#include <osg/Vec2f>
+
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtx/shaders/look.h>
 
 #include "dispatch.hpp"
 #include "image.hpp"
+#include "pipeline.hpp"
 
 namespace Rtx
 {

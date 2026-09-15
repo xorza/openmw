@@ -5,8 +5,7 @@
 #include <components/sky/moonstate.hpp>
 
 #include "runs.hpp"
-#include "shaders/look.h"
-#include "shaders/visibility.h"
+#include "shaders/sky.h"
 
 namespace Rtx
 {

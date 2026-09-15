@@ -1,7 +1,5 @@
 #include "cellsupply.hpp"
 
-#include <utility>
-
 #include "cellreader.hpp"
 #include "prepared.hpp"
 

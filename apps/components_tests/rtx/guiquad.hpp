@@ -7,6 +7,7 @@
 #include <span>
 
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/slot.hpp>
 
 namespace Rtx::Testing
 {

@@ -6,9 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
-#include <random>
 #include <source_location>
 #include <span>
 #include <string>
@@ -16,37 +14,32 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Math>
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/frameworld.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/shaders/accumulate.h>
-#include <components/rtx/spritelight.hpp>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/surface.hpp>
+#include <components/rtx/texturedata.hpp>
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
-#include <components/rtxvulkan/buffer.hpp>
-#include <components/rtxvulkan/commands.hpp>
-#include <components/rtxvulkan/compositepass.hpp>
-#include <components/rtxvulkan/fogvolume.hpp>
-#include <components/rtxvulkan/gbuffer.hpp>
-#include <components/rtxvulkan/graveyard.hpp>
-#include <components/rtxvulkan/image.hpp>
-#include <components/rtxvulkan/result.hpp>
 #include <components/rtxvulkan/sceneacceleration.hpp>
 #include <components/rtxvulkan/scenebuffers.hpp>
 #include <components/rtxvulkan/skinpass.hpp>
-#include <components/rtxvulkan/skintables.hpp>
-#include <components/rtxvulkan/texture.hpp>
-#include <components/rtxvulkan/visibilitypass.hpp>
-#include <components/rtxvulkan/wavepass.hpp>
 
-#include "../allocations.hpp"
 #include "../geometry.hpp"
 #include "../harness.hpp"
 #include "../testtexture.hpp"
-#include "../wavemoments.hpp"
 
 namespace Rtx::Testing
 {

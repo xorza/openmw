@@ -6,6 +6,7 @@
 #include <optional>
 #include <vector>
 
+#include <osg/Array>
 #include <osg/Geometry>
 #include <osg/Matrixf>
 #include <osg/NodeVisitor>
@@ -17,7 +18,6 @@
 #include <components/vfs/manager.hpp>
 
 #include "shaders/look.h"
-#include "shaders/scene.h"
 
 namespace Rtx
 {

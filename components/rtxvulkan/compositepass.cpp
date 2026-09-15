@@ -2,7 +2,8 @@
 
 #include <array>
 #include <cassert>
-#include <cstdint>
+
+#include <components/rtx/frameimage.hpp>
 
 #include "dispatch.hpp"
 #include "gbuffer.hpp"

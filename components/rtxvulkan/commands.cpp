@@ -11,6 +11,7 @@
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "image.hpp"
+#include "imageuse.hpp"
 #include "memory.hpp"
 #include "result.hpp"
 #include "timeline.hpp"

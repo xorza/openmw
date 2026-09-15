@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <tuple>
 
+#include <osg/Vec3f>
+
 namespace Rtx
 {
     Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material)

@@ -5,15 +5,33 @@
 #include <chrono>
 #include <cstddef>
 #include <cstring>
+#include <ratio>
 #include <string>
 #include <utility>
 
+#include <osg/Vec2f>
+#include <vulkan/vulkan_core.h>
+
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/memoryreport.hpp>
+#include <components/rtx/reconstruction.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/gbuffer.h>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/tone.h>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/texturedata.hpp>
+#include <components/rtx/upscale.hpp>
+#include <components/rtx/wavespectrum.hpp>
+#include <components/sdlutil/vsyncmode.hpp>
 
 #include "gbuffer.hpp"
+#include "graphicspipeline.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
 #include "memory.hpp"
@@ -28,6 +46,7 @@
 #include "texture.hpp"
 #include "timeline.hpp"
 #include "tracerecording.hpp"
+#include "validation.hpp"
 #include "visibilitypass.hpp"
 
 #ifdef OPENMW_RTX_DLSS

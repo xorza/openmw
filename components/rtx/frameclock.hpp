@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <optional>
+#include <ratio>
 
 namespace Rtx
 {

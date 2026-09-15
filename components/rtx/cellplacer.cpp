@@ -4,13 +4,17 @@
 #include <cstddef>
 #include <span>
 
-#include "surface.hpp"
+#include <osg/Matrixf>
+#include <osg/Vec3f>
 
 #include "fogbuilder.hpp"
 #include "held.hpp"
 #include "mesh.hpp"
 #include "prepared.hpp"
+#include "runs.hpp"
 #include "scenedesc.hpp"
+#include "shapefold.hpp"
+#include "surface.hpp"
 
 namespace Rtx
 {

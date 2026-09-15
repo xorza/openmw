@@ -1,17 +1,10 @@
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <span>
-#include <string>
-#include <string_view>
 #include <vector>
 
 #include <osg/BoundingBox>
-#include <osg/Matrixf>
-#include <osg/Vec3f>
-
-#include <components/vfs/pathutil.hpp>
 
 #include "deformertable.hpp"
 #include "lightbuilder.hpp"

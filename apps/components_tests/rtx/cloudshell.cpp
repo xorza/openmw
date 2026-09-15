@@ -4,16 +4,18 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Array>
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/Math>
+#include <osg/Matrix>
 #include <osg/MatrixTransform>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/rtx/cloudshell.hpp>
 #include <components/rtx/shaders/look.h>
-#include <components/rtx/shaders/scene.h>
 
 namespace Rtx
 {

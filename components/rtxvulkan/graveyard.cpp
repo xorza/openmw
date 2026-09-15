@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <utility>
 
 #include "commands.hpp"

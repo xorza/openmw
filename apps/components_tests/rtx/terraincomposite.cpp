@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Vec4f>
+
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/terraincomposite.hpp>
 #include <components/rtx/texturedata.hpp>

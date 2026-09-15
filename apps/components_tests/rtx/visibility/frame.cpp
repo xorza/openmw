@@ -7,6 +7,19 @@
 #include <limits>
 #include <vector>
 
+#include <osg/Math>
+#include <osg/Matrixf>
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
+
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/instancerecord.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
+
 namespace Rtx::Testing
 {
     namespace

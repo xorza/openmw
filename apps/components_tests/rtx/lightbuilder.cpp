@@ -8,6 +8,9 @@
 #include <gtest/gtest.h>
 
 #include <osg/PositionAttitudeTransform>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+#include <osg/ref_ptr>
 
 #include <components/esm3/loadligh.hpp>
 #include <components/rtx/lightbuilder.hpp>

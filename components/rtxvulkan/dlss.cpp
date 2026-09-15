@@ -4,10 +4,11 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <system_error>
 
+#include <nvsdk_ngx_defs.h>
 #include <nvsdk_ngx_defs_dlssd.h>
 #include <nvsdk_ngx_helpers_dlssd.h>
-#include <nvsdk_ngx_helpers_vk.h>
 #include <nvsdk_ngx_vk.h>
 
 #include <components/rtx/error.hpp>

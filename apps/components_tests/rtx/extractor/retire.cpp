@@ -7,8 +7,20 @@
 #include <span>
 #include <vector>
 
+#include <osg/Array>
+#include <osg/Matrix>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+#include <osg/observer_ptr>
+#include <osg/ref_ptr>
+
+#include <components/rtx/instancerecord.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/residency.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shapefold.hpp>
 
 namespace Rtx::Testing
 {

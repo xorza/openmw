@@ -6,8 +6,26 @@
 #include <span>
 #include <vector>
 
-#include <components/rtx/shaders/look.h>
+#include <gtest/gtest.h>
 
+#include <osg/Matrixf>
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+
+#include <components/rtx/camera.hpp>
+#include <components/rtx/frameworld.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/look.h>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/texturedata.hpp>
+#include <components/vfs/pathutil.hpp>
+
+#include "../geometry.hpp"
+#include "../testtexture.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

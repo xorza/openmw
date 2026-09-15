@@ -5,6 +5,7 @@
 
 #include "framespend.hpp"
 #include "renderer.hpp"
+#include "slot.hpp"
 #include "texturebuilder.hpp"
 
 namespace Resource

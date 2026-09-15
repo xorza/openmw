@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include <osg/Math>
 #include <osg/Quat>
 
 #include <components/fallback/fallback.hpp>
@@ -16,6 +17,7 @@
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "shaders/scene.h"
+#include "shaders/sky.h"
 #include "skylight.hpp"
 
 namespace Rtx

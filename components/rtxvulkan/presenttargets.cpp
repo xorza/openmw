@@ -2,6 +2,7 @@
 
 #include "commands.hpp"
 #include "device.hpp"
+#include "imageuse.hpp"
 
 namespace Rtx
 {

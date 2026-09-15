@@ -12,8 +12,7 @@
 #include "moonbuilder.hpp"
 #include "nightsky.hpp"
 #include "runs.hpp"
-#include "shaders/look.h"
-#include "shaders/visibility.h"
+#include "shaders/sky.h"
 #include "skylight.hpp"
 
 namespace Rtx

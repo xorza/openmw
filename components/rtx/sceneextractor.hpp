@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -16,9 +15,12 @@
 #include "extractionstats.hpp"
 #include "materialresolver.hpp"
 #include "mesh.hpp"
+#include "meshreader.hpp"
 #include "meshresolver.hpp"
+#include "mirroridentity.hpp"
 #include "nodekind.hpp"
 #include "residency.hpp"
+#include "runs.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
 #include "walk.hpp"

@@ -14,10 +14,12 @@
 #include <utility>
 
 #include <MyGUI_ITexture.h>
-#include <MyGUI_RenderManager.h>
-#include <SDL.h>
+#include <SDL_error.h>
+#include <SDL_stdinc.h>
+#include <SDL_video.h>
 #include <osg/Camera>
 #include <osg/FrameStamp>
+#include <osg/GL>
 #include <osg/Group>
 #include <osg/Image>
 #include <osg/Matrixf>
@@ -27,7 +29,6 @@
 #include <osg/Timer>
 
 #include <components/debug/debuglog.hpp>
-#include <components/esm3/loadcell.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/resource/resourcesystem.hpp>
@@ -44,15 +45,21 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/visibility.h>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
+#include <components/sdlutil/vsyncmode.hpp>
+#include <components/settings/categories.hpp>
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
+#include <components/vfs/pathutil.hpp>
 
+#include "../ground.hpp"
 #include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
+#include "../rendermode.hpp"
 #include "../sceneframe.hpp"
 #include "../vismask.hpp"
 #include "rtxrun.hpp"

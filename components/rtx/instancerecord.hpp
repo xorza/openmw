@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstdint>
-#include <span>
 #include <vector>
 
 #include <osg/Matrixf>
 
+#include "material.hpp"
+#include "runs.hpp"
 #include "scenedesc.hpp"
+#include "shaders/skinning.h"
 
 namespace Rtx
 {

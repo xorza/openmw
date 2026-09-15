@@ -5,13 +5,18 @@
 
 #include <osg/AlphaFunc>
 #include <osg/BlendFunc>
+#include <osg/CopyOp>
+#include <osg/GL>
 #include <osg/Image>
 #include <osg/Matrixf>
+#include <osg/StateAttribute>
 #include <osg/StateSet>
 #include <osg/Texture2D>
 #include <osg/Uniform>
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+#include <osg/ref_ptr>
 
-#include <components/rtx/material.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/texmat.hpp>

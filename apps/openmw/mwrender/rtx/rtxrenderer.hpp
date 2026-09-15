@@ -11,15 +11,23 @@
 #include <vector>
 
 #include <osg/Node>
+#include <osg/Timer>
 #include <osg/ref_ptr>
 
+#include <components/esm3/refnum.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/shaders/visibility.h>
 #include <components/rtxbench/frametimes.hpp>
+#include <components/sdlutil/vsyncmode.hpp>
+#include <components/settings/categories.hpp>
+#include <components/vfs/pathutil.hpp>
 
+#include "../ground.hpp"
 #include "../renderer.hpp"
+#include "../rendermode.hpp"
 #include "framereport.hpp"
 #include "rtxrun.hpp"
 #include "worldmirror.hpp"

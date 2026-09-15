@@ -10,9 +10,19 @@
 #include <string>
 #include <vector>
 
+#include <components/rtx/frameimage.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/memoryreport.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
 #include <components/rtx/slots.hpp>
+#include <components/rtx/texturedata.hpp>
+#include <components/rtx/upscale.hpp>
+#include <components/rtx/wavespectrum.hpp>
+#include <components/sdlutil/vsyncmode.hpp>
 
 #include "bloompass.hpp"
 #include "buffer.hpp"
@@ -23,7 +33,6 @@
 #include "fogvolume.hpp"
 #include "framering.hpp"
 #include "frameslots.hpp"
-#include "gputimer.hpp"
 #include "graveyard.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"

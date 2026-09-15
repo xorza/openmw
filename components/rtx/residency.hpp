@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-
 #include <osg/Drawable>
 #include <osg/Image>
 #include <osg/Node>

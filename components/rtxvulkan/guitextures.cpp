@@ -6,6 +6,8 @@
 #include <cstring>
 #include <utility>
 
+#include <components/rtx/runs.hpp>
+
 #include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"

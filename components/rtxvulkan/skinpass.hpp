@@ -1,14 +1,15 @@
 #pragma once
 
-#include <cstdint>
 #include <filesystem>
 #include <span>
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/slots.hpp>
+#include <components/rtx/runs.hpp>
 
+#include "blockedbuffer.hpp"
 #include "computepipeline.hpp"
+#include "frameslots.hpp"
 #include "skintables.hpp"
 #include "slottable.hpp"
 

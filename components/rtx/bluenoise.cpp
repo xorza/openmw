@@ -9,6 +9,8 @@
 #include <numeric>
 #include <random>
 
+#include "shaders/scene.h"
+
 namespace Rtx
 {
     namespace

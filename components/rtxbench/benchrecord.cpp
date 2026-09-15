@@ -5,6 +5,7 @@
 #include <format>
 #include <fstream>
 
+#include <components/rtx/framespend.hpp>
 #include <components/rtx/memoryreport.hpp>
 
 namespace Rtx

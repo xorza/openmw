@@ -5,7 +5,6 @@
 #include <span>
 #include <vector>
 
-#include <osg/Image>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 
@@ -13,6 +12,7 @@
 
 #include "cellplacer.hpp"
 #include "cellsupply.hpp"
+#include "extractionstats.hpp"
 #include "held.hpp"
 #include "prepared.hpp"
 #include "residency.hpp"

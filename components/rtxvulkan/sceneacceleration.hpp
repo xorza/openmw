@@ -9,6 +9,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 
 #include "accelerationstructure.hpp"

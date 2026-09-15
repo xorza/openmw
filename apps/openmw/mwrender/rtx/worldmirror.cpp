@@ -5,35 +5,41 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 
 #include <osg/Geometry>
 #include <osg/Image>
+#include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/PositionAttitudeTransform>
+#include <osg/Vec3f>
 #include <osg/ref_ptr>
 
 #include <components/debug/debuglog.hpp>
-#include <components/esm/refid.hpp>
-#include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/colour.hpp>
+#include <components/rtx/extractionstats.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameworld.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/residency.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/skylight.hpp>
+#include <components/rtx/slot.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/sceneutil/waterutil.hpp>
 #include <components/settings/values.hpp>
+#include <components/sky/moonstate.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/terrain/world.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../../mwworld/cellstore.hpp"
-
 #include "../sceneframe.hpp"
 #include "../vismask.hpp"
 

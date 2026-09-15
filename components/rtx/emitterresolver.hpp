@@ -1,18 +1,20 @@
 #pragma once
 
+#include <cstddef>
 #include <span>
 #include <vector>
 
+#include <osg/Drawable>
 #include <osg/Matrixf>
 
 #include "mirroridentity.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
+#include "sprite.hpp"
 #include "walk.hpp"
 
 namespace osg
 {
-    class Drawable;
     class Image;
 }
 

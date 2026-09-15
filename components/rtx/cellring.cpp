@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "extractionstats.hpp"
 #include "fogbuilder.hpp"
 
 namespace Rtx

@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include <vulkan/vulkan_core.h>
 

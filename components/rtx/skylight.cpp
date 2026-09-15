@@ -4,13 +4,16 @@
 #include <array>
 #include <cmath>
 
+#include <osg/Math>
+#include <osg/Vec4f>
+
 #include <components/sceneutil/util.hpp>
 
 #include "colour.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "shaders/scene.h"
-#include "shaders/visibility.h"
+#include "shaders/sky.h"
 
 namespace Rtx
 {

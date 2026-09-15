@@ -8,7 +8,6 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include "barriers.hpp"
 #include "computepipeline.hpp"
 #include "pipeline.hpp"
 

@@ -5,8 +5,6 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include "bufferusage.hpp"
-
 namespace Rtx
 {
     struct MeshRange;

@@ -7,12 +7,26 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/BoundingBox>
+#include <osg/Matrixf>
+#include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/meshtable.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/skinning.h>
+#include <components/rtx/shapefold.hpp>
+#include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
+#include <components/rtx/surface.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
 

@@ -5,8 +5,9 @@
 #include <cmath>
 #include <cstddef>
 
+#include <osg/Vec3f>
+
 #include "colour.hpp"
-#include "error.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "texturedata.hpp"

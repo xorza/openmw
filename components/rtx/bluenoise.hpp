@@ -3,8 +3,6 @@
 #include <span>
 #include <vector>
 
-#include "shaders/scene.h"
-
 namespace Rtx
 {
     /// A square tile of blue noise: `RANDOM_STREAMS` independent masks over the same pixels. Blue

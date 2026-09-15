@@ -5,12 +5,14 @@
 #include <vector>
 
 #include <osg/Group>
+#include <osg/Matrix>
 #include <osg/MatrixTransform>
 #include <osg/NodeVisitor>
 
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/terrain/objectstorage.hpp>
 
+#include "extractionstats.hpp"
 #include "fogbuilder.hpp"
 #include "lightbuilder.hpp"
 

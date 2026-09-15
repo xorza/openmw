@@ -3,9 +3,10 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/fogbuilder.hpp>
-#include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/skybuilder.hpp>
 #include <components/settings/values.hpp>
 

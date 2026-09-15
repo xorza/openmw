@@ -1,8 +1,21 @@
-#include "../allocations.hpp"
-
 #include "fixture.hpp"
+
 #include <cstddef>
 #include <vector>
+
+#include <osg/BoundingBox>
+#include <osg/Callback>
+#include <osg/Matrix>
+#include <osg/NodeVisitor>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+#include <osg/ref_ptr>
+
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/sceneutil/morphgeometry.hpp>
+
+#include "../allocations.hpp"
 
 namespace Rtx::Testing
 {

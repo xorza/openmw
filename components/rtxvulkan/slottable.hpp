@@ -14,6 +14,7 @@
 #include <components/rtx/slots.hpp>
 
 #include "blockedbuffer.hpp"
+#include "buffer.hpp"
 #include "device.hpp"
 #include "frameslots.hpp"
 #include "graveyard.hpp"

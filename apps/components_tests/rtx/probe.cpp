@@ -11,6 +11,7 @@
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/probe.h>
 #include <components/rtxvulkan/barriers.hpp>
@@ -19,6 +20,7 @@
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/dispatch.hpp>
+#include <components/rtxvulkan/imageuse.hpp>
 
 #include "harness.hpp"
 

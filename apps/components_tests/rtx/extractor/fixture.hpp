@@ -1,61 +1,41 @@
 #pragma once
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <initializer_list>
-#include <optional>
+#include <source_location>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include <source_location>
-
 #include <gtest/gtest.h>
 
-#include <osg/BlendFunc>
-#include <osg/CullFace>
+#include <osg/Array>
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/Image>
-#include <osg/Material>
 #include <osg/MatrixTransform>
 #include <osg/Matrixf>
 #include <osg/Node>
-#include <osg/Sequence>
-#include <osg/Switch>
+#include <osg/PrimitiveSet>
+#include <osg/StateAttribute>
 #include <osg/Texture2D>
-#include <osg/observer_ptr>
-#include <osgParticle/ConstantRateCounter>
-#include <osgParticle/ModularEmitter>
-#include <osgParticle/Particle>
-#include <osgParticle/ParticleSystem>
-#include <osgParticle/ParticleSystemUpdater>
-#include <osgParticle/RadialShooter>
+#include <osg/Vec3f>
+#include <osg/ref_ptr>
 #include <osgUtil/UpdateVisitor>
 
-#include <components/esm3/loadligh.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/rtx/extractionstats.hpp>
-#include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
-#include <components/rtx/shaders/scene.h>
-#include <components/rtx/spritelight.hpp>
 #include <components/rtx/surface.hpp>
-#include <components/sceneutil/lightcommon.hpp>
-#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/material.hpp>
-#include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/texturetype.hpp>
-
-#include "../graphlight.hpp"
 
 namespace Rtx::Testing
 {

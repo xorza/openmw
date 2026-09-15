@@ -1,8 +1,7 @@
 #pragma once
 
+#include <osg/Node>
 #include <osgUtil/UpdateVisitor>
-
-#include <components/sceneutil/lightmanager.hpp>
 
 #include "nodekind.hpp"
 

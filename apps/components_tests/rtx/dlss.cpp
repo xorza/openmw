@@ -1,11 +1,28 @@
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 
 #include <gtest/gtest.h>
+
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
+
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/reconstruction.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/visibility.h>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/sprite.hpp>
+#include <components/rtx/texturedata.hpp>
+#include <components/rtx/upscale.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
 #include "harness.hpp"

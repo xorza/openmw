@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/bluenoise.hpp>
+#include <components/rtx/shaders/scene.h>
 
 namespace Rtx
 {

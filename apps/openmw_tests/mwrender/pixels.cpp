@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/GL>
 #include <osg/Image>
+#include <osg/ref_ptr>
 
 #include "apps/openmw/mwrender/pixels.hpp"
 

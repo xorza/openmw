@@ -14,6 +14,8 @@
 #include "buffer.hpp"
 #include "computepipeline.hpp"
 #include "frameslots.hpp"
+#include "handles.hpp"
+#include "pipeline.hpp"
 #include "tracepipeline.hpp"
 
 namespace Rtx

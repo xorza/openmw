@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -8,12 +9,12 @@
 #include <osg/Node>
 #include <osg/ref_ptr>
 
-#include "surface.hpp"
-
 #include "alphaimage.hpp"
+#include "material.hpp"
 #include "mirroridentity.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
+#include "surface.hpp"
 #include "walk.hpp"
 
 namespace osg

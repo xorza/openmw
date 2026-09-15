@@ -1,8 +1,9 @@
 #include "cellreader.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
-#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <span>
 #include <vector>
@@ -10,13 +11,15 @@
 #include <osg/Matrixf>
 #include <osg/Quat>
 #include <osg/Vec3f>
+#include <osg/ref_ptr>
 
-#include "surface.hpp"
 #include <components/debug/debuglog.hpp>
 #include <components/misc/resourcehelpers.hpp>
 
 #include "error.hpp"
 #include "residency.hpp"
+#include "shadingmap.hpp"
+#include "surface.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx

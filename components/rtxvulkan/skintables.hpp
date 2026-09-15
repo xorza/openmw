@@ -6,6 +6,9 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/deformertable.hpp>
+#include <components/rtx/mesh.hpp>
+#include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 
 #include "buffer.hpp"

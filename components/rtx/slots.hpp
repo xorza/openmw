@@ -81,20 +81,10 @@ namespace Rtx
             mSlots.push_back(slot);
         }
 
-        /// The same, for a caller that is told one slot at a time and never sees the table. The
-        /// pragma is a GCC 16 false positive: with `NDEBUG` the optimiser inlines the `resize` and
-        /// reports its uninitialised move as writing past a region it deduced from nothing, where
-        /// `mFlags[slot]` is in range by the `grow` on the line above it.
+        /// The same, for a caller that is told one slot at a time and never sees the table.
         void addMakingRoom(Index slot)
         {
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-#endif
             grow(std::size_t{ slot } + 1);
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
             add(slot);
         }
 
@@ -121,10 +111,7 @@ namespace Rtx
 
         /// Whether `slot` is in the set. Answers while a `remove` is outstanding, where `getSlots`
         /// will not: the flags are exact from the moment a slot is taken out.
-        bool has(Index slot) const
-        {
-            return slot < mFlags.size() && mFlags[slot] != 0;
-        }
+        bool has(Index slot) const { return slot < mFlags.size() && mFlags[slot] != 0; }
 
         std::span<const Index> getSlots() const
         {
@@ -132,10 +119,7 @@ namespace Rtx
             return mSlots;
         }
 
-        bool empty() const
-        {
-            return getSlots().empty();
-        }
+        bool empty() const { return getSlots().empty(); }
 
         /// Empties the set. Only the slots in it are put back, rather than the whole table: a
         /// worldspace is thousands of slots and what a frame names is tens.

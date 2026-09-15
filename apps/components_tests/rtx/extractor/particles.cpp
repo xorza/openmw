@@ -3,6 +3,28 @@
 #include <algorithm>
 #include <vector>
 
+#include <osg/BlendFunc>
+#include <osg/GL>
+#include <osg/Math>
+#include <osg/Matrix>
+#include <osg/StateAttribute>
+#include <osg/StateSet>
+#include <osg/Vec3d>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
+#include <osg/ref_ptr>
+#include <osgParticle/ConstantRateCounter>
+#include <osgParticle/ModularEmitter>
+#include <osgParticle/Particle>
+#include <osgParticle/ParticleSystem>
+#include <osgParticle/ParticleSystemUpdater>
+#include <osgParticle/RadialShooter>
+#include <osgParticle/range>
+
+#include <components/rtx/sprite.hpp>
+#include <components/rtx/spritelight.hpp>
+#include <components/vfs/pathutil.hpp>
+
 namespace Rtx::Testing
 {
     namespace

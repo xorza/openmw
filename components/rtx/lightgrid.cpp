@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 
-#include "scenedesc.hpp"
+#include <osg/BoundingBox>
+
+#include "lightbuilder.hpp"
 
 namespace
 {

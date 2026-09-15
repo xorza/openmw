@@ -6,13 +6,17 @@
 
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/composite.h>
+#include <components/rtx/shaders/visibility.h>
 
 #include "barriers.hpp"
 #include "compositepass.hpp"
 #include "gputimer.hpp"
+#include "handles.hpp"
+#include "imageuse.hpp"
 #include "scenebuffers.hpp"
 #include "spritepasses.hpp"
 #include "tracerecording.hpp"
+#include "visibilitypass.hpp"
 #include "wavepass.hpp"
 
 namespace Rtx

@@ -6,8 +6,6 @@
 #include <string>
 #include <utility>
 
-#include <components/rtx/error.hpp>
-
 #include "device.hpp"
 #include "memory.hpp"
 
