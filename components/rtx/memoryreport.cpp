@@ -19,10 +19,11 @@ namespace Rtx
             const HeapUse& use = report.mHeaps[heap];
 
             // The host-visible one is named, because it is the one that runs out on a card without
-            // resizable BAR.
-            out += std::format("  heap {}  {:<12}  {:8.1f} MiB   reserved {:7.1f}   live {:7.1f}", heap,
-                use.mHostVisible ? "host-visible" : "device-only", megabytes(use.mSize), megabytes(use.mReserved),
-                megabytes(use.mLive));
+            // resizable BAR — and the system's, because on such a card it is the largest of the
+            // three and read as video memory it is a card with more room than it has.
+            const char* const kind = use.mHostVisible ? "host-visible" : use.mDeviceLocal ? "device-only" : "system";
+            out += std::format("  heap {}  {:<12}  {:8.1f} MiB   reserved {:7.1f}   live {:7.1f}", heap, kind,
+                megabytes(use.mSize), megabytes(use.mReserved), megabytes(use.mLive));
 
             // Nought from a driver that would not say, which is not the same answer as a budget of
             // none — so the columns are left off rather than printed as zeroes.

@@ -245,7 +245,10 @@ namespace Rtx
         out.mHeapCount = std::min<std::uint32_t>(mMemory.memoryHeapCount, MemoryReport::sMaxHeaps);
 
         for (std::uint32_t heap = 0; heap < out.mHeapCount; ++heap)
+        {
             out.mHeaps[heap].mSize = mMemory.memoryHeaps[heap].size;
+            out.mHeaps[heap].mDeviceLocal = (mMemory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+        }
 
         // What a heap is for, taken off its types rather than off the heap. Vulkan states the
         // host's access on the memory type and only the device's on the heap, so a heap is

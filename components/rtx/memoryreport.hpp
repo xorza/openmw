@@ -32,6 +32,11 @@ namespace Rtx
 
         std::uint32_t mBlocks = 0;
 
+        /// Whether the heap is video memory at all, as the device states it. A card without
+        /// resizable BAR has three: its video memory, the system's, and a window of the first the
+        /// host writes into — and only the flag tells the second from the first.
+        bool mDeviceLocal = false;
+
         /// Whether the device reads this heap and the host writes into it directly: the one heap
         /// a card without resizable BAR keeps at a couple of hundred megabytes.
         bool mHostVisible = false;
