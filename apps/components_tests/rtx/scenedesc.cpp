@@ -1442,7 +1442,7 @@ namespace Rtx
             const Index lone = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
 
             scene.materials().add(Material{ .mDiffuse = shared });
-            const Index second = scene.materials().add(Material{ .mDiffuse = shared, .mNormal = lone });
+            const Index second = scene.materials().add(Material{ .mDiffuse = shared, .mEmissive = lone });
 
             const std::array meshes{ mesh };
             const std::array keepSecond{ second };

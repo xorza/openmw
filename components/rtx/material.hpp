@@ -27,12 +27,19 @@ namespace Rtx
 
     /// How a surface is shaded, as the file says it. Vanilla textures are pre-lit, so `mDiffuse` is
     /// not an albedo yet.
+    ///
+    /// **No normal map and no specular map, by decision.** A Morrowind NIF has no slot for either,
+    /// so every one in the content arrives as an `_n`, `_nh` or `_spec` file beside the diffuse — a
+    /// replacer pack's contract with the rasterizer, and mod compatibility is what this renderer
+    /// does not rank. The trace's normal is the geometry's; a finer one is read off the relief the
+    /// artist painted into the diffuse, never off a second map. `Rtx::Surface` still names the
+    /// roles, because it describes what the content states; this is where the renderer declines to
+    /// read them.
     struct Material
     {
         MaterialKind mKind = MaterialKind::Surface;
 
         Index mDiffuse = sNoIndex;
-        Index mNormal = sNoIndex;
         Index mEmissive = sNoIndex;
 
         /// What the texture is tinted by, in linear light. Three channels and not the record's

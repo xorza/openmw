@@ -291,12 +291,6 @@ namespace Rtx
         material.mDiffuse = takeTexture(diffuse);
         material.mEmissive = takeTexture(described->getTexture(TextureRole::Emissive));
 
-        // The two normal roles differ in what the alpha channel holds, and parallax is a rasterizer
-        // feature this renderer does not have: to a ray tracer they are the same texture.
-        material.mNormal = takeTexture(described->getTexture(TextureRole::Normal));
-        if (material.mNormal == sNoIndex)
-            material.mNormal = takeTexture(described->getTexture(TextureRole::NormalHeight));
-
         material.mAlphaRef = described->mAlphaRef;
         material.mAlphaMode = described->mAlphaMode;
         material.mVertexColour = described->mVertexColour;

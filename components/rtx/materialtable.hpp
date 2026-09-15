@@ -83,14 +83,13 @@ namespace Rtx
         /// Records that `slot`'s row was written, once however many times it is.
         void note(Index slot);
 
-        /// Every texture slot `material` names — its three roles, and every layer of its run. One
+        /// Every texture slot `material` names — its two roles, and every layer of its run. One
         /// walk, or a role added to the hold and forgotten in the drop frees a slot something still
         /// stands on.
         template <class Visit>
         void forEachTexture(const Material& material, Visit visit) const
         {
             visit(material.mDiffuse);
-            visit(material.mNormal);
             visit(material.mEmissive);
 
             for (const MaterialLayer& layer : material.mLayers.in(getLayers()))

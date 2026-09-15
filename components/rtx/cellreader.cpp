@@ -37,9 +37,8 @@ namespace Rtx
             return transform;
         }
 
-        /// The three images a material can name, in the roles the frame's describe takes them by.
-        constexpr std::array<TextureRole, 4> sRoles{ TextureRole::Diffuse, TextureRole::Emissive, TextureRole::Normal,
-            TextureRole::NormalHeight };
+        /// The two images a material can name, in the roles the frame's describe takes them by.
+        constexpr std::array<TextureRole, 2> sRoles{ TextureRole::Diffuse, TextureRole::Emissive };
 
     }
 
