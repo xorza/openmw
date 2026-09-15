@@ -1,9 +1,7 @@
 #include "cellring.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
-#include <cstdlib>
 #include <span>
 #include <utility>
 #include <vector>
@@ -14,21 +12,21 @@ namespace Rtx
 {
     namespace
     {
-        /// How many cells past the reach are prepared before they can be seen: one, which at the
+        /// How far past the reach a cell is prepared before it can be seen: one cell, which at the
         /// island route's speed is most of a second, so the frame a cell crosses into the reach owes
         /// only its placements.
-        constexpr int sPreparedBand = 1;
+        constexpr float sPreparedBand = sCellSize;
 
-        /// The order the prepared ring's missing cells are read in: nearest first, then a fixed
+        /// The order the prepared disc's missing cells are read in: nearest first, then a fixed
         /// order among equals, so two runs from one eye ask for one list.
         struct Nearer
         {
-            osg::Vec2i mEye;
+            osg::Vec3f mEye;
 
             bool operator()(const osg::Vec2i& left, const osg::Vec2i& right) const
             {
-                const int leftAway = std::max(std::abs(left.x() - mEye.x()), std::abs(left.y() - mEye.y()));
-                const int rightAway = std::max(std::abs(right.x() - mEye.x()), std::abs(right.y() - mEye.y()));
+                const float leftAway = distanceSquaredTo(left, mEye);
+                const float rightAway = distanceSquaredTo(right, mEye);
                 if (leftAway != rightAway)
                     return leftAway < rightAway;
 
@@ -99,11 +97,6 @@ namespace Rtx
             mHanded.begin(), mHanded.end(), [&](const PreparedCell* held) { return held->mCell == cell; });
     }
 
-    int CellRing::reachInCells() const
-    {
-        return static_cast<int>(std::ceil(mAround.mReach / sCellSize));
-    }
-
     void CellRing::giveBackHolds(
         const std::span<PreparedModel* const> models, const std::span<PreparedTexture* const> textures)
     {
@@ -137,10 +130,10 @@ namespace Rtx
         mDoneScratch.clear();
     }
 
-    void CellRing::ask(const osg::Vec2i& eye, const int band)
+    void CellRing::ask(const osg::Vec3f& eye, const float band)
     {
-        // Rebuilt only when what it depends on moved: the eye's cell, what is held, what is handed,
-        // or the statics switch. Otherwise it is the list the supply already has.
+        // Rebuilt only when what it depends on moved: the eye, what is held, what is handed, or the
+        // statics switch. Otherwise it is the list the supply already has.
         if (!mAskStale)
             return;
         mAskStale = false;
@@ -148,24 +141,21 @@ namespace Rtx
         mAsking.mCells.clear();
         mAsking.mStatics = mStatics;
 
-        for (int x = eye.x() - band; x <= eye.x() + band; ++x)
-            for (int y = eye.y() - band; y <= eye.y() + band; ++y)
-            {
-                const osg::Vec2i cell(x, y);
-                if (!holds(cell) && !handed(cell))
-                    mAsking.mCells.push_back(cell);
-            }
+        forEachCellWithin(eye, band, [&](const osg::Vec2i& cell) {
+            if (!holds(cell) && !handed(cell))
+                mAsking.mCells.push_back(cell);
+        });
 
         std::sort(mAsking.mCells.begin(), mAsking.mCells.end(), Nearer{ eye });
 
         mSupply.ask(mAsking);
     }
 
-    void CellRing::sift(const osg::Vec2i& eye, const int band)
+    void CellRing::sift(const osg::Vec3f& eye, const float band)
     {
         const std::size_t before = mHanded.size();
         std::erase_if(mHanded, [&](PreparedCell* cell) {
-            if (withinCells(cell->mCell, eye, band) && !holds(cell->mCell))
+            if (withinReach(cell->mCell, eye, band) && !holds(cell->mCell))
                 return false;
 
             discard(*cell);
@@ -174,7 +164,7 @@ namespace Rtx
         mAskStale = mAskStale || mHanded.size() != before;
     }
 
-    void CellRing::waitForNext(const osg::Vec2i& eye, const int band)
+    void CellRing::waitForNext(const osg::Vec3f& eye, const float band)
     {
         // A cell read under the other answer to the statics switch, or one of a band that left, is
         // not what the wait waited for: the first thing the reader hands over after a move is
@@ -316,10 +306,12 @@ namespace Rtx
             return;
         }
 
-        const osg::Vec2i eye = cellOf(mAround.mEye);
-        const int reach = reachInCells();
-        const int band = reach + sPreparedBand;
+        const osg::Vec3f& eye = mAround.mEye;
+        const float band = mAround.mReach + sPreparedBand;
 
+        // Any move, because the disc is measured from the eye itself and a cell at its rim can
+        // enter or leave on a step. What that costs is a walk over the band's cells on the frames
+        // the eye moves, and nothing on the frames it stands.
         if (mLastEye != eye)
         {
             mLastEye = eye;
@@ -333,7 +325,7 @@ namespace Rtx
         bool dropped = false;
         for (HeldCell& cell : mCells)
         {
-            if (withinCells(cell.mCell, eye, band) && cell.mStatics == mStatics)
+            if (withinReach(cell.mCell, eye, band) && cell.mStatics == mStatics)
                 continue;
 
             dropCell(cell);
@@ -359,7 +351,7 @@ namespace Rtx
         adoptHanded(into, stats);
 
         for (HeldCell& cell : mCells)
-            mPlacer.place(cell, mAround, eye, reach);
+            mPlacer.place(cell, mAround);
 
         mSupply.publish();
     }

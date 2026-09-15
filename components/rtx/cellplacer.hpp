@@ -58,9 +58,9 @@ namespace Rtx
         /// Takes a cell's placements out of the top level, keeping the cell.
         void dropSlots(HeldCell& cell);
 
-        /// Places and drops one cell by the rings and the size rule, and flattens its ground by the
-        /// grid. `eye` and `reach` are `around`'s, in cells, worked out once by the caller.
-        void place(HeldCell& cell, const WorldAround& around, const osg::Vec2i& eye, int reach);
+        /// Places and drops one cell by the reach and the size rule, and flattens its ground by
+        /// the grid.
+        void place(HeldCell& cell, const WorldAround& around);
 
         /// How many statics and how many grounds stand in the top level.
         std::uint32_t getPlaced() const { return mPlaced; }

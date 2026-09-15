@@ -7,6 +7,7 @@
 
 #include <osg/Image>
 #include <osg/Vec2i>
+#include <osg/Vec3f>
 
 #include <components/esm3/refnum.hpp>
 
@@ -94,24 +95,24 @@ namespace Rtx
 
         bool holds(const osg::Vec2i& cell) const;
         bool handed(const osg::Vec2i& cell) const;
-        int reachInCells() const;
 
         /// Moves the supply's finished cells into the frame's own list, counting their models. A
         /// cell read with the statics the other way is let go of here.
         void takeDone();
 
-        /// Hands the supply the cells the prepared ring lacks, nearest first.
-        void ask(const osg::Vec2i& eye, int band);
+        /// Hands the supply the cells the prepared disc lacks, nearest first. `band` is the disc's
+        /// radius in units, which is the reach and the prepared band past it.
+        void ask(const osg::Vec3f& eye, float band);
 
         /// Gives back every handed cell the ring must not adopt: one outside the band, and one it
         /// already holds. Run after every `takeDone`, because a cell handed over during the wait
         /// has been through neither test.
-        void sift(const osg::Vec2i& eye, int band);
+        void sift(const osg::Vec3f& eye, float band);
 
         /// Blocks until the supply has read a cell this walk can adopt (`setSettled`). Only where
         /// the last `ask` named something, because nothing is coming otherwise and the reader would
         /// never wake this.
-        void waitForNext(const osg::Vec2i& eye, int band);
+        void waitForNext(const osg::Vec3f& eye, float band);
 
         /// Adopts the next cell the supply read, which is one cell and one frame's worth.
         void adoptHanded(SceneAdopter& into, ExtractionStats& stats);
@@ -151,11 +152,11 @@ namespace Rtx
         bool mStatics = true;
         bool mSettled = false;
 
-        /// Whether the request list has to be rebuilt: the eye's cell, the held and handed sets or
-        /// the statics switch changed since it was. `ask` rebuilds the whole band, and nothing else
-        /// on the frame path is proportional to the band.
+        /// Whether the request list has to be rebuilt: the eye, the held and handed sets or the
+        /// statics switch changed since it was. `ask` rebuilds the whole band, and nothing else on
+        /// the frame path is proportional to the band.
         bool mAskStale = true;
-        std::optional<osg::Vec2i> mLastEye;
+        std::optional<osg::Vec3f> mLastEye;
 
         std::size_t mFrame = 0;
 

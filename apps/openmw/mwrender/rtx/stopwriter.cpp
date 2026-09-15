@@ -20,6 +20,7 @@
 #include <osg/BoundingBox>
 #include <osg/Image>
 #include <osg/Math>
+#include <osg/Vec2i>
 #include <osg/Vec3f>
 
 #include <components/esm/refid.hpp>
@@ -27,6 +28,7 @@
 #include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/extractionstats.hpp>
+#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
@@ -541,11 +543,12 @@ namespace MWRender
             case Rtx::Check::GroundStands:
             {
                 // **Every cell of the reach, the active grid's included**: the game builds no ground
-                // for this renderer, so a cell short is a hole the player can walk on.
+                // for this renderer, so a cell short is a hole the player can walk on. The reach is
+                // the disc `Rtx::withinReach` draws about the eye the walk stood, counted by the
+                // same rule.
                 const bool outdoors = MWBase::Environment::get().getWorld()->isCellExterior();
-                const int reach
-                    = static_cast<int>(std::ceil(context.mReach / static_cast<float>(Constants::CellSizeInUnits)));
-                const auto expected = static_cast<std::uint32_t>((2 * reach + 1) * (2 * reach + 1));
+                std::uint32_t expected = 0;
+                Rtx::forEachCellWithin(context.mEye, context.mReach, [&](const osg::Vec2i&) { ++expected; });
 
                 found = std::format(
                     "{} cells of ground stand against {} in the reach", stats.mGroundCells, outdoors ? expected : 0);

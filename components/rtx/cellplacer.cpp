@@ -230,9 +230,9 @@ namespace Rtx
             dropSlot(*cell.mGround);
     }
 
-    void CellPlacer::place(HeldCell& cell, const WorldAround& around, const osg::Vec2i& eye, const int reach)
+    void CellPlacer::place(HeldCell& cell, const WorldAround& around)
     {
-        const bool inReach = withinCells(cell.mCell, eye, reach);
+        const bool inReach = withinReach(cell.mCell, around.mEye, around.mReach);
 
         // The ground stands inside the active grid too: the game builds none for this
         // renderer, so what a cell's land says is stood here wherever the cell is.

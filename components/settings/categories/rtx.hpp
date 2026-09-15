@@ -23,7 +23,8 @@ namespace Settings
 
         SettingValue<bool> mEnabled{ mIndex, "RTX", "enabled" };
 
-        /// How far out from the eye the world is built, in cells, read every frame. How much world
+        /// How far out from the eye the world is built, in cells, read every frame by the world
+        /// mirror so the menu's slider moves the rings, the air and the map at once. How much world
         /// exists is a property of the structure rays are cast against and not of the camera, which
         /// is what `viewing distance` is about; the air is tuned to it as well as the ground
         /// (`Rtx::distantLandReach`).

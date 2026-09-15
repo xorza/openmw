@@ -1,7 +1,6 @@
 #include "distantlights.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <optional>
 #include <vector>
 
@@ -9,7 +8,6 @@
 #include <osg/MatrixTransform>
 #include <osg/NodeVisitor>
 
-#include <components/misc/constants.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/terrain/objectstorage.hpp>
 
@@ -82,35 +80,30 @@ namespace Rtx
         if (mAround.mWorld.mStorage == nullptr || !mAround.mOutdoors)
             return;
 
-        const int reach = static_cast<int>(std::ceil(mAround.mReach / Constants::CellSizeInUnits));
-        const osg::Vec2i eye = cellOf(mAround.mEye);
+        // The same disc the ground stands in.
+        forEachCellWithin(mAround.mEye, mAround.mReach, [&](const osg::Vec2i& key) {
+            // What the game stands for itself is not this class's to stand again. Inside the
+            // active grid the real object is on the graph with its light on it, and the mirror
+            // has already met it — see the class comment.
+            if (key.x() >= mAround.mActiveGrid.x() && key.y() >= mAround.mActiveGrid.y()
+                && key.x() < mAround.mActiveGrid.z() && key.y() < mAround.mActiveGrid.w())
+                return;
 
-        for (int x = eye.x() - reach; x <= eye.x() + reach; ++x)
-            for (int y = eye.y() - reach; y <= eye.y() + reach; ++y)
-            {
-                // What the game stands for itself is not this class's to stand again. Inside the
-                // active grid the real object is on the graph with its light on it, and the mirror
-                // has already met it — see the class comment.
-                if (x >= mAround.mActiveGrid.x() && y >= mAround.mActiveGrid.y() && x < mAround.mActiveGrid.z()
-                    && y < mAround.mActiveGrid.w())
-                    continue;
+            auto found = std::lower_bound(mCells.begin(), mCells.end(), key,
+                [](const ReadCell& held, const osg::Vec2i& wanted) { return held.mCell < wanted; });
 
-                const osg::Vec2i key(x, y);
-                auto found = std::lower_bound(mCells.begin(), mCells.end(), key,
-                    [](const ReadCell& held, const osg::Vec2i& wanted) { return held.mCell < wanted; });
+            // Read here rather than on a rota, and never read twice. What a `LIGH` says is
+            // content: it does not change with the hour, the weather or the eye, so a cell costs
+            // one reading for the life of the scene and the frames after it cost a pointer. The
+            // whole reach is under seventy cells and reading all of them is under the run-to-run
+            // noise of a still. A budget per frame would be worse than the spike it avoided: what
+            // a picture holds would then depend on how many frames had been drawn before it, and
+            // `verify` compares stills.
+            if (found == mCells.end() || found->mCell != key)
+                found = mCells.insert(found, ReadCell{ .mCell = key, .mLights = build(key) });
 
-                // Read here rather than on a rota, and never read twice. What a `LIGH` says is
-                // content: it does not change with the hour, the weather or the eye, so a cell costs
-                // one reading for the life of the scene and the frames after it cost a pointer. The
-                // whole reach is eighty-one cells and reading all of them is under the run-to-run
-                // noise of a still. A budget per frame would be worse than the spike
-                // it avoided: what a picture holds would then depend on how many frames had been
-                // drawn before it, and `verify` compares stills.
-                if (found == mCells.end() || found->mCell != key)
-                    found = mCells.insert(found, ReadCell{ .mCell = key, .mLights = build(key) });
-
-                if (found->mLights != nullptr)
-                    into.take(*found->mLights);
-            }
+            if (found->mLights != nullptr)
+                into.take(*found->mLights);
+        });
     }
 }

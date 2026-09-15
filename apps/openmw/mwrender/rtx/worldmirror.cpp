@@ -86,11 +86,17 @@ namespace MWRender
 
             return templateTraversal() & ~player;
         }
+
+        /// How much world to build, as the settings say now.
+        float readReach()
+        {
+            return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
+        }
     }
 
     WorldMirror::WorldMirror()
         : mExtractor(mScene, &mTraversals)
-        , mReach(Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance))
+        , mReach(readReach())
     {
         mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
         mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
@@ -163,9 +169,15 @@ namespace MWRender
                     .mStarsFallback = Settings::models().mSkynight01 });
         }
 
+        // Read every frame, because the menu moves it while the game runs and the ring, the air
+        // and the map all follow it: a slider that took effect at the next start was a slider that
+        // did nothing. One cached float.
+        mReach = readReach();
+
         // What the weather drops, walked as a second root, because the sky's mask keeps the world
         // walk out of that subtree: the same systems the rasterizer draws, stood at the eye.
         const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
+        mEye = eye;
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mRain, eye, frame.mWorld.mUnderwater, frameNumber);
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mWeatherEffect, eye, frame.mWorld.mUnderwater, frameNumber);
 

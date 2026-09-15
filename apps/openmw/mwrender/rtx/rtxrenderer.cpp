@@ -532,6 +532,7 @@ namespace MWRender
             .mResources = mResources,
             .mScene = mMirror.getScene(),
             .mReach = mMirror.getReach(),
+            .mEye = mMirror.getEye(),
         };
     }
 

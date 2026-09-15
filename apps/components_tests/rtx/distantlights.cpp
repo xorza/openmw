@@ -155,10 +155,13 @@ namespace Rtx
         }
 
         /// **A cell is read once for the life of the world, and the cells that stood nothing count.**
-        /// The reach is thirteen cells across and the active grid takes nine out of the middle, so
-        /// one `collect` reads 169 - 9 = 160 cells and the one after it reads none — 159 of which
-        /// answered with no light at all, which is the answer the memo has to hold on to. A
-        /// structure that remembered only what it found would read those 159 again every frame.
+        /// The eye stands on a cell corner with a reach of six cells, and the disc about it takes
+        /// in every cell whose nearest corner is nearer than six: a cell `dx` columns over has it
+        /// `dx` away on the near side and `-dx - 1` on the far, so the axes reach five cells each
+        /// way and the rest fill in to 132; the active grid takes nine out of the middle, so one
+        /// `collect` reads 123 cells and the one after it reads none — 122 of which answered with
+        /// no light at all, which is the answer the memo has to hold on to. A structure that
+        /// remembered only what it found would read those 122 again every frame.
         TEST(RtxDistantLightsTest, aCellIsReadOnceAndTheEmptyOnesAreRememberedToo)
         {
             const OneLamp storage(0);
@@ -174,12 +177,12 @@ namespace Rtx
             ExtractionStats stats;
             CountLights first;
             lights.collect(first, stats);
-            EXPECT_EQ(storage.getReadings(), 160u) << "thirteen cells square, less the nine the game stands";
+            EXPECT_EQ(storage.getReadings(), 123u) << "the disc of six cells, less the nine the game stands";
             EXPECT_EQ(first.mFound, 1u);
 
             CountLights again;
             lights.collect(again, stats);
-            EXPECT_EQ(storage.getReadings(), 160u) << "a cell was read a second time";
+            EXPECT_EQ(storage.getReadings(), 123u) << "a cell was read a second time";
             EXPECT_EQ(again.mFound, 1u) << "what was read once was not handed over twice";
         }
     }

@@ -59,7 +59,7 @@ namespace Rtx
 
         /// Every cell read so far, sorted by grid position — content, read once for the life of the
         /// world, and the null entries kept because the absence is the answer. Sorted and searched
-        /// rather than keyed, because `collect` looks up eighty-one cells every frame and inserts
+        /// rather than keyed, because `collect` looks up the reach's cells every frame and inserts
         /// only the first time each is seen. Emptied by `follow` and by `restart`.
         std::vector<ReadCell> mCells;
 

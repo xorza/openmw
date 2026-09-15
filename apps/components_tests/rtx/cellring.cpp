@@ -168,15 +168,34 @@ namespace Rtx::Testing
             return osg::Matrixf(matrix);
         }
 
-        /// The number of cells a band of `reach` cells about the eye holds.
-        constexpr std::uint32_t cellsWithin(const int reach)
+        /// The number of cells some point of which lies nearer than `reach` cells to an eye at the
+        /// centre of its own cell — the disc `withinReach` draws. A cell `dx` columns over has its
+        /// nearest point `|dx| - 0.5` cells away, and one in the eye's own column has it at nought.
+        constexpr std::uint32_t cellsWithin(const float reach)
         {
-            return static_cast<std::uint32_t>((2 * reach + 1) * (2 * reach + 1));
+            const auto nearest
+                = [](const int away) { return away == 0 ? 0.0f : static_cast<float>(away < 0 ? -away : away) - 0.5f; };
+
+            std::uint32_t count = 0;
+            const int span = static_cast<int>(reach) + 1;
+            for (int dx = -span; dx <= span; ++dx)
+                for (int dy = -span; dy <= span; ++dy)
+                {
+                    const float ax = nearest(dx);
+                    const float ay = nearest(dy);
+                    if (ax * ax + ay * ay < reach * reach)
+                        ++count;
+                }
+
+            return count;
         }
 
-        /// The placed ring at a reach of four cells, and the prepared ring a band wider.
-        constexpr std::uint32_t sPlacedCells = cellsWithin(4);
-        constexpr std::uint32_t sPreparedCells = cellsWithin(5);
+        /// The placed disc at a reach of four cells, and the prepared disc a cell wider. A square
+        /// of nine by nine held twelve more, every one of them behind the air that closes at the
+        /// reach.
+        constexpr std::uint32_t sPlacedCells = cellsWithin(4.0f);
+        constexpr std::uint32_t sPreparedCells = cellsWithin(5.0f);
+        static_assert(sPlacedCells == 69 && sPreparedCells == 101);
 
         /// A world with nothing on its graph and a ring beside it, walked from a fixed eye. Every
         /// cell of the land has a record, so every cell stands two ground types.
@@ -321,7 +340,8 @@ namespace Rtx::Testing
             const ExtractionStats first = fill();
             EXPECT_EQ(first.mDistantStatics, 3u)
                 << "two trees and a fern; the active grid's is the game's and the far one is past the reach";
-            EXPECT_EQ(first.mGroundCells, sPlacedCells) << "nine by nine cells of ground, the active grid's included";
+            EXPECT_EQ(first.mGroundCells, sPlacedCells)
+                << "every cell of the reach's ground, the active grid's included";
             EXPECT_EQ(first.mInstances, 3u + sPlacedCells);
             EXPECT_EQ(placed(), 3u + sPlacedCells);
             EXPECT_EQ(first.mMeshesAdded, 2u + sPreparedCells)
@@ -434,7 +454,7 @@ namespace Rtx::Testing
 
             fill();
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
-            EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "eleven by eleven cells prepared";
+            EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "the prepared disc's cells";
             EXPECT_EQ(mScene.meshes().getLiveCount(), sPreparedCells);
         }
 
@@ -596,10 +616,12 @@ namespace Rtx::Testing
             around(osg::Vec4i(11, -1, 14, 2));
             EXPECT_EQ(walk(mWalked++).mDistantStatics, 1u) << "and outside it, on the model the ring kept";
 
-            // The sweep takes the ground of the band that left — the old band and the new share
-            // the eleven cells of one column — and nothing else: the tree's mesh was stamped
-            // through, so the scene holds the new band's ground and that one mesh.
-            EXPECT_EQ(mExtractor.retire().mMeshes, sPreparedCells - 11u);
+            // The sweep takes the ground of the band that left, and nothing else: the tree's mesh
+            // was stamped through, so the scene holds the new band's ground and that one mesh. The
+            // old disc and the new share five cells of column 5, which both eyes stand 4.5 cells
+            // from: `4.5² + ay² < 5²` holds for a row's `ay` of 0, 0.5 and 1.5, which is `|dy| <=
+            // 2`, and fails at 2.5.
+            EXPECT_EQ(mExtractor.retire().mMeshes, sPreparedCells - 5u);
             EXPECT_EQ(mScene.meshes().getLiveCount(), meshes) << "one tree mesh, held throughout";
 
             // Two more walks, so the thread's give-backs of what was returned have run against
@@ -621,8 +643,8 @@ namespace Rtx::Testing
             mRing.setSettled(false);
             start();
 
-            // Eleven by eleven cells to prepare, one adopted a frame: the tree stands somewhere
-            // inside the first hundred and twenty-one frames, and never before its cell arrived.
+            // A hundred and one cells to prepare, one adopted a frame: the tree stands somewhere
+            // inside the first hundred and one frames, and never before its cell arrived.
             std::size_t frame = 1;
             std::uint32_t statics = 0;
             for (; frame <= 400 && statics == 0; ++frame)
@@ -643,7 +665,7 @@ namespace Rtx::Testing
         /// walk waits for the cell it is about to adopt, so the count after N walks is exactly N.
         ///
         /// **And exactly N and never more**, which is the half that used to be wrong: waiting for
-        /// the whole band and adopting all of it put a hundred and twenty-one cells on one frame.
+        /// the whole band and adopting all of it put a hundred cells on one frame.
         TEST_F(RtxCellRingTest, settledAWalkWaitsForItsOneCellAndTakesNoMore)
         {
             start();

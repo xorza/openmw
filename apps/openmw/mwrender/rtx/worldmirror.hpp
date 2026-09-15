@@ -83,8 +83,12 @@ namespace MWRender
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled) { mRing.setReferenceEnabled(refnum, enabled); }
 
         /// How much world this renderer builds, in units: the ground, the air and the distant
-        /// lights are all measured over it.
+        /// lights are all measured over it. As the last walk read it from the settings, or as they
+        /// stood when the mirror was made before the first.
         float getReach() const { return mReach; }
+
+        /// Where the last walk stood the rings: the camera's eye, which is not the player's feet.
+        const osg::Vec3f& getEye() const { return mEye; }
 
         /// Whether the world walk includes the player's own model. True for a game somebody is
         /// playing.
@@ -162,5 +166,6 @@ namespace MWRender
         double mLastSimulationTime = 0.0;
 
         float mReach;
+        osg::Vec3f mEye;
     };
 }

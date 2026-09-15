@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <optional>
 
+#include <osg/Vec3f>
+
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/reconstruction.hpp>
@@ -77,7 +79,9 @@ namespace MWRender
         /// The scene the last walk handed over.
         const Rtx::SceneDesc& mScene;
 
-        /// How much world the mirror builds, in units.
+        /// How much world the mirror builds, in units, and the eye it builds it around: the disc
+        /// a check counts the ground in is the one the last walk stood.
         float mReach = 0.0f;
+        osg::Vec3f mEye;
     };
 }
