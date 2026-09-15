@@ -1,0 +1,4 @@
+# The keys a watched run answers to, and the sky they turn. Loaded by `openmw-rtxtool` wherever
+# there is a window, and by nothing else: the played game names no such content file.
+PLAYER: scripts/rtx/keys.lua
+GLOBAL: scripts/rtx/sky.lua

@@ -39,6 +39,12 @@ copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/views.cfg" "${RTX_RESOURCES_R
 # Which of those a profiling run visits, and in what order.
 copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/benches.cfg" "${RTX_RESOURCES_ROOT}" "resources/rtx/benches.cfg")
 
+# The keys a watched run answers to, as a data directory of the harness's own: `hosted.cpp` adds it
+# and names the content file wherever there is a window, and the played game names neither.
+foreach(script rtxtool.omwscripts scripts/rtx/keys.lua scripts/rtx/sky.lua)
+    copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/vfs/${script}" "${RTX_RESOURCES_ROOT}" "resources/rtx/vfs/${script}")
+endforeach()
+
 # **The harness links the game, because it drives one.** A run stands in the world the player
 # stands in — its cells read by `MWWorld::Scene`, its people dressed by `NpcAnimation`, its sky
 # reported by `MWWorld::WeatherManager` — so a picture taken here and a picture played are one

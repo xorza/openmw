@@ -82,6 +82,14 @@ namespace RtxTool
                 dataDirs.push_back(std::move(local));
 
             config.filterOutNonExistingPaths(dataDirs);
+
+            // **The keys exist where there is a window.** A watched run answers F6 to F8 and the
+            // page keys with the weather and the clock, through the Lua scripts under the
+            // harness's own data directory; a headless run has nobody to press them, and the
+            // played game names neither the directory nor the file.
+            if (!request.mHeadless)
+                dataDirs.push_back(resources / "rtx" / "vfs");
+
             engine.setDataDirs(dataDirs);
 
             for (const std::string& archive : variables["fallback-archive"].as<StringsVector>())
@@ -91,6 +99,8 @@ namespace RtxTool
             // content list read here and there by different rules is two installations described as
             // one, which is the drift this whole path exists to remove.
             engine.addContentFile("builtin.omwscripts");
+            if (!request.mHeadless)
+                engine.addContentFile("rtxtool.omwscripts");
             std::set<std::string> once{ "builtin.omwscripts" };
             for (const std::string& file : content)
             {

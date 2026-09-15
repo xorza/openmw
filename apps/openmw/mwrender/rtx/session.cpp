@@ -392,6 +392,16 @@ namespace MWRender
         stood.mNote = stop.mNote;
         stood.mStand.mCell = stop.mStand.mCell;
 
+        // A stop from a save names no cell, so the one the player stands in is written down
+        // instead, spelt as `--cell` takes it: a grid pair outdoors and the name indoors.
+        if (stood.mStand.mCell.empty())
+        {
+            const MWWorld::Cell& cell = *world.getPlayerPtr().getCell()->getCell();
+            stood.mStand.mCell = cell.isExterior()
+                ? std::to_string(cell.getGridX()) + "," + std::to_string(cell.getGridY())
+                : std::string(cell.getNameId());
+        }
+
         mStarted = true;
 
         Log(Debug::Info) << "Ray tracing session: stop " << (mAt + 1) << " of " << mRequest.mStops.size() << ", "

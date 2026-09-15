@@ -256,13 +256,20 @@ namespace RtxTool
         /// Separated out because `Chosen` is built from it in one go below: an aggregate assembled
         /// in two stages cannot name every field in its initialiser, and the compiler is right to
         /// say so.
+        /// Whether a run starts from a savegame, which is then what says where the player stands
+        /// and what hour and weather it is — unless the line names a view or a cell over it.
+        bool startsFromSave(const bpo::variables_map& variables)
+        {
+            return !variables["load-savegame"].as<Files::MaybeQuotedPath>().empty();
+        }
+
         const Rtx::Stop* findChosenView(
             const bpo::variables_map& variables, const std::filesystem::path& resources, std::vector<Rtx::Stop>& views)
         {
             std::string name = variables["view"].as<std::string>();
             if (name.empty())
             {
-                if (!variables["cell"].as<std::string>().empty())
+                if (!variables["cell"].as<std::string>().empty() || startsFromSave(variables))
                     return nullptr;
 
                 name = sDefaultView;
@@ -364,10 +371,26 @@ namespace RtxTool
             // Holds what the view below points into, for as long as this function needs it.
             std::vector<Rtx::Stop> views;
             const Rtx::Stop* found = findChosenView(variables, command.mResources, views);
-            const Rtx::Stop view
-                = found != nullptr ? *found : Rtx::Stop{ .mStand = { .mCell = variables["cell"].as<std::string>() } };
+            const std::string cell = variables["cell"].as<std::string>();
 
-            Rtx::Stop staged = stopFor(view, hourGiven(variables), weatherGiven(variables), frame.mDay);
+            // **A save is the place, unless the line names one over it.** The stop then stands
+            // where the save left the player, at the save's hour, day and weather, and only what
+            // the line names is changed — where `stopFor` would stand it at noon under a clear sky
+            // on the first day, which is a view's rule and not a save's.
+            Rtx::Stop staged;
+            if (found == nullptr && cell.empty() && startsFromSave(variables))
+            {
+                staged.mName = variables["load-savegame"].as<Files::MaybeQuotedPath>().stem().string();
+                staged.mSky.mHour = hourGiven(variables);
+                staged.mSky.mWeather = weatherGiven(variables);
+                if (!variables["day"].defaulted())
+                    staged.mSky.mDay = frame.mDay;
+            }
+            else
+            {
+                const Rtx::Stop view = found != nullptr ? *found : Rtx::Stop{ .mStand = { .mCell = cell } };
+                staged = stopFor(view, hourGiven(variables), weatherGiven(variables), frame.mDay);
+            }
 
             // Anything given on the command line wins over the view, which is the rule `stopFor`
             // already follows for the hour and the sky.
