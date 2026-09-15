@@ -251,11 +251,14 @@ namespace Rtx
         /// the reason `sValidationByDefault` gives.
         ValidationOptions mValidation;
 
-        /// How long every frame stands for, in seconds. Everything the world animates steps by it,
-        /// so ten seconds of world is six hundred frames on every machine, and two runs of one
-        /// build are the same run. A run's and never a setting's: a played game times each frame
-        /// off the wall, and a file that could say otherwise once turned one into a run for good.
-        float mStep = sStepSeconds;
+        /// How long every frame stands for, in seconds, or nothing to time each one off the wall.
+        /// Everything the world animates steps by it, so ten seconds of world is six hundred frames
+        /// on every machine, and two runs of one build are the same run — which is what every run
+        /// that measures or writes a picture wants, and the default. A window somebody watches
+        /// wants the wall, as the played game has it, or the world runs as fast as the card draws.
+        /// A run's and never a setting's: a file that could state a step once turned a played game
+        /// into a fixed-step run for good.
+        std::optional<float> mStep = sStepSeconds;
     };
 
     /// What a launcher reads back once `Engine::go` has returned.

@@ -176,6 +176,7 @@ namespace MWRender
         if (mTimed < sReportEvery)
             return false;
 
+        mReportedMs = std::exchange(mSpentMs, 0.0);
         mReported = std::exchange(mTimed, 0);
         return true;
     }
@@ -304,7 +305,8 @@ namespace MWRender
         // each reader times what it is about. A measured run cannot: two runs of one build would
         // adapt by different amounts and draw different pictures. So the step is the run's and
         // nothing else's — a setting that could state one made a played game step by frames, and
-        // at two hundred of them a second the world ran three times over.
+        // at two hundred of them a second the world ran three times over. A run somebody watches
+        // states none, for the same reason.
         if (mSession != nullptr)
             mClock = Rtx::FrameClock(mSession->getStep());
 

@@ -55,8 +55,9 @@ namespace MWRender
         /// Which layers the run asked for.
         const Rtx::ValidationOptions& getValidation() const { return mRequest.mValidation; }
 
-        /// How long every frame of the run stands for, which the renderer's clock is made from.
-        float getStep() const { return mRequest.mStep; }
+        /// How long every frame of the run stands for, or nothing for the wall: what the renderer's
+        /// clock is made from.
+        std::optional<float> getStep() const { return mRequest.mStep; }
 
         /// Whether this run states for itself that the ground waits, or nothing to let the frame
         /// clock decide. `Rtx::SessionRequest::mSettled` says which runs state one.

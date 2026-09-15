@@ -695,6 +695,11 @@ namespace RtxTool
             request.mQuitAtEnd = frames > 0;
             request.mValidation = validationFrom(variables);
 
+            // **On the wall, because somebody is watching.** A stepped world runs as fast as the
+            // card draws it, which at two hundred frames a second is three times over; a window
+            // is the played game with the walls off, and the played game follows the wall.
+            request.mStep = std::nullopt;
+
             // Watched and never summed, like a bench.
             Rtx::RenderProfile profile = frameFrom(command).mProfile;
             profile.mRadianceWidth = Rtx::RadianceWidth::Shown;

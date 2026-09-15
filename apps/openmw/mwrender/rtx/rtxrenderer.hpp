@@ -228,7 +228,7 @@ namespace MWRender
             bool addWait(double waitMs);
 
             /// What the frames of the line just due came to. Read after `addWait` answers true.
-            double getWaitMs() const { return mSpentMs / static_cast<double>(mReported); }
+            double getWaitMs() const { return mReportedMs / static_cast<double>(mReported); }
             std::uint32_t getFrames() const { return mReported; }
 
         private:
@@ -240,11 +240,15 @@ namespace MWRender
             /// What the window's title is written from, once a second and never allocated.
             std::array<char, 96> mTitle{};
 
+            /// The sum and the count of the line being gathered.
             double mSpentMs = 0.0;
             std::uint32_t mTimed = 0;
 
             /// What the line that has just come due covers, held so the caller may read it after the
-            /// sum has started again.
+            /// sum has started again. Both halves, or a sum left running reports every line so far
+            /// over one line's frames — a wait that read as climbing a tenth of a millisecond a
+            /// line for the life of the session.
+            double mReportedMs = 0.0;
             std::uint32_t mReported = 0;
         };
 
