@@ -224,35 +224,6 @@ namespace Rtx
         return noise;
     }
 
-    osg::Vec2i cellOf(const osg::Vec3f& position)
-    {
-        return osg::Vec2i(static_cast<int>(std::floor(position.x() / sCellSize)),
-            static_cast<int>(std::floor(position.y() / sCellSize)));
-    }
-
-    bool withinReach(const osg::Vec2i& cell, const osg::Vec3f& eye, const float radius)
-    {
-        return distanceSquaredTo(cell, eye) < radius * radius;
-    }
-
-    float distanceSquaredTo(const osg::Vec2i& cell, const osg::Vec3f& eye)
-    {
-        const float low = static_cast<float>(cell.x()) * sCellSize;
-        const float lowY = static_cast<float>(cell.y()) * sCellSize;
-        const float alongX = std::max({ low - eye.x(), eye.x() - (low + sCellSize), 0.0f });
-        const float alongY = std::max({ lowY - eye.y(), eye.y() - (lowY + sCellSize), 0.0f });
-
-        return alongX * alongX + alongY * alongY;
-    }
-
-    float distantLandReach(float cells, float viewingDistance)
-    {
-        if (!(cells > 0.0f))
-            return viewingDistance;
-
-        return cells * sCellSize;
-    }
-
     float fogExtinction(float depth, float over)
     {
         // The original engine reads a depth of zero as no fog at all rather than as a ramp starting

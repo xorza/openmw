@@ -22,6 +22,7 @@ namespace Rtx
         {
             Sky::TimeOfDaySettings times{};
             times.mNightEnd = 6.0f;
+            times.mSunriseDuration = 2.0f;
             times.mDayStart = 8.0f;
             times.mDayEnd = 18.0f;
             times.mNightStart = 20.0f;
@@ -109,7 +110,8 @@ namespace Rtx
             // Never past one, whatever a file says the sunrise is worth. The engine's dawn ramp is
             // unbounded and it did not matter while it was only an alpha; it scales the sunlight now.
             Sky::TimeOfDaySettings slow = times;
-            slow.mDayStart = slow.mNightEnd + 8.0f;
+            slow.mSunriseDuration = 8.0f;
+            slow.mDayStart = slow.mNightEnd + slow.mSunriseDuration;
             for (float hour = slow.mNightEnd; hour < slow.mNightStart; hour += 0.25f)
                 EXPECT_LE(sunShareAt(hour, slow), 1.0f) << "at hour " << hour;
 

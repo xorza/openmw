@@ -21,9 +21,8 @@
 #include <components/nifosg/nifloader.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/skeleton.hpp>
-// `terraindrawable.hpp` holds `osg::ref_ptr`s to composite-map types it only forward-declares, so it
-// does not compile on its own. This is what completes them.
 
+#include "cellring.hpp"
 #include "lightbuilder.hpp"
 #include "material.hpp"
 #include "meshreader.hpp"
@@ -436,17 +435,17 @@ namespace Rtx
     ExtractionStats SceneExtractor::extract(
         const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame)
     {
-        return walk(node, transform, anchor, frame, {});
+        return walk(node, transform, anchor, frame, nullptr);
     }
 
     ExtractionStats SceneExtractor::extractWorld(
         const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame)
     {
-        return walk(root, transform, anchor, frame, mResidents);
+        return walk(root, transform, anchor, frame, mRing);
     }
 
     ExtractionStats SceneExtractor::walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
-        std::size_t frame, std::span<Residency* const> hidden)
+        std::size_t frame, CellRing* const ring)
     {
         ExtractionStats stats;
         mAnchor = anchor;
@@ -460,13 +459,13 @@ namespace Rtx
         // fire lit; OSG's visitor API is non-const regardless, so the cast happens once, here.
         const_cast<osg::Node&>(node).accept(*mWalk);
 
-        // Inside the same walk, not beside it. What a residency stands is part of the same
-        // frame as everything else — the same epoch, the same stats, the same sweep — and a second
-        // `begin` would date it apart from the rest.
-        for (Residency* resident : hidden)
-            resident->collect(*this, stats);
+        // Inside the same walk, not beside it. What the ring stands is part of the same frame as
+        // everything else — the same epoch, the same stats, the same sweep — and a second `begin`
+        // would date it apart from the rest.
+        if (ring != nullptr)
+            ring->collect(*this, stats);
 
-        // After the whole walk, including whatever the residency brought in. Everything under it
+        // After the whole walk, including whatever the ring brought in. Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
         // one that depends on where an updater happened to sit among its siblings.
         mEmitters.flush();

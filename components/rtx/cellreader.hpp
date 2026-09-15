@@ -37,10 +37,11 @@ namespace Rtx
         CellReader(const Terrain::ObjectStorage& storage, Terrain::Storage& ground, ContentSource& content,
             ESM::RefId worldspace, osg::Node::NodeMask mask);
 
-        /// Reads the cell at `cell`: its ground, and — where `statics` — every reference that pages
-        /// and names a model with something to trace, as one `PreparedRef` each. The cell is lent,
-        /// and `giveBack` is where it returns; every model and every ground texture it names is
-        /// lent to it as well, one hold each, and those come back on their own.
+        /// Reads the cell at `cell`: its ground, its `LIGH` references, and — where `statics` —
+        /// every reference that pages and names a model with something to trace, as one
+        /// `PreparedRef` each. The cell is lent, and `giveBack` is where it returns; every model and
+        /// every ground texture it names is lent to it as well, one hold each, and those come back
+        /// on their own.
         PreparedCell& read(const osg::Vec2i& cell, bool statics);
 
         /// Takes a cell back, once the frame has copied what it wanted of it.
@@ -74,6 +75,7 @@ namespace Rtx
 
         // Refilled per cell, per model and per image.
         std::vector<Terrain::PagedCellRef> mRefScratch;
+        std::vector<Terrain::PagedCellRef> mLitScratch;
         std::vector<MipLevel> mLevelScratch;
 
         Spares<PreparedCell> mCells;

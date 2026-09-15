@@ -2,13 +2,16 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <span>
 
 #include <osg/Matrixf>
 #include <osg/Vec3f>
 
-#include "fogbuilder.hpp"
+#include "cellgrid.hpp"
 #include "held.hpp"
+#include "lightbuilder.hpp"
 #include "mesh.hpp"
 #include "prepared.hpp"
 #include "runs.hpp"
@@ -18,24 +21,6 @@
 
 namespace Rtx
 {
-    namespace
-    {
-        /// How far the eye stands from the nearest point of `cell`, in units, by the square's own
-        /// metric — which is the one the paging measured a chunk's reach by.
-        float distanceTo(const osg::Vec2i& cell, const osg::Vec3f& eye)
-        {
-            const float low = static_cast<float>(cell.x()) * sCellSize;
-            const float high = low + sCellSize;
-            const float lowY = static_cast<float>(cell.y()) * sCellSize;
-            const float highY = lowY + sCellSize;
-
-            const float alongX = std::max({ low - eye.x(), eye.x() - high, 0.0f });
-            const float alongY = std::max({ lowY - eye.y(), eye.y() - highY, 0.0f });
-
-            return std::max(alongX, alongY);
-        }
-    }
-
     void CellPlacer::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled, const std::span<HeldCell> held)
     {
         const auto at = std::lower_bound(mDisabled.begin(), mDisabled.end(), refnum);
@@ -66,12 +51,6 @@ namespace Rtx
             }
     }
 
-    bool CellPlacer::inActiveGrid(const osg::Vec2i& cell, const WorldAround& around)
-    {
-        return cell.x() >= around.mActiveGrid.x() && cell.y() >= around.mActiveGrid.y()
-            && cell.x() < around.mActiveGrid.z() && cell.y() < around.mActiveGrid.w();
-    }
-
     bool CellPlacer::isDisabled(const ESM::RefNum refnum) const
     {
         return !mDisabled.empty() && std::binary_search(mDisabled.begin(), mDisabled.end(), refnum);
@@ -81,7 +60,7 @@ namespace Rtx
     {
         // A stack is flattened outside the active grid, where the quad tree flattens too, and a
         // single layer is never, because it is already a single fetch.
-        return ground.mLayers > 1 && !inActiveGrid(cell, around);
+        return ground.mLayers > 1 && !inActiveGrid(cell, around.mActiveGrid);
     }
 
     void CellPlacer::adoptGround(
@@ -175,6 +154,8 @@ namespace Rtx
         // walk place the same slots.
         std::stable_sort(held.mPlacements.begin(), held.mPlacements.end(),
             [](const Placement& larger, const Placement& smaller) { return larger.mRadius > smaller.mRadius; });
+
+        held.mLights.assign(cell.mLights.begin(), cell.mLights.end());
     }
 
     void CellPlacer::addSlot(Placement& placement)
@@ -234,7 +215,7 @@ namespace Rtx
             dropSlot(*cell.mGround);
     }
 
-    void CellPlacer::place(HeldCell& cell, const WorldAround& around)
+    std::uint32_t CellPlacer::place(HeldCell& cell, const WorldAround& around)
     {
         const bool inReach = withinReach(cell.mCell, around.mEye, around.mReach);
 
@@ -268,13 +249,13 @@ namespace Rtx
             }
         }
 
-        const bool shown = inReach && !inActiveGrid(cell.mCell, around);
+        const bool shown = inReach && !inActiveGrid(cell.mCell, around.mActiveGrid);
 
         // The paging's own rule: a reference is placed while its scaled radius clears the size
         // threshold at the eye's distance to its cell. The placements are sorted largest first, so
         // what clears is a prefix and where it ends is one search — and what this walk touches is
         // what entered or left that prefix since the last one, which on a standing frame is nothing.
-        const float threshold = shown ? mMinSize * distanceTo(cell.mCell, around.mEye) : 0.0f;
+        const float threshold = shown ? mMinSize * chebyshevDistanceTo(cell.mCell, around.mEye) : 0.0f;
         const float threshold2 = threshold * threshold;
 
         const std::span<Placement> placements = cell.mPlacements;
@@ -291,5 +272,24 @@ namespace Rtx
         for (std::size_t at = wanted; at < cell.mShown; ++at)
             dropSlot(placements[at]);
         cell.mShown = wanted;
+
+        // On every walk rather than kept, because the walk empties the lights and a flame is a
+        // function of the hour; what is kept is the record.
+        if (!shown)
+            return 0;
+
+        std::uint32_t lit = 0;
+        for (const PreparedLight& lamp : cell.mLights)
+        {
+            const std::optional<Light> light = makeLight(
+                lamp.mRecord, lamp.mPosition, around.mSimulationTime, static_cast<int>(lamp.mRefNum.mIndex));
+            if (!light.has_value())
+                continue;
+
+            mScene.addLight(*light);
+            ++lit;
+        }
+
+        return lit;
     }
 }

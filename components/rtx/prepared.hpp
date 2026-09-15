@@ -17,6 +17,7 @@
 #include <osg/ref_ptr>
 
 #include <components/esm3/refnum.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "materialresolver.hpp"
@@ -215,9 +216,23 @@ namespace Rtx
         float mRadius = 0.0f;
     };
 
+    /// One `LIGH` reference a cell stands: where it stands and what its record says. The record
+    /// and not a light, because a light is a function of the hour — a flame flickers — and the
+    /// frame builds one from this every walk (`Rtx::makeLight`).
+    struct PreparedLight
+    {
+        /// The reference's own origin, and not the model's `AttachLight` node. Finding that means
+        /// loading the mesh, and the mesh is what the paging refuses to stand out here; the offset
+        /// between the two is the height of a lamp, against a cell of distance.
+        osg::Vec3f mPosition;
+
+        ESM::RefNum mRefNum;
+        SceneUtil::LightCommon mRecord;
+    };
+
     /// What a thread hands the frame for one cell: its ground, the references that page, reduced
-    /// the way the content files stack, and the models they name. Owned by the reader and lent to
-    /// the frame, as a model is.
+    /// the way the content files stack, the models they name, and the lights the paging never
+    /// draws. Owned by the reader and lent to the frame, as a model is.
     struct PreparedCell
     {
         osg::Vec2i mCell;
@@ -233,6 +248,14 @@ namespace Rtx
 
         std::vector<PreparedRef> mRefs;
 
-        void reuse() { reuseKeeping(*this, &PreparedCell::mGround, &PreparedCell::mModels, &PreparedCell::mRefs); }
+        /// The `LIGH` references whose record casts where it is placed, whether or not the statics
+        /// were read — `CellRing` says why the ring stands lamps at all.
+        std::vector<PreparedLight> mLights;
+
+        void reuse()
+        {
+            reuseKeeping(
+                *this, &PreparedCell::mGround, &PreparedCell::mModels, &PreparedCell::mRefs, &PreparedCell::mLights);
+        }
     };
 }

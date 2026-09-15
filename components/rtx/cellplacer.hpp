@@ -48,7 +48,8 @@ namespace Rtx
             ExtractionStats& stats);
 
         /// Fills `held.mPlacements` from the cell's references, one per part of each model as
-        /// `holds` adopted it, disabled where a script said so, and sorted for `place`.
+        /// `holds` adopted it, disabled where a script said so, and sorted for `place`; and
+        /// `held.mLights` from the cell's lamps, whole.
         void adoptPlacements(const PreparedCell& cell, HeldCell& held, CellHolds& holds);
 
         /// Lets a cell's ground go: its slot, its texture holds and its rows. The sweep after this
@@ -58,16 +59,17 @@ namespace Rtx
         /// Takes a cell's placements out of the top level, keeping the cell.
         void dropSlots(HeldCell& cell);
 
-        /// Places and drops one cell by the reach and the size rule, and flattens its ground by
-        /// the grid.
-        void place(HeldCell& cell, const WorldAround& around);
+        /// Places and drops one cell by the reach and the size rule, flattens its ground by the
+        /// grid, and stands its lamps where the cell is in reach and outside the grid — the game's
+        /// own graph carries the lamps inside it, and a lantern must not be counted twice.
+        /// @return how many lamps were stood.
+        std::uint32_t place(HeldCell& cell, const WorldAround& around);
 
         /// How many statics and how many grounds stand in the top level.
         std::uint32_t getPlaced() const { return mPlaced; }
         std::uint32_t getGroundPlaced() const { return mGroundPlaced; }
 
     private:
-        static bool inActiveGrid(const osg::Vec2i& cell, const WorldAround& around);
         bool isDisabled(ESM::RefNum refnum) const;
 
         void addSlot(Placement& placement);

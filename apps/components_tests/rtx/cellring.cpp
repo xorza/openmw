@@ -4,8 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <map>
 #include <optional>
 #include <span>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -28,10 +30,12 @@
 
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
+#include <components/esm3/loadligh.hpp>
 #include <components/esm3/refnum.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/extractionstats.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/prepared.hpp>
@@ -65,31 +69,73 @@ namespace Rtx::Testing
             float mScale = 1.0f;
         };
 
-        /// A storage of a handful of statics, each in a cell of its own choosing.
+        /// One `LIGH` reference a storage stands, and the record it names. The id is the record's
+        /// own, so two lamps with two records are two ids.
+        struct Lit
+        {
+            osg::Vec2i mCell;
+            const char* mRecord = nullptr;
+            ESM::RefNum mRefNum;
+            osg::Vec3f mPosition;
+        };
+
+        /// A `LIGH` record reduced the way the engine reduces one: a white lamp of radius 100,
+        /// carrying `flags`.
+        SceneUtil::LightCommon describeLamp(std::int32_t flags)
+        {
+            ESM::Light record;
+            record.mData.mRadius = 100;
+            record.mData.mColor = 0x00FFFFFF;
+            record.mData.mFlags = flags;
+            return SceneUtil::LightCommon(record);
+        }
+
+        /// A storage of a handful of statics and lamps, each in a cell of its own choosing. One
+        /// walk of a cell answers both lists, as the game's does.
         class FewStatics final : public Terrain::ObjectStorage
         {
         public:
             std::vector<Placed> mPlaced;
+            std::vector<Lit> mLit;
 
-            void collect(Terrain::RefKind kind, float, const osg::Vec2i& startCell, ESM::RefId,
-                std::vector<Terrain::PagedCellRef>& out) const override
+            /// The records the lamps name: `lit` burns where it stands, `unlit` is off by default
+            /// and `flame` flickers.
+            std::map<std::string, SceneUtil::LightCommon> mRecords{
+                { "lit", describeLamp(0) },
+                { "unlit", describeLamp(ESM::Light::OffDefault) },
+                { "flame", describeLamp(ESM::Light::Flicker) },
+            };
+
+            void collect(float, const osg::Vec2i& startCell, ESM::RefId, std::vector<Terrain::PagedCellRef>& paged,
+                std::vector<Terrain::PagedCellRef>& lit) const override
             {
-                out.clear();
-                if (kind != Terrain::RefKind::Paged)
-                    return;
+                paged.clear();
+                lit.clear();
 
                 for (const Placed& placed : mPlaced)
                     if (placed.mCell == startCell)
-                        out.push_back(Terrain::PagedCellRef{
+                        paged.push_back(Terrain::PagedCellRef{
                             .mRefId = ESM::RefId::stringRefId(placed.mModel),
                             .mRefNum = placed.mRefNum,
                             .mPosition = placed.mPosition,
                             .mRotation = placed.mRotation,
                             .mScale = placed.mScale,
                         });
+
+                for (const Lit& lamp : mLit)
+                    if (lamp.mCell == startCell)
+                        lit.push_back(Terrain::PagedCellRef{
+                            .mRefId = ESM::RefId::stringRefId(lamp.mRecord),
+                            .mRefNum = lamp.mRefNum,
+                            .mPosition = lamp.mPosition,
+                        });
             }
 
-            std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId&) const override { return std::nullopt; }
+            std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const override
+            {
+                const auto found = mRecords.find(id.getRefIdString());
+                return found != mRecords.end() ? std::optional(found->second) : std::nullopt;
+            }
 
             /// The record's id doubles as its model here.
             VFS::Path::Normalized getModel(const ESM::RefId& id) const override
@@ -209,7 +255,7 @@ namespace Rtx::Testing
                     for (int y = -8; y <= 30; ++y)
                         mLand.mWithData.emplace_back(x, y);
 
-                mExtractor.follow(std::array<Residency*, 1>{ &mRing });
+                mExtractor.follow(&mRing);
                 mRing.setMinSize(0.0f);
                 mRing.setSettled(true);
 
@@ -242,9 +288,11 @@ namespace Rtx::Testing
             /// The same for a grid the game moved without the eye moving with it.
             void around(const osg::Vec4i& grid) { around(mAround.mEye, grid); }
 
-            /// One frame's walk, which is where the ring adopts, places and stamps.
+            /// One frame's walk, which is where the ring adopts, places and stamps. The lists a walk
+            /// refills wholesale are emptied first, as a frame empties them.
             ExtractionStats walk(std::size_t frame)
             {
+                mScene.clearPlacement();
                 mRing.setFrame(frame);
                 const ExtractionStats stats = mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, frame);
                 mExtractor.advance();
@@ -273,6 +321,7 @@ namespace Rtx::Testing
                 total.mDistantStatics = last.mDistantStatics;
                 total.mGroundCells = last.mGroundCells;
                 total.mInstances = last.mInstances;
+                total.mLights = last.mLights;
                 return total;
             }
 
@@ -457,6 +506,66 @@ namespace Rtx::Testing
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
             EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "the prepared disc's cells";
             EXPECT_EQ(mScene.meshes().getLiveCount(), sPreparedCells);
+        }
+
+        /// The lamps of the cells the game has not loaded stand with their cells: outside the active
+        /// grid only, because inside it the game's own graph carries them and a lantern must not be
+        /// counted twice; where the record casts at all; and as the light the walk would build from
+        /// the graph's own node at the same hour, so a lamp the game loads later is the lamp that
+        /// was there. The frame's clock reaches them: a flame at one second is not the flame at
+        /// nought.
+        ///
+        /// **A fake and not a cell, because the shipped content cannot ask about an unlit lamp.**
+        /// Every one of the 1559 exterior cells of `Morrowind.esm`, `Tribunal.esm` and
+        /// `Bloodmoon.esm` places its lights lit: the off-default flag is an interior's brazier and
+        /// a storeroom's torch.
+        TEST_F(RtxCellRingTest, lampsStandWithTheirCellsOutsideTheGridAndBurnAtTheFramesHour)
+        {
+            const osg::Vec3f far(4.5f * sCellSize, 0.5f * sCellSize, 40.0f);
+            mStorage.mLit = {
+                Lit{ .mCell = osg::Vec2i(4, 0), .mRecord = "flame", .mRefNum = ESM::RefNum{ 7, 0 }, .mPosition = far },
+                Lit{ .mCell = osg::Vec2i(3, 0), .mRecord = "unlit", .mRefNum = ESM::RefNum{ 8, 0 } },
+                Lit{ .mCell = osg::Vec2i(0, 0), .mRecord = "lit", .mRefNum = ESM::RefNum{ 9, 0 } },
+                Lit{ .mCell = osg::Vec2i(7, 0), .mRecord = "lit", .mRefNum = ESM::RefNum{ 10, 0 } },
+            };
+            mAround.mSimulationTime = 0.0;
+            start();
+
+            const ExtractionStats filled = fill();
+            ASSERT_EQ(mScene.lights().size(), std::size_t{ 1 })
+                << "one lamp is in reach, outside the grid and lit: (4, 0). (0, 0) is the game's, (3, 0) is off "
+                   "by default and (7, 0) is out of reach";
+            EXPECT_EQ(filled.mLights, 1u) << "and the walk's report counts it";
+
+            const Light stood = mScene.lights().front();
+            EXPECT_EQ(stood.mPosition, far);
+
+            // The light the walk builds from the graph's own node, to the bit: one rule, in
+            // `makeLight`, phased by the reference number.
+            const std::optional<Light> built = makeLight(mStorage.mRecords.at("flame"), far, 0.0, 7);
+            ASSERT_TRUE(built.has_value());
+            EXPECT_EQ(stood.mIntensity, built->mIntensity);
+            EXPECT_EQ(stood.mReach, built->mReach);
+            EXPECT_EQ(stood.mSourceRadius, built->mSourceRadius);
+
+            // A second later the flame has moved, because the hour reaches it through the walk.
+            mAround.mSimulationTime = 1.0;
+            mRing.follow(mAround);
+            walk(mWalked++);
+            ASSERT_EQ(mScene.lights().size(), std::size_t{ 1 });
+            EXPECT_NE(mScene.lights().front().mIntensity, stood.mIntensity) << "a flame that stood still";
+            EXPECT_EQ(
+                mScene.lights().front().mIntensity, makeLight(mStorage.mRecords.at("flame"), far, 1.0, 7)->mIntensity);
+
+            // The grid grows over the lamp's cell, and the game's graph is what carries it now.
+            around(osg::Vec4i(-1, -1, 5, 2));
+            walk(mWalked++);
+            EXPECT_TRUE(mScene.lights().empty()) << "a lamp inside the active grid would be counted twice";
+
+            // And back out again, on the frame the grid leaves it.
+            around(osg::Vec4i(-1, -1, 2, 2));
+            walk(mWalked++);
+            EXPECT_EQ(mScene.lights().size(), std::size_t{ 1 });
         }
 
         /// The paging's size rule, per reference: a radius under the threshold at the eye's distance

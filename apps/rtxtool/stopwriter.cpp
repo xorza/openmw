@@ -37,8 +37,8 @@
 #include <components/files/conversion.hpp>
 #include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
+#include <components/rtx/cellgrid.hpp>
 #include <components/rtx/extractionstats.hpp>
-#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>

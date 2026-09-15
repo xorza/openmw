@@ -8,6 +8,7 @@ set(RTX_TEST_FILES
     rtx/bluenoise.cpp
     rtx/bottomlevelstore.cpp
     rtx/buffer.cpp
+    rtx/cellgrid.cpp
     rtx/cellring.cpp
     rtx/cloudshell.cpp
     rtx/commands.cpp
@@ -16,7 +17,6 @@ set(RTX_TEST_FILES
     rtx/colour.cpp
     rtx/device.cpp
     rtx/dispatch.cpp
-    rtx/distantlights.cpp
     rtx/dlss.cpp
     rtx/fallbackseed.cpp
     rtx/fogbuilder.cpp
@@ -114,6 +114,7 @@ set(RTX_TEST_FILES
     rtxtool/run.cpp
     rtxtool/compare.cpp
     sky/skyclock.cpp
+    sky/sundisc.cpp
     sky/timeofday.cpp
 )
 

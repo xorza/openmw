@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include <osg/Array>
@@ -15,10 +16,10 @@
 #include <osg/TriangleIndexFunctor>
 #include <osg/Vec2f>
 
-#include <components/debug/debuglog.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
+#include "error.hpp"
 #include "scenedesc.hpp"
 #include "shaders/look.h"
 #include "texels.hpp"
@@ -254,11 +255,10 @@ namespace Rtx
 
         const VFS::Path::NormalizedView chosen = scenes.getVFS()->exists(mesh) ? mesh : fallback;
 
+        // A gap in the content is named rather than drawn around: a night with no stars in it
+        // reads as a renderer that forgot them.
         if (!scenes.getVFS()->exists(chosen))
-        {
-            Log(Debug::Warning) << "no night sky mesh at \"" << chosen << "\"; drawing none";
-            return sky;
-        }
+            throw Error("no night sky mesh at \"" + std::string(chosen.value()) + "\"");
 
         LayerReader read;
         const_cast<osg::Node&>(*scenes.getTemplate(chosen, false)).accept(read);

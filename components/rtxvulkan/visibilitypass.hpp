@@ -137,7 +137,7 @@ namespace Rtx
         /// that stopped for one was `Xid 109, CTX SWITCH TIMEOUT` and a device reset. In parallel,
         /// because the driver's cache is internally synchronised: twenty-four kernels take 6.3 s
         /// of wall time cold, and `PipelineCache` outlives the process.
-        void compileEvery(VkDescriptorSetLayout textureLayout);
+        void compileEvery(const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout);
 
         /// The sets bound after the pushed one, in the order both kernels declare them. A pipeline
         /// layout names every set it will ever be handed, and the two kernels are handed the same.
@@ -180,18 +180,6 @@ namespace Rtx
         /// The third of the sets nothing pushes, which the fog volume owns. Held for the reason
         /// `mChannelLayout` is.
         VkDescriptorSetLayout mVolumeLayout = VK_NULL_HANDLE;
-
-        /// Where the compiled modules are, kept because a variant is compiled long after
-        /// construction. The trace's are one launch's worth: the ray generation shader, the one
-        /// any-hit shader every hit group names, the sky's miss shader, and one closest-hit shader
-        /// per `MaterialKind` in that enum's own order, each behind a record per layer of the peel.
-        std::filesystem::path mDepthModule;
-        std::filesystem::path mScatterModule;
-        std::filesystem::path mIntegrateModule;
-        std::filesystem::path mRaygenModule;
-        std::filesystem::path mAnyHitModule;
-        std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> mMissModules;
-        std::array<std::filesystem::path, Shaders::HIT_SHADER_COUNT> mHitModules;
 
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;

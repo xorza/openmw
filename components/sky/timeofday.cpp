@@ -26,9 +26,10 @@ namespace Sky
         const float sunset = Fallback::Map::getFloat("Weather_Sunset_Time");
 
         TimeOfDaySettings settings;
+        settings.mSunriseDuration = Fallback::Map::getFloat("Weather_Sunrise_Duration");
         settings.mNightStart = sunset + Fallback::Map::getFloat("Weather_Sunset_Duration");
         settings.mNightEnd = sunrise;
-        settings.mDayStart = sunrise + Fallback::Map::getFloat("Weather_Sunrise_Duration");
+        settings.mDayStart = sunrise + settings.mSunriseDuration;
         settings.mDayEnd = sunset;
 
         settings.addSetting("Sky");

@@ -20,6 +20,7 @@
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/cellgrid.hpp>
 #include <components/rtx/colour.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/fogbuilder.hpp>
@@ -97,17 +98,11 @@ namespace MWRender
 
             return templateTraversal() & ~player;
         }
-
-        /// How much world to build, as the settings say now.
-        float readReach()
-        {
-            return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
-        }
     }
 
     WorldMirror::WorldMirror()
         : mExtractor(mScene, &mTraversals)
-        , mReach(readReach())
+        , mReach(Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance))
     {
         mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
         mRing.setMinSize(Settings::terrain().mObjectPagingMinSize);
@@ -145,10 +140,9 @@ namespace MWRender
 
     void WorldMirror::detach()
     {
-        // **The ring first, because its thread reads the storages the world owns.** A world with
-        // nothing in it is what stops the thread and drops what it held.
+        // **The ring's thread reads the storages the world owns.** A world with nothing in it is
+        // what stops the thread and drops what it held.
         mRing.follow(Rtx::WorldAround{});
-        mDistantLights.follow(Rtx::WorldAround{});
 
         mContent.reset();
         mResources = nullptr;
@@ -202,11 +196,6 @@ namespace MWRender
                     .mStarsFallback = Settings::models().mSkynight01 });
         }
 
-        // Read every frame, because the menu moves it while the game runs and the ring, the air
-        // and the map all follow it: a slider that took effect at the next start was a slider that
-        // did nothing. One cached float.
-        mReach = readReach();
-
         // What the weather drops, walked as a second root, because the sky's mask keeps the world
         // walk out of that subtree: the same systems the rasterizer draws, stood at the eye.
         const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
@@ -220,8 +209,9 @@ namespace MWRender
         mSea->setNodeMask(frame.mWorld.mWaterEnabled ? ~0u : 0u);
         mExtractor.extract(*mSea, osg::Matrixf::identity(), 0, frameNumber);
 
-        // The same eye, the same reach and the world's own grid, said once to both residencies: what
-        // the game has stood for itself is what neither may stand again.
+        // The eye, the reach, the world's own grid and the hour, said once to the ring: what the
+        // game has stood for itself is what the ring may not stand again, and its lamps burn at
+        // the world's clock as the graph's do.
         const Rtx::WorldAround around{
             .mWorld = {
                 .mStorage = &frame.mObjectStorage,
@@ -229,23 +219,20 @@ namespace MWRender
                 .mContent = mContent.get(),
                 .mWorldspace = frame.mTerrain.getWorldspace(),
                 .mMask = templateTraversal(),
-                .mLightMask = Mask_Lighting,
             },
             .mEye = eye,
             .mReach = mReach,
             .mActiveGrid = frame.mTerrain.getActiveGrid(),
             .mExterior = !frame.mWorld.isInteriorCell(),
+            .mSimulationTime = frame.mWhen.getSimulationTime(),
         };
 
         mRing.setFrame(frameNumber);
 
         // Told once a frame, because what the graph does not hold is the frame's to say. Every
         // world walk asks it from here, and the precipitation walk above cannot: it is a subtree.
-        std::array<Rtx::Residency*, 2> hidden{ &mDistantLights, &mRing };
-        for (Rtx::Residency* resident : hidden)
-            resident->follow(around);
-
-        mExtractor.follow(hidden);
+        mRing.follow(around);
+        mExtractor.follow(&mRing);
 
         // One walk over the whole graph, where every path is already distinct.
         return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber);
@@ -280,7 +267,7 @@ namespace MWRender
     {
         // Where the sun is, and the light comes back along it. `mSunVector` is where the
         // rasterizer's light travels and is not the negation of this; nothing that traces can hold both.
-        osg::Vec3f discAt(world.mSunPosition.x(), world.mSunPosition.y(), world.mSunPosition.z());
+        osg::Vec3f discAt(world.mSky.mSunPosition.x(), world.mSky.mSunPosition.y(), world.mSky.mSunPosition.z());
         if (discAt.length2() > 0.0f)
             discAt.normalize();
 
@@ -297,7 +284,7 @@ namespace MWRender
 
         // An interior has no sky colour: the weather system stops writing it indoors, so the air's
         // own colour stands in. A quasi-exterior has weather and so has one.
-        const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSkyColour);
+        const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSky.mSkyColour);
 
         // The sun is not assembled here: everything the world says about it goes to the one builder
         // that decides what a sun may be, and the light is taken whole from whichever built it.
@@ -311,8 +298,8 @@ namespace MWRender
             .mSunShareAloft = Rtx::sunShareAloft(world.mGameHour, times),
             .mSunColour = Rtx::decodeColour(world.mSunColour),
             .mAmbient = Rtx::decodeColour(world.mAmbientColour),
-            .mDiscColour = Rtx::decodeColour(world.mSunDiscColour),
-            .mGlare = world.mSunGlare,
+            .mDiscColour = Rtx::decodeColour(world.mSky.mSunDiscColour),
+            .mGlare = world.mSky.mSunGlare,
         };
         const Rtx::Skylight light = room.has_value() ? room->mLight : Rtx::makeSkylight(reading);
 
@@ -322,18 +309,18 @@ namespace MWRender
         // over the sky. The two open-air builders differ only in the ring they close over.
         const auto openAir = world.mLocation == Location::Exterior ? &Rtx::exteriorFog : &Rtx::quasiExteriorFog;
         const Rtx::Fog air
-            = room.has_value() ? room->mFog : openAir(haze, world.mFogDepth, world.mBaseWindSpeed, mReach);
+            = room.has_value() ? room->mFog : openAir(haze, world.mSky.mFogDepth, world.mSky.mBaseWindSpeed, mReach);
 
         // Before the frame rather than into it, because the deck is lit by them (`Rtx::deckLight`).
         std::array<Rtx::MoonPlacement, 2> moons{};
         for (std::size_t moon = 0; moon < moons.size(); ++moon)
         {
-            const Sky::MoonState& state = world.mMoons[moon];
+            const Sky::MoonState& state = world.mSky.mMoons[moon];
 
             // The glare is applied here, where the rasterizer applies it too
             // (`SkyManager::setWeather` calls `Moon::adjustTransparency` after the hand-over).
             moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
-                state.mRotationFromNorth, state.mPhase, state.mDaylightFade * world.mSunGlare);
+                state.mRotationFromNorth, state.mPhase, state.mDaylightFade * world.mSky.mSunGlare);
             moons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
         }
 
@@ -344,12 +331,12 @@ namespace MWRender
                 .mLight = light,
                 .mSkyHorizon = haze,
                 .mSkyZenith = zenith,
-                .mStarFade = world.mNightFade,
+                .mStarFade = world.mSky.mNightFade,
                 .mFog = air,
             },
             .mOutdoors = world.isOutdoors(),
-            .mGlare = world.mSunGlare,
-            .mStarRoll = world.mStarRoll,
+            .mGlare = world.mSky.mSunGlare,
+            .mStarRoll = world.mSky.mStarRoll,
             .mSky = mSkyContent,
             .mMoons = moons,
             .mClouds = Rtx::CloudCrossing{
@@ -358,10 +345,10 @@ namespace MWRender
                 // unconditionally: naming it on both sides at a blend of nothing is what lets it.
                 .mNext = world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
                                                           : weatherId,
-                .mBlend = world.mCloudBlend,
-                .mDirection = world.mCloudDirection,
-                .mNextDirection = world.mNextCloudDirection,
-                .mScroll = world.mSkyCloudScroll,
+                .mBlend = world.mSky.mCloudBlend,
+                .mDirection = world.mSky.mCloudDirection,
+                .mNextDirection = world.mSky.mNextCloudDirection,
+                .mScroll = world.mSky.mSkyCloudScroll,
             },
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
@@ -371,7 +358,7 @@ namespace MWRender
             // What the sea is animated by, in elapsed seconds rather than frames, or the sea would
             // slow down whenever the frame did.
             .mSeconds = seconds,
-            .mSkySeconds = world.mSkySeconds,
+            .mSkySeconds = world.mSky.mSkySeconds,
             .mRainOnWater = world.mRainOnWater,
         };
     }

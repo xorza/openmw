@@ -47,6 +47,7 @@ namespace SceneUtil
 
 namespace Rtx
 {
+    class CellRing;
     class MirrorTraversal;
 
     /// Mirrors an OpenSceneGraph subtree into a `SceneDesc`. The identity maps live across calls,
@@ -106,7 +107,7 @@ namespace Rtx
         void stepEmitters(osg::Node& node);
 
         /// Walks `node` and places what it finds by `transform`, under `anchor`. A subtree, and it
-        /// never reaches the residency: the precipitation node would otherwise place the ground a
+        /// never reaches the ring: the precipitation node would otherwise place the ground a
         /// second time. `extractWorld` is the call that means the whole of it.
         ///
         /// @param anchor what the caller is placing, stable for as long as it stands. A node path
@@ -119,15 +120,15 @@ namespace Rtx
             const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
 
         /// The same, for the walk that is the whole world — the one `retire` is sound after. The
-        /// residency comes from `follow` rather than from an argument, so no caller can be the one
-        /// that forgets it and has the distant ground swept on every frame after the first.
+        /// ring comes from `follow` rather than from an argument, so no caller can be the one that
+        /// forgets it and has the distant ground swept on every frame after the first.
         ExtractionStats extractWorld(
             const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
 
         /// What the graph does not parent, walked with every world walk from here on: the cell
-        /// ring's ground and statics, and the lights of the distant cells, which have no node
-        /// anywhere. Copied, so a caller may hand over a temporary.
-        void follow(std::span<Residency* const> residents) { mResidents.assign(residents.begin(), residents.end()); }
+        /// ring's ground, statics and lamps, which have no node anywhere. Null for a caller that
+        /// walks a graph and nothing else — a doll, a staged world.
+        void follow(CellRing* ring) { mRing = ring; }
 
         /// Where this walk's traversal numbers come from — the one handed in, or its own.
         Traversals& getTraversals() { return mTraversals; }
@@ -166,7 +167,7 @@ namespace Rtx
         const osg::StateSet* animate(osg::Node& node);
 
     private:
-        /// What a residency may do inside a walk, and nothing else may. `Rtx::SceneAdopter` is
+        /// What the ring may do inside a walk, and nothing else may. `Rtx::SceneAdopter` is
         /// implemented privately, so the five calls that only mean anything inside one walk are
         /// reachable through that interface and not in front of every reader of this class.
         void take(osg::Node& node) override;
@@ -184,10 +185,10 @@ namespace Rtx
         /// Whether `mask` carries no bit outside `named`, which is what both questions above ask.
         static bool carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named);
 
-        /// What both `extract` and `extractWorld` are, differing only in whether the world's hidden
+        /// What both `extract` and `extractWorld` are, differing only in whether the ring's
         /// geometry is asked for.
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
-            std::size_t frame, std::span<Residency* const> hidden);
+            std::size_t frame, CellRing* ring);
 
         SceneDesc& mScene;
 
@@ -222,9 +223,8 @@ namespace Rtx
         std::array<ClassMask, 3> mClassMasks{ ClassMask{ InstanceClass::Actor }, ClassMask{ InstanceClass::Effect },
             ClassMask{ InstanceClass::FirstPerson } };
 
-        /// Geometry no node parents, asked of every world walk. Refilled by `follow` every frame
-        /// and never freed: two of them at most, so far.
-        std::vector<Residency*> mResidents;
+        /// Geometry no node parents, asked of every world walk, or null.
+        CellRing* mRing = nullptr;
 
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;

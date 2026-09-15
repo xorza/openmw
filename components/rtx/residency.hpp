@@ -11,7 +11,6 @@
 #include <components/esm/refid.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "extractionstats.hpp"
 #include "materialresolver.hpp"
 #include "meshreader.hpp"
 #include "runs.hpp"
@@ -61,9 +60,6 @@ namespace Rtx
         /// Which nodes a walk of a template may descend into — the frame walk's own.
         osg::Node::NodeMask mMask = ~0u;
 
-        /// What the game marks a light node with, for the lights stood out here to carry the same.
-        osg::Node::NodeMask mLightMask = ~0u;
-
         /// Whether there is enough here to read anything at all.
         bool isReadable() const { return mStorage != nullptr && mGround != nullptr && mContent != nullptr; }
 
@@ -102,8 +98,7 @@ namespace Rtx
         SceneAdopter() = default;
     };
 
-    /// Where the eye stands and how much world there is around it, as one value both residencies
-    /// read.
+    /// Where the eye stands and how much world there is around it, as one value the ring reads.
     struct WorldAround
     {
         /// What is read and where from. A world with no storage is a world with none.
@@ -124,27 +119,9 @@ namespace Rtx
         /// False in an interior cell, whose coordinates belong to another space — a quasi-exterior
         /// included, which has a sky (`WorldReading::mOutdoors`) and no distance.
         bool mExterior = true;
-    };
 
-    /// What a walk of the scene graph cannot reach, offered to the walk that asks for it: the
-    /// distance is nobody's node. `CellRing` stands its ground and statics, and `DistantLights`
-    /// the lamps of cells the paging leaves dark, because `LIGH` is not a paged type.
-    class Residency
-    {
-    public:
-        virtual ~Residency() = default;
-
-        Residency(const Residency&) = delete;
-        Residency& operator=(const Residency&) = delete;
-
-        /// Where the world is now. Told once a frame, before the walk.
-        virtual void follow(const WorldAround& around) = 0;
-
-        /// Hands `into` everything held that the graph does not parent, and adds what it stood to
-        /// `stats` — the walk's own, because a residency is stood inside the walk.
-        virtual void collect(SceneAdopter& into, ExtractionStats& stats) = 0;
-
-    protected:
-        Residency() = default;
+        /// The world's clock, in seconds: what a lamp the ring stands is animated by, as the walk
+        /// animates the graph's by its frame stamp.
+        double mSimulationTime = 0.0;
     };
 }

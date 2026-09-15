@@ -6,8 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include "cellgrid.hpp"
 #include "extractionstats.hpp"
-#include "fogbuilder.hpp"
 
 namespace Rtx
 {
@@ -263,6 +263,7 @@ namespace Rtx
 
         cell.mPlacements.clear();
         cell.mModels.clear();
+        cell.mLights.clear();
         mSpareCells.give(std::move(cell));
     }
 
@@ -352,7 +353,7 @@ namespace Rtx
         adoptHanded(into, stats);
 
         for (HeldCell& cell : mCells)
-            mPlacer.place(cell, mAround);
+            stats.mLights += mPlacer.place(cell, mAround);
 
         mSupply.publish();
     }

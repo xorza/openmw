@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstddef>
-#include <format>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -49,7 +48,10 @@ namespace Rtx
             if (const std::optional<Enum> value = named(spelling))
                 return *value;
 
-            throw std::runtime_error(std::format("\"{}\" is not {}: {}", spelling, what, list()));
+            // Concatenated and not formatted: this header reaches the settings registry, which
+            // every translation unit of the game includes, and `<format>` is not a price to pay
+            // there for a cold path's message.
+            throw std::runtime_error('"' + std::string(spelling) + "\" is not " + std::string(what) + ": " + list());
         }
 
         /// The values, in the order they are listed.

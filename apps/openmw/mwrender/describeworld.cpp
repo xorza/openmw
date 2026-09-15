@@ -55,49 +55,49 @@ namespace MWRender
         // Whole, for the dome: the rasterizer's sky manager reads the same record upstream handed
         // it, off the frame instead.
         mWeather = weather;
-        mWorld.mWeather = &mWeather;
+        mSky.mWeather = &mWeather;
 
         // Kept apart rather than multiplied together: the alpha is how much of the sun is over the
         // horizon and the glare is how much of it this weather lets through, and only the first of
         // them says whether there is a sun to light anything at all.
-        // **Everything `WorldState` says about the sky is taken from here**, off the weather the
-        // world settled on, and nothing is read back out of a dome: the rasterizer's sky manager is
-        // its own, built lazily, and answered black before it was built.
-        mWorld.mSkyColour = weather.mSkyColor;
-        mWorld.mCloudFog = weather.mFogColor;
-        mWorld.mCloudDirection = weather.mStormDirection;
-        mWorld.mNextCloudDirection = weather.mNextStormDirection;
-        mWorld.mSunDiscColour = weather.mSunDiscColor;
-        mWorld.mSunGlare = weather.mGlareView;
+        // **Everything `SkySettled` says about the weather is taken from here**, off the weather
+        // the world settled on, and nothing is read back out of a dome: the rasterizer's sky
+        // manager is its own, built lazily, and answered black before it was built.
+        mSky.mSkyColour = weather.mSkyColor;
+        mSky.mCloudFog = weather.mFogColor;
+        mSky.mCloudDirection = weather.mStormDirection;
+        mSky.mNextCloudDirection = weather.mNextStormDirection;
+        mSky.mSunDiscColour = weather.mSunDiscColor;
+        mSky.mSunGlare = weather.mGlareView;
         // **The record and not the ramp**, for the same reason as the wind below: the depth the
         // weather blended is what a renderer whose fog is a medium reads, and `FogManager` is about
         // to make a start and an end of it.
-        mWorld.mFogDepth = weather.mFogDepth;
+        mSky.mFogDepth = weather.mFogDepth;
         // **Nothing recorded is not a rate.** `Weather::transitionDelta` divides by
         // `Clouds_Maximum_Percent`, which the shipped fallbacks leave at nought for ash and blight,
         // so a transition into either hands over an infinity or a NaN. The rasterizer survives one —
         // a NaN opacity draws nothing and the old sky stays — and a tracer mixes its whole sky by
         // it. Nothing recorded means the deck has crossed at once.
-        mWorld.mCloudBlend
+        mSky.mCloudBlend
             = std::isfinite(weather.mCloudBlendFactor) ? std::clamp(weather.mCloudBlendFactor, 0.f, 1.f) : 1.f;
-        mWorld.mNightFade = weather.mNight ? weather.mNightFade : 0.f;
+        mSky.mNightFade = weather.mNight ? weather.mNightFade : 0.f;
 
         // **The record and not the gust.** What this decides is how deep the fog's layer stands and
         // how fast its field is carried, and both are the weather's settled character rather than
         // the number the engine wanders about it. `WeatherResult::mWindSpeed` is the gust, and the
         // rasterizer's own uniform is what wants that one.
-        mWorld.mBaseWindSpeed = weather.mBaseWindSpeed;
+        mSky.mBaseWindSpeed = weather.mBaseWindSpeed;
     }
 
     void RenderingManager::setMoonStates(const Sky::MoonState& masser, const Sky::MoonState& secunda)
     {
-        mWorld.mMoons[0] = masser;
-        mWorld.mMoons[1] = secunda;
+        mSky.mMoons[0] = masser;
+        mSky.mMoons[1] = secunda;
     }
 
     void RenderingManager::updateSkyClocks(float dt)
     {
-        if (!mWorld.mSkyEnabled)
+        if (!mSky.mSkyEnabled)
             return;
 
         const float timeScale = MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale();
@@ -107,16 +107,16 @@ namespace MWRender
         if (mTimescaleClouds)
             cloudDelta *= timeScale / 60.f;
 
-        mWorld.mCloudScroll = scrolled(mWorld.mCloudScroll, cloudDelta);
+        mSky.mCloudScroll = scrolled(mSky.mCloudScroll, cloudDelta);
 
         // rotate the stars by 360 degrees every 4 days
-        mWorld.mStarRoll += timeScale * dt * osg::DegreesToRadians(360.f) / (3600 * 96.f);
+        mSky.mStarRoll += timeScale * dt * osg::DegreesToRadians(360.f) / (3600 * 96.f);
 
         // The same scroll on the sky's clock: the deck's speed is a rate over real seconds, which
         // the sky's clock is at the shipped `timescale`.
         const float skyDt = Sky::skyStep(dt, timeScale);
-        mWorld.mSkySeconds += skyDt;
-        mWorld.mSkyCloudScroll = scrolled(mWorld.mSkyCloudScroll, skyDt * mWeather.mCloudSpeed / 400.f);
+        mSky.mSkySeconds += skyDt;
+        mSky.mSkyCloudScroll = scrolled(mSky.mSkyCloudScroll, skyDt * mWeather.mCloudSpeed / 400.f);
     }
 
     EyeState RenderingManager::describeEye() const
@@ -139,10 +139,10 @@ namespace MWRender
         const int next = simulation.getNextWeatherScriptId();
         const std::optional<int> nextWeather = next < 0 ? std::nullopt : std::optional(next);
 
-        // What the world settled on is already in `mWorld`, written where each part of it was
+        // What the world settled on about the sky is `mSky`, written where each part of it was
         // decided. What is left answers per frame, so no setter can have written it.
-        WorldState described = mWorld;
-
+        WorldState described;
+        described.mSky = mSky;
         described.mSunColour = mSunLight->getDiffuse();
         described.mAmbientColour = mSunLight->getAmbient();
         described.mNightEye = mSunLight->getAmbient() - mAmbientColor;
@@ -176,12 +176,12 @@ namespace MWRender
                 .mFog = mood.mFogColor,
                 .mFogDensity = mood.mFogDensity,
             };
-            described.mFogDepth = mood.mFogDensity;
-            described.mSunPosition = mSunLight->getPosition();
-            described.mSunVector = -mSunLight->getPosition();
-            described.mSunAtNight = false;
-            described.mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
-            described.mSunGlare = 1.f;
+            described.mSky.mFogDepth = mood.mFogDensity;
+            described.mSky.mSunPosition = mSunLight->getPosition();
+            described.mSky.mSunVector = -mSunLight->getPosition();
+            described.mSky.mSunAtNight = false;
+            described.mSky.mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
+            described.mSky.mSunGlare = 1.f;
         }
 
         described.mUnderwater = underwater;

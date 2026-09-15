@@ -99,7 +99,8 @@ namespace Rtx
         /// Geometry with no vertices or no triangles. Morrowind ships some.
         std::uint32_t mSkippedEmpty = 0;
 
-        /// `LightSource`s taken off the graph, which is every lamp the scene has: a `LIGH` record is
+        /// Every lamp the scene has: the `LightSource`s taken off the graph, and the `LIGH`
+        /// records the cell ring stands for the cells the game has not loaded. A `LIGH` record is
         /// what Morrowind lights with, and a glowing texture lights nothing.
         std::uint32_t mLights = 0;
 

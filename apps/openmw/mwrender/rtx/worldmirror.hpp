@@ -11,7 +11,6 @@
 #include <components/esm3/refnum.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/compositequeue.hpp>
-#include <components/rtx/distantlights.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
@@ -62,7 +61,8 @@ namespace MWRender
         ///
         /// **Once, because a frame reads what it was handed.** The reach is one number for the
         /// ground, the air, the distant lights and the checks; a host that asked the registry per
-        /// frame could answer it differently in each. Changing any of the three needs a restart.
+        /// frame could answer it differently in each. The statics need a restart; the reach follows
+        /// the menu through `setReach`.
         WorldMirror();
 
         /// The resource system the sky's own meshes are loaded through, and the cell ring's models
@@ -103,9 +103,13 @@ namespace MWRender
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled) { mRing.setReferenceEnabled(refnum, enabled); }
 
         /// How much world this renderer builds, in units: the ground, the air and the distant
-        /// lights are all measured over it. As the last walk read it from the settings, or as they
-        /// stood when the mirror was made before the first.
+        /// lights are all measured over it — `Rtx::distantLandReach`, as the settings stood when
+        /// the mirror was made or when the menu last moved them.
         float getReach() const { return mReach; }
+
+        /// The menu moved the reach, or the view distance it falls back to. Told rather than read
+        /// per frame, so the ring, the air and the map follow one number a frame was handed.
+        void setReach(float reach) { mReach = reach; }
 
         /// Where the last walk stood the rings: the camera's eye, which is not the player's feet.
         const osg::Vec3f& getEye() const { return mEye; }
@@ -158,17 +162,14 @@ namespace MWRender
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;
 
-        /// The lights of the cells the game has not stood.
-        Rtx::DistantLights mDistantLights;
-
         /// The sea: upstream's water geometry under `Mask_Water`, which is how the extractor
         /// knows a sea from a floor, stood at the frame's water height and hidden where the frame
         /// says there is none. Made once; a frame moves it.
         osg::ref_ptr<osg::PositionAttitudeTransform> mSea;
         osg::Vec2f mSeaCentre;
 
-        /// The cells themselves: their ground off the land records, and their statics as instances
-        /// of their templates. After the scene, which it adopts into.
+        /// The cells themselves: their ground off the land records, their statics as instances
+        /// of their templates, and their lamps. After the scene, which it adopts into.
         Rtx::CellRing mRing{ mScene };
 
         /// Where the ring's models and images come from: the game's own. Made where the world is

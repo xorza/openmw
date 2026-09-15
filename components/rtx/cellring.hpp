@@ -41,22 +41,33 @@ namespace Rtx
     /// the holds adoption took; `CellPlacer` is what stands and by what rule. A model's drawable
     /// is the template's, so a mesh adopted here is the mesh the frame's walk finds under the
     /// clone when the cell becomes active, and nothing is uploaded twice. The ground's rows are
-    /// the ring's own: no drawable will ever name them, so the placer holds them on the scene. A
-    /// `Residency`, because what this adopts goes through the extractor's own resolvers inside the
-    /// walk, and holds by `Known::mHolds` rather than being named again on every walk. Everything
-    /// the thread reads is lent and given back — `Spares` says why an address and not a shared
-    /// count, and `giveBackHolds` why a hold is a cell's.
-    class CellRing final : public Residency
+    /// the ring's own: no drawable will ever name them, so the placer holds them on the scene. What
+    /// this adopts goes through the extractor's own resolvers inside the walk (`SceneAdopter`),
+    /// and holds by `Known::mHolds` rather than being named again on every walk. Everything the
+    /// thread reads is lent and given back — `Spares` says why an address and not a shared count,
+    /// and `giveBackHolds` why a hold is a cell's.
+    ///
+    /// **The lamps of the cells the game has not loaded are the ring's too.** `REC_LIGH` is not a
+    /// paged type and must not become one, because both renderers read the paging's type filter;
+    /// what this fork cannot keep is the light, because rays go everywhere, and a town four cells
+    /// away that goes dark at dusk is the world stating something the content files do not. Read
+    /// with the cell's other records in one walk of them, off the frame, and stood by
+    /// `CellPlacer::place`, which says where.
+    class CellRing
     {
     public:
         explicit CellRing(SceneDesc& scene);
 
+        CellRing(const CellRing&) = delete;
+        CellRing& operator=(const CellRing&) = delete;
+
         /// Stops the thread. A cell in flight is finished and dropped rather than waited out.
-        ~CellRing() override;
+        ~CellRing();
 
         /// Where the world is now, and what of it is read. A world with no content stands nothing,
-        /// and a change of what is read drops everything held and starts again.
-        void follow(const WorldAround& around) override;
+        /// and a change of what is read drops everything held and starts again. Told once a frame,
+        /// before the walk.
+        void follow(const WorldAround& around);
 
         /// Whether the ring stands the distance's statics at all. The ground stands either way;
         /// off is the A/B `--distant-statics=false` is, and a change of it reads every cell again.
@@ -76,7 +87,9 @@ namespace Rtx
         /// `CellPlacer::setReferenceEnabled`, over the cells held.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
 
-        void collect(SceneAdopter& into, ExtractionStats& stats) override;
+        /// Hands `into` everything held that the graph does not parent, and adds what it stood to
+        /// `stats` — the walk's own, because the ring is stood inside the walk.
+        void collect(SceneAdopter& into, ExtractionStats& stats);
 
         /// The models and images lent, for the frame's describe to find a reading by its image.
         const CellHolds& getHolds() const { return mHolds; }

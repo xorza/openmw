@@ -2,7 +2,6 @@
 
 #include <optional>
 
-#include <osg/Node>
 #include <osg/Vec3f>
 
 #include <components/sceneutil/lightcontroller.hpp>
@@ -44,21 +43,27 @@ namespace Rtx
     /// default casts nothing, and every other record burns where it stands, carryable or not.
     bool castsWherePlaced(const SceneUtil::LightCommon& record);
 
-    /// Hangs a record's light under `where`, exactly as the game hangs one on a reference, through
-    /// `SceneUtil::addLight` so an `AttachLight` node is honoured. False where the record casts
-    /// nothing. `exterior` decides the attenuation; the reach around a cell is outdoors by definition.
-    /// `lightMask` is what the game marks a light node with (`CellWorld::mLightMask`).
-    bool standLight(
-        osg::Group& where, const SceneUtil::LightCommon& record, bool exterior, osg::Node::NodeMask lightMask);
+    /// The animation a record asks for, read off its four flags in the order
+    /// `SceneUtil::createLightSource` reads them, so the last flag set wins there and here.
+    SceneUtil::LightController::LightType animationOf(const SceneUtil::LightCommon& record);
 
-    /// The light a `LIGH` reference casts, or nothing where it casts none: `castsWherePlaced`, and a
-    /// negative light, which is meaningless to a ray traced to an emitter.
-    std::optional<Light> makeLight(const SceneUtil::LightCommon& record, const osg::Vec3f& position);
+    /// The light a `LIGH` reference casts at `simulationTime`, or nothing where it casts none:
+    /// `castsWherePlaced`, and a negative light, which is meaningless to a ray traced to an emitter.
+    ///
+    /// **The light the walk builds from the `SceneUtil::LightSource` the game hangs on the same
+    /// record, down to the last bit**, which is what lets the cell ring stand a lamp the game has
+    /// not loaded and the walk take it over when it does: the radius at least sixteen, as
+    /// `createLightSource` sets it; the colour decoded; the record's animation, phased by `id`;
+    /// and no ambient, because `SceneUtil::addLight` hands its source none. `id` is the reference
+    /// number's low word for a light no node carries, where the graph's is the node's own — so a
+    /// lamp's phase changes once, on the frame its cell loads and the graph's node takes over.
+    std::optional<Light> makeLight(
+        const SceneUtil::LightCommon& record, const osg::Vec3f& position, double simulationTime, int id);
 
-    /// The same light from a colour and a radius: one conversion, so `DistantLights` reading `LIGH`
-    /// records and the mirror reading `SceneUtil::LightSource` nodes cannot disagree about how
-    /// bright a candle is. Nothing where a channel of `colour` is negative or `radius` is no size a
-    /// light can have.
+    /// The same light from a colour and a radius: one conversion, so a record read off the content
+    /// files and a `SceneUtil::LightSource` read off the graph cannot disagree about how bright a
+    /// candle is. Nothing where a channel of `colour` is negative or `radius` is no size a light
+    /// can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
     /// What a light in the game's scene graph radiates this frame, in the renderer's units: the

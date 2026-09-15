@@ -505,10 +505,28 @@ namespace MWRender
             };
         }
 
-        std::map<ESM::RefNum, PagedCellRef> collectESM3References(
-            float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store, Terrain::RefKind kind)
+        /// Where one walk of a cell's records puts what it finds: what the paging stands, and the
+        /// `LIGH` references it never does, for the caller that asked for them.
+        struct Collected
         {
-            std::map<ESM::RefNum, PagedCellRef> refs;
+            std::map<ESM::RefNum, PagedCellRef> mPaged;
+            std::map<ESM::RefNum, PagedCellRef> mLit;
+        };
+
+        /// The list a reference of `type` goes to, or null where neither kind wants it.
+        std::map<ESM::RefNum, PagedCellRef>* listFor(Collected& into, bool lit, int type, bool far)
+        {
+            if (typeFilter(Terrain::RefKind::Paged, type, far))
+                return &into.mPaged;
+            if (lit && typeFilter(Terrain::RefKind::Lit, type, far))
+                return &into.mLit;
+            return nullptr;
+        }
+
+        Collected collectESM3References(
+            float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store, bool lit)
+        {
+            Collected refs;
             ESM::ReadersCache readers;
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
@@ -539,14 +557,15 @@ namespace MWRender
                                     continue;
 
                                 int type = store.findStatic(ref.mRefID);
-                                if (!typeFilter(kind, type, size >= 2))
+                                std::map<ESM::RefNum, PagedCellRef>* list = listFor(refs, lit, type, size >= 2);
+                                if (list == nullptr)
                                     continue;
                                 if (deleted)
                                 {
-                                    refs.erase(ref.mRefNum);
+                                    list->erase(ref.mRefNum);
                                     continue;
                                 }
-                                refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
+                                list->insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
                             }
                         }
                         catch (const std::exception& e)
@@ -560,23 +579,24 @@ namespace MWRender
                     {
                         if (deleted)
                         {
-                            refs.erase(ref.mRefNum);
+                            refs.mPaged.erase(ref.mRefNum);
+                            refs.mLit.erase(ref.mRefNum);
                             continue;
                         }
                         int type = store.findStatic(ref.mRefID);
-                        if (!typeFilter(kind, type, size >= 2))
+                        std::map<ESM::RefNum, PagedCellRef>* list = listFor(refs, lit, type, size >= 2);
+                        if (list == nullptr)
                             continue;
-                        refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
+                        list->insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
                     }
                 }
             }
             return refs;
         }
 
-        std::map<ESM::RefNum, PagedCellRef> collectESM4References(
-            float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKind kind)
+        Collected collectESM4References(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, bool lit)
         {
-            std::map<ESM::RefNum, PagedCellRef> refs;
+            Collected refs;
             const auto& store = MWBase::Environment::get().getWorld()->getStore();
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
@@ -591,7 +611,8 @@ namespace MWRender
                         if (ref4->mFlags & ESM4::Rec_Disabled)
                             continue;
                         int type = store.findStatic(ref4->mBaseObj);
-                        if (!typeFilter(kind, type, size >= 2))
+                        std::map<ESM::RefNum, PagedCellRef>* list = listFor(refs, lit, type, size >= 2);
+                        if (list == nullptr)
                             continue;
                         if (!ref4->mEsp.parent.isZeroOrUnset())
                         {
@@ -605,7 +626,7 @@ namespace MWRender
                                     continue;
                             }
                         }
-                        refs.insert_or_assign(ref4->mId, makePagedCellRef(*ref4));
+                        list->insert_or_assign(ref4->mId, makePagedCellRef(*ref4));
                     }
                 }
             }
@@ -625,11 +646,11 @@ namespace MWRender
 
         if (mWorldspace == ESM::Cell::sDefaultWorldspaceId)
         {
-            refs = collectESM3References(size, startCell, store, Terrain::RefKind::Paged);
+            refs = collectESM3References(size, startCell, store, false).mPaged;
         }
         else
         {
-            refs = collectESM4References(size, startCell, mWorldspace, Terrain::RefKind::Paged);
+            refs = collectESM4References(size, startCell, mWorldspace, false).mPaged;
         }
 
         if (activeGrid && !refs.empty())
@@ -1106,18 +1127,21 @@ namespace MWRender
     }
 
     // Defined here because the walk it wraps is file-local
-    void ObjectStorage::collect(Terrain::RefKind kind, float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-        std::vector<Terrain::PagedCellRef>& out) const
+    void ObjectStorage::collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+        std::vector<Terrain::PagedCellRef>& paged, std::vector<Terrain::PagedCellRef>& lit) const
     {
-        out.clear();
+        paged.clear();
+        lit.clear();
 
         const MWWorld::ESMStore& store = MWBase::Environment::get().getWorld()->getStore();
-        const std::map<ESM::RefNum, PagedCellRef> refs = worldspace == ESM::Cell::sDefaultWorldspaceId
-            ? collectESM3References(size, startCell, store, kind)
-            : collectESM4References(size, startCell, worldspace, kind);
+        const Collected refs = worldspace == ESM::Cell::sDefaultWorldspaceId
+            ? collectESM3References(size, startCell, store, true)
+            : collectESM4References(size, startCell, worldspace, true);
 
-        for (const auto& [refNum, ref] : refs)
-            out.push_back(ref);
+        for (const auto& [refNum, ref] : refs.mPaged)
+            paged.push_back(ref);
+        for (const auto& [refNum, ref] : refs.mLit)
+            lit.push_back(ref);
     }
 
     std::optional<SceneUtil::LightCommon> ObjectStorage::getLight(const ESM::RefId& id) const

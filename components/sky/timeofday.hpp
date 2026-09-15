@@ -28,6 +28,11 @@ namespace Sky
         float mDayStart;
         float mDayEnd;
 
+        /// `Weather_Sunrise_Duration` as recorded, which is `mDayStart - mNightEnd` before that
+        /// subtraction rounds: the disc's alpha ramps over half of it, and the weather manager
+        /// reads the recorded number.
+        float mSunriseDuration;
+
         std::map<std::string, WeatherSetting> mSunriseTransitions;
 
         float mStarsPostSunsetStart;

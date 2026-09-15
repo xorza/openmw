@@ -25,13 +25,13 @@ namespace MWRender
             WorldState world;
             world.mLocation = where;
             world.mGameHour = 12.0f;
-            world.mFogDepth = 0.69f;
-            world.mBaseWindSpeed = 0.3f;
+            world.mSky.mFogDepth = 0.69f;
+            world.mSky.mBaseWindSpeed = 0.3f;
             world.mAir = { .mColour = osg::Vec4f(0.62f, 0.77f, 1.0f, 1.0f) };
-            world.mSkyColour = osg::Vec4f(0.11f, 0.24f, 0.6f, 1.0f);
-            world.mSunPosition = osg::Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
+            world.mSky.mSkyColour = osg::Vec4f(0.11f, 0.24f, 0.6f, 1.0f);
+            world.mSky.mSunPosition = osg::Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
             world.mSunColour = osg::Vec4f(1.0f, 0.97f, 0.85f, 1.0f);
-            world.mSunDiscColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
+            world.mSky.mSunDiscColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
 
             return world;
         }
@@ -94,9 +94,9 @@ namespace MWRender
         TEST(RtxReadWorldTest, theDeckAndTheFogReadTheSkysClock)
         {
             WorldState world = standingIn(Location::Exterior);
-            world.mCloudScroll = 3.0f;
-            world.mSkyCloudScroll = 1.25f;
-            world.mSkySeconds = 1234.5;
+            world.mSky.mCloudScroll = 3.0f;
+            world.mSky.mSkyCloudScroll = 1.25f;
+            world.mSky.mSkySeconds = 1234.5;
 
             const Rtx::WorldReading reading = readFrom(world);
             EXPECT_EQ(reading.mClouds.mScroll, 1.25f);
@@ -110,9 +110,10 @@ namespace MWRender
         TEST(RtxReadWorldTest, aRoomIsLitByItsOwnRecordAndHasNoSun)
         {
             WorldState cellar = standingIn(Location::Interior);
-            cellar.mRoom = ESM::Cell::AMBIstruct{
-                .mAmbient = 0x00201818u, .mSunlight = 0x00403028u, .mFog = 0x00151510u, .mFogDensity = cellar.mFogDepth
-            };
+            cellar.mRoom = ESM::Cell::AMBIstruct{ .mAmbient = 0x00201818u,
+                .mSunlight = 0x00403028u,
+                .mFog = 0x00151510u,
+                .mFogDensity = cellar.mSky.mFogDepth };
 
             const Rtx::WorldReading room = readFrom(cellar);
 
@@ -120,8 +121,8 @@ namespace MWRender
             EXPECT_EQ(room.mDaylight.mLight.mSun.mIrradiance, osg::Vec3f()) << "noon reached a cellar";
             EXPECT_EQ(room.mDaylight.mFog.mUniform, 1.0f);
             EXPECT_EQ(room.mDaylight.mFog.mEdge, 0.0f);
-            EXPECT_NEAR(
-                room.mDaylight.mFog.mExtinction, Rtx::fogExtinction(cellar.mFogDepth, Rtx::sInteriorFogReach), 1e-10f);
+            EXPECT_NEAR(room.mDaylight.mFog.mExtinction,
+                Rtx::fogExtinction(cellar.mSky.mFogDepth, Rtx::sInteriorFogReach), 1e-10f);
 
             // Its sky is its own air and not the one the player last stood under, which the weather
             // system stopped writing the moment they stepped inside.

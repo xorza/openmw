@@ -88,9 +88,10 @@ namespace Rtx
     /// with the camera.
     inline constexpr float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
 
-    /// How much of the sun is over the horizon at `hour`: Morrowind's own two curves, linear in over
-    /// the first half of the sunrise window and squared out across the whole of dusk, with the
-    /// night folded in. The arithmetic `MWWorld::WeatherManager` runs for the disc's alpha.
+    /// How much of the sun is over the horizon at `hour`: the weather manager's own disc alpha
+    /// (`Sky::sunDiscAlpha`) under its own gate on the night (`Sky::sunUp`), bounded at one. One
+    /// rule, lifted, so the disc the rasterizer draws and the shadow the tracer casts come and go
+    /// together.
     float sunShareAt(float hour, const Sky::TimeOfDaySettings& times);
 
     /// How fast the disc's elevation changes near either end of the day, in radians per hour: what

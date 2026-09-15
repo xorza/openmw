@@ -115,6 +115,7 @@ namespace Rtx
         {
             Sky::TimeOfDaySettings times{};
             times.mNightEnd = 6.0f;
+            times.mSunriseDuration = 2.0f;
             times.mDayStart = 8.0f;
             times.mDayEnd = 18.0f;
             times.mNightStart = 20.0f;

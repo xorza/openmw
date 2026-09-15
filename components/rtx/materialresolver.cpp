@@ -320,8 +320,10 @@ namespace Rtx
         // Last, and only for the surfaces the answer separates. Every field the test reads is
         // filled above, and the walk over a texture's texels is worth nothing to a material that is
         // opaque, masked, or has no diffuse map to read — `Material::isMedium` is the other half.
+        // The reading's answer where one was made, and the walk over the texels only where none
+        // was: `value_or` would take the walk whatever the reading said.
         if (material.isTranslucent() && material.mDiffuse != sNoIndex)
-            material.mDiffuseNeverSolid = !diffuseSolid.value_or(diffuseReachesSolid(diffuse));
+            material.mDiffuseNeverSolid = !(diffuseSolid.has_value() ? *diffuseSolid : diffuseReachesSolid(diffuse));
 
         return material;
     }

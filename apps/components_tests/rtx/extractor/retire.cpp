@@ -4,7 +4,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <vector>
 
 #include <osg/Array>
@@ -17,7 +16,6 @@
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
-#include <components/rtx/residency.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shapefold.hpp>
@@ -88,12 +86,12 @@ namespace Rtx::Testing
             EXPECT_FALSE(watch.valid()) << "the sweep dropped the entry and kept the drawable alive";
         }
 
-        /// A residency standing a mesh and a material of its own, which no drawable names.
+        /// A mesh and a material of the scene's own, which no drawable names.
         ///
         /// What the cell ring does for a cell's ground: the rows are added straight to the scene,
         /// held on it, and let go of by giving the holds back — outside any walk, which is when a
         /// detached world lets go of everything.
-        class OwnedRows : public Residency
+        class OwnedRows
         {
         public:
             explicit OwnedRows(SceneDesc& scene)
@@ -101,7 +99,19 @@ namespace Rtx::Testing
             {
             }
 
-            void follow(const WorldAround&) override {}
+            void stand()
+            {
+                const std::array<osg::Vec3f, 3> corners{ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
+                    osg::Vec3f(0.0f, 1.0f, 0.0f) };
+                const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
+
+                mMaterial = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain });
+                mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle }, FoldedShape{},
+                    Deform::None, sNoIndex, mMaterial);
+                mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
+                mScene.meshes().hold(mMesh);
+                mScene.materials().hold(mMaterial);
+            }
 
             void letGo()
             {
@@ -113,26 +123,6 @@ namespace Rtx::Testing
 
             Index getMesh() const { return mMesh; }
 
-            void collect(SceneAdopter&, ExtractionStats& stats) override
-            {
-                if (mMesh != sNoIndex)
-                    return;
-
-                const std::array<osg::Vec3f, 3> corners{ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
-                    osg::Vec3f(0.0f, 1.0f, 0.0f) };
-                const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
-
-                mMaterial = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain });
-                mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle }, FoldedShape{},
-                    Deform::None, sNoIndex, mMaterial);
-                mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
-                mScene.meshes().hold(mMesh);
-                mScene.materials().hold(mMaterial);
-
-                ++stats.mMeshesAdded;
-                ++stats.mMaterialsAdded;
-            }
-
         private:
             SceneDesc& mScene;
             Index mMesh = sNoIndex;
@@ -140,22 +130,19 @@ namespace Rtx::Testing
             Index mSlot = sNoIndex;
         };
 
-        /// **A row a residency holds survives every sweep, and goes on the first after the hold is
+        /// **A row something holds survives every sweep, and goes on the first after the hold is
         /// given back.** The identity maps hold nothing for it, so without the hold the sweep after
         /// the first walk would release the ground under the player's feet — and without the scene
         /// saying a hold went, a sweep on a frame where every map stood whole would never run at
         /// all.
-        TEST_F(RtxSceneExtractorTest, aRowAResidencyHoldsIsKeptWhileHeldAndReleasedWhenLetGo)
+        TEST_F(RtxSceneExtractorTest, aRowAHoldKeepsIsKeptWhileHeldAndReleasedWhenLetGo)
         {
             OwnedRows rows(mScene);
-            Residency* held = &rows;
-            mExtractor.follow(std::span<Residency* const>(&held, 1));
+            rows.stand();
+            ASSERT_EQ(mScene.meshes().getLiveCount(), 1u);
 
             osg::ref_ptr<osg::Group> nothing = new osg::Group;
-            const ExtractionStats first = mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 1);
-            EXPECT_EQ(first.mMeshesAdded, 1u);
-            EXPECT_EQ(first.mMaterialsAdded, 1u);
-            ASSERT_EQ(mScene.meshes().getLiveCount(), 1u);
+            mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 1);
 
             EXPECT_TRUE(mExtractor.retire().empty()) << "a held row is a survivor";
             EXPECT_EQ(mScene.meshes().getLiveCount(), 1u);

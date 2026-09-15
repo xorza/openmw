@@ -34,6 +34,7 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/camera.hpp>
+#include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
@@ -737,6 +738,13 @@ namespace MWRender
     {
         if (changed.contains({ "RTX", "upscale" }))
             setUpscale(Settings::rtx().mUpscale.get());
+
+        // The menu moves the reach while the game runs, and the ring, the air and the map all
+        // follow it: a slider that took effect at the next start was a slider that did nothing.
+        // Handed over here and never read by a frame, so every part of a frame stands in one world.
+        if (changed.contains({ "RTX", "distant land cells" }) || changed.contains({ "Camera", "viewing distance" }))
+            mMirror.setReach(
+                Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance));
     }
 
     /// A name a renderer cannot read, or a mode this machine cannot reach, is reported and left
@@ -821,7 +829,16 @@ namespace MWRender
         // cells arriving and whatever it waits on to get them. It is the one stretch of the loop
         // nothing else measures, and it is timed rather than profiled because most of it is a
         // thread asleep.
-        report.mSpend.at(Rtx::Timing::Update) = mSpan.sinceLeft(std::chrono::steady_clock::now());
+        //
+        // **And the whole frame, measured from one arrival here to the next.** Everything the game
+        // does in between is in it — update, cull, this — which is what a player feels and what the
+        // wait on the device on its own cannot say. Entered here and not where the trace is
+        // submitted, so a frame the world was hidden on, a frame with nothing placed and a frame
+        // `aim` refused each close a span of their own: entered at the trace, the first traced
+        // frame after any of those reported the whole gap as one frame.
+        const std::chrono::steady_clock::time_point arrived = std::chrono::steady_clock::now();
+        report.mSpend.at(Rtx::Timing::Update) = mSpan.sinceLeft(arrived);
+        const std::optional<double> since = mSpan.enter(arrived);
 
         mFrame = when.getFrameNumber();
 
@@ -861,7 +878,7 @@ namespace MWRender
         if (mRun.wantsSecondWalk())
             mWalked.mAgain = mMirror.mirror(frame, mFrame);
 
-        traceWorld(frame, report);
+        traceWorld(frame, report, since);
 
         renderGui();
 
@@ -874,7 +891,7 @@ namespace MWRender
         mSpan.leave(std::chrono::steady_clock::now());
     }
 
-    void RtxRenderer::traceWorld(const SceneFrame& frame, FrameReport& report)
+    void RtxRenderer::traceWorld(const SceneFrame& frame, FrameReport& report, const std::optional<double> since)
     {
         if (mMirror.getScene().placements().getPlacedCount() == 0)
             return;
@@ -894,7 +911,7 @@ namespace MWRender
         if (!constants.has_value())
             return;
 
-        trace(frame, *constants, report);
+        trace(frame, *constants, report, since);
     }
 
     void RtxRenderer::finishBehind(FrameReport& report)
@@ -986,7 +1003,8 @@ namespace MWRender
         }
     }
 
-    void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report)
+    void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report,
+        const std::optional<double> since)
     {
         const Rtx::WorldReading read
             = mMirror.readWorld(frame.mWorld, static_cast<float>(frame.mWhen.getSimulationTime()));
@@ -1028,12 +1046,7 @@ namespace MWRender
         report.mReconstruction = mRenderer->renderFrame(
             constants, Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias));
 
-        // **The whole frame, measured between one trace and the next.** Everything the game does
-        // in between is in it — update, cull, this — which is what a player feels and what the
-        // wait on the device on its own cannot say.
-        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-        const std::optional<double> since = mSpan.enter(now);
-        report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, now);
+        report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, std::chrono::steady_clock::now());
         report.mSpend.at(Rtx::Timing::Present) = mSpan.takePresent();
 
         if (since.has_value())

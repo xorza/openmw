@@ -2,12 +2,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <osg/PositionAttitudeTransform>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
@@ -289,26 +289,43 @@ namespace Rtx
             EXPECT_NEAR(both.x(), 2.75302f, 1e-4f);
             EXPECT_NEAR(both.y(), 2.53716f, 1e-4f);
 
-            // **The property the whole function exists for.** The harness reads a cell's `LIGH`
-            // records and the game reads the `SceneUtil::LightSource` nodes its graph already holds;
-            // for one record those two have to be one light, down to the last bit of the intensity.
+            // **The property the whole function exists for.** The cell ring reads a cell's `LIGH`
+            // records and the walk reads the `SceneUtil::LightSource` nodes the game hangs on the
+            // same records; for one record those two have to be one light, down to the last bit of
+            // the intensity, at every hour and under every animation — or a lamp changes as its cell
+            // loads. The graph's source is built the way the game builds one, `createLightSource`,
+            // and both are phased by the id the graph's own node was given.
             for (const std::uint32_t packed : { 0x00000000u, 0x00808080u, 0x000080FFu, 0x00FFFFFFu })
-            {
-                const SceneUtil::LightCommon record = describe(100, packed, 0);
-                const std::optional<Rtx::Light> fromRecord = makeLight(record, osg::Vec3f(1, 2, 3));
+                for (const std::int32_t flags : std::initializer_list<std::int32_t>{
+                         0, ESM::Light::Flicker, ESM::Light::FlickerSlow, ESM::Light::Pulse, ESM::Light::PulseSlow })
+                    for (const std::int32_t radius : { 100, 7 })
+                        for (const double seconds : { 0.0, 0.375, 11.0 })
+                        {
+                            const SceneUtil::LightCommon record = describe(radius, packed, flags);
+                            const osg::ref_ptr<SceneUtil::LightSource> graph = SceneUtil::createLightSource(
+                                record, ~0u, /*isExterior=*/true, osg::Vec4f(0, 0, 0, 1));
 
-                const osg::ref_ptr<SceneUtil::LightSource> graph
-                    = Testing::makeLightSource(0.0f, SceneUtil::colourFromRGB(packed), osg::Vec4f());
-                const std::optional<Rtx::Light> fromGraph
-                    = makeLight(lightColour(*graph, 0.0), 100.0f, osg::Vec3f(1, 2, 3));
+                            const std::optional<Rtx::Light> fromRecord
+                                = makeLight(record, osg::Vec3f(1, 2, 3), seconds, graph->getId());
+                            const std::optional<Rtx::Light> fromGraph = makeLight(
+                                lightColour(*graph, seconds), graph->getSourceRadius(), osg::Vec3f(1, 2, 3));
 
-                ASSERT_TRUE(fromRecord.has_value() && fromGraph.has_value()) << "packed " << packed;
-                EXPECT_EQ(fromRecord->mIntensity, fromGraph->mIntensity) << "packed " << packed;
-                EXPECT_EQ(fromRecord->mReach, fromGraph->mReach);
-                EXPECT_EQ(fromRecord->mSourceRadius, fromGraph->mSourceRadius);
-                EXPECT_EQ(fromRecord->mClearance, fromGraph->mClearance);
-                EXPECT_EQ(fromRecord->mPosition, fromGraph->mPosition);
-            }
+                            ASSERT_TRUE(fromRecord.has_value() && fromGraph.has_value())
+                                << "packed " << packed << " flags " << flags;
+                            EXPECT_EQ(fromRecord->mIntensity, fromGraph->mIntensity)
+                                << "packed " << packed << " flags " << flags << " at " << seconds;
+                            EXPECT_EQ(fromRecord->mReach, fromGraph->mReach) << "radius " << radius;
+                            EXPECT_EQ(fromRecord->mSourceRadius, fromGraph->mSourceRadius) << "radius " << radius;
+                            EXPECT_EQ(fromRecord->mClearance, fromGraph->mClearance);
+                            EXPECT_EQ(fromRecord->mPosition, fromGraph->mPosition);
+                        }
+
+            // The animation is read off the flags in the order the game reads them, and the last
+            // flag set wins there too.
+            EXPECT_EQ(animationOf(describe(100, 0, 0)), SceneUtil::LightController::LT_Normal);
+            EXPECT_EQ(animationOf(describe(100, 0, ESM::Light::Flicker)), SceneUtil::LightController::LT_Flicker);
+            EXPECT_EQ(animationOf(describe(100, 0, ESM::Light::Flicker | ESM::Light::PulseSlow)),
+                SceneUtil::LightController::LT_PulseSlow);
         }
 
         /// Brightness, reach and the size of the flame all come off the one number the record
@@ -322,7 +339,8 @@ namespace Rtx
         /// is twice as wide and its shadows are twice as soft.
         TEST(RtxLightBuilderTest, intensityScalesWithTheRecordedRadiusAndReachIsStretchedPastIt)
         {
-            const std::optional<Rtx::Light> light = makeLight(describe(100, 0x00FFFFFF, 0), osg::Vec3f(1, 2, 3));
+            const std::optional<Rtx::Light> light
+                = makeLight(describe(100, 0x00FFFFFF, 0), osg::Vec3f(1, 2, 3), 0.0, 1);
 
             ASSERT_TRUE(light.has_value());
             EXPECT_EQ(light->mPosition, osg::Vec3f(1, 2, 3));
@@ -343,7 +361,7 @@ namespace Rtx
             // Doubling the radius quadruples the brightness, doubles the flame and rather less than
             // doubles the reach: 200 * 200 * 0.25 * pi = 31415.9, 200 / 16 = 12.5, and
             // 200 * 2 + 128 = 528.
-            const std::optional<Rtx::Light> larger = makeLight(describe(200, 0x00FFFFFF, 0), osg::Vec3f());
+            const std::optional<Rtx::Light> larger = makeLight(describe(200, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1);
             ASSERT_TRUE(larger.has_value());
             EXPECT_NEAR(larger->mIntensity.x(), 31415.9f, 0.1f);
             EXPECT_FLOAT_EQ(larger->mReach, 528.0f);
@@ -368,64 +386,28 @@ namespace Rtx
         TEST(RtxLightBuilderTest, anUnlitRecordCastsNothingAndACarryableOneBurnsWhereItLies)
         {
             EXPECT_FALSE(castsWherePlaced(describe(100, 0x00FFFFFF, ESM::Light::OffDefault)));
-            EXPECT_FALSE(makeLight(describe(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f()).has_value());
+            EXPECT_FALSE(
+                makeLight(describe(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f(), 0.0, 1).has_value());
 
-            EXPECT_FALSE(makeLight(describe(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f()).has_value());
+            EXPECT_FALSE(makeLight(describe(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f(), 0.0, 1).has_value());
 
             // The flags that say what a light is or how it animates leave it burning.
             for (const std::int32_t flag :
                 { ESM::Light::Carry, ESM::Light::Dynamic, ESM::Light::Flicker, ESM::Light::Fire, ESM::Light::Pulse })
             {
                 EXPECT_TRUE(castsWherePlaced(describe(100, 0x00FFFFFF, flag))) << "flag " << flag;
-                EXPECT_TRUE(makeLight(describe(100, 0x00FFFFFF, flag), osg::Vec3f()).has_value()) << "flag " << flag;
+                EXPECT_TRUE(makeLight(describe(100, 0x00FFFFFF, flag), osg::Vec3f(), 0.0, 1).has_value())
+                    << "flag " << flag;
             }
 
-            // A file on disk that something else wrote, so a radius of nothing is data and not a
-            // broken contract.
-            EXPECT_FALSE(makeLight(describe(0, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
-            EXPECT_FALSE(makeLight(describe(-50, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
-        }
-
-        /// A lamp stands at its wick, and a lamp with no mesh stands where the reference does.
-        ///
-        /// **The two callers of `standLight` want opposite halves of one rule.** A cell the player
-        /// has walked into places the model, so the light belongs on the `AttachLight` node its
-        /// author put at the flame — up to forty-eight units above the reference on the lamps of one
-        /// Balmora room. The reach around that cell places no model at all, because the paging
-        /// stands none, so the light lands on the transform the reference's own
-        /// position built. `SceneUtil::addLight` is what tells the two apart, and this is what says
-        /// `standLight` reaches it rather than `createLightSource`.
-        TEST(RtxLightBuilderTest, aLampStandsAtItsWickAndOneWithNoMeshStandsWhereItLies)
-        {
-            const SceneUtil::LightCommon burning = describe(100, 0x00FFFFFF, ESM::Light::Flicker);
-
-            // A model as a loader hands one over: the mesh under a transform, and the flame's own
-            // node named where the author put it.
-            osg::ref_ptr<osg::Group> lantern = new osg::Group;
-            osg::ref_ptr<osg::PositionAttitudeTransform> wick = new osg::PositionAttitudeTransform;
-            wick->setName("AttachLight");
-            wick->setPosition(osg::Vec3f(0.0f, 0.0f, 48.0f));
-            lantern->addChild(wick);
-
-            ASSERT_TRUE(standLight(*lantern, burning, /*exterior=*/false, Testing::sLightMask));
-            ASSERT_EQ(wick->getNumChildren(), 1u) << "the light was not hung on the flame's own node";
-            EXPECT_EQ(lantern->getNumChildren(), 1u) << "the light was hung on the model as well";
-
-            // The reach around a cell, which reads the record and never the mesh.
-            osg::ref_ptr<osg::Group> bare = new osg::Group;
-            ASSERT_TRUE(standLight(*bare, burning, /*exterior=*/true, Testing::sLightMask));
-            ASSERT_EQ(bare->getNumChildren(), 1u);
-
-            // **Marked the way the game marks one**, because the two graphs have to look the same to
-            // anything that ever filters on it.
-            EXPECT_EQ(bare->getChild(0)->getNodeMask(), Testing::sLightMask);
-            EXPECT_EQ(wick->getChild(0)->getNodeMask(), Testing::sLightMask);
-
-            // And a record that does not burn stands nothing on either path.
-            const SceneUtil::LightCommon unlit = describe(100, 0x00FFFFFF, ESM::Light::OffDefault);
-            osg::ref_ptr<osg::Group> dark = new osg::Group;
-            EXPECT_FALSE(standLight(*dark, unlit, /*exterior=*/false, Testing::sLightMask));
-            EXPECT_EQ(dark->getNumChildren(), 0u);
+            // A record of no radius is a lamp of sixteen, because that is the least the game
+            // stands one at: `createLightSource` lifts every radius to it before the walk reads
+            // one back, and the record route reads the same rule.
+            const std::optional<Rtx::Light> least = makeLight(describe(0, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1);
+            ASSERT_TRUE(least.has_value());
+            EXPECT_FLOAT_EQ(least->mSourceRadius, 1.0f);
+            EXPECT_FLOAT_EQ(makeLight(describe(-50, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1)->mSourceRadius, 1.0f)
+                << "and so is a record that names less than nothing";
         }
 
         /// A light that subtracts is refused by both routes to one, and the graph was the half that
@@ -449,7 +431,8 @@ namespace Rtx
             ASSERT_LT(radiated.x(), 0.0f) << "the graph did not build a light that subtracts, so this proves nothing";
 
             EXPECT_FALSE(makeLight(radiated, 100.0f, osg::Vec3f()).has_value()) << "the walk mirrored it anyway";
-            EXPECT_FALSE(makeLight(subtracting, osg::Vec3f()).has_value()) << "and the record it was built from";
+            EXPECT_FALSE(makeLight(subtracting, osg::Vec3f(), 0.0, 1).has_value())
+                << "and the record it was built from";
 
             // The same record without the flag is an ordinary white lamp by both routes, so what the
             // two agree on is the flag and not the light.
@@ -458,7 +441,7 @@ namespace Rtx
                 = SceneUtil::createLightSource(ordinary, Testing::sLightMask, /*isExterior=*/false);
 
             EXPECT_TRUE(makeLight(lightColour(*lit, 0.0), 100.0f, osg::Vec3f()).has_value());
-            EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(ordinary, osg::Vec3f(), 0.0, 1).has_value());
 
             // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
             // routes place a lamp that radiates zero, which is what they already did for a black
@@ -468,7 +451,7 @@ namespace Rtx
                 = SceneUtil::createLightSource(unlit, Testing::sLightMask, /*isExterior=*/false);
 
             EXPECT_TRUE(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f()).has_value());
-            EXPECT_TRUE(makeLight(unlit, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(unlit, osg::Vec3f(), 0.0, 1).has_value());
         }
     }
 }

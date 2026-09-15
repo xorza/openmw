@@ -188,8 +188,10 @@ namespace Rtx
         // Every frame in flight, and the presenter's last blit, before anything they name goes.
         tearDown("the device would not finish before the renderer was taken apart", [&] { mDevice.waitIdle(); });
 
-        // Before the scenes below it, which own the storage the buried rooms are rooms in.
+        // Before the scenes below it, the dying ones included, which own the storage the buried
+        // rooms are rooms in.
         mGraveyard.clear();
+        mDyingScenes.clear();
     }
 
     void VulkanRenderer::startUpscaler()
@@ -232,7 +234,22 @@ namespace Rtx
         mPool.finishDeferred();
         mRing.finishAll();
         mDevice.waitIdle();
+
+        // The graveyard before the scenes, for the reason the destructor gives: a buried structure
+        // gives its room back to the storage its scene owns.
         mGraveyard.clear();
+        mDyingScenes.clear();
+    }
+
+    void VulkanRenderer::buryDyingScenes()
+    {
+        // The graveyard first, and against the same value: a structure a dying scene retired is
+        // buried with a stamp no later than the scene's own, and gives its room back to a storage
+        // the scene owns when it goes.
+        mGraveyard.collect();
+
+        const std::uint64_t finished = mDevice.getTimeline().getKnownFinished();
+        std::erase_if(mDyingScenes, [finished](const DyingScene& dying) { return dying.mUntil <= finished; });
     }
 
     void VulkanRenderer::finishTraces()
@@ -746,12 +763,16 @@ namespace Rtx
 
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
-        return mRing.collect();
+        std::optional<FrameResult> result = mRing.collect();
+        buryDyingScenes();
+        return result;
     }
 
     std::optional<FrameResult> VulkanRenderer::collectFrame()
     {
-        return mRing.collectFinished();
+        std::optional<FrameResult> result = mRing.collectFinished();
+        buryDyingScenes();
+        return result;
     }
 
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
@@ -1113,13 +1134,14 @@ namespace Rtx
         assert(scene.getViewIndex() < mViewScenes.size() && mViewScenes[scene.getViewIndex()] != nullptr
             && "a scene given back twice");
 
-        // What a picture's placement buried is this scene's, and the frame it was buried under
-        // need never be traced — so it is given back here rather than to a scene that has gone. A
-        // picture of it recorded this frame and not yet carried goes first, or it would be carried
-        // over a scene that no longer exists.
-        drain();
-
-        mViewScenes[scene.getViewIndex()].reset();
+        // Held and not drained: a picture of it recorded this frame and not yet carried rides the
+        // next submit, and so does the last placement's refit, so the scene goes once the timeline
+        // has passed that submit and no sooner — `DyingScene` says why that is the graveyard's
+        // rule. A drain here idled the whole device every time the inventory closed.
+        mDyingScenes.push_back(DyingScene{
+            .mUntil = mDevice.getTimeline().getNext(),
+            .mScene = std::move(mViewScenes[scene.getViewIndex()]),
+        });
         mFreeViewScenes.free(scene.getViewIndex());
     }
 

@@ -66,6 +66,10 @@ compiled around. It is the path not taken, which is what makes "does the RT path
 answerable by comparison. Its workarounds do not come across either: render-bin ordering, the
 transparent pass, the distortion pass and shadow-map tuning are answered with rays. A fix for how a
 triangle got onto a screen stays behind; a decision about what the world looks like comes over.
+The one exception is the game's, not the rasterizer's: `MWWorld::WeatherManager::update` steps
+its transitions by `Sky::skyStep`, so a sped-up `timescale` carries the weather with the sun under
+both renderers. At the shipped scale the step is the frame's own, to the bit; `skyclock.hpp` says
+why any other scale was a bug the rasterizer drew.
 
 **Upstream's files are read-only.** Changes land in `components/rtx*/`,
 `components/myguirtx/`, `apps/rtxtool/`, `apps/openmw/mwrender/rtx/`,

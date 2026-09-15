@@ -102,6 +102,9 @@ namespace Rtx
         /// The ground, or nothing where the land names none. What is emptied on a drop is the
         /// optional's contents and never the optional itself, so its texture list keeps its room.
         std::optional<HeldGround> mGround;
+
+        /// The cell's lamps, which `CellPlacer::place` stands on every walk at the frame's own hour.
+        std::vector<PreparedLight> mLights;
     };
 
     /// What the frame holds of the models and the images the reader lent it, and what it adopted

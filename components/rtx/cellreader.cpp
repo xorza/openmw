@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <exception>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -15,8 +16,10 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/misc/resourcehelpers.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 
 #include "error.hpp"
+#include "lightbuilder.hpp"
 #include "residency.hpp"
 #include "shadingmap.hpp"
 #include "surface.hpp"
@@ -162,12 +165,30 @@ namespace Rtx
             return layer.mTexture == nullptr;
         });
 
+        // One cell at a time, which is the paging's near answer: containers page here as they do
+        // in the active grid's own chunks, and the size rule is what thins them with distance. One
+        // walk of the cell's records answers the lights too, which the paging never stands.
+        mStorage.collect(1.0f, cell, mWorldspace, mRefScratch, mLitScratch);
+
+        for (const Terrain::PagedCellRef& ref : mLitScratch)
+        {
+            const std::optional<SceneUtil::LightCommon> record = mStorage.getLight(ref.mRefId);
+
+            // A reference naming no record is the content's to answer for, and the game draws
+            // nothing for one either. Nothing is invented here to stand in its place; and a record
+            // off by default casts nothing wherever it is placed, so it is not carried.
+            if (!record.has_value() || !castsWherePlaced(*record))
+                continue;
+
+            prepared.mLights.push_back(PreparedLight{
+                .mPosition = ref.mPosition,
+                .mRefNum = ref.mRefNum,
+                .mRecord = *record,
+            });
+        }
+
         if (!statics)
             return prepared;
-
-        // One cell at a time, which is the paging's near answer: containers page here as they do
-        // in the active grid's own chunks, and the size rule is what thins them with distance.
-        mStorage.collect(Terrain::RefKind::Paged, 1.0f, cell, mWorldspace, mRefScratch);
 
         for (const Terrain::PagedCellRef& ref : mRefScratch)
         {

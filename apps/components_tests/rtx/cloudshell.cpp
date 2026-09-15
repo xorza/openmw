@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <string_view>
 
 #include <gtest/gtest.h>
 
@@ -14,8 +15,15 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <components/resource/bgsmfilemanager.hpp>
+#include <components/resource/imagemanager.hpp>
+#include <components/resource/niffilemanager.hpp>
+#include <components/resource/scenemanager.hpp>
 #include <components/rtx/cloudshell.hpp>
+#include <components/rtx/error.hpp>
 #include <components/rtx/shaders/look.h>
+#include <components/vfs/manager.hpp>
+#include <components/vfs/pathutil.hpp>
 
 namespace Rtx
 {
@@ -281,6 +289,28 @@ namespace Rtx
             flat->setVertexArray(ring);
             flat->setTexCoordArray(0, coords);
             EXPECT_EQ(readCloudShell(*flat).mTiles, osg::Vec2f());
+        }
+
+        /// A mesh the archives do not hold is a gap in the content, and it is named rather than
+        /// drawn as no deck: a sky with no clouds in it reads as a renderer that forgot them.
+        TEST(RtxCloudShellTest, aCloudMeshTheArchivesDoNotHoldIsRefusedByName)
+        {
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
+            Resource::NifFileManager nifs(&vfs, nullptr);
+            Resource::BgsmFileManager materials(&vfs, 0);
+            Resource::SceneManager scenes(&vfs, &images, &nifs, &materials, 0);
+
+            try
+            {
+                readCloudShell(scenes, VFS::Path::NormalizedView("meshes/sky_clouds_01.nif"));
+                FAIL() << "a missing cloud mesh was read as no deck";
+            }
+            catch (const Error& what)
+            {
+                EXPECT_NE(std::string_view(what.what()).find("meshes/sky_clouds_01.nif"), std::string_view::npos)
+                    << what.what();
+            }
         }
     }
 }

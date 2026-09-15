@@ -19,7 +19,8 @@ namespace Sky
 
             EXPECT_EQ(times.mNightEnd, sunrise) << "night ends when the sun starts to rise";
             EXPECT_EQ(times.mDayEnd, sunset) << "day ends when it starts to set";
-            EXPECT_EQ(times.mDayStart, sunrise + Fallback::Map::getFloat("Weather_Sunrise_Duration"));
+            EXPECT_EQ(times.mSunriseDuration, Fallback::Map::getFloat("Weather_Sunrise_Duration"));
+            EXPECT_EQ(times.mDayStart, sunrise + times.mSunriseDuration);
             EXPECT_EQ(times.mNightStart, sunset + Fallback::Map::getFloat("Weather_Sunset_Duration"));
         }
 

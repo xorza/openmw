@@ -23,6 +23,8 @@ set(RTX_FILES
     held.hpp
     cellplacer.cpp
     cellplacer.hpp
+    cellgrid.cpp
+    cellgrid.hpp
     cellreader.cpp
     cellreader.hpp
     residency.hpp
@@ -37,8 +39,6 @@ set(RTX_FILES
     deformertable.hpp
     fogbuilder.cpp
     fogbuilder.hpp
-    distantlights.cpp
-    distantlights.hpp
     emitterresolver.cpp
     emitterresolver.hpp
     error.hpp

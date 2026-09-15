@@ -223,6 +223,10 @@ namespace Rtx
         /// picture chain replaces — and the frame's own chain is left alone.
         void finishTraces();
 
+        /// Lets go of every dying scene the timeline has passed. After a wait, which is where what
+        /// the timeline is known to have passed changes; `drain` lets go of all of them.
+        void buryDyingScenes();
+
         /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
         /// second. The one answer the build decides, so that no reader of the three members below
@@ -348,7 +352,7 @@ namespace Rtx
         /// And one for everything shaded, which runs ahead of the bin over the same tables.
         SpriteShadePass mSpriteShade;
 
-        /// The hold `RendererOptions::mStressOverlapMs` asked for, or nothing.
+        /// The hold `RenderProfile::mStressOverlapMs` asked for, or nothing.
         std::unique_ptr<StressPass> mStress;
 
         /// An empty sprite tiles' list, for a camera that draws no sprites and so binned none.
@@ -377,6 +381,19 @@ namespace Rtx
         /// holds.
         std::vector<std::unique_ptr<ViewScene>> mViewScenes;
         SlotPool mFreeViewScenes;
+
+        /// A picture's scene given back and not yet gone. Held until the timeline passes the
+        /// submit that was next when it was given back — the graveyard's own rule, and for the
+        /// same reason: a picture recorded against the scene and not yet carried rides that
+        /// submit, and every submit that could read its tables is before it. Freed after the
+        /// graveyard has let go of what the scene retired, because a buried structure gives its
+        /// room back to a storage the scene owns.
+        struct DyingScene
+        {
+            std::uint64_t mUntil = 0;
+            std::unique_ptr<ViewScene> mScene;
+        };
+        std::vector<DyingScene> mDyingScenes;
 
         /// The picture as bytes, which is what the interface's texture is copied out of. Empty
         /// until something asks for a picture, and grown with `mView`.

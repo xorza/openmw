@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <span>
 #include <thread>
 #include <vector>
@@ -159,28 +160,29 @@ namespace Rtx
         , mCountHits(countHits ? 1u : 0u)
         , mChannelLayout(channelLayout.get())
         , mVolumeLayout(volumeLayout.get())
-        , mDepthModule(shaderDirectory / "fogdepth.rgen.spv")
-        , mScatterModule(shaderDirectory / "fogscatter.rgen.spv")
-        , mIntegrateModule(shaderDirectory / "fogintegrate.comp.spv")
-        , mRaygenModule(shaderDirectory / "visibility.rgen.spv")
-        , mAnyHitModule(shaderDirectory / "visibility.rahit.spv")
-        , mMissModules{ shaderDirectory / "visibility.rmiss.spv" }
-        // In `MaterialKind` order, which is the order traversal indexes them by.
-        , mHitModules{ shaderDirectory / "visibilitysurface.rchit.spv", shaderDirectory / "visibilityterrain.rchit.spv",
-            shaderDirectory / "visibilitywater.rchit.spv" }
     {
-        compileEvery(textureLayout);
+        compileEvery(shaderDirectory, textureLayout);
     }
 
-    void VisibilityPass::compileEvery(VkDescriptorSetLayout textureLayout)
+    void VisibilityPass::compileEvery(const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout)
     {
+        const std::filesystem::path depth = shaders / "fogdepth.rgen.spv";
+        const std::filesystem::path scatter = shaders / "fogscatter.rgen.spv";
+        const std::filesystem::path integrate = shaders / "fogintegrate.comp.spv";
+        const std::filesystem::path raygen = shaders / "visibility.rgen.spv";
+        const std::filesystem::path anyHit = shaders / "visibility.rahit.spv";
+        const std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> miss{ shaders / "visibility.rmiss.spv" };
+        // In `MaterialKind` order, which is the order traversal indexes them by.
+        const std::array<std::filesystem::path, Shaders::HIT_SHADER_COUNT> hit{ shaders / "visibilitysurface.rchit.spv",
+            shaders / "visibilityterrain.rchit.spv", shaders / "visibilitywater.rchit.spv" };
+
         // No tuple and no specialization, because it reads what the pass before it wrote and
         // has no opinion about the sky. Made here rather than among the table below so that the
         // table stays one entry per tuple.
         mDepthPipeline = std::make_unique<TracePipeline>(
-            mDevice, sBindings, laterSets(textureLayout), TraceShaders{ .mRaygen = mDepthModule }, "fog depth");
+            mDevice, sBindings, laterSets(textureLayout), TraceShaders{ .mRaygen = depth }, "fog depth");
         mIntegratePipeline = std::make_unique<ComputePipeline>(
-            mDevice, sBindings, 0, laterSets(textureLayout), mIntegrateModule, "fog integrate");
+            mDevice, sBindings, 0, laterSets(textureLayout), integrate, "fog integrate");
 
         /// One kernel to make: which tuple, and which of the two modules.
         struct Wanted
@@ -222,17 +224,17 @@ namespace Rtx
                 if (volume)
                     mScatterPipelines[variant.index()]
                         = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
-                            TraceShaders{ .mRaygen = mScatterModule }, variant.describe("fog scatter"), specialization);
+                            TraceShaders{ .mRaygen = scatter }, variant.describe("fog scatter"), specialization);
                 else
                     mPipelines[variant.index()]
                         = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
                             TraceShaders{
-                                .mRaygen = mRaygenModule,
-                                .mMiss = mMissModules,
-                                .mHit = mHitModules,
+                                .mRaygen = raygen,
+                                .mMiss = miss,
+                                .mHit = hit,
                                 .mHitRecordsPerShader = Shaders::HIT_RECORD_LAYERS,
                                 .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
-                                .mAnyHit = mAnyHitModule,
+                                .mAnyHit = anyHit,
                             },
                             variant.describe("visibility"), specialization);
             });

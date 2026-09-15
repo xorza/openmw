@@ -58,8 +58,9 @@ namespace Rtx
         osg::Vec3f mGlow;
     };
 
-    /// Reads it, adding every texture it names to `scene` and holding them there. A missing or
-    /// unreadable mesh comes back with nothing in it, because the file is content.
+    /// Reads it, adding every texture it names to `scene` and holding them there. Throws `Error`
+    /// naming the mesh where neither file exists: a gap in the content is a failure and not a sky
+    /// with no stars in it.
     ///
     /// @param mesh the star dome the configuration names.
     /// @param fallback the dome to read where the archives hold no `mesh`: Tribunal ships the

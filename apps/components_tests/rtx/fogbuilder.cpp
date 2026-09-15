@@ -8,7 +8,6 @@
 #include <gtest/gtest.h>
 
 #include <osg/Vec2f>
-#include <osg/Vec2i>
 #include <osg/Vec3f>
 
 #include <components/esm3/loadcell.hpp>
@@ -622,46 +621,6 @@ namespace Rtx
             EXPECT_EQ(quasi.mUniform, open.mUniform) << "banked as any other weather is";
             EXPECT_EQ(quasi.mLift, open.mLift) << "and standing as high";
             EXPECT_EQ(quasi.mWind, open.mWind);
-        }
-
-        /// The disc the rings stand is the one the air closes at: a cell is in reach where some
-        /// point of it is nearer than the reach to the eye's own position.
-        ///
-        /// **Measured to the cell's nearest point and not to its centre or its index**, and
-        /// strictly. A cell whose nearest point is exactly at the reach touches the closing air's
-        /// rim and shows nothing of itself; and the bounding square `cellOf(eye - reach)` starts
-        /// at the cell that holds that rim, so a rule that took the cell before it would count on
-        /// one side what it could not walk on the other.
-        TEST(RtxFogTest, aCellIsInReachWhereItsNearestPointIsNearerThanTheReach)
-        {
-            const float cell = sCellSize;
-
-            // From the centre of cell (0, 0): a cell three over has its near side 2.5 cells away
-            // and a cell four over 3.5, so both are in at four cells; the corner (3, 3) is
-            // sqrt(2) * 2.5 = 3.54 away and in, and (4, 4) is 4.95 away and out.
-            const osg::Vec3f centre(0.5f * cell, 0.5f * cell, 0.0f);
-            EXPECT_EQ(distanceSquaredTo(osg::Vec2i(0, 0), centre), 0.0f) << "the eye's own cell";
-            EXPECT_FLOAT_EQ(distanceSquaredTo(osg::Vec2i(3, 0), centre), 2.5f * 2.5f * cell * cell);
-            EXPECT_FLOAT_EQ(distanceSquaredTo(osg::Vec2i(-3, 0), centre), 2.5f * 2.5f * cell * cell) << "symmetric";
-            EXPECT_FLOAT_EQ(distanceSquaredTo(osg::Vec2i(3, 3), centre), 2.0f * 2.5f * 2.5f * cell * cell);
-            EXPECT_TRUE(withinReach(osg::Vec2i(4, 0), centre, 4.0f * cell));
-            EXPECT_TRUE(withinReach(osg::Vec2i(3, 3), centre, 4.0f * cell));
-            EXPECT_FALSE(withinReach(osg::Vec2i(4, 4), centre, 4.0f * cell)) << "a corner the square took";
-            EXPECT_FALSE(withinReach(osg::Vec2i(5, 0), centre, 4.0f * cell)) << "4.5 cells away";
-
-            // From a cell corner, the rim: cell (6, 0) begins exactly six cells away and cell
-            // (-7, 0) ends there, and neither is nearer than six.
-            const osg::Vec3f corner;
-            EXPECT_FLOAT_EQ(distanceSquaredTo(osg::Vec2i(6, 0), corner), 36.0f * cell * cell);
-            EXPECT_FLOAT_EQ(distanceSquaredTo(osg::Vec2i(-7, 0), corner), 36.0f * cell * cell);
-            EXPECT_FALSE(withinReach(osg::Vec2i(6, 0), corner, 6.0f * cell));
-            EXPECT_FALSE(withinReach(osg::Vec2i(-7, 0), corner, 6.0f * cell));
-            EXPECT_TRUE(withinReach(osg::Vec2i(5, 0), corner, 6.0f * cell));
-            EXPECT_TRUE(withinReach(osg::Vec2i(-6, 0), corner, 6.0f * cell));
-
-            // And the eye's height plays no part: the rings are a disc on the ground.
-            EXPECT_EQ(distanceSquaredTo(osg::Vec2i(3, 0), centre + osg::Vec3f(0.0f, 0.0f, 5000.0f)),
-                distanceSquaredTo(osg::Vec2i(3, 0), centre));
         }
     }
 }

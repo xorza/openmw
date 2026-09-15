@@ -389,5 +389,48 @@ namespace Rtx
             mRenderer->dropGuiTexture(texture);
             mRenderer->dropViewScene(doll);
         }
+
+        /// A picture's scene given back is not drained: the picture recorded against it and not
+        /// yet carried still rides the next submit and still comes back whole, the frames drawn
+        /// after the drop are placed and traced without a wait, and the layers see nothing read
+        /// after it went. A drain here idled the device every time the inventory closed.
+        TEST_F(RtxFramesTest, aViewSceneGivenBackWithAPictureStillDeferredIsCarriedAndThenLetGo)
+        {
+            const SceneSlot doll = mRenderer->addViewScene();
+            SceneDesc scene;
+            const Index wall
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::wallAt(200.0f), .mIndices = Testing::sQuadIndices });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
+            mRenderer->setScene(doll, scene, {});
+
+            const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
+            std::vector<std::uint8_t> copy(std::size_t{ sSize } * sSize * 4);
+
+            Shaders::VisibilityConstants camera = ahead();
+            camera.mTransparentBackground = 1;
+            mRenderer->traceGuiTexture(texture, camera,
+                GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mScene = doll, .mReadBack = true });
+
+            // Given back with the picture still deferred, and the world drawn on as if nothing
+            // happened: three frames, which is more than the ring holds, so the scene's submit has
+            // been waited out by the end of them and the scene has gone.
+            mRenderer->dropViewScene(doll);
+            for (int frame = 0; frame < 3; ++frame)
+            {
+                moveTo(-1000.0f + 100.0f * static_cast<float>(frame));
+                mRenderer->renderFrame(ahead(), FrameOptions{});
+                mRenderer->collectFrame();
+            }
+            mRenderer->finishGuiTraces();
+
+            ASSERT_TRUE(mRenderer->takeGuiCopy(texture, copy)) << "the picture the drop left deferred never landed";
+            EXPECT_EQ(copy[3], 255) << "the picture was traced against a scene that had gone";
+
+            while (mRenderer->finishFrame().has_value())
+            {
+            }
+
+            mRenderer->dropGuiTexture(texture);
+        }
     }
 }

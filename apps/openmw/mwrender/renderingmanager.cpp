@@ -288,17 +288,17 @@ namespace MWRender
 
     int RenderingManager::skyGetMasserPhase() const
     {
-        return Sky::MoonState::phaseToInt(mWorld.mMoons[0].mPhase);
+        return Sky::MoonState::phaseToInt(mSky.mMoons[0].mPhase);
     }
 
     int RenderingManager::skyGetSecundaPhase() const
     {
-        return Sky::MoonState::phaseToInt(mWorld.mMoons[1].mPhase);
+        return Sky::MoonState::phaseToInt(mSky.mMoons[1].mPhase);
     }
 
     void RenderingManager::skySetMoonColour(bool red)
     {
-        mWorld.mMoonRed = red;
+        mSky.mMoonRed = red;
     }
 
     void RenderingManager::setStormParticleDirection(const osg::Vec3f& direction)
@@ -308,12 +308,12 @@ namespace MWRender
 
     void RenderingManager::setSunEnabled(bool enabled)
     {
-        mWorld.mSunEnabled = enabled;
+        mSky.mSunEnabled = enabled;
     }
 
     void RenderingManager::setGlareFade(float fade)
     {
-        mWorld.mGlareFade = fade;
+        mSky.mGlareFade = fade;
     }
 
     void RenderingManager::configureAmbient(const MWWorld::Cell& cell)
@@ -362,7 +362,7 @@ namespace MWRender
         mSunLight->setDiffuse(diffuse);
         mSunLight->setSpecular(osg::Vec4f(specular.x(), specular.y(), specular.z(), specular.w() * sunVis));
 
-        mWorld.mSunVisibility = sunVis;
+        mSky.mSunVisibility = sunVis;
     }
 
     const osg::Vec4f& RenderingManager::getSunLightPosition() const
@@ -382,9 +382,9 @@ namespace MWRender
         // need to wrap this in a StateUpdater?
         mSunLight->setPosition(osg::Vec4f(sunlightPos, 0.f));
 
-        mWorld.mSunPosition = osg::Vec4f(position, 0.f);
-        mWorld.mSunVector = osg::Vec4f(-sunlightPos, 0.f);
-        mWorld.mSunAtNight = mNight;
+        mSky.mSunPosition = osg::Vec4f(position, 0.f);
+        mSky.mSunVector = osg::Vec4f(-sunlightPos, 0.f);
+        mSky.mSunAtNight = mNight;
     }
 
     void RenderingManager::addCell(const MWWorld::CellStore* store)
@@ -433,7 +433,7 @@ namespace MWRender
     void RenderingManager::setSkyEnabled(bool enabled)
     {
         mPrecipitation->setEnabled(enabled);
-        mWorld.mSkyEnabled = enabled;
+        mSky.mSkyEnabled = enabled;
     }
 
     bool RenderingManager::toggleBorders()
@@ -836,7 +836,7 @@ namespace MWRender
 
     void RenderingManager::clear()
     {
-        mWorld.mMoonRed = false;
+        mSky.mMoonRed = false;
 
         notifyWorldSpaceChanged();
         if (mObjectPaging)

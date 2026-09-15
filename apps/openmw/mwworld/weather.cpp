@@ -5,6 +5,7 @@
 
 #include <components/misc/rng.hpp>
 #include <components/sky/skyclock.hpp>
+#include <components/sky/sundisc.hpp>
 
 #include <components/esm3/esmreader.hpp>
 #include <components/esm3/esmwriter.hpp>
@@ -795,10 +796,7 @@ namespace MWWorld
         mRendering.setStormParticleDirection(mStormDirection);
 
         // disable sun during night
-        if (time.getHour() >= mTimeSettings.mNightStart || time.getHour() <= mSunriseTime)
-            mRendering.setSunEnabled(false);
-        else
-            mRendering.setSunEnabled(true);
+        mRendering.setSunEnabled(Sky::sunUp(time.getHour(), mTimeSettings));
 
         // Update the sun direction.  Run it east to west at a fixed angle from overhead.
         // The sun's speed at day and night may differ, since mSunriseTime and mNightStart
@@ -1268,21 +1266,7 @@ namespace MWWorld
         else
             mResult.mSunDiscColor = osg::Vec4f(1, 1, 1, 1);
 
-        if (gameHour >= mTimeSettings.mDayEnd)
-        {
-            // sunset
-            float fade = std::min(
-                1.f, (gameHour - mTimeSettings.mDayEnd) / (mTimeSettings.mNightStart - mTimeSettings.mDayEnd));
-            fade = fade * fade;
-            mResult.mSunDiscColor.a() = 1.f - fade;
-        }
-        else if (gameHour >= mTimeSettings.mNightEnd && gameHour <= mTimeSettings.mNightEnd + mSunriseDuration / 2.f)
-        {
-            // sunrise
-            mResult.mSunDiscColor.a() = gameHour - mTimeSettings.mNightEnd;
-        }
-        else
-            mResult.mSunDiscColor.a() = 1;
+        mResult.mSunDiscColor.a() = Sky::sunDiscAlpha(gameHour, mTimeSettings);
 
         mResult.mStormDirection = calculateStormDirection(mResult.mParticleEffect);
     }

@@ -311,12 +311,12 @@ namespace MWRender
         const EyeState& eye = frame.mEye;
 
         Fx::StateUpdater& state = *mPostProcessor->getStateUpdater();
-        state.setSunPos(world.mSunPosition, world.mSunAtNight);
-        state.setSunVec(world.mSunVector);
+        state.setSunPos(world.mSky.mSunPosition, world.mSky.mSunAtNight);
+        state.setSunVec(world.mSky.mSunVector);
         state.setSunColor(world.mSunColour);
-        state.setSunVis(world.mSunVisibility);
+        state.setSunVis(world.mSky.mSunVisibility);
         state.setAmbientColor(world.mAmbientColour);
-        state.setSkyColor(world.mSkyColour);
+        state.setSkyColor(world.mSky.mSkyColour);
         state.setIsInterior(world.isInteriorCell());
         state.setIsWaterEnabled(world.mWaterEnabled);
         state.setWaterHeight(world.mWaterHeight);
@@ -350,7 +350,7 @@ namespace MWRender
 
         if (!frame.mPaused)
         {
-            mSharedUniformStateUpdater->setWindSpeed(world.mBaseWindSpeed);
+            mSharedUniformStateUpdater->setWindSpeed(world.mSky.mBaseWindSpeed);
             mSharedUniformStateUpdater->setPlayerPos(world.mPlayerPosition);
         }
 
@@ -373,23 +373,24 @@ namespace MWRender
         // and only while there is a sky, because the setters want a built dome and `setEnabled(true)`
         // is what builds it. The weather is null until the weather has run, which it has whenever
         // the sky is on.
-        if (!mApplied.mAny || mApplied.mSkyEnabled != world.mSkyEnabled)
+        if (!mApplied.mAny || mApplied.mSkyEnabled != world.mSky.mSkyEnabled)
         {
-            mSky->setEnabled(world.mSkyEnabled);
-            mApplied.mSkyEnabled = world.mSkyEnabled;
+            mSky->setEnabled(world.mSky.mSkyEnabled);
+            mApplied.mSkyEnabled = world.mSky.mSkyEnabled;
         }
-        if (world.mSkyEnabled && world.mWeather != nullptr)
+        if (world.mSky.mSkyEnabled && world.mSky.mWeather != nullptr)
         {
-            if (world.mSunEnabled)
+            if (world.mSky.mSunEnabled)
                 mSky->sunEnable();
             else
                 mSky->sunDisable();
-            mSky->setSunDirection(osg::Vec3f(world.mSunPosition.x(), world.mSunPosition.y(), world.mSunPosition.z()));
-            mSky->setGlareTimeOfDayFade(world.mGlareFade);
-            mSky->setMasserState(world.mMoons[0]);
-            mSky->setSecundaState(world.mMoons[1]);
-            mSky->setWeather(*world.mWeather);
-            mSky->setMoonColour(world.mMoonRed);
+            mSky->setSunDirection(
+                osg::Vec3f(world.mSky.mSunPosition.x(), world.mSky.mSunPosition.y(), world.mSky.mSunPosition.z()));
+            mSky->setGlareTimeOfDayFade(world.mSky.mGlareFade);
+            mSky->setMasserState(world.mSky.mMoons[0]);
+            mSky->setSecundaState(world.mSky.mMoons[1]);
+            mSky->setWeather(*world.mSky.mWeather);
+            mSky->setMoonColour(world.mSky.mMoonRed);
         }
 
         // The occluder as the sky manager drove it: enabled where the precipitation says it was,
@@ -406,9 +407,9 @@ namespace MWRender
         if (mPrecipitationOcclusion && world.mPrecipitating)
             mPrecipitationOccluder->updateRange(world.mPrecipitationRange);
 
-        if (!frame.mPaused && world.mSkyEnabled)
+        if (!frame.mPaused && world.mSky.mSkyEnabled)
         {
-            mSky->update(world.mCloudScroll, world.mStarRoll);
+            mSky->update(world.mSky.mCloudScroll, world.mSky.mStarRoll);
             mPrecipitationOccluder->update();
         }
 

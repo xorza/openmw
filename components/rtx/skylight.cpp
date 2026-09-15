@@ -8,6 +8,7 @@
 #include <osg/Vec4f>
 
 #include <components/sceneutil/util.hpp>
+#include <components/sky/sundisc.hpp>
 
 #include "colour.hpp"
 #include "shaders/colour.h"
@@ -155,28 +156,16 @@ namespace Rtx
 
     float sunShareAt(float hour, const Sky::TimeOfDaySettings& times)
     {
-        // **Nothing at all outside the day, which is the half the engine states elsewhere.** Its own
-        // two curves below run on through the night and come back at one, because a rasterizer that
-        // has already hidden the disc has no use for the answer; a tracer asks this to decide
-        // whether to cast a shadow, and the answer it got was a sun in the middle of the night.
-        if (hour <= times.mNightEnd || hour >= times.mNightStart)
+        // **The weather manager's own two rules, read from where it draws by them.** Its ramp runs
+        // on through the night and comes back at one, because a rasterizer that has already hidden
+        // the disc has no use for the answer; a tracer asks this to decide whether to cast a
+        // shadow, so the gate that hides the disc is folded in — and the ramp is bounded, because
+        // the hour past dawn passes one where a sunrise window is longer than an hour, which
+        // mattered nothing while it was only an alpha.
+        if (!Sky::sunUp(hour, times))
             return 0.0f;
 
-        // Squared on the way out, so the sun holds most of itself through dusk and then goes
-        // quickly, reaching exactly nought where the weather manager puts it level with the horizon.
-        if (hour >= times.mDayEnd)
-        {
-            const float fade = std::min(1.0f, (hour - times.mDayEnd) / (times.mNightStart - times.mDayEnd));
-            return 1.0f - fade * fade;
-        }
-
-        // Linear in over the first half of the sunrise window, and it is the *hour* past dawn rather
-        // than a fraction of one — Morrowind's two-hour sunrise arrives at one at the end of it and
-        // nothing in the engine bounds it, which mattered nothing while it was only an alpha.
-        if (hour <= times.mNightEnd + 0.5f * (times.mDayStart - times.mNightEnd))
-            return std::min(1.0f, hour - times.mNightEnd);
-
-        return 1.0f;
+        return std::min(1.0f, Sky::sunDiscAlpha(hour, times));
     }
 
     float sunDescentPerHour(const Sky::TimeOfDaySettings& times)

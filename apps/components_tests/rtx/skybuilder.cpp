@@ -2,19 +2,29 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 
 #include <gtest/gtest.h>
 
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include <components/resource/bgsmfilemanager.hpp>
+#include <components/resource/imagemanager.hpp>
+#include <components/resource/niffilemanager.hpp>
+#include <components/resource/scenemanager.hpp>
 #include <components/rtx/cloudshell.hpp>
+#include <components/rtx/error.hpp>
 #include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/nightsky.hpp>
 #include <components/rtx/runs.hpp>
+#include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/sky.h>
 #include <components/rtx/skybuilder.hpp>
 #include <components/rtx/skylight.hpp>
+#include <components/vfs/manager.hpp>
+#include <components/vfs/pathutil.hpp>
 
 namespace Rtx
 {
@@ -323,6 +333,30 @@ namespace Rtx
             unread.mClouds.fill(Rtx::sNoIndex);
             unread.mNight.mField = 8;
             EXPECT_EQ(describeStars(1.0f, 1.0f, 0.0f, unread).mTexture, Rtx::Shaders::NO_TEXTURE);
+        }
+
+        /// A star dome the archives hold neither spelling of is a gap in the content, named rather
+        /// than read as a night with no stars in it. The message names the file that was tried last.
+        TEST(RtxSkyBuilderTest, aNightSkyMeshTheArchivesDoNotHoldIsRefusedByName)
+        {
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
+            Resource::NifFileManager nifs(&vfs, nullptr);
+            Resource::BgsmFileManager materials(&vfs, 0);
+            Resource::SceneManager scenes(&vfs, &images, &nifs, &materials, 0);
+            SceneDesc scene;
+
+            try
+            {
+                readNightSky(scene, scenes, VFS::Path::NormalizedView("meshes/sky_night_02.nif"),
+                    VFS::Path::NormalizedView("meshes/sky_night_01.nif"));
+                FAIL() << "a missing star dome was read as no stars";
+            }
+            catch (const Error& what)
+            {
+                EXPECT_NE(std::string_view(what.what()).find("meshes/sky_night_01.nif"), std::string_view::npos)
+                    << what.what();
+            }
         }
     }
 }

@@ -197,7 +197,7 @@ namespace MWRender
         {
         public:
             /// Opens a frame. @return how long since the last frame opened, in milliseconds, and nothing
-            /// on the first.
+            /// on the first. Every frame `renderFrame` is handed opens one, traced or not.
             std::optional<double> enter(std::chrono::steady_clock::time_point now);
 
             /// Stamps where the frame left this renderer. Every path out calls it, so what the next frame
@@ -276,8 +276,9 @@ namespace MWRender
         /// Traces the world the walk has just mirrored: the frame behind finished, the scene handed
         /// over, the deferred views drawn, the camera aimed, the frame traced and the report closed.
         /// Its refusals — an empty world, a camera with no roll — are not reasons not to present, so
-        /// they end here rather than in `renderFrame`.
-        void traceWorld(const SceneFrame& frame, FrameReport& report);
+        /// they end here rather than in `renderFrame`. `since` is how long the frame before this one
+        /// stood for, or nothing on the first.
+        void traceWorld(const SceneFrame& frame, FrameReport& report, std::optional<double> since);
 
         /// Waits the frame behind out and reads what the device answered for it, into the report.
         void finishBehind(FrameReport& report);
@@ -292,7 +293,8 @@ namespace MWRender
 
         /// Traces one frame from `constants`, with the world's sky described into it, and closes
         /// the report with what it came to.
-        void trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report);
+        void trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report,
+            std::optional<double> since);
 
         /// What a measured stop is allowed to look at beyond the report.
         FrameContext describeContext();

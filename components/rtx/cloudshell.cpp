@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <osg/Array>
@@ -13,10 +14,10 @@
 #include <osg/Transform>
 #include <osg/Vec3f>
 
-#include <components/debug/debuglog.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
+#include "error.hpp"
 #include "shaders/look.h"
 
 namespace Rtx
@@ -239,11 +240,9 @@ namespace Rtx
 
     CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh)
     {
+        // A gap in the content is named rather than drawn around, as `readNightSky` names its.
         if (!scenes.getVFS()->exists(mesh))
-        {
-            Log(Debug::Warning) << "no cloud mesh at \"" << mesh << "\"; drawing no deck";
-            return CloudShell{};
-        }
+            throw Error("no cloud mesh at \"" + std::string(mesh.value()) + "\"");
 
         return readCloudShell(const_cast<osg::Node&>(*scenes.getTemplate(mesh, false)));
     }

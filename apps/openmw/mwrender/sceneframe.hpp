@@ -53,16 +53,16 @@ namespace MWRender
         float mEnd = 0.0f;
     };
 
-    /// What the world is doing this frame. Read off where it settled — `mSunLight`, `FogManager`,
-    /// `Precipitation` — wherever something keeps the value, so it cannot disagree with what is
-    /// drawn; and kept here by the setter that decided it where nothing else does: the drawn sun,
-    /// the water switch, the weather and the moons. In the world's own numbers, undecoded:
+    /// What the world settled on about the sky, kept by the setter that decided it, because
+    /// nothing else keeps the value: the drawn sun, the weather, the moons and the clocks.
+    /// `RenderingManager` holds one of these and writes it where the weather manager reports, and
+    /// the frame carries it whole inside `WorldState`. In the world's own numbers, undecoded:
     /// every colour is a content file's three bytes over 255, and what that means is a question
     /// about a renderer's transport.
-    struct WorldState
+    struct SkySettled
     {
         /// Where the sun is drawn, which is not where its light comes from whenever
-        /// `match sunlight to sun` is off.
+        /// `match sunlight to sun` is off. `RenderingManager::setSunDirection`, as are the two below.
         osg::Vec4f mSunPosition;
 
         /// The way the light travels: the rasterizer's, and a ray tracer takes `-mSunPosition`
@@ -70,12 +70,14 @@ namespace MWRender
         osg::Vec4f mSunVector;
 
         bool mSunAtNight = false;
-        osg::Vec4f mSunColour;
+
+        /// `RenderingManager::setSunColour`'s third argument.
         float mSunVisibility = 0.0f;
 
         /// What the disc is painted with, and its transparency in `w`, which sits at one all night
         /// with the disc hidden — `Rtx::sunShareAt` answers whether there is a sun. Not
-        /// `mSunColour`, whose night value is the dome's blue and turns a disc blue through every dawn.
+        /// `WorldState::mSunColour`, whose night value is the dome's blue and turns a disc blue
+        /// through every dawn. `RenderingManager::setWeather`, as is everything below it to `mWeather`.
         osg::Vec4f mSunDiscColour{ 1.0f, 1.0f, 1.0f, 0.0f };
 
         /// How much of the sun this weather lets through, which dims a disc under an overcast and
@@ -83,8 +85,8 @@ namespace MWRender
         float mSunGlare = 1.0f;
 
         /// How far the deck has crossed from this weather's cloud texture to the next one's. Not
-        /// `mWeatherTransition`: each weather carries a `Transition_Delta` of its own, so the clouds
-        /// cross on a curve while every colour crosses linearly.
+        /// `WorldState::mWeatherTransition`: each weather carries a `Transition_Delta` of its own,
+        /// so the clouds cross on a curve while every colour crosses linearly.
         float mCloudBlend = 0.0f;
 
         /// How far out the stars have come: the engine's four-point `Stars` ramp at this hour,
@@ -92,9 +94,84 @@ namespace MWRender
         float mNightFade = 0.0f;
 
         /// What the cloud deck is lit by, before `SkyManager::setWeather` lifts it by an eighth: the
-        /// weather's own fog colour and not `mAir`'s, which knows about being underwater and about
-        /// a room.
+        /// weather's own fog colour and not `WorldState::mAir`'s, which knows about being
+        /// underwater and about a room.
         osg::Vec4f mCloudFog;
+
+        /// Meaningless in an `Interior`, where the weather system stops writing it and it keeps
+        /// whatever it held wherever the player was last outdoors.
+        osg::Vec4f mSkyColour;
+
+        /// What the content recorded, before `FogManager` made a ramp of it: a weather's blended
+        /// `Land_Fog_Depth` outdoors, a cell's `AMBI` density indoors. The ramp's start and end
+        /// exist to hide a far clip plane, and a renderer with no far clip reads this depth over the
+        /// distance its picture reaches.
+        float mFogDepth = 0.0f;
+
+        /// What the weather itself records blowing at, before the gust the engine wanders about it.
+        /// Not `WorldState::mWindSpeed`, which `calculateWindSpeed` multiplies by eight and caps at
+        /// seventy; this is the number the content files state, and both paths have to stand in one
+        /// air.
+        float mBaseWindSpeed = 0.0f;
+
+        /// Which way each of the two cloud decks is driven. Reported rather than derived, because
+        /// an ash or blight storm blows off Red Mountain at the player. One each, because the
+        /// rasterizer turns each of its two cloud meshes by its own weather's storm; the second is
+        /// unit length only while a weather is arriving, and a renderer that draws one deck reads
+        /// a zero as due north.
+        osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+        osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+
+        /// The weather the world settled on, whole, for a renderer that draws a dome out of it the
+        /// way `SkyManager::setWeather` does; null until the weather has run, which it does only
+        /// outdoors. A pointer, because the record holds strings and the frame is built per frame.
+        const WeatherResult* mWeather = nullptr;
+
+        /// How far the cloud deck has scrolled, in texture units, and how far the star sphere has
+        /// rolled, in radians. Clocks the game advances while the sky is on, because the deck runs
+        /// on the weather's speed and the stars come round once in four days; neither is a function
+        /// of the hour. The scroll is the rasterizer's, at upstream's pace.
+        /// `RenderingManager::updateSkyClocks`, as are the two below.
+        float mCloudScroll = 0.0f;
+        float mStarRoll = 0.0f;
+
+        /// The sky's own clock, in seconds, and how far the deck has scrolled by it, in texture
+        /// units: what the ray tracer runs its weather on, so that a sped-up `timescale` carries
+        /// the deck and the fog with the sun. `Sky::skyStep` says why it is real time at the
+        /// shipped `timescale`. A double, because the fog's drift is the difference of two
+        /// readings, and ten hours in a float resolves 0.0039 s — a quarter of a frame at sixty.
+        double mSkySeconds = 0.0;
+        float mSkyCloudScroll = 0.0f;
+
+        /// Whether there is a sky to draw: outdoors, and `tsky` has not turned it off. What
+        /// `RenderingManager::setSkyEnabled` was last told.
+        bool mSkyEnabled = false;
+
+        /// Whether the disc is drawn at this hour — the weather manager hides it through the night
+        /// — and how far the glare has come up since sunrise, nought to one over the day.
+        /// `RenderingManager::setSunEnabled` and `setGlareFade`.
+        bool mSunEnabled = true;
+        float mGlareFade = 1.0f;
+
+        /// Whether a script has painted Secunda red, `Moons_Script_Color`.
+        /// `RenderingManager::skySetMoonColour`.
+        bool mMoonRed = false;
+
+        /// Masser and Secunda, as the weather system last settled them. The world's own numbers and
+        /// not a placement, which keeps this header clear of the ray tracer's types. An alpha of
+        /// nothing is a moon that is not drawn. `RenderingManager::setMoonStates`.
+        Sky::MoonState mMoons[2] = {};
+    };
+
+    /// What the world is doing this frame: the sky the setters settled, and what is read off
+    /// where it settled — `mSunLight`, `FogManager`, `Precipitation` — wherever something keeps
+    /// the value, so it cannot disagree with what is drawn. In the world's own numbers, undecoded,
+    /// as `SkySettled` is.
+    struct WorldState
+    {
+        SkySettled mSky;
+
+        osg::Vec4f mSunColour;
 
         /// What the weather drops: the rain box and the driven effect, or null where there is none.
         /// Nodes rather than a description, because they are `osgParticle` systems the game's
@@ -112,45 +189,9 @@ namespace MWRender
         /// where its kind makes ripples. `Water::setRainIntensity` takes the same number.
         float mRainOnWater = 0.0f;
 
-        /// How far the cloud deck has scrolled, in texture units, and how far the star sphere has
-        /// rolled, in radians. Clocks the game advances while the sky is on, because the deck runs
-        /// on the weather's speed and the stars come round once in four days; neither is a function
-        /// of the hour. The scroll is the rasterizer's, at upstream's pace.
-        float mCloudScroll = 0.0f;
-        float mStarRoll = 0.0f;
-
-        /// The sky's own clock, in seconds, and how far the deck has scrolled by it, in texture
-        /// units: what the ray tracer runs its weather on, so that a sped-up `timescale` carries
-        /// the deck and the fog with the sun. `Sky::skyStep` says why it is real time at the
-        /// shipped `timescale`. A double, because the fog's drift is the difference of two
-        /// readings, and ten hours in a float resolves 0.0039 s — a quarter of a frame at sixty.
-        double mSkySeconds = 0.0;
-        float mSkyCloudScroll = 0.0f;
-
-        /// The weather the world settled on, whole, for a renderer that draws a dome out of it the
-        /// way `SkyManager::setWeather` does; null until the weather has run, which it does only
-        /// outdoors. A pointer, because the record holds strings and the frame is built per frame.
-        const WeatherResult* mWeather = nullptr;
-
-        /// Whether there is a sky to draw: outdoors, and `tsky` has not turned it off. What
-        /// `RenderingManager::setSkyEnabled` was last told.
-        bool mSkyEnabled = false;
-
-        /// Whether the disc is drawn at this hour — the weather manager hides it through the night
-        /// — and how far the glare has come up since sunrise, nought to one over the day.
-        bool mSunEnabled = true;
-        float mGlareFade = 1.0f;
-
-        /// Whether a script has painted Secunda red, `Moons_Script_Color`.
-        bool mMoonRed = false;
-
         /// Includes the night-eye effect and, in a room, the lift `configureAmbient` gives it.
         /// `mRoom` is the record.
         osg::Vec4f mAmbientColour;
-
-        /// Meaningless in an `Interior`, where the weather system stops writing it and it keeps
-        /// whatever it held wherever the player was last outdoors.
-        osg::Vec4f mSkyColour;
 
         /// Where the player is standing, as the cell record says and not as read off what is drawn:
         /// off the dome every quasi-exterior is an exterior and `tsky` has a say in it.
@@ -170,12 +211,6 @@ namespace MWRender
 
         /// Where the player stands, which the rasterizer's vegetation bends away from.
         osg::Vec3f mPlayerPosition;
-
-        /// What the content recorded, before `FogManager` made a ramp of it: a weather's blended
-        /// `Land_Fog_Depth` outdoors, a cell's `AMBI` density indoors. The ramp's start and end
-        /// exist to hide a far clip plane, and a renderer with no far clip reads this depth over the
-        /// distance its picture reaches.
-        float mFogDepth = 0.0f;
 
         /// The `AMBI` record of the room the player is standing in, or nothing anywhere else. The
         /// record and not `mAmbientColour`, because `configureAmbient` lifts an interior's ambient
@@ -207,24 +242,6 @@ namespace MWRender
         /// How hard the wind blows, as the game's own dial: what the rasterizer's `windSpeed`
         /// uniform leans its vegetation by.
         float mWindSpeed = 0.0f;
-
-        /// What the weather itself records blowing at, before the gust the engine wanders about it.
-        /// Not `mWindSpeed`, which `calculateWindSpeed` multiplies by eight and caps at seventy;
-        /// this is the number the content files state, and both paths have to stand in one air.
-        float mBaseWindSpeed = 0.0f;
-
-        /// Masser and Secunda, as the weather system last settled them. The world's own numbers and
-        /// not a placement, which keeps this header clear of the ray tracer's types. An alpha of
-        /// nothing is a moon that is not drawn.
-        Sky::MoonState mMoons[2] = {};
-
-        /// Which way each of the two cloud decks is driven. Reported rather than derived, because
-        /// an ash or blight storm blows off Red Mountain at the player. One each, because the
-        /// rasterizer turns each of its two cloud meshes by its own weather's storm; the second is
-        /// unit length only while a weather is arriving, and a renderer that draws one deck reads
-        /// a zero as due north.
-        osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
-        osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
         /// Whether the cell record calls this an interior, which is what the `isInterior` shader
         /// uniform has always meant. A quasi-exterior answers yes to this and to `isOutdoors` both.
@@ -277,8 +294,9 @@ namespace MWRender
         /// chunks, which a renderer that stands the ground itself is given none of.
         Terrain::World& mTerrain;
 
-        /// What the content files say stands where: the lights of the cells the paging leaves
-        /// dark, which `Rtx::DistantLights` reads out of here because the paging stands no `LIGH`.
+        /// What the content files say stands where: the ground's statics and the lights of the
+        /// cells the paging leaves dark, which `Rtx::CellRing` reads out of here because the paging
+        /// stands no `LIGH`.
         const Terrain::ObjectStorage& mObjectStorage;
 
         /// How long the frame stands for, in seconds, and whether the simulation stood still over

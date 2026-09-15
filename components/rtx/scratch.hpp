@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <memory>
 #include <utility>
@@ -68,6 +69,41 @@ namespace Rtx
     private:
         std::vector<std::unique_ptr<T>> mAll;
         std::vector<T*> mSpare;
+    };
+
+    /// Entries reused across arrivals: as deep as the most one arrival ever wanted, and never
+    /// freed. `next` and `keep` are two calls because a caller may not want what it built: a chain
+    /// built over a texture that already carried one is left for the next arrival.
+    template <class T>
+    class Pool
+    {
+    public:
+        /// The entry after the last kept one, made where the pool has never been this deep.
+        T& next()
+        {
+            if (mKept == mEntries.size())
+                mEntries.emplace_back();
+
+            return mEntries[mKept];
+        }
+
+        /// Says the entry `next` handed out is in use, and gives back its index.
+        std::size_t keep()
+        {
+            assert(mKept < mEntries.size() && "an entry kept that `next` never handed out");
+            return mKept++;
+        }
+
+        /// Frees every entry, keeping its room.
+        void reset() { mKept = 0; }
+
+        T& operator[](const std::size_t at) { return mEntries[at]; }
+
+    private:
+        std::vector<T> mEntries;
+
+        /// How many of them a caller has kept, which is where `next` hands out from.
+        std::size_t mKept = 0;
     };
 
     /// Puts `object` back to its default while keeping the room its buffers grew. Every field not
