@@ -57,6 +57,8 @@ namespace RtxTool
         // failure. A window somebody closes has finished no stop and owes no numbers.
         const bool scheduled = request.mQuitAtEnd;
 
+        request.mHud = variables["hud"].as<bool>();
+
         // **Built before the engine and read after it.** A run that ends its last stop and a window
         // somebody closes both have to be reported, and only the first ever reaches `finish` — so
         // what the run came to is asked for once the engine has gone, off what the run noted on

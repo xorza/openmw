@@ -15,6 +15,7 @@
 
 #include <apps/openmw/mwbase/environment.hpp>
 #include <apps/openmw/mwbase/statemanager.hpp>
+#include <apps/openmw/mwbase/windowmanager.hpp>
 #include <apps/openmw/mwbase/world.hpp>
 #include <apps/openmw/mwmechanics/creaturestats.hpp>
 #include <apps/openmw/mwmechanics/npcstats.hpp>
@@ -297,6 +298,8 @@ namespace RtxTool
         // one. `tgm` is the same call, so a run stands where a player who typed it would.
         if (!world.getGodModeState())
             world.toggleGodMode();
+
+        MWBase::Environment::get().getWindowManager()->setHudVisibility(mRequest.mHud);
 
         const MWWorld::Ptr player = world.getPlayerPtr();
         mProgress.mCell = player.getCell();

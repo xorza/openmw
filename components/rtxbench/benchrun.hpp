@@ -217,6 +217,10 @@ namespace Rtx
         /// Whether the run keeps its window hidden, which saves a present per frame and nothing else.
         bool mHeadless = true;
 
+        /// Whether the game's HUD is drawn over the picture. Off by default: a picture is of the
+        /// world, and the bars and the compass are the played game's.
+        bool mHud = false;
+
         /// Whether the run ends the session when its last stop does. False is a window somebody
         /// keeps flying after the schedule has run out.
         bool mQuitAtEnd = true;

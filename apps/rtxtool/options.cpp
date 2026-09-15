@@ -262,6 +262,10 @@ namespace RtxTool
             "are over well inside it: measured interleaved on a hot card, three seconds ran 20 s "
             "and two ran 19");
 
+        option(sFramed, "hud", bpo::value<bool>()->default_value(false)->implicit_value(true),
+            "draw the game's HUD over the picture: the bars, the compass and the cell's name. Off "
+            "unless asked for, and a window's F11 toggles it either way");
+
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
