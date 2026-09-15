@@ -3,7 +3,6 @@
 
 #include <components/esm3/refnum.hpp>
 #include <components/resource/resourcemanager.hpp>
-#include <components/terrain/objectstorage.hpp>
 #include <components/terrain/quadtreeworld.hpp>
 
 #include <mutex>
@@ -21,9 +20,7 @@ namespace MWRender
     class ObjectPaging : public Resource::GenericResourceManager<ChunkId>, public Terrain::QuadTreeWorld::ChunkManager
     {
     public:
-        /// @param storage what the content files say stands where. Borrowed, and must outlive this.
-        ObjectPaging(
-            Resource::SceneManager* sceneManager, const Terrain::ObjectStorage& storage, ESM::RefId worldspace);
+        ObjectPaging(Resource::SceneManager* sceneManager, ESM::RefId worldspace);
         ~ObjectPaging() = default;
 
         osg::ref_ptr<osg::Node> getChunk(float size, const osg::Vec2f& center, unsigned char lod, unsigned int lodFlags,
@@ -52,7 +49,6 @@ namespace MWRender
 
     private:
         Resource::SceneManager* mSceneManager;
-        const Terrain::ObjectStorage* mStorage;
         bool mActiveGrid;
         bool mDebugBatches;
         float mMergeFactor;

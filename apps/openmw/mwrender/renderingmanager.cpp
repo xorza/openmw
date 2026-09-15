@@ -328,7 +328,6 @@ namespace MWRender
                 Shader::ShaderManager::Slot::OpaqueColorTexture));
         rootNode->addCullCallback(mPerViewUniformStateUpdater);
 
-        // The world exists now, so the renderer can build what goes in front of it.
         mRenderer.attachWorld(*this, *mRootNode);
 
         resourceSystem->getSceneManager()->setWeatherParticleOcclusion(Settings::shaders().mWeatherParticleOcclusion);
@@ -664,9 +663,7 @@ namespace MWRender
         }
         else if (mode == Render_Scene)
         {
-            // **Asked of the renderer, because a cull mask is one renderer's way of saying it.**
-            // Edited here, this reached the rasterizer and nothing else: under the ray tracer `tws`
-            // took the water out and left the rest of the world traced.
+            // Asked of the renderer, because a cull mask is only the rasterizer's way of saying it
             const bool enabled = mRenderer.toggleWorld();
             mWater->showWorld(enabled);
             return enabled;
@@ -810,8 +807,6 @@ namespace MWRender
 
     void RenderingManager::setWaterHeight(float height)
     {
-        mWorld.mWaterHeight = height;
-
         mWater->setCullCallback(mTerrain->getHeightCullCallback(height, Mask_Water));
         mWater->setHeight(height);
         mSky->setWaterHeight(height);
@@ -1081,10 +1076,6 @@ namespace MWRender
     {
         mEffectManager->clear();
         mWater->clearRipples();
-
-        // What the traced path cannot work out for itself: the mirror of a world that was swapped
-        // looks exactly like the mirror of one that was walked across. Nothing for the rasterizer,
-        // which keeps no history to invalidate.
         mRenderer.notifyWorldSpaceChanged();
     }
 
@@ -1278,8 +1269,7 @@ namespace MWRender
         const double expiryDelay = Settings::cells().mCacheExpiryDelay;
         if (!mRenderer.buildsTerrainChunks())
         {
-            // The storage, the worldspace and the active grid, which is all a renderer that stands
-            // the ground itself asks of the world.
+            // A world that holds the storage, the worldspace and the active grid and builds no chunks
             newChunkMgr.mTerrain
                 = std::make_unique<Terrain::World>(mSceneRoot, mTerrainStorage.get(), Mask_Terrain, worldspace);
         }
@@ -1297,7 +1287,7 @@ namespace MWRender
             if (Settings::terrain().mObjectPaging)
             {
                 newChunkMgr.mObjectPaging
-                    = std::make_unique<ObjectPaging>(mResourceSystem->getSceneManager(), mObjectStorage, worldspace);
+                    = std::make_unique<ObjectPaging>(mResourceSystem->getSceneManager(), worldspace);
                 quadTreeWorld->addChunkManager(newChunkMgr.mObjectPaging.get());
                 mResourceSystem->addResourceManager(newChunkMgr.mObjectPaging.get());
             }
@@ -1465,11 +1455,6 @@ namespace MWRender
         {
             updateProjectionMatrix();
         }
-    }
-
-    float RenderingManager::getTerrainReach() const
-    {
-        return mRenderer.getGroundReach();
     }
 
     void RenderingManager::setViewDistance(float distance, bool delay)

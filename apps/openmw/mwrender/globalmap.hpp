@@ -29,9 +29,8 @@ namespace MWRender
 
     class CreateMapWorkItem;
 
-    /// The world map: the land painted from its own heightmap, and over it the pieces of it the
-    /// player has walked, composited in main memory. `sampleBilinear` is what a sampler set to
-    /// `GL_LINEAR` does, so the map is the map the render-to-texture used to draw.
+    /// The world map, composited in main memory. sampleBilinear is what a GL_LINEAR sampler does, so the map is the
+    /// map the render-to-texture used to draw.
     class GlobalMap
     {
     public:
@@ -45,11 +44,8 @@ namespace MWRender
 
         void worldPosToImageSpace(float x, float z, float& imageX, float& imageY);
 
-        /// Paint a cell the player has walked into the overlay.
-        ///
-        /// @param tile the local map's picture of that cell, RGBA and one byte a channel, or null
-        ///        while it has not been drawn yet.
-        /// @return whether it was painted. A caller handed nothing asks again later.
+        /// Paints the local map's picture of a cell (RGBA, one byte a channel) into the overlay.
+        /// @return whether it was painted; a null tile is one not drawn yet, and the caller asks again later.
         bool exploreCell(int cellX, int cellY, const osg::Image* tile);
 
         /// Clears the overlay

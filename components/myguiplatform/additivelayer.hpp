@@ -7,9 +7,6 @@ namespace MyGUIPlatform
 {
 
     /// @brief A Layer rendering with additive blend mode.
-    ///
-    /// **It knows no backend.** What additive means is the render manager's answer, and there is
-    /// more than one of those; this only says when.
     class AdditiveLayer final : public MyGUI::OverlappedLayer
     {
     public:

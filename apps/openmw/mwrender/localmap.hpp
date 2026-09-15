@@ -64,18 +64,17 @@ namespace MWRender
 
         void removeCell(MWWorld::CellStore* cell);
 
-        /// The picture of this segment, for a widget to show. Null where the cell has not been
-        /// mapped.
+        /// The picture of this segment, for a widget to show, or null where the cell has not been mapped
         MyGUI::ITexture* getMapTexture(int x, int y);
 
         osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
 
-        /// The same picture in main memory, for the global map to composite into its overlay, or
-        /// null while the render has not come back off the device yet — ask again next frame.
-        /// Asking is what starts the copy, which is why this is not `const`: a read back off the
-        /// device costs a millisecond on the frame a cell arrives, so only the tile the world map
-        /// asks for pays it.
+        /// The same picture in main memory, for the global map, or null while it has not come back off the device
+        /// yet: ask again next frame. Asking is what starts the copy, so only the tile the world map asks for pays it.
         const osg::Image* getMapImage(int x, int y);
+
+        /// How far from the eye the ground is built, or 0 where it reaches no further than the loaded cells
+        float getGroundReach() const;
 
         /**
          * Set the position & direction of the player, and returns the position in map space through the reference
@@ -132,16 +131,10 @@ namespace MWRender
             std::uint8_t mLastRenderNeighbourFlags = 0;
             bool mHasFogState = false;
 
-            /// Whether anything has asked this segment for a copy in main memory. Only the world
-            /// map does, and only for the cell the player walked into.
             bool mCopyAsked = false;
-
-            /// The picture of this piece of the world, drawn once when the cell is entered and
-            /// again when a neighbour arriving makes a better one possible.
             std::unique_ptr<OffscreenView> mView;
 
-            /// The depth range `mView` was described with, so that a request naming another one
-            /// rebuilds it rather than drawing through the wrong slab.
+            // The depth range mView was described with; another one rebuilds it
             float mZMin = 0.f;
             float mZMax = 0.f;
 
@@ -169,7 +162,6 @@ namespace MWRender
         void requestExteriorMap(const MWWorld::CellStore* cell, MapSegment& segment);
         void requestInteriorMap(const MWWorld::CellStore* cell);
 
-        /// The segment's view, made the first time it is asked for and redrawn every time after.
         void draw(
             int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax);
 

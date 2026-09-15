@@ -1889,9 +1889,7 @@ namespace MWRender
         }
         if (mExtraLightSource)
             mExtraLightSource->setActorFade(actorFade);
-        // **Nothing in the rasterizer reads this one.** A glow light is built here rather than by
-        // `SceneUtil::createLightSource`, so it carries no `LightController` and nothing scales what
-        // it radiates; a renderer that reads the fade itself is what this is for.
+        // For a renderer that reads the fade itself; a glow light has no LightController to scale it
         if (mGlowLight)
             mGlowLight->setActorFade(actorFade);
     }
@@ -1934,11 +1932,9 @@ namespace MWRender
                 mInsert->addChild(mGlowLight);
                 mGlowLight->setLight(light);
 
-                // What the light really is, beside the widened cut-off below. Read by a renderer
-                // that takes a light's radius for its size; the rasterizer reads neither.
+                // The radius the content states, beside the widened cut-off below
                 mGlowLight->setSourceRadius(radius);
-
-                // Starts as hidden as its owner, since `setAlpha` returns early when nothing moved.
+                // Starts as hidden as its owner, since setAlpha returns early when nothing moved
                 mGlowLight->setActorFade(mActorFade);
             }
 

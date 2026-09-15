@@ -58,18 +58,8 @@ namespace SceneUtil
 
         void traverse(osg::NodeVisitor& nv) override;
 
-        /// Says that something which draws this reached it on this frame.
-        ///
-        /// **What `SemiActive` is actually asking, with the rasterizer taken out of the question.**
-        /// A semi-active skeleton stops updating — and so stops animating — once several
-        /// traversals have passed with nothing reaching it, on the reasoning that a renderer only
-        /// reaches what it is about to draw. A cull is one way of reaching; it is not the only one,
-        /// and a renderer that traces has no off screen to be on the wrong side of. So the answer
-        /// is asked for rather than inferred, and `traverse` below is one of its callers.
-        ///
-        /// **The number is the update traversal's**, because that is the only thing that reads it
-        /// back. A caller with a sequence of its own — a mirror poses at numbers that are not
-        /// frames — has to hand over the frame regardless, or the comparison is between two clocks.
+        /// Says that something which draws this reached it on this frame, which is what keeps a SemiActive
+        /// skeleton animating. A cull is one caller; a renderer that culls nothing calls it itself.
         void markReached(unsigned int updateTraversalNumber) { mLastCullFrameNumber = updateTraversalNumber; }
 
         void markDirty();

@@ -1,12 +1,14 @@
 #include "characterpreview.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #include <osg/Group>
 #include <osg/Matrixf>
 #include <osg/PositionAttitudeTransform>
 
 #include <components/debug/debuglog.hpp>
+#include <components/fallback/fallback.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
@@ -42,15 +44,27 @@ namespace MWRender
         OffscreenViewSpec spec{ *mScene };
         spec.mWidth = sizeX;
         spec.mHeight = sizeY;
-        // Everything: the one bit left out is the one that tells an update traversal apart from a
-        // cull, and nothing in the subtree carries it.
         spec.mMask = ~Mask_UpdateVisitor;
-        spec.mFraming.mProjection = SceneUtil::Perspective{ .mFieldOfView = SceneUtil::sPreviewFieldOfView };
-        spec.mFraming.mNear = SceneUtil::sPreviewNear;
-        spec.mFraming.mFar = SceneUtil::sPreviewFar;
-        // Transparent: the figure is composited over the window behind it.
+        spec.mFraming.mProjection = SceneUtil::Perspective{ .mFieldOfView = 12.3f };
+        spec.mFraming.mNear = 4.f;
+        spec.mFraming.mFar = 10000.f;
+        // Transparent: the figure is composited over the window behind it
         spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 0.f);
-        spec.mSun = SceneUtil::inventoryLight();
+
+        float diffuseR = Fallback::Map::getFloat("Inventory_DirectionalDiffuseR");
+        float diffuseG = Fallback::Map::getFloat("Inventory_DirectionalDiffuseG");
+        float diffuseB = Fallback::Map::getFloat("Inventory_DirectionalDiffuseB");
+        float ambientR = Fallback::Map::getFloat("Inventory_DirectionalAmbientR");
+        float ambientG = Fallback::Map::getFloat("Inventory_DirectionalAmbientG");
+        float ambientB = Fallback::Map::getFloat("Inventory_DirectionalAmbientB");
+        float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
+        float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
+        float positionX = -std::cos(azimuth) * std::sin(altitude);
+        float positionY = std::sin(azimuth) * std::sin(altitude);
+        float positionZ = std::cos(altitude);
+        spec.mSun.mDirection = osg::Vec3f(positionX, positionY, positionZ);
+        spec.mSun.mDiffuse = osg::Vec4f(diffuseR, diffuseG, diffuseB, 1);
+        spec.mSun.mAmbient = osg::Vec4f(ambientR, ambientG, ambientB, 1);
 
         mView = renderer.createOffscreenView(spec);
 
@@ -105,8 +119,7 @@ namespace MWRender
 
     InventoryPreview::InventoryPreview(
         Renderer& renderer, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character)
-        : CharacterPreview(renderer, resourceSystem, character, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight,
-            SceneUtil::inventoryCamera().mOrigin, SceneUtil::inventoryCamera().mTarget)
+        : CharacterPreview(renderer, resourceSystem, character, 512, 1024, osg::Vec3f(0, 700, 71), osg::Vec3f(0, 0, 71))
     {
     }
 
@@ -117,7 +130,6 @@ namespace MWRender
 
         mView->setExtent(mExtentX, mExtentY);
 
-        // The extent is a description; asking for the picture again is this caller's to do.
         mView->redraw();
     }
 
@@ -246,11 +258,8 @@ namespace MWRender
         rebuild();
     }
 
-    /// Puts the eye a fixed offset from the head, once the head has been posed.
-    ///
-    /// **On the subtree and not beside it.** The head's world position is only right after the
-    /// keyframe controllers under it have run, and the only traversal that runs them is the one the
-    /// view makes on its way to drawing — so this has to be inside the thing being drawn.
+    // On the subtree, because the head is only posed once the keyframe controllers under it have run, and the
+    // view's own update is the only traversal that runs them
     class UpdateCameraCallback : public SceneUtil::NodeCallback<UpdateCameraCallback>
     {
     public:

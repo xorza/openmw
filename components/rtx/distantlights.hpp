@@ -22,7 +22,7 @@ namespace Terrain
 namespace Rtx
 {
     /// The lights of the cells the paging leaves dark. `REC_LIGH` is not a paged type and must not
-    /// become one, because both renderers read `Terrain::pagedType`; what this fork cannot keep is
+    /// become one, because both renderers read the paging's type filter; what this fork cannot keep is
     /// the light, because rays go everywhere. A `Residency` and not a graph: what it builds is
     /// parented to nothing the rasterizer walks, and the mirror turns it into a `Rtx::Light`
     /// exactly as it does a lamp in the active cell. Outside the active grid only, or a lantern is

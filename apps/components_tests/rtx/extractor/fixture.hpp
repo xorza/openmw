@@ -54,7 +54,6 @@
 #include <components/sceneutil/skeleton.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/texturetype.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "../graphlight.hpp"
 

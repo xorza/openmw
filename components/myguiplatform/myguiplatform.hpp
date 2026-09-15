@@ -35,8 +35,6 @@ namespace MyGUIPlatform
     class DataManager;
     class LogFacility;
 
-    /// MyGUI's log, its data manager, and whichever backend draws it, which the caller brings
-    /// already made.
     class Platform
     {
     public:

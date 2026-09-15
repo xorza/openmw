@@ -142,8 +142,6 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
             mStateManager->update(frametime);
         }
 
-        // **Where a renderer with a schedule changes the world**, and nothing by default.
-        // `MWRender::Renderer::tickSchedule` says why it is here rather than in a render callback.
         mRenderer->tickSchedule();
 
         bool paused = mWorld->getTimeManager()->isPaused();
@@ -262,9 +260,6 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
     // if there is a separate Lua thread, it starts the update now
     mLuaWorker->allowUpdate(frameStart, frameNumber, *stats);
 
-    // **The world describes its own frame.** What is lit and where the eye is has met in
-    // `RenderingManager` by now; a renderer that culls ignores all of it and a renderer that does
-    // not needs every field.
     mWorld->getRenderingManager()->renderFrame();
 
     mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
@@ -589,8 +584,7 @@ void OMW::Engine::go()
     mEncoder = std::make_unique<ToUTF8::Utf8Encoder>(mEncoding);
 
     mWorkQueue = new SceneUtil::WorkQueue(Settings::cells().mPreloadNumThreads);
-    // **Decided once, before the window exists, and never revisited.** `-DOPENMW_RTX=ON` decides
-    // whether the ray tracer is built; this decides whether it runs.
+    // Decided once, before the window exists
     const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
     Log(Debug::Info) << "Renderer: " << wanted;
 
@@ -665,9 +659,7 @@ void OMW::Engine::go()
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
     while (!mRenderer->done() && !mStateManager->hasQuitRequest())
     {
-        // **What the wall says the last frame took, which the renderer may overrule.** A run that
-        // has to be comparable with itself cannot animate by how long its last frame took, and
-        // `MWRender::Renderer::beginFrame` is the one place that decides — see `Rtx::FrameClock`.
+        // What the wall says the last frame took, which Renderer::beginFrame may overrule with a fixed step
         const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
             std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
                                     .count();

@@ -12,6 +12,12 @@
   ten identical to none of four. The scene columns repeat on every pair, which is why this is a
   report and not a gate.
 
+2026-09-15  31ff6c4d97+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
+  measured, taken over the diff-reduction pass (`.notes/plan-upstream-diff.md` steps 1 to 9): the
+  node masks, the offscreen framing, the reference walk and the pixel filters back beside the game,
+  the map's reach answered by `LocalMap`, the water height read live. Identical over every pair,
+  scene columns and picture both. Two pairs after step 1 and two after step 3 were identical too.
+
 2026-09-13  f620e7885f+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
   measured, taken over the third review's changes: the post-processor and the screenshot manager on
   the viewer again, the object paging back in `mwrender`, `TerrainPlan` collapsed to

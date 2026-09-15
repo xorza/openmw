@@ -7,9 +7,7 @@ namespace MyGUIPlatform
 
     void AdditiveLayer::renderToTarget(MyGUI::IRenderTarget* target, bool update)
     {
-        // **The manager, not the target.** A scaled layer is drawn through a proxy target that
-        // only adjusts the pixel scale, and the blend mode is not its to answer. Every backend's
-        // manager derives from `GuiRenderManager`, so this cast is the one that holds.
+        // The manager rather than the target, which for a scaled layer is a proxy that only adjusts the pixel scale
         GuiRenderManager& renderManager = static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance());
 
         renderManager.setAdditiveBlend(true);

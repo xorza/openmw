@@ -100,15 +100,13 @@ bool Launcher::GraphicsPage::loadSettings()
     if (Settings::rtx().mEnabled)
         rayTracingCheckBox->setCheckState(Qt::Checked);
 
-    // Nothing selected where the setting names a mode this list does not offer, so `saveSettings`
-    // leaves a choice made by hand alone.
+    // Nothing selected where the setting names a mode the list does not offer, so saveSettings leaves it alone
     const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
     rayTracingUpscaleComboBox->setCurrentIndex(offered ? static_cast<int>(*offered) : -1);
 
     rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
 
-    // The settings exist in every build so a config file survives moving between them; the controls
-    // are shown dead, with the tooltip saying why.
+    // The settings exist in every build; the controls are shown disabled with the tooltip saying why
     if (!Settings::sRayTracingBuilt)
     {
         const QString why = tr("This build was made without the ray tracing renderer.");
@@ -167,7 +165,7 @@ void Launcher::GraphicsPage::saveSettings()
     Settings::video().mAntialiasing.set(antiAliasingComboBox->currentText().toInt());
 
     Settings::rtx().mEnabled.set(rayTracingCheckBox->checkState() == Qt::Checked);
-    // Nothing chosen is a setting nobody here may answer for — see `loadSettings`.
+    // Nothing chosen leaves the setting alone, see loadSettings
     const int chosenIndex = rayTracingUpscaleComboBox->currentIndex();
     if (chosenIndex >= 0)
         if (const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(static_cast<std::size_t>(chosenIndex)))

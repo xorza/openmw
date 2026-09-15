@@ -111,8 +111,6 @@ namespace Terrain
 
         void setActiveGrid(const osg::Vec4i& grid) { mActiveGrid = grid; }
 
-        /// The square the simulation holds, as `setActiveGrid` was last told it, for a renderer
-        /// that stands the cells outside it for itself.
         const osg::Vec4i& getActiveGrid() const { return mActiveGrid; }
 
     protected:

@@ -131,8 +131,6 @@ namespace OMW
         Files::PathContainer mDataDirs;
         std::vector<std::string> mArchives;
         std::filesystem::path mResDir;
-        /// The picture, and the window it goes in. Chosen once, by name, before there is anything
-        /// to draw.
         std::unique_ptr<MWRender::Renderer> mRenderer;
         std::string mCellName;
         std::vector<std::string> mContentFiles;
@@ -210,8 +208,7 @@ namespace OMW
 
         void setGrabMouse(bool grab) { mGrab = grab; }
 
-        /// What a harness run asks of the ray tracer, or null. The caller's own, and it has to
-        /// outlive `go`.
+        /// What a harness run asks of the ray tracer, or null. Must outlive go().
         void setRtxSetup(const MWRender::RtxSetup* setup) { mRtxSetup = setup; }
 
         /// Initialise and enter main loop.

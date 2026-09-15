@@ -63,6 +63,9 @@ namespace Rtx
         /// Which nodes a walk of a template may descend into — the frame walk's own.
         osg::Node::NodeMask mMask = ~0u;
 
+        /// What the game marks a light node with, for the lights stood out here to carry the same.
+        osg::Node::NodeMask mLightMask = ~0u;
+
         /// Whether there is enough here to read anything at all.
         bool isReadable() const { return mStorage != nullptr && mGround != nullptr && mContent != nullptr; }
 

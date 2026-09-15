@@ -167,7 +167,7 @@ namespace MWBase
         virtual MWGui::HUD* getHud() = 0;
         virtual MWGui::PostProcessorHud* getPostProcessorHud() = 0;
 
-        /// The map of the cells around the player, or null before the GUI has made one.
+        /// The local map, or null before the GUI has made one
         virtual MWRender::LocalMap* getLocalMap() = 0;
         virtual std::vector<MWGui::WindowBase*> getGuiModeWindows(MWGui::GuiMode mode) = 0;
 
@@ -389,6 +389,9 @@ namespace MWBase
 
         /// Sets the cull masks for all applicable views
         virtual void setCullMask(uint32_t mask) = 0;
+
+        /// Same as viewer->getCamera()->getCullMask(), provided for consistency.
+        virtual uint32_t getCullMask() = 0;
 
         virtual void inventoryUpdated(const MWWorld::Ptr& ptr) const = 0;
 

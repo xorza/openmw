@@ -5,11 +5,9 @@
 
 namespace MWRender
 {
-    /// What the running game's content files say stands where.
-    ///
-    /// **Holds nothing.** Every answer comes out of `MWBase::Environment`, which is the game's own
-    /// singleton — and which is exactly why `Terrain::ObjectPaging` used to need a world running
-    /// behind it before it could build a hillside.
+    /// What the running game's content files say stands where: the walk `ObjectPaging` reads its
+    /// chunks through, offered to a renderer that stands the distance itself. Holds nothing; every
+    /// answer comes out of `MWBase::Environment`. Defined in `objectpaging.cpp`, beside the walk.
     class ObjectStorage final : public Terrain::ObjectStorage
     {
     public:
@@ -18,9 +16,7 @@ namespace MWRender
 
         std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const override;
 
-        VFS::Path::Normalized getModel(int type, const ESM::RefId& id) const override;
-
-        int getEsmVersion(int contentFile) const override;
+        VFS::Path::Normalized getModel(const ESM::RefId& id) const override;
     };
 }
 

@@ -45,12 +45,7 @@ namespace MWRender
 
         MyGUI::ITexture& getTexture();
 
-        /// The picture this is taken into, for a caller that wants the image rather than the widget.
-        ///
-        /// **Because `getTexture` is Y-up and a file is not.** `OffscreenView::getCopy` is the one
-        /// route from a picture to main memory that carries the row order in its type, and a caller
-        /// reading the texture instead has to remember a convention — which is how the doll came out
-        /// of `openmw-rtxtool doll --out=` upside down.
+        /// For a caller that wants the image rather than the widget: OffscreenView::getCopy carries the row order
         OffscreenView& getView() { return *mView; }
 
     private:
@@ -60,16 +55,13 @@ namespace MWRender
     protected:
         virtual bool renderHeadOnly() { return false; }
 
-        /// The subtree is not the subtree it was: equipment changed, or the body was rebuilt.
         void setBlendMode();
 
         virtual void onSetup();
 
         Resource::ResourceSystem* mResourceSystem;
 
-        /// What the view draws, and the only thing about it the game owns. Anything hung off here
-        /// runs during the view's own update, which is what lets the race preview find the head
-        /// before the picture is taken.
+        // What the view draws. An update callback here runs during the view's own update.
         osg::ref_ptr<osg::Group> mScene;
 
         std::unique_ptr<OffscreenView> mView;
@@ -103,8 +95,7 @@ namespace MWRender
         void onSetup() override;
 
     private:
-        /// How much of the picture the window is currently showing. Zero until the window has been
-        /// laid out, which is also when there is nothing to have clicked on.
+        // How much of the picture the window shows. Zero until the window has been laid out.
         int mExtentX = 0;
         int mExtentY = 0;
     };

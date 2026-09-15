@@ -167,7 +167,6 @@ namespace MWRender
 
         const osg::Vec3f& getLastViewPoint() const;
 
-        /// For a renderer that runs no cull traversal to set it from.
         void setLastViewPoint(const osg::Vec3f& viewPoint) { mViewPoint = viewPoint; }
 
         bool computeLocalToWorldMatrix(osg::Matrix& matrix, osg::NodeVisitor* nv) const override;

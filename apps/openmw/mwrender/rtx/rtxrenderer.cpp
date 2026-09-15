@@ -45,7 +45,6 @@
 #include <components/rtx/upscale.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sceneutil/screencapture.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
 
@@ -56,6 +55,7 @@
 #include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
+#include "../vismask.hpp"
 #include "session.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"

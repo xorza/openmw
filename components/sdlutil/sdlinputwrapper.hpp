@@ -22,11 +22,8 @@ namespace SDLUtil
     class InputWrapper
     {
     public:
-        /// @param camera the master camera, for the graphics context to resize with the window.
-        ///        Whether there is one behind it is the renderer's business.
-        /// @param events where the scene graph's own handlers read from, so the function keys and
-        ///        the window size reach them as well as the game — or null under a renderer that has
-        ///        no such handlers, which then receives nothing to drop.
+        /// @param camera the master camera, whose graphics context (if any) is resized with the window
+        /// @param events where the scene graph's own handlers read from, or null where there are none
         InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue* events, bool grab);
         ~InputWrapper();
 

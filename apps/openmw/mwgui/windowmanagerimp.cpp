@@ -301,7 +301,7 @@ namespace MWGui
         MyGUI::ClipboardManager::getInstance().eventClipboardRequested
             += MyGUI::newDelegate(this, &WindowManager::onClipboardRequested);
 
-        // No viewer: the one thing it is for, the vertical sync, is asked of the renderer instead.
+        // No viewer: the vertical sync is asked of the renderer instead
         mVideoWrapper = std::make_unique<SDLUtil::VideoWrapper>(window, nullptr);
         mVideoWrapper->setGammaContrast(Settings::video().mGamma, Settings::video().mContrast);
 
@@ -872,9 +872,7 @@ namespace MWGui
         mHud->setPlayerDir(playerdirection.x(), playerdirection.y());
         mHud->setPlayerPos(x, y, u, v);
 
-        // Whatever the world map is still waiting for a picture of. Here rather than in
-        // `MapWindow::onFrame`, which only runs while the map is up — and a cell is walked into
-        // with it closed.
+        // Here rather than in MapWindow::onFrame, which only runs while the map is up
         mMap->paintExplored();
     }
 
@@ -1453,6 +1451,11 @@ namespace MWGui
         // trivial and have no effect in mono or multiview so just call them regardless.
         mRenderer.getCamera().setCullMaskLeft(mask);
         mRenderer.getCamera().setCullMaskRight(mask);
+    }
+
+    uint32_t WindowManager::getCullMask()
+    {
+        return mRenderer.getCamera().getCullMask();
     }
 
     void WindowManager::popGuiMode(bool forceExit)
@@ -2361,8 +2364,7 @@ namespace MWGui
 
     void WindowManager::togglePostProcessorHud()
     {
-        // Null under a renderer with no shader chain, which is the same answer as a chain switched
-        // off: there is nothing here to list.
+        // Null under a renderer with no shader chain
         const MWRender::PostProcessor* processor = MWBase::Environment::get().getWorld()->getPostProcessor();
         if (processor == nullptr)
             return;

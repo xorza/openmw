@@ -139,12 +139,10 @@ namespace MWGui
 
             MyGUI::ImageBox* mMapWidget;
             MyGUI::ImageBox* mFogWidget;
-            /// The local map's, not this entry's: a segment owns its picture for as long as the
-            /// cell is loaded, and the widget is only shown it.
+            // The local map's, which owns it for as long as the cell is loaded
             MyGUI::ITexture* mMapTexture = nullptr;
             std::unique_ptr<MyGUI::ITexture> mFogTexture;
-
-            /// Whether this entry has already asked for a fog texture, and been told there is none.
+            // Whether this entry has asked for a fog texture and been told there is none
             bool mFogAsked = false;
             int mCellX;
             int mCellY;
@@ -252,12 +250,8 @@ namespace MWGui
         // reveals this cell's map on the global map
         void cellExplored(int x, int y);
 
-        /// Hands the world map whatever explored cells now have a picture to paint from.
-        ///
-        /// **Called every frame the game runs, and not from `onFrame`.** A window's `onFrame` runs
-        /// only while its mode is up or it is pinned, and the world map is painted from cells the
-        /// player walks into with the map closed. The first ask for a cell's picture starts a copy
-        /// and comes back with nothing; this is what asks again.
+        /// Paints the explored cells whose picture has come back. Called every frame the game runs rather than
+        /// from onFrame, which only runs while the map is up, because cells are walked into with it closed.
         void paintExplored();
 
         void setGlobalMapPlayerPosition(float worldX, float worldY);
@@ -312,9 +306,7 @@ namespace MWGui
         std::unique_ptr<MyGUI::ITexture> mGlobalMapTexture;
         std::unique_ptr<MyGUI::ITexture> mGlobalMapOverlayTexture;
 
-        /// Cells the player has walked into whose picture has not come back off the device yet.
-        /// Drained every frame; never more than a handful long, because a cell is only entered so
-        /// fast.
+        // Cells walked into whose picture has not come back off the device yet
         std::vector<std::pair<int, int>> mExploredPending;
         MyGUI::ImageBox* mGlobalMapImage;
         MyGUI::ImageBox* mGlobalMapOverlay;

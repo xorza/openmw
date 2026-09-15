@@ -148,14 +148,13 @@ namespace SceneUtil
         // LightSource will affect objects within this radius
         float mRadius;
 
-        // What the content says the light's radius is, where that is not mRadius. Zero otherwise.
+        // The radius the content states, where that is not mRadius. Zero otherwise.
         float mSourceRadius = 0.f;
 
         int mId;
 
         float mActorFade;
 
-        // The animation this light follows, which is also one of its update callbacks.
         osg::ref_ptr<LightController> mController;
 
         size_t mLastAppliedFrame;
@@ -174,26 +173,18 @@ namespace SceneUtil
         /// The LightSource will affect objects within this radius.
         void setRadius(float radius) { mRadius = radius; }
 
-        /// Gives this light the animation it follows, and drives it.
-        ///
-        /// **One call, because a light that carried an animation nobody drove would stand still and
-        /// a light driven by one it does not carry could not say what it is doing.** The callback is
-        /// how the rasterizer's frame reaches it; this is how anything else asks what it is.
+        /// Sets the controller this light follows and adds it as an update callback, so that
+        /// getController() can answer what the light is doing.
         void setController(LightController* controller)
         {
             mController = controller;
             addUpdateCallback(controller);
         }
 
-        /// What the content said this light does, or null where it said nothing.
         const LightController* getController() const { return mController; }
 
-        /// How far the light reaches, as the content states it.
-        ///
-        /// **Not always `getRadius()`, which is a cut-off.** `Animation::setLightEffect` widens a
-        /// glow light's cut-off threefold to soften the edge of its falloff, and a consumer that
-        /// takes the radius for the size of the light then reads a light nine times the area. Every
-        /// other light leaves the two alike, which is what an unset one answers.
+        /// The radius the content states. Not always getRadius(), which is a cut-off that
+        /// Animation::setLightEffect widens threefold for a glow light.
         float getSourceRadius() const { return mSourceRadius > 0.f ? mSourceRadius : mRadius; }
 
         void setSourceRadius(float radius) { mSourceRadius = radius; }

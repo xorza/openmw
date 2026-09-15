@@ -365,10 +365,7 @@ namespace MWWorld
         const MWWorld::Cell& one = *left->getCell();
         const MWWorld::Cell& other = *right->getCell();
 
-        // **A location names an interior as well as an exterior**, which is what makes it the whole
-        // identity: `Cell::getWorldSpace` answers with the cell's own identifier where the cell is
-        // not an exterior, so the grid separates the exteriors of one worldspace and the worldspace
-        // separates everything else.
+        // A location names an interior as well: Cell::getWorldSpace is the cell's own id where it is not an exterior
         return one.getExteriorCellLocation() < other.getExteriorCellLocation();
     }
 

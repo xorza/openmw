@@ -1274,14 +1274,8 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
 
         typedef std::vector<DuplicateList> MergeList;
 
-        // **Grouped through the map and walked through the list.** `LessGeometry` orders on the
-        // state set's address, so walking the map merged a group's children in whatever order the
-        // allocator had handed the state sets out. The merged index buffer followed, and so did how
-        // many degenerate triangles joined the strips. What that costs a rasterizer is nothing — a
-        // triangle is a triangle wherever its corners are stored. What it costs a ray tracer is a
-        // structure built over a different buffer in every process: two runs of one binary differed
-        // on 37 frames of 360 over `island-crossing`, by a byte, on foliage in shade. The map keeps
-        // the lookup it is good at, and the order is the group's own child order.
+        // Grouped through the map but merged in child order: LessGeometry orders on the state set's address,
+        // which made the merged index buffer differ between processes.
         typedef std::map< osg::ref_ptr<osg::Geometry>, std::size_t, LessGeometry>   GeometryGroupMap;
 
         GeometryGroupMap geometryGroups;
@@ -1335,8 +1329,7 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
                 continue;
             }
 
-            // Stable, so that two geometries of one primitive type keep the order above rather than
-            // whichever one the sort happened to leave first.
+            // Stable, so that geometries of one primitive type keep the child order
             std::stable_sort(duplicates.begin(),duplicates.end(),LessGeometryPrimitiveType());
 
             // initialize the temporary list by pushing the first geometry
@@ -1445,9 +1438,7 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
                         LessGeometryViewPoint lgvp;
                         lgvp._viewPoint = _viewPoint;
 
-                        // Stable, for the reason the sort above is: two geometries the same
-                        // distance away are ordered by nothing here, and were then ordered by
-                        // wherever the allocator had put them.
+                        // Stable, so that geometries at one distance keep the child order
                         std::stable_sort(duplicateList.begin(), duplicateList.end(), lgvp);
                     }
                     DuplicateList::iterator ditr = duplicateList.begin();
@@ -2047,12 +2038,8 @@ void Optimizer::MergeGroupsVisitor::apply(osg::Group &group)
         traverse(group);
     else
     {
-        // **Which group survives and what order its new children arrive in is the child order, not
-        // the address order.** A `std::set<osg::Group*>` kept the lowest-addressed group and
-        // appended the others behind it in address order, which is `MergeGeometryVisitor`'s fault
-        // one level up and has the same cost: the buffer a ray tracer builds over is laid out
-        // differently in every process. The map still keys on the state set, which only has to
-        // gather.
+        // Which group survives and the order its new children arrive in is the child order, not the address
+        // order a std::set<osg::Group*> gave, which differed between processes.
         typedef std::map<osg::StateSet*, std::size_t> GroupMap;
         GroupMap groupIndex;
         std::vector<std::vector<osg::Group*> > childOrder;
@@ -2067,11 +2054,7 @@ void Optimizer::MergeGroupsVisitor::apply(osg::Group &group)
                 if (found.second)
                     childOrder.push_back(std::vector<osg::Group*>());
 
-                // **Named once however many times it is a child**, which the set this replaced did
-                // for free and which is not decoration: the merge below empties every group after
-                // the first into it, so one named twice would be emptied into itself. A search and
-                // not a second container, because `isOperationPermissible` takes only a plain
-                // `osg::Group` and a parent has a handful of those.
+                // Named once however many times it is a child, or the merge below would empty it into itself
                 std::vector<osg::Group*>& sharing = childOrder[found.first->second];
                 if (std::find(sharing.begin(), sharing.end(), childGroup) == sharing.end())
                     sharing.push_back(childGroup);

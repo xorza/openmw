@@ -92,7 +92,7 @@ namespace Terrain
 
     void World::setBordersVisible(bool visible)
     {
-        // A world built with no borders has none to show, and `loadCell` reads the flag.
+        // A world built with no borders has none to show
         if (mCellBorder == nullptr)
             return;
 

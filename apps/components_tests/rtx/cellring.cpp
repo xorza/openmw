@@ -22,7 +22,6 @@
 #include <osg/Vec3f>
 #include <osg/Vec4i>
 
-#include <components/esm/defs.hpp>
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/esm3/refnum.hpp>
@@ -82,19 +81,16 @@ namespace Rtx::Testing
                             .mPosition = placed.mPosition,
                             .mRotation = placed.mRotation,
                             .mScale = placed.mScale,
-                            .mType = ESM::REC_STAT,
                         });
             }
 
             std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId&) const override { return std::nullopt; }
 
             /// The record's id doubles as its model here.
-            VFS::Path::Normalized getModel(int, const ESM::RefId& id) const override
+            VFS::Path::Normalized getModel(const ESM::RefId& id) const override
             {
                 return VFS::Path::Normalized(id.getRefIdString());
             }
-
-            int getEsmVersion(int) const override { return 0; }
         };
 
         /// Templates by name — a square sheet of a radius the size rule can be asked about, five

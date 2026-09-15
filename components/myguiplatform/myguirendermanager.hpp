@@ -56,7 +56,7 @@ namespace MyGUIPlatform
 
         osg::StateSet* mInjectState;
 
-        /// `SRC_ALPHA, ONE`, made once and injected while `setAdditiveBlend` is on.
+        // Injected while setAdditiveBlend is on
         osg::ref_ptr<osg::StateSet> mAdditiveState;
 
     public:

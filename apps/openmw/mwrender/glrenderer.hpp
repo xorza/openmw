@@ -61,7 +61,9 @@ namespace MWRender
     /// **The rasterizer is not modified, wrapped or conditionally compiled around — it is gathered.**
     /// Every threading, realize and traversal decision here is upstream's, moved rather than
     /// rewritten, which is what makes "does the other renderer do this correctly" answerable by
-    /// comparison (`CLAUDE.md`).
+    /// comparison (`CLAUDE.md`). One deviation: `retireFreezeFrame` takes the loading screen's
+    /// framebuffer copy back out of the frame once it has run, where upstream leaves it copying the
+    /// whole screen on every frame after the first load. The picture is the same.
     class GlRenderer final : public Renderer
     {
     public:

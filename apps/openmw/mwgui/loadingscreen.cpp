@@ -245,8 +245,9 @@ namespace MWGui
 
     void LoadingScreen::showFrozenFrame()
     {
-        // The frame the player was looking at, held up behind the loading screen. The alternative —
-        // clearing to nothing and letting the world show through — shakes on every buffer swap.
+        // Copy the current framebuffer onto a texture and display that texture as the background image
+        // Note, we could also set the camera to disable clearing and have the background image transparent,
+        // but then we get shaking effects on buffer swaps.
 
         mSplashImage->setBackgroundImage({});
         mSplashImage->setVisible(false);
@@ -275,14 +276,13 @@ namespace MWGui
 
         MWBase::Environment::get().getInputManager()->update(0, true, true);
 
-        osg::Stats& stats = mRenderer.getStats();
+        osg::Stats* const stats = &mRenderer.getStats();
         const unsigned frameNumber = mRenderer.getFrameStamp().getFrameNumber();
 
-        stats.setAttribute(frameNumber, "Loading", 1);
+        stats->setAttribute(frameNumber, "Loading", 1);
 
-        mResourceSystem->reportStats(frameNumber, &stats);
-        // **Widened while the screen is up**, because nothing else is drawing and a player waiting
-        // on a bar would rather wait less. `resetPreparationBudget` puts it back.
+        mResourceSystem->reportStats(frameNumber, stats);
+        // Widened while the screen is up; resetPreparationBudget puts it back
         mRenderer.setPreparationBudget(
             MWRender::PreparationBudget{ .mSecondsPerFrame = 1.0 / getTargetFrameRate(), .mObjectsPerFrame = 1000 });
 

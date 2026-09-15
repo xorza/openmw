@@ -22,6 +22,8 @@ file(GLOB UNITTEST_SRC_FILES
 
     mwsound/testheadcache.cpp
     mwsound/testwarmqueue.cpp
+
+    mwrender/pixels.cpp
 )
 
 if (MSVC)

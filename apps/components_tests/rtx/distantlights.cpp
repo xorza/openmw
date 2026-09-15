@@ -59,7 +59,6 @@ namespace Rtx
                     .mRefId = ESM::RefId::stringRefId("lamp"),
                     .mRefNum = ESM::RefNum{ 1, 0 },
                     .mPosition = osg::Vec3f(sCellX * sCellSize, sCellY * sCellSize, 0.0f),
-                    .mType = ESM::REC_LIGH,
                 });
             }
 
@@ -68,9 +67,7 @@ namespace Rtx
             /// How many cells have been read off this, which is what says the memo remembers.
             std::uint32_t getReadings() const { return mReadings; }
 
-            VFS::Path::Normalized getModel(int, const ESM::RefId&) const override { return {}; }
-
-            int getEsmVersion(int) const override { return 0; }
+            VFS::Path::Normalized getModel(const ESM::RefId&) const override { return {}; }
 
         private:
             std::optional<SceneUtil::LightCommon> mLight;

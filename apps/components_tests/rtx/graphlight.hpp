@@ -1,5 +1,6 @@
 #pragma once
 
+#include <osg/Node>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
@@ -7,6 +8,9 @@
 
 namespace Rtx::Testing
 {
+    /// The bit the game marks a light node with, as `MWRender::Mask_Lighting` spells it.
+    inline constexpr osg::Node::NodeMask sLightMask = 1u << 19;
+
     /// A light as the scene graph carries one: a `SceneUtil::Light` inside a
     /// `SceneUtil::LightSource`, which is the pair a walk reads and the pair a colour test needs
     /// built.

@@ -12,7 +12,6 @@
 
 #include <components/debug/debuglog.hpp>
 
-#include <components/myguiplatform/pixels.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 
@@ -26,6 +25,8 @@
 #include "../mwbase/environment.hpp"
 
 #include "../mwworld/esmstore.hpp"
+
+#include "pixels.hpp"
 
 namespace
 {
@@ -52,8 +53,7 @@ namespace
         return std::vector<char>(data.begin(), data.end());
     }
 
-    /// Whatever came out of the png reader, as the four tightly packed bytes a pixel that everything
-    /// below this expects. Returns the image itself where it is already that.
+    // The png reader's image as the tightly packed RGBA bytes everything below expects
     osg::ref_ptr<osg::Image> asRgba(osg::ref_ptr<osg::Image> image)
     {
         if (image->getPixelFormat() == GL_RGBA && image->getDataType() == GL_UNSIGNED_BYTE && image->isDataContiguous())
@@ -125,8 +125,7 @@ namespace MWRender
                             // Use setColor to write to output images
                             image->setColor(color, texelX, texelY);
 
-                            // Below the water line there is nothing an explored tile should be
-                            // allowed to paint over.
+                            // Below the water line an explored tile paints nothing
                             *mAlphaImage->data(texelX, texelY) = lutIndex < 128 ? 0 : 0xFF;
                         }
                     }
@@ -154,8 +153,7 @@ namespace MWRender
             mOverlayTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
             mOverlayTexture->setResizeNonPowerOfTwoHint(false);
             mOverlayTexture->setInternalFormat(GL_RGBA);
-            // The image is the picture and is kept: what is drawn is what the game has painted, and
-            // `osg::Image::dirty` is what sends a change up.
+            // The image is kept: osg::Image::dirty() is what sends a change up
             mOverlayTexture->setImage(mOverlayImage);
             mOverlayTexture->setUnRefImageDataAfterApply(false);
         }
@@ -273,10 +271,9 @@ namespace MWRender
             for (int x = 0; x < cellSize; ++x)
             {
                 std::uint8_t sampled[4];
-                MyGUIPlatform::sampleBilinear(*tile, (x + 0.5f) / cellSize, (y + 0.5f) / cellSize, sampled);
+                sampleBilinear(*tile, (x + 0.5f) / cellSize, (y + 0.5f) / cellSize, sampled);
 
-                // One texel of the mask per pixel of the overlay, so the sampler's own answer here
-                // is that texel: the same lookup at the same place, whichever way it is taken.
+                // One texel of the mask per pixel of the overlay
                 const unsigned int mask = *mAlphaImage->data(originX + x, originY + y);
 
                 std::uint8_t* out = mCellScratch.data() + (static_cast<std::size_t>(y) * cellSize + x) * 4;
@@ -287,9 +284,8 @@ namespace MWRender
             }
         }
 
-        // Crossing back into a cell asks for it to be explored again, and almost always paints
-        // exactly what is already there. Finding that out costs a kilobyte of comparison; acting on
-        // it would cost the whole overlay going back up to the device.
+        // Crossing back into a cell almost always paints what is already there, and a change sends the whole overlay
+        // back up to the device
         bool changed = false;
         for (int y = 0; y < cellSize && !changed; ++y)
             changed = std::memcmp(mOverlayImage->data(originX, originY + y),
@@ -303,8 +299,7 @@ namespace MWRender
             std::memcpy(mOverlayImage->data(originX, originY + y),
                 mCellScratch.data() + static_cast<std::size_t>(y) * cellSize * 4, cellSize * 4);
 
-        // The whole image goes up on a change, since `osg::Image` has no way to say which part;
-        // once per cell ever visited. A backend that mirrors the image sends the rows that differ.
+        // osg::Image has no way to say which part changed
         mOverlayImage->dirty();
         return true;
     }
@@ -434,12 +429,10 @@ namespace MWRender
 
             memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
 
-            MyGUIPlatform::resampleRegion(*image,
-                MyGUIPlatform::Rect{
-                    srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight },
+            resampleRegion(*image,
+                Rect{ srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight },
                 *mOverlayImage,
-                MyGUIPlatform::Rect{
-                    destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
+                Rect{ destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
             mOverlayImage->dirty();
         }
     }

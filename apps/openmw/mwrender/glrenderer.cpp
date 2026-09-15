@@ -35,7 +35,6 @@
 #include <components/sceneutil/glextensions.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/util.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/workqueue.hpp>
 #include <components/sdlutil/sdlgraphicswindow.hpp>
 #include <components/settings/values.hpp>
@@ -50,6 +49,7 @@
 #include "renderingmanager.hpp"
 #include "sceneframe.hpp"
 #include "screenshotmanager.hpp"
+#include "vismask.hpp"
 
 namespace
 {
@@ -57,7 +57,7 @@ namespace
     ///
     /// **It doubles as the record of which way round `showWorld` is**: nothing else leaves the mask
     /// at exactly the two bits the interface is drawn with.
-    constexpr unsigned int sCoveredCullMask = SceneUtil::Mask_GUI | SceneUtil::Mask_PreCompile;
+    constexpr unsigned int sCoveredCullMask = MWRender::Mask_GUI | MWRender::Mask_PreCompile;
 
     void checkSDLError(int ret)
     {
@@ -458,11 +458,11 @@ namespace MWRender
         const bool covered = mViewer->getCamera()->getCullMask() == sCoveredCullMask;
         unsigned int mask = covered ? mShownCullMask : mViewer->getCamera()->getCullMask();
 
-        const bool shown = (mask & SceneUtil::sToggleWorldMask) == 0;
+        const bool shown = (mask & sToggleWorldMask) == 0;
         if (shown)
-            mask |= SceneUtil::sToggleWorldMask;
+            mask |= sToggleWorldMask;
         else
-            mask &= ~SceneUtil::sToggleWorldMask;
+            mask &= ~sToggleWorldMask;
 
         if (covered)
             mShownCullMask = mask;
@@ -650,6 +650,8 @@ namespace MWRender
         mRestingBudget.reset();
     }
 
+    // `SDLUtil::VideoWrapper::setSyncToVBlank`, with the viewer this renderer owns: the wrapper
+    // `WindowManager` holds has no viewer and keeps only the gamma ramp.
     void GlRenderer::setVSync(SDLUtil::VSyncMode mode)
     {
         osgViewer::Viewer::Windows windows;

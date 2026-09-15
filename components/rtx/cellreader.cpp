@@ -163,7 +163,7 @@ namespace Rtx
         if (!statics)
             return prepared;
 
-        // One cell at a time, which is `wantedType`'s near answer: containers page here as they do
+        // One cell at a time, which is the paging's near answer: containers page here as they do
         // in the active grid's own chunks, and the size rule is what thins them with distance.
         mStorage.collect(Terrain::RefKind::Paged, 1.0f, cell, mWorldspace, mRefScratch);
 
@@ -172,7 +172,7 @@ namespace Rtx
             if (Misc::ResourceHelpers::isHiddenMarker(ref.mRefId))
                 continue;
 
-            VFS::Path::Normalized model = mStorage.getModel(ref.mType, ref.mRefId);
+            VFS::Path::Normalized model = mStorage.getModel(ref.mRefId);
             if (model.empty())
                 continue;
 

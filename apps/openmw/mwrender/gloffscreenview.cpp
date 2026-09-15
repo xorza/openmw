@@ -23,11 +23,11 @@
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/stereo/multiview.hpp>
 
 #include "util.hpp"
+#include "vismask.hpp"
 
 namespace MWRender
 {
@@ -177,7 +177,7 @@ namespace MWRender
             , mClearColour(spec.mClearColour)
             , mFromWorld(spec.mFromWorld)
         {
-            setNodeMask(SceneUtil::Mask_RenderToTexture);
+            setNodeMask(Mask_RenderToTexture);
 
             // **A picture of a group needs its alpha and a picture of the world does not.** The doll
             // is composited over the window behind it, so what it did not cover has to say so; a map
@@ -215,7 +215,7 @@ namespace MWRender
 
             SceneUtil::setCameraClearDepth(camera);
 
-            camera->setNodeMask(SceneUtil::Mask_RenderToTexture);
+            camera->setNodeMask(Mask_RenderToTexture);
             camera->addChild(mGroup);
 
             if (mCopy)
@@ -449,7 +449,7 @@ namespace MWRender
 
     void GlOffscreenView::redraw()
     {
-        mNode->setNodeMask(SceneUtil::Mask_RenderToTexture);
+        mNode->setNodeMask(Mask_RenderToTexture);
         mDrawOnce->redrawNextFrame();
     }
 

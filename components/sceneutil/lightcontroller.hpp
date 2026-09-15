@@ -31,12 +31,9 @@ namespace SceneUtil
 
         void operator()(SceneUtil::LightSource* node, osg::NodeVisitor* nv);
 
-        /// What the record's flags said this light does.
         LightType getType() const { return mType; }
 
-        /// What the light radiates before the animation dims it. The colours inside the light itself
-        /// are one frame's: this writes them from these every frame, and LightManager's distance
-        /// fade then scales in place what it finds there.
+        /// The diffuse colour before the animation dims it
         const osg::Vec4f& getDiffuse() const { return mDiffuseColor; }
 
     private:

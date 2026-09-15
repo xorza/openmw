@@ -49,18 +49,6 @@ namespace SceneUtil
         using BoneWeight = std::pair<size_t, float>;
         using BoneWeights = std::vector<BoneWeight>;
 
-        using VertexList = std::vector<unsigned short>;
-
-        /// What the skin binds: the bones, the vertices grouped by the weight list they share, the
-        /// skin transform and the root bone. Shared by every copy of the drawable.
-        struct InfluenceData : public osg::Referenced
-        {
-            std::vector<BoneInfo> mBones;
-            std::vector<std::pair<BoneWeights, VertexList>> mInfluences;
-            osg::Matrixf mTransform;
-            std::string mRootBone;
-        };
-
         void setBoneInfo(std::vector<BoneInfo>&& bones);
         // Convert influences in bone and weight list per vertex format
         void setInfluences(const std::vector<BoneWeights>& influences);
@@ -74,20 +62,6 @@ namespace SceneUtil
         void setRootBone(std::string_view name);
 
         osg::ref_ptr<osg::Geometry> getSourceGeometry() const;
-
-        /// What this rig is skinned by, for a renderer that poses it somewhere other than here.
-        /// Null until `setBoneInfo`, `setInfluences`, `setTransform` or `setRootBone` has been called.
-        const InfluenceData* getInfluenceData() const { return mData.get(); }
-
-        /// The skeleton's bone for each entry of `InfluenceData::mBones`, in the same order.
-        ///
-        /// **Empty until the first update traversal found the skeleton**, which is where this rig
-        /// resolves its bones, and null for a bone the skeleton has not got — which `cull` skips.
-        std::span<Bone* const> getBones() const { return mNodes; }
-
-        /// What takes the skin's space into the skeleton's, or null for the identity. Recomputed by
-        /// the update traversal while the skeleton is active, and on the first frame regardless.
-        const osg::RefMatrix* getSkinToSkelMatrix() const { return mSkinToSkelMatrix.get(); }
 
         void accept(osg::NodeVisitor& nv) override;
         bool supports(const osg::PrimitiveFunctor&) const override { return true; }
@@ -120,6 +94,25 @@ namespace SceneUtil
 
         osg::ref_ptr<osg::RefMatrix> mSkinToSkelMatrix;
 
+    public:
+        using VertexList = std::vector<unsigned short>;
+        struct InfluenceData : public osg::Referenced
+        {
+            std::vector<BoneInfo> mBones;
+            std::vector<std::pair<BoneWeights, VertexList>> mInfluences;
+            osg::Matrixf mTransform;
+            std::string mRootBone;
+        };
+
+        /// Null until the influences have been set
+        const InfluenceData* getInfluenceData() const { return mData.get(); }
+        /// The skeleton's bone for each entry of InfluenceData::mBones. Empty until the first update traversal
+        /// found the skeleton, and null for a bone the skeleton has not got.
+        std::span<Bone* const> getBones() const { return mNodes; }
+        /// Null for the identity. Recomputed by the update traversal while the skeleton is active.
+        const osg::RefMatrix* getSkinToSkelMatrix() const { return mSkinToSkelMatrix.get(); }
+
+    private:
         osg::ref_ptr<InfluenceData> mData;
         std::vector<Bone*> mNodes;
 

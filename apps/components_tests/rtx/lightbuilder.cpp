@@ -16,7 +16,6 @@
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "graphlight.hpp"
 #include "statistics.hpp"
@@ -237,7 +236,7 @@ namespace Rtx
             const SceneUtil::LightCommon record = describe(100, 0x00FFFFFF, ESM::Light::PulseSlow);
 
             const osg::ref_ptr<SceneUtil::LightSource> lamp = SceneUtil::createLightSource(
-                record, SceneUtil::Mask_Lighting, /*isExterior=*/false, osg::Vec4f(1, 1, 1, 1));
+                record, Testing::sLightMask, /*isExterior=*/false, osg::Vec4f(1, 1, 1, 1));
 
             // A pulse turns once in three seconds. Eight samples across it put one of them within an
             // eighth of a turn of the peak, so the deepest is at least `0.35 * cos(pi / 8)` from
@@ -389,8 +388,8 @@ namespace Rtx
         /// **The two callers of `standLight` want opposite halves of one rule.** A cell the player
         /// has walked into places the model, so the light belongs on the `AttachLight` node its
         /// author put at the flame — up to forty-eight units above the reference on the lamps of one
-        /// Balmora room. The reach around that cell places no model at all, because
-        /// `Terrain::pagedType` stands none, so the light lands on the transform the reference's own
+        /// Balmora room. The reach around that cell places no model at all, because the paging
+        /// stands none, so the light lands on the transform the reference's own
         /// position built. `SceneUtil::addLight` is what tells the two apart, and this is what says
         /// `standLight` reaches it rather than `createLightSource`.
         TEST(RtxLightBuilderTest, aLampStandsAtItsWickAndOneWithNoMeshStandsWhereItLies)
@@ -405,24 +404,24 @@ namespace Rtx
             wick->setPosition(osg::Vec3f(0.0f, 0.0f, 48.0f));
             lantern->addChild(wick);
 
-            ASSERT_TRUE(standLight(*lantern, burning, /*exterior=*/false));
+            ASSERT_TRUE(standLight(*lantern, burning, /*exterior=*/false, Testing::sLightMask));
             ASSERT_EQ(wick->getNumChildren(), 1u) << "the light was not hung on the flame's own node";
             EXPECT_EQ(lantern->getNumChildren(), 1u) << "the light was hung on the model as well";
 
             // The reach around a cell, which reads the record and never the mesh.
             osg::ref_ptr<osg::Group> bare = new osg::Group;
-            ASSERT_TRUE(standLight(*bare, burning, /*exterior=*/true));
+            ASSERT_TRUE(standLight(*bare, burning, /*exterior=*/true, Testing::sLightMask));
             ASSERT_EQ(bare->getNumChildren(), 1u);
 
             // **Marked the way the game marks one**, because the two graphs have to look the same to
             // anything that ever filters on it.
-            EXPECT_EQ(bare->getChild(0)->getNodeMask(), SceneUtil::Mask_Lighting);
-            EXPECT_EQ(wick->getChild(0)->getNodeMask(), SceneUtil::Mask_Lighting);
+            EXPECT_EQ(bare->getChild(0)->getNodeMask(), Testing::sLightMask);
+            EXPECT_EQ(wick->getChild(0)->getNodeMask(), Testing::sLightMask);
 
             // And a record that does not burn stands nothing on either path.
             const SceneUtil::LightCommon unlit = describe(100, 0x00FFFFFF, ESM::Light::OffDefault);
             osg::ref_ptr<osg::Group> dark = new osg::Group;
-            EXPECT_FALSE(standLight(*dark, unlit, /*exterior=*/false));
+            EXPECT_FALSE(standLight(*dark, unlit, /*exterior=*/false, Testing::sLightMask));
             EXPECT_EQ(dark->getNumChildren(), 0u);
         }
 
@@ -440,7 +439,7 @@ namespace Rtx
             const SceneUtil::LightCommon subtracting = describe(100, 0x00FFFFFF, ESM::Light::Negative);
 
             const osg::ref_ptr<SceneUtil::LightSource> built
-                = SceneUtil::createLightSource(subtracting, SceneUtil::Mask_Lighting, /*isExterior=*/false);
+                = SceneUtil::createLightSource(subtracting, Testing::sLightMask, /*isExterior=*/false);
             ASSERT_NE(built, nullptr);
 
             const osg::Vec3f radiated = lightColour(*built, 0.0);
@@ -453,7 +452,7 @@ namespace Rtx
             // two agree on is the flag and not the light.
             const SceneUtil::LightCommon ordinary = describe(100, 0x00FFFFFF, 0);
             const osg::ref_ptr<SceneUtil::LightSource> lit
-                = SceneUtil::createLightSource(ordinary, SceneUtil::Mask_Lighting, /*isExterior=*/false);
+                = SceneUtil::createLightSource(ordinary, Testing::sLightMask, /*isExterior=*/false);
 
             EXPECT_TRUE(makeLight(lightColour(*lit, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
@@ -463,7 +462,7 @@ namespace Rtx
             // record without the flag — the record path used to drop this one and disagree.
             const SceneUtil::LightCommon unlit = describe(100, 0x00000000, ESM::Light::Negative);
             const osg::ref_ptr<SceneUtil::LightSource> dark
-                = SceneUtil::createLightSource(unlit, SceneUtil::Mask_Lighting, /*isExterior=*/false);
+                = SceneUtil::createLightSource(unlit, Testing::sLightMask, /*isExterior=*/false);
 
             EXPECT_TRUE(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(unlit, osg::Vec3f()).has_value());

@@ -201,11 +201,7 @@ namespace MWRender
 
         void setSkyEnabled(bool enabled);
 
-        /// What the weather system has just worked out, for whatever draws the sky.
-        ///
-        /// **Through here rather than straight to the sky manager**, because the frame's own record
-        /// (`WorldState`) is written from these two, and the ray tracer reads that record rather
-        /// than the sky manager.
+        /// What the weather system has just worked out, for whatever draws the sky: the sky manager and WorldState.
         void setWeather(const WeatherResult& weather);
         void setMoonStates(const Sky::MoonState& masser, const Sky::MoonState& secunda);
 
@@ -227,9 +223,7 @@ namespace MWRender
 
         void update(float dt, bool paused);
 
-        /// Describes this frame — the world, the eye, the clock and the light on it — and asks the
-        /// renderer for it. Every frame the main loop runs; the four places that draw a GUI over no
-        /// world call `Renderer::renderGui` instead.
+        /// Describes this frame and asks the renderer for it. See Renderer::renderFrame.
         void renderFrame();
 
         Animation* getAnimation(const MWWorld::Ptr& ptr);
@@ -253,15 +247,6 @@ namespace MWRender
 
         float getNearClipDistance() const { return mNearClip; }
         float getViewDistance() const { return mViewDistance; }
-
-        /// How far from the eye the world's ground is built, in units, or nought where it reaches no
-        /// further than the cells the simulation has loaded.
-        ///
-        /// **What the local map is a map of.** Upstream sizes it from `distant terrain` and
-        /// `viewing distance`, which are the rasterizer's two answers to this one question. A ray
-        /// tracer pages whatever the first says and measures itself against `distant land cells`
-        /// rather than the second, so a map built from the settings shows less ground than there is.
-        float getTerrainReach() const;
 
         void setViewDistance(float distance, bool delay = false);
 
@@ -319,15 +304,8 @@ namespace MWRender
         osg::Vec2f getProjectionOffset() const { return mProjectionOffset; }
 
     private:
-        /// What the world is doing this frame, gathered from where each part of it settled.
-        ///
-        /// **Once, and in the world's own numbers.** Two renderers wanted the same twenty facts in
-        /// two different spellings, and answering them separately meant asking the sun, the fog and
-        /// the sky twice a frame through two channels pointing opposite ways. There is one channel
-        /// and it points down.
+        /// See WorldState and EyeState in sceneframe.hpp
         WorldState describeWorld() const;
-
-        /// Where this frame is seen from, which `WorldState` is not about.
         EyeState describeEye() const;
 
         void updateTextureFiltering();
@@ -374,14 +352,12 @@ namespace MWRender
         std::unordered_map<ESM::RefId, WorldspaceChunkMgr> mWorldspaceChunks;
         Terrain::World* mTerrain;
         std::unique_ptr<TerrainStorage> mTerrainStorage;
-        // What the paging reads the world out of; every worldspace's paging borrows it.
         ObjectStorage mObjectStorage;
         ObjectPaging* mObjectPaging;
         Groundcover* mGroundcover;
         std::unique_ptr<SkyManager> mSky;
         std::unique_ptr<FogManager> mFog;
-        /// What the world has settled on, written by each setter where the answer is known, so
-        /// `describeWorld` reads it once and no second set of members can hold a fact never reported.
+        // The fields of WorldState that nothing else keeps, written by the setter that decided them
         WorldState mWorld;
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;

@@ -23,13 +23,13 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/residency.hpp>
 #include <components/rtx/texturebuilder.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/terrain/world.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../sceneframe.hpp"
+#include "../vismask.hpp"
 
 namespace MWRender
 {
@@ -65,8 +65,8 @@ namespace MWRender
         /// every node, so naming `Mask_WeatherParticles` to mean "the weather subtree" extracted
         /// every storm with its particles missing, because a blizzard's own particles are marked
         /// `Mask_ParticleSystem`. Which subtree is walked is answered by where the walk starts.
-        constexpr osg::Node::NodeMask sWorldTraversal = ~static_cast<osg::Node::NodeMask>(
-            SceneUtil::Mask_Sky | SceneUtil::Mask_Sun | SceneUtil::Mask_SimpleWater);
+        constexpr osg::Node::NodeMask sWorldTraversal
+            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater);
 
         /// What a walk of a loaded model may see: the world's mask without the player bit, which is
         /// stamped on nothing a content file holds. The cell ring is given this and never the
@@ -81,8 +81,7 @@ namespace MWRender
         /// question.
         osg::Node::NodeMask worldTraversal(const bool showsPlayer)
         {
-            const osg::Node::NodeMask player
-                = showsPlayer ? 0 : static_cast<osg::Node::NodeMask>(SceneUtil::Mask_Player);
+            const osg::Node::NodeMask player = showsPlayer ? 0 : static_cast<osg::Node::NodeMask>(Mask_Player);
 
             return templateTraversal() & ~player;
         }
@@ -109,13 +108,13 @@ namespace MWRender
         mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
 
         // What is left of the two is the world's own water, and it is the sea.
-        mExtractor.setWaterMask(SceneUtil::Mask_Water);
+        mExtractor.setWaterMask(Mask_Water);
 
         // The roots the game marks, so a camera's cull mask can keep or leave out what stands
         // under them — `rayMaskOf` is the other half.
-        mExtractor.setClassMask(Rtx::InstanceClass::Actor, SceneUtil::Mask_Actor | SceneUtil::Mask_Player);
-        mExtractor.setClassMask(Rtx::InstanceClass::Effect, SceneUtil::Mask_Effect);
-        mExtractor.setClassMask(Rtx::InstanceClass::FirstPerson, SceneUtil::Mask_FirstPerson);
+        mExtractor.setClassMask(Rtx::InstanceClass::Actor, Mask_Actor | Mask_Player);
+        mExtractor.setClassMask(Rtx::InstanceClass::Effect, Mask_Effect);
+        mExtractor.setClassMask(Rtx::InstanceClass::FirstPerson, Mask_FirstPerson);
     }
 
     void WorldMirror::attach(Resource::ResourceSystem& resources)
@@ -190,6 +189,7 @@ namespace MWRender
                 .mContent = mContent.get(),
                 .mWorldspace = frame.mTerrain.getWorldspace(),
                 .mMask = templateTraversal(),
+                .mLightMask = Mask_Lighting,
             },
             .mEye = eye,
             .mReach = mReach,

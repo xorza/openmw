@@ -5,9 +5,9 @@
 
 #include <osg/Image>
 
-#include <components/myguiplatform/pixels.hpp>
+#include "apps/openmw/mwrender/pixels.hpp"
 
-namespace MyGUIPlatform
+namespace MWRender
 {
     namespace
     {
@@ -34,7 +34,7 @@ namespace MyGUIPlatform
         ///
         /// A two-by-two picture sampled dead centre sits half a texel from each of them, so the
         /// answer is their mean: (0 + 100 + 200 + 255) / 4 = 138.75, which lands on 139.
-        TEST(MyGUIPlatformPixelsTest, aTapBetweenFourTexelsWeighsThemByDistance)
+        TEST(MWRenderPixelsTest, aTapBetweenFourTexelsWeighsThemByDistance)
         {
             const osg::ref_ptr<osg::Image> image = makeGrey(2, 2, [](int x, int y) {
                 constexpr int corners[2][2] = { { 0, 200 }, { 100, 255 } };
@@ -52,7 +52,7 @@ namespace MyGUIPlatform
         ///
         /// Centres sit at half-integers, so on a four-wide picture texel two is at
         /// (2 + 0.5) / 4 = 0.625.
-        TEST(MyGUIPlatformPixelsTest, aTapOnATexelCentreIsThatTexel)
+        TEST(MWRenderPixelsTest, aTapOnATexelCentreIsThatTexel)
         {
             const osg::ref_ptr<osg::Image> image = makeGrey(4, 1, [](int x, int) { return x * 60; });
 
@@ -69,7 +69,7 @@ namespace MyGUIPlatform
         /// two texels rather than a pick of one.
         ///
         /// Texel one is at 0.375 and texel two at 0.625, so 0.5 is the midpoint of 60 and 120.
-        TEST(MyGUIPlatformPixelsTest, aTapBetweenTwoCentresIsTheirMean)
+        TEST(MWRenderPixelsTest, aTapBetweenTwoCentresIsTheirMean)
         {
             const osg::ref_ptr<osg::Image> image = makeGrey(4, 1, [](int x, int) { return x * 60; });
 
@@ -86,7 +86,7 @@ namespace MyGUIPlatform
         /// a wrapping tap would carry a stripe of its opposite edge. The first and last destination
         /// pixels of every cell fall in this band: at eighteen across, the first tap is at
         /// 0.5 / 18 = 0.0278, and the outermost texel centre of a 256-wide tile is at 0.00195.
-        TEST(MyGUIPlatformPixelsTest, aTapOutsideTheOutermostCentresHoldsTheEdge)
+        TEST(MWRenderPixelsTest, aTapOutsideTheOutermostCentresHoldsTheEdge)
         {
             const osg::ref_ptr<osg::Image> image = makeGrey(4, 1, [](int x, int) { return x * 60; });
 
@@ -105,7 +105,7 @@ namespace MyGUIPlatform
         /// black and white rows carries no information at eighteen pixels across, and what the map
         /// has always shown is one row or the other rather than the grey an average gives. Rows,
         /// because a tap sits between two of them and picks up both when it is not on a centre.
-        TEST(MyGUIPlatformPixelsTest, theReductionReadsFourTexelsAndNotTheWholeFootprint)
+        TEST(MWRenderPixelsTest, theReductionReadsFourTexelsAndNotTheWholeFootprint)
         {
             const osg::ref_ptr<osg::Image> image = makeGrey(1, 256, [](int, int y) { return y % 2 == 0 ? 0 : 255; });
 

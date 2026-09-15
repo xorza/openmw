@@ -140,15 +140,11 @@ namespace MWRender
         MapSegment& segment = mInterior ? mInteriorSegments[std::make_pair(segmentX, segmentY)]
                                         : mExteriorSegments[std::make_pair(segmentX, segmentY)];
 
-        // **Rebuilt where the slab moved, because the slab is in the projection.** The depth range
-        // is fitted to what is loaded, so it changes as neighbouring cells arrive, and a view is
-        // described once when it is made. Upstream builds a camera for every tile it draws; this
-        // keeps the one it has wherever the range it was built for still holds.
+        // Rebuilt where the depth range moved, because the range is in the projection and a view is described once
         if (segment.mView && (segment.mZMin != zmin || segment.mZMax != zmax))
         {
             segment.mView.reset();
 
-            // The copy was asked of the view that has gone; the next ask has to start one afresh.
             segment.mCopyAsked = false;
         }
 
@@ -157,17 +153,16 @@ namespace MWRender
             OffscreenViewSpec spec{ *mSceneRoot };
             spec.mWidth = mMapResolution;
             spec.mHeight = mMapResolution;
-            // The rasterizer's cull mask, which the ray tracer reads as the classes its rays meet —
-            // see `OffscreenViewSpec::mMask`. An inclusion mask either way, which is deliberate
-            // here: a chart wants the ground and the buildings and not the people or the smoke over
-            // them.
+            // An inclusion mask: the ground and the buildings, not the people or the smoke over them
             spec.mMask = Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static;
             spec.mFraming.mProjection = SceneUtil::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };
-            spec.mFraming.mNear = SceneUtil::sMapNear;
+            spec.mFraming.mNear = 5.f;
             spec.mFraming.mFar = (zmax - zmin) + 10.f;
             spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 1.f);
-            spec.mSun = SceneUtil::mapLight();
+            spec.mSun.mDirection = osg::Vec3f(-0.3f, -0.3f, 0.7f);
+            spec.mSun.mDiffuse = osg::Vec4f(0.7f, 0.7f, 0.7f, 1.f);
+            spec.mSun.mAmbient = osg::Vec4f(0.3f, 0.3f, 0.3f, 1.f);
             spec.mFromWorld = true;
 
             segment.mView = mRenderer.createOffscreenView(spec);
@@ -239,10 +234,7 @@ namespace MWRender
 
         MapSegment& segment = found->second;
 
-        // **Once, and the answer arrives later.** A view keeps no copy until something asks, and
-        // filling one takes a draw — so the first ask starts it and comes back with nothing, and
-        // the caller asks again. Asking again must not redraw: the rasterizer's copy takes a
-        // couple of frames to land and a redraw every frame would keep resetting the wait.
+        // The first ask starts the copy and answers nothing; asking again must not redraw, or the copy never lands
         if (!segment.mCopyAsked)
         {
             segment.mCopyAsked = true;
@@ -251,6 +243,11 @@ namespace MWRender
         }
 
         return segment.mView->getCopy();
+    }
+
+    float LocalMap::getGroundReach() const
+    {
+        return mRenderer.getGroundReach();
     }
 
     osg::ref_ptr<osg::Texture2D> LocalMap::getFogOfWarTexture(int x, int y)

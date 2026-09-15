@@ -396,7 +396,7 @@ namespace MWRender
         raindropTex->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
 
         stateset->setTextureAttribute(0, raindropTex);
-        // Named, so a renderer that reads what a surface is finds the drop's picture.
+        // Named, so a renderer that reads what a surface is finds the drop's texture
         stateset->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"), osg::StateAttribute::ON);
         stateset->setNestRenderBins(false);
         stateset->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);

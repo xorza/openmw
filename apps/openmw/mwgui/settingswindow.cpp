@@ -324,8 +324,7 @@ namespace MWGui
         getWidget(mRayTracingRestartHint, "RayTracingRestartHint");
         getWidget(mRayTracingUnavailableHint, "RayTracingUnavailableHint");
 
-        // A build without the renderer shows the switch dead with a hint saying why, and hides the
-        // rest: a dead control with nothing to say why is worse than a missing one.
+        // A build without the renderer shows the switch disabled with a hint saying why, and hides the rest
         const bool rayTracing = Settings::sRayTracingBuilt;
         mRayTracingUnavailableHint->setVisible(!rayTracing);
         mRayTracingButton->setEnabled(rayTracing);
@@ -638,8 +637,7 @@ namespace MWGui
 
     void SettingsWindow::onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos)
     {
-        // A position the menu's own list has no mode for, which is a layout with more entries in it
-        // than there are modes.
+        // A layout with more entries than there are modes
         const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(pos);
         if (!chosen.has_value())
             return;
@@ -1036,8 +1034,7 @@ namespace MWGui
 
     void SettingsWindow::updateRayTracingSettings()
     {
-        // What the setting says, and nothing selected where it names a mode no menu offers: showing
-        // an offered mode instead would write it over the setting the first time the list was used.
+        // Nothing selected where the setting names a mode the menu does not offer, or the list would overwrite it
         const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
 
         mRayTracingUpscale->setIndexSelected(offered.value_or(MyGUI::ITEM_NONE));

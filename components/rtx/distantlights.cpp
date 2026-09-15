@@ -51,7 +51,7 @@ namespace Rtx
                 continue;
 
             // At the reference's own origin, and not at the model's `AttachLight` node. Finding
-            // that means loading the mesh, and the mesh is what `pagedType` refuses to stand out
+            // that means loading the mesh, and the mesh is what the paging refuses to stand out
             // here; the offset between the two is the height of a lamp, against a cell of distance.
             // So what `standLight` is handed carries no model, and the light lands on this.
             const osg::ref_ptr<osg::MatrixTransform> place
@@ -61,7 +61,7 @@ namespace Rtx
             // it would have found had the player walked into the cell — the off-default refusal, the
             // colours, the attenuation and the flicker flags all included. Outdoors is not a guess:
             // the reach is exterior cells and nothing else.
-            if (!standLight(*place, *light, /*exterior=*/true))
+            if (!standLight(*place, *light, /*exterior=*/true, mAround.mWorld.mLightMask))
                 continue;
 
             if (group == nullptr)

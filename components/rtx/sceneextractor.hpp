@@ -64,7 +64,7 @@ namespace Rtx
         ~SceneExtractor();
 
         /// Which nodes the walks may descend into, as an `osg` traversal mask: what keeps the
-        /// mirror out of subtrees the ray tracer answers for itself, such as `SceneUtil::Mask_Sky`,
+        /// mirror out of subtrees the ray tracer answers for itself, such as the sky's mask,
         /// without knowing what a sky is. Everything the content did not hide, by default.
         void setTraversalMask(osg::Node::NodeMask mask) { mTraversalMask = mask; }
         osg::Node::NodeMask getTraversalMask() const { return mTraversalMask; }

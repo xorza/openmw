@@ -59,8 +59,7 @@ namespace MWWorld
         InteriorDay = 2
     };
 
-    /// The day's shape and the four-point interpolation over it, lifted to `components/sky/` so the
-    /// ray tracer can light an hour without the game. The names stay as upstream spells them.
+    // Lifted to components/sky so a renderer can light an hour without the game
     using WeatherSetting = Sky::WeatherSetting;
     using TimeOfDaySettings = Sky::TimeOfDaySettings;
     template <typename T>

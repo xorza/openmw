@@ -72,17 +72,10 @@ namespace MWWorld
         inverse
     };
 
-    /// Orders the active cells by what the content calls them, and never by where they were
-    /// allocated.
-    ///
-    /// **A `std::less<>` over the pointers walked them in heap-address order.** Nothing reads this
-    /// set for an order, but everything that iterates it inherits one — `unloadInactiveCells` most
-    /// of all, so two runs of one build unloaded the same three cells in two orders and dropped 93
-    /// materials against 94. What follows the drop order is which table slot the next arrival takes,
-    /// and a ray tracer reads a slot back at every hit.
+    /// Orders the active cells by location rather than by address, so that unloadInactiveCells walks them in the
+    /// same order in every process
     struct CompareCellStores
     {
-        /// Transparent, because callers ask this set about a cell they hold `const`.
         using is_transparent = void;
 
         bool operator()(const CellStore* left, const CellStore* right) const;

@@ -35,7 +35,7 @@ namespace MWRender
         int mWidth = 0;
         int mHeight = 0;
 
-        /// Only the nodes these bits select (`SceneUtil::VisMask`): an inclusion mask AND-ed at
+        /// Only the nodes these bits select (`MWRender::VisMask`): an inclusion mask AND-ed at
         /// every node, so a category left out is dropped wherever it appears below. The rasterizer
         /// puts it on the camera's cull mask; a ray tracer masks the walk of a subject with it and
         /// hands every picture the classes its rays meet (`rayMaskOf`).

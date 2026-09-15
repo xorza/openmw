@@ -69,8 +69,8 @@ namespace Rtx::Testing
             record.mData.mColor = 0x00FFFFFF;
             record.mData.mFlags = ESM::Light::PulseSlow;
 
-            osg::ref_ptr<SceneUtil::LightSource> lamp = SceneUtil::createLightSource(
-                SceneUtil::LightCommon(record), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+            osg::ref_ptr<SceneUtil::LightSource> lamp
+                = SceneUtil::createLightSource(SceneUtil::LightCommon(record), sLightMask, /*isExterior=*/false);
 
             const auto litAt = [&lamp](double seconds) {
                 Rtx::SceneDesc scene;

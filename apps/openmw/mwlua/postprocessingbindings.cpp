@@ -63,11 +63,7 @@ namespace MWLua
 
     namespace
     {
-        /// The shader chain, or a Lua error naming why there is none.
-        ///
-        /// **Raised rather than ignored.** A script that sets a uniform on a renderer with no shader
-        /// chain has asked for something that will not happen, and silently doing nothing would
-        /// leave it looking for the mistake in its own arithmetic.
+        // The shader chain, or a Lua error under a renderer that has none
         MWRender::PostProcessor& postProcessor()
         {
             MWRender::PostProcessor* post = MWBase::Environment::get().getWorld()->getPostProcessor();

@@ -52,10 +52,12 @@ namespace MWRender
         float mEnd = 0.0f;
     };
 
-    /// What the world is doing this frame, read off where it settled — `mSunLight`, `FogManager`
-    /// — rather than intercepted on the way in, so it cannot disagree with what is drawn. In the
-    /// world's own numbers, undecoded: every colour is a content file's three bytes over 255, and
-    /// what that means is a question about a renderer's transport.
+    /// What the world is doing this frame. Read off where it settled — `mSunLight`, `FogManager`,
+    /// `Water`, `SkyManager` — wherever something keeps the value, so it cannot disagree with what
+    /// is drawn; and kept here by the setter that decided it where nothing else does: the drawn
+    /// sun, the water switch, the weather and the moons. In the world's own numbers, undecoded:
+    /// every colour is a content file's three bytes over 255, and what that means is a question
+    /// about a renderer's transport.
     struct WorldState
     {
         /// Where the sun is drawn, which is not where its light comes from whenever
@@ -237,8 +239,7 @@ namespace MWRender
         Terrain::World& mTerrain;
 
         /// What the content files say stands where: the lights of the cells the paging leaves
-        /// dark, which `Rtx::DistantLights` reads out of here because `Terrain::pagedType` stands
-        /// no `LIGH`.
+        /// dark, which `Rtx::DistantLights` reads out of here because the paging stands no `LIGH`.
         const Terrain::ObjectStorage& mObjectStorage;
     };
 }

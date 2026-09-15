@@ -1,5 +1,5 @@
-#ifndef OPENMW_COMPONENTS_MYGUIPLATFORM_PIXELS_H
-#define OPENMW_COMPONENTS_MYGUIPLATFORM_PIXELS_H
+#ifndef GAME_RENDER_PIXELS_H
+#define GAME_RENDER_PIXELS_H
 
 #include <cstdint>
 
@@ -8,7 +8,7 @@ namespace osg
     class Image;
 }
 
-namespace MyGUIPlatform
+namespace MWRender
 {
     /// A rectangle of an image, in texels from its corner. Named because the functions below take
     /// two apiece, and a transposed pair is a picture that is wrong in a way nothing asserts.

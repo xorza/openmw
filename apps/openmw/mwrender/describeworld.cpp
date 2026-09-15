@@ -146,6 +146,7 @@ namespace MWRender
         }
 
         described.mUnderwater = underwater;
+        described.mWaterHeight = mWater->getHeight();
         described.mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) };
         described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
 

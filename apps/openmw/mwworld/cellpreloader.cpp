@@ -182,8 +182,7 @@ namespace MWWorld
         {
             for (unsigned int i = 0; i < mTerrainViews.size() && i < mPreloadPositions.size() && !mAbort; ++i)
             {
-                // A world that hands out no view — `Terrain::World::createView` itself — has
-                // nothing to preload into.
+                // A Terrain::World that builds no chunks hands out no view
                 if (mTerrainViews[i] == nullptr)
                     continue;
 

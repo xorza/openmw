@@ -6,7 +6,6 @@
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "colour.hpp"
 #include "shaders/scene.h"
@@ -194,14 +193,15 @@ namespace Rtx
         return !record.mOffDefault;
     }
 
-    bool standLight(osg::Group& where, const SceneUtil::LightCommon& record, bool exterior)
+    bool standLight(
+        osg::Group& where, const SceneUtil::LightCommon& record, bool exterior, osg::Node::NodeMask lightMask)
     {
         if (!castsWherePlaced(record))
             return false;
 
-        // The mirror does not filter on the mask, so it decides nothing here. It is what the
-        // game marks a light node with, so the two graphs look the same to anything that ever does.
-        SceneUtil::addLight(&where, record, SceneUtil::Mask_Lighting, exterior);
+        // The mirror does not filter on the mask, so it decides nothing here. It is the game's,
+        // so the two graphs look the same to anything that ever does.
+        SceneUtil::addLight(&where, record, lightMask, exterior);
 
         return true;
     }

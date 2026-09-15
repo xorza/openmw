@@ -2,14 +2,10 @@
 
 #include <optional>
 
+#include <osg/Node>
 #include <osg/Vec3f>
 
 #include <components/sceneutil/lightcontroller.hpp>
-
-namespace osg
-{
-    class Group;
-}
 
 namespace SceneUtil
 {
@@ -51,7 +47,9 @@ namespace Rtx
     /// Hangs a record's light under `where`, exactly as the game hangs one on a reference, through
     /// `SceneUtil::addLight` so an `AttachLight` node is honoured. False where the record casts
     /// nothing. `exterior` decides the attenuation; the reach around a cell is outdoors by definition.
-    bool standLight(osg::Group& where, const SceneUtil::LightCommon& record, bool exterior);
+    /// `lightMask` is what the game marks a light node with (`CellWorld::mLightMask`).
+    bool standLight(
+        osg::Group& where, const SceneUtil::LightCommon& record, bool exterior, osg::Node::NodeMask lightMask);
 
     /// The light a `LIGH` reference casts, or nothing where it casts none: `castsWherePlaced`, and a
     /// negative light, which is meaningless to a ray traced to an emitter.

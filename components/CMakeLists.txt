@@ -141,7 +141,7 @@ add_component_dir (sceneutil
     lightmanager lightutil positionattitudetransform workqueue pathgridutil waterutil writescene serialize optimizer
     detourdebugdraw navmesh agentpath animblendrules shadow mwshadowtechnique recastmesh shadowsbin osgacontroller rtt
     screencapture depth color riggeometryosgaextension extradata unrefqueue lightcommon clearcolor
-    cullsafeboundsvisitor keyframe nodecallback textkeymap glextensions fog texmat material vismask
+    cullsafeboundsvisitor keyframe nodecallback textkeymap glextensions fog texmat material
     offscreenframing
     )
 
@@ -346,7 +346,7 @@ add_component_dir (translation
 
 add_component_dir (terrain
     storage world buffercache defs terraingrid material terraindrawable texturemanager chunkmanager compositemaprenderer
-    quadtreeworld quadtreenode viewdata cellborder view heightcull objectstorage
+    quadtreeworld quadtreenode viewdata cellborder view heightcull
     )
 
 add_component_dir (loadinglistener
@@ -355,7 +355,7 @@ add_component_dir (loadinglistener
 
 add_component_dir (myguiplatform
     myguirendermanager myguidatamanager myguiplatform myguitexture myguiloglistener additivelayer scalinglayer
-    guirendermanager pixels
+    guirendermanager
     )
 
 add_component_dir (widgets

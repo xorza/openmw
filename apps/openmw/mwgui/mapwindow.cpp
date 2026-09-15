@@ -23,8 +23,6 @@
 #include "../mwbase/windowmanager.hpp"
 #include "../mwbase/world.hpp"
 
-#include "../mwrender/renderingmanager.hpp"
-
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/esmstore.hpp"
 #include "../mwworld/player.hpp"
@@ -91,15 +89,11 @@ namespace MWGui
         return { center.left - radius, center.top - radius, center.left + radius, center.top + radius };
     }
 
-    int getLocalViewingDistance()
+    int getLocalViewingDistance(const MWRender::LocalMap& map)
     {
         if (!Settings::map().mAllowZooming)
             return Constants::CellGridRadius;
-        // **Asked of the renderer rather than of the settings**, for the reason
-        // `RenderingManager::getTerrainReach` gives. Nought is a world reaching no further than the
-        // loaded cells, which the clamp below turns back into the grid radius upstream returned.
-        const float reach = MWBase::Environment::get().getWorld()->getRenderingManager()->getTerrainReach();
-        const int viewingDistanceInCells = static_cast<int>(reach / Constants::CellSizeInUnits);
+        const int viewingDistanceInCells = static_cast<int>(map.getGroundReach() / Constants::CellSizeInUnits);
         return std::clamp(
             viewingDistanceInCells, Constants::CellGridRadius, Settings::map().mMaxLocalViewingDistance.get());
     }
@@ -402,7 +396,7 @@ namespace MWGui
             if (mActiveCell && mActiveCell->isExterior())
                 previousActiveGrid
                     = createRect({ mActiveCell->getGridX(), mActiveCell->getGridY() }, Constants::CellGridRadius);
-            mGrid = createRect({ x, y }, getLocalViewingDistance());
+            mGrid = createRect({ x, y }, getLocalViewingDistance(*mLocalMapRender));
             const MyGUI::IntRect activeGrid = createRect({ x, y }, Constants::CellGridRadius);
 
             mExteriorDoorMarkerWidgets.clear();
@@ -854,7 +848,7 @@ namespace MWGui
         if (allowZooming)
             mEventBoxLocal->eventMouseWheel += MyGUI::newDelegate(this, &MapWindow::onMapZoomed);
 
-        LocalMapBase::init(mLocalMap, mPlayerArrowLocal, getLocalViewingDistance());
+        LocalMapBase::init(mLocalMap, mPlayerArrowLocal, getLocalViewingDistance(*mLocalMapRender));
 
         mGlobalMap->setVisible(global);
         mLocalMap->setVisible(!global);
@@ -1161,8 +1155,7 @@ namespace MWGui
 
     void MapWindow::paintExplored()
     {
-        // The picture of a cell just walked into has been asked for and not yet drawn, so what the
-        // world map wants is a frame or two away. Nothing else is waiting on it.
+        // A cell's picture comes back off the device a frame or two after it is asked for
         std::erase_if(mExploredPending, [&](const std::pair<int, int>& cell) {
             return mGlobalMapRender->exploreCell(
                 cell.first, cell.second, mLocalMapRender->getMapImage(cell.first, cell.second));

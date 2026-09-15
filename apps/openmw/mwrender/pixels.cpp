@@ -6,7 +6,7 @@
 
 #include <osg/Image>
 
-namespace MyGUIPlatform
+namespace MWRender
 {
     namespace
     {
