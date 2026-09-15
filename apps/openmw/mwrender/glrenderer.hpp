@@ -69,12 +69,12 @@ namespace MWRender
         explicit GlRenderer(const RendererSpec& spec);
         ~GlRenderer() override;
 
-        void prepareResources(Resource::SceneManager& scene) override;
+        void prepareResources(Resource::ResourceSystem& resources) override;
 
         float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
 
-        osg::ref_ptr<osg::Group> createSceneRoot(Resource::ResourceSystem& resources) override;
+        osg::ref_ptr<osg::Group> createSceneRoot() override;
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void detachWorld() override;
         void adoptTraversalRoot(osg::Group& root) override;
@@ -122,9 +122,8 @@ namespace MWRender
 
         void reloadChangedShaders(Shader::ShaderManager& shaders) override;
 
-        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot,
-            Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
-            const std::filesystem::path& logPath) override;
+        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
+            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
 
         osg::Timer_t getStartTick() const override;
 
@@ -144,8 +143,8 @@ namespace MWRender
 
         int mMaxTextureUnits = 0;
 
-        /// What an offscreen view's light rig is built out of. Known from `attachWorld` onwards,
-        /// which is well before the GUI asks for the first view.
+        /// What the scene root, the GUI and an offscreen view's light rig are built out of. Known
+        /// from `prepareResources` onwards, which is before any of them asks.
         Resource::ResourceSystem* mResources = nullptr;
 
         SDL_Window* mWindow = nullptr;

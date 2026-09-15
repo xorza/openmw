@@ -32,9 +32,11 @@ namespace Rtx
     public:
         /// @param slots how many frames may be in flight, and so how many copies there are.
         /// @param usage what the device does with the copies.
-        void open(const Device& device, std::uint32_t slots, VkBufferUsageFlags usage, std::string_view name)
+        void open(const Device& device, Graveyard& graveyard, std::uint32_t slots, VkBufferUsageFlags usage,
+            std::string_view name)
         {
             mDevice = &device;
+            mGraveyard = &graveyard;
             mCopies.open(slots);
             mOwed.open(slots);
             mUsage = usage;
@@ -92,7 +94,7 @@ namespace Rtx
         ///
         /// @param graveyard takes the buffer a growth displaced, which a frame in flight may still
         ///        be reading.
-        void sync(FrameSlot slot, Graveyard& graveyard)
+        void sync(FrameSlot slot)
         {
             assert(mDevice != nullptr && "sync before open");
 
@@ -110,7 +112,7 @@ namespace Rtx
             const VkDeviceSize least = std::max(needed, VkDeviceSize{ 1 });
             if (copy.getSize() < least)
             {
-                graveyard.bury(growTo(
+                mGraveyard->bury(growTo(
                     copy, *mDevice, BufferKind::HostWritten, std::max(least, copy.getSize() * 2), mUsage, mName));
                 owed.oweEverything();
             }
@@ -154,6 +156,7 @@ namespace Rtx
 
     private:
         const Device* mDevice = nullptr;
+        Graveyard* mGraveyard = nullptr;
         VkBufferUsageFlags mUsage = 0;
         /// A literal, which is what every caller passes and all a debug name is asked to be.
         std::string_view mName;

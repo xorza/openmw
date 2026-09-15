@@ -110,7 +110,7 @@ namespace Rtx
         /// texel, which is all of it the bake will ever read: one output texel covers hundreds of
         /// input ones, and the finest level would come out speckled. The level is constant across
         /// the composite because the transform is.
-        void prepare(const CompositeLayer& layer, std::uint32_t extent, Ground& into)
+        void prepare(const CompositeLayer& layer, std::uint32_t extent, LayerLevels& into)
         {
             into.reuse();
 
@@ -199,7 +199,7 @@ namespace Rtx
         // a float sum is the order it was added in.
         for (std::size_t index = 0; index < layers.size(); ++index)
         {
-            const Ground& ground = scratch.mGrounds[index];
+            const LayerLevels& ground = scratch.mGrounds[index];
 
             // A layer whose diffuse would not decode has nothing but black to weigh, and black at
             // any weight leaves the sum where it was.

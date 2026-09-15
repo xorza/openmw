@@ -45,13 +45,14 @@ namespace Rtx
         ///
         /// @param slots how many frames may be tracing this scene at once, which is how many copies
         ///        there are of the rows and of the positions a refit reads.
-        SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
+        SceneAcceleration(
+            const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
 
         /// Builds every mesh's structure, writes every row, and builds the top level, in one submit
         /// with each stage ending in the barrier the next one needs. Once, after the constructor.
         /// `scene` must place at least one instance: a top-level structure over nothing has no
         /// instance buffer to be built from.
-        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard);
+        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records);
 
         /// Rebuilds what a moved world changed: every deformed mesh's structure, then the top level,
         /// in one command buffer with a barrier between — two `submitAndWait`s were a round trip
@@ -77,7 +78,7 @@ namespace Rtx
         /// structure already built stays where it is, and the top level picks the change up for
         /// nothing. Safe with frames in flight, because nothing it writes is room one of them
         /// holds; `CI/check_rtx_validation.sh` is what says so.
-        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
+        void extend(Batch& batch, const SceneDesc& scene);
 
         /// Builds the structures of the meshes that arrived, over the first copy of the positions
         /// as `extend` and the pass left it.
@@ -85,10 +86,10 @@ namespace Rtx
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard);
+        void buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer);
 
         /// Destroys the structures of `meshes` and gives their storage back.
-        void release(std::span<const Index> meshes, Graveyard& graveyard) { mBottomLevel.release(meshes, graveyard); }
+        void release(std::span<const Index> meshes) { mBottomLevel.release(meshes); }
 
         VkAccelerationStructureKHR getTopLevel() const { return mTopLevel.getHandle(); }
 
@@ -123,7 +124,7 @@ namespace Rtx
 
         /// Fills the refit build infos and sizes the scratch. Leaves `mRefitBuilds` holding exactly
         /// this frame's rebuilds, which is what both the caller and `recordRefit` read.
-        void prepareRefit(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
+        void prepareRefit(const SceneDesc& scene, FrameSlot slot);
 
         /// Brings the host rows up to what `changed` names, and to whatever the table grew by.
         void writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed);
@@ -131,7 +132,7 @@ namespace Rtx
         /// Everything the top-level build needs before a command buffer exists: `slot`'s copy of the
         /// rows paid, the structure and its scratch made again where the count grew, and the build
         /// pointed at that copy. `writeRows` first, which is what leaves the copy owing anything.
-        void prepareTopLevel(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
+        void prepareTopLevel(const SceneDesc& scene, FrameSlot slot);
 
         /// Takes back what `slot`'s row counts as, and leaves the row counting as nothing. The
         /// counts are kept by the row that changed rather than recounted over the table.
@@ -141,16 +142,20 @@ namespace Rtx
         void placeRow(Index slot, const InstanceRecord& record);
 
         /// Makes the top level for `slots` rows, over storage grown to hold it.
-        void sizeTopLevel(std::uint32_t slots, Graveyard& graveyard);
+        void sizeTopLevel(std::uint32_t slots);
 
         void recordRefit(VkCommandBuffer commands, GpuTimer* timer);
         void recordTopLevel(VkCommandBuffer commands, GpuTimer* timer);
 
         /// Writes again every row placing a mesh whose structure the compaction moved. True where
         /// anything moved, which is also when there is a copy to record.
-        bool placeCompacted(std::span<const InstanceRecord> records, Graveyard& graveyard);
+        bool placeCompacted(std::span<const InstanceRecord> records);
 
         const Device& mDevice;
+
+        /// Where every buffer and structure this replaces goes, held until the frames still reading
+        /// it have run.
+        Graveyard& mGraveyard;
 
         /// Every deforming mesh's vertices as the frame tracing them sees them: the bind pose on
         /// arrival, and afterwards what `SkinPass` writes every frame a body moves. Indexed by

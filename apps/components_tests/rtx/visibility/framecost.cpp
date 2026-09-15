@@ -181,12 +181,12 @@ namespace Rtx::Testing
             };
 
             Batch setup(pool);
-            TextureArray array(device, setup, slots, {}, graveyard);
+            TextureArray array(device, graveyard, setup, slots, {});
             setup.flush();
 
             const auto arrive = [&](Batch& batch, std::uint32_t slot) {
                 const TextureData described = describe(slot);
-                array.write(batch, std::span(&described, 1), graveyard);
+                array.write(batch, std::span(&described, 1));
             };
 
             {

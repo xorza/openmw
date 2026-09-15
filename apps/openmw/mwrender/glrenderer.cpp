@@ -370,8 +370,11 @@ namespace MWRender
 
     // Upstream's, from RenderingManager's constructor: what the shader visitor is told before it
     // meets a model.
-    void GlRenderer::prepareResources(Resource::SceneManager& scene)
+    void GlRenderer::prepareResources(Resource::ResourceSystem& resources)
     {
+        mResources = &resources;
+
+        Resource::SceneManager& scene = *resources.getSceneManager();
         scene.getShaderManager().setMaxTextureUnits(mMaxTextureUnits);
 
         scene.setAutoUseNormalMaps(Settings::shaders().mAutoUseObjectNormalMaps);
@@ -386,7 +389,7 @@ namespace MWRender
 
     // Upstream's, from RenderingManager's constructor: the light manager and what it is told
     // about the lighting method it settled on.
-    osg::ref_ptr<osg::Group> GlRenderer::createSceneRoot(Resource::ResourceSystem& resources)
+    osg::ref_ptr<osg::Group> GlRenderer::createSceneRoot()
     {
         // Let LightManager choose which backend to use based on our hint.
         // Ultimately dependent on support for various OpenGL extensions.
@@ -398,9 +401,9 @@ namespace MWRender
                 .mLightFadeStart = Settings::shaders().mLightFadeStart,
                 .mLightRadiusMultiplier = Settings::shaders().mLightRadiusMultiplier,
             },
-            &resources);
+            mResources);
 
-        resources.getSceneManager()->setSupportsClusteredLighting(sceneRoot->isClusteredSupported());
+        mResources->getSceneManager()->setSupportsClusteredLighting(sceneRoot->isClusteredSupported());
 
         // Sync clustered lighting setting so it's more intuitive when viewed in the in-game setting panel
         Settings::shaders().mClusteredLighting.set(sceneRoot->getClusteredLighting());
@@ -413,8 +416,6 @@ namespace MWRender
 
     void GlRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
     {
-        mResources = world.getResourceSystem();
-
         assert(mSceneRoot != nullptr && "the world is built under a root this renderer made");
         mWorld = std::make_unique<GlWorld>(*mViewer, world, worldRoot, *mSceneRoot, *mResources);
 
@@ -747,23 +748,22 @@ namespace MWRender
         shaders.update(*mViewer);
     }
 
-    std::unique_ptr<MyGUIPlatform::Platform> GlRenderer::createGuiPlatform(osg::Group& guiRoot,
-        Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
-        const std::filesystem::path& logPath)
+    std::unique_ptr<MyGUIPlatform::Platform> GlRenderer::createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
+        VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
     {
         mStereoManager->disableStereoForNode(&guiRoot);
 
         auto manager = std::make_unique<MyGUIPlatform::RenderManager>(
-            mViewer, &guiRoot, resources.getImageManager(), scalingFactor);
+            mViewer, &guiRoot, mResources->getImageManager(), scalingFactor);
         MyGUIPlatform::RenderManager& gui = *manager;
 
-        auto platform
-            = std::make_unique<MyGUIPlatform::Platform>(std::move(manager), resources.getVFS(), resourcePath, logPath);
+        auto platform = std::make_unique<MyGUIPlatform::Platform>(
+            std::move(manager), mResources->getVFS(), resourcePath, logPath);
 
         // **Which program the GUI is drawn with is this renderer's business**, and it is settled
         // after the platform rather than before it: the drawable the program goes on is made by the
         // `initialise` the platform's constructor calls.
-        gui.enableShaders(resources.getSceneManager()->getShaderManager());
+        gui.enableShaders(mResources->getSceneManager()->getShaderManager());
 
         return platform;
     }

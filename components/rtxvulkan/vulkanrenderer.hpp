@@ -244,18 +244,18 @@ namespace Rtx
         /// game's does not.
         bool mCountHits = false;
 
-        /// Whether it counts the see-through surfaces each primary ray crosses.
-        /// `RendererOptions::mCountCrossings` says why that is a switch of its own.
-        bool mCountCrossings = false;
+        /// What the run decided once, read where each knob is used: how wide both chains store
+        /// their radiance, whether crossings are counted, how long the queue is held. What a frame
+        /// carries — the reconstruction request, the exposure, the delight, the sample — is read
+        /// off the frame's own blocks instead, which is where a frame that asks otherwise says so.
+        RenderProfile mProfile;
 
-        /// How wide both chains store their radiance, decided once with the rest of the run.
-        RadianceWidth mRadianceWidth = RadianceWidth::Summed;
+        /// The frames in flight and what each came to. After the counters it is handed.
+        FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits, mProfile.mCountCrossings };
 
-        /// The frames in flight and what each came to. After the two counters, which it borrows.
-        FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits, mCountCrossings };
-
-        /// What the frames are traced under. Changing the mode rebuilds every target, which is
-        /// what `setUpscale` is for and why it is a setting rather than a frame option.
+        /// What the frames are traced under: `mProfile.mUpscaling` as it stood, and then whatever
+        /// `setUpscale` moved it to. Changing the mode rebuilds every target, which is what
+        /// `setUpscale` is for and why it is a setting rather than a frame option.
         Upscaling mUpscaling;
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and

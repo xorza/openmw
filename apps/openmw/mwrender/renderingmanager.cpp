@@ -146,7 +146,7 @@ namespace MWRender
     {
         resourceSystem->getSceneManager()->setParticleSystemMask(MWRender::Mask_ParticleSystem);
 
-        osg::ref_ptr<osg::Group> sceneRoot = mRenderer.createSceneRoot(*resourceSystem);
+        osg::ref_ptr<osg::Group> sceneRoot = mRenderer.createSceneRoot();
         mSceneRoot = sceneRoot;
         sceneRoot->setNodeMask(Mask_Scene);
         sceneRoot->setName("Scene Root");
@@ -965,17 +965,10 @@ namespace MWRender
 
         mProjectionMatrix = projectionMatrix;
 
-        setScreenRes(width, height);
-
         // Since our fog is not radial yet, we should take FOV in account, otherwise terrain near viewing distance may
         // disappear. Limit FOV here just for sure, otherwise viewing distance can be too high.
         float distanceMult = std::cos(osg::DegreesToRadians(std::min(fov, 140.f)) / 2.f);
         mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
-    }
-
-    void RenderingManager::setScreenRes(int width, int height)
-    {
-        mScreenResolution = osg::Vec2i(width, height);
     }
 
     void RenderingManager::updateTextureFiltering()

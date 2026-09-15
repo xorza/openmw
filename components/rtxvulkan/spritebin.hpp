@@ -39,7 +39,7 @@ namespace Rtx
     class SpriteBin
     {
     public:
-        explicit SpriteBin(const Device& device);
+        SpriteBin(const Device& device, Graveyard& graveyard);
 
         /// Copies `source`'s sprites into this bin's own table, shades them against `toSun` in
         /// place, and records the bin of them into the screen tiles of `camera` — ahead of the
@@ -47,7 +47,7 @@ namespace Rtx
         /// last bin here reported it needed, where the timeline says that report has landed.
         void record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
             const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
-            GpuTimer* timer, Graveyard& graveyard);
+            GpuTimer* timer);
 
         VkDeviceAddress getSpritesAddress() const { return mSprites.addressFor(); }
         VkDeviceAddress getTileListAddress() const { return mTileList.addressFor(); }
@@ -56,6 +56,9 @@ namespace Rtx
 
     private:
         const Device& mDevice;
+
+        /// Where a list this outgrows goes, until the frame reading it has run.
+        Graveyard& mGraveyard;
 
         /// The shaded sprites, copied from the placement's before every shade because the shade
         /// writes over what it reads.

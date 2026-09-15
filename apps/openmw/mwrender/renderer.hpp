@@ -54,7 +54,6 @@ namespace MyGUIPlatform
 namespace Resource
 {
     class ResourceSystem;
-    class SceneManager;
 }
 
 namespace SceneUtil
@@ -115,11 +114,13 @@ namespace MWRender
         Renderer(const Renderer&) = delete;
         Renderer& operator=(const Renderer&) = delete;
 
-        /// The scene manager exists; tell it what this renderer needs of every model it loads.
-        /// The rasterizer sets how many textures a shader may sample and the switches its shader
-        /// visitor reads; the ray tracer turns that visitor off, because it compiles no GLSL and
-        /// reads a model's state as the loader left it. Called once, before any model is loaded.
-        virtual void prepareResources(Resource::SceneManager& scene) = 0;
+        /// The resource system exists; keep it, and tell its scene manager what this renderer needs
+        /// of every model it loads. The rasterizer sets how many textures a shader may sample and
+        /// the switches its shader visitor reads; the ray tracer turns that visitor off, because it
+        /// compiles no GLSL and reads a model's state as the loader left it. Called once, before any
+        /// model is loaded and before anything below asks for a picture, and the one place a
+        /// renderer is handed the resource system: it outlives the renderer and never changes.
+        virtual void prepareResources(Resource::ResourceSystem& resources) = 0;
 
         /// The window the renderer made, for input, the GUI's scale and the gamma ramp.
         virtual SDL_Window* getWindow() const = 0;
@@ -162,7 +163,7 @@ namespace MWRender
         /// The node the game hangs the world under: the rasterizer's light manager, with the
         /// lighting method it draws with, or a plain group for a renderer that gathers lights on its
         /// own walk. The game names it, masks it and builds under it; it never asks which it got.
-        virtual osg::ref_ptr<osg::Group> createSceneRoot(Resource::ResourceSystem& resources) = 0;
+        virtual osg::ref_ptr<osg::Group> createSceneRoot() = 0;
 
         /// The world exists; build whatever goes between it and the screen. A second phase because
         /// the renderer is made before there is a world, and what the rasterizer puts in front of
@@ -320,11 +321,10 @@ namespace MWRender
         virtual void installStatsOverlay(const VFS::Manager& vfs, bool toFile) {}
         virtual void reportStats(unsigned frameNumber, std::ostream& stream) const {}
 
-        /// MyGUI's backend, a second implementation of MyGUI's own interface. `resources` is passed
-        /// in because this is called at the main menu, before there is a world to reach it through.
-        virtual std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot,
-            Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
-            const std::filesystem::path& logPath)
+        /// MyGUI's backend, a second implementation of MyGUI's own interface. Called at the main
+        /// menu, before there is a world, off the resource system `prepareResources` kept.
+        virtual std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
+            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
             = 0;
 
     protected:

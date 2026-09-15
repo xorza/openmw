@@ -39,7 +39,7 @@ namespace Rtx
             Graveyard graveyard(device, pool);
 
             Batch setup(pool);
-            TextureArray textures(device, setup, 1, {}, graveyard);
+            TextureArray textures(device, graveyard, setup, 1, {});
             setup.flush();
 
             // An arrival, owed to every set: what `sync` has to write once the set is free. Ahead
@@ -47,7 +47,7 @@ namespace Rtx
             const std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const TextureData arrived = Testing::describeTexel(white, 0);
             Batch arrival(pool);
-            textures.write(arrival, std::span(&arrived, 1), graveyard);
+            textures.write(arrival, std::span(&arrived, 1));
             arrival.flush();
 
             Testing::HeldSubmit hold(device);

@@ -132,15 +132,16 @@ namespace Rtx
         }
     }
 
-    SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
-        std::span<const InstanceRecord> records, const std::uint32_t slots, Graveyard& graveyard)
+    SceneBuffers::SceneBuffers(const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene,
+        std::span<const InstanceRecord> records, const std::uint32_t slots)
         : mDevice(&device)
+        , mGraveyard(&graveyard)
     {
         mTables.open(slots);
         mTexCoords.open(device, sTableUsage, "uvs");
         mColours.open(device, sTableUsage, "vertex colours");
-        mInstanceTable.open(device, slots, sTableUsage, "instance rows");
-        mMaterialTable.open(device, slots, sTableUsage, "materials");
+        mInstanceTable.open(device, graveyard, slots, sTableUsage, "instance rows");
+        mMaterialTable.open(device, graveyard, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -148,8 +149,8 @@ namespace Rtx
         for (std::size_t at = 0; at < every.size(); ++at)
             every[at] = static_cast<Index>(at);
 
-        writeMeshes(batch, scene, every, graveyard);
-        writeMaterialRuns(batch, scene, graveyard);
+        writeMeshes(batch, scene, every);
+        writeMaterialRuns(batch, scene);
         orderStagedWrites(batch);
 
         // Every copy of the normals holds every mesh from here, so what a copy owes from now on is
@@ -160,13 +161,13 @@ namespace Rtx
         // The frame tables come from `place`, which is also where they are written when a material
         // changes. Every copy is empty here, so the first write of each makes its buffer and fills
         // it whole.
-        place(scene, records, {}, FrameSlot{}, graveyard);
+        place(scene, records, {}, Placing{ .mSlot = FrameSlot{} });
     }
 
-    void SceneBuffers::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
+    void SceneBuffers::extend(Batch& batch, const SceneDesc& scene)
     {
-        writeMeshes(batch, scene, scene.meshes().getArrived(), graveyard);
-        writeMaterialRuns(batch, scene, graveyard);
+        writeMeshes(batch, scene, scene.meshes().getArrived());
+        writeMaterialRuns(batch, scene);
 
         // What is built out of the blocks was copied a moment ago, and the acceleration structures
         // built from them are recorded into this same command buffer. One dependency for every
@@ -174,8 +175,7 @@ namespace Rtx
         orderStagedWrites(batch);
     }
 
-    void SceneBuffers::writeMeshes(
-        Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
+    void SceneBuffers::writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes)
     {
         // Whole runs here and a mesh at a time afterwards. Only a skinned body's normals change,
         // so filling these when the mesh arrives is a load's cost and every frame after it pays for
@@ -217,7 +217,7 @@ namespace Rtx
         // behind, still tracing the mesh that was there, would read as that mesh's geometry. One
         // copy is the versioned kind, and a version is never written in place.
         const VkDeviceSize bytes = mMeshScratch.size() * sizeof(Shaders::GpuMesh);
-        graveyard.bury(std::exchange(mMeshes, Buffer::hostWritten(*mDevice, bytes, sTableUsage, "meshes")));
+        mGraveyard->bury(std::exchange(mMeshes, Buffer::hostWritten(*mDevice, bytes, sTableUsage, "meshes")));
         mMeshes.write(std::span<const Shaders::GpuMesh>(mMeshScratch));
     }
 
@@ -235,7 +235,7 @@ namespace Rtx
         };
     }
 
-    void SceneBuffers::shade(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
+    void SceneBuffers::shade(const SceneDesc& scene, const FrameSlot slot)
     {
         const std::span<const Material> materials = scene.materials().getRows();
 
@@ -260,13 +260,13 @@ namespace Rtx
                 mMaterialTable.write(at) = toGpu(materials[at]);
         }
 
-        mMaterialTable.sync(slot, graveyard);
+        mMaterialTable.sync(slot);
 
         assert(mStagedRuns == scene.materials().getRunRevision()
             && "layer or mask runs arrived without an extend to stage them");
     }
 
-    void SceneBuffers::writeMaterialRuns(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
+    void SceneBuffers::writeMaterialRuns(Batch& batch, const SceneDesc& scene)
     {
         const std::span<const MaterialLayer> layers = scene.materials().getLayers();
         const std::span<const float> masks = scene.materials().getMasks();
@@ -283,14 +283,14 @@ namespace Rtx
         // never touches these tables.
         if (outgrow(mLayers, *mDevice, BufferKind::DeviceLocal,
                 std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer), sTableFilledUsage, "layers",
-                graveyard))
+                *mGraveyard))
         {
             mLayerScratch.clear();
             mLayerScratch.reserve(layers.size());
             for (const MaterialLayer& layer : layers)
                 mLayerScratch.push_back(toGpu(layer));
 
-            stageInto(batch, *mDevice, mLayers, 0,
+            stageInto(batch, mLayers, 0,
                 std::as_bytes(mLayerScratch.empty() ? std::span<const Shaders::GpuLayer>(&noLayer, 1)
                                                     : std::span<const Shaders::GpuLayer>(mLayerScratch)));
         }
@@ -305,26 +305,26 @@ namespace Rtx
                 for (const MaterialLayer& layer : run.in(layers))
                     mLayerScratch.push_back(toGpu(layer));
 
-                stageInto(batch, *mDevice, mLayers, run.mOffset * sizeof(Shaders::GpuLayer),
+                stageInto(batch, mLayers, run.mOffset * sizeof(Shaders::GpuLayer),
                     std::as_bytes(std::span<const Shaders::GpuLayer>(mLayerScratch)));
             }
         }
 
         if (outgrow(mMasks, *mDevice, BufferKind::DeviceLocal, std::max<std::size_t>(masks.size(), 1) * sizeof(float),
-                sTableFilledUsage, "masks", graveyard))
-            stageInto(
-                batch, *mDevice, mMasks, 0, std::as_bytes(masks.empty() ? std::span<const float>(&noMask, 1) : masks));
+                sTableFilledUsage, "masks", *mGraveyard))
+            stageInto(batch, mMasks, 0, std::as_bytes(masks.empty() ? std::span<const float>(&noMask, 1) : masks));
         else
             for (const Run run : scene.materials().getArrived().mMasks)
-                stageInto(batch, *mDevice, mMasks, run.mOffset * sizeof(float), std::as_bytes(run.in(masks)));
+                stageInto(batch, mMasks, run.mOffset * sizeof(float), std::as_bytes(run.in(masks)));
 
         mStagedRuns = scene.materials().getRunRevision();
     }
 
     void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
-        std::span<const Index> changed, const FrameSlot slot, Graveyard& graveyard)
+        std::span<const Index> changed, const Placing& placing)
     {
-        shade(scene, slot, graveyard);
+        const FrameSlot slot = placing.mSlot;
+        shade(scene, slot);
 
         Tables& tables = mTables.at(slot);
 
@@ -364,7 +364,7 @@ namespace Rtx
         for (const Index at : changed)
             placeRow(at);
 
-        mInstanceTable.sync(slot, graveyard);
+        mInstanceTable.sync(slot);
 
         mLightScratch.clear();
         mLightScratch.reserve(scene.lights().size());
@@ -402,13 +402,13 @@ namespace Rtx
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
         const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
 
-        graveyard.bury(
+        mGraveyard->bury(
             growTo(tables.mLights, *mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights"));
-        graveyard.bury(growTo(
+        mGraveyard->bury(growTo(
             tables.mLightList, *mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list"));
-        graveyard.bury(growTo(
+        mGraveyard->bury(growTo(
             tables.mEmitters, *mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters"));
-        graveyard.bury(growTo(tables.mSprites, *mDevice, BufferKind::HostWritten, sprites.size_bytes(),
+        mGraveyard->bury(growTo(tables.mSprites, *mDevice, BufferKind::HostWritten, sprites.size_bytes(),
             sTableCopiedFromUsage, "sprites"));
 
         tables.mLights.write(lights);

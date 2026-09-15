@@ -227,7 +227,6 @@ namespace MWRender
         options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mAskedWidth;
         options.mHeight = mAskedHeight;
-        options.mUpscaling = mProfile.mUpscaling;
         options.mWindow = mWindow;
         // **The run's answer where a run was installed, and the build's otherwise.** A launcher
         // making a measurement says on its command line whether the layers load, because a figure
@@ -269,12 +268,10 @@ namespace MWRender
         // anything, for the life of the session.
         options.mCountHits = mSession != nullptr;
 
-        // **The knobs a measurement turns, read where the renderer is built.** They were hard-coded
-        // here and taken as command-line options by the harness, so a picture taken by one and a
-        // frame drawn by the other were traced by two differently configured renderers.
-        options.mCountCrossings = mProfile.mCountCrossings;
-        options.mStressOverlapMs = mProfile.mStressOverlapMs;
-        options.mRadianceWidth = mProfile.mRadianceWidth;
+        // **The knobs a measurement turns, handed over whole where the renderer is built.** They
+        // were hard-coded here and taken as command-line options by the harness, so a picture taken
+        // by one and a frame drawn by the other were traced by two differently configured renderers.
+        options.mProfile = mProfile;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
@@ -388,12 +385,13 @@ namespace MWRender
         return mMirror.getReach();
     }
 
-    void RtxRenderer::prepareResources(Resource::SceneManager& scene)
+    void RtxRenderer::prepareResources(Resource::ResourceSystem& resources)
     {
-        scene.setShadersEnabled(false);
+        mResources = &resources;
+        resources.getSceneManager()->setShadersEnabled(false);
     }
 
-    osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot(Resource::ResourceSystem& resources)
+    osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot()
     {
         return new osg::Group;
     }
@@ -440,10 +438,8 @@ namespace MWRender
         // this renderer has nothing to put there.
         worldRoot.addChild(world.getSceneRoot());
 
-        // Only for the pictures inside the interface: a doll resolves its own textures, and this is
-        // where they come from. Nothing about the frame needs it — the mirror is handed an image
-        // manager by whoever drives it.
-        mResources = world.getResourceSystem();
+        // Only for the pictures inside the interface: a doll resolves its own textures. Nothing
+        // about the frame needs it — the mirror is handed an image manager by whoever drives it.
         mMirror.attach(*mResources);
     }
 
@@ -788,19 +784,19 @@ namespace MWRender
         return *mFrozenFrameTexture;
     }
 
-    std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(osg::Group& guiRoot,
-        Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
-        const std::filesystem::path& logPath)
+    std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
+        VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
     {
         // **MyGUI over the ray tracer, and nothing of OpenSceneGraph in it.** `guiRoot` is where the
         // rasterizer hangs its GUI camera; there is no graph to hang anything off here, and the
         // backend is called by this renderer's own frame instead — `updateTraversal` for the widget
         // animation and `renderFrame` for the triangles.
         auto manager
-            = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, resources.getImageManager(), scalingFactor);
+            = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, mResources->getImageManager(), scalingFactor);
         mGui = manager.get();
 
-        return std::make_unique<MyGUIPlatform::Platform>(std::move(manager), resources.getVFS(), resourcePath, logPath);
+        return std::make_unique<MyGUIPlatform::Platform>(
+            std::move(manager), mResources->getVFS(), resourcePath, logPath);
     }
 
     void RtxRenderer::notifyWorldSpaceChanged()
@@ -1018,11 +1014,6 @@ namespace MWRender
         constants.mDelight = mProfile.mDelight;
         constants.mShowAlbedo = mProfile.mShowAlbedo ? 1u : 0u;
 
-        // **Measured, or held where `[RTX] exposure` names a number.** A picture wants the exposure
-        // the frame asks for; holding it is what a reference and a pixel test want. Without a
-        // measured one an interior lit by nothing but this placeholder's ambient reaches the screen
-        // at a few hundredths and reads as black.
-        //
         // **The bias is carried rather than worked out here**, because a room is the exception to
         // the rule that would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell
         // got settled it, and a second derivation at the frame is a second place to get the

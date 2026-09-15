@@ -316,7 +316,7 @@ namespace Rtx
             static void SetUpTestSuite()
             {
                 RendererOptions options = Testing::describeRenderer(sBuiltWidth, sBuiltHeight);
-                options.mUpscaling.mMode = Upscale::Performance;
+                options.mProfile.mUpscaling.mMode = Upscale::Performance;
                 try
                 {
                     sUpscaling = std::make_unique<VulkanRenderer>(options);

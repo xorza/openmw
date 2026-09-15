@@ -36,7 +36,7 @@ namespace Rtx
             });
 
         Batch batch(pool);
-        uploadImage(device, batch, mField, std::as_bytes(std::span(noise.mBytes)), regions);
+        uploadImage(batch, mField, std::as_bytes(std::span(noise.mBytes)), regions);
         batch.flush();
     }
 

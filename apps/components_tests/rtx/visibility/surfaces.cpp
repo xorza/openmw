@@ -45,7 +45,7 @@ namespace Rtx::Testing
             // No sprites, so no tiles, and that table used to come out as `VK_NULL_HANDLE`.
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            const SceneBuffers buffers(device, setup, empty, {}, 1, graveyard);
+            const SceneBuffers buffers(device, graveyard, setup, empty, {}, 1);
             setup.flush();
 
             // **Every table this hands out, and not the three that were caught.** The rule was the
@@ -58,7 +58,7 @@ namespace Rtx::Testing
 
             // The two the trace's own bin writes, which it hands out the same way, whether or not
             // anything was ever binned into it.
-            const SpriteBin bin(device);
+            const SpriteBin bin(device, graveyard);
             addressed.mSprites = bin.getSpritesAddress();
             addressed.mSpriteTileList = bin.getTileListAddress();
 

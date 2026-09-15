@@ -112,7 +112,6 @@ namespace MWRender
             .mProjectionMatrix = mProjectionMatrix,
             .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
             .mPlayersEye = mCamera->getMode() != Camera::Mode::Static,
-            .mScreenResolution = mScreenResolution,
         };
     }
 

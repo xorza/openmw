@@ -220,13 +220,13 @@ namespace Rtx
         mStaging.push_back(std::move(staging));
     }
 
-    StagingRun Batch::stage(const Device& device, std::span<const std::byte> bytes)
+    StagingRun Batch::stage(std::span<const std::byte> bytes)
     {
         VkDeviceSize at = alignUp(mFilled, sStagingAlignment);
 
         if (mBlocks.empty() || at + bytes.size() > mBlocks.back().getSize())
         {
-            mBlocks.push_back(Buffer::staging(device, std::max<VkDeviceSize>(bytes.size(), sStagingBlock),
+            mBlocks.push_back(Buffer::staging(getDevice(), std::max<VkDeviceSize>(bytes.size(), sStagingBlock),
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "staging block"));
             at = 0;
         }
@@ -278,10 +278,9 @@ namespace Rtx
         release();
     }
 
-    void stageInto(
-        Batch& batch, const Device& device, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes)
+    void stageInto(Batch& batch, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes)
     {
-        const StagingRun staged = batch.stage(device, bytes);
+        const StagingRun staged = batch.stage(bytes);
         const VkBufferCopy region{
             .srcOffset = staged.mOffset,
             .dstOffset = offset,
@@ -293,12 +292,13 @@ namespace Rtx
         // while the copy is still on the queue is a race between two writers: named, so `isIdle`
         // says so. The source needs no stamp: a staging block is the batch's, held until the
         // submit that carries it has been waited on.
-        into.nameFor(device.getTimeline().getNext());
+        into.nameFor(batch.getDevice().getTimeline().getNext());
     }
 
-    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage,
-        std::string_view name)
+    Buffer uploadBuffer(Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage, std::string_view name)
     {
+        const Device& device = batch.getDevice();
+
         // Host memory and not the aperture. These bytes are written once and read once by the
         // copy below, so putting them in the video memory the host writes into spends the scarcest
         // heap on a card without resizable BAR for a buffer that is gone by the next submit.
@@ -320,10 +320,9 @@ namespace Rtx
         return result;
     }
 
-    void uploadImage(const Device& device, Batch& batch, Image& image, std::span<const std::byte> bytes,
-        std::span<VkBufferImageCopy> regions)
+    void uploadImage(Batch& batch, Image& image, std::span<const std::byte> bytes, std::span<VkBufferImageCopy> regions)
     {
-        const StagingRun staged = batch.stage(device, bytes);
+        const StagingRun staged = batch.stage(bytes);
         for (VkBufferImageCopy& region : regions)
             region.bufferOffset += staged.mOffset;
 

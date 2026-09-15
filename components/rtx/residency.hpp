@@ -122,9 +122,10 @@ namespace Rtx
         /// inclusive, maximum exclusive.
         osg::Vec4i mActiveGrid;
 
-        /// Whether there is a distant world to stand in. False in an interior, where the eye's
-        /// coordinates belong to another space.
-        bool mOutdoors = true;
+        /// Whether the eye stands in the exterior worldspace, which is where a distant world is.
+        /// False in an interior cell, whose coordinates belong to another space — a quasi-exterior
+        /// included, which has a sky (`WorldReading::mOutdoors`) and no distance.
+        bool mExterior = true;
     };
 
     /// What a walk of the scene graph cannot reach, offered to the walk that asks for it: the

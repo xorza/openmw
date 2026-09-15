@@ -358,16 +358,13 @@ namespace MWRender
         mSharedUniformStateUpdater->setFar(eye.mViewDistance);
         mPerViewUniformStateUpdater->setProjectionMatrix(eye.mProjectionMatrix);
 
-        // Upstream's, from updateProjectionMatrix: an eye's picture is the eye's size
+        // The chain's own size, which is the window's, or the eye's under stereo: what upstream's
+        // `PostProcessor::resize` told the game to hand back here
+        mSharedUniformStateUpdater->setScreenRes(
+            static_cast<float>(mPostProcessor->renderWidth()), static_cast<float>(mPostProcessor->renderHeight()));
+
         if (Stereo::getStereo())
-        {
-            auto res = Stereo::Manager::instance().eyeResolution();
-            mSharedUniformStateUpdater->setScreenRes(static_cast<float>(res.x()), static_cast<float>(res.y()));
             Stereo::Manager::instance().setMasterProjectionMatrix(eye.mProjectionMatrix);
-        }
-        else
-            mSharedUniformStateUpdater->setScreenRes(
-                static_cast<float>(eye.mScreenResolution.x()), static_cast<float>(eye.mScreenResolution.y()));
 
         mViewer.getCamera()->setClearColor(fog.mColour);
 

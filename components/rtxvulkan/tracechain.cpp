@@ -28,15 +28,18 @@ namespace Rtx
         }
     }
 
-    TraceChain::TraceChain(const Device& device, CommandPool& pool, const SetLayout& channels, const SetLayout& fog,
-        const std::filesystem::path& shaders, const VkImageUsageFlags colourUsage, const std::string_view colourName)
+    TraceChain::TraceChain(const Device& device, Graveyard& graveyard, CommandPool& pool, const SetLayout& channels,
+        const SetLayout& fog, const std::filesystem::path& shaders, const VkImageUsageFlags colourUsage,
+        const std::string_view colourName)
         : mDevice(device)
         , mPool(pool)
         , mChannelLayout(channels)
         , mFogVolumeLayout(fog)
         , mColourUsage(colourUsage)
         , mColourName(colourName)
-        , mBins([&](FrameSlot) { return SpriteBin{ device }; })
+        , mBins([&](FrameSlot) {
+            return SpriteBin{ device, graveyard };
+        })
         , mAccumulate(device, shaders)
         , mFilter(device, shaders)
     {
@@ -125,8 +128,7 @@ namespace Rtx
         inputs.mBin = &bin;
         if (inputs.mSpriteList == 0)
             bin.record(*what.mSpriteShade, *what.mSpriteBin, what.mBuffers->describeSprites(inputs.mSlot),
-                what.mAsked.mOrigin, what.mAsked.mCamera, what.mAsked.mSun.mDirection, commands, what.mTimer,
-                *what.mGraveyard);
+                what.mAsked.mOrigin, what.mAsked.mCamera, what.mAsked.mSun.mDirection, commands, what.mTimer);
 
         mChannels->begin(commands);
         what.mVisibility->record(

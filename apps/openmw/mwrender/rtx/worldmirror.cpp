@@ -228,7 +228,7 @@ namespace MWRender
             .mEye = eye,
             .mReach = mReach,
             .mActiveGrid = frame.mTerrain.getActiveGrid(),
-            .mOutdoors = !frame.mWorld.isInteriorCell(),
+            .mExterior = !frame.mWorld.isInteriorCell(),
         };
 
         mRing.setFrame(frameNumber);

@@ -211,7 +211,7 @@ namespace Rtx::Testing
                 mAround.mReach = 4.0f * sCellSize;
                 mAround.mActiveGrid = osg::Vec4i(-1, -1, 2, 2);
                 mAround.mEye = osg::Vec3f(0.5f * sCellSize, 0.5f * sCellSize, 0.0f);
-                mAround.mOutdoors = true;
+                mAround.mExterior = true;
             }
 
             void start()

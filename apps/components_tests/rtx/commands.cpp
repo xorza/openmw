@@ -39,8 +39,8 @@ namespace Rtx
             const std::vector<std::byte> hundred(100, std::byte{ 1 });
             const std::vector<std::byte> fifty(50, std::byte{ 2 });
 
-            const StagingRun first = batch.stage(getDevice(), hundred);
-            const StagingRun second = batch.stage(getDevice(), fifty);
+            const StagingRun first = batch.stage(hundred);
+            const StagingRun second = batch.stage(fifty);
 
             EXPECT_EQ(first.mOffset, 0u);
             EXPECT_EQ(second.mBuffer, first.mBuffer) << "a second upload took a buffer of its own";
@@ -52,8 +52,8 @@ namespace Rtx
             // block of its own exactly its size — which leaves the upload after it nowhere to go
             // but a block of its own as well.
             const std::vector<std::byte> past(sStagingBlock + 1, std::byte{ 3 });
-            const StagingRun alone = batch.stage(getDevice(), past);
-            const StagingRun after = batch.stage(getDevice(), fifty);
+            const StagingRun alone = batch.stage(past);
+            const StagingRun after = batch.stage(fifty);
 
             EXPECT_NE(alone.mBuffer, first.mBuffer) << "an upload landed in a block with no room for it";
             EXPECT_EQ(alone.mOffset, 0u);
@@ -115,7 +115,7 @@ namespace Rtx
 
             const std::uint32_t staged = 0xf00d;
             Batch batch(getPool());
-            stageInto(batch, getDevice(), target, 0, std::as_bytes(std::span(&staged, 1)));
+            stageInto(batch, target, 0, std::as_bytes(std::span(&staged, 1)));
 
             EXPECT_EQ(target.getNamedUntil(), getDevice().getTimeline().getNext())
                 << "the staged copy's destination was not named";

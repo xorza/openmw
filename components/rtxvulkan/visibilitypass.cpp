@@ -144,7 +144,7 @@ namespace Rtx
         bool countHits, bool countCrossings)
         : mDevice(device)
         , mBlueNoise(uploadBuffer(
-              device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise"))
+              batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise"))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCountHits(countHits ? 1u : 0u)

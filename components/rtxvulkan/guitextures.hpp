@@ -35,7 +35,7 @@ namespace Rtx
     class GuiTextures
     {
     public:
-        GuiTextures(const Device& device, CommandPool& pool);
+        GuiTextures(const Device& device, Graveyard& graveyard, CommandPool& pool);
         ~GuiTextures();
 
         /// A slot holding a texture of this size, cleared to nothing.
@@ -54,12 +54,12 @@ namespace Rtx
 
         void drop(GuiSlot slot);
 
-        /// Opens an interface frame: hands `kept` every texture given back since the last one, and
+        /// Opens an interface frame: buries every texture given back since the last one, and
         /// takes the staging that frame's fence has just freed. A texture is given back a frame
-        /// after it was last drawn with, and that draw is still on the queue, so the graveyard of
-        /// the frame being recorded is what knows when it stops being read. Once per interface
-        /// frame, after that frame's fence and before anything is handed over.
-        void startFrame(Graveyard& kept);
+        /// after it was last drawn with, and that draw is still on the queue, so the graveyard is
+        /// what knows when it stops being read. Once per interface frame, after that frame's fence
+        /// and before anything is handed over.
+        void startFrame();
 
         /// What the pass samples, or null where nothing holds that slot.
         VkImageView getView(GuiSlot slot);
@@ -98,11 +98,10 @@ namespace Rtx
         /// Records a copy of the whole texture into a host-readable buffer kept for the slot, after
         /// whatever `commands` already holds, and remembers that `frame` is what carries it — into
         /// the same batch as the trace that wrote the texture, so the copy costs no submit and no
-        /// wait of its own; `takeCopy` hands the bytes over once the frame has been waited for.
-        ///
-        /// @param graveyard where a buffer this replaces is buried, because a batch recorded against
-        ///        the old one may not have run.
-        void readBackWith(GuiSlot slot, VkCommandBuffer commands, std::uint64_t frame, Graveyard& graveyard);
+        /// wait of its own; `takeCopy` hands the bytes over once the frame has been waited for. A
+        /// buffer this replaces is buried, because a batch recorded against the old one may not
+        /// have run.
+        void readBackWith(GuiSlot slot, VkCommandBuffer commands, std::uint64_t frame);
 
         /// Copies what `readBackWith` left for `slot` into `into`, and answers whether it did:
         /// false until the frame carrying the copy is behind `finished`, and never a wait, because
@@ -128,6 +127,11 @@ namespace Rtx
         VkDeviceSize reserve(VkDeviceSize bytes);
 
         const Device& mDevice;
+
+        /// Where a texture given back and a read-back buffer outgrown go, until nothing on the queue
+        /// reads them.
+        Graveyard& mGraveyard;
+
         CommandPool& mPool;
 
         std::vector<Image> mImages;

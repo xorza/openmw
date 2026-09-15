@@ -30,12 +30,13 @@ namespace Rtx
         constexpr VkDeviceSize sCompactionPerPlacement = 8 * 1024 * 1024;
     }
 
-    BottomLevelStore::BottomLevelStore(const Device& device)
+    BottomLevelStore::BottomLevelStore(const Device& device, Graveyard& graveyard)
         : mDevice(device)
+        , mGraveyard(graveyard)
     {
     }
 
-    void BottomLevelStore::retire(const Index slot, Graveyard& graveyard)
+    void BottomLevelStore::retire(const Index slot)
     {
         Row& row = mRows[slot];
 
@@ -47,10 +48,10 @@ namespace Rtx
         }
 
         state.mTightness = Tightness::None;
-        graveyard.bury(std::move(row.mStructure));
+        mGraveyard.bury(std::move(row.mStructure));
     }
 
-    void BottomLevelStore::release(std::span<const Index> meshes, Graveyard& graveyard)
+    void BottomLevelStore::release(std::span<const Index> meshes)
     {
         for (const Index mesh : meshes)
         {
@@ -59,12 +60,12 @@ namespace Rtx
             if (mesh >= mRows.size())
                 continue;
 
-            retire(mesh, graveyard);
+            retire(mesh);
         }
     }
 
     void BottomLevelStore::build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes,
-        const BlockedBuffer& poses, const BlockedBuffer& indices, Graveyard& graveyard)
+        const BlockedBuffer& poses, const BlockedBuffer& indices)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t held = scene.meshes().getRows().size();
@@ -120,8 +121,7 @@ namespace Rtx
             if (range.mDeform != Deform::None || range.mVertices.empty())
                 continue;
 
-            stageInto(batch, mDevice, arrived, mBuilding[at].mArrivedAt,
-                std::as_bytes(scene.meshes().getMeshPositions(mesh)));
+            stageInto(batch, arrived, mBuilding[at].mArrivedAt, std::as_bytes(scene.meshes().getMeshPositions(mesh)));
         }
 
         batch.keep(std::move(arrived));
@@ -138,7 +138,7 @@ namespace Rtx
             // A slot handed out again arrives holding different geometry. Whatever was there is
             // buried and its room given back before this one asks for room of its own, so the
             // two can be the same run.
-            retire(slot, graveyard);
+            retire(slot);
 
             // A pose or an arrival's staging, and which one is what the mesh is. A deforming
             // mesh is built over what `SkinPass` wrote into the first copy ahead of this, so its
@@ -254,12 +254,12 @@ namespace Rtx
             commands, static_cast<std::uint32_t>(mLiveBuilds.size()), mLiveBuilds.data(), mBuild.mRangePointers.data());
         barrierAfterBuild(commands);
 
-        askWhatCompactionWouldSave(commands, graveyard);
+        askWhatCompactionWouldSave(commands);
 
         batch.keep(std::move(scratch));
     }
 
-    void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands, Graveyard& graveyard)
+    void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands)
     {
         const auto held = static_cast<std::uint32_t>(mRows.size());
         if (held > mCompactablePool)
@@ -271,7 +271,7 @@ namespace Rtx
             // The pool this replaces may be named by a batch the queue has not reached, and every
             // answer it was to carry is lost with it: whoever was asked through it is asked again
             // through the new one, below.
-            graveyard.bury(mCompactable.release());
+            mGraveyard.bury(mCompactable.release());
 
             const VkQueryPoolCreateInfo create{
                 .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
@@ -392,7 +392,7 @@ namespace Rtx
         mAsked.settle();
     }
 
-    const SlotSet& BottomLevelStore::prepareCompaction(Graveyard& graveyard)
+    const SlotSet& BottomLevelStore::prepareCompaction()
     {
         mCompactionCopies.clear();
         mMovedMeshes.clear();
@@ -431,7 +431,7 @@ namespace Rtx
             // once the frame this is recorded into retires, and the copy runs inside that frame —
             // so what the fence covers is both this read and whatever earlier frame is still
             // tracing the structure through the top level it was named in.
-            graveyard.bury(std::exchange(row.mStructure, std::move(made)));
+            mGraveyard.bury(std::exchange(row.mStructure, std::move(made)));
 
             // The pair the report prints follows the copy, so what it says is what is left to save
             // rather than what was saved once.

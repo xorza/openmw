@@ -67,7 +67,7 @@ namespace Rtx
 
     /// One layer's diffuse, reduced to the two levels the whole bake will read and how far it sits
     /// between them.
-    struct Ground
+    struct LayerLevels
     {
         DecodedLevel mFine;
         DecodedLevel mCoarse;
@@ -88,7 +88,7 @@ namespace Rtx
     {
         /// One per layer of the deepest stack met so far, each keeping the levels it decoded. Never
         /// shrunk: a shorter stack uses the front of it and leaves the rest holding their room.
-        std::vector<Ground> mGrounds;
+        std::vector<LayerLevels> mGrounds;
 
         /// The sum, in light, one entry a texel of the level being built.
         std::vector<osg::Vec3f> mLight;

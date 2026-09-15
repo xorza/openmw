@@ -24,6 +24,7 @@ namespace Rtx
     class CommandPool;
     class Device;
     class GpuTimer;
+    class Graveyard;
     struct TraceRecording;
 
     /// Everything one camera's trace writes, at one extent — one chain however many cameras have
@@ -41,8 +42,9 @@ namespace Rtx
         /// @param colourUsage what the composite's output has done to it besides being written: an
         ///        upscaler samples a frame's and a measurement copies it out.
         /// @param colourName what a capture and a validation message call that image.
-        TraceChain(const Device& device, CommandPool& pool, const SetLayout& channels, const SetLayout& fog,
-            const std::filesystem::path& shaders, VkImageUsageFlags colourUsage, std::string_view colourName);
+        TraceChain(const Device& device, Graveyard& graveyard, CommandPool& pool, const SetLayout& channels,
+            const SetLayout& fog, const std::filesystem::path& shaders, VkImageUsageFlags colourUsage,
+            std::string_view colourName);
 
         /// Builds the chain at exactly this extent, whatever it was before. The caller has waited
         /// for anything still reading what this replaces.

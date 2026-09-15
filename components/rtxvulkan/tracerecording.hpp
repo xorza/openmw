@@ -12,7 +12,6 @@ namespace Rtx
     class Buffer;
     class CompositePass;
     class GpuTimer;
-    class Graveyard;
     class Image;
     class SceneBuffers;
     class SpriteBinPass;
@@ -42,7 +41,6 @@ namespace Rtx
         /// and never written here: a placement is what writes a copy, and it waits for every
         /// trace of it first.
         const SceneBuffers* mBuffers = nullptr;
-        Graveyard* mGraveyard = nullptr;
 
         /// The camera the caller asked for. What the sprite bin tiles against, because a bin is
         /// a screen-space tile and the jitter below is where inside a pixel this frame sampled:

@@ -77,7 +77,7 @@ namespace Rtx
     {
         // Nothing to add to the stats, ever. What this stands is lights, which the walk counts
         // as it places each of them, and it owns no mesh and no material row.
-        if (mAround.mWorld.mStorage == nullptr || !mAround.mOutdoors)
+        if (mAround.mWorld.mStorage == nullptr || !mAround.mExterior)
             return;
 
         // The same disc the ground stands in.

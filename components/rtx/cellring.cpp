@@ -299,7 +299,7 @@ namespace Rtx
 
         // Indoors the eye's coordinates belong to another space, so the rings are not moved:
         // what is held stays held for the way back out, and nothing stands.
-        if (!mAround.mOutdoors)
+        if (!mAround.mExterior)
         {
             dropPlacements();
             mSupply.publish();

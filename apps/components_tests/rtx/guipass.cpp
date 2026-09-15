@@ -71,7 +71,7 @@ namespace Rtx
                     "gui test target");
 
                 Batch upload(getPool());
-                const Buffer buffer = uploadBuffer(device, upload, vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "test");
+                const Buffer buffer = uploadBuffer(upload, vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "test");
                 upload.flush();
 
                 getPool().submitAndWait([&](VkCommandBuffer commands) {

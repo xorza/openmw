@@ -36,7 +36,7 @@ namespace Rtx
         DistantLights(const DistantLights&) = delete;
         DistantLights& operator=(const DistantLights&) = delete;
 
-        /// Where the world is now. A storage of null is a world with none. `mOutdoors` false is an
+        /// Where the world is now. A storage of null is a world with none. `mExterior` false is an
         /// interior, whose coordinates belong to another space; what has been read stays read,
         /// because a door is walked through both ways.
         void follow(const WorldAround& around) override;

@@ -96,12 +96,10 @@ namespace Rtx
         Batch batch(mPool);
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
-            mTiles[index].mAmplitudes
-                = uploadBuffer(mDevice, batch, std::span<const osg::Vec2f>(cascades[index].mAmplitudes),
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("amplitudes", index));
-            mTiles[index].mFrequencies
-                = uploadBuffer(mDevice, batch, std::span<const float>(cascades[index].mFrequencies),
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("frequencies", index));
+            mTiles[index].mAmplitudes = uploadBuffer(batch, std::span<const osg::Vec2f>(cascades[index].mAmplitudes),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("amplitudes", index));
+            mTiles[index].mFrequencies = uploadBuffer(batch, std::span<const float>(cascades[index].mFrequencies),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("frequencies", index));
         }
         batch.flush();
 

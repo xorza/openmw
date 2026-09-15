@@ -296,8 +296,6 @@ namespace MWRender
 
         void updateProjectionMatrix();
 
-        void setScreenRes(int width, int height);
-
         void setNavMeshMode(Settings::NavMeshRenderMode value);
 
         void setProjectionOffset(const osg::Vec2f& offset)
@@ -384,10 +382,6 @@ namespace MWRender
         /// What `update` was last handed, for the frame that follows it.
         float mFrameDelta = 0.f;
         bool mFramePaused = false;
-
-        /// The size the picture is made at, as the window settings say or as the post-processing
-        /// chain last said through `setScreenRes`.
-        osg::Vec2i mScreenResolution;
 
         /// This frame, from `describeFrame` to `renderFrame`, and the two records it refers to;
         /// empty before the first.

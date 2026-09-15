@@ -128,7 +128,7 @@ namespace Rtx
                     .mEye = osg::Vec3f(),
                     .mReach = sCellSize * 6.0f,
                     .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
-                    .mOutdoors = true });
+                    .mExterior = true });
 
             CountLights counted;
             ExtractionStats stats;
@@ -169,7 +169,7 @@ namespace Rtx
                     .mEye = osg::Vec3f(),
                     .mReach = sCellSize * 6.0f,
                     .mActiveGrid = osg::Vec4i(-1, -1, 2, 2),
-                    .mOutdoors = true });
+                    .mExterior = true });
 
             ExtractionStats stats;
             CountLights first;

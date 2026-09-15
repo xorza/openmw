@@ -167,7 +167,7 @@ namespace Rtx
 
             Graveyard graveyard(device, pool);
             Batch tableSetup(pool);
-            SkinTables tables(device, tableSetup, scene, 2, graveyard);
+            SkinTables tables(device, graveyard, tableSetup, scene, 2);
             tableSetup.flush();
             const SkinPass pass(device, Testing::getShaderDirectory());
 
@@ -287,7 +287,7 @@ namespace Rtx
 
             {
                 Batch arrival(pool);
-                tables.extend(arrival, scene, graveyard);
+                tables.extend(arrival, scene);
                 EXPECT_TRUE(pass.recordArrived(
                     arrival.getCommands(), scene, FrameSlot{ 0 }, scene.meshes().getArrived(), tables, poses, normals))
                     << "an arrival with nothing to pose";
@@ -360,7 +360,7 @@ namespace Rtx
             Batch load(pool);
             poses.reserve(load, 4);
             normals.reserve(load, 4);
-            SkinTables tables(device, load, scene, 2, graveyard);
+            SkinTables tables(device, graveyard, load, scene, 2);
             load.flush();
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
@@ -383,7 +383,7 @@ namespace Rtx
                 Batch arrival(pool);
                 poses.reserve(arrival, 8);
                 normals.reserve(arrival, 8);
-                tables.extend(arrival, scene, graveyard);
+                tables.extend(arrival, scene);
                 EXPECT_TRUE(pass.recordArrived(
                     arrival.getCommands(), scene, FrameSlot{ 0 }, scene.meshes().getArrived(), tables, poses, normals));
                 arrival.defer();

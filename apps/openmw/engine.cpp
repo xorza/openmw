@@ -451,7 +451,7 @@ void OMW::Engine::prepareEngine()
 
     mResourceSystem = std::make_unique<Resource::ResourceSystem>(
         mVFS.get(), Settings::cells().mCacheExpiryDelay, &mEncoder.get()->getStatelessEncoder());
-    mRenderer->prepareResources(*mResourceSystem->getSceneManager());
+    mRenderer->prepareResources(*mResourceSystem);
     mResourceSystem->getSceneManager()->setUnRefImageDataAfterApply(
         false); // keep to Off for now to allow better state sharing
     mResourceSystem->getSceneManager()->setFilterSettings(Settings::general().mTextureMagFilter,

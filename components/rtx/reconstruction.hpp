@@ -156,15 +156,20 @@ namespace Rtx
         Summed,
     };
 
-    /// Everything a run decides once about how the picture is made, in one bag for both hosts.
-    /// Nothing here changes while a run is being made, so a frame reads what it was handed rather
-    /// than asking the registry per knob per frame.
+    /// Everything a run decides once about how the picture is made, in one bag for both hosts,
+    /// handed to the backend inside `RendererOptions` and read there. Nothing here changes while a
+    /// run is being made, so a frame reads what the run was handed rather than asking the registry
+    /// per knob per frame.
     struct RenderProfile
     {
-        /// What the upscaler is built with. Carried whole into `RendererOptions`.
+        /// What the upscaler is built with.
         Upscaling mUpscaling;
 
-        /// What every frame asks of the reconstruction. Carried whole into `FrameOptions`.
+        /// What every frame asks of the reconstruction, before the upscaler has its say —
+        /// `Reconstruction::resolve` is the rule. Jitter is off unless something puts the frames
+        /// back together; the filter is off for a reference, because a thousand filtered frames
+        /// converge on the filter's opinion. Carried into every frame by `FrameOptions::forFrame`,
+        /// and read by the backend off the frame and never from here.
         ReconstructionRequest mReconstruction;
 
         /// Whether the trace counts the see-through surfaces each primary ray crosses.
@@ -177,13 +182,18 @@ namespace Rtx
         bool mShowAlbedo = false;
 
         /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame. A picture wants it measured, and a reference wants it held still.
+        /// frame. A picture wants it measured, and a reference wants it held still. Carried into
+        /// every frame like `mReconstruction`, and read off the frame.
         std::optional<float> mExposure;
 
-        /// `RendererOptions::mStressOverlapMs`, carried whole.
+        /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
+        /// hold it not at all. A held queue keeps the device that far behind the host, so every
+        /// frame is recorded over a frame still running: what makes a hazard that needs the
+        /// overlap show on the first frame of every run. A gate's option, never a player's.
         double mStressOverlapMs = 0.0;
 
-        /// `RendererOptions::mRadianceWidth`, carried whole. The reference's width unless a run says
+        /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of
+        /// whether a run sums its frames or shows them. The reference's width unless a run says
         /// it only shows its frames, so that a run that forgot to say is exact rather than fast.
         RadianceWidth mRadianceWidth = RadianceWidth::Summed;
     };

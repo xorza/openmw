@@ -55,7 +55,7 @@ namespace Rtx
     class BottomLevelStore
     {
     public:
-        explicit BottomLevelStore(const Device& device);
+        BottomLevelStore(const Device& device, Graveyard& graveyard);
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
         /// A slot that already holds one has it destroyed first: a slot the scene handed out again
@@ -65,12 +65,12 @@ namespace Rtx
         ///        structure is built over — `SkinPass` has written the pose into it.
         /// @param indices the shared index blocks, which every structure is built through.
         void build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, const BlockedBuffer& poses,
-            const BlockedBuffer& indices, Graveyard& graveyard);
+            const BlockedBuffer& indices);
 
         /// Destroys the structures of `meshes` and gives their storage back. Idempotent, because
-        /// both the frame that places and the one that appends run it. The structures go to
-        /// `graveyard`: the last frame's top level still names them.
-        void release(std::span<const Index> meshes, Graveyard& graveyard);
+        /// both the frame that places and the one that appends run it. The structures go to the
+        /// graveyard: the last frame's top level still names them.
+        void release(std::span<const Index> meshes);
 
         std::size_t size() const { return mRows.size(); }
         VkAccelerationStructureKHR getStructure(const Index mesh) const { return mRows[mesh].mStructure.getHandle(); }
@@ -90,7 +90,7 @@ namespace Rtx
         /// returns names the meshes whose structures moved, whose rows the caller writes again.
         /// Counts the placement, which is what the readiness rule below reads; one call per
         /// placement.
-        const SlotSet& prepareCompaction(Graveyard& graveyard);
+        const SlotSet& prepareCompaction();
 
         /// Copies each structure `prepareCompaction` made room for into it.
         void recordCompaction(VkCommandBuffer commands, GpuTimer* timer);
@@ -152,7 +152,7 @@ namespace Rtx
         };
 
         /// Records the compaction question for every loose structure not yet asked about.
-        void askWhatCompactionWouldSave(VkCommandBuffer commands, Graveyard& graveyard);
+        void askWhatCompactionWouldSave(VkCommandBuffer commands);
 
         /// Records the question for the run of consecutive slots gathered in `mAskScratch`, which
         /// starts at `first`, and empties it. Nothing where nothing was gathered.
@@ -171,7 +171,7 @@ namespace Rtx
 
         /// Buries `slot`'s structure and forgets what the compaction knew about it, ahead of the
         /// slot being built again or given back. Idempotent: a slot holding nothing buries nothing.
-        void retire(Index slot, Graveyard& graveyard);
+        void retire(Index slot);
 
         /// One mesh slot: its structure, in its room, and what the refit and the compaction know
         /// about it. One row and not six lists, so a slot cannot be half updated.
@@ -190,6 +190,10 @@ namespace Rtx
         };
 
         const Device& mDevice;
+
+        /// Where a structure goes when its slot is retired or its tight copy takes over: the last
+        /// frame's top level still names it.
+        Graveyard& mGraveyard;
 
         // Before the rows, which give their rooms back to it as they go.
         StructureStorage mStorage{ sStructureStorageUsage, "bottom level structures" };

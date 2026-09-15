@@ -83,6 +83,6 @@ namespace Rtx
     {
         assert(blockOf(element) < mBlocks.size());
 
-        stageInto(batch, *mDevice, mBlocks[blockOf(element)], offsetOf(element), bytes);
+        stageInto(batch, mBlocks[blockOf(element)], offsetOf(element), bytes);
     }
 }

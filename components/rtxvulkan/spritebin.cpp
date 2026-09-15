@@ -12,8 +12,9 @@
 
 namespace Rtx
 {
-    SpriteBin::SpriteBin(const Device& device)
+    SpriteBin::SpriteBin(const Device& device, Graveyard& graveyard)
         : mDevice(device)
+        , mGraveyard(graveyard)
         , mSprites(Buffer::hostWritten(device, 0, sTableFilledUsage, "binned sprites"))
         , mOrder(Buffer::hostWritten(device, 0, sTableUsage, "sprite order"))
         , mRects(Buffer::hostWritten(device, 0, sTableUsage, "sprite rects"))
@@ -27,16 +28,16 @@ namespace Rtx
 
     void SpriteBin::record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
         const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
-        GpuTimer* const timer, Graveyard& graveyard)
+        GpuTimer* const timer)
     {
         const Timeline& timeline = mDevice.getTimeline();
         const std::uint32_t count = source.mSpriteCount;
         const VkDeviceSize bytes = source.mSprites->getSize();
 
-        graveyard.bury(growTo(mSprites, mDevice, BufferKind::HostWritten, bytes, sTableFilledUsage, "binned sprites"));
-        graveyard.bury(growTo(mOrder, mDevice, BufferKind::HostWritten,
+        mGraveyard.bury(growTo(mSprites, mDevice, BufferKind::HostWritten, bytes, sTableFilledUsage, "binned sprites"));
+        mGraveyard.bury(growTo(mOrder, mDevice, BufferKind::HostWritten,
             VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), sTableUsage, "sprite order"));
-        graveyard.bury(growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t),
+        mGraveyard.bury(growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t),
             sTableUsage, "sprite rects"));
 
         // The placement's table, whole, because the shade writes over what it reads: the copy is
@@ -67,7 +68,7 @@ namespace Rtx
             = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
         mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
 
-        graveyard.bury(growTo(
+        mGraveyard.bury(growTo(
             mTileList, mDevice, BufferKind::HostWritten, mListSize.getBytes(), sTableFilledUsage, "sprite tile list"));
 
         pass.record(commands,

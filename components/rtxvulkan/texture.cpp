@@ -119,7 +119,7 @@ namespace Rtx
                 .imageExtent = { data.mLevels[level].mWidth, data.mLevels[level].mHeight, 1 },
             });
 
-        uploadImage(device, batch, mImage, data.mBytes, regions);
+        uploadImage(batch, mImage, data.mBytes, regions);
 
         // The map, in the same batch and left where the same sampler expects it. One level and
         // no chain: the map is read at level nought whatever the cone, because it has no detail for
@@ -140,14 +140,15 @@ namespace Rtx
             .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             .imageExtent = { Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, 1 },
         };
-        uploadImage(device, batch, mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
+        uploadImage(batch, mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
 
         mBytes = data.mBytes.size() + sizeof(stored);
     }
 
-    TextureArray::TextureArray(const Device& device, Batch& batch, std::uint32_t slots,
-        std::span<const TextureData> textures, Graveyard& graveyard)
+    TextureArray::TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, std::uint32_t slots,
+        std::span<const TextureData> textures)
         : mDevice(device)
+        , mGraveyard(graveyard)
         , mSampler(makeContentSampler(device, "textures"))
         , mLayout(makeLayout(device))
         // Allocated at the maximum the layout declares, not at what this scene brought. Sizing the
@@ -166,7 +167,7 @@ namespace Rtx
         // the bindings' `PARTIALLY_BOUND` is what makes that legal for one nothing samples.
         mTextures.resize(slots);
 
-        write(batch, textures, graveyard);
+        write(batch, textures);
     }
 
     void TextureArray::reserveSlot(std::uint32_t slot)
@@ -181,7 +182,7 @@ namespace Rtx
             mTextures.resize(slot + 1);
     }
 
-    void TextureArray::write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard)
+    void TextureArray::write(Batch& batch, std::span<const TextureData> arrived)
     {
         if (arrived.empty())
             return;
@@ -199,7 +200,7 @@ namespace Rtx
 
             // What the slot held is buried and not destroyed: its descriptor is the one a frame in
             // flight bound, and it stays valid until the timeline says nothing reads it.
-            graveyard.bury(
+            mGraveyard.bury(
                 std::exchange(mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch)));
 
             for (SlotSet& owed : mOwed.live())
@@ -255,7 +256,7 @@ namespace Rtx
         owed.clear();
     }
 
-    void TextureArray::drop(std::span<const std::uint32_t> slots, Graveyard& graveyard)
+    void TextureArray::drop(std::span<const std::uint32_t> slots)
     {
         for (const std::uint32_t slot : slots)
         {
@@ -266,7 +267,7 @@ namespace Rtx
 
             // Exchanged rather than erased, so the slot stays where it is and the image goes under
             // the frame that may still name it.
-            graveyard.bury(std::exchange(mTextures[slot], Texture()));
+            mGraveyard.bury(std::exchange(mTextures[slot], Texture()));
         }
     }
 

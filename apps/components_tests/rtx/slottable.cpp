@@ -50,7 +50,7 @@ namespace Rtx
                     return;
 
                 mGraveyard = std::make_unique<Graveyard>(getDevice(), getPool());
-                mTable.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
+                mTable.open(getDevice(), *mGraveyard, 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
             }
 
             /// Which rows `slot` is owed, sorted so that a debt compares equal whatever order it
@@ -65,7 +65,7 @@ namespace Rtx
                 return sorted;
             }
 
-            void sync(std::uint32_t slot) { mTable.sync(FrameSlot{ slot }, *mGraveyard); }
+            void sync(std::uint32_t slot) { mTable.sync(FrameSlot{ slot }); }
 
             std::unique_ptr<Graveyard> mGraveyard;
             SlotTable<TestRow> mTable;

@@ -74,14 +74,14 @@ namespace Rtx
         std::filesystem::path mCacheDirectory;
 
         /// The size the frame is presented at. What it is traced at follows from
-        /// `mUpscaling.mMode`.
+        /// `mProfile.mUpscaling.mMode`.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;
 
-        /// What the upscaler is built with. The mode is fixed for the renderer's lifetime bar
-        /// `Renderer::setUpscale`, and a build that has no upscaler refuses anything but `Off` at
-        /// construction.
-        Upscaling mUpscaling;
+        /// Everything the run decided once about how the picture is made. The upscaling mode is
+        /// fixed for the renderer's lifetime bar `Renderer::setUpscale`, and a build that has no
+        /// upscaler refuses anything but `Off` at construction.
+        RenderProfile mProfile;
 
         /// Where the frame is shown, or null for a renderer that only reads pixels back. A window
         /// and not a surface, because a surface is a thing an API has. A windowed renderer sizes
@@ -91,22 +91,9 @@ namespace Rtx
         ValidationOptions mValidation;
 
         /// Whether the trace counts the primary rays that hit anything. On by default, so a reader
-        /// who forgets it gets a number rather than a silent nought; the game clears it.
+        /// who forgets it gets a number rather than a silent nought; the game clears it. Not a
+        /// knob of the run's picture, which is why it is not in the profile.
         bool mCountHits = true;
-
-        /// Whether the trace counts the see-through surfaces each primary ray crosses. Off by
-        /// default, because it is a second traversal on every pixel.
-        bool mCountCrossings = false;
-
-        /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of
-        /// whether a run sums its frames or shows them.
-        RadianceWidth mRadianceWidth = RadianceWidth::Summed;
-
-        /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
-        /// hold it not at all. A held queue keeps the device that far behind the host, so every
-        /// frame is recorded over a frame still running: what makes a hazard that needs the
-        /// overlap show on the first frame of every run. A gate's option, never a player's.
-        double mStressOverlapMs = 0.0;
     };
 
     /// One vertex of the GUI, in MyGUI's own layout: a position already in clip space, a colour
@@ -264,14 +251,14 @@ namespace Rtx
         float mExposureBias = 1.0f;
 
         /// What the frame asks of the reconstruction, before the upscaler has its say —
-        /// `Reconstruction::resolve` is the rule. Jitter is off unless something puts the frames
-        /// back together; the filter is off for a reference, because a thousand filtered frames
-        /// converge on the filter's opinion.
+        /// `Reconstruction::resolve` is the rule. A run states it once in its `RenderProfile` and
+        /// `forFrame` carries it; a frame of its own may ask otherwise, which is how a reference
+        /// and the frame it is compared against come off one renderer.
         ReconstructionRequest mReconstruction;
 
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. One by default, because a measured exposure makes every pixel depend on the whole
-        /// frame's histogram; a picture wants it measured, so the harness turns it on.
+        /// frame's histogram; a picture wants it measured, so a run's profile says so.
         std::optional<float> mExposure = 1.0f;
 
         /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,

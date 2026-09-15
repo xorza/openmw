@@ -22,8 +22,9 @@ namespace Rtx
         constexpr VkDeviceSize sCopyAlignment = 4;
     }
 
-    GuiTextures::GuiTextures(const Device& device, CommandPool& pool)
+    GuiTextures::GuiTextures(const Device& device, Graveyard& graveyard, CommandPool& pool)
         : mDevice(device)
+        , mGraveyard(graveyard)
         , mPool(pool)
         , mBatch(pool)
     {
@@ -144,12 +145,12 @@ namespace Rtx
         mStagingUsed = 0;
     }
 
-    void GuiTextures::startFrame(Graveyard& kept)
+    void GuiTextures::startFrame()
     {
         assert(mLentSlot.isNone() && "an interface frame that began with a lend outstanding");
 
         for (Image& image : mRetired)
-            kept.bury(std::move(image));
+            mGraveyard.bury(std::move(image));
 
         mRetired.clear();
 
@@ -173,8 +174,7 @@ namespace Rtx
         copy.mLanded = false;
     }
 
-    void GuiTextures::readBackWith(
-        const GuiSlot slot, const VkCommandBuffer commands, const std::uint64_t frame, Graveyard& graveyard)
+    void GuiTextures::readBackWith(const GuiSlot slot, const VkCommandBuffer commands, const std::uint64_t frame)
     {
         assert(holds(slot) && "a read back of a slot nothing holds");
 
@@ -184,7 +184,7 @@ namespace Rtx
         // Buried and not destroyed where it has to grow: a batch recorded against it may not have
         // run.
         Copy& copy = mCopies[slot.get()];
-        graveyard.bury(growTo(
+        mGraveyard.bury(growTo(
             copy.mBuffer, mDevice, BufferKind::Staging, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "gui read back"));
 
         image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, copy.mBuffer);

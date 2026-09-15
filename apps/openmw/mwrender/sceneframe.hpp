@@ -5,7 +5,6 @@
 #include <optional>
 
 #include <osg/Matrixf>
-#include <osg/Vec2i>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
@@ -243,10 +242,6 @@ namespace MWRender
         /// Whether the eye is the player's, as against a camera a script or a harness parked
         /// somewhere: what decides whether the player's own body is in the picture.
         bool mPlayersEye = true;
-
-        /// The size the picture is made at, in pixels: the window's, or what the rasterizer's
-        /// chain last asked for through `RenderingManager::setScreenRes`.
-        osg::Vec2i mScreenResolution;
     };
 
     /// What there is to draw, and what the world is doing while it is drawn. Handed down rather

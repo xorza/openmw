@@ -97,15 +97,15 @@ namespace Rtx
         /// given back still sits between two that are. `textures` may be empty: a slot nothing
         /// describes is one no material names, which is what `descriptorBindingPartiallyBound` is
         /// required for.
-        TextureArray(const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures,
-            Graveyard& graveyard);
+        TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, std::uint32_t slots,
+            std::span<const TextureData> textures);
 
         /// Uploads each of `arrived` into the slot it names, leaving every other texture alone —
         /// why the sets are allocated at the maximum rather than at the scene's count. By slot and
         /// not by appending, because a slot a departing cell freed is taken over wherever it sits.
         /// What a slot held before goes to `graveyard`: a frame in flight may be reading it. The
         /// descriptors are owed to every set and written by `sync`.
-        void write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard);
+        void write(Batch& batch, std::span<const TextureData> arrived);
 
         /// Writes the descriptors `slot`'s set owes. Before the placement that binds it, after
         /// `finishReads`: the bindings allow an update after a bind, but not of a descriptor a
@@ -119,7 +119,7 @@ namespace Rtx
         /// descriptors are left naming what has gone, which `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT`
         /// makes legal: no live material names a freed slot. The array does not shrink, because the
         /// scene's table has not either.
-        void drop(std::span<const std::uint32_t> slots, Graveyard& graveyard);
+        void drop(std::span<const std::uint32_t> slots);
 
         VkDescriptorSetLayout getLayout() const { return mLayout.get(); }
 
@@ -146,6 +146,10 @@ namespace Rtx
         void reserveSlot(std::uint32_t slot);
 
         const Device& mDevice;
+
+        /// Where a texture goes when its slot is written over or dropped: a frame in flight may
+        /// still sample it.
+        Graveyard& mGraveyard;
 
         /// Cleared and refilled by every describe and every write, never freed. Each settles at the
         /// busiest arrival so far, and an arrival is the frame with the least room to grow one.

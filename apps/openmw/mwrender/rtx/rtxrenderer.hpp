@@ -82,11 +82,11 @@ namespace MWRender
 
         /// No GLSL is compiled here, so no model is given a program: the shader visitor is off, and
         /// a model's state is read as the loader left it.
-        void prepareResources(Resource::SceneManager& scene) override;
+        void prepareResources(Resource::ResourceSystem& resources) override;
 
         /// A plain group: the lights are gathered on this renderer's own walk, so nothing here
         /// wants a light manager's method.
-        osg::ref_ptr<osg::Group> createSceneRoot(Resource::ResourceSystem& resources) override;
+        osg::ref_ptr<osg::Group> createSceneRoot() override;
 
         void listAssetsToPreload(
             std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures) override;
@@ -147,9 +147,8 @@ namespace MWRender
         void setVSync(SDLUtil::VSyncMode mode) override;
         void processChangedSettings(const Settings::CategorySettingVector& changed) override;
 
-        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot,
-            Resource::ResourceSystem& resources, float scalingFactor, VFS::Path::NormalizedView resourcePath,
-            const std::filesystem::path& logPath) override;
+        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
+            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
 
         osg::Timer_t getStartTick() const override { return mStartTick; }
 
@@ -308,8 +307,8 @@ namespace MWRender
         /// cannot walk on one and trace on the other.
         bool drawsWorld() const { return mWorldShown && mWorldToggled; }
 
-        /// The world's, for a picture that has to resolve textures of its own. Null until
-        /// `attachWorld`.
+        /// What the GUI, the preload list and a picture of its own resolve their textures through.
+        /// Null until `prepareResources`, which is before any of them asks.
         Resource::ResourceSystem* mResources = nullptr;
 
         /// Pictures asked for and not yet drawn, in the order asked. Raw pointers because the

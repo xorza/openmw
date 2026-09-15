@@ -210,8 +210,7 @@ namespace MWGui
 
         mScalingFactor = Settings::gui().mScalingFactor * (dw / w);
         constexpr VFS::Path::NormalizedView resourcePath("mygui");
-        mGuiPlatform = mRenderer.createGuiPlatform(
-            *guiRoot, *resourceSystem, mScalingFactor, resourcePath, logpath / "MyGUI.log");
+        mGuiPlatform = mRenderer.createGuiPlatform(*guiRoot, mScalingFactor, resourcePath, logpath / "MyGUI.log");
 
         mGui = std::make_unique<MyGUI::Gui>();
         mGui->initialise({});

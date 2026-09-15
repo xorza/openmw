@@ -79,6 +79,8 @@ namespace Rtx
         /// Frees one-shot command buffers this pool handed out and the queue has finished with.
         void free(std::span<const VkCommandBuffer> commands);
 
+        const Device& getDevice() const { return mDevice; }
+
     private:
         friend class Batch;
 
@@ -153,13 +155,17 @@ namespace Rtx
         /// What to record into. Opens a command buffer on first use, and again after a flush.
         VkCommandBuffer getCommands();
 
+        /// The device the pool records for, which is the one everything staged through this is
+        /// made on.
+        const Device& getDevice() const { return mPool.getDevice(); }
+
         /// Holds `staging` until this batch has been submitted and waited on.
         void keep(Buffer&& staging);
 
         /// Writes `bytes` into the batch's own staging and says where they landed. One block serves
         /// every upload of a batch, where a buffer apiece was three driver calls per upload and a
         /// cell uploads four hundred times. Appended and never rewound, because nothing has run yet.
-        StagingRun stage(const Device& device, std::span<const std::byte> bytes);
+        StagingRun stage(std::span<const std::byte> bytes);
 
         /// Submits what has been recorded and waits for it, then releases the staging. Does nothing
         /// where nothing was recorded, so a batch nobody used costs nothing.
@@ -187,14 +193,13 @@ namespace Rtx
 
     /// Stages `bytes` through the batch's own staging and copies them into `into` at `offset`.
     /// Nothing is ordered here: a run of these is made readable together by `orderStagedWrites`.
-    void stageInto(
-        Batch& batch, const Device& device, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes);
+    void stageInto(Batch& batch, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes);
 
     /// A device-local buffer holding `bytes`, staged through host-visible memory. The copy is
     /// recorded into `batch` and ends in a barrier, so a structure can be built from it in the same
     /// batch.
-    Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage,
-        std::string_view name);
+    Buffer uploadBuffer(
+        Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage, std::string_view name);
 
     /// Makes every staged write recorded into `batch` visible to whatever reads it next — one
     /// dependency for a run of writes that are read together, rather than one barrier per buffer.
@@ -204,13 +209,12 @@ namespace Rtx
     /// `UNDEFINED`, so whatever the image held is thrown away; an image written over in part —
     /// the interface's textures — transitions from where it stands instead, in `GuiTextures`.
     /// `regions` is written to: each is moved along by where the bytes landed in the staging.
-    void uploadImage(const Device& device, Batch& batch, Image& image, std::span<const std::byte> bytes,
-        std::span<VkBufferImageCopy> regions);
+    void uploadImage(
+        Batch& batch, Image& image, std::span<const std::byte> bytes, std::span<VkBufferImageCopy> regions);
 
     template <class T>
-    Buffer uploadBuffer(
-        const Device& device, Batch& batch, std::span<const T> data, VkBufferUsageFlags usage, std::string_view name)
+    Buffer uploadBuffer(Batch& batch, std::span<const T> data, VkBufferUsageFlags usage, std::string_view name)
     {
-        return uploadBuffer(device, batch, std::as_bytes(data), usage, name);
+        return uploadBuffer(batch, std::as_bytes(data), usage, name);
     }
 }

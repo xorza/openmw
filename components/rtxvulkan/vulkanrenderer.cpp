@@ -111,19 +111,18 @@ namespace Rtx
         , mGraveyard(mDevice, mPool)
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
-        , mCountCrossings(options.mCountCrossings)
-        , mRadianceWidth(options.mRadianceWidth)
-        , mUpscaling(options.mUpscaling)
+        , mProfile(options.mProfile)
+        , mUpscaling(mProfile.mUpscaling)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
         // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
         // `TRANSFER_SRC` because `FrameImage::Composite` copies this out: it is the frame a measurement
         // is taken on, where `readPixels` gives the one a display would show.
-        , mFrame(mDevice, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
+        , mFrame(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
-        , mView(mDevice, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT,
-              "view colour")
+        , mView(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
+              VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
         , mComposite(mDevice, mPool, options.mShaderDirectory)
         , mBloom(mDevice, options.mShaderDirectory)
         , mWaves(mDevice, mPool, options.mShaderDirectory)
@@ -137,7 +136,7 @@ namespace Rtx
         , mViewCounts(
               Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
-        , mGuiTextures(mDevice, mPool)
+        , mGuiTextures(mDevice, mGraveyard, mPool)
     {
         // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
         mNoSprites.clear();
@@ -146,8 +145,8 @@ namespace Rtx
         if (mUpscaling.mMode != Upscale::Off)
             startUpscaler();
 
-        if (options.mStressOverlapMs > 0.0)
-            mStress = std::make_unique<StressPass>(mDevice, mPool, options.mShaderDirectory, options.mStressOverlapMs);
+        if (mProfile.mStressOverlapMs > 0.0)
+            mStress = std::make_unique<StressPass>(mDevice, mPool, options.mShaderDirectory, mProfile.mStressOverlapMs);
 
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
@@ -270,7 +269,7 @@ namespace Rtx
         // The layer channels only where something upscales, which is the same test
         // `mLayerCompositedAfter` makes of the shader: Ray Reconstruction is the one reader the
         // trace hands a separate layer to, and a frame nothing upscales composites its own.
-        mFrame.resize(render.width, render.height, upscaling(), mRadianceWidth);
+        mFrame.resize(render.width, render.height, upscaling(), mProfile.mRadianceWidth);
 
         // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
@@ -465,17 +464,15 @@ namespace Rtx
         // would be hundreds for a town.
         Batch setup(mPool);
 
-        Graveyard& graveyard = mGraveyard;
-
         // Every scene is traced by two frames at once, the doll's included: a picture inside the
         // interface rides the frame it was asked on, and the next frame may place it again while
         // that one is still tracing.
-        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, sFrameSlots);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords, sFrameSlots, graveyard);
-        held.mSkinTables = std::make_unique<SkinTables>(mDevice, setup, scene, sFrameSlots, graveyard);
+        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, mGraveyard, setup, scene, sFrameSlots);
+        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, mGraveyard, setup, scene, held.mRecords, sFrameSlots);
+        held.mSkinTables = std::make_unique<SkinTables>(mDevice, mGraveyard, setup, scene, sFrameSlots);
 
         held.mTextures = std::make_unique<TextureArray>(
-            mDevice, setup, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures, graveyard);
+            mDevice, mGraveyard, setup, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures);
 
         // Built once and kept, because building one compiles every kernel the trace can ever need
         // — 6.3 s on a cold cache, measured. Every texture array declares the same bindless
@@ -484,7 +481,7 @@ namespace Rtx
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
-                mChannelLayout, mFogVolumeLayout, mCountHits, mCountCrossings);
+                mChannelLayout, mFogVolumeLayout, mCountHits, mProfile.mCountCrossings);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 
@@ -494,7 +491,7 @@ namespace Rtx
         // takes it on the first placement that writes it.
         mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
             held.mBuffers->getNormals(), nullptr);
-        held.mAcceleration->build(setup, scene, held.mRecords, graveyard);
+        held.mAcceleration->build(setup, scene, held.mRecords);
         held.mBuiltMeshes = scene.meshes().getRevision();
         held.mBuiltStructure = scene.getStructureRevision();
 
@@ -522,26 +519,24 @@ namespace Rtx
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
 
-        Graveyard& graveyard = mGraveyard;
-
         Batch setup(mPool);
-        held.mTextures->write(setup, arrived, graveyard);
+        held.mTextures->write(setup, arrived);
 
         // The meshes that arrived, and no others: the geometry blocks are appended to rather than
         // replaced, so every address a structure was built from is still its own. The revision and
         // not the count, because a freed slot taken over holds different geometry at the same size.
         if (scene.meshes().getRevision() != held.mBuiltMeshes)
         {
-            held.mBuffers->extend(setup, scene, graveyard);
-            held.mSkinTables->extend(setup, scene, graveyard);
-            held.mAcceleration->extend(setup, scene, graveyard);
+            held.mBuffers->extend(setup, scene);
+            held.mSkinTables->extend(setup, scene);
+            held.mAcceleration->extend(setup, scene);
 
             // Posed before it is built, as `setScene` does, into the first copy, which is what the
             // build reads — and only the meshes that arrived, over the rows `SkinTables::extend`
             // staged. `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
             mSkinPass.recordArrived(setup.getCommands(), scene, FrameSlot{}, scene.meshes().getArrived(),
                 *held.mSkinTables, held.mAcceleration->getPoses(), held.mBuffers->getNormals());
-            held.mAcceleration->buildArrived(setup, scene, timer, graveyard);
+            held.mAcceleration->buildArrived(setup, scene, timer);
             held.mBuiltMeshes = scene.meshes().getRevision();
         }
 
@@ -590,7 +585,7 @@ namespace Rtx
         if (held.mTextures == nullptr)
             return;
 
-        held.mTextures->drop(textures, mGraveyard);
+        held.mTextures->drop(textures);
     }
 
     bool VulkanRenderer::recordPlacement(
@@ -599,7 +594,7 @@ namespace Rtx
         // What the scene let go of, given back here: walking away from a ring frees its meshes and
         // nothing arrives to take them over until the next ring, so a frame that only places is the
         // one that must not hold their structures.
-        held.mAcceleration->release(scene.meshes().getFreed(), placing.mGraveyard);
+        held.mAcceleration->release(scene.meshes().getFreed());
 
         // Once, for the slots that changed, and both halves read it: a nine-by-nine exterior is
         // fifty thousand rows with a matrix inverse apiece, and a frame changes a hundred.
@@ -619,7 +614,7 @@ namespace Rtx
         // Nothing to report, because nothing here is recorded: the tables are host-visible and the
         // submit that follows makes them visible. Only what a moving world changed — rebuilding all
         // of it is tens of milliseconds on a nine-by-nine region.
-        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, placing.mSlot, placing.mGraveyard);
+        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, placing);
 
         return posed || built;
     }
@@ -656,7 +651,6 @@ namespace Rtx
                 Placing{
                     .mCommands = placement.getCommands(),
                     .mSlot = into,
-                    .mGraveyard = mGraveyard,
                 });
             placement.defer();
             held.mSlot = into;
@@ -679,7 +673,6 @@ namespace Rtx
                     .mCommands = placement,
                     .mSlot = into,
                     .mTimer = &frame.mTimer,
-                    .mGraveyard = mGraveyard,
                 }))
             mPool.submit(placement, mGraveyard);
         else
@@ -811,7 +804,7 @@ namespace Rtx
         // After the collect and before anything is handed over: this frame's submit is the first
         // that says every draw with a texture given back has finished, and the staging turns on
         // the same signal.
-        mGuiTextures.startFrame(mGraveyard);
+        mGuiTextures.startFrame();
 
         mGraveyard.bury(growTo(gui.mGuiVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "gui vertices"));
@@ -911,7 +904,7 @@ namespace Rtx
         // not started at all where the trace was specialized to write nothing into it, which is the
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
         // this is the write a frame that never reads it was still paying for.
-        if (mCountHits || mCountCrossings)
+        if (mCountHits || mProfile.mCountCrossings)
             frame.mHitCount.writable<FrameCounts>(0, 1).front() = FrameCounts{};
 
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
@@ -978,7 +971,6 @@ namespace Rtx
                 .mInputs = inputs,
                 .mBinSlot = mRing.getRecordingSlot(),
                 .mBuffers = mWorld.mBuffers.get(),
-                .mGraveyard = &mGraveyard,
                 .mAsked = camera,
                 .mSampled = sampled,
                 .mCounts = &frame.mHitCount,
@@ -1064,7 +1056,7 @@ namespace Rtx
         // report back a frame or two late. A wait's access scope is the device's, so the counters
         // need a dependency of their own, recorded here after every pass that could have added to
         // them.
-        if (mCountHits || mCountCrossings)
+        if (mCountHits || mProfile.mCountCrossings)
             frame.mHitCount.orderForHostRead(commands);
 
         mRing.submit(frame);
@@ -1120,7 +1112,7 @@ namespace Rtx
         // The one drain a picture still pays, and only the first picture of a new size pays it.
         finishTraces();
 
-        mView.grow(width, height, false, mRadianceWidth);
+        mView.grow(width, height, false, mProfile.mRadianceWidth);
 
         mViewTarget = Image(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
@@ -1175,7 +1167,6 @@ namespace Rtx
                     .mSpriteShade = &mSpriteShade,
                     .mInputs = inputs,
                     .mBuffers = traced.mBuffers.get(),
-                    .mGraveyard = &mGraveyard,
                     .mAsked = camera,
                     .mSampled = sampled,
                     .mCounts = &mViewCounts,
@@ -1215,7 +1206,7 @@ namespace Rtx
             });
 
             if (options.mReadBack)
-                mGuiTextures.readBackWith(texture, commands, mRing.getRecording(), mGraveyard);
+                mGuiTextures.readBackWith(texture, commands, mRing.getRecording());
         }
         trace.defer();
 

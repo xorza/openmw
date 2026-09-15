@@ -32,7 +32,7 @@ namespace Rtx
         /// @param batch what the first arrival rides, which is every deforming mesh the scene holds.
         /// @param slots how many frames may be posing this scene at once.
         SkinTables(
-            const Device& device, Batch& batch, const SceneDesc& scene, std::uint32_t slots, Graveyard& graveyard);
+            const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
 
         /// Takes in what the scene says arrived: the bind poses of the deforming meshes, the rigs
         /// and the morphs, and the arrived meshes' rows into the first copy, which is the one an
@@ -41,7 +41,7 @@ namespace Rtx
         /// that mesh can still be on the queue reading it — a copy recorded now runs behind that
         /// frame, where a host write would land under it. Ends in the barrier the dispatch over the
         /// arrivals needs.
-        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
+        void extend(Batch& batch, const SceneDesc& scene);
 
         /// Waits until nothing on the queue reads or writes `slot`'s rows and weights, ahead of a
         /// placement that writes them from the host. The reader is usually the placement before
@@ -85,6 +85,9 @@ namespace Rtx
         void writeRows(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
         const Device* mDevice = nullptr;
+
+        /// Where a table this outgrows goes, held until the frames still reading it have run.
+        Graveyard* mGraveyard = nullptr;
 
         Buffer mBindPositions;
         Buffer mBindNormals;

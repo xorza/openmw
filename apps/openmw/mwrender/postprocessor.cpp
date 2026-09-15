@@ -263,7 +263,6 @@ namespace MWRender
         createObjectsForFrame(frameId);
 
         mRendering.updateProjectionMatrix();
-        mRendering.setScreenRes(renderWidth(), renderHeight());
 
         dirtyTechniques(true);
 

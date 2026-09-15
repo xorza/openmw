@@ -75,25 +75,25 @@ namespace Rtx
             }
 
             /// Builds and waits, so the answers are on the device when this returns.
-            void build(BottomLevelStore& store, std::span<const Index> meshes, Graveyard& graveyard)
+            void build(BottomLevelStore& store, std::span<const Index> meshes)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, graveyard);
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices);
                 batch.flush();
             }
 
             /// Builds into a batch that rides the pool's next submit, which nothing has made yet.
-            void buildDeferred(BottomLevelStore& store, std::span<const Index> meshes, Graveyard& graveyard)
+            void buildDeferred(BottomLevelStore& store, std::span<const Index> meshes)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, graveyard);
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices);
                 batch.defer();
             }
 
             /// One placement: what it copies is recorded and run, so the next can build on it.
-            const SlotSet& place(BottomLevelStore& store, Graveyard& graveyard)
+            const SlotSet& place(BottomLevelStore& store)
             {
-                const SlotSet& moved = store.prepareCompaction(graveyard);
+                const SlotSet& moved = store.prepareCompaction();
                 if (!moved.empty())
                 {
                     Batch batch(getPool());
@@ -123,26 +123,26 @@ namespace Rtx
             stage();
 
             Graveyard graveyard(getDevice(), getPool());
-            BottomLevelStore store(getDevice());
+            BottomLevelStore store(getDevice(), graveyard);
 
             // Waited for, so the first placement reads it — and the build after it changes nothing.
-            build(store, std::span(grids).subspan(0, 1), graveyard);
-            build(store, std::span(grids).subspan(1, 1), graveyard);
-            const SlotSet& atOne = place(store, graveyard);
+            build(store, std::span(grids).subspan(0, 1));
+            build(store, std::span(grids).subspan(1, 1));
+            const SlotSet& atOne = place(store);
             EXPECT_TRUE(atOne.has(grids[0])) << "a question whose submit has run was not read";
             EXPECT_TRUE(atOne.has(grids[1])) << "a question whose submit has run was not read";
 
             // Deferred and never submitted: the timeline has not passed the value it rides, so the
             // placement reads nothing, and it is not the count of placements that decides.
-            buildDeferred(store, std::span(grids).subspan(2, 1), graveyard);
-            EXPECT_TRUE(place(store, graveyard).empty()) << "an answer read before its submit could have run";
-            EXPECT_TRUE(place(store, graveyard).empty()) << "an answer read before its submit could have run";
+            buildDeferred(store, std::span(grids).subspan(2, 1));
+            EXPECT_TRUE(place(store).empty()) << "an answer read before its submit could have run";
+            EXPECT_TRUE(place(store).empty()) << "an answer read before its submit could have run";
 
             // Submitted and waited, and the next placement reads it.
             getPool().finishDeferred();
-            EXPECT_TRUE(place(store, graveyard).has(grids[2])) << "an answer whose submit has run was not read";
+            EXPECT_TRUE(place(store).has(grids[2])) << "an answer whose submit has run was not read";
 
-            EXPECT_TRUE(place(store, graveyard).empty()) << "something was copied twice";
+            EXPECT_TRUE(place(store).empty()) << "something was copied twice";
             EXPECT_EQ(store.getCompactableBytes(), 0u) << "an answer outlived its copy";
             EXPECT_EQ(store.getCompactableNowBytes(), 0u) << "an answer outlived its copy";
 
@@ -160,13 +160,13 @@ namespace Rtx
             stage();
 
             Graveyard graveyard(getDevice(), getPool());
-            BottomLevelStore store(getDevice());
-            build(store, grids, graveyard);
+            BottomLevelStore store(getDevice(), graveyard);
+            build(store, grids);
 
-            store.release(std::span(grids).subspan(0, 1), graveyard);
+            store.release(std::span(grids).subspan(0, 1));
             EXPECT_EQ(store.getStructure(grids[0]), VK_NULL_HANDLE);
 
-            const SlotSet& moved = place(store, graveyard);
+            const SlotSet& moved = place(store);
             EXPECT_FALSE(moved.has(grids[0])) << "a released structure was copied";
             EXPECT_TRUE(moved.has(grids[1])) << "the structure still standing was not copied";
 

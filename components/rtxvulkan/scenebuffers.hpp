@@ -17,6 +17,7 @@
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
+#include "placing.hpp"
 #include "slottable.hpp"
 #include "spritebin.hpp"
 
@@ -36,8 +37,8 @@ namespace Rtx
     {
     public:
         /// @param slots how many frames may be tracing this scene at once.
-        SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
-            std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
+        SceneBuffers(const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene,
+            std::span<const InstanceRecord> records, std::uint32_t slots);
 
         /// Takes in the attributes of the meshes the scene says arrived, and the layer and mask
         /// runs that arrived with them. The blocks are appended to rather than replaced, and a
@@ -45,7 +46,7 @@ namespace Rtx
         /// was given may be one a material that went held until the last sweep, and the frame
         /// that shaded its hits can still be reading it. Ends in the barrier whatever reads them
         /// needs.
-        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
+        void extend(Batch& batch, const SceneDesc& scene);
 
         /// Rewrites what a moving world changes — where things are and what is lit — leaving what
         /// it is made of alone: rebuilding all of it is tens of milliseconds on a nine-by-nine
@@ -59,7 +60,7 @@ namespace Rtx
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list the rows
         ///        are driven by.
         void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
-            FrameSlot slot, Graveyard& graveyard);
+            const Placing& placing);
 
         /// Waits until nothing on the queue reads `slot`'s copy of any table `place` writes, ahead
         /// of the placement that writes it. Each copy carries its own stamp, so this waits for the
@@ -115,16 +116,19 @@ namespace Rtx
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
         /// copy of the normals — and rewrites the per-mesh row table. Per mesh and not per scene,
         /// because that is what an arrival is. Nothing is ordered here.
-        void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
+        void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
         /// Stages the layer and mask runs that arrived — or a table whole where it had to be made
         /// again to hold them. Nothing is ordered here.
-        void writeMaterialRuns(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
+        void writeMaterialRuns(Batch& batch, const SceneDesc& scene);
 
         /// Writes the material rows `slot`'s copy owes.
-        void shade(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
+        void shade(const SceneDesc& scene, FrameSlot slot);
 
         const Device* mDevice = nullptr;
+
+        /// Where a table this remakes goes, held until the frames still reading it have run.
+        Graveyard* mGraveyard = nullptr;
 
         // What the scene is made of, written on arrival and read by every frame: one copy, because
         // an arrival writes it on the queue, behind every frame in flight. The colours too, where

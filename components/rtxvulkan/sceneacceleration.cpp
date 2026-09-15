@@ -37,12 +37,13 @@ namespace Rtx
     }
 
     SceneAcceleration::SceneAcceleration(
-        const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
+        const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
-        , mBottomLevel(device)
+        , mGraveyard(graveyard)
+        , mBottomLevel(device, graveyard)
     {
         mPoses.open(device, slots, sBuildInputUsage, "poses");
-        mRowTable.open(device, slots, sBuildInputUsage, "instances");
+        mRowTable.open(device, graveyard, slots, sBuildInputUsage, "instances");
         mIndices.open(device, sBuildInputUsage, "indices");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -58,15 +59,14 @@ namespace Rtx
             mPoses.settle(FrameSlot{ slot });
     }
 
-    void SceneAcceleration::build(
-        Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
+    void SceneAcceleration::build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records)
     {
         assert(mBottomLevel.size() == 0 && mTopLevel.isEmpty() && "a scene built twice");
 
         // The rows after the structures, because a row names the address of the structure it places.
-        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, graveyard);
+        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices);
         writeRows(records, {});
-        prepareTopLevel(scene, FrameSlot{}, graveyard);
+        prepareTopLevel(scene, FrameSlot{});
         recordTopLevel(batch.getCommands(), nullptr);
     }
 
@@ -103,30 +103,30 @@ namespace Rtx
         orderStagedWrites(batch);
     }
 
-    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
+    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene)
     {
         // Departures first, and their rooms go to the graveyard rather than straight back, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
         // lists are disjoint, so a slot handed out again appears only among the arrivals and is
         // dealt with by `buildMeshes`, which buries whatever the slot was holding.
-        release(scene.meshes().getFreed(), graveyard);
+        release(scene.meshes().getFreed());
 
         writeGeometry(batch, scene, scene.meshes().getArrived());
     }
 
-    void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard)
+    void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer)
     {
         // The builds a crossing brings, bracketed as one zone. Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
 
-        mBottomLevel.build(batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices, graveyard);
+        mBottomLevel.build(batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices);
 
         closeZone(timer, batch.getCommands());
     }
 
-    void SceneAcceleration::prepareRefit(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
+    void SceneAcceleration::prepareRefit(const SceneDesc& scene, const FrameSlot slot)
     {
         const std::span<const Index> deformed = scene.meshes().getDeformed();
 
@@ -157,7 +157,7 @@ namespace Rtx
             scratchTotal = alignUp(scratchTotal + mBottomLevel.getUpdateScratch(mesh), scratchAlignment);
         }
 
-        graveyard.bury(
+        mGraveyard.bury(
             growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "refit scratch"));
 
         const VkDeviceAddress scratchAddress = mRefitScratch.addressFor();
@@ -218,7 +218,7 @@ namespace Rtx
     bool SceneAcceleration::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
         std::span<const Index> changed, const Placing& placing)
     {
-        prepareRefit(scene, placing.mSlot, placing.mGraveyard);
+        prepareRefit(scene, placing.mSlot);
 
         // What this copy owes, and not what the scene moved: a world that stands still owes
         // nothing, and building the same top level over the same rows was a submit and a fence on
@@ -229,12 +229,12 @@ namespace Rtx
         // After the rows are grown to the scene and before the copy they are synced from. A
         // structure copied tight has moved, and the rows naming it are written again here — into
         // the same table, so every copy owes them the way it owes anything else.
-        const bool compacting = placeCompacted(records, placing.mGraveyard);
+        const bool compacting = placeCompacted(records);
 
         if (!compacting && !mRowTable.owes(placing.mSlot) && mRefit.mBuilds.empty())
             return false;
 
-        prepareTopLevel(scene, placing.mSlot, placing.mGraveyard);
+        prepareTopLevel(scene, placing.mSlot);
 
         // A barrier between the refit and the top level, and not a fence: the top level is built
         // over structures the refit has just rewritten, which is a dependency inside a command
@@ -250,9 +250,9 @@ namespace Rtx
         return true;
     }
 
-    bool SceneAcceleration::placeCompacted(std::span<const InstanceRecord> records, Graveyard& graveyard)
+    bool SceneAcceleration::placeCompacted(std::span<const InstanceRecord> records)
     {
-        const SlotSet& moved = mBottomLevel.prepareCompaction(graveyard);
+        const SlotSet& moved = mBottomLevel.prepareCompaction();
         if (moved.empty())
             return false;
 
@@ -296,7 +296,7 @@ namespace Rtx
             placeRow(at, records[at]);
     }
 
-    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
+    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, const FrameSlot slot)
     {
         // Checked here rather than left to the driver: a scene that grew a mesh since `setScene` is
         // a caller breaking `placeScene`'s contract, and the only other symptom is an invalid handle
@@ -306,11 +306,11 @@ namespace Rtx
                 + std::to_string(scene.meshes().getRows().size())
                 + " without being built again; placeScene can only move what setScene made");
 
-        mRowTable.sync(slot, graveyard);
+        mRowTable.sync(slot);
 
         const auto count = static_cast<std::uint32_t>(mRowTable.size());
         if (mTopLevel.isEmpty() || count > mTopLevelSlots)
-            sizeTopLevel(count, graveyard);
+            sizeTopLevel(count);
 
         // The top level is built from this frame's copy, so the address moves with the slot.
         mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.addressFor(slot);
@@ -395,7 +395,7 @@ namespace Rtx
         };
     }
 
-    void SceneAcceleration::sizeTopLevel(const std::uint32_t slots, Graveyard& graveyard)
+    void SceneAcceleration::sizeTopLevel(const std::uint32_t slots)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
 
@@ -427,17 +427,17 @@ namespace Rtx
         // The old structure is buried, and its storage with it where that has to grow. A cell
         // arriving is what brings this here, and an arrival waits every frame out first — but the
         // rule is one rule, and burying costs nothing where nothing is in flight.
-        graveyard.bury(std::move(mTopLevel));
+        mGraveyard.bury(std::move(mTopLevel));
 
         mTopLevelBytes = sizes.accelerationStructureSize;
         mTopLevelSlots = slots;
 
         // Grown to the high-water mark and kept, both of them. A structure is created at offset zero
         // of whatever this holds and asks only that it be large enough.
-        graveyard.bury(growTo(mTopLevelStorage, mDevice, BufferKind::DeviceLocal, sizes.accelerationStructureSize,
+        mGraveyard.bury(growTo(mTopLevelStorage, mDevice, BufferKind::DeviceLocal, sizes.accelerationStructureSize,
             sStructureStorageUsage, "top level storage"));
-        graveyard.bury(growTo(mTopLevelScratch, mDevice, BufferKind::DeviceLocal, sizes.buildScratchSize, sScratchUsage,
-            "top level scratch"));
+        mGraveyard.bury(growTo(mTopLevelScratch, mDevice, BufferKind::DeviceLocal, sizes.buildScratchSize,
+            sScratchUsage, "top level scratch"));
 
         mTopLevel
             = AccelerationStructure::topLevel(mDevice, mTopLevelStorage, sizes.accelerationStructureSize, "scene");

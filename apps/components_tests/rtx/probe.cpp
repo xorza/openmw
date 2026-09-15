@@ -98,7 +98,7 @@ namespace Rtx
         Buffer placeStaged(const Device& device, CommandPool& pool, std::span<const std::byte> bytes)
         {
             Batch upload(pool);
-            Buffer held = uploadBuffer(device, upload, bytes, sUsage, "test");
+            Buffer held = uploadBuffer(upload, bytes, sUsage, "test");
             upload.flush();
             return held;
         }

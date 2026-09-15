@@ -24,8 +24,9 @@ namespace Rtx
     }
 
     SkinTables::SkinTables(
-        const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots, Graveyard& graveyard)
+        const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(&device)
+        , mGraveyard(&graveyard)
     {
         mBones.open(slots);
         mWeights.open(slots);
@@ -33,12 +34,13 @@ namespace Rtx
         // Every table exists from here, whether or not anything has been written to it: `outgrow`
         // makes a table that is empty whatever it is asked for, so a scene with no actor in it
         // still has a buffer at every address a dispatch could be handed.
-        extend(batch, scene, graveyard);
+        extend(batch, scene);
     }
 
-    void SkinTables::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
+    void SkinTables::extend(Batch& batch, const SceneDesc& scene)
     {
         const Device& device = *mDevice;
+        Graveyard& graveyard = *mGraveyard;
 
         // Grown to what the scene reaches, and written whole where a growth moved it. The
         // arrivals are what a frame with an actor walking in costs; a table made again is what a
@@ -87,8 +89,8 @@ namespace Rtx
                 continue;
 
             const VkDeviceSize at = VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
-            stageInto(batch, *mDevice, mBindPositions, at, std::as_bytes(scene.meshes().getMeshPositions(index)));
-            stageInto(batch, *mDevice, mBindNormals, at, std::as_bytes(mesh.mVertices.in(scene.meshes().getNormals())));
+            stageInto(batch, mBindPositions, at, std::as_bytes(scene.meshes().getMeshPositions(index)));
+            stageInto(batch, mBindNormals, at, std::as_bytes(mesh.mVertices.in(scene.meshes().getNormals())));
         }
     }
 
@@ -103,10 +105,9 @@ namespace Rtx
             if (rig.mRuns.empty())
                 continue;
 
-            stageInto(batch, *mDevice, mRuns, VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t),
+            stageInto(batch, mRuns, VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t),
                 std::as_bytes(rig.mRuns.in(scene.deformers().getRuns())));
-            stageInto(batch, *mDevice, mInfluences,
-                VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence),
+            stageInto(batch, mInfluences, VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence),
                 std::as_bytes(rig.mInfluences.in(scene.deformers().getInfluences())));
         }
     }
@@ -121,7 +122,7 @@ namespace Rtx
             if (morph.mOffsets.empty())
                 continue;
 
-            stageInto(batch, *mDevice, mMorphOffsets, VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f),
+            stageInto(batch, mMorphOffsets, VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f),
                 std::as_bytes(morph.mOffsets.in(scene.deformers().getMorphOffsets())));
         }
     }
@@ -133,11 +134,10 @@ namespace Rtx
         {
             const MeshRange& mesh = ranges[index];
             if (mesh.mDeform == Deform::Rig)
-                stageInto(batch, *mDevice, mBones.at(FrameSlot{}),
-                    VkDeviceSize{ mesh.mPoseOffset } * sizeof(Shaders::GpuBone),
+                stageInto(batch, mBones.at(FrameSlot{}), VkDeviceSize{ mesh.mPoseOffset } * sizeof(Shaders::GpuBone),
                     std::as_bytes(scene.getMeshBones(index)));
             else if (mesh.mDeform == Deform::Morph)
-                stageInto(batch, *mDevice, mWeights.at(FrameSlot{}), VkDeviceSize{ mesh.mPoseOffset } * sizeof(float),
+                stageInto(batch, mWeights.at(FrameSlot{}), VkDeviceSize{ mesh.mPoseOffset } * sizeof(float),
                     std::as_bytes(scene.getMeshWeights(index)));
         }
     }
