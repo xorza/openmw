@@ -697,14 +697,15 @@ namespace Rtx::Testing
         /// stand still.
         ///
         /// **Exact rather than a threshold, because advection is a translation.** The field is read
-        /// at `position - wind * time * FOG_GALE`, so an eye moved by exactly that much at the same
-        /// moment reads the field the unmoved eye reads with no wind at all — churn and all, since
-        /// the churn is a function of the moment and not of the wind. Nothing else in this frame
-        /// knows where the eye is: the wall is behind it, the rays reach the sky, and the layer is a
+        /// at `position - drift`, where the drift is the distance the wind has blown so far — the
+        /// host integrates it, `FogDrift` — so an eye moved by exactly that much at the same moment
+        /// reads the field the unmoved eye reads with no wind at all — churn and all, since the
+        /// churn is a function of the moment and not of the wind. Nothing else in this frame knows
+        /// where the eye is: the wall is behind it, the rays reach the sky, and the layer is a
         /// function of height alone.
         ///
-        /// **And the sign is the half that matters.** Sampling from further *upwind* as the clock
-        /// runs is what carries a bank past; adding would walk the whole field into the wind. A
+        /// **And the sign is the half that matters.** Sampling from further *upwind* as the drift
+        /// grows is what carries a bank past; adding would walk the whole field into the wind. A
         /// camera moved the wrong way sees a different field, which the last assertion checks.
         TEST_F(RtxVisibilityTest, theWindCarriesTheFieldAndAnEyeThatWalksWithItSeesItStandStill)
         {
@@ -712,12 +713,13 @@ namespace Rtx::Testing
             constexpr std::size_t count = std::size_t{ size } * size;
             constexpr float seconds = 2.0f;
             const osg::Vec2f wind(0.3f, 0.4f);
+            const osg::Vec2f drift = wind * (seconds * Shaders::FOG_GALE);
 
-            const auto frame = [&](const osg::Vec2f& blowing, const osg::Vec3f& eye) {
+            const auto frame = [&](const osg::Vec2f& blown, const osg::Vec3f& eye) {
                 Shaders::VisibilityConstants camera
                     = makeCamera(eye, eye + osg::Vec3f(0.0f, -10000.0f, 0.0f), 90.0f, size, size, 100000.0f);
                 camera.mFogUniform = 0.0f;
-                camera.mFogWind = blowing;
+                camera.mFogDrift = blown;
                 camera.mTime = seconds;
 
                 std::vector<float> luminance;
@@ -733,12 +735,11 @@ namespace Rtx::Testing
             };
 
             const osg::Vec3f eye(0.0f, -50000.0f, 0.0f);
-            const osg::Vec3f carried(
-                wind.x() * seconds * Shaders::FOG_GALE, wind.y() * seconds * Shaders::FOG_GALE, 0.0f);
+            const osg::Vec3f carried(drift.x(), drift.y(), 0.0f);
 
             const std::vector<float> still = frame(osg::Vec2f(), eye);
-            const std::vector<float> downwind = frame(wind, eye + carried);
-            const std::vector<float> upwind = frame(wind, eye - carried);
+            const std::vector<float> downwind = frame(drift, eye + carried);
+            const std::vector<float> upwind = frame(drift, eye - carried);
 
             // The two read one field at one moment, and differ by the rounding of an eye moved
             // fourteen hundred units against a ray that runs thirty thousand.

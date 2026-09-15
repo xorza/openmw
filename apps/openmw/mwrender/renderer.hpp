@@ -216,10 +216,10 @@ namespace MWRender
         virtual PostProcessor* getPostProcessor() { return nullptr; }
 
         /// The one point in the frame where the world is the calling thread's alone, for a renderer
-        /// that has a schedule to run against it: `MWRender::Session` teleports, aims a camera and
-        /// turns a sky, and each is a change to the simulation. Called from `Engine::frame` and from
-        /// nowhere else, because a loading screen drives `advance` and `updateTraversal` for frames
-        /// of its own and a teleport made from inside one re-enters it.
+        /// that has a schedule to run against it: the harness's `RtxTool::Session` teleports, aims a
+        /// camera and turns a sky, and each is a change to the simulation. Called from
+        /// `Engine::frame` and from nowhere else, because a loading screen drives `advance` and
+        /// `updateTraversal` for frames of its own and a teleport made from inside one re-enters it.
         virtual void tickSchedule() {}
 
         /// Opens the frame's clock and says how long the frame stands for, in seconds: what the wall

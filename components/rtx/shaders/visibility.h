@@ -327,8 +327,10 @@ namespace Rtx::Shaders
         /// This is the separate thing a wind adds: the entire field carried downwind together, on
         /// the heading the cloud layer drifts along, because there is one wind over a landscape and
         /// cloud shadows crossing the ground one way while the air moves another would read as two
-        /// weathers at once. `FOG_GALE` says what a unit of it is worth.
-        vec2 mFogWind;
+        /// weathers at once. How far it has been carried, in world units, and not the wind: the
+        /// host integrates the wind over the clock (`Rtx::FogDrift`), because a wind times the
+        /// clock jumps whenever the wind changes.
+        vec2 mFogDrift;
 
         /// How far from the eye the world is built, in units. Zero where nothing is cut off.
         ///

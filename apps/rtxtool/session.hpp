@@ -10,7 +10,6 @@
 #include <osg/Node>
 #include <osg/Vec3f>
 
-#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
@@ -18,71 +17,45 @@
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/runrecord.hpp>
 
-#include "framereport.hpp"
+#include <apps/openmw/mwrender/rtx/framereport.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
+
 #include "stopwriter.hpp"
 
-namespace MWRender
+namespace RtxTool
 {
-    /// What a harness run asks of the ray tracer, where a harness started this process. Carried
-    /// through `RendererSpec`, so who owns the request and the result is readable off the
-    /// signature; `GlRenderer` ignores it, which is why it hangs off the spec rather than sitting
-    /// in it.
-    struct RtxSetup
-    {
-        /// Nothing where the harness turned no knob, which is a run at whatever the settings say.
-        std::optional<Rtx::RenderProfile> mProfile;
-
-        /// Nothing where the harness asked for no measured run, which is every played session.
-        std::optional<Rtx::SessionRequest> mSession;
-
-        /// Where the run's answer goes, wherever `mSession` is set. The caller's own, and it has to
-        /// outlive `Engine::go`: the session fills it from its own destructor, which `~Engine` runs.
-        Rtx::SessionResult* mInto = nullptr;
-    };
-
     /// Drives a run of the game and measures it — the game, because a staged world never pays for
     /// the whole-graph walk, the sweep or a cell arriving, which are what cost a frame. It reads
-    /// the world through `MWBase::Environment`, is fed each frame by `RtxRenderer`, and ends the
-    /// run through `StateManager::requestQuit` the way the player's quit key does.
-    class Session
+    /// the world through `MWBase::Environment`, is fed each frame by `MWRender::RtxRenderer`
+    /// through the interface it implements, and ends the run through `StateManager::requestQuit`
+    /// the way the player's quit key does.
+    ///
+    /// **The harness's, and built before the engine.** It is installed as `RtxSetup::mRun`, and
+    /// what it came to is read with `describe` once `Engine::go` has returned — the run that ends
+    /// its last stop and the window somebody closes both end there, and only the first ever
+    /// reaches `finish`.
+    class Session final : public MWRender::RtxRun
     {
     public:
-        Session(Rtx::SessionRequest request, Rtx::SessionResult& into);
-        ~Session();
+        explicit Session(Rtx::SessionRequest request);
 
-        bool isHeadless() const { return mRequest.mHeadless; }
+        bool isHeadless() const override { return mRequest.mHeadless; }
+        const Rtx::ValidationOptions& getValidation() const override { return mRequest.mValidation; }
+        std::optional<float> getStep() const override { return mRequest.mStep; }
+        std::optional<bool> getSettled() const override { return mRequest.mSettled; }
+        std::optional<std::uint32_t> getSampleFrame() const override;
+        std::uint32_t getAccumulated() const override;
+        bool wantsSecondWalk() const override;
 
-        /// Which layers the run asked for.
-        const Rtx::ValidationOptions& getValidation() const { return mRequest.mValidation; }
+        /// Starts the stop that is due, flies a route on, and turns a sky. Does nothing until the
+        /// game has a world to stand in.
+        void beforeFrame() override;
 
-        /// How long every frame of the run stands for, or nothing for the wall: what the renderer's
-        /// clock is made from.
-        std::optional<float> getStep() const { return mRequest.mStep; }
+        /// Reports the frame, and asks the game to quit once the last stop is done.
+        void frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report) override;
 
-        /// Whether this run states for itself that the ground waits, or nothing to let the frame
-        /// clock decide. `Rtx::SessionRequest::mSettled` says which runs state one.
-        std::optional<bool> getSettled() const { return mRequest.mSettled; }
-
-        /// Which sample the trace should take, or nothing while no stop is running: the stop's own
-        /// count and not the game's frame number, which carries every frame a loading screen drew
-        /// and would put two runs of one binary at different points in the Halton sequence.
-        std::optional<std::uint32_t> getSampleFrame() const;
-
-        /// How many frames have gone into the running sum, this one included, or nought where the
-        /// stop is not averaging. `Schedule::mAccumulate` says what that is for.
-        std::uint32_t getAccumulated() const;
-
-        /// Before the world is walked, because a teleport has to happen before the walk that would
-        /// mirror the cell it left: starts the stop that is due, flies a route on, and turns a sky.
-        /// Does nothing until the game has a world to stand in.
-        void beforeFrame();
-
-        /// Takes one traced frame the device answered for — `FrameReport::mResult` is set. Reports
-        /// and asks the game to quit once the last stop is done.
-        void frame(const FrameContext& context, const FrameReport& report);
-
-        /// Whether the stop wants the graph walked a second time, so it can report what that added.
-        bool wantsSecondWalk() const;
+        /// What the run came to: the places, the report, the verdict and where the eye was left.
+        Rtx::SessionResult describe() const;
 
     private:
         /// Whether the game has a world with a player in it. Nothing happens before it does.
@@ -109,7 +82,7 @@ namespace MWRender
 
         /// Closes the stop, records it, and moves to the next one — or ends the run. `report` is
         /// the last measured frame's, which is the frame every writer describes.
-        void endStop(const FrameContext& context, const FrameReport& report);
+        void endStop(const MWRender::FrameContext& context, const MWRender::FrameReport& report);
 
         /// Writes what the run was asked to write and ends it.
         void finish();
@@ -199,9 +172,6 @@ namespace MWRender
         };
 
         Rtx::SessionRequest mRequest;
-
-        /// Where the run's answer goes, written as this is destroyed.
-        Rtx::SessionResult& mInto;
 
         /// Which stop is running, and whether it has been started.
         std::size_t mAt = 0;

@@ -46,25 +46,25 @@
 #include <components/rtxbench/runrecord.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/windowmanager.hpp"
-#include "../../mwbase/world.hpp"
-#include "../../mwworld/cell.hpp"
-#include "../../mwworld/cellstore.hpp"
-#include "../../mwworld/esmstore.hpp"
-#include "../../mwworld/manualref.hpp"
-#include "../../mwworld/ptr.hpp"
-#include "../../mwworld/refdata.hpp"
+#include <apps/openmw/mwbase/environment.hpp>
+#include <apps/openmw/mwbase/windowmanager.hpp>
+#include <apps/openmw/mwbase/world.hpp>
+#include <apps/openmw/mwworld/cell.hpp>
+#include <apps/openmw/mwworld/cellstore.hpp>
+#include <apps/openmw/mwworld/esmstore.hpp>
+#include <apps/openmw/mwworld/manualref.hpp>
+#include <apps/openmw/mwworld/ptr.hpp>
+#include <apps/openmw/mwworld/refdata.hpp>
 
-#include "../camera.hpp"
-#include "../characterpreview.hpp"
-#include "../localmap.hpp"
-#include "../offscreenview.hpp"
-#include "../renderer.hpp"
-#include "../renderingmanager.hpp"
-#include "rtxrenderer.hpp"
+#include <apps/openmw/mwrender/camera.hpp>
+#include <apps/openmw/mwrender/characterpreview.hpp>
+#include <apps/openmw/mwrender/localmap.hpp>
+#include <apps/openmw/mwrender/offscreenview.hpp>
+#include <apps/openmw/mwrender/renderer.hpp>
+#include <apps/openmw/mwrender/renderingmanager.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
 
-namespace MWRender
+namespace RtxTool
 {
     namespace
     {
@@ -81,15 +81,15 @@ namespace MWRender
         ///
         /// A stop stands after the frame, and a picture is drawn inside the next one: drawn now
         /// instead, which is a drain a stop may pay and a frame may not.
-        void drawPicturesNow(const FrameContext& context)
+        void drawPicturesNow(const MWRender::FrameContext& context)
         {
             context.mRenderer.drawViews();
             context.mRenderer.getBackend().finishGuiTraces();
         }
     }
 
-    void StopWriter::write(const FrameContext& context, const FrameReport& report, const Rtx::Actions& actions,
-        const StopFacts& facts, Rtx::RunRecord& record)
+    void StopWriter::write(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
+        const Rtx::Actions& actions, const StopFacts& facts, Rtx::RunRecord& record)
     {
         const Writing into{ context, report, record };
 
@@ -337,7 +337,7 @@ namespace MWRender
             "wrote {}, {} textures at delight {}\n", Files::pathToUnicodeString(sheet), drawn.mCount, delight));
     }
 
-    void StopWriter::writeView(const Writing& into, OffscreenView& view, const std::filesystem::path& file)
+    void StopWriter::writeView(const Writing& into, MWRender::OffscreenView& view, const std::filesystem::path& file)
     {
         view.keepCopy();
         view.redraw();
@@ -374,7 +374,7 @@ namespace MWRender
         // **The game's own tile, and not a picture framed here to look like one.** The local map
         // drew the cell the player stands in when they entered it, at the resolution and over the
         // depth range the settings gave it; what a stop writes is that picture.
-        LocalMap* map = MWBase::Environment::get().getWindowManager()->getLocalMap();
+        MWRender::LocalMap* map = MWBase::Environment::get().getWindowManager()->getLocalMap();
         const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
         const MWWorld::Cell& cell = *player.getCell()->getCell();
 
@@ -417,7 +417,7 @@ namespace MWRender
         }
 
         {
-            InventoryPreview preview(into.mContext.mRenderer, into.mContext.mResources, subject);
+            MWRender::InventoryPreview preview(into.mContext.mRenderer, into.mContext.mResources, subject);
             preview.rebuild();
 
             // **Through the view and not through the texture the GUI draws from**, which is the one
@@ -475,8 +475,8 @@ namespace MWRender
         }
     }
 
-    bool StopWriter::checkHolds(const FrameContext& context, const FrameReport& report, const Rtx::Check check,
-        const StopFacts& facts, std::string& found)
+    bool StopWriter::checkHolds(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
+        const Rtx::Check check, const StopFacts& facts, std::string& found)
     {
         const Rtx::SceneDesc& scene = context.mScene;
         const Rtx::ExtractionStats& stats = report.mWalked.mFound;
@@ -607,7 +607,8 @@ namespace MWRender
                 // **The game's camera and not the note the session took**, which is read off the
                 // same object: a check against that would agree with itself however far either had
                 // drifted from what the stop asked for.
-                const Camera& camera = *MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
+                const MWRender::Camera& camera
+                    = *MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
                 const osg::Vec3f eye(camera.getPosition());
                 const osg::Vec3f forward = camera.getOrient() * osg::Vec3f(0.0f, 1.0f, 0.0f);
 

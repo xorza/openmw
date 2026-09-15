@@ -20,6 +20,12 @@ local function weathersOf(regionId)
     return allowed
 end
 
+-- The id of the weather the last press asked for, which the walk steps from. The engine keeps
+-- only the weather arriving and one queued behind it, and a press during a transition replaces
+-- the queued one, so what it reports never says how far the walk got: stepping from its answer
+-- stalled on the second weather for as long as the first took to arrive.
+local asked = nil
+
 local function nextWeather(player)
     local cell = player.cell
     local regionId = cell.region
@@ -34,20 +40,29 @@ local function nextWeather(player)
         return
     end
 
-    -- The one after the weather arriving, or after the current where none is: a change is a
-    -- transition, and a second press during it moves on rather than asking for the same again.
-    -- The first where neither is one the region rolls, which a save or the console can leave it as.
-    local current = core.weather.getNext(cell) or core.weather.getCurrent(cell)
+    -- The one after the last asked, or after the current where none was — the first where
+    -- neither is one the region rolls, which a save or the console can leave it as.
+    local current = core.weather.getCurrent(cell)
+    local from = asked or (current and current.recordId)
     local at = 0
     for index, entry in ipairs(allowed) do
-        if current and entry.weather.recordId == current.recordId then
+        if entry.weather.recordId == from then
             at = index
         end
     end
     local chosen = allowed[at % #allowed + 1]
+    asked = chosen.weather.recordId
+
+    -- A change is a transition of 1 / Transition_Delta real seconds — a minute for most, half
+    -- that for a storm — and a press during one queues behind the weather arriving.
+    local arriving = core.weather.getNext(cell)
+    local how = 'arriving'
+    if arriving and arriving.recordId ~= chosen.weather.recordId then
+        how = 'queued after ' .. arriving.name
+    end
 
     core.weather.changeWeather(regionId, chosen.weather)
-    say(player, string.format('%s, %d of %d, %d%%', chosen.weather.name, at % #allowed + 1, #allowed, chosen.chance))
+    say(player, string.format('%s %s, %d of %d, %d%%', chosen.weather.name, how, at % #allowed + 1, #allowed, chosen.chance))
 end
 
 -- The game's default `timescale`, and ten and a hundred times it.

@@ -26,27 +26,27 @@
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/settings/values.hpp>
 
-#include "../../mwbase/environment.hpp"
-#include "../../mwbase/statemanager.hpp"
-#include "../../mwbase/world.hpp"
-#include "../../mwmechanics/creaturestats.hpp"
-#include "../../mwmechanics/npcstats.hpp"
-#include "../../mwmechanics/stat.hpp"
-#include "../../mwworld/cell.hpp"
-#include "../../mwworld/cellstore.hpp"
-#include "../../mwworld/class.hpp"
-#include "../../mwworld/containerstore.hpp"
-#include "../../mwworld/datetimemanager.hpp"
-#include "../../mwworld/esmstore.hpp"
-#include "../../mwworld/globals.hpp"
-#include "../../mwworld/ptr.hpp"
-#include "../../mwworld/refdata.hpp"
-#include "../../mwworld/timestamp.hpp"
-#include "../camera.hpp"
-#include "../renderingmanager.hpp"
-#include "rtxrenderer.hpp"
+#include <apps/openmw/mwbase/environment.hpp>
+#include <apps/openmw/mwbase/statemanager.hpp>
+#include <apps/openmw/mwbase/world.hpp>
+#include <apps/openmw/mwmechanics/creaturestats.hpp>
+#include <apps/openmw/mwmechanics/npcstats.hpp>
+#include <apps/openmw/mwmechanics/stat.hpp>
+#include <apps/openmw/mwrender/camera.hpp>
+#include <apps/openmw/mwrender/renderingmanager.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
+#include <apps/openmw/mwworld/cell.hpp>
+#include <apps/openmw/mwworld/cellstore.hpp>
+#include <apps/openmw/mwworld/class.hpp>
+#include <apps/openmw/mwworld/containerstore.hpp>
+#include <apps/openmw/mwworld/datetimemanager.hpp>
+#include <apps/openmw/mwworld/esmstore.hpp>
+#include <apps/openmw/mwworld/globals.hpp>
+#include <apps/openmw/mwworld/ptr.hpp>
+#include <apps/openmw/mwworld/refdata.hpp>
+#include <apps/openmw/mwworld/timestamp.hpp>
 
-namespace MWRender
+namespace RtxTool
 {
     namespace
     {
@@ -79,9 +79,8 @@ namespace MWRender
         constexpr int sBoostedGold = 10'000'000;
     }
 
-    Session::Session(Rtx::SessionRequest request, Rtx::SessionResult& into)
+    Session::Session(Rtx::SessionRequest request)
         : mRequest(std::move(request))
-        , mInto(into)
         , mProfiling(mRequest.mPerfControl)
     {
         if (!mRequest.mAgainst.empty())
@@ -101,15 +100,15 @@ namespace MWRender
             mDone = true;
     }
 
-    Session::~Session()
+    Rtx::SessionResult Session::describe() const
     {
-        mInto = mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
+        return mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
     }
 
     void Session::noteStanding()
     {
         MWBase::World& world = *MWBase::Environment::get().getWorld();
-        const Camera& camera = *world.getRenderingManager()->getCamera();
+        const MWRender::Camera& camera = *world.getRenderingManager()->getCamera();
         const MWWorld::TimeStamp now = world.getTimeStamp();
 
         const osg::Vec3d at = camera.getPosition();
@@ -148,7 +147,7 @@ namespace MWRender
 
     void Session::aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look)
     {
-        Camera* camera = MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
+        MWRender::Camera* camera = MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
 
         osg::Vec3f along = look - eye;
         if (along.length2() <= 0.0f)
@@ -158,7 +157,7 @@ namespace MWRender
         // **A static camera and not the player's own.** Nothing tracks the body, nothing rotates
         // to its facing and nothing casts a ray to keep the eye out of a wall, which is what a view
         // file's coordinates mean. It does not hold on its own, for the reason `Session::aim` gives.
-        camera->setMode(Camera::Mode::Static);
+        camera->setMode(MWRender::Camera::Mode::Static);
         camera->setStaticPosition(osg::Vec3d(eye));
 
         // **The engine's own basis, recovered rather than restated.** `Camera::getOrient` builds
@@ -539,7 +538,7 @@ namespace MWRender
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mWalkTwice;
     }
 
-    void Session::frame(const FrameContext& context, const FrameReport& report)
+    void Session::frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
     {
         Rtx::Renderer& renderer = context.mRenderer.getBackend();
         const double frameMs = report.mFrameMs;
@@ -606,7 +605,7 @@ namespace MWRender
         endStop(context, report);
     }
 
-    void Session::endStop(const FrameContext& context, const FrameReport& report)
+    void Session::endStop(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
         Rtx::Renderer& renderer = context.mRenderer.getBackend();

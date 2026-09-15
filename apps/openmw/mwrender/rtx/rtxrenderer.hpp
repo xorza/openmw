@@ -15,12 +15,13 @@
 
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtxbench/frametimes.hpp>
 
 #include "../renderer.hpp"
 #include "framereport.hpp"
-#include "session.hpp"
+#include "rtxrun.hpp"
 #include "worldmirror.hpp"
 
 namespace Resource
@@ -375,9 +376,13 @@ namespace MWRender
         /// only instrument on this path, and the number that says whether this is playable.
         SpeedReport mSpeed;
 
-        /// The run a launcher installed before the engine started, or null for an ordinary
-        /// session. `MWRender::Session` says what one is and why it lives here.
-        std::unique_ptr<Session> mSession;
+        /// The run the harness installed before the engine started, or null for a played session.
+        /// Borrowed: `RtxSetup::mRun` says whose it is and that it outlives this.
+        RtxRun* mRun = nullptr;
+
+        /// How far the air has been carried since the run began: the one world fact that is an
+        /// integral over the frames rather than a reading of one, so it lives beside the clock.
+        Rtx::FogDrift mFogDrift;
 
         /// The one clock a frame is measured by: how far the simulation steps, how long the trace
         /// is told the frame took, and what OpenMW ages its caches by. A run's step fills it once,

@@ -9,7 +9,7 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
-#include "framereport.hpp"
+#include <apps/openmw/mwrender/rtx/framereport.hpp>
 
 namespace osg
 {
@@ -24,7 +24,10 @@ namespace Rtx
 namespace MWRender
 {
     class OffscreenView;
+}
 
+namespace RtxTool
+{
     /// What a stop asked for and what it came to, beside the frame it drew.
     ///
     /// **Named for the reason `FrameContext` is.** Each of these is read by one claim and by nothing
@@ -64,20 +67,20 @@ namespace MWRender
         /// @param reconstruction what put that frame back together, which decides what channels it
         ///        has. `Rtx::hasFrameImage` is where that rule lives.
         /// @param facts what the stop asked for and came to, which only a check reads.
-        void write(const FrameContext& context, const FrameReport& report, const Rtx::Actions& actions,
-            const StopFacts& facts, Rtx::RunRecord& record);
+        void write(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
+            const Rtx::Actions& actions, const StopFacts& facts, Rtx::RunRecord& record);
 
     private:
         /// The frame a writer reads, what put it together, and where it says its answer.
         ///
         /// **None of the three is a member.** The renderer and the reconstruction both arrive per
-        /// frame — `Session` is built inside `RtxRenderer`'s own constructor, so there is no
-        /// renderer to hold — and the record belongs to the run rather than to the writing.
-        /// Bundling them keeps the three off every writer's signature.
+        /// frame — `Session` is built before the engine, so there is no renderer to hold — and
+        /// the record belongs to the run rather than to the writing. Bundling them keeps the three
+        /// off every writer's signature.
         struct Writing
         {
-            const FrameContext& mContext;
-            const FrameReport& mReport;
+            const MWRender::FrameContext& mContext;
+            const MWRender::FrameReport& mReport;
             Rtx::RunRecord& mRecord;
         };
 
@@ -114,7 +117,7 @@ namespace MWRender
         /// **A picture inside the interface is written bottom row first**, which is what
         /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for. A
         /// file wants the other order, so the rows are turned over on the way out.
-        void writeView(const Writing& into, OffscreenView& view, const std::filesystem::path& file);
+        void writeView(const Writing& into, MWRender::OffscreenView& view, const std::filesystem::path& file);
 
         /// Writes a picture that is already in main memory, bottom row first, as a PNG.
         void writeImage(const Writing& into, const osg::Image& drawn, const std::filesystem::path& file);
@@ -124,8 +127,8 @@ namespace MWRender
 
         /// Whether one check holds of what the run was handed and what it drew, with what it found
         /// in `found` either way.
-        static bool checkHolds(const FrameContext& context, const FrameReport& report, Rtx::Check check,
-            const StopFacts& facts, std::string& found);
+        static bool checkHolds(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
+            Rtx::Check check, const StopFacts& facts, std::string& found);
 
         /// What a read back lands in, refilled per stop and never freed.
         std::vector<std::uint8_t> mPixels;

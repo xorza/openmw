@@ -56,7 +56,7 @@
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
 #include "../vismask.hpp"
-#include "session.hpp"
+#include "rtxrun.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
@@ -201,16 +201,10 @@ namespace MWRender
         // **Read before anything is built, because it decides how the window opens and what the
         // trace counts.** A harness hands a whole run over in the spec; a played binary has none,
         // and runs at what its settings say.
-        mProfile
-            = spec.mRtx != nullptr && spec.mRtx->mProfile.has_value() ? *spec.mRtx->mProfile : profileFromSettings();
+        mProfile = spec.mRtx != nullptr ? spec.mRtx->mProfile : profileFromSettings();
+        mRun = spec.mRtx != nullptr ? &spec.mRtx->mRun : nullptr;
 
-        if (spec.mRtx != nullptr && spec.mRtx->mSession.has_value())
-        {
-            assert(spec.mRtx->mInto != nullptr && "a run installed with nowhere to write its answer");
-            mSession = std::make_unique<Session>(*spec.mRtx->mSession, *spec.mRtx->mInto);
-        }
-
-        createWindow(mSession != nullptr && mSession->isHeadless());
+        createWindow(mRun != nullptr && mRun->isHeadless());
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -232,7 +226,7 @@ namespace MWRender
         // build to go on, which `Rtx::sValidationByDefault` says is the one thing that should
         // decide it.
         options.mValidation
-            = mSession != nullptr ? mSession->getValidation() : Rtx::ValidationOptions{ Rtx::sValidationByDefault };
+            = mRun != nullptr ? mRun->getValidation() : Rtx::ValidationOptions{ Rtx::sValidationByDefault };
 
         // **The two finer layers, asked for by name and never on by themselves.** The build decides
         // whether the layers load; these decide what they check, and each costs far more than the
@@ -264,7 +258,7 @@ namespace MWRender
         // nothing a player does ever reads it, so an ordinary session is specialized without the
         // atomic rather than writing a number to a buffer nobody looks at, once per pixel that hit
         // anything, for the life of the session.
-        options.mCountHits = mSession != nullptr;
+        options.mCountHits = mRun != nullptr;
 
         // **The knobs a measurement turns, handed over whole where the renderer is built.** They
         // were hard-coded here and taken as command-line options by the harness, so a picture taken
@@ -307,8 +301,8 @@ namespace MWRender
         // nothing else's — a setting that could state one made a played game step by frames, and
         // at two hundred of them a second the world ran three times over. A run somebody watches
         // states none, for the same reason.
-        if (mSession != nullptr)
-            mClock = Rtx::FrameClock(mSession->getStep());
+        if (mRun != nullptr)
+            mClock = Rtx::FrameClock(mRun->getStep());
 
         // **The same step decides whether the ground waits, unless the run says otherwise.** A
         // composite comes back whenever the baker finishes it, so which frame it lands on is a
@@ -324,7 +318,7 @@ namespace MWRender
         // **And a run that means to time the streaming path overrides it**, because waiting is
         // most of what that path then measures. `Rtx::SessionRequest::mSettled` says what the
         // override costs and what it buys.
-        const std::optional<bool> stated = mSession != nullptr ? mSession->getSettled() : std::nullopt;
+        const std::optional<bool> stated = mRun != nullptr ? mRun->getSettled() : std::nullopt;
         mMirror.setSettled(stated.value_or(mClock.getStatedStep().has_value()));
     }
 
@@ -494,8 +488,8 @@ namespace MWRender
 
     void RtxRenderer::tickSchedule()
     {
-        if (mSession != nullptr)
-            mSession->beforeFrame();
+        if (mRun != nullptr)
+            mRun->beforeFrame();
     }
 
     void RtxRenderer::updateTraversal()
@@ -855,7 +849,7 @@ namespace MWRender
         // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
         // because a second whole-graph walk is the largest cost a frame has.
         mWalked.mAgain.reset();
-        if (mSession != nullptr && mSession->wantsSecondWalk())
+        if (mRun != nullptr && mRun->wantsSecondWalk())
             mWalked.mAgain = mMirror.mirror(frame, mFrame);
 
         traceWorld(frame, report);
@@ -988,7 +982,7 @@ namespace MWRender
         const Rtx::WorldReading read
             = mMirror.readWorld(frame.mWorld, static_cast<float>(frame.mWhen.getSimulationTime()));
 
-        const float exposureBias = Rtx::describeWorld(read, constants);
+        const float exposureBias = Rtx::describeWorld(read, mFogDrift, constants);
 
         // **What the sampler and the jitter are walked by, and leaving it at zero is a bug with two
         // faces.** The bounce samples the same point every frame, so nothing ever converges; and the
@@ -997,14 +991,14 @@ namespace MWRender
         // it cost a picture that looked plausible and carried none of the detail it was paying for.
         //
         // **The stop's own count where a run is being made, and the game's frame number
-        // otherwise.** `Session::getSampleFrame` says why: a measured run has to walk the same
+        // otherwise.** `RtxRun::getSampleFrame` says why: a measured run has to walk the same
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
-        const std::optional<std::uint32_t> sample = mSession != nullptr ? mSession->getSampleFrame() : std::nullopt;
+        const std::optional<std::uint32_t> sample = mRun != nullptr ? mRun->getSampleFrame() : std::nullopt;
         constants.mFrame = sample.value_or(static_cast<std::uint32_t>(mFrame));
 
         // **The schedule's and not the profile's**, because a warm-up is not averaged in — a picture
-        // of a half-built cell in the sum is what `Session::getAccumulated` exists to keep out.
-        const std::uint32_t accumulated = mSession != nullptr ? mSession->getAccumulated() : 0;
+        // of a half-built cell in the sum is what `RtxRun::getAccumulated` exists to keep out.
+        const std::uint32_t accumulated = mRun != nullptr ? mRun->getAccumulated() : 0;
 
         // **The game set neither of these, and the de-lighting is what that cost.**
         // `Rtx::makeCameraFromView` names every field it fills and leaves the rest
@@ -1042,8 +1036,8 @@ namespace MWRender
             report.mWalked = mWalked;
             report.mUnreadableTextures = mUnreadable;
 
-            if (mSession != nullptr && report.mResult.has_value())
-                mSession->frame(describeContext(), report);
+            if (mRun != nullptr && report.mResult.has_value())
+                mRun->frame(describeContext(), report);
 
             // **Every frame and not the ones the device answered for**, because what this reads is
             // the wall between two traces and the device's answer is not part of it. Once a

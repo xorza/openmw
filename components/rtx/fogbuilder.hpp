@@ -93,7 +93,7 @@ namespace Rtx
         float mLift = 1.0f;
 
         /// What the weather records blowing at, which carries the field downwind; the heading is
-        /// the cloud deck's (`Shaders::VisibilityConstants::mFogWind`).
+        /// the cloud deck's, and `Rtx::FogDrift` is how far it has been carried.
         float mWind = 0.0f;
 
         /// How far the world is built, in units, and so where the air becomes opaque. Zero is a

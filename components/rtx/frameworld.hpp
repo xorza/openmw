@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 
+#include <osg/Vec2f>
 #include <osg/Vec3f>
 
 #include "fogbuilder.hpp"
@@ -77,11 +79,37 @@ namespace Rtx
         float mRainOnWater = 0.0f;
     };
 
+    /// How far the air has been carried downwind since a run began, in world units: the integral
+    /// of the wind over the clock, kept across frames by whoever traces them. What the shader
+    /// takes off a position is a displacement, and a wind times the clock is not one: it jumps by
+    /// the whole clock's worth of the difference whenever the wind changes, which every weather
+    /// transition does over the minute it takes, and turns with the storm the moment one arrives.
+    /// Ten minutes into a session, clear's 0.1 becoming a thunderstorm's 0.5 moved the field by
+    /// six hundred seconds of the difference — 336,000 units over the transition's 67 seconds,
+    /// seventy metres a second where the gale itself blows ten. Stepped by what the clock moved,
+    /// so a change of wind changes the speed and nothing else.
+    class FogDrift
+    {
+    public:
+        /// Carries the air on by what the clock moved since the last call, along `heading` at
+        /// `wind` — `Fog::mWind`, in the units `FOG_GALE` converts. The first call moves nothing,
+        /// and the clock never runs backwards: it is the rendering simulation time, which only
+        /// `Engine::go` writes and only by adding a step.
+        void advance(const osg::Vec2f& heading, float wind, float seconds);
+
+        const osg::Vec2f& get() const { return mCarried; }
+
+    private:
+        osg::Vec2f mCarried;
+        std::optional<float> mLastSeconds;
+    };
+
     /// Writes the frame's world half into the constants it is traced with, and answers what to hold
     /// the frame's measured exposure back by — `Skylight::mExposureBias`, carried. The camera's
     /// half is `makeCamera*`'s and is left alone. The order is the whole of what this is for: the
     /// stars before the sky's budget, the budget before the air, and both before the deck. One
     /// call and not twenty assignments per host, or a field added to one host is forgotten in the
-    /// other.
-    float describeWorld(const WorldReading& reading, Shaders::VisibilityConstants& constants);
+    /// other. `drift` is stepped here by this reading's clock and wind, because the heading it
+    /// blows along is the deck's, which is settled here and nowhere else.
+    float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants);
 }

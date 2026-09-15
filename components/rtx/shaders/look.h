@@ -545,8 +545,8 @@ namespace Rtx::Shaders
     /// The ten then land where their names say: clear's 0.1 is a two-metre breeze, rain's 0.3 is six,
     /// thunderstorm's 0.5 is ten, ashstorm's 0.8 is sixteen, and blight and blizzard blow eighteen.
     ///
-    /// `mTime` runs at the clock's own rate rather than the game's thirty-times one, so this is a wind
-    /// rather than a time-lapse.
+    /// The host integrates it over the clock, which runs at its own rate rather than the game's
+    /// thirty-times one, so this is a wind rather than a time-lapse.
     const float FOG_GALE = 1400.0f;
 
     /// Below `FOG_CLEARING` of the field the air is clear, and at `FOG_SOLID` the fog is at full

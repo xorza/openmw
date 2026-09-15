@@ -1,5 +1,6 @@
 #include "frameworld.hpp"
 
+#include <cassert>
 #include <cstddef>
 
 #include <osg/Matrixf>
@@ -49,7 +50,18 @@ namespace Rtx
         return none;
     }
 
-    float describeWorld(const WorldReading& reading, Shaders::VisibilityConstants& constants)
+    void FogDrift::advance(const osg::Vec2f& heading, const float wind, const float seconds)
+    {
+        if (mLastSeconds.has_value())
+        {
+            assert(seconds >= *mLastSeconds && "the clock the air is carried by ran backwards");
+            mCarried += heading * (wind * Shaders::FOG_GALE * (seconds - *mLastSeconds));
+        }
+
+        mLastSeconds = seconds;
+    }
+
+    float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants)
     {
         const Daylight& day = reading.mDaylight;
         const Skylight& light = day.mLight;
@@ -105,9 +117,11 @@ namespace Rtx
 
         // On the deck's own heading, because there is one wind over a landscape and an air that
         // turned with a transition would read as two. Swapped, because `mBearing` is the cosine
-        // and sine of the rotation from north, which for a unit `(x, y)` is `(y, x)`.
+        // and sine of the rotation from north, which for a unit `(x, y)` is `(y, x)`. Integrated
+        // and not multiplied by the clock — `FogDrift` says what the product cost.
         const osg::Vec2f heading(constants.mClouds.mBearing.y(), constants.mClouds.mBearing.x());
-        constants.mFogWind = heading * air.mWind;
+        drift.advance(heading, air.mWind, reading.mSeconds);
+        constants.mFogDrift = drift.get();
 
         // The sea runs the way the deck does, and as its tiles were drawn where nothing blows.
         constants.mSeaHeading = heading.length2() > 0.0f ? heading / heading.length() : osg::Vec2f(1.0f, 0.0f);

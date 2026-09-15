@@ -188,7 +188,8 @@ namespace Rtx
             const WorldReading read = distinctReading();
 
             Rtx::Shaders::VisibilityConstants constants{};
-            describeWorld(read, constants);
+            FogDrift drift;
+            describeWorld(read, drift, constants);
 
             const Skylight& light = read.mDaylight.mLight;
             EXPECT_EQ(constants.mSun.mDirection, light.mSun.mPosition);
@@ -211,23 +212,36 @@ namespace Rtx
             // landscape. The deck holds the cosine and sine of its turn from north, so a storm
             // driving along (0.6, 0.8) is a bearing of (0.8, 0.6) — and 0.45 of a wind on the
             // storm's own heading is (0.27, 0.36), not the pair the deck holds.
+            //
+            // **And the frame is handed the distance blown, never the wind times the clock.** The
+            // first reading has no earlier one to measure from, so the fog has gone nowhere yet;
+            // one second on, at `FOG_GALE` units a second of wind, it has gone (0.27, 0.36) × 1400.
             EXPECT_FLOAT_EQ(constants.mClouds.mBearing.x(), 0.8f);
             EXPECT_FLOAT_EQ(constants.mClouds.mBearing.y(), 0.6f);
-            EXPECT_FLOAT_EQ(constants.mFogWind.x(), 0.27f);
-            EXPECT_FLOAT_EQ(constants.mFogWind.y(), 0.36f);
+            EXPECT_EQ(constants.mFogDrift, osg::Vec2f());
+
+            WorldReading later = read;
+            later.mSeconds = read.mSeconds + 1.0f;
+            Shaders::VisibilityConstants blown{};
+            describeWorld(later, drift, blown);
+            EXPECT_FLOAT_EQ(blown.mFogDrift.x(), 378.0f);
+            EXPECT_FLOAT_EQ(blown.mFogDrift.y(), 504.0f);
 
             // And the sea runs the same way, as a unit heading.
             EXPECT_FLOAT_EQ(constants.mSeaHeading.x(), 0.6f);
             EXPECT_FLOAT_EQ(constants.mSeaHeading.y(), 0.8f);
 
             // A world with no deck over it — a room — has no wind, and its water runs as the tiles
-            // were drawn rather than nowhere.
-            WorldReading still = read;
+            // were drawn rather than nowhere. The fog keeps the distance it was blown, because a
+            // door is not a wind: what would move on the way through it is the whole of the drift.
+            WorldReading still = later;
             still.mOutdoors = false;
+            still.mSeconds = later.mSeconds + 1.0f;
             Shaders::VisibilityConstants becalmed{};
-            describeWorld(still, becalmed);
+            describeWorld(still, drift, becalmed);
             EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
-            EXPECT_EQ(becalmed.mFogWind, osg::Vec2f());
+            EXPECT_FLOAT_EQ(becalmed.mFogDrift.x(), 378.0f);
+            EXPECT_FLOAT_EQ(becalmed.mFogDrift.y(), 504.0f);
 
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its
@@ -301,7 +315,8 @@ namespace Rtx
             constants.mShowAlbedo = 1;
             constants.mTransparentBackground = 1;
 
-            describeWorld(distinctReading(), constants);
+            FogDrift drift;
+            describeWorld(distinctReading(), drift, constants);
 
             EXPECT_EQ(constants.mOrigin, osg::Vec3f(1.0f, 2.0f, 3.0f));
             EXPECT_EQ(constants.mCamera.mForward, osg::Vec3f(0.0f, 1.0f, 0.0f));
@@ -323,7 +338,8 @@ namespace Rtx
         TEST(RtxFrameWorldTest, aWorldNobodyFilledDrawsNoSunAndNoMoons)
         {
             Rtx::Shaders::VisibilityConstants constants{};
-            describeWorld(WorldReading{}, constants);
+            FogDrift drift;
+            describeWorld(WorldReading{}, drift, constants);
 
             // **One statement of "no sun", and the disc reads it too.** There is no second field to
             // leave set: a frame with no irradiance draws no disc, casts nothing and lights no haze.
@@ -366,7 +382,8 @@ namespace Rtx
                 .mIrradiance = osg::Vec3f(0.05f, 0.05f, 0.06f) };
 
             Shaders::VisibilityConstants world{};
-            describeWorld(room, world);
+            FogDrift drift;
+            describeWorld(room, drift, world);
 
             EXPECT_EQ(world.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
             EXPECT_EQ(world.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
@@ -389,7 +406,7 @@ namespace Rtx
             // flag's doing rather than the assembly dropping a moon it was handed.
             room.mOutdoors = true;
             Shaders::VisibilityConstants open{};
-            describeWorld(room, open);
+            describeWorld(room, drift, open);
             EXPECT_EQ(open.mMoons[0].mAlpha, 1.0f);
             EXPECT_EQ(open.mMoons[0].mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
         }
@@ -405,14 +422,15 @@ namespace Rtx
             open.mDaylight.mLight.mExposureBias = 0.375f;
 
             Shaders::VisibilityConstants lit{};
-            EXPECT_FLOAT_EQ(describeWorld(open, lit), 0.375f);
+            FogDrift drift;
+            EXPECT_FLOAT_EQ(describeWorld(open, drift, lit), 0.375f);
 
             WorldReading room = open;
             room.mOutdoors = false;
             room.mDaylight.mLight.mExposureBias = 0.625f;
 
             Shaders::VisibilityConstants inside{};
-            EXPECT_FLOAT_EQ(describeWorld(room, inside), 0.625f) << "the flag reached a number that is not its";
+            EXPECT_FLOAT_EQ(describeWorld(room, drift, inside), 0.625f) << "the flag reached a number that is not its";
         }
 
         /// Air under a dome is lit by it, and air with no dome over it keeps the colour it was
@@ -433,8 +451,9 @@ namespace Rtx
 
             Shaders::VisibilityConstants outside{};
             Shaders::VisibilityConstants inside{};
-            describeWorld(open, outside);
-            describeWorld(room, inside);
+            FogDrift drift;
+            describeWorld(open, drift, outside);
+            describeWorld(room, drift, inside);
 
             EXPECT_NE(outside.mFogColour, inside.mFogColour) << "one flag, and it decided nothing";
 
@@ -462,8 +481,9 @@ namespace Rtx
 
             Shaders::VisibilityConstants night{};
             Shaders::VisibilityConstants stars{};
-            describeWorld(dark, night);
-            describeWorld(starry, stars);
+            FogDrift drift;
+            describeWorld(dark, drift, night);
+            describeWorld(starry, drift, stars);
 
             EXPECT_GT(stars.mStars.mGlow.x(), night.mStars.mGlow.x()) << "the fade decided nothing";
             EXPECT_GT(stars.mClouds.mShadowed.x(), night.mClouds.mShadowed.x())

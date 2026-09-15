@@ -16,7 +16,9 @@
 #include <components/toutf8/toutf8.hpp>
 
 #include <apps/openmw/engine.hpp>
-#include <apps/openmw/mwrender/rtx/session.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
+
+#include "session.hpp"
 
 namespace RtxTool
 {
@@ -55,12 +57,11 @@ namespace RtxTool
         // failure. A window somebody closes has finished no stop and owes no numbers.
         const bool scheduled = request.mQuitAtEnd;
 
-        // **Declared outside the block that builds the engine, because the run fills it from a
-        // destructor.** `MWRender::Session` writes here as it is cleared, because a run that ends
-        // its last stop and a window somebody closes both have to be reported and only the first
-        // ever reaches `finish`. `OMW::Engine` declares the world before the renderer that holds the
-        // session, so the world is still standing when it is asked where the eye was left.
-        Rtx::SessionResult result;
+        // **Built before the engine and read after it.** A run that ends its last stop and a window
+        // somebody closes both have to be reported, and only the first ever reaches `finish` — so
+        // what the run came to is asked for once the engine has gone, off what the run noted on
+        // every frame it still had a world to note it from.
+        Session session(std::move(request));
 
         {
             OMW::Engine engine(config);
@@ -123,14 +124,13 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
-            const MWRender::RtxSetup setup{
-                .mProfile = std::move(profile), .mSession = std::move(request), .mInto = &result
-            };
+            const MWRender::RtxSetup setup{ .mProfile = std::move(profile), .mRun = session };
             engine.setRtxSetup(&setup);
 
             engine.go();
         }
 
+        const Rtx::SessionResult result = session.describe();
         out << result.mReport;
 
         // **Where it was left, so a session that ended somewhere worth keeping did not lose it.**

@@ -81,8 +81,10 @@ float fogShape(vec3 position, float spacing)
     // displacement rather than three, because a wind moves the air it is in rather than shearing
     // it. Minus, for the reason a cloud sheet subtracts its own drift: a bank sits at a fixed
     // coordinate in the field, so sampling from further upwind as the clock runs is what carries it
-    // past, and adding would walk the whole field into the wind.
-    position.xy -= frame.mFogWind * (frame.mTime * FOG_GALE);
+    // past, and adding would walk the whole field into the wind. The host hands over how far,
+    // integrated, because a wind times the clock jumped by the clock's worth at every change of
+    // weather.
+    position.xy -= frame.mFogDrift;
 
     // **The coarsest scale is read undisplaced.** What a warp is for is breaking the regularity of
     // the structure inside a bank, and at this scale a bank is the whole shape rather than a lattice

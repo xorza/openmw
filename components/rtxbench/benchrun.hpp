@@ -88,7 +88,7 @@ namespace Rtx
         std::optional<osg::Vec3f> mLook;
 
         /// The point the eye faces: `mLook`, or due north where it names nothing or the eye itself,
-        /// because a direction of no length aims nothing. One answer, because `MWRender::Session`
+        /// because a direction of no length aims nothing. One answer, because `RtxTool::Session`
         /// aims at it and `Check::CameraStands` asserts the camera reached it. Only for a stand that
         /// names an eye.
         osg::Vec3f getLook() const;

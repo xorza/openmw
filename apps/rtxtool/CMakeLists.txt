@@ -9,7 +9,22 @@ set(RTXTOOL_FILES
     verify.hpp
 )
 
-source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} main.cpp)
+# What drives the game once one is hosted: built into the executable alone, for the reason below.
+set(RTXTOOL_HOSTED_FILES
+    hosted.cpp
+    session.cpp
+    session.hpp
+    stopwriter.cpp
+    stopwriter.hpp
+)
+
+# The run reads the clock through `mwworld/datetimemanager.hpp`, which is not warning-free under
+# `OPENMW_RTX_COMPILE_OPTIONS`, so this one is compiled with upstream's flags.
+set(RTXTOOL_HOSTED_FILES_UPSTREAM
+    session.cpp
+)
+
+source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} ${RTXTOOL_HOSTED_FILES} main.cpp)
 
 # A library so the tests can reach into it, the way apps/openmw builds openmw-lib.
 add_library(openmw-rtxtool-lib STATIC ${RTXTOOL_FILES})
@@ -52,17 +67,20 @@ endforeach()
 #
 # **Only the executable links it.** `openmw-rtxtool-lib` stays engine-free, which is what lets
 # `components-tests` keep linking it without pulling a whole game into a unit test binary — so
-# `hosted.cpp` is built here rather than into the library beside everything else.
+# the hosted files, which read the world and feed the renderer, are built here rather than into
+# the library beside everything else.
 #
 # `apps/openmw` is added after this directory, and a target named in `target_link_libraries` is
 # resolved when the build files are generated rather than when the line is read — so the order is
 # free and only whether the target exists at all matters.
 if (BUILD_OPENMW)
-    openmw_add_executable(openmw-rtxtool main.cpp hosted.cpp)
+    openmw_add_executable(openmw-rtxtool main.cpp ${RTXTOOL_HOSTED_FILES})
 
     target_link_libraries(openmw-rtxtool openmw-rtxtool-lib openmw-lib)
 
-    target_compile_options(openmw-rtxtool PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
+    set(RTXTOOL_STRICT_FILES main.cpp ${RTXTOOL_HOSTED_FILES})
+    list(REMOVE_ITEM RTXTOOL_STRICT_FILES ${RTXTOOL_HOSTED_FILES_UPSTREAM})
+    set_source_files_properties(${RTXTOOL_STRICT_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
 endif()
 
 if (BUILD_WITH_CODE_COVERAGE)
