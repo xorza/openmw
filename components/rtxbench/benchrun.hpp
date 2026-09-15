@@ -221,6 +221,11 @@ namespace Rtx
         /// world, and the bars and the compass are the played game's.
         bool mHud = false;
 
+        /// Whether the played game's vanity camera may take over — the orbit round the player
+        /// after `fVanityDelay` seconds with nobody at the keys. Off by default: a run is idle by
+        /// nature, and a window somebody is reading must not start turning on its own.
+        bool mVanity = false;
+
         /// Whether the run ends the session when its last stop does. False is a window somebody
         /// keeps flying after the schedule has run out.
         bool mQuitAtEnd = true;

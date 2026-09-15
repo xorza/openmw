@@ -14,6 +14,7 @@
 #include <osg/Vec3f>
 
 #include <apps/openmw/mwbase/environment.hpp>
+#include <apps/openmw/mwbase/inputmanager.hpp>
 #include <apps/openmw/mwbase/statemanager.hpp>
 #include <apps/openmw/mwbase/windowmanager.hpp>
 #include <apps/openmw/mwbase/world.hpp>
@@ -300,6 +301,10 @@ namespace RtxTool
             world.toggleGodMode();
 
         MWBase::Environment::get().getWindowManager()->setHudVisibility(mRequest.mHud);
+
+        // The same switch the camera script reads (`Player.CONTROL_SWITCH.VanityMode`), so a
+        // content script may still turn it either way.
+        MWBase::Environment::get().getInputManager()->toggleControlSwitch("vanitymode", mRequest.mVanity);
 
         const MWWorld::Ptr player = world.getPlayerPtr();
         mProgress.mCell = player.getCell();

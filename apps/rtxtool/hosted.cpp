@@ -58,6 +58,7 @@ namespace RtxTool
         const bool scheduled = request.mQuitAtEnd;
 
         request.mHud = variables["hud"].as<bool>();
+        request.mVanity = variables["vanity"].as<bool>();
 
         // **Built before the engine and read after it.** A run that ends its last stop and a window
         // somebody closes both have to be reported, and only the first ever reaches `finish` — so

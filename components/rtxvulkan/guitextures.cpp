@@ -106,26 +106,30 @@ namespace Rtx
         image.transition(commands, Use::sCopyWrite, Use::sFragmentSample);
     }
 
-    VkDeviceSize GuiTextures::reserve(VkDeviceSize bytes)
+    VkDeviceSize GuiTextures::reserve(const VkDeviceSize bytes)
     {
         Buffer& arena = mStaging[mArena];
-        VkDeviceSize at = alignUp(mStagingUsed, sCopyAlignment);
+        const VkDeviceSize at = alignUp(mStagingUsed, sCopyAlignment);
 
-        if (at + bytes > arena.getSize())
+        if (at + bytes <= arena.getSize())
         {
-            // Waited for before the arena is rewound or replaced, and that is the whole of the
-            // safety here. What was recorded reads these bytes; handing it over would only order
-            // it, and this is the one place that needs it to have run.
-            finish();
-            at = 0;
-
-            if (bytes > arena.getSize())
-                arena = Buffer::hostWritten(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging");
+            mStagingUsed = at + bytes;
+            return at;
         }
 
-        mStagingUsed = at + bytes;
+        // **Handed over and buried, never waited for and rewound.** Once handed over, every copy
+        // recorded against the arena rides the next submit, and the graveyard stamps the arena for
+        // that same submit — so the bytes outlive this frame's copies and whatever the interface's
+        // draw two frames back is still reading. A wait here idled the queue on every overflow,
+        // and the layers still reported the arena it then destroyed as read by a pending copy.
+        handOver();
+        const VkDeviceSize previous = arena.getSize();
+        mGraveyard.bury(std::move(arena));
+        arena
+            = Buffer::hostWritten(mDevice, std::max(bytes, previous), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging");
 
-        return at;
+        mStagingUsed = bytes;
+        return 0;
     }
 
     void GuiTextures::handOver()

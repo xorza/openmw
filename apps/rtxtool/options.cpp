@@ -266,6 +266,10 @@ namespace RtxTool
             "draw the game's HUD over the picture: the bars, the compass and the cell's name. Off "
             "unless asked for, and a window's F11 toggles it either way");
 
+        option(sFramed, "vanity", bpo::value<bool>()->default_value(false)->implicit_value(true),
+            "let the game's vanity camera orbit the player after thirty idle seconds, as the played "
+            "game does. Off unless asked for: a run is idle by nature");
+
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");

@@ -392,6 +392,56 @@ namespace Rtx
             mRenderer->dropGuiTexture(again);
         }
 
+        /// A lend that overflows the arena never hands back bytes a recorded copy still reads, and
+        /// both copies land.
+        ///
+        /// **The rule stated as the addresses, for the reason `theStagingComesRound…` gives**: a
+        /// write into staging is a `memcpy` the layers cannot see. The first lend fills the arena
+        /// exactly; the second, of the same size, cannot fit and must come out of another buffer,
+        /// not out of the same one rewound. **The validation sweep in `TearDown` is the other
+        /// half**: the arena the first copy reads is let go while that copy is pending, which the
+        /// layers report if it is destroyed rather than buried.
+        TEST_F(RtxGuiDrawTest, aLendThatOverflowsTheArenaComesOutOfAnotherBufferAndBothCopiesLand)
+        {
+            constexpr std::uint32_t side = 4;
+            const GuiRegion whole{ 0, 0, side, side };
+            const GuiSlot red = mRenderer->addGuiTexture(side, side);
+            const GuiSlot green = mRenderer->addGuiTexture(side, side);
+            mHeld.push_back(red);
+            mHeld.push_back(green);
+
+            std::array<std::uint8_t, side * side * 4> redRows{};
+            std::array<std::uint8_t, side * side * 4> greenRows{};
+            for (std::size_t at = 0; at < redRows.size(); at += 4)
+            {
+                redRows[at] = 255;
+                redRows[at + 3] = 255;
+                greenRows[at + 1] = 255;
+                greenRows[at + 3] = 255;
+            }
+
+            // Three interface frames of the red texture alone, so every arena has been made at the
+            // red region's size and the one in use is one a draw has read out of.
+            for (std::uint32_t frame = 0; frame < 3; ++frame)
+            {
+                Testing::writeTexture(*mRenderer, red, whole, redRows);
+                drawQuad(red, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
+            }
+
+            // The frame that overflows: red fills the arena, then green wants as much again.
+            const std::span<std::uint8_t> first = mRenderer->lendGuiTexture(red, whole);
+            std::copy(redRows.begin(), redRows.end(), first.begin());
+            mRenderer->sendGuiTexture(red);
+
+            const std::span<std::uint8_t> second = mRenderer->lendGuiTexture(green, whole);
+            EXPECT_NE(first.data(), second.data()) << "the overflow rewound the arena the red copy still reads";
+            std::copy(greenRows.begin(), greenRows.end(), second.begin());
+            mRenderer->sendGuiTexture(green);
+
+            EXPECT_EQ(inTexture(red, side, side - 1, side - 1), (std::array<std::uint8_t, 4>{ 255, 0, 0, 255 }));
+            EXPECT_EQ(inTexture(green, side, side - 1, side - 1), (std::array<std::uint8_t, 4>{ 0, 255, 0, 255 }));
+        }
+
         /// The GUI over a frame that was actually traced, which is the first time the two halves of
         /// this renderer meet.
         ///

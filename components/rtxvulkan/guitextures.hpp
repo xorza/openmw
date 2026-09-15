@@ -160,8 +160,8 @@ namespace Rtx
 
         /// Written a run at a time, turned over by `startFrame`, and each grown to the largest
         /// single region ever written, so a video frame does not allocate. Sized to a region rather
-        /// than to a frame's worth of them: a frame that writes more than one waits, which bounds
-        /// what an arena can grow to.
+        /// than to a frame's worth of them: a frame that writes more than one buries the arena and
+        /// takes a fresh one of the same size (`reserve`), which bounds what an arena can grow to.
         std::array<Buffer, sStagingArenas> mStaging;
         std::uint32_t mArena = 0;
         VkDeviceSize mStagingUsed = 0;
