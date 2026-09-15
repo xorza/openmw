@@ -66,7 +66,7 @@ namespace Rtx
         std::array<Image, 2> mMoments;
 
         /// Where the blend goes, in the cascade's format because the cascade both reads and
-        /// overwrites it. Readable, so `FrameImage::Accumulated` can hand it back. Empty until `resize`.
+        /// overwrites it. Empty until `resize`.
         Image mBlended;
 
         /// Which half of each pair this frame writes. Flipped by `record`.

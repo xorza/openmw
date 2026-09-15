@@ -125,6 +125,15 @@ namespace RtxTool
                 suite.mViews = Rtx::splitNames(value);
             else if (field == "note")
                 suite.mNote = value;
+            else if (field == "settled")
+            {
+                // The settings' own spelling of a boolean, so a suite file and a settings file
+                // agree; anything else is a field nobody meant.
+                if (value != "true" && value != "false")
+                    throw std::runtime_error(
+                        "suite \"" + section + "\" says settled = " + value + ", not true or false");
+                suite.mSettled = value == "true";
+            }
             else
                 throw std::runtime_error("suite \"" + section + "\" has no field called \"" + field + "\"");
         }

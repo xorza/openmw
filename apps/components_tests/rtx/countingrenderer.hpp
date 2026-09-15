@@ -156,7 +156,7 @@ namespace Rtx::Testing
         void readGuiTexture(Rtx::GuiSlot, std::vector<std::uint8_t>&) override {}
         void readPixels(std::vector<std::uint8_t>&) override {}
         void readChannel(Rtx::Channel, std::vector<float>&) override {}
-        void readFrameImage(Rtx::FrameImage, std::vector<float>&) override {}
+        void readComposite(std::vector<float>&) override {}
         void takeValidationErrors(std::vector<std::string>&) override {}
 
         std::uint32_t mHistoryResets = 0;

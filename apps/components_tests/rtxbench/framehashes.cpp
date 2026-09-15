@@ -226,6 +226,7 @@ namespace Rtx
 
             EXPECT_TRUE(difference.mDiffering.empty()) << "the picture was the same both times";
             EXPECT_EQ(difference.mSceneDiffering, std::vector<std::uint32_t>{ 1u });
+            EXPECT_FALSE(difference.same()) << "a scene that moved is a difference, picture or no picture";
 
             for (std::size_t at = 0; at < difference.mPartsDiffering.size(); ++at)
                 EXPECT_EQ(difference.mPartsDiffering[at], at == static_cast<std::size_t>(ScenePart::Textures) ? 1u : 0u)

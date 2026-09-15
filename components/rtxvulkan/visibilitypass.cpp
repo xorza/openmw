@@ -141,14 +141,13 @@ namespace Rtx
 
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
         VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-        bool countHits, bool countCrossings)
+        bool countHits)
         : mDevice(device)
         , mBlueNoise(uploadBuffer(
               batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise"))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCountHits(countHits ? 1u : 0u)
-        , mCountCrossings(countCrossings ? 1u : 0u)
         , mChannelLayout(channelLayout.get())
         , mVolumeLayout(volumeLayout.get())
         , mDepthModule(shaderDirectory / "fogdepth.rgen.spv")
@@ -208,8 +207,8 @@ namespace Rtx
                 // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The
                 // volume traces no primary ray, so it counts none whatever the build asked for;
                 // every other constant it takes is the tuple's own.
-                const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
-                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, volume ? 0u : mCountCrossings };
+                const std::array<std::uint32_t, 4> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u };
 
                 if (volume)
                     mScatterPipelines[variant.index()]

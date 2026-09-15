@@ -92,6 +92,12 @@ namespace RtxTool
 
         /// In the order they were written, which is the order they are run in.
         std::vector<std::string> mViews;
+
+        /// Whether each hand-over waits for the distant ground it collects, or nothing to let the
+        /// frame clock decide: `Rtx::SessionRequest::mSettled`. A suite that times the streaming
+        /// path says no, because waiting is most of what that path then measures — and a run
+        /// under it may not be compared with a picture.
+        std::optional<bool> mSettled;
     };
 
     /// Reads the suite file. Throws when it is missing or malformed, rather than quietly profiling
@@ -123,6 +129,6 @@ namespace RtxTool
 
     /// The views `named` asks for, in the order it names them; every one where it names none or
     /// "all". Throws naming a view that is not there. One place, because `bench` reaches it through
-    /// a suite and `verify` directly, and a run of one has to be reproducible with the other.
+    /// a suite and `shot` directly, and a run of one has to be reproducible with the other.
     std::vector<Rtx::Stop> chooseViews(const std::vector<Rtx::Stop>& views, const std::vector<std::string>& named);
 }

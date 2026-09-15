@@ -51,10 +51,7 @@ namespace Rtx
                 i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
         }
 
-        // `TRANSFER_SRC` for `FrameImage::Accumulated`, which is the one figure `shot --tail` counts a
-        // firefly in and the only image in the frame that holds a clamped bounce.
-        mBlended = Image(mDevice, width, height, ATROUS_CHANNEL, sReadAndWrite | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-            "accumulate-blended");
+        mBlended = Image(mDevice, width, height, ATROUS_CHANNEL, sReadAndWrite, "accumulate-blended");
 
         mCurrent = 0;
         mFresh = true;

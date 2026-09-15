@@ -217,7 +217,7 @@ namespace Rtx
             return sNoIndex;
 
         // Outside the cache, because what this counts is what the walk met and not what it
-        // added. `openmw-rtxtool scene --twice` reads these off a second walk of one graph, and a
+        // added. `openmw-rtxtool scene` reads these off a second walk of one graph, and a
         // count that only rose on an arrival would report nothing there.
         stats.mFormats.count(*image);
 

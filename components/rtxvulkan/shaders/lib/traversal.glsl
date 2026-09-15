@@ -239,14 +239,11 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 /// @param cone how wide the ray's cone is *at this candidate*, which is what decides how much of the
 ///        mask one pixel is looking at. Nought for a ray that carries no cone, which reads the
 ///        finest level — every shadow ray. Substituted textually, so it may name the traversal.
-/// @param counted raised by one for every candidate walked past, which is every see-through surface
-///        the ray crossed. An lvalue like `blocked`, folded away by every caller that never reads
-///        it, and read by exactly one — the census `crossingsAlong` takes.
 /// @param blocked,seeThrough handed straight to `candidateStops`, which says what each is for. A
 ///        ray that sees through cannot commit the surface it saw through, so a caller with no use
-///        for `blocked` must say false and get the surface. The shadow ray and the census say true —
-///        one wants a sum and the other a count, and neither depends on the order they arrived in.
-#define RTX_RESOLVE(query, along, cone, blocked, counted, seeThrough)                                       \
+///        for `blocked` must say false and get the surface. The shadow ray says true — it wants a
+///        sum, and the sum does not depend on the order they arrived in.
+#define RTX_RESOLVE(query, along, cone, blocked, seeThrough)                                                \
     while (rayQueryProceedEXT(query))                                                                       \
     {                                                                                                       \
         if (rayQueryGetIntersectionTypeEXT(query, false) != gl_RayQueryCandidateIntersectionTriangleEXT)    \
@@ -264,8 +261,6 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
         if (candidateStops(candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along),   \
                 (cone), (seeThrough), (blocked)))                                                           \
             rayQueryConfirmIntersectionEXT(query);                                                          \
-        else                                                                                                \
-            ++(counted);                                                                                    \
     }
 
 /// What a traversal answered, before anything at all is read off it.
@@ -376,13 +371,11 @@ Hit committedHit(
         rayQueryInitializeEXT(                                                                              \
             (query), sceneTop, gl_RayFlagsNoneEXT, (mask), (origin), (tmin), (direction), frame.mFar);      \
                                                                                                             \
-        /* Two lvalues the resolve needs and nothing here reads: a ray that keeps what it passed    */      \
+        /* An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed      */      \
         /* through cannot commit the surface it passed through, and this one commits.                */      \
         uint traversedBlocked = 0u;                                                                         \
-        uint traversedCrossings = 0u;                                                                       \
         RTX_RESOLVE((query), (direction),                                                                   \
-            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedBlocked,         \
-            traversedCrossings, false)                                                                      \
+            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedBlocked, false)  \
                                                                                                             \
         if (rayQueryGetIntersectionTypeEXT((query), true) == gl_RayQueryCommittedIntersectionNoneEXT)       \
             (hit) = noHit();                                                                                \
@@ -430,15 +423,11 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 
     uint blocked = 0u;
 
-    // An lvalue the macro needs and nothing here reads: what a shadow ray wants is the product, and
-    // how many factors it has is nobody's question.
-    uint crossed = 0u;
-
     rayQueryEXT query;
     rayQueryInitializeEXT(
         query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, solidMask(frame.mRayMask), from, SHADOW_BIAS, towards,
         distance);
-    RTX_RESOLVE(query, towards, 0.0, blocked, crossed, true)
+    RTX_RESOLVE(query, towards, 0.0, blocked, true)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT)
         return 0.0;
@@ -468,12 +457,10 @@ float surfaceWithin(
     rayQueryEXT query;
     rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, reach);
 
-    // Two lvalues the macro needs and nothing here reads: what a surface walked past let through is
+    // An lvalue the macro needs and nothing here reads: what a surface walked past let through is
     // a question for whoever wants the picture, and this ray wants the distance.
     uint blocked = 0u;
-    uint crossed = 0u;
-    RTX_RESOLVE(
-        query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), blocked, crossed, seeThrough)
+    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), blocked, seeThrough)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
         return reach;
@@ -484,43 +471,6 @@ float surfaceWithin(
 float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
 {
     return surfaceWithin(origin, direction, tmin, reach, footprint, spread, solidMask(frame.mRayMask), false);
-}
-
-/// How many see-through surfaces a ray crosses before the first one that stops it.
-///
-/// **The census the peel is sized against, taken rather than assumed.** One layer is peeled and
-/// everything behind it is painted as though opaque, which is right where a ray crosses one pane and
-/// wrong where it crosses a cloud built of eleven shells. This is what says which of the two a view
-/// holds, and so what an ordered walk of them would cost.
-///
-/// **The shadow ray's walk with the eye's cone on it.** Every see-through candidate is passed and
-/// counted, every other one is taken against its own mask, and the first that stands ends the ray —
-/// which is exactly the stack an ordered composite would have to hold. The distance the eye
-/// committed is no use as a limit: it is the surface the peel already stopped at, and the layers
-/// behind it are the ones being counted.
-///
-/// **It can over-count by whatever a traversal visited out of order.** A candidate beyond the
-/// surface that ends the ray is culled once that surface commits, and a candidate reached before it
-/// is not — so a long ray through a thicket may count one or two it would never have composited.
-/// The number is a census and not a budget.
-///
-/// **A whole traversal, so it is compiled out of every frame that does not want it.**
-/// `COUNT_CROSSINGS` is what asks for it, and only the harness ever does.
-uint crossingsAlong(vec3 origin, vec3 direction, float footprint, float spread)
-{
-    uint crossings = 0u;
-
-    // An lvalue the macro needs and nothing here reads: what each layer let past is the composite's
-    // question, and this one only counts them.
-    uint blocked = 0u;
-
-    rayQueryEXT query;
-    rayQueryInitializeEXT(
-        query, sceneTop, gl_RayFlagsNoneEXT, solidMask(frame.mRayMask), origin, 0.0, direction, frame.mFar);
-    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), blocked, crossings,
-        true)
-
-    return crossings;
 }
 
 /// What a ray found, resolved down to the inputs shading needs.

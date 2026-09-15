@@ -4,7 +4,7 @@
 #include "hosttypes.h"
 #include "portable.h"
 
-// What the busy loop appended to a frame under `--stress-overlap` is told. Included verbatim by
+// What the busy loop `check` appends to every frame is told. Included verbatim by
 // both sides, for the reason `visibility.h` is.
 
 #ifdef RTX_HOST

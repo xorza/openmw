@@ -632,7 +632,7 @@ namespace Rtx::Testing
         /// The last frame's radiance, checked against the extent it was drawn at.
         void readRadiance(std::uint32_t size, std::vector<float>& values)
         {
-            mRenderer->readFrameImage(FrameImage::Composite, values);
+            mRenderer->readComposite(values);
             requireFrame(values, size);
         }
 

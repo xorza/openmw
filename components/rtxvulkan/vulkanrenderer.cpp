@@ -117,8 +117,8 @@ namespace Rtx
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
         // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
-        // `TRANSFER_SRC` because `FrameImage::Composite` copies this out: it is the frame a measurement
-        // is taken on, where `readPixels` gives the one a display would show.
+        // `TRANSFER_SRC` because `readComposite` copies this out: it is the frame a measurement is
+        // taken on, where `readPixels` gives the one a display would show.
         , mFrame(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
         , mView(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
@@ -481,7 +481,7 @@ namespace Rtx
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
-                mChannelLayout, mFogVolumeLayout, mCountHits, mProfile.mCountCrossings);
+                mChannelLayout, mFogVolumeLayout, mCountHits);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 
@@ -715,7 +715,7 @@ namespace Rtx
 
     void VulkanRenderer::setVerticalSync(SDLUtil::VSyncMode mode)
     {
-        // Headless: `shot`, `bench` and `verify` present to nothing, and a run with no surface has
+        // Headless: `shot`, `bench` and `check` present to nothing, and a run with no surface has
         // no refresh to meet.
         if (mPresenter == nullptr)
             return;
@@ -904,7 +904,7 @@ namespace Rtx
         // not started at all where the trace was specialized to write nothing into it, which is the
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
         // this is the write a frame that never reads it was still paying for.
-        if (mCountHits || mProfile.mCountCrossings)
+        if (mCountHits)
             frame.mHitCount.writable<FrameCounts>(0, 1).front() = FrameCounts{};
 
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
@@ -1021,7 +1021,7 @@ namespace Rtx
 
         // What the lens will spread, built here and applied by the curve. Nothing is
         // written back over the frame — `BloomPass` says why the trace's own answer has to
-        // reach `FrameImage::Composite` untouched.
+        // reach `readComposite` untouched.
         timer.open(commands, "bloom");
         mBloom.record(commands, *shown);
         timer.close(commands);
@@ -1056,7 +1056,7 @@ namespace Rtx
         // report back a frame or two late. A wait's access scope is the device's, so the counters
         // need a dependency of their own, recorded here after every pass that could have added to
         // them.
-        if (mCountHits || mProfile.mCountCrossings)
+        if (mCountHits)
             frame.mHitCount.orderForHostRead(commands);
 
         mRing.submit(frame);
@@ -1252,24 +1252,10 @@ namespace Rtx
         readImage(mFrame.getChannels().get(channel), values);
     }
 
-    void VulkanRenderer::readFrameImage(const FrameImage image, std::vector<float>& values)
+    void VulkanRenderer::readComposite(std::vector<float>& values)
     {
         assert(mFrame.isBuilt());
-
-        switch (image)
-        {
-            case FrameImage::Composite:
-                // The frame every channel was gathered to make.
-                readImage(mFrame.getColour(), values);
-                return;
-
-            case FrameImage::Accumulated:
-                // The denoiser's own, so a frame nothing denoised has no answer here — `getBlended`
-                // asserts on one rather than handing back whatever the allocation held, and
-                // `hasFrameImage` is where a caller asks before it comes to that.
-                readImage(mFrame.getBlended(), values);
-                return;
-        }
+        readImage(mFrame.getColour(), values);
     }
 
     void VulkanRenderer::readImage(const Image& image, std::vector<float>& values)

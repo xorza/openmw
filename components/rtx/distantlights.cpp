@@ -98,7 +98,7 @@ namespace Rtx
             // whole reach is under seventy cells and reading all of them is under the run-to-run
             // noise of a still. A budget per frame would be worse than the spike it avoided: what
             // a picture holds would then depend on how many frames had been drawn before it, and
-            // `verify` compares stills.
+            // `shot --against` compares stills.
             if (found == mCells.end() || found->mCell != key)
                 found = mCells.insert(found, ReadCell{ .mCell = key, .mLights = build(key) });
 

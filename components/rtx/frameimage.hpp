@@ -68,18 +68,6 @@ namespace Rtx
         return sChannels.name(channel);
     }
 
-    /// The two images a frame carries that are not channels of the trace's g-buffer and have no
-    /// binding: the composite's output, and the wavelet's own blend, which a frame no wavelet
-    /// reconstructed does not have at all.
-    enum class FrameImage
-    {
-        /// What the composite drew, which is the picture.
-        Composite,
-
-        /// What the wavelet blended over the frames before it. Only where one ran.
-        Accumulated,
-    };
-
     /// A traced frame as a backend hands it over: tightly packed 8-bit RGBA, row zero at the top.
     struct TracedFrame
     {

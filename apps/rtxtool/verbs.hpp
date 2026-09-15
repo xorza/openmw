@@ -23,14 +23,10 @@ namespace RtxTool
         Shot = 1 << 2,
         View = 1 << 3,
         Bench = 1 << 4,
-        Textures = 1 << 5,
-        Doll = 1 << 6,
-        Map = 1 << 7,
-        Verify = 1 << 8,
-        Check = 1 << 9,
+        Check = 1 << 5,
 
-        /// All ten, which is what an option nobody restricted is read by.
-        Every = 0x3ff,
+        /// All six, which is what an option nobody restricted is read by.
+        Every = 0x3f,
     };
 
     constexpr Verbs operator|(Verbs a, Verbs b)

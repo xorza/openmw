@@ -77,7 +77,7 @@ namespace Rtx
         /// went. `buildArrived` builds their structures, once the pass has posed them. Every
         /// structure already built stays where it is, and the top level picks the change up for
         /// nothing. Safe with frames in flight, because nothing it writes is room one of them
-        /// holds; `CI/check_rtx_validation.sh` is what says so.
+        /// holds; `check` under synchronization validation is what says so.
         void extend(Batch& batch, const SceneDesc& scene);
 
         /// Builds the structures of the meshes that arrived, over the first copy of the positions

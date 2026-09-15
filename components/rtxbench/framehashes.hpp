@@ -107,7 +107,7 @@ namespace Rtx
     std::string spellHash(const std::array<std::uint64_t, 2>& words);
 
     /// Two hashes a frame of a run — what it drew and what it was handed — and what a previous
-    /// run's hashes say about this one: `verify` for a run rather than a view, because a stale
+    /// run's hashes say about this one: `shot --against` for a run rather than a still, because a stale
     /// table or a history reprojected onto the wrong surface needs a second frame to show. The
     /// scene beside the picture, because a run that differs has either drawn one scene two ways or
     /// been handed two scenes, and those are repaired in different places; a column per part,
@@ -138,9 +138,7 @@ namespace Rtx
             /// Frames whose picture differs, in order.
             std::vector<std::uint32_t> mDiffering;
 
-            /// Frames where any part of the scene differs, in order. Reported and not judged: two
-            /// builds may lay a scene out differently and draw the same picture, so `same` leaves
-            /// it out.
+            /// Frames where any part of the scene differs, in order.
             std::vector<std::uint32_t> mSceneDiffering;
 
             /// How many frames each part differs on, indexed by `ScenePart`.
@@ -149,7 +147,11 @@ namespace Rtx
             /// Frames this run drew that the reference has no hash for, and the other way about.
             std::uint32_t mUnmatched = 0;
 
-            bool same() const { return mDiffering.empty() && mUnmatched == 0; }
+            /// Whether nothing at all moved: not a picture, not a part of the scene, not the count
+            /// of frames. The scene as well as the picture, because a run of one binary repeats
+            /// every column exactly and a picture the same over a scene that moved is a world
+            /// handed over twice, which the report names the part of.
+            bool same() const { return mDiffering.empty() && mSceneDiffering.empty() && mUnmatched == 0; }
         };
 
         /// One entry per view this run drew, in the order it drew them.

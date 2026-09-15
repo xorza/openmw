@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <boost/program_options/options_description.hpp>
@@ -11,12 +13,10 @@
 #include <boost/program_options/variables_map.hpp>
 #include <osg/Vec3f>
 
-#include "verbs.hpp"
+#include <components/rtx/namedenum.hpp>
+#include <components/rtx/renderer.hpp>
 
-namespace Rtx
-{
-    struct ValidationOptions;
-}
+#include "verbs.hpp"
 
 namespace Files
 {
@@ -53,9 +53,41 @@ namespace RtxTool
         std::string complainAbout(const boost::program_options::parsed_options& line, Verbs verb) const;
     };
 
-    /// `validationByDefault` is what the three validation switches read when nobody names them —
-    /// a decision about the command line, which only the executable has.
-    ToolOptions makeOptions(bool validationByDefault);
+    /// Which layers a run loads, as `--validation` names them. One level and not three switches,
+    /// because the three implied one another — either finer check needs the layer under it — and
+    /// the two finer checks together took the device down in three runs of four: four of the eight
+    /// combinations meant anything, and a fifth was fatal.
+    enum class Validation
+    {
+        Off,
+
+        /// The core checks.
+        On,
+
+        /// The core checks and synchronization validation, which catches a missing barrier.
+        Sync,
+
+        /// The core checks and GPU-assisted validation, which instruments every shader and
+        /// catches what a ray query does with its own arguments, at about half the frame rate. The
+        /// layer itself asks not to be run beside the core checks, so it is never a default.
+        Gpu,
+    };
+
+    inline constexpr Rtx::NamedEnum sValidationNames{ std::array{
+        std::pair{ Validation::Off, std::string_view("off") },
+        std::pair{ Validation::On, std::string_view("on") },
+        std::pair{ Validation::Sync, std::string_view("sync") },
+        std::pair{ Validation::Gpu, std::string_view("gpu") },
+    } };
+
+    /// What `level` loads. `demanded` is whether somebody typed it: a run that asked for the layers
+    /// and cannot have them fails naming what is missing, because an empty log reads as a clean
+    /// pass, while a build that turned them on by default only warns.
+    Rtx::ValidationOptions validationOf(Validation level, bool demanded);
+
+    /// `validationByDefault` is what `--validation` reads when nobody names it — a decision about the
+    /// command line, which only the executable has: `sync` outside a Release build, `off` in one.
+    ToolOptions makeOptions(Validation validationByDefault);
 
     /// The number `text` spells, or nothing where it spells anything else — the whole of the text,
     /// so `speed = 1500u` is a refusal and not a run that flew at 1500. Read under the classic
@@ -64,26 +96,6 @@ namespace RtxTool
 
     /// Parses `x,y,z`. Empty text means nothing was said; malformed text throws naming `what`.
     std::optional<osg::Vec3f> parseVec3(std::string_view text, std::string_view what);
-
-    /// One boolean switch off a command line, and whether anyone actually set it: something only
-    /// on by default can be turned off by a flag that contradicts it.
-    struct CommandSwitch
-    {
-        bool mValue = false;
-        bool mGiven = false;
-
-        /// True only where it was asked for outright.
-        bool isAsked() const { return mValue && mGiven; }
-
-        /// True only where it was turned down outright.
-        bool isRefused() const { return !mValue && mGiven; }
-    };
-
-    /// Which layers a run wants, from the three switches that can ask for them. An explicit
-    /// `--validation=false` turns off what was only on by default, and a switch asked for outright
-    /// still wins. GPU-assisted validation is never a default, because the layer asks not to be
-    /// run beside the core checks and left on by the build it lost the device in three runs of four.
-    Rtx::ValidationOptions chooseValidation(CommandSwitch layers, CommandSwitch sync, CommandSwitch gpu);
 
     /// Where the engine's own state goes when this tool drives it: the settings it saves on its
     /// way out, its log, its key bindings, its Lua storage. Under the cache path, because every

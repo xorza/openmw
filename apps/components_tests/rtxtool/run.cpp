@@ -178,6 +178,7 @@ namespace RtxTool
                 written << "[quick]\n"
                            "note = two of them\n"
                            "views = balmora, vivec\n"
+                           "settled = false\n"
                            "\n"
                            "[one]\n"
                            "views = arkngthand\n";
@@ -190,11 +191,13 @@ namespace RtxTool
             ASSERT_NE(quick, nullptr);
             EXPECT_EQ(quick->mNote, "two of them");
             EXPECT_EQ(quick->mViews, (std::vector<std::string>{ "balmora", "vivec" }));
+            EXPECT_EQ(quick->mSettled, std::optional(false)) << "a suite that times the streaming path says so";
 
             const BenchSuite* one = findSuite(suites, "one");
             ASSERT_NE(one, nullptr);
             EXPECT_EQ(one->mViews, (std::vector<std::string>{ "arkngthand" }));
             EXPECT_TRUE(one->mNote.empty()) << "a note is optional";
+            EXPECT_EQ(one->mSettled, std::nullopt) << "and so is settled, which the frame clock then decides";
 
             EXPECT_EQ(findSuite(suites, "nothing"), nullptr);
 

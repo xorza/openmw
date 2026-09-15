@@ -42,9 +42,8 @@ namespace Rtx
                 GTEST_SKIP() << "no device";
 
             const bool countHits = false;
-            const bool countCrossings = false;
             Graveyard graveyard(getDevice(), getPool());
-            FrameRing ring(getDevice(), getPool(), graveyard, countHits, countCrossings);
+            FrameRing ring(getDevice(), getPool(), graveyard, countHits);
 
             // Filled to the brim: nothing collects, so every frame stays in flight, exactly as
             // `RtxTool::runWindow` leaves the ring.
@@ -79,7 +78,7 @@ namespace Rtx
                 GTEST_SKIP() << "no device";
 
             Graveyard graveyard(getDevice(), getPool());
-            FrameRing ring(getDevice(), getPool(), graveyard, false, false);
+            FrameRing ring(getDevice(), getPool(), graveyard, false);
 
             // One frame on the queue, and a burial made while it is.
             submitEmpty(ring);

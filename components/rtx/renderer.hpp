@@ -222,17 +222,6 @@ namespace Rtx
         std::uint32_t mOutputHeight = 0;
     };
 
-    /// Whether a frame `reconstruction` put back together holds the accumulation to read: the
-    /// accumulator runs only where the wavelet does, and `readFrameImage` asserts rather than hand
-    /// back an image nobody filled.
-    inline bool hasFrameImage(const Reconstruction& reconstruction, const FrameImage image)
-    {
-        if (image != FrameImage::Accumulated)
-            return true;
-
-        return reconstruction.filtered();
-    }
-
     /// What a frame is asked for, beyond where the camera stands.
     struct FrameOptions
     {
@@ -316,12 +305,6 @@ namespace Rtx
         /// Primary rays that hit something: what tells "the cell rendered" from "the camera faced
         /// away" without opening the image. Nought where `RendererOptions::mCountHits` was cleared.
         std::uint32_t mHits = 0;
-
-        /// See-through surfaces those rays crossed, summed over the frame, and the most any one ray
-        /// crossed — what the peel in `visibility.rgen` is sized against. Nought unless
-        /// `RendererOptions::mCountCrossings` asked.
-        std::uint32_t mCrossings = 0;
-        std::uint32_t mCrossingsMost = 0;
 
         /// How long the ring waited for this frame; nought where it was already done.
         double mWaitMs = 0.0;
@@ -493,9 +476,9 @@ namespace Rtx
         /// to floats whatever the channel holds. The frame's, never a view scene's.
         virtual void readChannel(Channel channel, std::vector<float>& values) = 0;
 
-        /// The same for one of the two images a frame carries that no channel does: the composite's
-        /// own output, and the wavelet's accumulation. `hasFrameImage` first for the accumulation.
-        virtual void readFrameImage(FrameImage image, std::vector<float>& values) = 0;
+        /// The same for the composite's own output, which no channel holds: the frame a measurement
+        /// is taken on, where `readPixels` gives the one a display would show.
+        virtual void readComposite(std::vector<float>& values) = 0;
 
         /// The whole of a GUI texture as the device holds it, four bytes a pixel, tightly packed,
         /// row zero first.

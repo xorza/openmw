@@ -64,8 +64,6 @@ namespace RtxTool
         /// **The last measured frame, and never a later one.** Every figure the stop reports
         /// describes those frames, so a picture taken after them is a picture of a different run.
         ///
-        /// @param reconstruction what put that frame back together, which decides what channels it
-        ///        has. `Rtx::hasFrameImage` is where that rule lives.
         /// @param facts what the stop asked for and came to, which only a check reads.
         void write(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
             const Rtx::Actions& actions, const StopFacts& facts, Rtx::RunRecord& record);
@@ -86,16 +84,6 @@ namespace RtxTool
 
         /// The last measured frame, as a PNG.
         void writeCapture(const Writing& into, const std::filesystem::path& file);
-
-        /// The share of that frame's pixels whose accumulated bounce passes each of a ladder of
-        /// luminances. Fails the run where the frame carries no accumulated bounce.
-        void reportTail(const Writing& into);
-
-        /// That frame's linear radiance, four floats a pixel, raw.
-        ///
-        /// **No container around it**, because what reads it is a script computing an error against
-        /// another one, and every image format that carries floats would have to be decoded first.
-        void writeDump(const Writing& into, const std::filesystem::path& file);
 
         /// What the renderer was handed, as `scene` reports it.
         void reportScene(const Writing& into);

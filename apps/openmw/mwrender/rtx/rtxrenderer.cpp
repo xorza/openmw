@@ -309,9 +309,9 @@ namespace MWRender
         // thread's answer rather than the schedule's, and a run whose pictures are compared with
         // another's cannot have that.
         //
-        // **The step and not what a run does with its frames.** `shot` and `verify` are what the
-        // reference pictures are made with and neither of them hashes a frame, so a condition
-        // asking about hashes would leave out the two runs that most need this: measured on
+        // **The step and not what a run does with its frames.** `shot` is what the reference
+        // pictures are made with and it hashes no frame, so a condition asking about hashes would
+        // leave out the run that most needs this: measured on
         // `balmora`, four processes drew four different frames after half a second of warming and
         // one frame after a tenth of one.
         //

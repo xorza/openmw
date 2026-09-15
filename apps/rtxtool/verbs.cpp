@@ -22,10 +22,6 @@ namespace RtxTool
             std::pair{ Verbs::Shot, std::string_view("shot") },
             std::pair{ Verbs::View, std::string_view("view") },
             std::pair{ Verbs::Bench, std::string_view("bench") },
-            std::pair{ Verbs::Textures, std::string_view("textures") },
-            std::pair{ Verbs::Doll, std::string_view("doll") },
-            std::pair{ Verbs::Map, std::string_view("map") },
-            std::pair{ Verbs::Verify, std::string_view("verify") },
             std::pair{ Verbs::Check, std::string_view("check") },
         } };
     }

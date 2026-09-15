@@ -29,35 +29,24 @@ namespace RtxTool
             return bpo::command_line_parser(line).options(options.mDescription).run();
         }
 
-        /// What a switch comes to when nobody names it, which is what `validationByDefault` decides
-        /// for two of the three layer switches and for neither of the other one.
-        bool defaultOf(const bool validationByDefault, const char* const name)
+        /// What `--validation` comes to when nobody names it, which is what `makeOptions` is told.
+        std::string defaultValidation(const Validation byDefault)
         {
-            const ToolOptions options = makeOptions(validationByDefault);
+            const ToolOptions options = makeOptions(byDefault);
 
             bpo::variables_map variables;
             bpo::store(parse(options, {}), variables);
             bpo::notify(variables);
 
-            return variables[name].as<bool>();
+            return variables["validation"].as<std::string>();
         }
 
-        /// GPU-assisted validation is the one layer switch a build never turns on.
-        ///
-        /// **The layer asks not to be run beside the core checks**, and a build that ran both took
-        /// the process down — `RtxTool::chooseValidation` says what that cost. Nothing downstream
-        /// can hold this rule: the chooser is handed whatever the description defaulted to, so the
-        /// default is where it has to be stated and where it has to be checked.
-        TEST(RtxToolOptionsTest, onlyTheGpuAssistedLayerIsNeverOnByDefault)
+        /// The build decides the level nobody named, and the level is spelled the way the table
+        /// spells it, so a script that names `sync` and a build that defaults to it agree.
+        TEST(RtxToolOptionsTest, theBuildDecidesTheValidationLevelNobodyNamed)
         {
-            EXPECT_TRUE(defaultOf(true, "validation"));
-            EXPECT_TRUE(defaultOf(true, "sync-validation"));
-            EXPECT_FALSE(defaultOf(true, "gpu-validation")) << "a development build paired it with the core checks";
-
-            // A release build asks for nothing at all, which is the rule the other two follow.
-            EXPECT_FALSE(defaultOf(false, "validation"));
-            EXPECT_FALSE(defaultOf(false, "sync-validation"));
-            EXPECT_FALSE(defaultOf(false, "gpu-validation"));
+            EXPECT_EQ(defaultValidation(Validation::Sync), "sync");
+            EXPECT_EQ(defaultValidation(Validation::Off), "off");
         }
 
         /// The bug: an option belonging to one command, given to another, went nowhere.
@@ -67,28 +56,27 @@ namespace RtxTool
         /// ones it knows about.
         TEST(RtxToolOptionsTest, aCommandRefusesAnOptionItDoesNotRead)
         {
-            const ToolOptions options = makeOptions(false);
+            const ToolOptions options = makeOptions(Validation::Off);
 
-            EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Shot),
-                "`shot` does not read --views, which belongs to `bench`, `verify` and `check`.\n");
+            EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::View),
+                "`view` does not read --views, which belongs to every command but `info` and `view`.\n");
 
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Bench), "")
                 << "the command the option belongs to takes it";
-            EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Verify), "");
+            EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Shot), "");
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Check), "");
 
             // The same mistake the other way round: a run of places takes its cell from `--views`,
             // and `--view` is what a command that stands at one place reads.
             EXPECT_EQ(options.complainAbout(parse(options, { "--view=balmora" }), Verbs::Bench),
-                "`bench` does not read --view, which belongs to every command but `info`, `bench`, `verify` "
-                "and `check`.\n");
+                "`bench` does not read --view, which belongs to `scene`, `shot` and `view`.\n");
             EXPECT_EQ(options.complainAbout(parse(options, { "--view=balmora" }), Verbs::Shot), "");
         }
 
         /// Every option on the line is answered for, and each of them once.
         TEST(RtxToolOptionsTest, aLineIsAnsweredForOptionByOption)
         {
-            const ToolOptions options = makeOptions(false);
+            const ToolOptions options = makeOptions(Validation::Off);
 
             // Two the command does not read, around one it does and one nobody restricted.
             const bpo::parsed_options line
@@ -100,13 +88,10 @@ namespace RtxTool
                 "`scene` does not read --suite, which belongs to `bench` and `check`.\n"
                 "`scene` does not read --seconds, which belongs to `bench` and `check`.\n");
 
-            // A composing option is written once per value and is worth one complaint.
-            EXPECT_EQ(options.complainAbout(parse(options, { "--npc=fargoth", "--npc=hrisskar" }), Verbs::Doll), "")
-                << "the doll is one person out of --npc";
-
-            const bpo::parsed_options twice = parse(options, { "--out=a.png", "--out=b.png" });
+            // An option written twice is worth one complaint.
+            const bpo::parsed_options twice = parse(options, { "--out=a", "--out=b" });
             EXPECT_EQ(options.complainAbout(twice, Verbs::Bench),
-                "`bench` does not read --out, which belongs to `shot`, `textures`, `doll`, `map` and `verify`.\n");
+                "`bench` does not read --out, which belongs to `shot` and `check`.\n");
         }
 
         /// Every option says which commands read it, and the ones that say "all of them" say it.
@@ -115,7 +100,7 @@ namespace RtxTool
         /// default, so `info --size=800x600 --delight=0` was taken and thrown away.
         TEST(RtxToolOptionsTest, everyOptionSaysWhichCommandsReadIt)
         {
-            const ToolOptions options = makeOptions(false);
+            const ToolOptions options = makeOptions(Validation::Off);
 
             // Upstream's own — `--config` and its three siblings — reach the same description
             // through `Files::ConfigurationManager` and are every command's by nature. They are the
@@ -137,35 +122,34 @@ namespace RtxTool
 
             EXPECT_EQ(options.readsOption("validation"), Verbs::Every);
             EXPECT_EQ(options.readsOption("data"), Verbs::Every) << "the engine's own, read by every command";
-            EXPECT_EQ(options.readsOption("views"), Verbs::Bench | Verbs::Verify | Verbs::Check);
+            EXPECT_EQ(options.readsOption("views"), Verbs::Scene | Verbs::Shot | Verbs::Bench | Verbs::Check);
 
             // Every command but `info` builds a frame, and `info` reports on a device.
             EXPECT_EQ(options.readsOption("upscale"), otherThan(Verbs::Info));
             EXPECT_EQ(options.readsOption("size"), otherThan(Verbs::Info));
             EXPECT_EQ(options.complainAbout(parse(options, { "--size=8x8" }), Verbs::Info),
                 "`info` does not read --size, which belongs to every command but `info`.\n");
-            EXPECT_EQ(options.complainAbout(parse(options, { "--size=8x8" }), Verbs::Doll), "")
-                << "`doll` frames a camera through the same request every other command does";
+            EXPECT_EQ(options.complainAbout(parse(options, { "--size=8x8" }), Verbs::Check), "")
+                << "`check` frames a camera through the same request every other command does";
 
-            for (const std::string_view name :
-                { "info", "scene", "shot", "view", "bench", "textures", "doll", "map", "verify", "check" })
-                EXPECT_EQ(options.complainAbout(parse(options, { "--validation=false" }), verbNamed(name)), "") << name;
+            for (const std::string_view name : { "info", "scene", "shot", "view", "bench", "check" })
+                EXPECT_EQ(options.complainAbout(parse(options, { "--validation=off" }), verbNamed(name)), "") << name;
         }
 
         /// The help line and the check are one statement, so a reader is told what the tool
         /// enforces.
         TEST(RtxToolOptionsTest, anOwnedOptionSaysSoInItsHelpLine)
         {
-            const ToolOptions options = makeOptions(false);
+            const ToolOptions options = makeOptions(Validation::Off);
 
             const auto lineFor
                 = [&](const std::string& name) { return options.mDescription.find(name, false).description(); };
 
-            EXPECT_TRUE(lineFor("views").starts_with("with `bench`, `verify` and `check`, ")) << lineFor("views");
+            EXPECT_TRUE(lineFor("views").starts_with("with every command but `info` and `view`, ")) << lineFor("views");
             EXPECT_TRUE(lineFor("find").starts_with("with `scene`, ")) << lineFor("find");
 
-            // Nine of the ten read a camera, so the line names the one that does not rather than
-            // the nine that do.
+            // Five of the six read a camera, so the line names the one that does not rather than
+            // the five that do.
             EXPECT_TRUE(lineFor("fov").starts_with("with every command but `info`, ")) << lineFor("fov");
 
             EXPECT_FALSE(lineFor("validation").starts_with("with ")) << "nothing to say where every command reads it";
@@ -180,19 +164,19 @@ namespace RtxTool
             EXPECT_EQ(verbName(Verbs::Check), "check");
             EXPECT_EQ(verbNamed("check"), Verbs::Check);
             EXPECT_EQ(verbNamed("nonesuch"), Verbs::None);
-            EXPECT_EQ(verbName(Verbs::Bench | Verbs::Verify), "") << "a set of two is not a command";
+            EXPECT_EQ(verbName(Verbs::Bench | Verbs::Check), "") << "a set of two is not a command";
             EXPECT_EQ(verbName(Verbs::None), "");
 
-            EXPECT_EQ(countVerbs(Verbs::Every), 10u) << "the ten `--help` prints";
+            EXPECT_EQ(countVerbs(Verbs::Every), 6u) << "the six `--help` prints";
             EXPECT_EQ(countVerbs(Verbs::None), 0u);
             EXPECT_EQ(otherThan(Verbs::Every), Verbs::None);
-            EXPECT_EQ(countVerbs(otherThan(Verbs::Shot)), 9u);
-            EXPECT_TRUE(holds(Verbs::Bench | Verbs::Verify, Verbs::Verify));
-            EXPECT_FALSE(holds(Verbs::Bench | Verbs::Verify, Verbs::Shot));
+            EXPECT_EQ(countVerbs(otherThan(Verbs::Shot)), 5u);
+            EXPECT_TRUE(holds(Verbs::Bench | Verbs::Check, Verbs::Check));
+            EXPECT_FALSE(holds(Verbs::Bench | Verbs::Check, Verbs::Shot));
 
             EXPECT_EQ(describeVerbs(Verbs::Shot), "`shot`");
-            EXPECT_EQ(describeVerbs(Verbs::Bench | Verbs::Verify), "`bench` and `verify`");
-            EXPECT_EQ(describeVerbs(Verbs::Scene | Verbs::Shot | Verbs::Map), "`scene`, `shot` and `map`")
+            EXPECT_EQ(describeVerbs(Verbs::Bench | Verbs::Check), "`bench` and `check`");
+            EXPECT_EQ(describeVerbs(Verbs::Check | Verbs::Shot | Verbs::Scene), "`scene`, `shot` and `check`")
                 << "in the order --help prints them, whatever order they were written in";
             EXPECT_EQ(describeVerbs(Verbs::None), "");
         }
@@ -200,97 +184,46 @@ namespace RtxTool
 
     namespace
     {
-        /// What the three switches look like when nobody has said anything, outside a Release build.
-        constexpr CommandSwitch sDefaultOn{ .mValue = true, .mGiven = false };
-        constexpr CommandSwitch sAsked{ .mValue = true, .mGiven = true };
-        constexpr CommandSwitch sRefused{ .mValue = false, .mGiven = true };
-
-        /// What a switch with no build default looks like, which `--gpu-validation` always is and
-        /// every switch is in a Release build.
-        constexpr CommandSwitch sQuiet{ .mValue = false, .mGiven = false };
-
-        /// Left alone, a development build loads the layers and the synchronization checks.
+        /// One level loads one set of layers, and only `gpu` loads the GPU-assisted one.
         ///
-        /// **And never the GPU-assisted one**, which the layer itself asks not to be run beside the
-        /// core checks: `--gpu-validation` has no build default to carry it, so nothing but the name
-        /// turns it on. `chooseValidation`'s own header says what the pairing cost.
-        TEST(RtxValidationChoiceTest, theGpuAssistedLayerArrivesByNameAndNoOtherWay)
+        /// **The two finer checks are never paired**, because a build that ran both took the device
+        /// down in three runs of four: `gpu` is a level of its own and never a default, and one
+        /// option to name a level with is what keeps them apart.
+        TEST(RtxValidationLevelTest, eachLevelLoadsItsOwnLayersAndNoOthers)
         {
-            const Rtx::ValidationOptions defaults = chooseValidation(sDefaultOn, sDefaultOn, sQuiet);
-            EXPECT_TRUE(defaults.mEnabled);
-            EXPECT_TRUE(defaults.mSynchronization);
-            EXPECT_FALSE(defaults.mGpuAssisted);
-
-            EXPECT_TRUE(chooseValidation(sDefaultOn, sDefaultOn, sAsked).mGpuAssisted) << "asking did not turn it on";
-
-            // **And not from a default either**, which is what reading this one by name buys: a
-            // build that started handing one out could not pair the two again by accident.
-            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sDefaultOn).mGpuAssisted);
-        }
-
-        /// The bug this rule was written for: refusing the layers has to turn them off.
-        ///
-        /// Both finer switches imply the layers and both default on, so leaving their defaults
-        /// standing meant `--validation=false` changed nothing at all — and the tool told anyone
-        /// timing a frame to pass exactly that.
-        TEST(RtxValidationChoiceTest, refusingTheLayersTurnsOffWhatWasOnlyOnByDefault)
-        {
-            const Rtx::ValidationOptions off = chooseValidation(sRefused, sDefaultOn, sQuiet);
+            const Rtx::ValidationOptions off = validationOf(Validation::Off, false);
             EXPECT_FALSE(off.mEnabled);
             EXPECT_FALSE(off.mSynchronization);
             EXPECT_FALSE(off.mGpuAssisted);
-        }
 
-        /// A switch asked for by name beats a blanket refusal, which is the more specific request
-        /// winning rather than the later one.
-        TEST(RtxValidationChoiceTest, aSwitchAskedForByNameSurvivesARefusalOfTheRest)
-        {
-            const Rtx::ValidationOptions sync = chooseValidation(sRefused, sAsked, sQuiet);
-            EXPECT_TRUE(sync.mSynchronization);
-            EXPECT_FALSE(sync.mGpuAssisted) << "still only on by default, and still refused";
+            const Rtx::ValidationOptions on = validationOf(Validation::On, false);
+            EXPECT_TRUE(on.mEnabled);
+            EXPECT_FALSE(on.mSynchronization);
+            EXPECT_FALSE(on.mGpuAssisted);
+
+            const Rtx::ValidationOptions sync = validationOf(Validation::Sync, false);
             EXPECT_TRUE(sync.mEnabled) << "synchronization validation implies the layer that carries it";
+            EXPECT_TRUE(sync.mSynchronization);
+            EXPECT_FALSE(sync.mGpuAssisted);
 
-            const Rtx::ValidationOptions gpu = chooseValidation(sRefused, sDefaultOn, sAsked);
-            EXPECT_TRUE(gpu.mGpuAssisted);
-            EXPECT_FALSE(gpu.mSynchronization);
+            const Rtx::ValidationOptions gpu = validationOf(Validation::Gpu, false);
             EXPECT_TRUE(gpu.mEnabled);
+            EXPECT_FALSE(gpu.mSynchronization) << "the two finer layers are never paired";
+            EXPECT_TRUE(gpu.mGpuAssisted);
         }
 
-        /// Every request that stands a renderer up hands the choice on.
-        ///
-        /// **The bug this was written for: `doll` and `map` dropped it.** They built their options
-        /// inline and named every field but the layers, so the two commands parsed
-        /// `--sync-validation`, accepted it, and traced with nothing loaded — and a run under it came
-        /// back clean because nothing was checking. The switch is now an argument of the conversion
-        /// rather than a field of the request, so a caller has to have one in hand.
-        TEST(RtxValidationChoiceTest, aReleaseBuildStaysQuietUntilSomethingIsAskedFor)
-        {
-            EXPECT_FALSE(chooseValidation(sQuiet, sQuiet, sQuiet).mEnabled);
-            EXPECT_TRUE(chooseValidation(sAsked, sQuiet, sQuiet).mEnabled);
-            EXPECT_TRUE(chooseValidation(sQuiet, sAsked, sQuiet).mEnabled);
-            EXPECT_TRUE(chooseValidation(sQuiet, sQuiet, sAsked).mEnabled);
-        }
-
-        /// A run that named a layer demands it; a build that switched one on does not.
+        /// A run that named a level demands it; a build that defaulted to one does not.
         ///
         /// **The difference decides whether a missing layer stops the run.** Without the layers
         /// nothing reports, so a gate that asked for them and got none reads an empty log as a pass
         /// — while a developer whose build turned them on by default still wants a renderer that
-        /// starts. `Rtx::ValidationOptions::mDemanded` is what tells the two apart.
-        TEST(RtxValidationChoiceTest, onlyASwitchNamedOnTheCommandLineDemandsTheLayers)
+        /// starts. `Rtx::ValidationOptions::mDemanded` is what tells the two apart, and it is the
+        /// caller's word and not the level's.
+        TEST(RtxValidationLevelTest, onlyALevelNamedOnTheCommandLineDemandsTheLayers)
         {
-            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sQuiet).mDemanded)
-                << "a build default demanded the layers";
-            EXPECT_FALSE(chooseValidation(sRefused, sQuiet, sQuiet).mDemanded)
-                << "turning the layers down demanded them";
-
-            EXPECT_TRUE(chooseValidation(sAsked, sQuiet, sQuiet).mDemanded);
-            EXPECT_TRUE(chooseValidation(sQuiet, sAsked, sQuiet).mDemanded);
-            EXPECT_TRUE(chooseValidation(sQuiet, sQuiet, sAsked).mDemanded);
-
-            // A demand for the finer layer stands even against a refusal of the coarser one, which
-            // is the same rule `mEnabled` follows above.
-            EXPECT_TRUE(chooseValidation(sRefused, sAsked, sQuiet).mDemanded);
+            EXPECT_FALSE(validationOf(Validation::Sync, false).mDemanded) << "a build default demanded the layers";
+            EXPECT_TRUE(validationOf(Validation::Sync, true).mDemanded);
+            EXPECT_TRUE(validationOf(Validation::Gpu, true).mDemanded);
         }
     }
 

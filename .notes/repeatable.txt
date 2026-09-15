@@ -1,9 +1,10 @@
-# Picture determinism, `apps/rtxtool/repeatable.sh`. Newest first.
+# Picture determinism, `rtx.sh <flavour> repeat`. Newest first.
 #
-# The scene columns are the gate and they are exact at every reading here, so what a line records is
-# the picture. A count of differing pictures is how early one divergence landed and not how much went
-# wrong: `AGENTS.md` says why the measured exposure carries one frame's difference into every frame
-# after it, and why a count therefore scales with the walk it was taken over.
+# The scene columns are exact at every reading here, so what a line records is the picture; since
+# 2026-09-15 the picture is the gate as well. A count of differing pictures is how early one
+# divergence landed and not how much went wrong: `AGENTS.md` says why the measured exposure carries
+# one frame's difference into every frame after it, and why a count therefore scales with the walk it
+# was taken over.
 
 
 - The picture a walk draws does not repeat between two runs, and what makes it differ is not known.

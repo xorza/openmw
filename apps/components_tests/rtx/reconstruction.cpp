@@ -59,11 +59,9 @@ namespace Rtx
             EXPECT_EQ(wavelet.mUpscaling.mMode, Upscale::Off);
         }
 
-        /// The accumulated bounce exists only where the wavelet ran.
-        ///
-        /// **The rule `readChannel` asserts on**, so a caller that wants the firefly tail asks
-        /// first and is told which denoiser ran, rather than aborting inside the backend.
-        TEST(RtxReconstructionTest, onlyAWaveletFrameCarriesTheAccumulatedBounce)
+        /// The wavelet ran only where it was asked for and nothing upscaled: Ray Reconstruction is
+        /// the denoiser under an upscaler, and it is not this one.
+        TEST(RtxReconstructionTest, onlyAWaveletFrameIsFiltered)
         {
             const Reconstruction wavelet
                 = Reconstruction::resolve(Upscaling{}, ReconstructionRequest{ .mFilter = true });
@@ -74,15 +72,6 @@ namespace Rtx
             EXPECT_TRUE(wavelet.filtered());
             EXPECT_FALSE(raw.filtered()) << "nothing denoised it, which is what a reference is built from";
             EXPECT_FALSE(upscaled.filtered()) << "Ray Reconstruction is the denoiser, and it is not this one";
-
-            EXPECT_TRUE(hasFrameImage(wavelet, FrameImage::Accumulated));
-            EXPECT_FALSE(hasFrameImage(raw, FrameImage::Accumulated));
-            EXPECT_FALSE(hasFrameImage(upscaled, FrameImage::Accumulated)) << "the same ask, and no channel to read";
-
-            // The composite's own output is there whatever put the frame back together, and every
-            // g-buffer channel is the trace's, so `hasFrameImage` has one question to answer.
-            for (const Reconstruction& put : { wavelet, raw, upscaled })
-                EXPECT_TRUE(hasFrameImage(put, FrameImage::Composite));
         }
 
         /// Every name round-trips, because a report is only worth anything if it reads back.

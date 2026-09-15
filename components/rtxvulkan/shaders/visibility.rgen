@@ -155,10 +155,10 @@ void main()
     // and the record a trace past it lands on is how the shader there is told to draw a solid, so a
     // deeper stack ends in the surface standing there rather than in a hole.
     //
-    // **The census is taken rather than assumed** — `crossingsAlong`, under `COUNT_CROSSINGS`. Red
-    // Mountain holds 205 translucent materials and its deepest ray crosses eight of them, and those
-    // are the medium's: a surface that is nowhere opaque never stops a ray at all and is gathered by
-    // `mediumAlong` instead, so what reaches here is glass and clothing.
+    // **The stack was counted rather than assumed** when the budget was set: Red Mountain holds 205
+    // translucent materials and its deepest ray crossed eight of them, and those are the medium's —
+    // a surface that is nowhere opaque never stops a ray at all and is gathered by `mediumAlong`
+    // instead, so what reaches here is glass and clothing.
     //
     // **The composite is the ordered one, back to front by construction.** Each layer keeps what
     // every layer in front of it let through, which is one multiply a layer and no sorting: the ray
@@ -381,16 +381,6 @@ void main()
 
     if (COUNT_HITS && hit)
         atomicAdd(hits, 1);
-
-    // **The census the peel above was sized against.** The peeled surface is one of these, so what
-    // the number answers is how many layers an ordered walk would have to composite — and the peel
-    // is the first of them.
-    if (COUNT_CROSSINGS)
-    {
-        const uint crossed = crossingsAlong(origin, direction, cone.mWidth, cone.mSpread);
-        atomicAdd(crossings, crossed);
-        atomicMax(crossingsMost, crossed);
-    }
 
     const ivec2 at = ivec2(pixel);
 

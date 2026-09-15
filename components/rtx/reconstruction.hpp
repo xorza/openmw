@@ -113,8 +113,7 @@ namespace Rtx
         bool mJitterForced = false;
 
         /// Whether the wavelet ran over the indirect channel — one comparison, because the backend
-        /// records the accumulator where this holds and `FrameImage::Accumulated` exists only where
-        /// it did.
+        /// records the accumulator where this holds.
         bool filtered() const { return mDenoiser == Denoiser::Wavelet; }
 
         /// The whole of the rule, and the only copy of it.
@@ -172,9 +171,6 @@ namespace Rtx
         /// and read by the backend off the frame and never from here.
         ReconstructionRequest mReconstruction;
 
-        /// Whether the trace counts the see-through surfaces each primary ray crosses.
-        bool mCountCrossings = false;
-
         /// How much of the painted lighting to divide out of a texture. Nought hands the trace
         /// Bethesda's textures with their lighting still in them.
         float mDelight = 1.0f;
@@ -189,7 +185,7 @@ namespace Rtx
         /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
         /// hold it not at all. A held queue keeps the device that far behind the host, so every
         /// frame is recorded over a frame still running: what makes a hazard that needs the
-        /// overlap show on the first frame of every run. A gate's option, never a player's.
+        /// overlap show on the first frame of every run. `check` sets it and nothing else does.
         double mStressOverlapMs = 0.0;
 
         /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of

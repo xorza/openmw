@@ -1,4 +1,4 @@
-#include "verify.hpp"
+#include "compare.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -17,12 +17,6 @@ namespace RtxTool
         std::ostream& out()
         {
             return Debug::getRawStdout();
-        }
-
-        /// Where a view's frame is written, under whichever run directory.
-        std::filesystem::path frameFile(const std::filesystem::path& directory, const std::string& view)
-        {
-            return directory / (view + ".png");
         }
 
         /// How a difference reads on one line.
@@ -73,27 +67,24 @@ namespace RtxTool
     }
 
     int compareRuns(
-        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const Rtx::Stop> stops)
+        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const std::string> files)
     {
         if (against.empty())
-        {
-            out() << "verify: no --against, so this run is only a reference for the next one\n";
             return 0;
-        }
 
-        out() << std::format("verify: {} {} against {}\n", stops.size(), stops.size() == 1 ? "view" : "views",
+        out() << std::format("{} {} against {}\n", files.size(), files.size() == 1 ? "picture" : "pictures",
             Files::pathToUnicodeString(against));
 
         std::uint32_t differing = 0;
         std::uint32_t unmatched = 0;
 
-        for (const Rtx::Stop& stop : stops)
+        for (const std::string& file : files)
         {
-            const Rtx::PngImage drawn = Rtx::readPng(frameFile(wrote, stop.mName));
-            const Rtx::PngImage reference = Rtx::readPng(frameFile(against, stop.mName));
+            const Rtx::PngImage drawn = Rtx::readPng(wrote / file);
+            const Rtx::PngImage reference = Rtx::readPng(against / file);
             const FrameDifference difference = compareFrames(reference, drawn);
 
-            out() << std::format("  {:<28} {}\n", stop.mName, describe(difference));
+            out() << std::format("  {:<36} {}\n", file, describe(difference));
 
             if (difference.mMismatched)
                 ++unmatched;
@@ -103,12 +94,12 @@ namespace RtxTool
 
         if (differing == 0 && unmatched == 0)
         {
-            out() << "  every view is the same picture\n";
+            out() << "  every picture is the same\n";
             return 0;
         }
 
         out() << std::format(
-            "  {} of {} views moved, {} had nothing to compare against\n", differing, stops.size(), unmatched);
+            "  {} of {} pictures moved, {} had nothing to compare against\n", differing, files.size(), unmatched);
 
         return 1;
     }

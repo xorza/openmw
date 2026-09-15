@@ -35,10 +35,13 @@ namespace RtxTool
     {
         using StringsVector = std::vector<std::string>;
 
-        /// The commands that stand at one place, which is every one that calls `chooseView`.
-        /// A run of places — `bench`, `verify` and `check` — takes its cell and its camera from
-        /// `--views` instead.
-        constexpr Verbs sPlaces = Verbs::Scene | Verbs::Shot | Verbs::View | Verbs::Textures | Verbs::Map | Verbs::Doll;
+        /// The commands that can stand at one place named on the line — a cell, a camera, a view.
+        /// A run of places — `bench` and `check`, and `shot` and `scene` under `--views` — takes
+        /// its cells and its cameras from `views.cfg` instead.
+        constexpr Verbs sPlaces = Verbs::Scene | Verbs::Shot | Verbs::View;
+
+        /// The commands that visit a list of places.
+        constexpr Verbs sRuns = Verbs::Scene | Verbs::Shot | Verbs::Bench | Verbs::Check;
 
         /// The commands that frame the world, which is every one that builds a `FrameRequest`.
         /// `info` is the one that does not: it reports on a device and draws nothing.
@@ -109,7 +112,7 @@ namespace RtxTool
         return complaint;
     }
 
-    ToolOptions makeOptions(const bool validationByDefault)
+    ToolOptions makeOptions(const Validation validationByDefault)
     {
         ToolOptions result{ bpo::options_description("Options"), {} };
         auto declare = result.mDescription.add_options();
@@ -133,27 +136,22 @@ namespace RtxTool
 
         option(Verbs::Every, "help", bpo::bool_switch(), "print this message and quit");
 
-        // On unless this was built for release, and `--validation=false` turns any of them off
-        // again. An implicit value is what lets the bare `--validation` still mean "yes".
-        option(Verbs::Every, "validation", bpo::value<bool>()->default_value(validationByDefault)->implicit_value(true),
-            "load VK_LAYER_KHRONOS_validation. On by default outside a Release build");
-        option(Verbs::Every, "sync-validation",
-            bpo::value<bool>()->default_value(validationByDefault)->implicit_value(true),
-            "add synchronization validation, which catches missing barriers (implies --validation)");
-        option(Verbs::Every, "gpu-validation", bpo::value<bool>()->default_value(false)->implicit_value(true),
-            "add GPU-assisted validation, which instruments shaders and catches what a ray query "
-            "does with its own arguments (implies --validation). Off unless asked for, whatever the "
-            "build: it costs about half the frame rate, and the layer itself asks not to be run "
-            "beside the core checks");
+        option(Verbs::Every, "validation",
+            bpo::value<std::string>()->default_value(std::string(sValidationNames.name(validationByDefault))),
+            std::format("which of VK_LAYER_KHRONOS_validation's checks to load: {}. `on` is the core "
+                        "checks; `sync` adds synchronization validation, which catches a missing "
+                        "barrier; `gpu` adds GPU-assisted validation instead, which instruments every "
+                        "shader at about half the frame rate, and which the layer asks not to run "
+                        "beside the core checks. `sync` by default outside a Release build and `off` "
+                        "in one; a run that names a level and cannot have it fails rather than "
+                        "reporting nothing",
+                sValidationNames.list())
+                .c_str());
 
         option(sPlaces, "cell", bpo::value<std::string>()->default_value(""),
             "cell to read, addressed the way Morrowind does: a pair of integers is an exterior, "
             "anything else is an interior's name. Write --cell=-2,-9 rather than --cell -2,-9, or "
             "the leading minus reads as an option. Left out, the default view decides.");
-
-        option(Verbs::Scene, "twice", bpo::bool_switch(),
-            "extract the cell a second time and report what the second pass added, which should "
-            "be nothing");
 
         option(sPlaces, "view", bpo::value<std::string>()->default_value(""),
             "a named viewpoint from resources/rtx/views.cfg, which supplies the cell and usually the "
@@ -168,13 +166,17 @@ namespace RtxTool
             bpo::value<bool>()->default_value(byDefault.mProfile.mReconstruction.mFilter)->implicit_value(true),
             "run the denoiser over the indirect light. Off shows the raw bounce, and is what a "
             "reference is made with");
-        // Defaulted to an empty list rather than left absent, because `readConfiguration` walks
-        // every option in this description and casts it: a composing option with no value in the
-        // map is a `bad_any_cast` on every run that did not name one.
-        option(Verbs::Doll, "npc", bpo::value<StringsVector>()->default_value(StringsVector(), "")->composing(),
-            "whose inventory doll to draw, by NPC record id -- fargoth, \"caius cosades\". "
-            "Repeatable, and each one is written beside the last. They arrive dressed out of their "
-            "own record, which is what the game equips them with");
+        option(Verbs::Shot, "doll", bpo::value<std::string>()->default_value(""),
+            "also write the inventory doll of this person, by NPC record id -- fargoth, \"caius "
+            "cosades\" -- traced against a scene of their own. They arrive dressed out of their "
+            "own record, which is what the game equips them with. `scene --find=<text>` finds one");
+        option(Verbs::Shot, "map", bpo::bool_switch(),
+            "also write one local-map tile of the place, traced straight down and framed the way "
+            "the game's own compass frames one");
+        option(Verbs::Shot, "textures", bpo::bool_switch(),
+            "also write every texture the world around the place uses, vanilla beside de-lit, as "
+            "one sheet: what a frame there would actually sample, since a town's people wear "
+            "textures the town itself never names");
 
         option(sFramed, "upscale",
             bpo::value<std::string>()->default_value(
@@ -207,10 +209,6 @@ namespace RtxTool
             "and a number holds it there. A pixel test and a converged reference want it held, "
             "because a measured exposure makes every value depend on the whole frame");
 
-        option(Verbs::Shot, "dump", bpo::value<std::string>()->default_value(""),
-            "also write the frame in linear radiance to this path: four floats a pixel, "
-            "raw, at the render extent. What a measurement is taken on, where the PNG is what a "
-            "picture is looked at as");
         option(sFramed, "albedo", bpo::bool_switch(),
             "write the albedo with no shading over it, which is what a texture problem looks like "
             "when nothing else is in the way");
@@ -244,13 +242,14 @@ namespace RtxTool
             "closed, and `bench` measures this many at each place instead of deriving them from "
             "--seconds");
 
-        option(Verbs::Bench | Verbs::Check, "suite", bpo::value<std::string>()->default_value("default"),
-            "which list of places in resources/rtx/benches.cfg to profile. Overridden "
-            "by --views");
+        option(Verbs::Bench | Verbs::Check, "suite", bpo::value<std::string>()->default_value(""),
+            "which list of places in resources/rtx/benches.cfg to visit: [default] for `bench` "
+            "and [check] for `check` unless named. Overridden by --views");
 
-        option(Verbs::Bench | Verbs::Verify | Verbs::Check, "views", bpo::value<std::string>()->default_value(""),
-            "which views.cfg views to visit, by name rather than by suite — the places `bench` "
-            "profiles and the ones `verify` renders. --views=all runs every view there is");
+        option(sRuns, "views", bpo::value<std::string>()->default_value(""),
+            "which views.cfg views to visit, comma separated, by name rather than by suite. "
+            "--views=all runs every view there is, which with `shot --against` is what says what "
+            "a change moved");
 
         option(Verbs::Bench | Verbs::Check, "seconds", bpo::value<float>()->default_value(20.0f),
             "how many seconds of world to run at each place. World and not wall: the "
@@ -268,14 +267,6 @@ namespace RtxTool
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
-
-        option(Verbs::Bench, "settled", bpo::value<bool>()->implicit_value(true),
-            "whether each hand-over waits for the distant ground it collects, and each walk "
-            "for the one cell it adopts. On unless said otherwise, because a settled run is what "
-            "makes two processes draw one picture — and it is also what puts a bake on the frame "
-            "path: measured on `island-crossing`, the `bake` row reads 28 ms at the p99 against "
-            "0.04 ms with this off. **--settled=false is what times the streaming path**, and a "
-            "run under it may not be compared with a picture");
 
         option(Verbs::Bench, "json", bpo::value<std::string>()->default_value(""),
             "also write the run to this file as one record, for comparing against the "
@@ -310,23 +301,23 @@ namespace RtxTool
             "cells that path is reached for. Zero hands `viewing distance` back the decision, which "
             "is 7168 against a cell of 8192 and so barely leaves the active grid");
 
-        option(Verbs::Bench | Verbs::Verify, "against", bpo::value<std::string>()->default_value(""),
-            "what to subtract this run from: the directory a previous `verify` wrote, or the file "
+        option(Verbs::Shot | Verbs::Bench, "against", bpo::value<std::string>()->default_value(""),
+            "what to subtract this run from: the directory a previous `shot` wrote, or the file "
             "a previous `bench --hashes` wrote, which says which frames of the run now draw "
-            "something else. The reference is always a run of the previous build on this machine "
-            "and never a corpus in the tree: the picture is a function of the driver and the card "
-            "as much as of the code");
+            "something else and which parts of the scene moved. The reference is always a run of "
+            "the previous build on this machine and never a corpus in the tree: the picture is a "
+            "function of the driver and the card as much as of the code. Two runs of one build "
+            "write the same bytes, upscaled or not, so a picture that differs is a change");
 
         option(Verbs::Bench, "hashes", bpo::value<std::string>()->default_value(""),
             "write one hash a frame to this file — the oracle a moving camera has "
-            "instead of `verify`'s stills, since six hundred frames of pictures is a few hundred "
+            "instead of `shot`'s stills, since six hundred frames of pictures is a few hundred "
             "megabytes. Reading a frame back waits on the device, so a run under this or "
             "--against is not a benchmark and its times are not comparable with one");
 
-        option(Verbs::Shot | Verbs::Textures | Verbs::Doll | Verbs::Map | Verbs::Verify, "out",
-            bpo::value<std::string>()->default_value("shot.png"),
-            "where to write the image, or with `verify` the directory to write every view into "
-            "(\"verify\" unless named)");
+        option(Verbs::Shot | Verbs::Check, "out", bpo::value<std::string>()->default_value(""),
+            "the directory to write every picture into, as <view>.png beside <view>-doll.png, "
+            "<view>-map.png and <view>-textures.png: \"shot\" and \"check\" unless named");
         option(sFramed, "size",
             bpo::value<std::string>()->default_value(std::format("{}x{}", byDefault.mWidth, byDefault.mHeight)),
             "image size, as WIDTHxHEIGHT");
@@ -346,26 +337,10 @@ namespace RtxTool
             "--upscale=off, because a denoiser resolves every frame towards its own opinion rather "
             "than towards the integral");
 
-        option(Verbs::Shot, "tail", bpo::value<bool>()->default_value(false)->implicit_value(true),
-            "report the share of pixels whose bounce luminance passes each of a ladder of "
-            "thresholds. What a firefly is counted in, and the one thing bytes cannot say. Wants "
-            "--upscale=off so the wavelet and its accumulator run at all");
-
         option(sFramed, "jitter",
             bpo::value<bool>()->default_value(byDefault.mProfile.mReconstruction.mJitter)->implicit_value(true),
             "sample a different point inside each pixel every frame. Only worth anything to "
             "something putting several frames together, and forced on whenever anything upscales");
-
-        option(sFramed, "stress-overlap", bpo::value<double>()->default_value(byDefault.mProfile.mStressOverlapMs),
-            "hold the queue this many milliseconds after every frame's trace, so the device runs "
-            "that far behind the host and every frame is recorded over one still running. What a "
-            "hazard that needs two frames in flight is provoked with; the `stress` zone in the "
-            "report is what the hold actually came to, calibrated once at start on this card");
-
-        option(sFramed, "crossings",
-            bpo::value<bool>()->default_value(byDefault.mProfile.mCountCrossings)->implicit_value(true),
-            "also count the see-through surfaces each primary ray crosses. A second traversal a "
-            "pixel, so a frame time taken under it measures the census rather than the picture");
 
         option(Verbs::Every, "data",
             bpo::value<Files::MaybeQuotedPathContainer>()
@@ -461,27 +436,14 @@ namespace RtxTool
         return result;
     }
 
-    Rtx::ValidationOptions chooseValidation(CommandSwitch layers, CommandSwitch sync, CommandSwitch gpu)
+    Rtx::ValidationOptions validationOf(const Validation level, const bool demanded)
     {
-        Rtx::ValidationOptions options;
-
-        // A refusal of the layers as a whole leaves only what was asked for by name standing.
-        options.mSynchronization = layers.isRefused() ? sync.isAsked() : sync.mValue;
-
-        // **Named or off, and a default cannot turn it on either.** The layer asks not to be run
-        // beside the core checks and `chooseValidation` says what running both cost, so reading
-        // this one by name is what keeps a build default from ever pairing them again.
-        options.mGpuAssisted = gpu.isAsked();
-
-        // Either of the two finer switches is a kind of validation, so either implies the layer that
-        // carries it.
-        options.mEnabled = layers.mValue || options.mSynchronization || options.mGpuAssisted;
-
-        // **Named on the command line, and not merely left on by the build.** A run that asked is a
-        // run whose answer is worthless without the layers, so it fails rather than reports nothing.
-        options.mDemanded = layers.isAsked() || sync.isAsked() || gpu.isAsked();
-
-        return options;
+        return Rtx::ValidationOptions{
+            .mEnabled = level != Validation::Off,
+            .mSynchronization = level == Validation::Sync,
+            .mGpuAssisted = level == Validation::Gpu,
+            .mDemanded = demanded,
+        };
     }
 
     namespace

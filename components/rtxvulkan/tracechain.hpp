@@ -84,11 +84,6 @@ namespace Rtx
         /// Where the air is integrated, one column to a block of pixels.
         const FogVolume& getFogVolume() const { return *mFogVolume; }
 
-        /// What the accumulator blended, which is a channel a measurement can be read out of. It
-        /// asserts where nothing denoised, so a caller asks `Rtx::hasFrameImage` before it comes to
-        /// that.
-        const Image& getBlended() const { return mAccumulate.getBlended(); }
-
         /// Records one camera's whole trace, from the discards it opens with to the barrier after
         /// the composite, and hands back the composite's output. What the caller keeps is what a
         /// frame has and a picture has not — the frame ring, the upscaler, the lens, the measured

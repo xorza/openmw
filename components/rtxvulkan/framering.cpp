@@ -19,13 +19,11 @@ namespace Rtx
     {
     }
 
-    FrameRing::FrameRing(
-        const Device& device, CommandPool& pool, Graveyard& graveyard, const bool countHits, const bool countCrossings)
+    FrameRing::FrameRing(const Device& device, CommandPool& pool, Graveyard& graveyard, const bool countHits)
         : mDevice(device)
         , mPool(pool)
         , mGraveyard(graveyard)
         , mCountHits(countHits)
-        , mCountCrossings(countCrossings)
         , mSlots([&](FrameSlot) { return FrameRecord{ device }; })
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
@@ -103,7 +101,7 @@ namespace Rtx
         // Read after the wait and never before: the count is the device's sum, and the queries
         // are the device's clock.
         FrameCounts counted;
-        if (mCountHits || mCountCrossings)
+        if (mCountHits)
             counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
 
         // What the timeline has passed is nothing's now, this frame's burials among it.
@@ -116,8 +114,6 @@ namespace Rtx
 
         FrameResult& report = mReports.emplace_back(FrameResult{
             .mHits = counted.mHits,
-            .mCrossings = counted.mCrossings,
-            .mCrossingsMost = counted.mCrossingsMost,
             .mWaitMs = waited,
             .mInFlight = frame.mInFlight,
             .mReconstruction = frame.mReconstruction,

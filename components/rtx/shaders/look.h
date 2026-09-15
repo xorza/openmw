@@ -366,7 +366,7 @@ namespace Rtx::Shaders
     /// **Out of doors only, and that is not caution about the arithmetic.** A room's indirect light *is*
     /// its lamps seen once off a wall, so rating it there halves the samples of the term that carries
     /// the room, where outside the sun has already lit everything the bounce lands on. Every interior
-    /// view renders bit-identically under this, which `verify` says.
+    /// view renders bit-identically under this, which `shot --against` says.
     const float INDIRECT_LIGHT_RATE = 0.5f;
 
     /// What share of the eye's hits trace their bounce at all, the rest paying by weight.
@@ -964,7 +964,7 @@ namespace Rtx::Shaders
     ///
     /// **Where it declines to fire is an interior full of lamps**, because a pixel that sees a bright
     /// thing *consistently* raises the mean to meet it and is never an outlier — which is the design
-    /// working, not failing. `shot --tail` is what counts the pixels it takes.
+    /// working, not failing.
     ///
     /// Four sigma leaves a Gaussian tail of one sample in sixteen thousand, which at sixteen frames
     /// of history is a clamp that fires on nothing that is really there.

@@ -40,18 +40,16 @@
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
 
+#include "compare.hpp"
 #include "options.hpp"
 #include "run.hpp"
 #include "verbs.hpp"
-#include "verify.hpp"
 
 namespace RtxTool
 {
     namespace
     {
         namespace bpo = boost::program_options;
-
-        using StringsVector = std::vector<std::string>;
 
         constexpr std::string_view applicationName = "RtxTool";
 
@@ -67,13 +65,10 @@ namespace RtxTool
         /// nobody ran.
         Rtx::ValidationOptions validationFrom(const bpo::variables_map& variables)
         {
-            // Whether a switch was set matters as much as what it says, so both come across.
-            const auto asSwitch = [&](const char* name) {
-                return CommandSwitch{ variables[name].as<bool>(), !variables[name].defaulted() };
-            };
+            const Validation level
+                = sValidationNames.require(variables["validation"].as<std::string>(), "a validation level");
 
-            return RtxTool::chooseValidation(
-                asSwitch("validation"), asSwitch("sync-validation"), asSwitch("gpu-validation"));
+            return validationOf(level, !variables["validation"].defaulted());
         }
 
         /// Reports go to the unprefixed stream.
@@ -133,10 +128,7 @@ namespace RtxTool
         /// one is not the picture the next run will be compared against.
         Rtx::ValidationOptions validationForMeasuring(const bpo::variables_map& variables)
         {
-            const bool asked = !variables["validation"].defaulted() || !variables["sync-validation"].defaulted()
-                || !variables["gpu-validation"].defaulted();
-
-            return asked ? validationFrom(variables) : Rtx::ValidationOptions{};
+            return variables["validation"].defaulted() ? Rtx::ValidationOptions{} : validationFrom(variables);
         }
 
         /// What `--hour` named, or nothing where it was left at its default. `placeFrom` is the rule
@@ -222,9 +214,7 @@ namespace RtxTool
             request.mProfile.mReconstruction.mFilter = variables["filter"].as<bool>();
             request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();
             request.mProfile.mReconstruction.mJitter = variables["jitter"].as<bool>();
-            request.mProfile.mCountCrossings = variables["crossings"].as<bool>();
             request.mProfile.mExposure = parseExposure(variables["exposure"].as<std::string>());
-            request.mProfile.mStressOverlapMs = variables["stress-overlap"].as<double>();
 
             return request;
         }
@@ -317,16 +307,15 @@ namespace RtxTool
             stop.mSchedule.mFrozen = true;
         }
 
-        /// Runs one stop against a real game, which is what every command that writes one picture
-        /// or one report does.
-        int runOneStop(const Command& command, Rtx::Stop stop)
+        /// Runs a list of stops against a real game, which is what every command that writes
+        /// pictures or reports does.
+        int runStops(const Command& command, const Rtx::RenderProfile& profile, std::vector<Rtx::Stop> stops)
         {
             Rtx::SessionRequest request;
-            request.mStops.push_back(std::move(stop));
+            request.mStops = std::move(stops);
             request.mValidation = validationFrom(command.mVariables);
 
-            return runHosted(command.mVariables, command.mConfig, command.mResources, frameFrom(command).mProfile,
-                std::move(request));
+            return runHosted(command.mVariables, command.mConfig, command.mResources, profile, std::move(request));
         }
 
         /// How long every stop of a run lasts, from what the command line asked for.
@@ -364,21 +353,15 @@ namespace RtxTool
             Settings::terrain().mObjectPaging.set(frame.mDistantStatics);
         }
 
-        /// Everything a command that renders one place opens with.
-        ///
-        /// **One statement, because every such command opened with the same four calls.** Each
-        /// chose a place, framed it for the sky that place stands under, wrote the frame into the
-        /// settings the engine reads and made a stop of it — and then differed only by what it
-        /// asked the stop to keep. `runOnePlace` below is the rest of that opening, for the
-        /// commands that also hold the place still.
+        /// The one place a command names on its line, as a stop: a view, a cell, a save, and
+        /// whatever the line says over them.
         ///
         /// **The frame is written into the settings before the stop is made**, so a picture and the
         /// sky it was framed for are one answer.
-        Rtx::Stop stageOnePlace(const Command& command)
+        Rtx::Stop stageOnePlace(const Command& command, const FrameRequest& frame)
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            const FrameRequest frame = frameFrom(command);
             applyHostedSettings(frame);
 
             // Holds what the view below points into, for as long as this function needs it.
@@ -416,63 +399,92 @@ namespace RtxTool
             return staged;
         }
 
-        /// Stages the one place a command names, holds it still, and runs it with `fill` applied.
+        /// The places a picture or a report is made at, each held still: the views `--views` names,
+        /// or the one place the line names where it names none.
         ///
-        /// **A command that draws one still place is this and the field it writes.** The staging,
-        /// the freeze and the run are the same three calls whichever field that is, and a command
-        /// that spelled them out could leave the freeze off — which is a picture the world moved
-        /// under, with nothing in the output to say so.
+        /// **Held still here and not by each command**, so a picture the world moved under cannot
+        /// come out of a command that forgot the freeze, with nothing in the output to say so.
         ///
-        /// A command that wants more than one measured frame has its own reason for the number, so
-        /// it stages by hand. `commandShot` is the one, and says why there.
-        template <class Fill>
-        int runOnePlace(const Command& command, Fill fill)
+        /// @param frames how many to measure at each place once the world has arrived. Why a
+        ///        command wants more than one is that command's to say.
+        std::vector<Rtx::Stop> stagePlaces(
+            const Command& command, const FrameRequest& frame, const std::uint32_t frames)
         {
-            Rtx::Stop staged = stageOnePlace(command);
-            holdStill(staged, command.mVariables);
-            fill(staged.mActions);
+            const bpo::variables_map& variables = command.mVariables;
+            const std::string named = variables["views"].as<std::string>();
 
-            return runOneStop(command, std::move(staged));
+            std::vector<Rtx::Stop> stops;
+            if (named.empty())
+                stops.push_back(stageOnePlace(command, frame));
+            else
+            {
+                applyHostedSettings(frame);
+                stops = stopsFrom(
+                    chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"), Rtx::splitNames(named)), variables,
+                    frame);
+            }
+
+            for (Rtx::Stop& stop : stops)
+                holdStill(stop, variables, frames);
+
+            return stops;
         }
 
-        /// The places a profiling run visits, in the order it visits them.
-        ///
+        /// The places a run of a suite visits, in the order it visits them, with what the suite
+        /// says about them.
+        struct SuiteRun
+        {
+            std::vector<Rtx::Stop> mViews;
+
+            /// Which suite, for the record's own header; empty where `--views` named the places.
+            std::string mSuite;
+
+            /// What the suite says about waiting for the ground, or nothing: `BenchSuite::mSettled`.
+            std::optional<bool> mSettled;
+        };
+
         /// **`--views` beats `--suite`, and both name entries in `views.cfg`.** A suite is a list
         /// written down so a run can be repeated without remembering it; a list on the command line
         /// is the same thing for one run. Neither carries coordinates: those live with the view, so
         /// the frame a picture is taken of and the frame a number is measured on stay one frame.
-        std::vector<Rtx::Stop> chooseBenchViews(
-            const bpo::variables_map& variables, const std::filesystem::path& resources, std::string& suiteName)
+        ///
+        /// @param ownSuite the suite the verb runs when neither `--views` nor `--suite` names one:
+        ///        `bench` measures the frame budget's places and `check` walks a route as well.
+        SuiteRun chooseBenchViews(const bpo::variables_map& variables, const std::filesystem::path& resources,
+            const std::string_view ownSuite)
         {
             const std::vector<Rtx::Stop> views = loadViews(resources / "rtx" / "views.cfg");
             const std::string named = variables["views"].as<std::string>();
 
+            SuiteRun run;
             std::vector<std::string> wanted;
             if (named.empty())
             {
-                suiteName = variables["suite"].as<std::string>();
+                run.mSuite
+                    = variables["suite"].defaulted() ? std::string(ownSuite) : variables["suite"].as<std::string>();
 
                 const std::vector<BenchSuite> suites = loadSuites(resources / "rtx" / "benches.cfg");
-                const BenchSuite* suite = findSuite(suites, suiteName);
+                const BenchSuite* suite = findSuite(suites, run.mSuite);
                 if (suite == nullptr)
                 {
                     std::string known;
                     for (const BenchSuite& candidate : suites)
                         known += "\n  " + candidate.mName + "   " + candidate.mNote;
 
-                    throw std::runtime_error("no suite is called \"" + suiteName + "\". These are:" + known);
+                    throw std::runtime_error("no suite is called \"" + run.mSuite + "\". These are:" + known);
                 }
 
                 wanted = suite->mViews;
+                run.mSettled = suite->mSettled;
             }
             else
                 wanted = Rtx::splitNames(named);
 
-            const std::vector<Rtx::Stop> chosen = chooseViews(views, wanted);
-            if (chosen.empty())
-                throw std::runtime_error("nothing to profile: no view was named");
+            run.mViews = chooseViews(views, wanted);
+            if (run.mViews.empty())
+                throw std::runtime_error("nothing to visit: no view was named");
 
-            return chosen;
+            return run;
         }
 
         int runListViews(const std::filesystem::path& resources)
@@ -502,105 +514,85 @@ namespace RtxTool
             return runInfo(command, validation);
         }
 
-        /// Every texture the world around a place uses, vanilla beside de-lit, as one sheet.
+        /// What the renderer was handed at each place, without looking at what it drew.
         ///
-        /// **Off the world the renderer is handed**, so the sheet holds what a frame of that place
-        /// would actually sample — a town's people wear textures the town itself never names.
-        int commandTextures(const Command& command)
-        {
-            const bpo::variables_map& variables = command.mVariables;
-
-            return runOnePlace(
-                command, [&](Rtx::Actions& actions) { actions.mSheet = variables["out"].as<std::string>(); });
-        }
-
-        /// The inventory doll of one person, traced against a scene of its own.
-        ///
-        /// **The game's own preview and not a body assembled beside it.** `MWRender::NpcAnimation`
-        /// dresses the parts a race calls for, equips what the record carries and finds the bone a
-        /// weapon hangs on, and that is the path a played session takes.
-        int commandDoll(const Command& command)
-        {
-            const bpo::variables_map& variables = command.mVariables;
-
-            const StringsVector people = variables["npc"].as<StringsVector>();
-            if (people.empty())
-            {
-                out() << "doll needs somebody: --npc=<id>. `openmw-rtxtool scene --find=<text>` finds one.\n";
-                return 1;
-            }
-
-            return runOnePlace(command, [&](Rtx::Actions& actions) {
-                actions.mDoll
-                    = Rtx::Actions::Doll{ .mWho = people.front(), .mFile = variables["out"].as<std::string>() };
-            });
-        }
-
-        /// One local-map tile of where a place stands, framed as the game's own compass frames one.
-        int commandMap(const Command& command)
-        {
-            const bpo::variables_map& variables = command.mVariables;
-
-            return runOnePlace(
-                command, [&](Rtx::Actions& actions) { actions.mMapTile = variables["out"].as<std::string>(); });
-        }
-
-        /// What the renderer was handed at a place, without looking at what it drew.
+        /// **Walked twice, always.** A second whole-graph walk should add nothing, and the report
+        /// says what it added; a run that has read a cell is the cheapest place to ask.
         int commandScene(const Command& command)
-        {
-            const bpo::variables_map& variables = command.mVariables;
-
-            return runOnePlace(command, [&](Rtx::Actions& actions) {
-                actions.mFind = variables["find"].as<std::string>();
-                actions.mDigest = actions.mFind.empty();
-                actions.mWalkTwice = variables["twice"].as<bool>();
-            });
-        }
-
-        int commandVerify(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
             const FrameRequest frame = frameFrom(command);
 
-            applyHostedSettings(frame);
-
-            std::vector<Rtx::Stop> stops = stopsFrom(chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"),
-                                                         Rtx::splitNames(variables["views"].as<std::string>())),
-                variables, frame);
-
-            // **Upscaling off, and not offered as an option.** Ray Reconstruction is temporal and
-            // carries state nothing below can hold still: two builds that describe the same scene
-            // identically write different bytes through it, and fifteen of sixteen views once read
-            // as changed by a refactor that changed nothing.
-            Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(Rtx::Upscale::Off)));
-
-            const std::filesystem::path out
-                = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
-            std::filesystem::create_directories(out);
-
-            // **Every view held still, because what this compares is the picture and not a run.**
-            // A frame that animated between two builds would differ for a reason nobody is looking
-            // for, and the whole point is that a refactor leaves the picture exactly as it was.
-            Rtx::SessionRequest request;
-            request.mStops.reserve(stops.size());
+            std::vector<Rtx::Stop> stops = stagePlaces(command, frame, 1);
             for (Rtx::Stop& stop : stops)
             {
-                holdStill(stop, variables);
-                stop.mActions.mCapture = out / (stop.mName + ".png");
-
-                // Copied and not moved, because the comparison below reads these names back after
-                // the run has taken the request.
-                request.mStops.push_back(stop);
+                stop.mActions.mFind = variables["find"].as<std::string>();
+                stop.mActions.mDigest = stop.mActions.mFind.empty();
+                stop.mActions.mWalkTwice = true;
             }
 
-            request.mValidation = validationForMeasuring(variables);
+            return runStops(command, frame.mProfile, std::move(stops));
+        }
 
-            if (const int status
-                = runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
-                status != 0)
+        /// The pictures of each place, taken headless: the frame, and the doll, the tile and the
+        /// sheet where asked for.
+        ///
+        /// **The world a player stands in and not one staged here**, which is the whole of what
+        /// this path is for: the cells are read by `MWWorld::Scene`, the people are dressed by
+        /// `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`, so the picture is
+        /// the one the game draws rather than one derived beside it.
+        ///
+        /// **Every picture a stop can make, in one run**, because `Rtx::Actions` holds them all and
+        /// each verb that made one started an engine of its own for it. And every view, under
+        /// `--views`, with `--against` saying which pictures a change moved.
+        int commandShot(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+            const FrameRequest frame = frameFrom(command);
+
+            const std::filesystem::path against = variables["against"].as<std::string>();
+
+            // **Traced more than once, because one submit measures the clock and not the shader.**
+            // A GPU idles at a fraction of its clock and ramps only under load, so the same frame
+            // from a cold start times anywhere within a factor of several.
+            //
+            // **Accumulating replaces repeating rather than joining it.** A run that also honoured
+            // the repeat default would quietly average eight frames more than it was asked for, and
+            // a convergence ladder built on that reads as though the first frames bought nothing.
+            const std::uint32_t accumulate = variables["accumulate"].as<std::uint32_t>();
+            const std::uint32_t frames
+                = accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u);
+
+            std::vector<Rtx::Stop> stops = stagePlaces(command, frame, frames);
+
+            const std::filesystem::path out
+                = variables["out"].defaulted() ? "shot" : variables["out"].as<std::string>();
+            std::filesystem::create_directories(out);
+
+            const std::string doll = variables["doll"].as<std::string>();
+            std::vector<std::string> written;
+            for (Rtx::Stop& stop : stops)
+            {
+                stop.mSchedule.mAccumulate = accumulate;
+
+                const auto file = [&](const std::string_view suffix) {
+                    written.push_back(stop.mName + std::string(suffix) + ".png");
+                    return out / written.back();
+                };
+
+                stop.mActions.mCapture = file("");
+                if (!doll.empty())
+                    stop.mActions.mDoll = Rtx::Actions::Doll{ .mWho = doll, .mFile = file("-doll") };
+                if (variables["map"].as<bool>())
+                    stop.mActions.mMapTile = file("-map");
+                if (variables["textures"].as<bool>())
+                    stop.mActions.mSheet = file("-textures");
+            }
+
+            if (const int status = runStops(command, frame.mProfile, std::move(stops)); status != 0)
                 return status;
 
-            return compareRuns(out, variables["against"].as<std::string>(), stops);
+            return compareRuns(out, against, written);
         }
 
         int commandBench(const Command& command)
@@ -612,11 +604,10 @@ namespace RtxTool
             // measured at the width the game runs at. Every other verb keeps the reference's.
             frame.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
 
-            std::string suite;
             applyHostedSettings(frame);
 
-            std::vector<Rtx::Stop> stops
-                = stopsFrom(chooseBenchViews(variables, command.mResources, suite), variables, frame);
+            const SuiteRun run = chooseBenchViews(variables, command.mResources, "default");
+            std::vector<Rtx::Stop> stops = stopsFrom(run.mViews, variables, frame);
 
             const Rtx::BenchSpec spec = specFrom(variables);
             const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
@@ -633,7 +624,8 @@ namespace RtxTool
                 request.mStops.push_back(std::move(stop));
             }
 
-            request.mSuite = suite;
+            request.mSuite = run.mSuite;
+            request.mSettled = run.mSettled;
             request.mJson = variables["json"].as<std::string>();
             request.mHashes = variables["hashes"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
@@ -641,43 +633,7 @@ namespace RtxTool
             request.mHeadless = !variables["window"].as<bool>();
             request.mValidation = validationForMeasuring(variables);
 
-            // **Asked whether it was written and not what it defaults to**, because nothing is the
-            // answer that leaves the frame clock deciding — which is what every other verb gets.
-            if (variables.count("settled") != 0)
-                request.mSettled = variables["settled"].as<bool>();
-
             return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
-        }
-
-        /// A screenshot of the game's own world, taken headless.
-        ///
-        /// **The world a player stands in and not one staged here**, which is the whole of what
-        /// this path is for: the cells are read by `MWWorld::Scene`, the people are dressed by
-        /// `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`, so the picture is
-        /// the one the game draws rather than one derived beside it.
-        int commandShot(const Command& command)
-        {
-            const bpo::variables_map& variables = command.mVariables;
-
-            Rtx::Stop staged = stageOnePlace(command);
-
-            // **Traced more than once, because one submit measures the clock and not the shader.**
-            // A GPU idles at a fraction of its clock and ramps only under load, so the same frame
-            // from a cold start times anywhere within a factor of several.
-            //
-            // **Accumulating replaces repeating rather than joining it.** A run that also honoured
-            // the repeat default would quietly average eight frames more than it was asked for, and
-            // a convergence ladder built on that reads as though the first frames bought nothing.
-            const std::uint32_t accumulate = variables["accumulate"].as<std::uint32_t>();
-            holdStill(
-                staged, variables, accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u));
-
-            staged.mSchedule.mAccumulate = accumulate;
-            staged.mActions.mCapture = variables["out"].as<std::string>();
-            staged.mActions.mDump = variables["dump"].as<std::string>();
-            staged.mActions.mTail = variables["tail"].as<bool>();
-
-            return runOneStop(command, std::move(staged));
         }
 
         /// A window on a place, with the game running behind it.
@@ -693,8 +649,9 @@ namespace RtxTool
         int commandView(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
+            const FrameRequest frame = frameFrom(command);
 
-            Rtx::Stop staged = stageOnePlace(command);
+            Rtx::Stop staged = stageOnePlace(command, frame);
 
             // **A schedule with no end, because somebody is watching.** `--frames` closes it after
             // that many, which is how the window path gets exercised by something that cannot click.
@@ -714,7 +671,7 @@ namespace RtxTool
             request.mStep = std::nullopt;
 
             // Watched and never summed, like a bench.
-            Rtx::RenderProfile profile = frameFrom(command).mProfile;
+            Rtx::RenderProfile profile = frame.mProfile;
             profile.mRadianceWidth = Rtx::RadianceWidth::Shown;
 
             return runHosted(variables, command.mConfig, command.mResources, profile, std::move(request), true);
@@ -761,6 +718,15 @@ namespace RtxTool
             return true;
         }
 
+        /// How long `check` holds the queue after every frame's trace, in milliseconds.
+        ///
+        /// **Always, so a hazard that needs two frames in flight shows on the first frame of every
+        /// run rather than on one run in four.** A held queue keeps the device that far behind the
+        /// host, so every frame is recorded over a frame still running; `Rtx::StressPass` says
+        /// what the hold is timed as. Eight is the hold the barrier gate ran under before it moved
+        /// here, and half a frame at the target, so a place is not much slower for it.
+        constexpr double sCheckHoldMs = 8.0;
+
         /// Every claim the tree makes about what the renderer is handed and what it draws, asked
         /// of a real game at each place of a suite.
         ///
@@ -771,15 +737,26 @@ namespace RtxTool
         int commandCheck(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const FrameRequest frame = frameFrom(command);
+            FrameRequest frame = frameFrom(command);
+            frame.mProfile.mStressOverlapMs = sCheckHoldMs;
 
-            std::string suite;
             applyHostedSettings(frame);
 
-            std::vector<Rtx::Stop> stops
-                = stopsFrom(chooseBenchViews(variables, command.mResources, suite), variables, frame);
+            const SuiteRun run = chooseBenchViews(variables, command.mResources, "check");
+            std::vector<Rtx::Stop> stops = stopsFrom(run.mViews, variables, frame);
 
             const std::span<const Rtx::Check> every = Rtx::everyCheck();
+
+            // **Every picture a stop can write, at the first place, because each leaves through a
+            // path the frame's own passes never touch**: the capture adds the read back a picture
+            // is written from, and the tile and the doll are offscreen traces with descriptor sets
+            // and targets of their own. Under the layers, this is what finds a barrier they miss.
+            const std::filesystem::path out
+                = variables["out"].defaulted() ? "check" : variables["out"].as<std::string>();
+            std::filesystem::create_directories(out);
+            stops.front().mActions.mCapture = out / (stops.front().mName + ".png");
+            stops.front().mActions.mMapTile = out / (stops.front().mName + "-map.png");
+            stops.front().mActions.mDoll = Rtx::Actions::Doll{ "fargoth", out / (stops.front().mName + "-doll.png") };
 
             Rtx::SessionRequest request;
             request.mStops.reserve(stops.size());
@@ -803,7 +780,7 @@ namespace RtxTool
                 request.mStops.push_back(std::move(stop));
             }
 
-            request.mSuite = suite;
+            request.mSuite = run.mSuite;
             request.mValidation = validationFrom(variables);
 
             return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
@@ -828,16 +805,14 @@ namespace RtxTool
         /// forgotten in the other was either a command nobody could find or a line of help nothing
         /// answered. In the order `--help` prints them, which is the order they were written to be
         /// read in rather than a sorted one.
-        constexpr std::array<Verb, 10> sVerbs{
+        constexpr std::array<Verb, 6> sVerbs{
             Verb{ Verbs::Info, "report the device this renderer would run on", commandInfo },
-            Verb{ Verbs::Scene, "read a cell and report what the renderer would be handed", commandScene },
-            Verb{ Verbs::Shot, "render a cell and write a PNG, with no window", commandShot },
-            Verb{ Verbs::View, "open a window on a cell and fly around it", commandView },
-            Verb{ Verbs::Bench, "time a run of frames at each of a list of places", commandBench },
-            Verb{ Verbs::Textures, "every texture a cell uses, vanilla beside de-lit, as one sheet", commandTextures },
-            Verb{ Verbs::Doll, "the inventory doll of one person, traced against a scene of its own", commandDoll },
-            Verb{ Verbs::Map, "one local-map tile of a cell, traced straight down", commandMap },
-            Verb{ Verbs::Verify, "render every view and say what moved since the last run", commandVerify },
+            Verb{ Verbs::Scene, "read a place and report what the renderer would be handed", commandScene },
+            Verb{ Verbs::Shot,
+                "the pictures of a place, with no window: the frame, a doll, a map tile, a texture sheet",
+                commandShot },
+            Verb{ Verbs::View, "open a window on a place and fly around it", commandView },
+            Verb{ Verbs::Bench, "time a run of frames at each place of a suite", commandBench },
             Verb{ Verbs::Check, "assert what the renderer is handed and what it draws, at every place of a suite",
                 commandCheck },
         };
@@ -872,7 +847,7 @@ namespace RtxTool
             const bool hasVerb = argc >= 2 && argv[1][0] != '-';
             const std::string_view command = hasVerb ? argv[1] : "view";
 
-            const ToolOptions options = makeOptions(Rtx::sValidationByDefault);
+            const ToolOptions options = makeOptions(Rtx::sValidationByDefault ? Validation::Sync : Validation::Off);
 
             // Boost skips the first token as the program name; when there is a verb, that token is
             // the verb.

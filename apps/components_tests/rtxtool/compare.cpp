@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include <apps/rtxtool/verify.hpp>
+#include <apps/rtxtool/compare.hpp>
 #include <components/rtx/texels.hpp>
 
 namespace RtxTool
@@ -28,7 +28,7 @@ namespace RtxTool
         ///
         /// Ten by ten is a hundred pixels, so one pixel is exactly one percent and the fraction has
         /// nothing rounded in it.
-        TEST(RtxVerifyTest, aDifferenceIsCountedInPixelsAndMeasuredInChannels)
+        TEST(RtxCompareTest, aDifferenceIsCountedInPixelsAndMeasuredInChannels)
         {
             const Rtx::PngImage before = flat(10, 10, 100);
             Rtx::PngImage after = before;
@@ -53,7 +53,7 @@ namespace RtxTool
         /// **Colour only, and the reason is that alpha is not the picture.** The tone curve writes a
         /// constant there; a change confined to it is one nobody can see, and counting it would put
         /// a magnitude on a frame that is identical.
-        TEST(RtxVerifyTest, alphaIsNotPartOfWhatThePictureLooksLike)
+        TEST(RtxCompareTest, alphaIsNotPartOfWhatThePictureLooksLike)
         {
             const Rtx::PngImage before = flat(4, 4, 200);
             Rtx::PngImage after = before;
@@ -65,7 +65,7 @@ namespace RtxTool
         }
 
         /// Two sizes are not a delta, and neither is a reference that was never written.
-        TEST(RtxVerifyTest, nothingToSubtractIsSaidRatherThanCountedAsZero)
+        TEST(RtxCompareTest, nothingToSubtractIsSaidRatherThanCountedAsZero)
         {
             const Rtx::PngImage before = flat(10, 10, 100);
 

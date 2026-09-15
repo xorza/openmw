@@ -158,15 +158,6 @@ namespace Rtx
         /// Where the last measured frame is written as a PNG, or empty for none.
         std::filesystem::path mCapture;
 
-        /// Where that frame's linear radiance goes, four floats a pixel, raw and at the render
-        /// extent: what a measurement is taken against, where the PNG is what a picture is looked
-        /// at as.
-        std::filesystem::path mDump;
-
-        /// Report the share of pixels whose accumulated bounce luminance passes each of a ladder of
-        /// thresholds: what a firefly is counted in, off the channel the accumulator wrote.
-        bool mTail = false;
-
         /// Whether the scene the renderer was handed is reported: what it holds, what it could not
         /// place, and one number for the whole of it.
         bool mDigest = false;

@@ -114,7 +114,10 @@ target_link_libraries(components-tests
 
 if (OPENMW_RTX)
     # Vulkan itself as well, because these tests reach into the backend's own headers, which a host
-    # does not: the backend keeps Vulkan private behind `createrenderer.hpp`.
+    # does not: the backend keeps Vulkan private behind `createrenderer.hpp`. Found here and not
+    # inherited: the imported target is scoped to the directory that finds it, and a build with the
+    # launcher off has no Qt to have found it at the top.
+    find_package(Vulkan REQUIRED)
     target_link_libraries(components-tests openmw-rtx openmw-rtx-bench
                           openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan)
 

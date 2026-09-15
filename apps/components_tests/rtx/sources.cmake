@@ -74,6 +74,7 @@ set(RTX_TEST_FILES
     rtx/skybuilder.cpp
     rtx/skylight.cpp
     rtx/slottable.cpp
+    rtx/sourcetree.cpp
     rtx/spritepasses.cpp
     rtx/spritelight.cpp
     rtx/spritelistsize.cpp
@@ -111,7 +112,7 @@ set(RTX_TEST_FILES
     rtxbench/gpuclock.cpp
     rtxtool/options.cpp
     rtxtool/run.cpp
-    rtxtool/verify.cpp
+    rtxtool/compare.cpp
     sky/skyclock.cpp
     sky/timeofday.cpp
 )

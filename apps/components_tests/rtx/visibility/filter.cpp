@@ -424,7 +424,7 @@ namespace Rtx::Testing
 
             const auto radiance = [&] {
                 std::vector<float> values;
-                mRenderer->readFrameImage(FrameImage::Composite, values);
+                mRenderer->readComposite(values);
                 return values;
             };
 

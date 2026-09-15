@@ -147,15 +147,6 @@ layout(set = 2, binding = CHANNEL_TRANSPARENCY_MOTION, GBUFFER_MOTION) uniform w
 layout(set = 0, binding = BIND_HITS) buffer HitCount
 {
     uint hits;
-
-    /// The see-through surfaces those rays crossed, summed over the frame, and the most any one ray
-    /// crossed. `COUNT_CROSSINGS` says what they are for and why they are not counted with the hits.
-    ///
-    /// **The worst ray beside the mean**, because a mean over a frame answers a question nobody
-    /// asked: a cloud that fills a tenth of the picture divides its own depth by ten, and what a
-    /// march costs is what the deepest ray in it does.
-    uint crossings;
-    uint crossingsMost;
 };
 
 // **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every

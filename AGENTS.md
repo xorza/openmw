@@ -104,17 +104,17 @@ backend ever arrives.
 
 ## Traps
 
-`build-debug/` is the everyday build, `openmw-rtxtool --help` lists the harness, and `CI/check_*.sh`
-are the gates. What those do not tell you:
+`build-debug/` is the everyday build, `openmw-rtxtool --help` lists the harness, and
+`apps/rtxtool/rtx.sh debug gate` is the gate. What those do not tell you:
 
 - **CMake's own `RelWithDebInfo` carries `-DNDEBUG`** and compiles out every `assert` in the tree.
   Both debug directories override `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to `-O2 -g` for that one
   reason, and `grep -c NDEBUG build-*/build.ninja` says which kind a directory is.
-- **Three build directories, configured by the scripts in `apps/rtxtool/`.** `debug.sh` makes
-  `build-debug/`. `debug-asan.sh` makes `build-debug-asan/` and runs the tests under it — `tool` in
-  front of an argument sends it to the harness instead — and it sets and explains the required
-  `ASAN_OPTIONS`. `release.sh` makes `build-release/`, which is `-O3 -DNDEBUG` and is where a number
-  is taken.
+- **Three build directories, one script: `apps/rtxtool/rtx.sh <flavour> <what>`.** The flavour
+  is `debug` (`build-debug/`), `asan` (`build-debug-asan/`, with the `ASAN_OPTIONS` without which
+  there is no device) or `release` (`build-release/`, `-O3 -DNDEBUG`, where a number is taken).
+  The `what` is the same for every flavour: `build`, `test`, `game`, `repeat`, `gate`, or a verb
+  of the harness, run under the flavour's validation level unless the line names one.
 - **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
   750 MB of prebuilt binaries under NVIDIA's own licence, so it is named rather than vendored. The
   build scripts want `OPENMW_DLSS_SDK` in the environment and refuse without it; CMake on its own
@@ -131,10 +131,11 @@ are the gates. What those do not tell you:
   `find <dir> -name '*.o' ! -newermt '<that time>' -delete`.
 - **CI pins clang-format 14**; this box has 22 and they disagree, so run
   `CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh`.
-- **`components-tests` holds what is true without a world** — a spec, a record, a digest, a sheet;
-  `openmw-tests` holds what needs the game's own types. What is true *of* a world is
-  `openmw-rtxtool check`, which asks it of a running game at every place of a suite and exits
-  non-zero on the first failure.
+- **`components-tests` holds what is true without a world** — a spec, a record, a digest, a sheet,
+  and what the tree says about itself: `RtxSourceTreeTest` reads the sources, so every handle is
+  `Rtx::Owned` and no compute shader traces a ray. `openmw-tests` holds what needs the game's own
+  types. What is true *of* a world is `openmw-rtxtool check`, which asks it of a running game at
+  every place of a suite and exits non-zero on the first failure.
 - **Tests are gtest binaries run directly**, with `--gtest_filter`; there is no ctest registration.
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.
@@ -150,12 +151,14 @@ verified because it compiled.
 **What each step costs on this box**, because the rule above is only worth keeping if the numbers
 are known: `ninja` with nothing to do 0 s; a rebuild after touching a header 84 objects read 1 s;
 `components-tests --gtest_filter='Rtx*'` 16 s, of which 7 is four upscaler tests; the same filtered
-to `Rtx*Cell*` 2 s; one `bench` place 20 s; `check` 122 s; `repeatable.sh --pairs=1` 70 s.
+to `Rtx*Cell*` 2 s; one `bench` place 20 s; `check` about three minutes under the layers;
+`rtx.sh debug repeat` 70 s a pair.
 
 **The build is not the slow part.** `ccache` and `mold` are configured and the cache runs about
 seventy per cent hits. Filter the tests to what the change touched and run the whole `Rtx*` once,
-before saying it works — not after every edit. `repeatable.sh --pairs=2` while iterating and
-`--pairs=10` once at the end.
+before saying it works — not after every edit. `rtx.sh debug gate` once at the end: it runs the
+format check, the tests, `check` under synchronization validation and one repeat pair, in that
+order, and stops at the first failure. `repeat --pairs=10` is what a determinism reading takes.
 
 **Never run a gate beside a build, or beside another gate.** The reading is then about the machine.
 Take the throwaway warm-up leg before any A/B: a first `bench` after a gap read 2.29 ms against a
@@ -167,12 +170,16 @@ by `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`. `info` r
 and stages no world. `shot` and `scene` open no window, and `bench` opens one unless
 `--window=false`.
 
-**Do not open the game window to check a rendering change.** `shot` writes one frame with no window
-and prints the hit fraction, the scene it was handed and the frame time. `scene` answers what the
-renderer was handed without drawing. `bench` has the moving camera, so it reproduces anything
-depending on motion or on cells arriving. `check` asserts what the tree claims about both. `view` is
-for what only a window shows — how something moves, whether an artefact is a still or a shimmer —
-and it is the game, with the player's own camera and collision off; `--frames N` closes it.
+**Do not open the game window to check a rendering change.** `shot` writes the pictures of a place
+with no window — the frame, and with `--doll`, `--map` and `--textures` the other three — and prints
+the hit fraction, the scene it was handed and the frame time; under `--views=all --against=<dir>`
+it says which pictures a change moved. `scene` answers what the renderer was handed without
+drawing, walked twice. `bench` has the moving camera, so it reproduces anything depending on motion
+or on cells arriving. `check` asserts what the tree claims about both, at every place of its suite
+and a route, with every picture written at the first place and the queue held eight milliseconds
+behind the host — under the layers it is the barrier gate. `view` is for what only a window shows —
+how something moves, whether an artefact is a still or a shimmer — and it is the game, with the
+player's own camera and collision off, at the player's own settings; `--frames N` closes it.
 
 **A run is the same run twice.** `Rtx::SessionRequest::mStep` is how far the simulation steps and how
 long the renderer is told a frame took — a run's, never a setting's, so a played game cannot be
@@ -180,15 +187,14 @@ made to step by frames — and a stop's own frame count is what the trace's samp
 upscaler's jitter are walked by. A game's frame number counts loading-screen frames, which is why it
 is not that.
 
-**`apps/rtxtool/repeatable.sh` is what says it still is.** It walks `one-cell-walk` twice in two
-processes and compares the frame hashes. Two processes, because two walks in one share no world
-state and agree on nothing. Run it after touching anything a frame reads.
+**`rtx.sh <flavour> repeat` is what says it still is.** It walks `one-cell-walk` twice in two
+processes, the second under `bench --against` the first's hashes. Two processes, because two walks
+in one share no world state and agree on nothing. Run it after touching anything a frame reads.
 
-**The scene columns are the gate and the picture is a report.** What a run is handed — every column
-of the hashes table — repeats exactly, and that is what a regression has to keep. The picture is
-printed beside it and does not fail the run, because it carried a residual nobody hunted and a gate
-red for that is a gate nobody reads. It is exact at the moment, over the pairs `repeatable.sh` has
-been run for — enough of them and the picture earns the gate as well.
+**Every column is the gate.** What a run is handed — every part of the scene in the hashes table —
+and what it drew both repeat exactly, and `bench --against` fails on either, naming the frames and
+the parts. The picture was a report while it carried a residual nobody hunted; ten pairs of ten
+have since agreed on it, so it earned the gate. `.notes/repeatable.txt` holds the readings.
 
 **A count of differing pictures says when, and never how much.** The exposure is measured off the
 frame and approaches its target from the value it held, so every pixel depends on the whole frame and
@@ -196,10 +202,10 @@ every frame depends on the one before it. One frame the trace drew differently t
 frame after it, by the one part in 255 an eight-bit hash can barely hold — and the count is how early
 that single event landed rather than how much went wrong. So a count is not a property of the
 renderer: it scales with the walk. This file carried "26 or 27 frames of 45" taken over 45 frames,
-while `repeatable.sh` has walked 360 since the day it was written — so the number never described
+while the walk has been 360 since the day the gate was written — so the number never described
 what the gate reports, and six pairs of the walk it does run differed on 204 to 343 pictures.
 
-**`repeatable.sh` prints the current reading on every run**, and a number in prose here would go
+**The report names the frames and the parts on every run**, and a number in prose here would go
 stale the next time the walk changed length.
 
 **A determinism reading needs ten pairs.** A pair that finds nothing has found nothing, and every
@@ -208,8 +214,7 @@ cause this fork has withdrawn was named from a single pair. `--pairs` is what ru
 **And read a difference with `--exposure=1`.** A measured exposure couples every pixel of a frame to
 every other and every frame to the one before it, so it is the one term that turns a single
 divergence into a whole run of them. Held, the count comes nearer the frames that actually differ —
-nearer and not exact, because the fog volume reprojects too. And read `Rtx::Channel::Radiance` as
-floats, which carries what no eight-bit hash can show.
+nearer and not exact, because the fog volume reprojects too.
 
 **No benching and no frame times until the renderer draws everything the game has.**
 

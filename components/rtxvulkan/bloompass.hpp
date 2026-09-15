@@ -20,8 +20,8 @@ namespace Rtx
     /// Warfare*) — a thirteen-tap halving per level and a nine-tap tent back up, mixed rather than
     /// added, for a third of the frame's pixels and none of a Gaussian stack's banding. No
     /// threshold, because a threshold is a brightness at which the veil switches on. This builds
-    /// the pyramid and `TonePass` spreads it, so `FrameImage::Composite` stays the trace's own
-    /// answer that a measurement can hand-compute.
+    /// the pyramid and `TonePass` spreads it, so `readComposite` stays the trace's own answer
+    /// that a measurement can hand-compute.
     class BloomPass
     {
     public:

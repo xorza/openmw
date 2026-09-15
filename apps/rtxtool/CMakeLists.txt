@@ -5,8 +5,8 @@ set(RTXTOOL_FILES
     options.hpp
     verbs.cpp
     verbs.hpp
-    verify.cpp
-    verify.hpp
+    compare.cpp
+    compare.hpp
 )
 
 # What drives the game once one is hosted: built into the executable alone, for the reason below.

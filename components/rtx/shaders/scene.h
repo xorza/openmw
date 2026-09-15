@@ -343,7 +343,7 @@ namespace Rtx::Shaders
     /// **Four, because that is a dressed person and what is behind them.** The layers are peeled
     /// nearest first and the surface after the last is drawn as the solid it stands in for, so a
     /// deeper stack ends in a surface rather than in a hole. Red Mountain's deepest ray crosses
-    /// eight translucent surfaces — `shot --crossings` is the census — and those are the medium's,
+    /// eight translucent surfaces — counted when the budget was set — and those are the medium's,
     /// which a ray never stops at: `MASK_MEDIUM` says why a shell is gathered rather than met.
     ///
     /// Each layer costs a traversal on the pixels that reach it, and none on a pixel with nothing

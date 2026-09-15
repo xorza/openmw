@@ -153,7 +153,7 @@ namespace Rtx
         void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) override;
         void readPixels(std::vector<std::uint8_t>& pixels) override;
         void readChannel(Channel channel, std::vector<float>& values) override;
-        void readFrameImage(FrameImage image, std::vector<float>& values) override;
+        void readComposite(std::vector<float>& values) override;
         void takeValidationErrors(std::vector<std::string>& errors) override;
 
     private:
@@ -245,13 +245,13 @@ namespace Rtx
         bool mCountHits = false;
 
         /// What the run decided once, read where each knob is used: how wide both chains store
-        /// their radiance, whether crossings are counted, how long the queue is held. What a frame
+        /// their radiance, how long the queue is held. What a frame
         /// carries — the reconstruction request, the exposure, the delight, the sample — is read
         /// off the frame's own blocks instead, which is where a frame that asks otherwise says so.
         RenderProfile mProfile;
 
         /// The frames in flight and what each came to. After the counters it is handed.
-        FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits, mProfile.mCountCrossings };
+        FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits };
 
         /// What the frames are traced under: `mProfile.mUpscaling` as it stood, and then whatever
         /// `setUpscale` moved it to. Changing the mode rebuilds every target, which is what

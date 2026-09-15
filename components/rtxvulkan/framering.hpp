@@ -26,8 +26,6 @@ namespace Rtx
     struct FrameCounts
     {
         std::uint32_t mHits = 0;
-        std::uint32_t mCrossings = 0;
-        std::uint32_t mCrossingsMost = 0;
     };
 
     /// One command buffer and the timeline value it was submitted under.
@@ -91,10 +89,9 @@ namespace Rtx
     public:
         /// @param graveyard the renderer's, collected after every wait this ring makes, because a
         ///        wait is where what the timeline is known to have passed changes.
-        /// @param countHits,countCrossings whether either of a frame's counts is worth reading
-        ///        back. Borrowed from the renderer, which decides both once and compiles its
-        ///        pipeline against the same answers.
-        FrameRing(const Device& device, CommandPool& pool, Graveyard& graveyard, bool countHits, bool countCrossings);
+        /// @param countHits whether a frame's count is worth reading back. Borrowed from the
+        ///        renderer, which decides it once and compiles its pipeline against the same answer.
+        FrameRing(const Device& device, CommandPool& pool, Graveyard& graveyard, bool countHits);
 
         FrameRing(const FrameRing&) = delete;
         FrameRing& operator=(const FrameRing&) = delete;
@@ -160,7 +157,6 @@ namespace Rtx
         /// the renderer's own members would tie this ring's correctness to where two booleans
         /// happen to live.
         bool mCountHits = false;
-        bool mCountCrossings = false;
 
         PerSlot<FrameRecord> mSlots;
 

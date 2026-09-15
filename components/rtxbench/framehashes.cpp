@@ -502,9 +502,8 @@ namespace Rtx
             out << '\n';
         }
 
-        // **Thrown and not reported**, the way `shot --dump` answers the same failure: a reference
-        // that did not get written and a command that still succeeded is the next run comparing
-        // against whatever was at that path before.
+        // **Thrown and not reported**: a reference that did not get written and a command that
+        // still succeeded is the next run comparing against whatever was at that path before.
         if (!out)
             throw Error("could not write " + Files::pathToUnicodeString(file));
     }
@@ -639,7 +638,7 @@ namespace Rtx
         // **The scene is asked here too, though it does not fail the run.** Reporting only the
         // picture is what let a run be called identical while the description behind it moved on
         // every frame, which is the fault these columns were added for.
-        if (difference.same() && difference.mSceneDiffering.empty())
+        if (difference.same())
             return std::format("{} frames, every one of them the same", difference.mFrames);
 
         std::string report;

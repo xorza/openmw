@@ -36,12 +36,4 @@ layout(constant_id = 2) const bool HAS_MOONS = true;
 /// under. False takes the waves, the caustics and the whole underwater column out of a room.
 layout(constant_id = 3) const bool HAS_SEA = true;
 
-/// Whether the trace counts the see-through surfaces each primary ray crosses.
-///
-/// **A whole traversal, and off wherever nobody asked.** `COUNT_HITS` costs an atomic on the pixels
-/// that hit something; this costs a second walk of the structure on every pixel, so it cannot ride
-/// with it — a benchmark under it would be measuring the census rather than the frame. `shot
-/// --crossings` is the one thing that turns it on.
-layout(constant_id = 4) const bool COUNT_CROSSINGS = false;
-
 #endif

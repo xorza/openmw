@@ -110,11 +110,9 @@ namespace Rtx
         /// @param volumeLayout the same again, for the set a `FogVolume` hands over.
         /// @param countHits whether the trace counts the primary rays that hit anything — a
         ///        harness facility, specialized away rather than branched on.
-        /// @param countCrossings whether it also counts the see-through surfaces each of those rays
-        ///        crosses, a second traversal a pixel.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-            bool countHits, bool countCrossings);
+            bool countHits);
 
         /// Records the trace, in whichever kernel this frame calls for.
         ///
@@ -172,7 +170,6 @@ namespace Rtx
         /// Fixed for the life of the pass, where the four in `VisibilityVariant` are the frame's:
         /// what counts hits is which binary was built and not what is being looked at.
         std::uint32_t mCountHits = 0;
-        std::uint32_t mCountCrossings = 0;
 
         /// The second of the two sets bound after the pushed one, which the renderer owns for its
         /// whole life. The first is the scene's and arrives with the frame — `mTextureLayout`.

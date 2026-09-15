@@ -1,17 +1,13 @@
 #include "stopwriter.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <exception>
 #include <format>
-#include <fstream>
-#include <ios>
 #include <limits>
-#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -32,11 +28,9 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
-#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/shaders/colour.h>
 #include <components/rtx/surface.hpp>
 #include <components/rtx/texels.hpp>
 #include <components/rtx/texturebuilder.hpp>
@@ -96,12 +90,6 @@ namespace RtxTool
         if (!actions.mCapture.empty())
             writeCapture(into, actions.mCapture);
 
-        if (actions.mTail)
-            reportTail(into);
-
-        if (!actions.mDump.empty())
-            writeDump(into, actions.mDump);
-
         if (actions.mDigest)
             reportScene(into);
 
@@ -141,68 +129,6 @@ namespace RtxTool
         catch (const std::exception& failed)
         {
             into.mRecord.note(std::format("could not write {}: {}\n", Files::pathToUnicodeString(file), failed.what()));
-            into.mRecord.fail();
-        }
-    }
-
-    void StopWriter::reportTail(const Writing& into)
-    {
-        if (!Rtx::hasFrameImage(into.mReport.mReconstruction, Rtx::FrameImage::Accumulated))
-        {
-            into.mRecord.note(
-                std::format("no bounce tail: only the wavelet writes one, and {} put this frame back together\n",
-                    Rtx::sDenoiserNames.name(into.mReport.mReconstruction.mDenoiser)));
-            into.mRecord.fail();
-            return;
-        }
-
-        Rtx::Renderer& renderer = into.mContext.mRenderer.getBackend();
-
-        std::vector<float> bounce;
-        renderer.readFrameImage(Rtx::FrameImage::Accumulated, bounce);
-
-        // The ladder the fork's own table was taken on. One is about where the signal ends — a
-        // surface seeing a full hemisphere of sky — and everything past it is the tail proper.
-        static constexpr std::array<float, 5> sThresholds{ 0.5f, 1.0f, 8.0f, 32.0f, 64.0f };
-        std::array<std::uint64_t, 5> over{};
-
-        const std::size_t counted = bounce.size() / 4;
-        for (std::size_t at = 0; at < counted; ++at)
-        {
-            // **The renderer's own weights and not a copy of them.** A second set would be a
-            // second idea of which of two things is brighter, and this is what decides which of
-            // a frame's pixels are outliers.
-            const float lit = bounce[at * 4] * Rtx::Shaders::LUMINANCE_WEIGHTS.x()
-                + bounce[at * 4 + 1] * Rtx::Shaders::LUMINANCE_WEIGHTS.y()
-                + bounce[at * 4 + 2] * Rtx::Shaders::LUMINANCE_WEIGHTS.z();
-
-            for (std::size_t step = 0; step < sThresholds.size(); ++step)
-                if (lit > sThresholds[step])
-                    ++over[step];
-        }
-
-        into.mRecord.note("bounce tail:");
-        for (std::size_t step = 0; step < sThresholds.size(); ++step)
-            into.mRecord.note(std::format("{}>{} {:.4f}%", step == 0 ? " " : ", ", sThresholds[step],
-                counted > 0 ? static_cast<double>(over[step]) / static_cast<double>(counted) * 100.0 : 0.0));
-
-        into.mRecord.note("\n");
-    }
-
-    void StopWriter::writeDump(const Writing& into, const std::filesystem::path& file)
-    {
-        Rtx::Renderer& renderer = into.mContext.mRenderer.getBackend();
-
-        std::vector<float> radiance;
-        renderer.readFrameImage(Rtx::FrameImage::Composite, radiance);
-
-        std::ofstream out(file, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(radiance.data()),
-            static_cast<std::streamsize>(radiance.size() * sizeof(float)));
-
-        if (!out)
-        {
-            into.mRecord.note("could not write " + Files::pathToUnicodeString(file) + '\n');
             into.mRecord.fail();
         }
     }

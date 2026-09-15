@@ -10,8 +10,8 @@ namespace Rtx
 {
     /// A Vulkan handle the device destroys, and the device it belongs to: the one place
     /// `vkDestroyX(device, handle, allocator)` is spelled, so the classes holding one default their
-    /// moves. `CI/check_rtx_handles.sh` is what makes the next class adopt it, and names the calls
-    /// this shape cannot take.
+    /// moves. `RtxSourceTreeTest` is what makes the next class adopt it, and names the calls this
+    /// shape cannot take.
     ///
     /// @tparam Destroy the function that ends it.
     template <class Handle, auto Destroy>
