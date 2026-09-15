@@ -181,6 +181,7 @@ namespace RtxTool
             const bpo::variables_map& mVariables;
             Files::ConfigurationManager& mConfig;
             const std::filesystem::path& mResources;
+            Verbs mVerb;
         };
 
         /// The whole of a `FrameRequest`, from the command line.
@@ -193,18 +194,30 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
             const Size size = parseSize(variables["size"].as<std::string>());
 
+            // **A window is the played game with the walls off, so what the player set stands
+            // unless an option was typed over it.** Every other command has to state its frame,
+            // so that two runs of it are one run whatever a settings file says — which is what
+            // the harness's own defaults are for. A window that took them stood four cells of
+            // ground under a player who had set eight, and upscaled at a quality they had not.
+            const bool watched = command.mVerb == Verbs::View;
+            const auto typed = [&](const char* name) { return !watched || !variables[name].defaulted(); };
+
             FrameRequest request;
             request.mWidth = size.mWidth;
             request.mHeight = size.mHeight;
             request.mFieldOfView = variables["fov"].as<float>();
-            request.mDistantCells = variables["distant-cells"].as<float>();
-            request.mDistantStatics = variables["distant-statics"].as<bool>();
+            request.mDistantCells = typed("distant-cells") ? variables["distant-cells"].as<float>()
+                                                           : Settings::rtx().mDistantLandCells.get();
+            request.mDistantStatics = typed("distant-statics") ? variables["distant-statics"].as<bool>()
+                                                               : Settings::terrain().mObjectPaging.get();
             request.mDay = variables["day"].as<int>();
 
-            request.mProfile.mUpscaling.mMode
-                = Rtx::sUpscaleNames.require(variables["upscale"].as<std::string>(), "an upscale mode");
-            request.mProfile.mUpscaling.mPreset
-                = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
+            request.mProfile.mUpscaling.mMode = Rtx::sUpscaleNames.require(
+                typed("upscale") ? variables["upscale"].as<std::string>() : Settings::rtx().mUpscale.get(),
+                "an upscale mode");
+            request.mProfile.mUpscaling.mPreset = Rtx::sPresetNames.require(
+                typed("preset") ? variables["preset"].as<std::string>() : Settings::rtx().mPreset.get(),
+                "a Ray Reconstruction preset");
             request.mProfile.mDelight = variables["delight"].as<float>();
             request.mProfile.mReconstruction.mFilter = variables["filter"].as<bool>();
             request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();
@@ -921,7 +934,7 @@ namespace RtxTool
                 return 1;
             }
 
-            return found->mRun(Command{ variables, config, resources });
+            return found->mRun(Command{ variables, config, resources, found->mVerb });
         }
 
         int run(int argc, char* argv[])

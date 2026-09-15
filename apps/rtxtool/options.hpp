@@ -90,9 +90,10 @@ namespace RtxTool
     /// byte of it is regenerable and the next run overrides it again.
     std::filesystem::path ownConfigDirectory(const Files::ConfigurationManager& config);
 
-    /// Makes `directory` the last configuration directory of the run, and creates it. The last,
-    /// because `Settings::Manager::load` reads that one as the user layer the engine writes back
-    /// to: with the player's own directory last, `bench --distant-statics=false` left the played
-    /// game with its object paging off. Before `Files::ConfigurationManager::readConfiguration`.
+    /// Makes `directory` the last configuration directory of the run, creates it, and drops the
+    /// settings the last run left in it. The last, because `Settings::Manager::load` reads that
+    /// one as the user layer the engine writes back to: with the player's own directory last,
+    /// `bench --distant-statics=false` left the played game with its object paging off. Before
+    /// `Files::ConfigurationManager::readConfiguration`.
     void adoptConfigDirectory(boost::program_options::variables_map& variables, const std::filesystem::path& directory);
 }

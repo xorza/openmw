@@ -498,6 +498,13 @@ namespace RtxTool
     {
         std::filesystem::create_directories(directory);
 
+        // **What the engine saved on its last way out is the last run's overrides, and read back
+        // it would shadow the player's file on this one.** `Settings::Manager::load` takes the last
+        // directory's file as the user layer over every other, and the engine writes that layer
+        // with everything a run set into it — so a `view` that read the player's `distant land
+        // cells` found the four a `shot` had left here, whatever the player's own file said.
+        std::filesystem::remove(directory / "settings.cfg");
+
         // **The map's own entry and not a second parse.** `config` is a composing option, so a value
         // stored from a second source would be merged by rules that are Boost's to keep; the container
         // the first parse left is appended to directly, and `readConfiguration` reads it as it finds it.
