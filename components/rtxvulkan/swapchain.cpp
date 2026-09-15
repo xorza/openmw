@@ -91,9 +91,11 @@ namespace Rtx
         }
     }
 
-    Swapchain::Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent)
+    Swapchain::Swapchain(
+        const Device& device, VkSurfaceKHR surface, VkExtent2D extent, const SDLUtil::VSyncMode verticalSync)
         : mDevice(device)
         , mSurface(surface)
+        , mVerticalSync(verticalSync)
     {
         VkBool32 supported = VK_FALSE;
         checkVk(vkGetPhysicalDeviceSurfaceSupportKHR(

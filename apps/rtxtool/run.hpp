@@ -12,6 +12,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/sdlutil/vsyncmode.hpp>
 
 namespace Files
 {
@@ -68,6 +69,10 @@ namespace RtxTool
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;
+
+        /// How the present paces the frame. Off for a measured run, or the wait for the refresh
+        /// lands in `wait ms`; a watched window keeps the player's own setting.
+        SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
 
         /// What the trace itself is configured by, handed to the renderer through `RendererSpec`:
         /// the one type the game reads out of `[RTX]` and this fills from the command line.

@@ -30,7 +30,7 @@ add_openmw_dir (mwrender
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
 if (OPENMW_RTX)
     add_openmw_dir (mwrender/rtx
-        framereport rtxrenderer rtxrun tracedview worldmirror
+        framereport rtxrenderer rtxrun tracedground tracedview worldmirror
         )
 endif()
 

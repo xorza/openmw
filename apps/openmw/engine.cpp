@@ -1,9 +1,7 @@
 #include "engine.hpp"
 
-#include <cerrno>
 #include <chrono>
 #include <future>
-#include <system_error>
 
 #include <osgDB/ReaderWriter>
 #include <osgDB/Registry>
@@ -63,7 +61,6 @@
 
 #include "mwrender/renderer.hpp"
 #include "mwrender/renderingmanager.hpp"
-#include "mwrender/vismask.hpp"
 
 #include "mwclass/classes.hpp"
 
@@ -515,13 +512,8 @@ void OMW::Engine::prepareEngine()
     // gui needs our shaders path before everything else
     mResourceSystem->getSceneManager()->setShaderPath(mResDir / "shaders");
 
-    osg::ref_ptr<osg::Group> guiRoot = new osg::Group;
-    guiRoot->setName("GUI Root");
-    guiRoot->setNodeMask(MWRender::Mask_GUI);
-    rootNode->addChild(guiRoot);
-
-    mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, guiRoot, mResourceSystem.get(),
-        mWorkQueue.get(), mCfgMgr.getLogPath(), mScriptConsoleMode, mTranslationDataStorage, mEncoding, mExportFonts,
+    mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, mResourceSystem.get(), mWorkQueue.get(),
+        mCfgMgr.getLogPath(), mScriptConsoleMode, mTranslationDataStorage, mEncoding, mExportFonts,
         Version::getOpenmwVersionDescription(), mCfgMgr);
     mEnvironment.setWindowManager(*mWindowManager);
 
@@ -665,29 +657,6 @@ void OMW::Engine::go()
 
     prepareEngine();
 
-#ifdef _WIN32
-    const auto* statsFile = _wgetenv(L"OPENMW_OSG_STATS_FILE");
-#else
-    const auto* statsFile = std::getenv("OPENMW_OSG_STATS_FILE");
-#endif
-
-    std::filesystem::path path;
-    if (statsFile != nullptr)
-        path = statsFile;
-
-    std::ofstream stats;
-    if (!path.empty())
-    {
-        stats.open(path, std::ios_base::out);
-        if (stats.is_open())
-            Log(Debug::Info) << "OSG stats will be written to: " << path;
-        else
-            Log(Debug::Warning) << "Failed to open file to write OSG stats \"" << path
-                                << "\": " << std::generic_category().message(errno);
-    }
-
-    mRenderer->installStatsOverlay(*mVFS, stats.is_open());
-
     // Start the game
     if (!mSaveGameFile.empty())
     {
@@ -721,7 +690,7 @@ void OMW::Engine::go()
     MWWorld::DateTimeManager& timeManager = *mWorld->getTimeManager();
     Misc::FrameRateLimiter frameRateLimiter = Misc::makeFrameRateLimiter(mEnvironment.getFrameRateLimit());
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
-    while (!mRenderer->done() && !mStateManager->hasQuitRequest())
+    while (!mStateManager->hasQuitRequest())
     {
         // What the wall says the last frame took, which Renderer::beginFrame may overrule with a run's step
         const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
@@ -744,21 +713,6 @@ void OMW::Engine::go()
         {
             timeManager.setSimulationTime(timeManager.getSimulationTime() + dt);
             timeManager.setRenderingSimulationTime(timeManager.getRenderingSimulationTime() + dt);
-        }
-
-        if (stats)
-        {
-            // The delay is required because rendering happens in parallel to the main thread and stats from there is
-            // available with delay.
-            constexpr unsigned statsReportDelay = 3;
-            if (frameNumber >= statsReportDelay)
-            {
-                // Viewer frame number can be different from frameNumber because of loading screens which render new
-                // frames inside a simulation frame.
-                const unsigned currentFrameNumber = mRenderer->getFrameStamp().getFrameNumber();
-                for (unsigned i = frameNumber; i <= currentFrameNumber; ++i)
-                    mRenderer->reportStats(i - statsReportDelay, stats);
-            }
         }
 
         frameRateLimiter.limit();

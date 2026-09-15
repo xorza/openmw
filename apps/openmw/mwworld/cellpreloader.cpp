@@ -182,10 +182,6 @@ namespace MWWorld
         {
             for (unsigned int i = 0; i < mTerrainViews.size() && i < mPreloadPositions.size() && !mAbort; ++i)
             {
-                // A Terrain::World that builds no chunks hands out no view
-                if (mTerrainViews[i] == nullptr)
-                    continue;
-
                 mTerrainViews[i]->reset();
                 mWorld->preload(mTerrainViews[i], mPreloadPositions[i].mPosition, mPreloadPositions[i].mCellBounds,
                     mAbort, mLoadingReporter);

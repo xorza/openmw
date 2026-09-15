@@ -3,10 +3,7 @@
 #include <array>
 
 #include <osg/FrameStamp>
-#include <osg/Group>
 #include <osg/Stats>
-
-#include <osgUtil/IncrementalCompileOperation>
 
 #include <MyGUI_Gui.h>
 #include <MyGUI_ScrollBar.h>
@@ -112,12 +109,6 @@ namespace MWGui
             return mTargetFrameRate;
     }
 
-    class DontComputeBoundCallback : public osg::Node::ComputeBoundingSphereCallback
-    {
-    public:
-        osg::BoundingSphere computeBound(const osg::Node&) const override { return osg::BoundingSphere(); }
-    };
-
     void LoadingScreen::loadingOn()
     {
         // Early-out if already on
@@ -126,16 +117,7 @@ namespace MWGui
 
         mLoadingOnTime = mTimer.time_m();
 
-        // Assign dummy bounding sphere callback to avoid the bounding sphere of the entire scene being recomputed after
-        // each frame of loading We are already using node masks to avoid the scene from being updated/rendered, but
-        // node masks don't work for computeBound()
-        mRenderer.getTraversalRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
-
-        if (const osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
-        {
-            mOldIcoMin = ico->getMinimumTimeAvailableForGLCompileAndDeletePerFrame();
-            mOldIcoMax = ico->getMaximumNumOfObjectsToCompilePerFrame();
-        }
+        mRenderer.beginLoading();
 
         setVisible(true);
 
@@ -167,16 +149,9 @@ namespace MWGui
         else
             mImportantLabel = false; // label was already shown on loading screen
 
-        mRenderer.getTraversalRoot().setComputeBoundingSphereCallback(nullptr);
-        mRenderer.getTraversalRoot().dirtyBound();
-
         setVisible(false);
 
-        if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
-        {
-            ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(mOldIcoMin);
-            ico->setMaximumNumOfObjectsToCompilePerFrame(mOldIcoMax);
-        }
+        mRenderer.endLoading();
 
         MWBase::Environment::get().getWindowManager()->removeGuiMode(GM_Loading);
         MWBase::Environment::get().getWindowManager()->removeGuiMode(GM_LoadingWallpaper);
@@ -293,13 +268,8 @@ namespace MWGui
         stats->setAttribute(frameNumber, "Loading", 1);
 
         mResourceSystem->reportStats(frameNumber, stats);
-        if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
-        {
-            ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(1.f / getTargetFrameRate());
-            ico->setMaximumNumOfObjectsToCompilePerFrame(1000);
-        }
 
-        mRenderer.renderGuiFrame();
+        mRenderer.renderLoadingFrame(getTargetFrameRate());
 
         mLastRenderTime = mTimer.time_m();
     }

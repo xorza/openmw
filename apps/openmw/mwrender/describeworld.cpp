@@ -223,9 +223,8 @@ namespace MWRender
 
     void RenderingManager::renderFrame()
     {
-        // **Where the eye is, told to the precipitation before the frame.** The cull traversal
-        // tells it the same thing under the rasterizer; a renderer that culls nothing has to say it
-        // here, or the underwater switch that freezes the rain reads the point the last cull left.
+        // **Where the eye is, told to the precipitation before the frame**, so the underwater switch
+        // that freezes the rain reads this frame's eye and not the point a traversal last left.
         // Here and not in `describeFrame`, because `Camera::updateCamera` writes the view matrix
         // from the update traversal, which runs between the two.
         mPrecipitation->setViewPoint(mRenderer.getCamera().getInverseViewMatrix().getTrans());

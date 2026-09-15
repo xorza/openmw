@@ -3,17 +3,14 @@
 #include <components/debug/debuglog.hpp>
 #include <components/settings/values.hpp>
 
-#include <osg/Camera>
-
-#include <osgGA/EventQueue>
+#include "graphicslistener.hpp"
 
 namespace SDLUtil
 {
 
-    InputWrapper::InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue* events, bool grab)
+    InputWrapper::InputWrapper(SDL_Window* window, GraphicsListener& graphics, bool grab)
         : mSDLWindow(window)
-        , mCamera(camera)
-        , mEvents(events)
+        , mGraphics(graphics)
         , mMouseListener(nullptr)
         , mSensorListener(nullptr)
         , mKeyboardListener(nullptr)
@@ -48,15 +45,14 @@ namespace SDLUtil
         int w, h;
         SDL_GetWindowSize(mSDLWindow, &w, &h);
         int dw, dh;
-        SDL_GL_GetDrawableSize(mSDLWindow, &dw, &dh);
+        SDL_GetWindowSizeInPixels(mSDLWindow, &dw, &dh);
         mScaleX = static_cast<Uint16>(dw / w);
         mScaleY = static_cast<Uint16>(dh / h);
     }
 
     void InputWrapper::capture(bool windowEventsOnly)
     {
-        if (mEvents != nullptr)
-            mEvents->frame(0.f);
+        mGraphics.beginEvents();
 
         SDL_PumpEvents();
 
@@ -122,11 +118,8 @@ namespace SDLUtil
                 case SDL_KEYDOWN:
                     mKeyboardListener->keyPressed(evt.key);
 
-                    if (mEvents != nullptr && !isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1
-                        && evt.key.keysym.sym <= SDLK_F12)
-                    {
-                        mEvents->keyPress(osgGA::GUIEventAdapter::KEY_F1 + (evt.key.keysym.sym - SDLK_F1));
-                    }
+                    if (!isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1 && evt.key.keysym.sym <= SDLK_F12)
+                        mGraphics.functionKey(evt.key.keysym.sym - SDLK_F1, true);
 
                     break;
                 case SDL_KEYUP:
@@ -134,9 +127,9 @@ namespace SDLUtil
                     {
                         mKeyboardListener->keyReleased(evt.key);
 
-                        if (mEvents != nullptr && !isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1
+                        if (!isModifierHeld(KMOD_ALT) && evt.key.keysym.sym >= SDLK_F1
                             && evt.key.keysym.sym <= SDLK_F12)
-                            mEvents->keyRelease(osgGA::GUIEventAdapter::KEY_F1 + (evt.key.keysym.sym - SDLK_F1));
+                            mGraphics.functionKey(evt.key.keysym.sym - SDLK_F1, false);
                     }
 
                     break;
@@ -256,12 +249,11 @@ namespace SDLUtil
                 updateMouseSettings();
                 break;
             case SDL_WINDOWEVENT_MOVED:
-                // I'm not sure what OSG is using the window position for, but I don't think it's needed,
-                // so we ignore window moved events (improves window movement performance)
+                // Nobody drawing needs the position, and following it slows window movement
                 break;
             case SDL_WINDOWEVENT_SIZE_CHANGED:
                 int w, h;
-                SDL_GL_GetDrawableSize(mSDLWindow, &w, &h);
+                SDL_GetWindowSizeInPixels(mSDLWindow, &w, &h);
                 int x, y;
                 SDL_GetWindowPosition(mSDLWindow, &x, &y);
 
@@ -269,12 +261,7 @@ namespace SDLUtil
                 if (w == 0 && h == 0)
                     return;
 
-                // Null under a renderer with no OSG graphics context
-                if (osg::GraphicsContext* context = mCamera.getGraphicsContext())
-                    context->resized(x, y, w, h);
-
-                if (mEvents != nullptr)
-                    mEvents->windowResize(x, y, w, h);
+                mGraphics.windowResized(x, y, w, h);
 
                 if (mWindowListener)
                     mWindowListener->windowResized(w, h);

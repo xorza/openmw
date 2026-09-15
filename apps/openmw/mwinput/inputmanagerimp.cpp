@@ -28,8 +28,7 @@ namespace MWInput
         bool userFileExists, const std::filesystem::path& userControllerBindingsFile,
         const std::filesystem::path& controllerBindingsFile, bool grab)
         : mControlsDisabled(false)
-        , mInputWrapper(
-              std::make_unique<SDLUtil::InputWrapper>(window, renderer.getCamera(), renderer.getEvents(), grab))
+        , mInputWrapper(std::make_unique<SDLUtil::InputWrapper>(window, renderer, grab))
         , mBindingsManager(std::make_unique<BindingsManager>(userFile, userFileExists))
         , mControlSwitch(std::make_unique<ControlSwitch>())
         , mActionManager(std::make_unique<ActionManager>(mBindingsManager.get(), renderer))

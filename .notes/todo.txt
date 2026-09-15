@@ -4,6 +4,4 @@
 - move some computations to loadtime
 
 - tracy
-- precompile shaders?
 - fsr and other denoisers and upscalers
-- rtx 20xx

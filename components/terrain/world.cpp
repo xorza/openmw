@@ -92,10 +92,6 @@ namespace Terrain
 
     void World::setBordersVisible(bool visible)
     {
-        // A world built with no borders has none to show
-        if (mCellBorder == nullptr)
-            return;
-
         mBorderVisible = visible;
 
         if (visible)
@@ -125,8 +121,7 @@ namespace Terrain
 
     void World::setTargetFrameRate(float rate)
     {
-        if (mCompositeMapRenderer)
-            mCompositeMapRenderer->setTargetFrameRate(rate);
+        mCompositeMapRenderer->setTargetFrameRate(rate);
     }
 
     float World::getHeightAt(const osg::Vec3f& worldPos)

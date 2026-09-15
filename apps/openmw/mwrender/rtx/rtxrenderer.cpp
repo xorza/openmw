@@ -49,7 +49,6 @@
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
-#include <components/terrain/world.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "../offscreenview.hpp"
@@ -57,6 +56,7 @@
 #include "../sceneframe.hpp"
 #include "../vismask.hpp"
 #include "rtxrun.hpp"
+#include "tracedground.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
@@ -109,6 +109,38 @@ namespace MWRender
 
             return profile;
         }
+
+        /// The run a played session is: every answer the played one, and nothing noted from any
+        /// frame. One for the process, because a played session has no state a run would keep.
+        class PlayedRun final : public RtxRun
+        {
+        public:
+            bool isHeadless() const override { return false; }
+
+            /// The build's, which `Rtx::sValidationByDefault` says is the one thing that should
+            /// decide it for a session with no command line.
+            const Rtx::ValidationOptions& getValidation() const override { return mValidation; }
+
+            bool wantsHitCounts() const override { return false; }
+
+            /// The wall: the eye adapts in real time and the upscaler tunes itself against how fast
+            /// a motion vector was travelled, so each reader times what it is about. A setting that
+            /// could state a step once made a played game step by frames, and at two hundred of
+            /// them a second the world ran three times over.
+            std::optional<float> getStep() const override { return std::nullopt; }
+
+            std::optional<bool> getSettled() const override { return std::nullopt; }
+            std::optional<std::uint32_t> getSampleFrame() const override { return std::nullopt; }
+            std::uint32_t getAccumulated() const override { return 0; }
+            bool wantsSecondWalk() const override { return false; }
+            void beforeFrame() override {}
+            void frame(const FrameContext& context, const FrameReport& report) override {}
+
+        private:
+            Rtx::ValidationOptions mValidation{ Rtx::sValidationByDefault };
+        };
+
+        PlayedRun sPlayedRun;
 
         /// A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
         /// has to be nearer than anything the eye can find itself inside of.
@@ -184,6 +216,7 @@ namespace MWRender
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
         : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
+        , mRun(spec.mRtx != nullptr ? spec.mRtx->mRun : sPlayedRun)
     {
         // **Made here, because there is no viewer to make them.** Every renderer needs the four and
         // one built on `osgViewer` gets them already wired together.
@@ -196,15 +229,14 @@ namespace MWRender
         frameStamp->setSimulationTime(0.0);
         mUpdateVisitor->setFrameStamp(frameStamp);
 
-        adopt(*camera, *frameStamp, nullptr, *stats);
+        adopt(*camera, *frameStamp, *stats);
 
         // **Read before anything is built, because it decides how the window opens and what the
-        // trace counts.** A harness hands a whole run over in the spec; a played binary has none,
-        // and runs at what its settings say.
+        // trace counts.** A harness hands a whole profile over in the spec; a played binary has
+        // none, and runs at what its settings say.
         mProfile = spec.mRtx != nullptr ? spec.mRtx->mProfile : profileFromSettings();
-        mRun = spec.mRtx != nullptr ? &spec.mRtx->mRun : nullptr;
 
-        createWindow(mRun != nullptr && mRun->isHeadless());
+        createWindow(mRun.isHeadless());
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -220,13 +252,11 @@ namespace MWRender
         options.mWidth = mAskedWidth;
         options.mHeight = mAskedHeight;
         options.mWindow = mWindow;
-        // **The run's answer where a run was installed, and the build's otherwise.** A launcher
-        // making a measurement says on its command line whether the layers load, because a figure
-        // taken under them is not one to compare against anything; a played session has only the
-        // build to go on, which `Rtx::sValidationByDefault` says is the one thing that should
-        // decide it.
-        options.mValidation
-            = mRun != nullptr ? mRun->getValidation() : Rtx::ValidationOptions{ Rtx::sValidationByDefault };
+        options.mVerticalSync = Settings::video().mVsyncMode;
+        // **The run's answer.** A launcher making a measurement says on its command line whether
+        // the layers load, because a figure taken under them is not one to compare against
+        // anything; `PlayedRun` says what a session with no command line answers.
+        options.mValidation = mRun.getValidation();
 
         // **The two finer layers, asked for by name and never on by themselves.** The build decides
         // whether the layers load; these decide what they check, and each costs far more than the
@@ -253,16 +283,10 @@ namespace MWRender
         options.mValidation.mEnabled
             = options.mValidation.mEnabled || options.mValidation.mSynchronization || options.mValidation.mGpuAssisted;
 
-        // **Cleared for a played session and kept for a measured one.** The hit count is a report's
-        // figure — it is what tells "the cell rendered" from "the camera faced away from it" — and
-        // nothing a player does ever reads it, so an ordinary session is specialized without the
-        // atomic rather than writing a number to a buffer nobody looks at, once per pixel that hit
-        // anything, for the life of the session.
-        options.mCountHits = mRun != nullptr;
+        options.mCountHits = mRun.wantsHitCounts();
 
-        // **The knobs a measurement turns, handed over whole where the renderer is built.** They
-        // were hard-coded here and taken as command-line options by the harness, so a picture taken
-        // by one and a frame drawn by the other were traced by two differently configured renderers.
+        // **The knobs a measurement turns, handed over whole where the renderer is built**, so a
+        // picture taken by the harness and a frame drawn by the game come from one configuration.
         options.mProfile = mProfile;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
@@ -294,15 +318,11 @@ namespace MWRender
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
 
         // **The clock everything in the frame is measured by**, and the last thing that would
-        // otherwise run on the wall. The eye adapts in real time and the upscaler tunes itself
-        // against how fast a motion vector was travelled, so a played session leaves this empty and
-        // each reader times what it is about. A measured run cannot: two runs of one build would
-        // adapt by different amounts and draw different pictures. So the step is the run's and
-        // nothing else's — a setting that could state one made a played game step by frames, and
-        // at two hundred of them a second the world ran three times over. A run somebody watches
-        // states none, for the same reason.
-        if (mRun != nullptr)
-            mClock = Rtx::FrameClock(mRun->getStep());
+        // otherwise run on the wall. A measured run cannot run on the wall: two runs of one build
+        // would adapt by different amounts and draw different pictures. So the step is the run's
+        // and nothing else's; `PlayedRun::getStep` says why a played session and a run somebody
+        // watches both state none.
+        mClock = Rtx::FrameClock(mRun.getStep());
 
         // **The same step decides whether the ground waits, unless the run says otherwise.** A
         // composite comes back whenever the baker finishes it, so which frame it lands on is a
@@ -318,8 +338,7 @@ namespace MWRender
         // **And a run that means to time the streaming path overrides it**, because waiting is
         // most of what that path then measures. `Rtx::SessionRequest::mSettled` says what the
         // override costs and what it buys.
-        const std::optional<bool> stated = mRun != nullptr ? mRun->getSettled() : std::nullopt;
-        mMirror.setSettled(stated.value_or(mClock.getStatedStep().has_value()));
+        mMirror.setSettled(mRun.getSettled().value_or(mClock.getStatedStep().has_value()));
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -395,7 +414,7 @@ namespace MWRender
     {
         Ground ground;
         ground.mTerrain
-            = std::make_unique<Terrain::World>(&spec.mSceneRoot, &spec.mStorage, Mask_Terrain, spec.mWorldspace);
+            = std::make_unique<TracedGround>(spec.mSceneRoot, spec.mStorage, Mask_Terrain, spec.mWorldspace);
         return ground;
     }
 
@@ -408,8 +427,8 @@ namespace MWRender
         std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures)
     {
         // What `WorldMirror::attach` reads for its sky: the cloud shell, the star sphere, the two
-        // moons' full faces. The rasterizer's sky manager used to list them for both. A missing
-        // model aborts the whole preload, and the second star sphere is an expansion's.
+        // moons' full faces. A missing model aborts the whole preload, and the second star sphere
+        // is an expansion's.
         models.push_back(Settings::models().mSkyclouds);
         if (mResources->getVFS()->exists(Settings::models().mSkynight02.get()))
             models.push_back(Settings::models().mSkynight02);
@@ -456,28 +475,12 @@ namespace MWRender
 
     void RtxRenderer::advance(double simulationTime)
     {
-        const double previousReferenceTime = getFrameStamp().getReferenceTime();
-        const unsigned int previousFrame = getFrameStamp().getFrameNumber();
-
-        getFrameStamp().setFrameNumber(previousFrame + 1);
+        getFrameStamp().setFrameNumber(getFrameStamp().getFrameNumber() + 1);
 
         // **What OpenMW ages its caches by**, which is why it comes from the frame's own clock and
         // not from the wall. `Rtx::FrameClock` says what reading the wall here cost.
         getFrameStamp().setReferenceTime(mClock.getNow());
         getFrameStamp().setSimulationTime(simulationTime);
-
-        // The same two the viewer writes, because the profiler's own spans are reported against
-        // them and a frame with neither reads as a frame that took no time. **A run that states a
-        // step reports that cadence here**, because these are read off the stamp and the stamp is
-        // what the run stated — what the frames really cost is what `Bench` prints beside them.
-        if (getStats().collectStats("frame_rate"))
-        {
-            const double spent = getFrameStamp().getReferenceTime() - previousReferenceTime;
-            getStats().setAttribute(previousFrame, "Frame duration", spent);
-            getStats().setAttribute(previousFrame, "Frame rate", spent > 0.0 ? 1.0 / spent : 0.0);
-            getStats().setAttribute(
-                getFrameStamp().getFrameNumber(), "Reference time", getFrameStamp().getReferenceTime());
-        }
     }
 
     void RtxRenderer::eventTraversal()
@@ -488,8 +491,7 @@ namespace MWRender
 
     void RtxRenderer::tickSchedule()
     {
-        if (mRun != nullptr)
-            mRun->beforeFrame();
+        mRun.beforeFrame();
     }
 
     void RtxRenderer::updateTraversal()
@@ -511,8 +513,9 @@ namespace MWRender
 
         // **Not behind a loading screen.** What the rasterizer says with a blanked traversal mask
         // this says by not walking. The eye below still updates, as it does under that blanked mask:
-        // the master camera's own bits are not among the ones it clears.
-        if (drawsWorld())
+        // the master camera's own bits are not among the ones it clears. `tws` is not asked here:
+        // under the rasterizer it masks the cull alone and the world keeps animating behind it.
+        if (mWorldShown)
             getTraversalRoot().accept(*mUpdateVisitor);
 
         // **And the eye, which is not in the graph.** `MWRender::Camera` puts where the player is
@@ -779,13 +782,12 @@ namespace MWRender
         return *mFrozenFrameTexture;
     }
 
-    std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
-        VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
+    std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(
+        float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
     {
-        // **MyGUI over the ray tracer, and nothing of OpenSceneGraph in it.** `guiRoot` is where the
-        // rasterizer hangs its GUI camera; there is no graph to hang anything off here, and the
-        // backend is called by this renderer's own frame instead — `updateTraversal` for the widget
-        // animation and `renderFrame` for the triangles.
+        // **MyGUI over the ray tracer, and nothing of OpenSceneGraph in it.** Nothing is hung in the
+        // graph; the backend is called by this renderer's own frame instead — `updateTraversal` for
+        // the widget animation and `renderFrame` for the triangles.
         auto manager
             = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, mResources->getImageManager(), scalingFactor);
         mGui = manager.get();
@@ -849,7 +851,7 @@ namespace MWRender
         // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
         // because a second whole-graph walk is the largest cost a frame has.
         mWalked.mAgain.reset();
-        if (mRun != nullptr && mRun->wantsSecondWalk())
+        if (mRun.wantsSecondWalk())
             mWalked.mAgain = mMirror.mirror(frame, mFrame);
 
         traceWorld(frame, report);
@@ -963,10 +965,10 @@ namespace MWRender
         }
         catch (const Rtx::Error& what)
         {
-            // **Asked of the builder rather than tested for here**, which is how the test this
-            // replaced came to reject a camera that was perfectly good: it was a copy of a contract
-            // that then had two places to be right. Once, because a camera nobody filled in and a
-            // real defect look identical from here until it is said how often it happens.
+            // **Asked of the builder rather than tested for here**: a test here would be a copy of
+            // the builder's contract with two places to be right. Reported once, because a camera
+            // nobody filled in and a real defect look identical from here until it is said how
+            // often it happens.
             if (!mComplained)
             {
                 mComplained = true;
@@ -993,19 +995,16 @@ namespace MWRender
         // **The stop's own count where a run is being made, and the game's frame number
         // otherwise.** `RtxRun::getSampleFrame` says why: a measured run has to walk the same
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
-        const std::optional<std::uint32_t> sample = mRun != nullptr ? mRun->getSampleFrame() : std::nullopt;
-        constants.mFrame = sample.value_or(static_cast<std::uint32_t>(mFrame));
+        constants.mFrame = mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(mFrame));
 
         // **The schedule's and not the profile's**, because a warm-up is not averaged in — a picture
         // of a half-built cell in the sum is what `RtxRun::getAccumulated` exists to keep out.
-        const std::uint32_t accumulated = mRun != nullptr ? mRun->getAccumulated() : 0;
+        const std::uint32_t accumulated = mRun.getAccumulated();
 
-        // **The game set neither of these, and the de-lighting is what that cost.**
-        // `Rtx::makeCameraFromView` names every field it fills and leaves the rest
-        // value-initialised, so a played frame ran at `mDelight` nought — which `texturing.glsl`
-        // short-circuits on, handing the trace Bethesda's textures with their painted lighting
-        // still in them. The harness set it from `--delight` and defaulted to one, so the two hosts
-        // had been lighting the same world by different rules.
+        // **Both hosts light the world by the profile's rules.** `Rtx::makeCameraFromView` names
+        // every field it fills and leaves the rest value-initialised, and `texturing.glsl`
+        // short-circuits on a `mDelight` of nought, handing the trace Bethesda's textures with
+        // their painted lighting still in them.
         constants.mDelight = mProfile.mDelight;
         constants.mShowAlbedo = mProfile.mShowAlbedo ? 1u : 0u;
 
@@ -1036,8 +1035,8 @@ namespace MWRender
             report.mWalked = mWalked;
             report.mUnreadableTextures = mUnreadable;
 
-            if (mRun != nullptr && report.mResult.has_value())
-                mRun->frame(describeContext(), report);
+            if (report.mResult.has_value())
+                mRun.frame(describeContext(), report);
 
             // **Every frame and not the ones the device answered for**, because what this reads is
             // the wall between two traces and the device's answer is not part of it. Once a

@@ -88,6 +88,11 @@ namespace Rtx
         /// itself to the window and ignores `mWidth` and `mHeight`.
         SDL_Window* mWindow = nullptr;
 
+        /// How a present paces the frame, where there is a window. Off for a window somebody
+        /// steers by hand and for a measured run, which is why off is the default; the game hands
+        /// its own setting over, and `Renderer::setVerticalSync` follows a change to it.
+        SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
+
         ValidationOptions mValidation;
 
         /// Whether the trace counts the primary rays that hit anything. On by default, so a reader

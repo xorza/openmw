@@ -151,8 +151,8 @@ namespace Rtx
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
         if (options.mWindow != nullptr)
-            mPresenter
-                = std::make_unique<Presenter>(mDevice, mPool, mGraveyard, mInstance.getHandle(), options.mWindow);
+            mPresenter = std::make_unique<Presenter>(
+                mDevice, mPool, mGraveyard, mInstance.getHandle(), options.mWindow, options.mVerticalSync);
 
         const VkExtent2D output
             = mPresenter != nullptr ? mPresenter->getExtent() : VkExtent2D{ options.mWidth, options.mHeight };

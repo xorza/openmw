@@ -43,8 +43,8 @@ namespace Rtx
         return names;
     }
 
-    Presenter::Presenter(
-        const Device& device, CommandPool& pool, Graveyard& graveyard, VkInstance instance, SDL_Window* window)
+    Presenter::Presenter(const Device& device, CommandPool& pool, Graveyard& graveyard, VkInstance instance,
+        SDL_Window* window, const SDLUtil::VSyncMode verticalSync)
         : mDevice(device)
         , mPool(pool)
         , mGraveyard(graveyard)
@@ -55,7 +55,7 @@ namespace Rtx
             if (SDL_Vulkan_CreateSurface(window, instance, &mSurface) == SDL_FALSE)
                 throw Unsupported(std::string("SDL would not make a Vulkan surface: ") + SDL_GetError());
 
-            mSwapchain = std::make_unique<Swapchain>(device, mSurface, drawableSize(window));
+            mSwapchain = std::make_unique<Swapchain>(device, mSurface, drawableSize(window), verticalSync);
             remakeImageSync();
         }
         catch (...)

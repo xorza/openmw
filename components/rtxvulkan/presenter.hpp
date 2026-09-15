@@ -40,8 +40,8 @@ namespace Rtx
         ///        so it signals the timeline and carries what was deferred ahead of it — a submit
         ///        of its own that took a timeline value would let the graveyard free what a
         ///        deferred batch names before it ran.
-        Presenter(
-            const Device& device, CommandPool& pool, Graveyard& graveyard, VkInstance instance, SDL_Window* window);
+        Presenter(const Device& device, CommandPool& pool, Graveyard& graveyard, VkInstance instance,
+            SDL_Window* window, SDLUtil::VSyncMode verticalSync);
         ~Presenter();
 
         /// Blits `frame`, in `VK_IMAGE_LAYOUT_GENERAL` and left there, onto the next swapchain

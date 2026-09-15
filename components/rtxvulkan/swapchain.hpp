@@ -19,7 +19,7 @@ namespace Rtx
     class Swapchain
     {
     public:
-        Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent);
+        Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent, SDLUtil::VSyncMode verticalSync);
 
         /// Takes the next image. False means the swapchain no longer matches the window and must be
         /// recreated — which a resize, a monitor change or a compositor restart all cause, and none
@@ -59,10 +59,7 @@ namespace Rtx
         VkSurfaceFormatKHR mFormat{};
         VkPresentModeKHR mPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
-        /// Off by default, which is what a window someone is steering wants. The harness and the
-        /// inventory doll follow a mouse, and the game overwrites this from its own setting before
-        /// the first frame.
-        SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
+        SDLUtil::VSyncMode mVerticalSync;
         VkExtent2D mExtent{};
         std::vector<VkImage> mImages;
     };

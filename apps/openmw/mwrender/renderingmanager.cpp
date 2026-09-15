@@ -25,9 +25,6 @@
 #include <components/resource/keyframemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 
-#include <components/shader/removedalphafunc.hpp>
-#include <components/shader/shadermanager.hpp>
-
 #include <components/fallback/fallback.hpp>
 #include <components/settings/values.hpp>
 
@@ -488,8 +485,6 @@ namespace MWRender
     void RenderingManager::update(float dt, bool paused)
     {
         reportStats();
-
-        mRenderer.reloadChangedShaders(mResourceSystem->getSceneManager()->getShaderManager());
 
         if (!paused)
         {
@@ -1008,10 +1003,8 @@ namespace MWRender
             .mWorldspace = worldspace,
         });
 
-        newChunkMgr.mTerrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
         float distanceMult = std::cos(osg::DegreesToRadians(std::min(mFieldOfView, 140.f)) / 2.f);
         newChunkMgr.mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
-        newChunkMgr.mTerrain->enableHeightCullCallback(Settings::terrain().mWaterCulling);
 
         return mWorldspaceChunks.emplace(worldspace, std::move(newChunkMgr)).first->second;
     }

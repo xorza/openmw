@@ -1,6 +1,7 @@
 #ifndef GAME_RENDER_GLRENDERER_H
 #define GAME_RENDER_GLRENDERER_H
 
+#include <fstream>
 #include <memory>
 
 #include <osg/ref_ptr>
@@ -31,6 +32,11 @@ namespace osg
 namespace SDLUtil
 {
     class GraphicsWindowSDL2;
+}
+
+namespace VFS
+{
+    class Manager;
 }
 
 namespace SceneUtil
@@ -97,7 +103,9 @@ namespace MWRender
         MyGUI::ITexture& freezeFrame() override;
 
         void renderGui() override;
-        bool done() const override;
+        void beginLoading() override;
+        void endLoading() override;
+        void applyLoadingBudget(double targetFrameRate) override;
 
         void capture(osg::Image& image, int width, int height) override;
         void setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer) override;
@@ -120,17 +128,25 @@ namespace MWRender
         void listAssetsToPreload(
             std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures) override;
 
-        void reloadChangedShaders(Shader::ShaderManager& shaders) override;
-
-        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
-            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
+        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(
+            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
 
         osg::Timer_t getStartTick() const override;
 
-        void installStatsOverlay(const VFS::Manager& vfs, bool toFile) override;
-        void reportStats(unsigned frameNumber, std::ostream& stream) const override;
+        /// Into the viewer's queue, for the handlers it carries: the stats overlay's keys, and
+        /// the resize its own handlers reposition by. The graphics context follows the window too.
+        void beginEvents() override;
+        void functionKey(int index, bool pressed) override;
+        void windowResized(int x, int y, int width, int height) override;
 
     private:
+        /// The overlay the debug keys toggle, and the per-frame dump `OPENMW_OSG_STATS_FILE` asks
+        /// for. Both are OSG's, so both are this renderer's to install and to write.
+        void installStatsOverlay(const VFS::Manager& vfs);
+
+        /// One frame of the dump, into `mStatsFile`.
+        void reportStats(unsigned frameNumber);
+
         /// Makes the SDL window and the OpenGL context in it, retrying at half the antialiasing
         /// each time the driver refuses. Upstream's loop, unchanged.
         void createWindow();
@@ -142,6 +158,13 @@ namespace MWRender
         void compileIncrementally();
 
         int mMaxTextureUnits = 0;
+
+        /// Where `OPENMW_OSG_STATS_FILE` is written, or closed where nothing asked for it.
+        std::ofstream mStatsFile;
+
+        /// How many frames behind the dump runs: the draw thread reports a frame's figures after the
+        /// main thread has moved on, and three frames is where they have all landed.
+        static constexpr unsigned sStatsReportDelay = 3;
 
         /// What the scene root, the GUI and an offscreen view's light rig are built out of. Known
         /// from `prepareResources` onwards, which is before any of them asks.
@@ -159,6 +182,10 @@ namespace MWRender
         /// What the update traversal was set to before the world was hidden. Restored rather than
         /// defaulted, because somebody else chose it; the cull comes back from the seam's view mask.
         unsigned int mShownUpdateMask = 0;
+
+        /// What the compiler was given per frame before a loading screen took the whole of it.
+        double mLoadingIcoMin = 0.0;
+        unsigned int mLoadingIcoMax = 0;
 
         /// Writes `mask` to the master camera and to the stereo pair, which are no-ops in mono.
         void cull(unsigned int mask);

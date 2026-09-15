@@ -95,9 +95,7 @@ namespace MWRender
         /// Where the sea stands: `WorldMirror::standSea` says why a cell decides it.
         void addCell(const MWWorld::CellStore* cell) override;
 
-        /// The ground is `Rtx::CellRing`'s, read off the land records; a chunk the game built beside
-        /// it would be one nothing traces. A world that holds the storage, the worldspace and the
-        /// active grid and builds none.
+        /// A `TracedGround`: the storage, the worldspace and the active grid, and no chunks.
         Ground createGround(const GroundSpec& spec) override;
 
         void enableReference(ESM::RefNum refnum, bool enabled) override;
@@ -148,8 +146,8 @@ namespace MWRender
         void setVSync(SDLUtil::VSyncMode mode) override;
         void processChangedSettings(const Settings::CategorySettingVector& changed) override;
 
-        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
-            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
+        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(
+            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
 
         osg::Timer_t getStartTick() const override { return mStartTick; }
 
@@ -308,10 +306,11 @@ namespace MWRender
 
         /// Whether the player asked to see the world at all. The `tws` console command, and a
         /// second answer rather than the same one: a loading screen that ends while `tws` is off
-        /// must not bring the world back. `Renderer::toggleRenderMode(Render_Scene)`.
+        /// must not bring the world back, and a world `tws` hides is still updated, as it is under
+        /// the rasterizer's cull mask. `Renderer::toggleRenderMode(Render_Scene)`.
         bool mWorldToggled = true;
 
-        /// Whether this frame has a world in it: both of the answers above, said once so a frame
+        /// Whether this frame draws a world: both of the answers above, said once so a frame
         /// cannot walk on one and trace on the other.
         bool drawsWorld() const { return mWorldShown && mWorldToggled; }
 
@@ -376,9 +375,9 @@ namespace MWRender
         /// only instrument on this path, and the number that says whether this is playable.
         SpeedReport mSpeed;
 
-        /// The run the harness installed before the engine started, or null for a played session.
+        /// The run the harness installed before the engine started, or the played session's own.
         /// Borrowed: `RtxSetup::mRun` says whose it is and that it outlives this.
-        RtxRun* mRun = nullptr;
+        RtxRun& mRun;
 
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.

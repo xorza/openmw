@@ -6,8 +6,6 @@
 #include <filesystem>
 #include <thread>
 
-#include <osgViewer/Viewer>
-
 #include <MyGUI_ClipboardManager.h>
 #include <MyGUI_FactoryManager.h>
 #include <MyGUI_InputManager.h>
@@ -55,6 +53,7 @@
 #include <components/lua_ui/widget.hpp>
 
 #include <components/settings/values.hpp>
+#include <components/terrain/world.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/inputmanager.hpp"
@@ -64,6 +63,7 @@
 #include "../mwbase/world.hpp"
 
 #include "../mwrender/renderer.hpp"
+#include "../mwrender/renderingmanager.hpp"
 
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/class.hpp"
@@ -147,10 +147,10 @@ namespace MWGui
         }
     }
 
-    WindowManager::WindowManager(MWRender::Renderer& renderer, osg::Group* guiRoot,
-        Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue, const std::filesystem::path& logpath,
-        bool consoleOnlyScripts, Translation::Storage& translationDataStorage, ToUTF8::FromType encoding,
-        bool exportFonts, const std::string& versionDescription, Files::ConfigurationManager& cfgMgr)
+    WindowManager::WindowManager(MWRender::Renderer& renderer, Resource::ResourceSystem* resourceSystem,
+        SceneUtil::WorkQueue* workQueue, const std::filesystem::path& logpath, bool consoleOnlyScripts,
+        Translation::Storage& translationDataStorage, ToUTF8::FromType encoding, bool exportFonts,
+        const std::string& versionDescription, Files::ConfigurationManager& cfgMgr)
         : mStore(nullptr)
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
@@ -206,11 +206,11 @@ namespace MWGui
         int w, h;
         SDL_GetWindowSize(window, &w, &h);
         int dw, dh;
-        SDL_GL_GetDrawableSize(window, &dw, &dh);
+        SDL_GetWindowSizeInPixels(window, &dw, &dh);
 
         mScalingFactor = Settings::gui().mScalingFactor * (dw / w);
         constexpr VFS::Path::NormalizedView resourcePath("mygui");
-        mGuiPlatform = mRenderer.createGuiPlatform(*guiRoot, mScalingFactor, resourcePath, logpath / "MyGUI.log");
+        mGuiPlatform = mRenderer.createGuiPlatform(mScalingFactor, resourcePath, logpath / "MyGUI.log");
 
         mGui = std::make_unique<MyGUI::Gui>();
         mGui->initialise({});
@@ -324,7 +324,9 @@ namespace MWGui
         mGuiModeStates[GM_MainMenu] = GuiModeState(menu.get());
         mWindows.push_back(std::move(menu));
 
-        mLocalMapRender = std::make_unique<MWRender::LocalMap>(mRenderer);
+        MWRender::RenderingManager& rendering = *MWBase::Environment::get().getWorld()->getRenderingManager();
+        mLocalMapRender = std::make_unique<MWRender::LocalMap>(
+            mRenderer, *rendering.getSceneRoot(), *rendering.getTerrain()->getStorage());
         auto map = std::make_unique<MapWindow>(mCustomMarkers, mDragAndDrop.get(), mLocalMapRender.get(), mWorkQueue);
         mMap = map.get();
         mWindows.push_back(std::move(map));

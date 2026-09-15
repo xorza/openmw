@@ -63,11 +63,6 @@ namespace Translation
     class Storage;
 }
 
-namespace osg
-{
-    class Group;
-}
-
 namespace Resource
 {
     class ResourceSystem;
@@ -129,7 +124,7 @@ namespace MWGui
         typedef std::pair<std::string, int> Faction;
         typedef std::vector<Faction> FactionList;
 
-        WindowManager(MWRender::Renderer& renderer, osg::Group* guiRoot, Resource::ResourceSystem* resourceSystem,
+        WindowManager(MWRender::Renderer& renderer, Resource::ResourceSystem* resourceSystem,
             SceneUtil::WorkQueue* workQueue, const std::filesystem::path& logpath, bool consoleOnlyScripts,
             Translation::Storage& translationDataStorage, ToUTF8::FromType encoding, bool exportFonts,
             const std::string& versionDescription, Files::ConfigurationManager& cfgMgr);

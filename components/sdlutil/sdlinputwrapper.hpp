@@ -6,25 +6,15 @@
 
 #include "events.hpp"
 
-namespace osg
-{
-    class Camera;
-}
-
-namespace osgGA
-{
-    class EventQueue;
-}
-
 namespace SDLUtil
 {
+    class GraphicsListener;
     /// \brief A wrapper around SDL's event queue, mostly used for handling input-related events.
     class InputWrapper
     {
     public:
-        /// @param camera the master camera, whose graphics context (if any) is resized with the window
-        /// @param events where the scene graph's own handlers read from, or null where there are none
-        InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue* events, bool grab);
+        /// @param graphics whoever draws into the window, told the moments that are its own
+        InputWrapper(SDL_Window* window, GraphicsListener& graphics, bool grab);
         ~InputWrapper();
 
         void setMouseEventCallback(MouseListener* listen) { mMouseListener = listen; }
@@ -55,8 +45,7 @@ namespace SDLUtil
         void _setWindowScale();
 
         SDL_Window* mSDLWindow;
-        osg::Camera& mCamera;
-        osgGA::EventQueue* mEvents;
+        GraphicsListener& mGraphics;
 
         MouseListener* mMouseListener;
         SensorListener* mSensorListener;

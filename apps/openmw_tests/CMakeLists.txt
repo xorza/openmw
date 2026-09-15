@@ -23,6 +23,7 @@ file(GLOB UNITTEST_SRC_FILES
     mwsound/testheadcache.cpp
     mwsound/testwarmqueue.cpp
 
+    mwrender/localmap.cpp
     mwrender/pixels.cpp
 )
 
@@ -42,7 +43,9 @@ if (OPENMW_RTX)
     set(RTX_TEST_FILES
         ${CMAKE_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
         mwrender/readworld.cpp
+        mwrender/renderer.cpp
         mwrender/rtxrenderer.cpp
+        mwrender/tracedground.cpp
         mwrender/worldmirror.cpp
     )
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})

@@ -14,8 +14,8 @@ namespace MWRender
     /// A run the harness drives through this renderer, as the renderer sees it: what the run
     /// decides before anything is built — the window, the layers, the clock — and what it is fed
     /// on every frame. The harness implements it and owns it, and reads the run's answer once
-    /// `Engine::go` has returned; a played session has none, and every question asked of one has
-    /// the played answer written beside it where it is asked.
+    /// `Engine::go` has returned. A played session is a run as well, the one whose every answer
+    /// is the played one, so the renderer never asks which host it is under.
     ///
     /// **An interface, because the run is the harness's and the renderer is the game's.** The run
     /// reads the world through `MWBase::Environment` and writes pictures, sheets and records that
@@ -31,6 +31,12 @@ namespace MWRender
 
         /// Which validation layers the run asked for.
         virtual const Rtx::ValidationOptions& getValidation() const = 0;
+
+        /// Whether the trace counts what its rays hit. A report's figure — it is what tells "the
+        /// cell rendered" from "the camera faced away from it" — and nothing a player does ever
+        /// reads it, so a played session is specialized without the atomic rather than writing a
+        /// number to a buffer nobody looks at, once per pixel that hit anything.
+        virtual bool wantsHitCounts() const = 0;
 
         /// How long every frame of the run stands for, or nothing for the wall: what the renderer's
         /// clock is made from.
@@ -61,9 +67,8 @@ namespace MWRender
     };
 
     /// What the harness installs before the engine starts, where the harness started this process.
-    /// Carried through `RendererSpec`, so who owns it is readable off the signature; `GlRenderer`
-    /// ignores it, which is why it hangs off the spec rather than sitting in it. A played session
-    /// installs none, and reads its two knobs from `[RTX]`.
+    /// Carried through `RendererSpec`, so who owns it is readable off the signature. A played
+    /// session installs none, and reads its two knobs from `[RTX]`.
     struct RtxSetup
     {
         /// The knobs the run was made with, every one of them stated.

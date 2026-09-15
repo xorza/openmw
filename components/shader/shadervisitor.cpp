@@ -593,7 +593,7 @@ namespace Shader
                 defineMap["adjustCoverage"] = "1";
 
             // Preventing alpha tested stuff shrinking as lower mip levels are used requires knowing the texture size
-            if (SceneUtil::glExtensionsReady() && SceneUtil::getGLExtensions().isGpuShader4Supported)
+            if (SceneUtil::getGLExtensions().isGpuShader4Supported)
                 defineMap["useGPUShader4"] = "1";
             // We could fall back to a texture size uniform if EXT_gpu_shader4 is missing
         }

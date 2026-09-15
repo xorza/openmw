@@ -36,6 +36,7 @@
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
+#include <components/sdlutil/vsyncmode.hpp>
 
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
@@ -203,6 +204,7 @@ namespace RtxTool
             request.mDistantStatics = typed("distant-statics") ? variables["distant-statics"].as<bool>()
                                                                : Settings::terrain().mObjectPaging.get();
             request.mDay = variables["day"].as<int>();
+            request.mVerticalSync = watched ? Settings::video().mVsyncMode.get() : SDLUtil::VSyncMode::Disabled;
 
             request.mProfile.mUpscaling.mMode = Rtx::sUpscaleNames.require(
                 typed("upscale") ? variables["upscale"].as<std::string>() : Settings::rtx().mUpscale.get(),
@@ -344,6 +346,7 @@ namespace RtxTool
             Settings::video().mResolutionX.set(static_cast<int>(frame.mWidth));
             Settings::video().mResolutionY.set(static_cast<int>(frame.mHeight));
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
+            Settings::video().mVsyncMode.set(frame.mVerticalSync);
             Settings::camera().mFieldOfView.set(frame.mFieldOfView);
 
             // **What the engine reads and the renderer does not.** Everything the trace itself is

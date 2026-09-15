@@ -1,7 +1,10 @@
 #include "localmap.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <optional>
 
+#include <osg/BoundingSphere>
 #include <osg/ComputeBoundsVisitor>
 #include <osg/Image>
 #include <osg/Texture2D>
@@ -14,8 +17,8 @@
 #include <components/files/memorystream.hpp>
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
-#include <components/sceneutil/visitor.hpp>
 #include <components/settings/values.hpp>
+#include <components/terrain/storage.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
@@ -46,8 +49,26 @@ namespace
 
 namespace MWRender
 {
-    LocalMap::LocalMap(Renderer& renderer)
+    DepthRange mapDepthRange(const osg::BoundingSphere& scene, const std::optional<DepthRange>& land)
+    {
+        // Upstream's numbers, whatever the sphere is: a scene with nothing in it has no better answer.
+        DepthRange range{ scene.center().z() - scene.radius(), scene.center().z() + scene.radius() };
+
+        if (!land.has_value())
+            return range;
+
+        if (!scene.valid())
+            return *land;
+
+        range.mMin = std::min(range.mMin, land->mMin);
+        range.mMax = std::max(range.mMax, land->mMax);
+        return range;
+    }
+
+    LocalMap::LocalMap(Renderer& renderer, osg::Node& sceneRoot, Terrain::Storage& storage)
         : mRenderer(renderer)
+        , mSceneRoot(&sceneRoot)
+        , mStorage(storage)
         , mMapResolution(static_cast<int>(
               Settings::map().mLocalMapResolution * MWBase::Environment::get().getWindowManager()->getScalingFactor()))
         , mMapWorldSize(Constants::CellSizeInUnits)
@@ -55,11 +76,6 @@ namespace MWRender
         , mAngle(0.f)
         , mInterior(false)
     {
-        SceneUtil::FindByNameVisitor find("Scene Root");
-        renderer.getTraversalRoot().accept(find);
-        mSceneRoot = find.mFoundNode;
-        if (!mSceneRoot)
-            throw std::runtime_error("no scene root found");
     }
 
     LocalMap::~LocalMap() = default;
@@ -135,13 +151,13 @@ namespace MWRender
     }
 
     void LocalMap::draw(
-        int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax)
+        int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, const DepthRange& range)
     {
         MapSegment& segment = mInterior ? mInteriorSegments[std::make_pair(segmentX, segmentY)]
                                         : mExteriorSegments[std::make_pair(segmentX, segmentY)];
 
         // Rebuilt where the depth range moved, because the range is in the projection and a view is described once
-        if (segment.mView && (segment.mZMin != zmin || segment.mZMax != zmax))
+        if (segment.mView && segment.mRange != range)
             segment.mView.reset();
 
         if (!segment.mView)
@@ -154,19 +170,18 @@ namespace MWRender
             spec.mFraming.mProjection = SceneUtil::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };
             spec.mFraming.mNear = 5.f;
-            spec.mFraming.mFar = (zmax - zmin) + 10.f;
+            spec.mFraming.mFar = (range.mMax - range.mMin) + 10.f;
             spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 1.f);
             spec.mSun.mDirection = osg::Vec3f(-0.3f, -0.3f, 0.7f);
             spec.mSun.mDiffuse = osg::Vec4f(0.7f, 0.7f, 0.7f, 1.f);
             spec.mSun.mAmbient = osg::Vec4f(0.3f, 0.3f, 0.3f, 1.f);
 
             segment.mView = mRenderer.createWorldView(spec);
-            segment.mZMin = zmin;
-            segment.mZMax = zmax;
+            segment.mRange = range;
         }
 
-        segment.mView->setView(
-            osg::Matrixf::lookAt(osg::Vec3f(left, top, zmax + 5), osg::Vec3f(left, top, zmin), osg::Vec3f(upVector)));
+        segment.mView->setView(osg::Matrixf::lookAt(
+            osg::Vec3f(left, top, range.mMax + 5), osg::Vec3f(left, top, range.mMin), osg::Vec3f(upVector)));
         segment.mView->redraw();
     }
 
@@ -254,12 +269,16 @@ namespace MWRender
         const int x = cell->getCell()->getGridX();
         const int y = cell->getCell()->getGridY();
 
-        osg::BoundingSphere bound = mSceneRoot->getBound();
-        float zmin = bound.center().z() - bound.radius();
-        float zmax = bound.center().z() + bound.radius();
+        std::optional<DepthRange> land;
+        DepthRange heights;
+        if (mStorage.getMinMaxHeights(
+                1.f, osg::Vec2f(x + 0.5f, y + 0.5f), cell->getCell()->getWorldSpace(), heights.mMin, heights.mMax))
+            land = heights;
+
+        const DepthRange range = mapDepthRange(mSceneRoot->getBound(), land);
 
         draw(x, y, x * mMapWorldSize + mMapWorldSize / 2.f, y * mMapWorldSize + mMapWorldSize / 2.f,
-            osg::Vec3d(0, 1, 0), zmin, zmax);
+            osg::Vec3d(0, 1, 0), range);
 
         if (segment.mFogOfWarImage != nullptr)
             return;
@@ -328,8 +347,7 @@ namespace MWRender
         // Apply a little padding
         mBounds.set(mBounds._min - osg::Vec3f(padding, padding, 0.f), mBounds._max + osg::Vec3f(padding, padding, 0.f));
 
-        float zMin = mBounds.zMin();
-        float zMax = mBounds.zMax();
+        const DepthRange range{ mBounds.zMin(), mBounds.zMax() };
         mCenter = osg::Vec2f(mBounds.center().x(), mBounds.center().y());
 
         // If there is fog state in the CellStore (e.g. when it came from a savegame) we need to do some checks
@@ -396,7 +414,7 @@ namespace MWRender
 
                 osg::Vec2f pos = osg::Vec2f(rotatedCenter.x(), rotatedCenter.y()) + mCenter;
 
-                draw(x, y, pos.x(), pos.y(), osg::Vec3f(north.x(), north.y(), 0.f), zMin, zMax);
+                draw(x, y, pos.x(), pos.y(), osg::Vec3f(north.x(), north.y(), 0.f), range);
 
                 auto coords = std::make_pair(x, y);
                 MapSegment& segment = mInteriorSegments[coords];

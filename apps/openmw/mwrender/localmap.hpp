@@ -4,11 +4,13 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <vector>
 
 #include <MyGUI_Types.h>
 #include <osg/BoundingBox>
+#include <osg/BoundingSphere>
 #include <osg/Quat>
 #include <osg/ref_ptr>
 
@@ -29,10 +31,30 @@ namespace osg
     class Node;
 }
 
+namespace Terrain
+{
+    class Storage;
+}
+
 namespace MWRender
 {
     class OffscreenView;
     class Renderer;
+
+    /// The heights a picture taken straight down has to reach between.
+    struct DepthRange
+    {
+        float mMin = 0.f;
+        float mMax = 0.f;
+
+        bool operator==(const DepthRange&) const = default;
+    };
+
+    /// What an exterior tile is drawn between: the loaded scene's bound, as upstream read it, and
+    /// the cell's own land under it — which is in that bound only where a renderer builds the
+    /// ground into the graph, and the ray tracer does not. `land` is nothing for a cell with no
+    /// land record.
+    DepthRange mapDepthRange(const osg::BoundingSphere& scene, const std::optional<DepthRange>& land);
 
     ///
     /// \brief Local map rendering
@@ -40,7 +62,9 @@ namespace MWRender
     class LocalMap
     {
     public:
-        LocalMap(Renderer& renderer);
+        /// @param sceneRoot what a tile is a picture of, and what its interior bounds are read off
+        /// @param storage where an exterior tile reads its land's heights
+        LocalMap(Renderer& renderer, osg::Node& sceneRoot, Terrain::Storage& storage);
         ~LocalMap();
 
         /**
@@ -105,6 +129,7 @@ namespace MWRender
     private:
         Renderer& mRenderer;
         osg::ref_ptr<osg::Node> mSceneRoot;
+        Terrain::Storage& mStorage;
 
         enum NeighbourCellFlag : std::uint8_t
         {
@@ -130,9 +155,8 @@ namespace MWRender
 
             std::shared_ptr<OffscreenView> mView;
 
-            // The depth range mView was described with; another one rebuilds it
-            float mZMin = 0.f;
-            float mZMax = 0.f;
+            // What mView was described with; another range rebuilds it
+            DepthRange mRange;
 
             osg::ref_ptr<osg::Texture2D> mFogOfWarTexture;
             osg::ref_ptr<osg::Image> mFogOfWarImage;
@@ -159,7 +183,7 @@ namespace MWRender
         void requestInteriorMap(const MWWorld::CellStore* cell);
 
         void draw(
-            int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax);
+            int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, const DepthRange& range);
 
         osg::BoundingBox mBounds;
         osg::Vec2f mCenter;

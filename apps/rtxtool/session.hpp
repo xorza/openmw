@@ -41,6 +41,7 @@ namespace RtxTool
 
         bool isHeadless() const override { return mRequest.mHeadless; }
         const Rtx::ValidationOptions& getValidation() const override { return mRequest.mValidation; }
+        bool wantsHitCounts() const override { return true; }
         std::optional<float> getStep() const override { return mRequest.mStep; }
         std::optional<bool> getSettled() const override { return mRequest.mSettled; }
         std::optional<std::uint32_t> getSampleFrame() const override;

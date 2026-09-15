@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <iosfwd>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -13,6 +12,7 @@
 #include <osg/ref_ptr>
 
 #include <components/esm3/refnum.hpp>
+#include <components/sdlutil/graphicslistener.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -29,11 +29,6 @@ namespace osg
     class Group;
     class Image;
     class Stats;
-}
-
-namespace osgGA
-{
-    class EventQueue;
 }
 
 namespace osgUtil
@@ -61,16 +56,6 @@ namespace SceneUtil
     class AsyncScreenCaptureOperation;
 }
 
-namespace Shader
-{
-    class ShaderManager;
-}
-
-namespace VFS
-{
-    class Manager;
-}
-
 namespace MWWorld
 {
     class CellStore;
@@ -87,7 +72,8 @@ namespace MWRender
     struct SceneFrame;
     struct RtxSetup;
 
-    /// What every renderer needs to exist, whatever it draws with.
+    /// What a renderer is given to exist. The rasterizer reads none of it: its shaders come
+    /// through the resource system's shader path and it compiles nothing it keeps.
     struct RendererSpec
     {
         /// Where a renderer's own files are read from: the ray tracer's shaders.
@@ -96,17 +82,24 @@ namespace MWRender
         /// Where a renderer keeps what it compiled: regenerable, so the cache directory.
         std::filesystem::path mCachePath;
 
-        /// What a harness run asks of the ray tracer, or null. `GlRenderer` ignores it.
+        /// What a harness run asks of the ray tracer, or null for a played session. A run handed
+        /// to the rasterizer is a contradiction `createRenderer` refuses by name.
         const RtxSetup* mRtx = nullptr;
     };
 
     /// One image of the world on the screen, and the window it goes in. Nothing below this line is
     /// abstracted — contexts, swapchains, render bins and acceleration structures belong to a
     /// renderer outright, and an interface over them would be a mini-GL that Vulkan does not fit.
-    /// A pure virtual is a question both renderers answer. A default is the answer of the renderer
-    /// the question is not about — nothing, for a compile operation the ray tracer has not got, or
-    /// for a schedule the rasterizer does not run — and the other one overrides it.
-    class Renderer
+    /// Every member is a question the game asks; a pure virtual is one both renderers answer, and
+    /// a default is an empty answer — for a schedule the rasterizer does not run, or a loading
+    /// budget the ray tracer has no compiler to spend. What the game must never be handed is one
+    /// renderer's mechanism to poke at, because every caller of that grows a null test that is a
+    /// renderer test in disguise; the two that remain, the shader chain and the compile operation,
+    /// are there for upstream callers that cannot be changed.
+    ///
+    /// The window's own moments — its size, the function keys — reach the renderer as an
+    /// `SDLUtil::GraphicsListener`, from `SDLUtil::InputWrapper`.
+    class Renderer : public SDLUtil::GraphicsListener
     {
     public:
         virtual ~Renderer();
@@ -179,13 +172,10 @@ namespace MWRender
         /// which is what `createSceneRoot` made and hangs somewhere under this.
         void setTraversalRoot(osg::Group& root);
 
-        /// The camera, the frame stamp, the input queue and the stats, adopted from whichever
-        /// renderer made them and read by the game whatever draws. The queue is null under a
-        /// renderer with no viewer, and its readers treat null as nothing to drain: a queue kept
-        /// for them would allocate an adapter per frame that nobody reads.
+        /// The camera, the frame stamp and the stats, adopted from whichever renderer made them
+        /// and read by the game whatever draws.
         osg::Camera& getCamera() const;
         osg::FrameStamp& getFrameStamp() const;
-        osgGA::EventQueue* getEvents() const { return mEvents.get(); }
         osg::Stats& getStats() const;
 
         osg::Group& getTraversalRoot() const;
@@ -275,9 +265,15 @@ namespace MWRender
         /// is in the middle of — see `Engine::go`, which advances first and draws after.
         void renderGuiFrame();
 
-        /// Whether the window has been closed. A renderer whose window is closed by SDL's own quit
-        /// event answers no.
-        virtual bool done() const { return false; }
+        /// A loading screen has come up, and draws frames of its own through `renderLoadingFrame`
+        /// until `endLoading`. The rasterizer hands its compiler the whole of every such frame and
+        /// stops recomputing the scene's bound behind the screen; a renderer that compiles nothing
+        /// on the frame has nothing to change.
+        virtual void beginLoading() {}
+        virtual void endLoading() {}
+
+        /// One frame of the loading screen, at the rate the screen is drawn at.
+        void renderLoadingFrame(double targetFrameRate);
 
         /// The frame without the GUI, into an image. The screenshot console command and the save
         /// thumbnails; blocks until the frame it asked for has been drawn.
@@ -296,8 +292,9 @@ namespace MWRender
         virtual void suspendDraw() {}
         virtual void resumeDraw() {}
 
-        /// The operation an OSG loader compiles through, or null: what `Resource::SceneManager`, the
-        /// paging and the loading screen's per-frame budget go through.
+        /// The operation an OSG loader compiles through, or null. Kept on the seam for one upstream
+        /// caller, `MWWorld::Scene`, which takes it off the scene manager around a load and hands
+        /// it back after; what the loading screen wants of it is asked through `beginLoading`.
         virtual osgUtil::IncrementalCompileOperation* getCompileOperation() const { return nullptr; }
 
         virtual void setVSync(SDLUtil::VSyncMode mode) = 0;
@@ -307,32 +304,22 @@ namespace MWRender
         /// upscaler — and the game never learns which setting belongs to whom.
         virtual void processChangedSettings(const Settings::CategorySettingVector& changed) {}
 
-        /// Recompiles whatever GLSL has been edited since the last call, once per frame. A renderer
-        /// drawing with compiled SPIR-V has nothing to reload.
-        virtual void reloadChangedShaders(Shader::ShaderManager& shaders) {}
-
         /// The origin the per-frame profiler measures from, so its spans land on the same axis as
         /// the renderer's own counters.
         virtual osg::Timer_t getStartTick() const = 0;
 
-        /// The overlay the debug keys toggle and the per-frame dump `OPENMW_OSG_STATS_FILE` asks for:
-        /// the OSG stats overlay is the rasterizer's, and a renderer with its own frame times has
-        /// nothing to install.
-        virtual void installStatsOverlay(const VFS::Manager& vfs, bool toFile) {}
-        virtual void reportStats(unsigned frameNumber, std::ostream& stream) const {}
-
         /// MyGUI's backend, a second implementation of MyGUI's own interface. Called at the main
-        /// menu, before there is a world, off the resource system `prepareResources` kept.
-        virtual std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
-            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
+        /// menu, before there is a world, off the resource system `prepareResources` kept. Where
+        /// the interface goes in the graph, if it goes anywhere, is the renderer's to decide.
+        virtual std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(
+            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
             = 0;
 
     protected:
         Renderer() = default;
 
-        /// Taken from whatever made them, once, before anything asks. The ray tracer has no event
-        /// queue, because what SDL would put in one is read by `osgViewer` handlers it has not got.
-        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats);
+        /// Taken from whatever made them, once, before anything asks.
+        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osg::Stats& stats);
 
         /// Parents the root where this renderer's traversals start from: the viewer's scene data,
         /// or the camera the ray tracer walks from.
@@ -341,20 +328,24 @@ namespace MWRender
         /// The view mask has changed; put it where this renderer reads it from.
         virtual void applyViewMask(unsigned int mask) = 0;
 
+        /// What `renderLoadingFrame` says before it draws: how long the frame stands for, which is
+        /// what the rasterizer's compiler is given to spend on what a loader handed over.
+        virtual void applyLoadingBudget(double targetFrameRate) {}
+
         SceneUtil::AsyncScreenCaptureOperation& getScreenshotWriter() const;
 
     private:
         osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;
-        osg::ref_ptr<osgGA::EventQueue> mEvents;
         osg::ref_ptr<osg::Stats> mStats;
         osg::ref_ptr<osg::Group> mTraversalRoot;
         unsigned int mViewMask = ~0u;
     };
 
     /// The one place the choice is made. Throws naming the name where there is no such renderer,
-    /// because a fallback would answer "why does it look like that" with silence.
+    /// and naming the run where one was installed for a renderer that cannot drive it, because a
+    /// fallback would answer "why does it look like that" with silence.
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec);
 
     /// Where a window goes and what it is, as the video settings ask for it.

@@ -1,16 +1,21 @@
 #include "glrenderer.hpp"
 
 #include <cassert>
+#include <cerrno>
 #include <cmath>
-#include <ostream>
+#include <cstdlib>
+#include <filesystem>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 
 #include <SDL.h>
 
+#include <osg/BoundingSphere>
 #include <osg/Camera>
 #include <osg/DisplaySettings>
 #include <osg/GraphicsContext>
+#include <osg/Node>
 #include <osg/Stats>
 #include <osg/Texture2D>
 #include <osg/Version>
@@ -93,6 +98,13 @@ namespace
             profiler.removeUserStatsLine(" -Async");
     }
 
+    // Upstream's, from loadingscreen.cpp.
+    class DontComputeBoundCallback : public osg::Node::ComputeBoundingSphereCallback
+    {
+    public:
+        osg::BoundingSphere computeBound(const osg::Node&) const override { return osg::BoundingSphere(); }
+    };
+
     class IdentifyOpenGLOperation : public osg::GraphicsOperation
     {
     public:
@@ -146,7 +158,7 @@ namespace MWRender
         // Taken from the viewer rather than made and handed to it: the viewer wires its update and
         // event visitors to the frame stamp at construction, and substituting objects underneath
         // without substituting those references is a bug that shows up frames later.
-        adopt(*mViewer->getCamera(), *mViewer->getFrameStamp(), mViewer->getEventQueue(), *mViewer->getViewerStats());
+        adopt(*mViewer->getCamera(), *mViewer->getFrameStamp(), *mViewer->getViewerStats());
 
         createWindow();
 
@@ -357,7 +369,7 @@ namespace MWRender
             exts.glRenderbufferStorageMultisampleCoverageNV = nullptr;
 #endif
 
-        getEvents()->getCurrentEventState()->setWindowRectangle(
+        mViewer->getEventQueue()->getCurrentEventState()->setWindowRectangle(
             0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
     }
 
@@ -385,6 +397,8 @@ namespace MWRender
         scene.setConvertAlphaTestToAlphaToCoverage(shouldAddMSAAIntermediateTarget());
         scene.setAdjustCoverageForAlphaTest(Settings::shaders().mAdjustCoverageForAlphaTest);
         scene.setWeatherParticleOcclusion(Settings::shaders().mWeatherParticleOcclusion);
+
+        installStatsOverlay(*resources.getVFS());
     }
 
     // Upstream's, from RenderingManager's constructor: the light manager and what it is told
@@ -493,6 +507,12 @@ namespace MWRender
     void GlRenderer::advance(double simulationTime)
     {
         mViewer->advance(simulationTime);
+
+        // Every frame this renderer stamps, a loading screen's included, dumped once when its
+        // figures have landed.
+        const unsigned frameNumber = mViewer->getFrameStamp()->getFrameNumber();
+        if (mStatsFile.is_open() && frameNumber >= sStatsReportDelay)
+            reportStats(frameNumber - sStatsReportDelay);
     }
 
     void GlRenderer::eventTraversal()
@@ -507,6 +527,10 @@ namespace MWRender
 
     void GlRenderer::describeFrame(const SceneFrame& frame)
     {
+        // Whatever GLSL was edited since the last frame, recompiled before anything reads it. The
+        // hot-reload manager stops the viewer's threads itself where it has to.
+        mResources->getSceneManager()->getShaderManager().update(*mViewer);
+
         // The settings and not `frame.mEye`, which follows a Lua `setViewDistance`: what upstream fed
         // the stereo manager, exactly. Read by the stereo update callback, so before the traversal.
         mStereoManager->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
@@ -616,6 +640,11 @@ namespace MWRender
             ground.mTerrain = std::make_unique<Terrain::TerrainGrid>(sceneRoot, rootNode, resourceSystem, storage,
                 Mask_Terrain, worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
 
+        // The composite map's pace and the water's cull against the ground are this renderer's
+        // chunks' to answer; the view distance is the game's and it sets that itself.
+        ground.mTerrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
+        ground.mTerrain->enableHeightCullCallback(Settings::terrain().mWaterCulling);
+
         return ground;
     }
 
@@ -636,9 +665,40 @@ namespace MWRender
         mViewer->renderingTraversals();
     }
 
-    bool GlRenderer::done() const
+    // Upstream's, from LoadingScreen::loadingOn, loadingOff and draw.
+    void GlRenderer::beginLoading()
     {
-        return mViewer->done();
+        // Assign dummy bounding sphere callback to avoid the bounding sphere of the entire scene being recomputed after
+        // each frame of loading We are already using node masks to avoid the scene from being updated/rendered, but
+        // node masks don't work for computeBound()
+        getTraversalRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
+
+        if (const osgUtil::IncrementalCompileOperation* ico = mViewer->getIncrementalCompileOperation())
+        {
+            mLoadingIcoMin = ico->getMinimumTimeAvailableForGLCompileAndDeletePerFrame();
+            mLoadingIcoMax = ico->getMaximumNumOfObjectsToCompilePerFrame();
+        }
+    }
+
+    void GlRenderer::endLoading()
+    {
+        getTraversalRoot().setComputeBoundingSphereCallback(nullptr);
+        getTraversalRoot().dirtyBound();
+
+        if (osgUtil::IncrementalCompileOperation* ico = mViewer->getIncrementalCompileOperation())
+        {
+            ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(mLoadingIcoMin);
+            ico->setMaximumNumOfObjectsToCompilePerFrame(mLoadingIcoMax);
+        }
+    }
+
+    void GlRenderer::applyLoadingBudget(const double targetFrameRate)
+    {
+        if (osgUtil::IncrementalCompileOperation* ico = mViewer->getIncrementalCompileOperation())
+        {
+            ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(1.f / targetFrameRate);
+            ico->setMaximumNumOfObjectsToCompilePerFrame(1000);
+        }
     }
 
     void GlRenderer::capture(osg::Image& image, int width, int height)
@@ -743,18 +803,21 @@ namespace MWRender
         mViewer->startThreading();
     }
 
-    void GlRenderer::reloadChangedShaders(Shader::ShaderManager& shaders)
+    std::unique_ptr<MyGUIPlatform::Platform> GlRenderer::createGuiPlatform(
+        float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
     {
-        shaders.update(*mViewer);
-    }
+        // Upstream's, from Engine::prepareEngine: the node MyGUI's camera hangs under, beside the
+        // world under the root every traversal starts from, and masked so a covering screen can
+        // cull the interface in and the world out.
+        osg::ref_ptr<osg::Group> guiRoot = new osg::Group;
+        guiRoot->setName("GUI Root");
+        guiRoot->setNodeMask(Mask_GUI);
+        getTraversalRoot().addChild(guiRoot);
 
-    std::unique_ptr<MyGUIPlatform::Platform> GlRenderer::createGuiPlatform(osg::Group& guiRoot, float scalingFactor,
-        VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
-    {
-        mStereoManager->disableStereoForNode(&guiRoot);
+        mStereoManager->disableStereoForNode(guiRoot);
 
         auto manager = std::make_unique<MyGUIPlatform::RenderManager>(
-            mViewer, &guiRoot, mResources->getImageManager(), scalingFactor);
+            mViewer, guiRoot, mResources->getImageManager(), scalingFactor);
         MyGUIPlatform::RenderManager& gui = *manager;
 
         auto platform = std::make_unique<MyGUIPlatform::Platform>(
@@ -773,8 +836,52 @@ namespace MWRender
         return mViewer->getStartTick();
     }
 
-    void GlRenderer::installStatsOverlay(const VFS::Manager& vfs, bool toFile)
+    // Upstream's, from SDLUtil::InputWrapper.
+    void GlRenderer::beginEvents()
     {
+        mViewer->getEventQueue()->frame(0.f);
+    }
+
+    void GlRenderer::functionKey(const int index, const bool pressed)
+    {
+        const int key = osgGA::GUIEventAdapter::KEY_F1 + index;
+        if (pressed)
+            mViewer->getEventQueue()->keyPress(key);
+        else
+            mViewer->getEventQueue()->keyRelease(key);
+    }
+
+    void GlRenderer::windowResized(const int x, const int y, const int width, const int height)
+    {
+        mGraphicsWindow->resized(x, y, width, height);
+        mViewer->getEventQueue()->windowResize(x, y, width, height);
+    }
+
+    // Upstream's, from Engine::go.
+    void GlRenderer::installStatsOverlay(const VFS::Manager& vfs)
+    {
+#ifdef _WIN32
+        const auto* statsFile = _wgetenv(L"OPENMW_OSG_STATS_FILE");
+#else
+        const auto* statsFile = std::getenv("OPENMW_OSG_STATS_FILE");
+#endif
+
+        std::filesystem::path path;
+        if (statsFile != nullptr)
+            path = statsFile;
+
+        if (!path.empty())
+        {
+            mStatsFile.open(path, std::ios_base::out);
+            if (mStatsFile.is_open())
+                Log(Debug::Info) << "OSG stats will be written to: " << path;
+            else
+                Log(Debug::Warning) << "Failed to open file to write OSG stats \"" << path
+                                    << "\": " << std::generic_category().message(errno);
+        }
+
+        const bool toFile = mStatsFile.is_open();
+
         osg::ref_ptr<Resource::Profiler> profiler = new Resource::Profiler(toFile, vfs);
         initStatsHandler(*profiler);
         mViewer->addEventHandler(profiler);
@@ -785,12 +892,12 @@ namespace MWRender
             Resource::collectStatistics(*mViewer);
     }
 
-    void GlRenderer::reportStats(unsigned frameNumber, std::ostream& stream) const
+    void GlRenderer::reportStats(unsigned frameNumber)
     {
-        mViewer->getViewerStats()->report(stream, frameNumber);
+        mViewer->getViewerStats()->report(mStatsFile, frameNumber);
         osgViewer::Viewer::Cameras cameras;
         mViewer->getCameras(cameras);
         for (osg::Camera* camera : cameras)
-            camera->getStats()->report(stream, frameNumber);
+            camera->getStats()->report(mStatsFile, frameNumber);
     }
 }

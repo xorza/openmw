@@ -12,8 +12,6 @@
 #include <osg/Group>
 #include <osg/Stats>
 
-#include <osgGA/EventQueue>
-
 #include <components/sceneutil/screencapture.hpp>
 #include <components/settings/values.hpp>
 
@@ -38,11 +36,10 @@ namespace MWRender
         return *mScreenshotWriter;
     }
 
-    void Renderer::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue* events, osg::Stats& stats)
+    void Renderer::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osg::Stats& stats)
     {
         mCamera = &camera;
         mFrameStamp = &frameStamp;
-        mEvents = events;
         mStats = &stats;
     }
 
@@ -78,6 +75,12 @@ namespace MWRender
         advance(getFrameStamp().getSimulationTime());
     }
 
+    void Renderer::renderLoadingFrame(const double targetFrameRate)
+    {
+        applyLoadingBudget(targetFrameRate);
+        renderGuiFrame();
+    }
+
     void Renderer::setViewMask(const unsigned int mask)
     {
         mViewMask = mask;
@@ -93,7 +96,14 @@ namespace MWRender
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec)
     {
         if (name == "opengl")
+        {
+            // A run states what a measured frame is, and the rasterizer measures nothing: the
+            // harness that installed one has asked for the other renderer and not said so.
+            if (spec.mRtx != nullptr)
+                throw std::runtime_error("a ray tracing run was installed, and the renderer asked for is \"opengl\"");
+
             return std::make_unique<GlRenderer>(spec);
+        }
 
 #ifdef OPENMW_RTX
         if (name == "raytrace")

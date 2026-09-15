@@ -65,7 +65,7 @@ namespace SDLUtil
         int w, h;
         SDL_GetWindowSize(mWindow, &w, &h);
         int dw, dh;
-        SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
+        SDL_GetWindowSizeInPixels(mWindow, &dw, &dh);
 
         if (windowMode == Settings::WindowMode::Fullscreen || windowMode == Settings::WindowMode::WindowedFullscreen)
         {
