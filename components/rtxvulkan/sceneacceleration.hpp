@@ -102,10 +102,6 @@ namespace Rtx
         /// them — and their account, which is what tells that pass which meshes each copy owes.
         SlotBlocks& getPoses() { return mPoses; }
 
-        /// What the rows count as, kept by the row that changed rather than recounted over the
-        /// table. `SceneStats` reports this record itself.
-        const InstanceCounts& getInstanceCounts() const { return mCounts; }
-
         /// The room the structures were given, and what they occupy in it — a pair, because a
         /// structure copied tight gives its loose room back and a block is returned to the device
         /// only when nothing is left in it. Neither counts the geometry they were built from.
@@ -133,11 +129,7 @@ namespace Rtx
         /// pointed at that copy. `writeRows` first, which is what leaves the copy owing anything.
         void prepareTopLevel(const SceneDesc& scene, FrameSlot slot);
 
-        /// Takes back what `slot`'s row counts as, and leaves the row counting as nothing. The
-        /// counts are kept by the row that changed rather than recounted over the table.
-        void discountRow(Index slot);
-
-        /// Writes one row from its record, keeping the counts in step.
+        /// Writes one row from its record.
         void placeRow(Index slot, const InstanceRecord& record);
 
         /// Makes the top level for `slots` rows, over storage grown to hold it.
@@ -200,12 +192,6 @@ namespace Rtx
 
         /// What one run of `prepareRefit` describes.
         StructureBuildBatch mRefit;
-
-        /// What each row counts as — `sRowCutout`, `sRowWater` — so the counts below can be kept by
-        /// the row that changed rather than recounted over every row a frame.
-        std::vector<std::uint8_t> mRowFlags;
-
-        InstanceCounts mCounts;
 
         /// Two totals, each assigned, because one accumulated. The bottom levels are made once
         /// and the top level again every frame that moves, so adding both to one figure reported a

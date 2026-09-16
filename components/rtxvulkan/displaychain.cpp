@@ -71,8 +71,10 @@ namespace Rtx
         // spreads and the curve maps. The bloom samples what this leaves, rather than loading it —
         // `BloomPass` binds the frame as a combined image sampler — so the scope after it names
         // both reads.
-        mPuffs.recordSpriteComposite(
-            commands, what.mInputs, what.mChannels, what.mCounts, what.mTraceSlot, what.mExtent, what.mTimer);
+        assert(what.mInputs.mChannels != nullptr && "a display over a trace that left no channels");
+        const GBuffer& channels = *what.mInputs.mChannels;
+
+        mPuffs.recordSpriteComposite(commands, what.mInputs, what.mExtent, what.mTimer);
         what.mShown.transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
 
         // What the lens will spread, built here and applied by the curve. Nothing is written back
@@ -117,10 +119,9 @@ namespace Rtx
         }
 
         openZone(what.mTimer, commands, "tone");
-        mTone.record(commands, what.mShown, *exposure, *share, what.mChannels.get(Channel::StarsShown),
+        mTone.record(commands, what.mShown, *exposure, *share, channels.get(Channel::StarsShown),
             what.mBloom ? mBloom.getPyramid() : nullptr, what.mInputs.mTextures, what.mTarget,
-            toneFor(what.mSampled, what.mExtent.width, what.mExtent.height, what.mChannels.getWidth(),
-                what.mChannels.getHeight()));
+            toneFor(what.mSampled, what.mExtent.width, what.mExtent.height, channels.getWidth(), channels.getHeight()));
         closeZone(what.mTimer, commands);
 
         recordDebugLines(commands, what);
@@ -133,6 +134,7 @@ namespace Rtx
             return;
 
         assert(what.mDebugVertices != nullptr && "lines to draw and no buffer to draw them from");
+        const GBuffer& channels = *what.mInputs.mChannels;
 
         // The lines first and the triangles after them, in the slot's own buffer: the frame
         // behind read its own slot's, so nothing here is written under a submit.
@@ -151,12 +153,12 @@ namespace Rtx
         Image& target = what.mTarget;
         target.transition(commands, Use::sComputeWrite, Use::sColourAttachment);
 
-        mLines.record(commands, target, what.mChannels.get(Channel::Depth),
+        mLines.record(commands, target, channels.get(Channel::Depth),
             Shaders::LineConstants{
                 .mCamera = Shaders::cameraOnGrid(what.mSampled.mCamera, target.getWidth(), target.getHeight()),
                 .mOrigin = what.mSampled.mOrigin,
                 .mNear = what.mSampled.mNear,
-                .mTraced = Shaders::uvec2(what.mChannels.getWidth(), what.mChannels.getHeight()),
+                .mTraced = Shaders::uvec2(channels.getWidth(), channels.getHeight()),
             },
             what.mDebugVertices->getHandle(), static_cast<std::uint32_t>(debug.mLines.size()),
             static_cast<std::uint32_t>(debug.mTriangles.size()));

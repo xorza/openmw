@@ -43,17 +43,14 @@ namespace Rtx
         Index addMesh(
             const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None, Index deformer = sNoIndex);
 
-        /// Poses one skinned mesh: its bone rows, and the box the pose reaches — the whole of what
-        /// the host says about a body per frame, because its vertices are computed on the device
-        /// from the bind pose. `bones.size()` must be the rig's `mBoneCount`. The mesh joins
-        /// `getDeformed` for the frame unless nothing moved: rows equal to the ones already held
+        /// Poses one deforming mesh: its bone rows or its target weights as `packBones` or
+        /// `packWeights` lays them, and the box the pose reaches — the whole of what the host says
+        /// about a body per frame, because its vertices are computed on the device from the bind
+        /// pose. The words must be as many as the deformer's pose takes. The mesh joins
+        /// `getDeformed` for the frame unless nothing moved: words equal to the ones already held
         /// write nothing, so an actor standing still costs no dispatch and no refit. Compared rather
         /// than trusted, because the walk poses every rig it meets.
-        void poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds);
-
-        /// The same for a morphed mesh: one weight per target of its morph, the base's included and
-        /// ignored, which is how `SceneUtil::MorphGeometry` numbers them.
-        void poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds);
+        void pose(Index mesh, std::span<const PoseWord> words, const osg::BoundingBoxf& bounds);
 
         /// Rewrites a material in place, keeping its slot and everything standing on it — for
         /// shading that animates: a `NifOsg` flipbook or alpha controller rewrites its state set
@@ -139,10 +136,9 @@ namespace Rtx
         /// from are still the ones the scene holds.
         std::uint64_t getStructureRevision() const { return mMeshes.getRevision() + mTextures.getRevision(); }
 
-        /// The pose a deforming mesh was last given, and the weights a morphed one carries. Both
-        /// cross two tables: the mesh row says where its run sits, and the deformers hold it.
-        std::span<const Shaders::GpuBone> getMeshBones(Index mesh) const;
-        std::span<const float> getMeshWeights(Index mesh) const;
+        /// The pose a deforming mesh was last given, in words. Crosses two tables: the mesh row
+        /// says where its run sits, and the deformers hold it.
+        std::span<const PoseWord> getMeshPose(Index mesh) const;
 
         /// Every placement's own box, in the world.
         osg::BoundingBoxf getBounds() const;

@@ -19,6 +19,11 @@
 
 #include "stopwriter.hpp"
 
+namespace MWBase
+{
+    class World;
+}
+
 namespace RtxTool
 {
     /// Drives a run of the game and measures it — the game, because a staged world never pays for
@@ -90,6 +95,10 @@ namespace RtxTool
 
         /// Moves the sky one frame along the stop's list of weathers.
         void turnWeather();
+
+        /// Puts the sky under the weather called `name` over the player's region, as `changeweather`
+        /// would, and warns for a name that is none of the ten.
+        static void setWeather(MWBase::World& world, std::string_view name);
 
         /// Puts the camera where the stop stands this frame, and points it where the stop asked.
         /// Every frame, because `omw/camera/camera.lua`'s `onActive` forces third person and a

@@ -109,7 +109,7 @@ namespace Rtx::Testing
             const PreparedLayer& rock = ground.mLayers[1];
             EXPECT_EQ(grass.mImage->getFileName(), "textures/grass.dds");
             EXPECT_EQ(rock.mImage->getFileName(), "textures/rock.dds");
-            EXPECT_EQ(grass.mDiffuseTransform, osg::Vec4f(16.0f, 16.0f, 0.0f, 0.0f));
+            EXPECT_EQ(grass.mPlacing.mDiffuseTransform, osg::Vec4f(16.0f, 16.0f, 0.0f, 0.0f));
 
             // `BlendmapTexMat` at sixteen tiles: a scale of 16 / 17 about the centre and a nudge of
             // a quarter texel, which comes to an offset of 0.75 / 17 in x and 0.25 / 17 in y.
@@ -118,12 +118,12 @@ namespace Rtx::Testing
             EXPECT_NEAR(mask.y(), 16.0f / 17.0f, 1e-6f);
             EXPECT_NEAR(mask.z(), 0.75f / 17.0f, 1e-6f);
             EXPECT_NEAR(mask.w(), 0.25f / 17.0f, 1e-6f);
-            EXPECT_EQ(grass.mMaskTransform, mask);
-            EXPECT_EQ(rock.mMaskTransform, mask);
+            EXPECT_EQ(grass.mPlacing.mMaskTransform, mask);
+            EXPECT_EQ(rock.mPlacing.mMaskTransform, mask);
 
             constexpr std::uint32_t side = FakeLand::sMaskSide;
-            EXPECT_EQ(grass.mMaskWidth, side);
-            EXPECT_EQ(grass.mMaskHeight, side);
+            EXPECT_EQ(grass.mPlacing.mMaskWidth, side);
+            EXPECT_EQ(grass.mPlacing.mMaskHeight, side);
             EXPECT_EQ(grass.mWeights.mCount, side * side);
             EXPECT_EQ(rock.mWeights.mCount, side * side);
             EXPECT_EQ(rock.mWeights.mOffset, side * side);
@@ -240,8 +240,8 @@ namespace Rtx::Testing
             ASSERT_EQ(ground.mLayers.size(), 2u);
 
             const auto readsAs = [&](const PreparedLayer& layer, const osg::Image& image) {
-                ASSERT_EQ(layer.mMaskWidth, 16u);
-                ASSERT_EQ(layer.mMaskHeight, 16u);
+                ASSERT_EQ(layer.mPlacing.mMaskWidth, 16u);
+                ASSERT_EQ(layer.mPlacing.mMaskHeight, 16u);
                 ASSERT_EQ(layer.mWeights.mCount, 256u);
 
                 const std::span<const float> weights = layer.mWeights.in(std::span<const float>(ground.mWeights));

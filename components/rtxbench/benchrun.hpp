@@ -14,6 +14,7 @@
 
 #include "benchrecord.hpp"
 #include "benchspec.hpp"
+#include "runsetup.hpp"
 
 namespace Rtx
 {
@@ -233,8 +234,9 @@ namespace Rtx
     {
         std::vector<Stop> mStops;
 
-        /// Whether the run keeps its window hidden, which saves a present per frame and nothing else.
-        bool mHeadless = true;
+        /// What the renderer is made with: hidden and stepped unless the command says otherwise,
+        /// because a run measures or writes a picture unless somebody is watching it.
+        RunSetup mSetup{ .mHeadless = true, .mStep = sStepSeconds };
 
         /// Whether the game's HUD is drawn over the picture. Off by default: a picture is of the
         /// world, and the bars and the compass are the played game's.
@@ -260,24 +262,6 @@ namespace Rtx
 
         /// Which suite the stops came from, for the record's own header.
         std::string mSuite;
-
-        /// Whether each hand-over waits for the distant ground it queued, or nothing to let the
-        /// frame clock decide. Settled is what makes two processes draw one picture; a run timing
-        /// the streaming path says no (`Rtx::CompositeQueue::setSettled`).
-        std::optional<bool> mSettled;
-
-        /// Which validation layers the run wants. Carried here and never in a settings file, for
-        /// the reason `sValidationByDefault` gives.
-        ValidationOptions mValidation;
-
-        /// How long every frame stands for, in seconds, or nothing to time each one off the wall.
-        /// Everything the world animates steps by it, so ten seconds of world is six hundred frames
-        /// on every machine, and two runs of one build are the same run — which is what every run
-        /// that measures or writes a picture wants, and the default. A window somebody watches
-        /// wants the wall, as the played game has it, or the world runs as fast as the card draws.
-        /// A run's and never a setting's: a file that could state a step once turned a played game
-        /// into a fixed-step run for good.
-        std::optional<float> mStep = sStepSeconds;
     };
 
     /// What a launcher reads back once `Engine::go` has returned.

@@ -90,7 +90,7 @@ namespace Rtx
             {
                 ++stats.mMeshesReused;
                 mMeshes.stamp(known);
-                stampDeformer(read, held);
+                stampDeformer(held);
                 pose(mesh, read, stats);
 
                 return mesh;
@@ -125,6 +125,30 @@ namespace Rtx
         pose(mesh, read, stats);
 
         return mesh;
+    }
+
+    const osg::Referenced* MeshResolver::deformerKeyOf(const DrawableRead& read)
+    {
+        switch (read.mDeform)
+        {
+            case Deform::Rig:
+                return read.mRig->getInfluenceData();
+            case Deform::Morph:
+                return read.mMorph->getMorphTarget(0).getOffsets();
+            case Deform::None:
+                break;
+        }
+
+        return nullptr;
+    }
+
+    bool MeshResolver::fits(const Index slot, const DrawableRead& read) const
+    {
+        const Deformer& held = mScene.deformers().getDeformers()[slot];
+        if (held.mKind != read.mDeform)
+            return false;
+
+        return read.mDeform != Deform::Morph || held.mRows == read.mMorph->getMorphTargetList().size();
     }
 
     Index MeshResolver::adopt(const osg::Drawable& drawable, const MeshReading& reading)
@@ -170,15 +194,22 @@ namespace Rtx
         if (read.mDeform == Deform::None)
             return sNoIndex;
 
-        const bool rigged = read.mDeform == Deform::Rig;
-        const Index deformer = rigged ? resolveRig(*read.mRig) : resolveMorph(*read.mMorph);
-        const DeformerTable& deformers = mScene.deformers();
-        const std::size_t skins = rigged ? deformers.getRigs()[deformer].getVertexCount()
-                                         : deformers.getMorphs()[deformer].getVertexCount();
+        // A skin rewritten in place under the same address is a new skin. `setInfluences` on a
+        // rig the mirror has met writes into the `InfluenceData` every copy shares, so what the map
+        // holds describes a mesh of another length; the deformer it named stays for the meshes
+        // still on it and goes with the last of them, and this drawable gets one of its own. A set
+        // of targets grown or shrunk under the same base is a new set for the same reason.
+        const auto [known, arrived] = mDeformers.reach(deformerKeyOf(read));
+        Index& deformer = known->second.mIndex;
+        const bool stale = arrived || !fits(deformer, read)
+            || mScene.deformers().getDeformers()[deformer].getVertexCount() != vertices;
+        if (stale)
+            deformer = read.mDeform == Deform::Rig ? readRig(*read.mRig) : readMorph(*read.mMorph);
 
-        if (skins != vertices)
+        const std::size_t moved = mScene.deformers().getDeformers()[deformer].getVertexCount();
+        if (moved != vertices)
             throw Error("a deforming mesh of " + std::to_string(vertices) + " vertices on a rig or morph of "
-                + std::to_string(skins));
+                + std::to_string(moved));
 
         return deformer;
     }
@@ -186,42 +217,23 @@ namespace Rtx
     MeshResolver::Held MeshResolver::holdDeformer(const DrawableRead& read)
     {
         Held held;
+        if (read.mDeform == Deform::None)
+            return held;
 
-        if (read.mDeform == Deform::Rig)
-        {
-            held.mRig = mRigs.find(read.mRig->getInfluenceData());
-            if (held.mRig != mRigs.end())
-                held.mIndex = held.mRig->second.mIndex;
-        }
-        else if (read.mDeform == Deform::Morph)
-        {
-            // A morph whose targets changed count under the same base is another morph, so the
-            // count is asked beside the identity.
-            held.mMorph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
-            if (held.mMorph != mMorphs.end()
-                && mScene.deformers().getMorphs()[held.mMorph->second.mIndex].mTargetCount
-                    == read.mMorph->getMorphTargetList().size())
-                held.mIndex = held.mMorph->second.mIndex;
-        }
+        held.mEntry = mDeformers.find(deformerKeyOf(read));
+        if (held.mEntry != mDeformers.end() && fits(held.mEntry->second.mIndex, read))
+            held.mIndex = held.mEntry->second.mIndex;
 
         return held;
     }
 
-    void MeshResolver::stampDeformer(const DrawableRead& read, const Held& held)
+    void MeshResolver::stampDeformer(const Held& held)
     {
         // The entry is there, and the fit test is why. It agreed that the slot's deformer is
-        // this drawable's, and neither `resolveRig` nor `resolveMorph` ever hands back `sNoIndex` —
-        // so a deformer the sweep had taken would have failed that test rather than reach here.
-        if (read.mDeform == Deform::Rig)
-        {
-            contract(held.mRig != mRigs.end(), "a rigged mesh reused on a skin the mirror has lost");
-            mRigs.stamp(held.mRig);
-        }
-        else if (read.mDeform == Deform::Morph)
-        {
-            contract(held.mMorph != mMorphs.end(), "a morphed mesh reused on targets the mirror has lost");
-            mMorphs.stamp(held.mMorph);
-        }
+        // this drawable's, and `addDeformer` never hands back `sNoIndex` — so a deformer the
+        // sweep had taken would have failed that test rather than reach here.
+        contract(held.mEntry != mDeformers.end(), "a deforming mesh reused on a deformer the mirror has lost");
+        mDeformers.stamp(held.mEntry);
     }
 
     /// A pose is rows and not vertices, which is why the mirror pays a few dozen matrices for what
@@ -232,27 +244,60 @@ namespace Rtx
             return;
 
         if (read.mDeform == Deform::Rig)
-            poseRig(mesh, *read.mRig);
+        {
+            const SceneUtil::RigGeometry& rig = *read.mRig;
+            const SceneUtil::RigGeometry::InfluenceData& skin = *rig.getInfluenceData();
+            const std::span<SceneUtil::Bone* const> bones = rig.getBones();
+            assert(bones.size() == skin.mBones.size());
+
+            // `RigGeometry::cull`'s arithmetic, row for row, with the skin's transform composed
+            // into every bone, which is the same product because the blend is linear and the
+            // transform affine. From the matrices the update traversal left: a skeleton it
+            // skipped is one whose bones did not move.
+            osg::Matrixf transform = skin.mTransform;
+            if (const osg::RefMatrix* skinToSkel = rig.getSkinToSkelMatrix())
+                transform = (*skinToSkel) * skin.mTransform;
+
+            mBoneScratch.clear();
+            mBoneScratch.reserve(bones.size());
+            for (std::size_t at = 0; at < bones.size(); ++at)
+            {
+                if (bones[at] == nullptr)
+                {
+                    mBoneScratch.push_back(Shaders::GpuBone{});
+                    continue;
+                }
+
+                mBoneScratch.push_back(
+                    toGpuBone(skin.mBones[at].mInvBindMatrix * bones[at]->mMatrixInSkeletonSpace * transform));
+            }
+
+            packBones(mBoneScratch, mPoseScratch);
+            mScene.pose(mesh, mPoseScratch, reachOf(rig));
+        }
         else
-            poseMorph(mesh, *read.mMorph);
+        {
+            const SceneUtil::MorphGeometry& morph = *read.mMorph;
+            const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
+
+            mWeightScratch.clear();
+            mWeightScratch.reserve(targets.size());
+            for (const SceneUtil::MorphGeometry::MorphTarget& target : targets)
+                mWeightScratch.push_back(target.getWeight());
+
+            packWeights(mWeightScratch, mPoseScratch);
+            mScene.pose(mesh, mPoseScratch, reachOf(morph));
+        }
 
         ++stats.mDeformed;
     }
 
-    Index MeshResolver::resolveRig(const SceneUtil::RigGeometry& rig)
+    Index MeshResolver::readRig(const SceneUtil::RigGeometry& rig)
     {
         const SceneUtil::RigGeometry::InfluenceData* skin = rig.getInfluenceData();
         assert(skin != nullptr);
 
         const std::size_t vertices = vertexCountOf(*rig.getSourceGeometry());
-
-        // A skin rewritten in place under the same address is a new skin. `setInfluences` on a
-        // rig the mirror has met writes into the `InfluenceData` every copy shares, so what the map
-        // holds describes a mesh of another length; the rig it named stays for the meshes still on
-        // it and goes with the last of them, and this drawable gets one of its own.
-        const auto [known, arrived] = mRigs.reach(skin);
-        if (!arrived && mScene.deformers().getRigs()[known->second.mIndex].getVertexCount() == vertices)
-            return known->second.mIndex;
 
         // The groups flattened into a run per vertex. `RigGeometry::setInfluences` gathers the
         // vertices that share one weight list so the rasterizer blends each list once; a kernel
@@ -285,27 +330,15 @@ namespace Rtx
             }
         }
 
-        known->second.mIndex
-            = mScene.deformers().addRig(mRunScratch, mInfluenceScratch, static_cast<Index>(skin->mBones.size()));
-        return known->second.mIndex;
+        return mScene.deformers().addRig(mRunScratch, mInfluenceScratch, static_cast<Index>(skin->mBones.size()));
     }
 
-    Index MeshResolver::resolveMorph(const SceneUtil::MorphGeometry& morph)
+    Index MeshResolver::readMorph(const SceneUtil::MorphGeometry& morph)
     {
         const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
         assert(targets.size() > 1);
 
         const std::size_t vertices = morphBase(morph).size();
-
-        // A set of targets grown or shrunk under the same base is a new set, for the reason a
-        // rewritten skin is a new skin.
-        const auto [known, arrived] = mMorphs.reach(targets[0].getOffsets());
-        if (!arrived)
-        {
-            const Morph& held = mScene.deformers().getMorphs()[known->second.mIndex];
-            if (held.mTargetCount == targets.size() && held.getVertexCount() == vertices)
-                return known->second.mIndex;
-        }
 
         // Every target's offsets laid end to end, the base's included as a run of zeroes so a
         // weight indexes the table and the drawable the same way. A target shorter than the base
@@ -321,51 +354,7 @@ namespace Rtx
             std::copy_n(offsets->begin(), count, mOffsetScratch.begin() + target * vertices);
         }
 
-        known->second.mIndex = mScene.deformers().addMorph(mOffsetScratch, static_cast<Index>(targets.size()));
-        return known->second.mIndex;
-    }
-
-    void MeshResolver::poseRig(Index mesh, const SceneUtil::RigGeometry& rig)
-    {
-        const SceneUtil::RigGeometry::InfluenceData& skin = *rig.getInfluenceData();
-        const std::span<SceneUtil::Bone* const> bones = rig.getBones();
-        assert(bones.size() == skin.mBones.size());
-
-        // `RigGeometry::cull`'s arithmetic, row for row, with the skin's transform composed into
-        // every bone, which is the same product because the blend is linear and the transform
-        // affine. From the matrices the update traversal left: a skeleton it skipped is one whose
-        // bones did not move.
-        osg::Matrixf transform = skin.mTransform;
-        if (const osg::RefMatrix* skinToSkel = rig.getSkinToSkelMatrix())
-            transform = (*skinToSkel) * skin.mTransform;
-
-        mBoneScratch.clear();
-        mBoneScratch.reserve(bones.size());
-        for (std::size_t at = 0; at < bones.size(); ++at)
-        {
-            if (bones[at] == nullptr)
-            {
-                mBoneScratch.push_back(Shaders::GpuBone{});
-                continue;
-            }
-
-            mBoneScratch.push_back(
-                toGpuBone(skin.mBones[at].mInvBindMatrix * bones[at]->mMatrixInSkeletonSpace * transform));
-        }
-
-        mScene.poseRig(mesh, mBoneScratch, reachOf(rig));
-    }
-
-    void MeshResolver::poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph)
-    {
-        const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
-
-        mWeightScratch.clear();
-        mWeightScratch.reserve(targets.size());
-        for (const SceneUtil::MorphGeometry::MorphTarget& target : targets)
-            mWeightScratch.push_back(target.getWeight());
-
-        mScene.poseMorph(mesh, mWeightScratch, reachOf(morph));
+        return mScene.deformers().addMorph(mOffsetScratch, static_cast<Index>(targets.size()));
     }
 
     void MeshResolver::retire(std::vector<Index>& live)
@@ -375,10 +364,9 @@ namespace Rtx
 
     void MeshResolver::retireDeformers()
     {
-        // A rig and a morph are swept on the meshes' stamp and not on a use count of their own;
-        // the scene counts uses for itself, and the two agree because a rig is stamped exactly
-        // where a mesh on it is met.
-        mRigs.retire();
-        mMorphs.retire();
+        // A deformer is swept on the meshes' stamp and not on a use count of its own; the scene
+        // counts uses for itself, and the two agree because a deformer is stamped exactly where a
+        // mesh on it is met.
+        mDeformers.retire();
     }
 }

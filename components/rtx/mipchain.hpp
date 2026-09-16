@@ -36,6 +36,11 @@ namespace Rtx
         /// exactly as `describeImage`'s is.
         TextureData describe() const;
 
+        /// `described` with the levels its file did not carry: `build`s `chain` over it and
+        /// answers the chain's own description where one was built, and `described` itself
+        /// otherwise. The one spelling of the step every reader of a file takes.
+        static TextureData withChain(const TextureData& described, MipChain& chain);
+
     private:
         /// The finest level's alpha, read to weigh the colours by it. Not among what `build`
         /// resets, because nothing reads it but the line that fills it.

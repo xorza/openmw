@@ -114,7 +114,7 @@ namespace Rtx
             ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), 1, images));
 
             // Two quads of two triangles each: what a scene holding both looks like.
-            EXPECT_EQ(scene.placements().getPlacedCount(), 2u);
+            EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
             EXPECT_EQ(scene.meshes().getTriangleCount(), 4u);
 
             // The shirt comes off and a hat goes on — one part replaced, not moved.
@@ -127,7 +127,7 @@ namespace Rtx
             // **Still two placements and not three**, which is half the assertion: the hat was
             // placed and the shirt was swept. A mirror that kept what it no longer meets reads
             // three here.
-            EXPECT_EQ(scene.placements().getPlacedCount(), 2u);
+            EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
 
             // **And six triangles and not four**, which is the other half: a swept mesh is *freed*
             // rather than compacted away, so the shirt keeps its room in the index buffer. Four here
@@ -141,7 +141,7 @@ namespace Rtx
 
             ASSERT_TRUE(trace.rebuildSubject(*stampAt(3), 3, images));
 
-            EXPECT_EQ(scene.placements().getPlacedCount(), 2u);
+            EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
 
             // **Six again and not eight**, which is what a freed slot is for: the boots fit where
             // the hat was and the buffer did not grow. Eight would be a doll that leaks a mesh per
@@ -175,7 +175,7 @@ namespace Rtx
                     .mSubject = subject.get(),
                     .mSubjectMask = sEveryNode });
             EXPECT_FALSE(trace.rebuildSubject(*stampAt(1), 1, images));
-            EXPECT_EQ(trace.getScene()->placements().getPlacedCount(), 0u);
+            EXPECT_EQ(trace.getScene()->placements().getCounts().mPlaced, 0u);
         }
 
         /// The mask is an inclusion mask, AND-ed at every node — so a category left out of it is
@@ -211,7 +211,7 @@ namespace Rtx
 
             // One of the two, and the same fixture with `wanted | other` would take both — which is
             // what says the mask is doing the choosing rather than the fixture.
-            EXPECT_EQ(trace.getScene()->placements().getPlacedCount(), 1u);
+            EXPECT_EQ(trace.getScene()->placements().getCounts().mPlaced, 1u);
 
             OffscreenTrace both(renderer,
                 ViewRequest{ .mWidth = 64,
@@ -220,7 +220,7 @@ namespace Rtx
                     .mSubject = subject.get(),
                     .mSubjectMask = wanted | other });
             ASSERT_TRUE(both.rebuildSubject(*stampAt(1), 1, images));
-            EXPECT_EQ(both.getScene()->placements().getPlacedCount(), 2u);
+            EXPECT_EQ(both.getScene()->placements().getCounts().mPlaced, 2u);
         }
     }
 }

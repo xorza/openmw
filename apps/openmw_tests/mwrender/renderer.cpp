@@ -116,7 +116,7 @@ namespace MWRender
         TEST(RendererTest, aRunInstalledForTheRasterizerIsRefusedByName)
         {
             NoRun run;
-            const RtxSetup setup{ .mProfile = Rtx::RenderProfile{}, .mRun = run };
+            const RtxSetup setup{ .mSetup = {}, .mRun = run };
             const RendererSpec spec{ .mRtx = &setup };
 
             EXPECT_THROW(createRenderer("opengl", spec), std::runtime_error);

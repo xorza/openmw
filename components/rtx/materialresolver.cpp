@@ -102,16 +102,16 @@ namespace Rtx
         return held.mStateSet;
     }
 
-    Index MaterialResolver::reuse(const osg::StateSet* const key)
+    MaterialResolver::Entry MaterialResolver::reuse(const osg::StateSet* const key)
     {
-        const auto known = mMaterials.find(key);
+        const Entry known = mMaterials.find(key);
         if (known == mMaterials.end())
-            return sNoIndex;
+            return known;
 
         ++mPass.getStats().mMaterialsReused;
         mMaterials.stamp(known);
 
-        return known->second.mIndex;
+        return known;
     }
 
     MaterialResolver::Entry MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
@@ -138,8 +138,8 @@ namespace Rtx
         // albedo, `MWRender::Water` swaps its node's state set between two copies every frame, and
         // with `water shader = true` there is no state set on the node at all. In the map under
         // `sSea` rather than beside it, so that one sweep and one count answer for every material.
-        if (const Index held = reuse(sSea); held != sNoIndex)
-            return Resolved{ .mIndex = held, .mKey = sSea };
+        if (const Entry held = reuse(sSea); held != mMaterials.end())
+            return Resolved{ .mIndex = held->second.mIndex, .mKey = sSea };
 
         return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water })->second.mIndex, .mKey = sSea };
     }
@@ -173,13 +173,8 @@ namespace Rtx
         if (reading.mKey == nullptr)
             return sNoIndex;
 
-        auto known = mMaterials.find(reading.mKey);
-        if (known != mMaterials.end())
-        {
-            ++mPass.getStats().mMaterialsReused;
-            mMaterials.stamp(known);
-        }
-        else
+        Entry known = reuse(reading.mKey);
+        if (known == mMaterials.end())
             known = adopt(reading.mKey,
                 describe(reading.mDescribed.has_value() ? &*reading.mDescribed : nullptr, false, reading.mDiffuseSolid,
                     nullptr));
@@ -209,11 +204,8 @@ namespace Rtx
         // contribute in this graph is light and render-bin state rather than material.
         const Shading& own = shading.back();
 
-        if (const auto known = mMaterials.find(own.mStateSet); known != mMaterials.end())
+        if (const Entry known = reuse(own.mStateSet); known != mMaterials.end())
         {
-            ++mPass.getStats().mMaterialsReused;
-            mMaterials.stamp(known);
-
             // Read again, because a controller rewrote it since the last frame. The state set
             // is the same object — that is what lets the material keep its slot and every placement
             // standing on it stay where it is — and everything inside it is this frame's. What it

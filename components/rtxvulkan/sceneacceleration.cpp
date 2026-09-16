@@ -22,16 +22,6 @@
 
 namespace Rtx
 {
-    namespace
-    {
-        /// What a row counts as, kept beside it so the counts move with the row.
-        constexpr std::uint8_t sRowCutout = 1;
-        constexpr std::uint8_t sRowWater = 2;
-        constexpr std::uint8_t sRowMedium = 4;
-        constexpr std::uint8_t sRowAdditive = 8;
-        constexpr std::uint8_t sRowFirstPerson = 16;
-    }
-
     VkTransformMatrixKHR toVulkanTransform(const Transform3x4& transform)
     {
         VkTransformMatrixKHR result{};
@@ -277,17 +267,7 @@ namespace Rtx
     void SceneAcceleration::writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed)
     {
         const std::size_t had = mRowTable.size();
-
-        // A row that leaves discounts itself before its flags go. `mRowFlags` is what says what
-        // a row counted as, and the resize below drops the flags of the rows past the new end — so
-        // a cutout or a medium that left with them would stay in the totals for the rest of the
-        // scene.
-        assert(mRowFlags.size() == had && "the row flags and the rows fell out of step");
-        for (std::size_t at = records.size(); at < had; ++at)
-            discountRow(static_cast<Index>(at));
-
         mRowTable.resize(records.size());
-        mRowFlags.resize(records.size(), 0);
 
         // What the table grew by, written from its record rather than left inactive. `resize`
         // owes every appended row to every copy, so a row nothing writes reaches the device as a
@@ -318,30 +298,10 @@ namespace Rtx
 
         // The top level is built from this frame's copy, so the address moves with the slot.
         mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.addressFor(slot);
-
-        mCounts.mPlaced = scene.placements().getPlacedCount();
-    }
-
-    void SceneAcceleration::discountRow(const Index slot)
-    {
-        std::uint8_t& counted = mRowFlags[slot];
-        if ((counted & sRowCutout) != 0)
-            --mCounts.mCutout;
-        if ((counted & sRowWater) != 0)
-            --mCounts.mWater;
-        if ((counted & sRowMedium) != 0)
-            --mCounts.mMedium;
-        if ((counted & sRowAdditive) != 0)
-            --mCounts.mAdditive;
-        if ((counted & sRowFirstPerson) != 0)
-            --mCounts.mFirstPerson;
-        counted = 0;
     }
 
     void SceneAcceleration::placeRow(const Index slot, const InstanceRecord& record)
     {
-        discountRow(slot);
-
         // A gap is an inactive row and not a row left out. Its slot is the custom index a hit
         // reads back, so the rows cannot close up around it; a reference of nought is what the
         // build reads as an instance to skip, and it costs the build nothing it would ever trace.
@@ -349,35 +309,6 @@ namespace Rtx
         {
             mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{};
             return;
-        }
-
-        std::uint8_t& counted = mRowFlags[slot];
-
-        // A test on the bit and not on the whole mask. A row carries `MASK_MEDIUM` beside
-        // whichever of the three it is, so an equality here would stop counting the day anything
-        // that is water is also a medium.
-        if ((record.mMask & Shaders::MASK_WATER) != 0)
-        {
-            counted |= sRowWater;
-            ++mCounts.mWater;
-        }
-
-        if ((record.mMask & Shaders::MASK_MEDIUM) != 0)
-        {
-            counted |= sRowMedium;
-            ++mCounts.mMedium;
-        }
-
-        if ((record.mMask & Shaders::MASK_ADDITIVE) != 0)
-        {
-            counted |= sRowAdditive;
-            ++mCounts.mAdditive;
-        }
-
-        if ((record.mMask & Shaders::MASK_FIRST_PERSON) != 0)
-        {
-            counted |= sRowFirstPerson;
-            ++mCounts.mFirstPerson;
         }
 
         // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.
@@ -392,14 +323,6 @@ namespace Rtx
         // the query that gathers it as a candidate, which is what non-opaque means.
         if (record.mCutout || record.mTranslucent || record.mAdditive)
             flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
-
-        // A translucent instance is never asked the cutout's question, so it is not counted against
-        // the cutout's cost however its material is marked.
-        if (record.mCutout && !record.mTranslucent)
-        {
-            counted |= sRowCutout;
-            ++mCounts.mCutout;
-        }
 
         mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{
             .transform = toVulkanTransform(record.mTransform),

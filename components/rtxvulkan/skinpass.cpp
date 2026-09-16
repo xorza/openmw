@@ -59,15 +59,20 @@ namespace Rtx
         const VkDeviceAddress posed = into.addressOf(mesh.mBindOffset);
         const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertices.mOffset);
 
-        if (mesh.mDeform == Deform::Rig)
+        // The pose, whichever kind: the bones as rows or the weights four to a word, as
+        // `Rtx::PoseWord` lays them, at the one address either kernel reads from nought.
+        const VkDeviceAddress pose
+            = rows == Rows::Written ? tables.writePose(scene, slot, index) : tables.getPose(mesh, slot);
+
+        const Deformer& deformer = scene.deformers().getDeformers()[mesh.mDeformer];
+        if (deformer.mKind == Deform::Rig)
         {
-            const Rig& rig = scene.deformers().getRigs()[mesh.mDeformer];
             const Shaders::SkinConstants push{
                 .mBindPositions = tables.getBindPositions(mesh),
                 .mBindNormals = tables.getBindNormals(mesh),
-                .mRuns = tables.getRuns(rig),
-                .mInfluences = tables.getInfluences(rig),
-                .mBones = rows == Rows::Written ? tables.writeBones(scene, slot, index) : tables.getBones(mesh, slot),
+                .mRuns = tables.getRuns(deformer),
+                .mInfluences = tables.getInfluences(deformer),
+                .mBones = pose,
                 .mPositions = posed,
                 .mNormals = shaded,
                 .mCount = mesh.mVertices.mCount,
@@ -84,15 +89,13 @@ namespace Rtx
         }
         else
         {
-            const Morph& morph = scene.deformers().getMorphs()[mesh.mDeformer];
             const Shaders::MorphConstants push{
                 .mBase = tables.getBindPositions(mesh),
-                .mOffsets = tables.getMorphOffsets(morph),
-                .mWeights
-                = rows == Rows::Written ? tables.writeWeights(scene, slot, index) : tables.getWeights(mesh, slot),
+                .mOffsets = tables.getMorphOffsets(deformer),
+                .mWeights = pose,
                 .mPositions = posed,
                 .mCount = mesh.mVertices.mCount,
-                .mTargets = morph.mTargetCount,
+                .mTargets = deformer.mRows,
             };
 
             if (bound != &mMorph)

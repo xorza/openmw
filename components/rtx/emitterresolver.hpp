@@ -59,30 +59,44 @@ namespace Rtx
         void reserve(std::size_t emitters) { mHeld.reserve(emitters); }
 
     private:
+        /// What one particle system draws with, read off its state-set chain once and kept: its
+        /// sprite texture in `mIndex`, the bake of that texture's alpha its sprites are lit by, how
+        /// they composite, and the image itself. Read again only where a link of the chain
+        /// animates, because nothing else can change what a system draws with — and describing
+        /// a chain is a walk of its state sets, which hundreds of emitters a frame paid for
+        /// nothing.
+        struct HeldSprite : Known
+        {
+            Index mLighting = sNoIndex;
+
+            /// How the system's sprites composite: one that adds is light and must not be lit.
+            BlendKind mBlend = BlendKind::Over;
+
+            /// The image the sprites are drawn with, or null for a system nothing described a
+            /// sprite for, which draws nothing and is counted. What a rewrite is told apart by,
+            /// and what the census names once per emitter.
+            const osg::Image* mSprite = nullptr;
+        };
+
         /// An emitter the walk met, waiting for the walk to finish before its particles are read.
         struct Pending
         {
             const osgParticle::ParticleSystem* mParticles;
             osg::Matrixf mPlace;
-            Index mTexture;
-            Index mLighting;
 
-            /// How the system's sprites composite: one that adds is light and must not be lit.
-            BlendKind mBlend;
+            /// The map's own entry, which holds its place until `retire`, after every flush.
+            const HeldSprite* mHeld;
 
             /// Whether its sprites fall from the sky, which is the walk's word and not the system's.
             bool mFalls;
-
-            /// Kept only to name the texture's format in the stats, which is read once per emitter.
-            const osg::Image* mSprite;
         };
 
-        /// What one particle system draws with: its sprite texture in `mIndex`, and the bake of that
-        /// texture's alpha its sprites are lit by.
-        struct HeldSprite : Known
-        {
-            Index mLighting = sNoIndex;
-        };
+        /// Reads what a system draws with off its chain into `held`, taking the scene's slots for
+        /// an image it did not hold and giving back the ones for an image it no longer wears.
+        void describeSprite(HeldSprite& held, std::span<const Shading> shading);
+
+        /// Gives back the slots `held` took, where it took any.
+        void releaseSprite(const HeldSprite& held);
 
         /// Reads one noted system into the scene.
         void placeSprites(const Pending& pending);

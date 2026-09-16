@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include <osg/BoundingBox>
@@ -11,6 +12,7 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include <components/rtx/deformertable.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -113,6 +115,24 @@ namespace Rtx::Testing
         return scene.deformers().addRig(runs, influences, 1);
     }
 
+    /// Poses a mesh on a rig by `bones`, laid as the scene takes them. The scratch is kept, as
+    /// the resolver keeps its own, because a test counts a frame's allocations through this.
+    inline void poseRig(
+        SceneDesc& scene, Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& reach)
+    {
+        static std::vector<PoseWord> words;
+        packBones(bones, words);
+        scene.pose(mesh, words, reach);
+    }
+
+    /// Poses a mesh on a morph by `weights`, laid as the scene takes them.
+    inline void poseMorph(SceneDesc& scene, Index mesh, std::span<const float> weights, const osg::BoundingBoxf& reach)
+    {
+        static std::vector<PoseWord> words;
+        packWeights(weights, words);
+        scene.pose(mesh, words, reach);
+    }
+
     /// Poses `mesh`, a mesh on a one-bone rig, by `bone`, with the box its bind pose reaches
     /// carried through the same transform.
     inline void poseByOneBone(SceneDesc& scene, Index mesh, const osg::Matrixf& bone)
@@ -122,6 +142,6 @@ namespace Rtx::Testing
             reach.expandBy(vertex * bone);
 
         const std::array rows{ toGpuBone(bone) };
-        scene.poseRig(mesh, rows, reach);
+        poseRig(scene, mesh, rows, reach);
     }
 }

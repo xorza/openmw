@@ -211,10 +211,9 @@ namespace Rtx
 
         SceneDesc& mScene;
 
-        /// What kind each class of *drawable* this side of the walk meets is. A member because the
-        /// answers are a fact about the classes in the world rather than about one frame, and a set
-        /// apart from `MirrorTraversal`'s: a drawable is dispatched to its own `apply` and never
-        /// reaches the one that asks about a node.
+        /// What kind each class this walk meets is, node or drawable. A member because the
+        /// answers are a fact about the classes in the world rather than about one frame, and
+        /// before the walk, which reads it.
         NodeKinds mKinds;
 
         /// The walk itself, made once rather than per call, because the chain of state sets it

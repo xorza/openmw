@@ -31,7 +31,10 @@ namespace Rtx
     class SpriteBin;
     class WavePass;
 
-    /// What a trace reads about the world, as against the camera that looks at it.
+    /// What one trace reads about the world, and what every launch of it binds beside the world:
+    /// the channels it writes, the census it sums into, and which copy of the chain's own state
+    /// it is. One value handed to every launch of a trace and to the display after it, so the
+    /// four cannot be handed to one launch and left out of the next.
     struct VisibilityInputs
     {
         VkAccelerationStructureKHR mScene = VK_NULL_HANDLE;
@@ -40,6 +43,21 @@ namespace Rtx
         /// Which copy of the frame's tables in `mBuffers` this trace reads: the one the frame's
         /// placement wrote. The first for a scene that is traced and waited for.
         FrameSlot mSlot;
+
+        /// Which of the chain's sprite bins this trace records into and reads, and which copy of
+        /// the air it writes, the other being its history: the frame's own slot in the world's
+        /// chain, so the frame behind keeps its bin and its history, and the first of each in the
+        /// pictures' chain.
+        FrameSlot mTraceSlot;
+
+        /// Where the trace leaves its channels, all in `VK_IMAGE_LAYOUT_GENERAL` and at least as
+        /// large as the camera. Channels and not a picture, because the indirect term has to
+        /// survive to the filter with the albedo still divided out. The chain's own.
+        const GBuffer* mChannels = nullptr;
+
+        /// What the trace sums its census into: the frame's own, or for a picture inside the
+        /// interface one nothing reads — bound because the shader writes it regardless.
+        const Buffer* mCounts = nullptr;
 
         /// Where the index blocks are, which is `SceneAcceleration`'s. Taken fresh every frame and
         /// never cached, because the table is made again whenever a block is added to it.
@@ -147,23 +165,15 @@ namespace Rtx
         /// none. Nothing for a frame the block says has no shelter in it.
         ///
         /// @param count how many sprites the bin took, which is the launch's width.
-        /// @param trace which copy of the air the trace writes — `TraceRecording::mTraceSlot`.
-        void recordSpriteShelter(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, std::uint32_t count, FrameSlot trace,
-            GpuTimer* timer) const;
+        void recordSpriteShelter(VkCommandBuffer commands, const VisibilityInputs& inputs,
+            const Shaders::VisibilityConstants& constants, std::uint32_t count, GpuTimer* timer) const;
 
         /// Records the trace, in whichever kernel this frame calls for. After `writeFrame`, which
         /// is what every launch here reads.
         ///
-        /// @param buffer where the trace leaves its channels, all four in `VK_IMAGE_LAYOUT_GENERAL`
-        ///        and at least as large as the frame. Channels and not a picture, because the
-        ///        indirect term has to survive to the filter with the albedo still divided out.
-        /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
-        /// @param trace which copy of the air this trace writes, the other being its history.
         /// @param timer where the three zones this records go, or nothing where nobody is counting.
-        void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, FrameSlot trace,
-            GpuTimer* timer) const;
+        void record(VkCommandBuffer commands, const VisibilityInputs& inputs,
+            const Shaders::VisibilityConstants& constants, GpuTimer* timer) const;
 
         /// Composites the puffs over `inputs.mShown`, in place, at the picture's own extent: the
         /// sprites' shape marched there against the bin the trace binned over its own grid, their
@@ -171,12 +181,12 @@ namespace Rtx
         /// whatever denoised and upscaled the frame, because neither should touch a particle —
         /// `spritecomposite.rgen` says what an upscaler's overlay costs.
         ///
-        /// @param trace which copy of the air, as `record` was handed it. The block is the one
-        ///        the trace wrote, so the traced camera and the bin are read from there.
         /// @param shown how much of `inputs.mShown` the picture is, from its corner: the whole of
-        ///        a frame's, and a picture's own size inside an image that may be larger.
-        void recordSpriteComposite(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, FrameSlot trace, VkExtent2D shown, GpuTimer* timer) const;
+        ///        a frame's, and a picture's own size inside an image that may be larger. The
+        ///        block is the one the trace wrote, so the traced camera and the bin are read
+        ///        from there.
+        void recordSpriteComposite(
+            VkCommandBuffer commands, const VisibilityInputs& inputs, VkExtent2D shown, GpuTimer* timer) const;
 
     private:
         /// Makes every kernel this pass can ever need, before it returns, because the frame path
@@ -196,8 +206,7 @@ namespace Rtx
 
         /// Pushes set zero — everything both passes read — and binds the three sets nothing pushes.
         /// Any of the pipelines here, because the volume reads the same world the trace does.
-        void pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs,
-            const GBuffer& buffer, const Buffer& hitCount, FrameSlot trace) const;
+        void pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;

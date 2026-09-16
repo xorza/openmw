@@ -141,11 +141,12 @@ namespace Rtx
         const DeviceScene& sceneAt(SceneSlot slot) const;
         DeviceScene& sceneAt(SceneSlot slot);
 
-        /// What the trace reads a scene through, for the copy its last placement wrote. One
-        /// description for a frame and for a picture inside the interface, which differ in the
-        /// chain they trace into and in the image the puffs are composited over.
-        VisibilityInputs describeInputs(
-            const DeviceScene& held, const TraceChain& chain, std::uint32_t rayMask, const Image& shown) const;
+        /// What the trace reads a scene through, for the copy its last placement wrote, and what
+        /// its launches bind beside it. One description for a frame and for a picture inside the
+        /// interface, which differ in the chain they trace into, the image the puffs are
+        /// composited over, the census they sum into and which of the chain's slots they take.
+        VisibilityInputs describeInputs(const DeviceScene& held, const TraceChain& chain, std::uint32_t rayMask,
+            const Image& shown, const Buffer& counts, FrameSlot traceSlot) const;
 
         /// A camera as its trace will sample it: what the caller wrote, plus every field only the
         /// renderer can fill — the jitter, what the scene behind it holds, and where the eye was.

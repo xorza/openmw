@@ -1,5 +1,9 @@
 #include "cellsupply.hpp"
 
+#include <exception>
+
+#include <components/debug/debuglog.hpp>
+
 #include "cellreader.hpp"
 #include "prepared.hpp"
 
@@ -43,6 +47,20 @@ namespace Rtx
         // because it is stopped and joined here before any is replaced — and before the reader that
         // holds them goes. Nothing is given back: what the frame held dies with the reader.
         mWorker.stop();
+
+        // A reader that threw closed the monitor, and the world it read is going with it. What it
+        // threw is said here where a frame has not asked, and the monitor is opened again for the
+        // reader about to be made — closed, the new reader's loop would return on its first turn
+        // and every wait on it would answer at once with nothing.
+        try
+        {
+            mMonitor.rethrowFailure();
+        }
+        catch (const std::exception& failed)
+        {
+            Log(Debug::Warning) << "Ray tracing: the cell reader of the world being left had failed: " << failed.what();
+        }
+        mMonitor.reopen();
 
         mWanted.clear();
         mRequested.clear();

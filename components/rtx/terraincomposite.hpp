@@ -7,6 +7,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include "material.hpp"
 #include "ownedtexture.hpp"
 #include "texturedata.hpp"
 
@@ -21,9 +22,9 @@ namespace Rtx
     /// `--delight` reaches the near field and not distant ground.
     inline constexpr float sCompositeDelight = 1.0f;
 
-    /// One layer of the stack a chunk's ground is drawn from, as a bake needs it: the same four
-    /// facts `MaterialLayer` carries, with the images themselves in place of the slots they were
-    /// put in, because a bake reads texels and the scene's table holds indices.
+    /// One layer of the stack a chunk's ground is drawn from, as a bake needs it: what
+    /// `MaterialLayer` carries, with the images themselves in place of the slots they were put in,
+    /// because a bake reads texels and the scene's table holds indices.
     struct CompositeLayer
     {
         /// The tiling ground texture, decoded, with whatever mip chain its file carried.
@@ -33,16 +34,12 @@ namespace Rtx
         /// Empty is neutral, which is what a texture nothing could estimate one for gets.
         std::span<const float> mShading;
 
-        /// Chunk texture coordinates to this layer's, as `uv * xy + zw` — the shader's spelling, so
-        /// the transforms the extractor read off the terrain builder come across unchanged.
-        osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-
-        /// The weights this layer shows through, row by row. Empty covers the chunk entirely, which
-        /// is what a chunk of a single ground type gets.
+        /// The weights this layer shows through, row by row, on the placing's grid. Empty covers
+        /// the chunk entirely, which is what a chunk of a single ground type gets.
         std::span<const float> mMask;
-        std::uint32_t mMaskWidth = 0;
-        std::uint32_t mMaskHeight = 0;
-        osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
+
+        /// The scene row's own, unchanged, so the bake lands its texels where the hit would.
+        LayerPlacing mPlacing;
     };
 
     /// One level of a layer's diffuse, decoded to linear once: the level a bake reads is a handful

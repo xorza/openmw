@@ -60,15 +60,12 @@ namespace Rtx
         /// afterwards.
         InstanceRecord recordOf(const SceneDesc& scene, const Index slot)
         {
-            const MeshInstance& instance = scene.placements().getAll()[slot];
+            const PlacementRow& row = scene.placements().getRows()[slot];
+            const MeshInstance& instance = row.mInstance;
             if (!instance.isPlaced())
                 return InstanceRecord{};
 
-            // A plain opaque surface where the instance carries no material, which the untextured
-            // test scenes place.
-            const std::span<const Material> materials = scene.materials().getRows();
-            const Material::Traversed worn
-                = instance.mMaterial == sNoIndex ? Material::Traversed{} : materials[instance.mMaterial].getTraversed();
+            const Material::Traversed& worn = row.mWorn;
             const bool water = worn.mKind == MaterialKind::Water;
 
             // Here because this is the one funnel every water surface reaches the device through;
@@ -109,18 +106,18 @@ namespace Rtx
         /// applied to both, while the placement carries no rotation, which the sea's does not.
         void moveRecord(const SceneDesc& scene, const Index slot, InstanceRecord& record)
         {
-            const MeshInstance& instance = scene.placements().getAll()[slot];
+            const PlacementRow& row = scene.placements().getRows()[slot];
+            const MeshInstance& instance = row.mInstance;
             if (!instance.isPlaced())
                 return;
 
             // A slot can be on the list without having moved — just placed, or faded — and keeps
             // the identity outright: `inverse(T) * T` is a few ulps of a six-figure coordinate in
             // floats, which is a fraction of a pixel of drift under a static surface.
-            const osg::Matrixf& previous = scene.placements().getPrevious()[slot];
-            if (previous == instance.mTransform)
+            if (row.mPrevious == instance.mTransform)
                 return;
 
-            record.mMotion = toTransform3x4(osg::Matrixf::inverse(instance.mTransform) * previous);
+            record.mMotion = toTransform3x4(osg::Matrixf::inverse(instance.mTransform) * row.mPrevious);
         }
     }
 
@@ -130,10 +127,10 @@ namespace Rtx
         // with zeroes and once with the records — and at a hundred bytes a slot over fifty thousand
         // slots that is five megabytes of pointless stores. The buffer is the caller's and keeps
         // its size between scenes; only a scene that grew or shrank pays anything here.
-        const std::span<const MeshInstance> instances = scene.placements().getAll();
-        records.resize(instances.size());
+        const std::size_t slots = scene.placements().getRows().size();
+        records.resize(slots);
 
-        for (std::size_t slot = 0; slot < instances.size(); ++slot)
+        for (std::size_t slot = 0; slot < slots; ++slot)
             records[slot] = recordOf(scene, static_cast<Index>(slot));
 
         for (const Index slot : scene.placements().getMoved())
@@ -143,7 +140,7 @@ namespace Rtx
     void updateInstanceRecords(
         const SceneDesc& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed)
     {
-        records.resize(scene.placements().getAll().size());
+        records.resize(scene.placements().getRows().size());
         changed.clear();
         changed.reserve(scene.placements().getSettled().size() + scene.placements().getMoved().size());
 

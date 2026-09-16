@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -163,6 +164,19 @@ namespace RtxTool
         camera->setYaw(-rotation.z(), true);
     }
 
+    void Session::setWeather(MWBase::World& world, const std::string_view name)
+    {
+        const std::optional<std::uint32_t> named = Rtx::weatherIndex(name);
+        if (!named.has_value())
+        {
+            Log(Debug::Warning) << "Ray tracing session: no weather is called \"" << name << '"';
+            return;
+        }
+
+        world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
+            ESM::Weather::indexToRefId(static_cast<int>(*named)));
+    }
+
     void Session::boostPlayer()
     {
         const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
@@ -267,14 +281,7 @@ namespace RtxTool
             world.setGlobalInt(MWWorld::Globals::sDay, *stop.mSky.mDay);
 
         if (stop.mSky.mWeather.has_value())
-        {
-            const std::optional<std::uint32_t> named = Rtx::weatherIndex(*stop.mSky.mWeather);
-            if (named.has_value())
-                world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
-                    ESM::Weather::indexToRefId(static_cast<int>(*named)));
-            else
-                Log(Debug::Warning) << "Ray tracing session: no weather is called \"" << *stop.mSky.mWeather << '"';
-        }
+            setWeather(world, *stop.mSky.mWeather);
 
         // **Settled rather than crossed into**, which is what the game does when a player sleeps:
         // a stop asked to stand under a sky stands under it from its first frame rather than four
@@ -283,12 +290,7 @@ namespace RtxTool
             world.advanceTime(0.0, false);
 
         if (!stop.mSky.mTurnThrough.empty())
-        {
-            const std::optional<std::uint32_t> first = Rtx::weatherIndex(stop.mSky.mTurnThrough.front());
-            if (first.has_value())
-                world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
-                    ESM::Weather::indexToRefId(static_cast<int>(*first)));
-        }
+            setWeather(world, stop.mSky.mTurnThrough.front());
 
         // **The clock stops after the world has been moved and not before.** A frozen stop is a
         // reference: nothing animates, so a frame traced many times is the same frame and an
@@ -451,11 +453,7 @@ namespace RtxTool
         mProgress.mTurned = 0.0f;
         mProgress.mTurnedTo = (mProgress.mTurnedTo + 1) % through.size();
 
-        MWBase::World& world = *MWBase::Environment::get().getWorld();
-        const std::optional<std::uint32_t> named = Rtx::weatherIndex(through[mProgress.mTurnedTo]);
-        if (named.has_value())
-            world.changeWeather(world.getPlayerPtr().getCell()->getCell()->getRegion(),
-                ESM::Weather::indexToRefId(static_cast<int>(*named)));
+        setWeather(*MWBase::Environment::get().getWorld(), through[mProgress.mTurnedTo]);
     }
 
     std::optional<std::uint32_t> Session::getSampleFrame() const
@@ -592,7 +590,7 @@ namespace RtxTool
         if (const void* cell = MWBase::Environment::get().getWorld()->getPlayerPtr().getCell();
             mProgress.mCell != nullptr && cell != mProgress.mCell)
         {
-            mProgress.mCrossings.add(report.mRebuilt, frameMs, 0.0);
+            mProgress.mCrossings.add(report.mRebuilt, frameMs);
             mProgress.mCell = cell;
         }
 
@@ -661,6 +659,15 @@ namespace RtxTool
         place.mHitPercent = mProgress.mHitPercent;
         place.mCrossings = mProgress.mCrossings;
         place.mOverlap = mProgress.mOverlap;
+
+        // How much of the line between the two ends the route flew, where it named both: a run
+        // that ended short measured a shorter journey than its name says.
+        if (const std::optional<Rtx::Route>& route = stop.mSchedule.mRoute; route.has_value() && route->mTo.has_value())
+        {
+            const float whole = (*route->mTo - mProgress.mFrom).length();
+            if (whole > 0.0f)
+                place.mTravelled = std::clamp((mProgress.mFlown - mProgress.mFrom).length() / whole, 0.0f, 1.0f);
+        }
         place.mScene = renderer.getSceneStats();
         place.mMemory = renderer.getMemoryReport();
 

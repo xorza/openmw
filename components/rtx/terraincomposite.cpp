@@ -96,7 +96,7 @@ namespace Rtx
         float maskWeight(const CompositeLayer& layer, const Tap& across, const Tap& down)
         {
             const auto cell = [&](std::uint32_t column, std::uint32_t row) {
-                return layer.mMask[std::size_t{ row } * layer.mMaskWidth + column];
+                return layer.mMask[std::size_t{ row } * layer.mPlacing.mMaskWidth + column];
             };
 
             const float top
@@ -120,8 +120,10 @@ namespace Rtx
                 return;
 
             const MipLevel& finest = texture.mLevels.front();
-            const float texelsAcross = std::abs(layer.mDiffuseTransform.x()) * static_cast<float>(finest.mWidth);
-            const float texelsDown = std::abs(layer.mDiffuseTransform.y()) * static_cast<float>(finest.mHeight);
+            const float texelsAcross
+                = std::abs(layer.mPlacing.mDiffuseTransform.x()) * static_cast<float>(finest.mWidth);
+            const float texelsDown
+                = std::abs(layer.mPlacing.mDiffuseTransform.y()) * static_cast<float>(finest.mHeight);
 
             // Never below one texel a composite texel: a composite finer than the ground it is made
             // of magnifies, and a negative level is not a level.
@@ -145,13 +147,13 @@ namespace Rtx
         /// since each covers a corner of the chunk.
         bool coveredColumns(const CompositeLayer& layer, const Tap& down, std::vector<std::uint8_t>& covered)
         {
-            covered.resize(layer.mMaskWidth);
+            covered.resize(layer.mPlacing.mMaskWidth);
 
-            const float* first = layer.mMask.data() + std::size_t{ down.mFirst } * layer.mMaskWidth;
-            const float* second = layer.mMask.data() + std::size_t{ down.mSecond } * layer.mMaskWidth;
+            const float* first = layer.mMask.data() + std::size_t{ down.mFirst } * layer.mPlacing.mMaskWidth;
+            const float* second = layer.mMask.data() + std::size_t{ down.mSecond } * layer.mPlacing.mMaskWidth;
 
             std::uint8_t any = 0;
-            for (std::uint32_t column = 0; column < layer.mMaskWidth; ++column)
+            for (std::uint32_t column = 0; column < layer.mPlacing.mMaskWidth; ++column)
             {
                 const auto holds = static_cast<std::uint8_t>(first[column] != 0.0f || second[column] != 0.0f);
                 covered[column] = holds;
@@ -210,8 +212,9 @@ namespace Rtx
             const CompositeLayer& layer = layers[index];
 
             // A chunk of one ground type is given no mask at all: there is nothing to blend against.
-            const bool everywhere = layer.mMaskWidth == 0 || layer.mMaskHeight == 0;
-            assert(everywhere || layer.mMask.size() == std::size_t{ layer.mMaskWidth } * layer.mMaskHeight);
+            const bool everywhere = layer.mPlacing.mMaskWidth == 0 || layer.mPlacing.mMaskHeight == 0;
+            assert(everywhere
+                || layer.mMask.size() == std::size_t{ layer.mPlacing.mMaskWidth } * layer.mPlacing.mMaskHeight);
 
             for (std::uint32_t y = 0; y < extent; ++y)
             {
@@ -220,12 +223,13 @@ namespace Rtx
                 Tap maskDown;
                 if (!everywhere)
                 {
-                    maskDown = clampedTap(v * layer.mMaskTransform.y() + layer.mMaskTransform.w(), layer.mMaskHeight);
+                    maskDown = clampedTap(v * layer.mPlacing.mMaskTransform.y() + layer.mPlacing.mMaskTransform.w(),
+                        layer.mPlacing.mMaskHeight);
                     if (!coveredColumns(layer, maskDown, scratch.mCovered))
                         continue;
                 }
 
-                const float atV = v * layer.mDiffuseTransform.y() + layer.mDiffuseTransform.w();
+                const float atV = v * layer.mPlacing.mDiffuseTransform.y() + layer.mPlacing.mDiffuseTransform.w();
                 const Tap fineDown = wrappedTap(atV, ground.mFine.mHeight);
                 const bool trilinear = ground.mBetween > 0.0f && !ground.mCoarse.isEmpty();
                 const Tap coarseDown = trilinear ? wrappedTap(atV, ground.mCoarse.mHeight) : Tap{};
@@ -240,7 +244,8 @@ namespace Rtx
                     if (!everywhere)
                     {
                         const Tap maskAcross
-                            = clampedTap(u * layer.mMaskTransform.x() + layer.mMaskTransform.z(), layer.mMaskWidth);
+                            = clampedTap(u * layer.mPlacing.mMaskTransform.x() + layer.mPlacing.mMaskTransform.z(),
+                                layer.mPlacing.mMaskWidth);
 
                         if (scratch.mCovered[maskAcross.mFirst] == 0 && scratch.mCovered[maskAcross.mSecond] == 0)
                             continue;
@@ -250,7 +255,7 @@ namespace Rtx
                             continue;
                     }
 
-                    const float atU = u * layer.mDiffuseTransform.x() + layer.mDiffuseTransform.z();
+                    const float atU = u * layer.mPlacing.mDiffuseTransform.x() + layer.mPlacing.mDiffuseTransform.z();
 
                     osg::Vec3f colour = sampleAt(ground.mFine, wrappedTap(atU, ground.mFine.mWidth), fineDown);
                     if (trilinear)

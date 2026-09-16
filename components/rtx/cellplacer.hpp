@@ -93,9 +93,10 @@ namespace Rtx
         /// has the placement `shown`.
         void setPlacementEnabled(Placement& placement, bool shown, bool enabled);
 
-        void addSlot(Placement& placement);
-        void dropSlot(Placement& placement);
-        void dropSlot(HeldGround& ground);
+        /// Puts `stood` in the top level under the ring's name and counts it in `standing`, and
+        /// takes it out again. Dropping what does not stand is nothing.
+        void stand(Stood& stood, std::uint32_t& standing);
+        void drop(Stood& stood, std::uint32_t& standing);
 
         /// Whether a cell's ground wants its stack flattened where the eye stands now.
         static bool wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground, const WorldAround& around);

@@ -42,20 +42,12 @@ namespace Rtx
         /// `mTarget` from its corner.
         VkExtent2D mExtent;
 
-        /// The channels the trace left, at the traced extent.
-        const GBuffer& mChannels;
-
-        /// What the trace was told, which is what the puffs' composite reads its block through.
+        /// What the trace was told and what its launches bound, which is what the puffs' composite
+        /// reads its block through and the curve reads its channels from.
         const VisibilityInputs& mInputs;
 
         /// The camera the trace sampled, which the curve and the lines are told.
         const Shaders::VisibilityConstants& mSampled;
-
-        /// What the trace summed its census into, which the puffs' launch is bound the same.
-        const Buffer& mCounts;
-
-        /// Which copy of the air the trace wrote, as `VisibilityPass::record` was handed it.
-        FrameSlot mTraceSlot;
 
         /// What the curve writes into, at least `mExtent` large.
         Image& mTarget;

@@ -7,6 +7,7 @@
 #include <map>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -98,6 +99,9 @@ namespace Rtx::Testing
             std::vector<Placed> mPlaced;
             std::vector<Lit> mLit;
 
+            /// Whether a walk of a cell throws, which is a reader that fails on its own thread.
+            bool mThrows = false;
+
             /// The records the lamps name: `lit` burns where it stands, `unlit` is off by default
             /// and `flame` flickers.
             std::map<std::string, SceneUtil::LightCommon> mRecords{
@@ -109,6 +113,9 @@ namespace Rtx::Testing
             void collect(float, const osg::Vec2i& startCell, ESM::RefId, std::vector<Terrain::PagedCellRef>& paged,
                 std::vector<Terrain::PagedCellRef>& lit) const override
             {
+                if (mThrows)
+                    throw std::runtime_error("a storage that cannot be read");
+
                 paged.clear();
                 lit.clear();
 
@@ -325,7 +332,7 @@ namespace Rtx::Testing
                 return total;
             }
 
-            std::uint32_t placed() const { return mScene.placements().getPlacedCount(); }
+            std::uint32_t placed() const { return mScene.placements().getCounts().mPlaced; }
 
             /// The placement standing the ground of `cell`, which is the one translated to the
             /// cell's centre.
@@ -334,9 +341,9 @@ namespace Rtx::Testing
                 const osg::Vec3f centre((static_cast<float>(cell.x()) + 0.5f) * sCellSize,
                     (static_cast<float>(cell.y()) + 0.5f) * sCellSize, 0.0f);
 
-                for (const MeshInstance& placement : mScene.placements().getAll())
-                    if (placement.isPlaced() && placement.mTransform.getTrans() == centre)
-                        return placement;
+                for (const PlacementRow& row : mScene.placements().getRows())
+                    if (row.mInstance.isPlaced() && row.mInstance.mTransform.getTrans() == centre)
+                        return row.mInstance;
 
                 return std::nullopt;
             }
@@ -437,9 +444,9 @@ namespace Rtx::Testing
             // walked in their own order, so the tree's is not the first placement.
             const osg::Vec3f expected = osg::Vec3f(0.0f, 0.0f, 5.0f) * gameStands(tree);
             std::size_t standing = 0;
-            for (const MeshInstance& placement : mScene.placements().getAll())
+            for (const PlacementRow& row : mScene.placements().getRows())
             {
-                const osg::Vec3f stood = osg::Vec3f() * placement.mTransform;
+                const osg::Vec3f stood = osg::Vec3f() * row.mInstance.mTransform;
                 if ((stood - expected).length() < 0.01f)
                     ++standing;
             }
@@ -451,8 +458,8 @@ namespace Rtx::Testing
             EXPECT_NEAR(untilted.z(), 55.0f, 0.001f);
             EXPECT_NEAR(untilted.x(), 3.2f * sCellSize, 0.01f);
             standing = 0;
-            for (const MeshInstance& placement : mScene.placements().getAll())
-                if ((osg::Vec3f() * placement.mTransform - untilted).length() < 0.01f)
+            for (const PlacementRow& row : mScene.placements().getRows())
+                if ((osg::Vec3f() * row.mInstance.mTransform - untilted).length() < 0.01f)
                     ++standing;
             EXPECT_EQ(standing, 1u);
 
@@ -626,10 +633,10 @@ namespace Rtx::Testing
             // of five is scaled with the reference, so a tree at scale `s` stands at `105 s`.
             const auto standing = [this] {
                 std::vector<std::pair<std::size_t, float>> slots;
-                const std::span<const MeshInstance> all = mScene.placements().getAll();
+                const std::span<const PlacementRow> all = mScene.placements().getRows();
                 for (std::size_t slot = 0; slot < all.size(); ++slot)
-                    if (all[slot].isPlaced())
-                        slots.emplace_back(slot, all[slot].mTransform.getTrans().z());
+                    if (all[slot].mInstance.isPlaced())
+                        slots.emplace_back(slot, all[slot].mInstance.mTransform.getTrans().z());
                 return slots;
             };
             const auto heights = [](const std::vector<std::pair<std::size_t, float>>& slots) {
@@ -748,7 +755,7 @@ namespace Rtx::Testing
             // the reader's own contract — which a model given back while lent breaks loudly.
             walk(mWalked++);
             walk(mWalked++);
-            EXPECT_EQ(mScene.placements().getPlacedCount(), 1u + sPlacedCells);
+            EXPECT_EQ(mScene.placements().getCounts().mPlaced, 1u + sPlacedCells);
         }
 
         /// Unsettled, the ring adopts one cell a frame as the thread delivers them, and a frame
@@ -802,6 +809,41 @@ namespace Rtx::Testing
             walk(frame);
             walk(frame);
             EXPECT_EQ(mRing.getHeldCellCount(), held + 1);
+        }
+
+        /// A reader that throws is reported to the frame once, and the next world the ring is
+        /// pointed at is read by a reader of its own: the failure closed the supply's monitor, and
+        /// `follow` opens it again.
+        TEST_F(RtxCellRingTest, aWorldFollowedAfterAReaderFailedIsReadAgain)
+        {
+            mStorage.mThrows = true;
+            start();
+
+            // The first walk asks and waits; the reader throws on its thread and closes the
+            // monitor, so the wait ends with nothing. A later walk is what takes the failure.
+            bool thrown = false;
+            for (std::size_t walked = 0; walked < 4 && !thrown; ++walked)
+            {
+                try
+                {
+                    walk(mWalked++);
+                }
+                catch (const std::runtime_error&)
+                {
+                    thrown = true;
+                }
+            }
+            EXPECT_TRUE(thrown) << "a reader that threw was never reported to the frame";
+            EXPECT_EQ(mRing.getHeldCellCount(), 0u);
+
+            // Another worldspace is another reader over the same storages.
+            mStorage.mThrows = false;
+            mAround.mWorld.mWorldspace = ESM::RefId::stringRefId("elsewhere");
+            mRing.follow(mAround);
+
+            fill();
+            EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells)
+                << "the supply stayed closed after its reader was replaced";
         }
     }
 }

@@ -317,9 +317,10 @@ namespace RtxTool
         {
             Rtx::SessionRequest request;
             request.mStops = std::move(stops);
-            request.mValidation = validationFrom(command.mVariables);
+            request.mSetup.mProfile = profile;
+            request.mSetup.mValidation = validationFrom(command.mVariables);
 
-            return runHosted(command.mVariables, command.mConfig, command.mResources, profile, std::move(request));
+            return runHosted(command.mVariables, command.mConfig, command.mResources, std::move(request));
         }
 
         /// How long every stop of a run lasts, from what the command line asked for.
@@ -630,15 +631,16 @@ namespace RtxTool
             }
 
             request.mSuite = run.mSuite;
-            request.mSettled = run.mSettled;
             request.mJson = variables["json"].as<std::string>();
             request.mHashes = variables["hashes"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
-            request.mHeadless = !variables["window"].as<bool>();
-            request.mValidation = validationForMeasuring(variables);
+            request.mSetup.mProfile = frame.mProfile;
+            request.mSetup.mSettled = run.mSettled;
+            request.mSetup.mHeadless = !variables["window"].as<bool>();
+            request.mSetup.mValidation = validationForMeasuring(variables);
 
-            return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }
 
         /// A window on a place, with the game running behind it.
@@ -666,20 +668,20 @@ namespace RtxTool
 
             Rtx::SessionRequest request;
             request.mStops.push_back(std::move(staged));
-            request.mHeadless = false;
             request.mQuitAtEnd = frames > 0;
-            request.mValidation = validationFrom(variables);
+            request.mSetup.mHeadless = false;
+            request.mSetup.mValidation = validationFrom(variables);
 
             // **On the wall, because somebody is watching.** A stepped world runs as fast as the
             // card draws it, which at two hundred frames a second is three times over; a window
             // is the played game with the walls off, and the played game follows the wall.
-            request.mStep = std::nullopt;
+            request.mSetup.mStep = std::nullopt;
 
             // Watched and never summed, like a bench.
-            Rtx::RenderProfile profile = frame.mProfile;
-            profile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+            request.mSetup.mProfile = frame.mProfile;
+            request.mSetup.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
 
-            return runHosted(variables, command.mConfig, command.mResources, profile, std::move(request), true);
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request), true);
         }
 
         /// Whether a place staged this way can answer `check` at all, which is a different question
@@ -789,9 +791,10 @@ namespace RtxTool
             }
 
             request.mSuite = run.mSuite;
-            request.mValidation = validationFrom(variables);
+            request.mSetup.mProfile = frame.mProfile;
+            request.mSetup.mValidation = validationFrom(variables);
 
-            return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }
 
         /// One verb: which command it is, the line `--help` prints for it, and what it does.

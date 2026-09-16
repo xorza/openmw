@@ -3,24 +3,23 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <string>
+#include <utility>
 
 #include "contract.hpp"
 
 namespace Rtx
 {
-    Index TextureTable::takeSlot()
+    Index TextureTable::takeSlot(TextureRow row)
     {
         ++mRevision;
 
-        // One size, so any freed slot will do — the array element it names is written over wherever
-        // it sits, which is what the arrivals list is for. The two name tables and the change list
-        // follow the rows in the same call, because all four are indexed by the slot.
-        const Index index = mSlots.take(Kind::Free, [this](const std::size_t slots) {
-            mPaths.resize(slots);
-            mBaked.resize(slots);
-            mWraps.resize(slots, TextureWrap::Repeat);
-            mChanges.grow(slots);
-        });
+        // One size, so any freed slot will do — the row is written over wherever it sits, which
+        // is what the arrivals list is for. The change list follows the rows in the same call,
+        // because it is indexed by the slot.
+        const Index index = mRows.take(std::move(row));
+        mChanges.grow(mRows.size());
+        mChanges.note(index, SlotNews::Arrived);
 
         return index;
     }
@@ -33,10 +32,11 @@ namespace Rtx
         if (known != mPathIndex.end() && known->second[at] != sNoIndex)
             return known->second[at];
 
-        const Index index = takeSlot();
-        mPaths[index] = path;
-        mWraps[index] = wrap;
-        mSlots.at(index) = Kind::File;
+        const Index index = takeSlot(TextureRow{
+            .mKind = TextureKind::File,
+            .mPath = VFS::Path::Normalized(path),
+            .mWrap = wrap,
+        });
 
         if (known == mPathIndex.end())
         {
@@ -46,7 +46,6 @@ namespace Rtx
         }
         known->second[at] = index;
 
-        mChanges.note(index, SlotNews::Arrived);
         return index;
     }
 
@@ -58,13 +57,13 @@ namespace Rtx
         if (known != mBakedIndex.end())
             return known->second;
 
-        const Index index = takeSlot();
-        mBaked[index] = key;
-        mWraps[index] = TextureWrap::Clamp;
-        mSlots.at(index) = Kind::Baked;
+        const Index index = takeSlot(TextureRow{
+            .mKind = TextureKind::Baked,
+            .mBaked = std::string(key),
+            .mWrap = TextureWrap::Clamp,
+        });
 
         mBakedIndex.emplace(key, index);
-        mChanges.note(index, SlotNews::Arrived);
         return index;
     }
 
@@ -73,7 +72,7 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        mSlots.hold(texture);
+        mRows.hold(texture);
     }
 
     void TextureTable::drop(const Index texture)
@@ -81,37 +80,35 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        if (!mSlots.drop(texture))
+        if (!mRows.drop(texture))
             return;
 
-        Kind& kind = mSlots.at(texture);
+        TextureRow& row = mRows.at(texture);
 
         // The name leaves the lookup with the slot, or the next reference to it resolves to a slot
         // nothing is standing in.
-        switch (kind)
+        switch (row.mKind)
         {
-            case Kind::File:
+            case TextureKind::File:
             {
-                const auto known = mPathIndex.find(mPaths[texture]);
+                const auto known = mPathIndex.find(row.mPath);
                 contract(known != mPathIndex.end(), "a file slot the path index does not know");
                 WrapSlots& held = known->second;
-                held[static_cast<std::size_t>(mWraps[texture])] = sNoIndex;
+                held[static_cast<std::size_t>(row.mWrap)] = sNoIndex;
                 if (std::ranges::all_of(held, [](const Index slot) { return slot == sNoIndex; }))
                     mPathIndex.erase(known);
-                mPaths[texture] = VFS::Path::Normalized();
                 break;
             }
-            case Kind::Baked:
-                mBakedIndex.erase(mBaked[texture]);
-                mBaked[texture].clear();
+            case TextureKind::Baked:
+                mBakedIndex.erase(row.mBaked);
                 break;
-            case Kind::Free:
+            case TextureKind::Free:
                 assert(false && "a slot with a reference to give back that nothing ever named");
                 break;
         }
 
-        kind = Kind::Free;
-        mSlots.free(texture);
+        row = TextureRow{};
+        mRows.free(texture);
         mChanges.note(texture, SlotNews::Freed);
     }
 }

@@ -26,12 +26,25 @@ namespace osg
 
 namespace Rtx
 {
-    /// One placement the ring may stand: a part of a model at a reference.
-    struct Placement
+    /// One thing the ring may stand in the top level: what it is, where, and the slot it holds
+    /// while it stands. The one shape a static and a cell's ground share, so one call stands
+    /// either and one call drops it.
+    struct Stood
     {
         Index mMesh = sNoIndex;
         Index mMaterial = sNoIndex;
         osg::Matrixf mTransform;
+
+        /// The slot it stands in, or none while the size rule, a script or the ring keeps it out.
+        Index mSlot = sNoIndex;
+
+        bool isStanding() const { return mSlot != sNoIndex; }
+    };
+
+    /// One placement the ring may stand: a part of a model at a reference.
+    struct Placement
+    {
+        Stood mStood;
 
         /// What the size rule reads. A cell's placements are sorted by it, largest first, so what
         /// the rule admits at any threshold is a prefix — `HeldCell::mShown`.
@@ -42,24 +55,15 @@ namespace Rtx
         /// adopted and flipped by `CellPlacer::setReferenceEnabled`, which is what keeps it off
         /// the walk every frame makes.
         bool mDisabled = false;
-
-        /// The slot it stands in, or none while the size rule, a script or the ring keeps it out.
-        Index mSlot = sNoIndex;
     };
 
     /// A cell's ground as the frame holds it: its rows, where it stands, and what shades it. Its
-    /// own type, because the seven are empty together.
+    /// own type, because the five are empty together.
     struct HeldGround
     {
-        /// The rows the ring holds on the scene, which no drawable and no state set will ever name.
-        Index mMesh = sNoIndex;
-        Index mMaterial = sNoIndex;
-
-        /// The slot it stands in, or none while the ring keeps it out.
-        Index mSlot = sNoIndex;
-
-        /// The cell's centre, which the mesh's own positions are relative to.
-        osg::Vec3f mOrigin;
+        /// The rows the ring holds on the scene, which no drawable and no state set will ever
+        /// name, at the cell's centre, which the mesh's own positions are relative to.
+        Stood mStood;
 
         /// How many layers the stack holds, which is whether a composite is worth asking for at all.
         std::uint32_t mLayers = 0;
@@ -105,6 +109,22 @@ namespace Rtx
 
         /// The cell's lamps, which `CellPlacer::place` stands on every walk at the frame's own hour.
         std::vector<PreparedLight> mLights;
+
+        /// Empties it for the next cell, keeping the room every list grew. What is emptied of the
+        /// ground is the optional's contents and never the optional itself, so its texture list
+        /// keeps its room too.
+        void reuse()
+        {
+            mCell = osg::Vec2i();
+            mStatics = false;
+            mDropped = false;
+            mShown = 0;
+            mPlacements.clear();
+            mModels.clear();
+            mLights.clear();
+            if (mGround.has_value())
+                mGround->reuse();
+        }
     };
 
     /// What the frame holds of the models and the images the reader lent it, and what it adopted

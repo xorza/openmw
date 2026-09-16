@@ -297,9 +297,13 @@ namespace Rtx
         mConstants.updateInline(commands, Use::sBufferUniformRead, std::as_bytes(std::span(&described, 1)));
     }
 
-    void VisibilityPass::pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs,
-        const GBuffer& buffer, const Buffer& hitCount, const FrameSlot trace) const
+    void VisibilityPass::pushInputs(
+        VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs) const
     {
+        assert(inputs.mChannels != nullptr && inputs.mCounts != nullptr && "a launch handed no channels or no census");
+        const GBuffer& buffer = *inputs.mChannels;
+        const Buffer& hitCount = *inputs.mCounts;
+
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
             .accelerationStructureCount = 1,
@@ -364,7 +368,7 @@ namespace Rtx
         // trace writes, and the air in front of the camera. Each is written when what it names is
         // made, and bound as it is.
         const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(),
-            inputs.mFogVolume->getSet(trace) };
+            inputs.mFogVolume->getSet(inputs.mTraceSlot) };
         bindSets(commands, pipeline, sets);
     }
 
@@ -434,8 +438,7 @@ namespace Rtx
     }
 
     void VisibilityPass::recordSpriteShelter(const VkCommandBuffer commands, const VisibilityInputs& inputs,
-        const GBuffer& buffer, const Buffer& hitCount, const Shaders::VisibilityConstants& constants,
-        const std::uint32_t count, const FrameSlot trace, GpuTimer* const timer) const
+        const Shaders::VisibilityConstants& constants, const std::uint32_t count, GpuTimer* const timer) const
     {
         // Nearly every frame: nothing falls, or what falls is the kind a roof does not stop. A
         // frame with sprites and no shelter pays no launch for it.
@@ -445,7 +448,7 @@ namespace Rtx
         openZone(timer, commands, "shelter");
 
         bind(commands, *mSpriteShelterPipeline);
-        pushInputs(commands, *mSpriteShelterPipeline, inputs, buffer, hitCount, trace);
+        pushInputs(commands, *mSpriteShelterPipeline, inputs);
 
         // One invocation a sprite, over the bin's own copy of the list.
         mSpriteShelterPipeline->traceRays(commands, count, 1);
@@ -456,11 +459,12 @@ namespace Rtx
         closeZone(timer, commands);
     }
 
-    void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, const FrameSlot trace,
-        GpuTimer* timer) const
+    void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs,
+        const Shaders::VisibilityConstants& constants, GpuTimer* timer) const
     {
-        assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
+        assert(inputs.mChannels != nullptr && "a trace with no channels to write");
+        assert(inputs.mChannels->getWidth() >= constants.mCamera.mWidth
+            && inputs.mChannels->getHeight() >= constants.mCamera.mHeight);
 
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
         assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
@@ -471,6 +475,7 @@ namespace Rtx
         // kept between frames: a dusk moves the tuple and a doorway moves it again.
         const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater);
 
+        const FrameSlot trace = inputs.mTraceSlot;
         inputs.mFogVolume->begin(commands, trace);
 
         const TracePipeline& scatter = scatterPipelineFor(variant);
@@ -487,7 +492,7 @@ namespace Rtx
         // Where each column's ray stops, before anything is drawn along it. One ray a
         // column, and the froxels of the column keep their draws short of the answer.
         bind(commands, *mDepthPipeline);
-        pushInputs(commands, *mDepthPipeline, inputs, buffer, hitCount, trace);
+        pushInputs(commands, *mDepthPipeline, inputs);
 
         mDepthPipeline->traceRays(commands, columns, rows);
 
@@ -510,7 +515,7 @@ namespace Rtx
         // The integrate pass is a dispatch and reads what the launches wrote, so it is handed the
         // set again at its own bind point.
         bind(commands, *mIntegratePipeline);
-        pushInputs(commands, *mIntegratePipeline, inputs, buffer, hitCount, trace);
+        pushInputs(commands, *mIntegratePipeline, inputs);
 
         vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
             groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
@@ -536,8 +541,7 @@ namespace Rtx
     }
 
     void VisibilityPass::recordSpriteComposite(const VkCommandBuffer commands, const VisibilityInputs& inputs,
-        const GBuffer& buffer, const Buffer& hitCount, const FrameSlot trace, const VkExtent2D shown,
-        GpuTimer* const timer) const
+        const VkExtent2D shown, GpuTimer* const timer) const
     {
         assert(inputs.mShown != nullptr && "a composite over no frame");
         assert(shown.width <= inputs.mShown->getWidth() && shown.height <= inputs.mShown->getHeight()
@@ -548,7 +552,7 @@ namespace Rtx
         openZone(timer, commands, "puffs");
 
         bind(commands, *mSpriteCompositePipeline);
-        pushInputs(commands, *mSpriteCompositePipeline, inputs, buffer, hitCount, trace);
+        pushInputs(commands, *mSpriteCompositePipeline, inputs);
 
         // One invocation a pixel of the picture, whose extent the shader reads off the launch.
         mSpriteCompositePipeline->traceRays(commands, shown.width, shown.height);

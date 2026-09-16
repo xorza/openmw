@@ -49,8 +49,8 @@ namespace Rtx
             std::span<const Index> arrived, SkinTables& tables, SlotBlocks& poses, SlotBlocks& normals) const;
 
     private:
-        /// Whether a dispatch writes the mesh's rows into the copy first, which a placement does,
-        /// or reads the rows `SkinTables::extend` staged there for an arrival.
+        /// Whether a dispatch writes the mesh's pose into the copy first, which a placement does,
+        /// or reads the pose `SkinTables::extend` staged there for an arrival.
         enum class Rows
         {
             Written,

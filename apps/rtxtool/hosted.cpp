@@ -30,8 +30,7 @@ namespace RtxTool
     }
 
     int runHosted(const bpo::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, Rtx::RenderProfile profile, Rtx::SessionRequest request,
-        const bool printLeft)
+        const std::filesystem::path& resources, Rtx::SessionRequest request, const bool printLeft)
     {
         std::ostream& out = Debug::getRawStdout();
 
@@ -56,6 +55,10 @@ namespace RtxTool
         // **Whether the run was meant to end on its own**, which is what says an empty report is a
         // failure. A window somebody closes has finished no stop and owes no numbers.
         const bool scheduled = request.mQuitAtEnd;
+
+        // What the renderer is made with, taken before the request is handed to the session that
+        // owns it from here on.
+        const Rtx::RunSetup setup = request.mSetup;
 
         request.mHud = variables["hud"].as<bool>();
         request.mVanity = variables["vanity"].as<bool>();
@@ -86,7 +89,7 @@ namespace RtxTool
             // page keys with the weather and the clock, through the Lua scripts under the
             // harness's own data directory; a headless run has nobody to press them, and the
             // played game names neither the directory nor the file.
-            if (!request.mHeadless)
+            if (!setup.mHeadless)
                 dataDirs.push_back(resources / "rtx" / "vfs");
 
             engine.setDataDirs(dataDirs);
@@ -98,7 +101,7 @@ namespace RtxTool
             // content list read here and there by different rules is two installations described as
             // one, which is the drift this whole path exists to remove.
             engine.addContentFile("builtin.omwscripts");
-            if (!request.mHeadless)
+            if (!setup.mHeadless)
                 engine.addContentFile("rtxtool.omwscripts");
             std::set<std::string> once{ "builtin.omwscripts" };
             for (const std::string& file : content)
@@ -127,16 +130,8 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
-            const MWRender::RtxSetup setup{
-                .mProfile = std::move(profile),
-                .mValidation = request.mValidation,
-                .mHeadless = request.mHeadless,
-                .mCountHits = true,
-                .mStep = request.mStep,
-                .mSettled = request.mSettled,
-                .mRun = session,
-            };
-            engine.setRtxSetup(&setup);
+            const MWRender::RtxSetup installed{ .mSetup = setup, .mRun = session };
+            engine.setRtxSetup(&installed);
 
             engine.go();
         }

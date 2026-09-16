@@ -1,6 +1,7 @@
 #include "cellplacer.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -55,10 +56,10 @@ namespace Rtx
         if (!shown)
             return;
 
-        if (enabled && placement.mSlot == sNoIndex)
-            addSlot(placement);
+        if (enabled && !placement.mStood.isStanding())
+            stand(placement.mStood, mPlaced);
         else if (!enabled)
-            dropSlot(placement);
+            drop(placement.mStood, mPlaced);
     }
 
     bool CellPlacer::isDisabled(const ESM::RefNum refnum) const
@@ -86,15 +87,10 @@ namespace Rtx
         {
             MaterialLayer row;
             row.mDiffuse = mScene.textures().add(layer.mTexture->mPath);
-            row.mDiffuseTransform = layer.mDiffuseTransform;
+            row.mPlacing = layer.mPlacing;
 
             if (!layer.mWeights.empty())
-            {
                 row.mMask = mScene.materials().addMask(layer.mWeights.in(std::span<const float>(ground.mWeights)));
-                row.mMaskWidth = layer.mMaskWidth;
-                row.mMaskHeight = layer.mMaskHeight;
-                row.mMaskTransform = layer.mMaskTransform;
-            }
 
             mLayerScratch.push_back(row);
 
@@ -103,7 +99,7 @@ namespace Rtx
         }
 
         stands.mLayers = static_cast<std::uint32_t>(mLayerScratch.size());
-        stands.mOrigin = ground.mOrigin;
+        stands.mStood.mTransform = osg::Matrixf::translate(ground.mOrigin);
         stands.mFlattened = wantsFlattening(held.mCell, stands, around);
 
         Material material;
@@ -116,20 +112,20 @@ namespace Rtx
         material.mVertexColour = VertexColour::Tint;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.materials().addLayers(mLayerScratch);
-        stands.mMaterial = mScene.materials().add(material);
+        stands.mStood.mMaterial = mScene.materials().add(material);
 
         // A heightfield is neither a sheet nor closed, and no fold is needed to say so.
-        stands.mMesh = mScene.addMesh(MeshArrays{ .mPositions = ground.mPositions,
-                                          .mNormals = ground.mNormals,
-                                          .mTexCoords = ground.mTexCoords,
-                                          .mColours = ground.mColours,
-                                          .mIndices = ground.mIndices },
+        stands.mStood.mMesh = mScene.addMesh(MeshArrays{ .mPositions = ground.mPositions,
+                                                 .mNormals = ground.mNormals,
+                                                 .mTexCoords = ground.mTexCoords,
+                                                 .mColours = ground.mColours,
+                                                 .mIndices = ground.mIndices },
             FoldedShape{}, Deform::None, sNoIndex);
 
         // Held on the scene, because no drawable and no state set will ever name them. The
         // sweep keeps a held row, and `dropGround` is what lets go.
-        mScene.meshes().hold(stands.mMesh);
-        mScene.materials().hold(stands.mMaterial);
+        mScene.meshes().hold(stands.mStood.mMesh);
+        mScene.materials().hold(stands.mStood.mMaterial);
 
         ++stats.mMeshesAdded;
         ++stats.mMaterialsAdded;
@@ -148,9 +144,11 @@ namespace Rtx
 
             for (std::size_t at = 0; at < adopted.mParts.size(); ++at)
                 held.mPlacements.push_back(Placement{
-                    .mMesh = adopted.mParts[at].mMesh,
-                    .mMaterial = adopted.mParts[at].mMaterial,
-                    .mTransform = model.mParts[at].mLocal * ref.mTransform,
+                    .mStood = {
+                        .mMesh = adopted.mParts[at].mMesh,
+                        .mMaterial = adopted.mParts[at].mMaterial,
+                        .mTransform = model.mParts[at].mLocal * ref.mTransform,
+                    },
                     .mRadius = ref.mRadius,
                     .mRefNum = ref.mRefNum,
                     .mDisabled = disabled,
@@ -166,35 +164,27 @@ namespace Rtx
         held.mLights.assign(cell.mLights.begin(), cell.mLights.end());
     }
 
-    void CellPlacer::addSlot(Placement& placement)
+    void CellPlacer::stand(Stood& stood, std::uint32_t& standing)
     {
-        placement.mSlot = mScene.addInstance(MeshInstance{
-            .mTransform = placement.mTransform,
-            .mMesh = placement.mMesh,
-            .mMaterial = placement.mMaterial,
+        assert(!stood.isStanding() && "a thing stood twice");
+
+        stood.mSlot = mScene.addInstance(MeshInstance{
+            .mTransform = stood.mTransform,
+            .mMesh = stood.mMesh,
+            .mMaterial = stood.mMaterial,
             .mStander = Stander::Ring,
         });
-        ++mPlaced;
+        ++standing;
     }
 
-    void CellPlacer::dropSlot(Placement& placement)
+    void CellPlacer::drop(Stood& stood, std::uint32_t& standing)
     {
-        if (placement.mSlot == sNoIndex)
+        if (!stood.isStanding())
             return;
 
-        mScene.placements().drop(placement.mSlot, Stander::Ring);
-        placement.mSlot = sNoIndex;
-        --mPlaced;
-    }
-
-    void CellPlacer::dropSlot(HeldGround& ground)
-    {
-        if (ground.mSlot == sNoIndex)
-            return;
-
-        mScene.placements().drop(ground.mSlot, Stander::Ring);
-        ground.mSlot = sNoIndex;
-        --mGroundPlaced;
+        mScene.placements().drop(stood.mSlot, Stander::Ring);
+        stood.mSlot = sNoIndex;
+        --standing;
     }
 
     void CellPlacer::dropGround(HeldCell& cell, CellHolds& holds)
@@ -203,33 +193,43 @@ namespace Rtx
             return;
 
         HeldGround& ground = *cell.mGround;
-        dropSlot(ground);
+        drop(ground.mStood, mGroundPlaced);
 
         for (PreparedTexture* texture : ground.mTextures)
             holds.dropTexture(*texture);
 
         // The rows lose their holds, and the sweep after this walk is what frees them.
-        mScene.meshes().drop(ground.mMesh);
-        mScene.materials().drop(ground.mMaterial);
+        mScene.meshes().drop(ground.mStood.mMesh);
+        mScene.materials().drop(ground.mStood.mMaterial);
         ground.reuse();
     }
 
     void CellPlacer::dropSlots(HeldCell& cell)
     {
         for (std::size_t at = 0; at < cell.mShown; ++at)
-            dropSlot(cell.mPlacements[at]);
+            drop(cell.mPlacements[at].mStood, mPlaced);
         cell.mShown = 0;
 
         if (cell.mGround.has_value())
-            dropSlot(*cell.mGround);
+            drop(cell.mGround->mStood, mGroundPlaced);
     }
 
     bool CellPlacer::standsAsHeld(const HeldCell& cell, const WorldAround& around) const
     {
-        const std::span<const MeshInstance> placed = mScene.placements().getAll();
-        const auto stands = [&](const Index slot, const Index mesh, const Index material) {
-            return slot < placed.size() && placed[slot].isPlaced() && placed[slot].mStander == Stander::Ring
-                && placed[slot].mMesh == mesh && placed[slot].mMaterial == material;
+        const std::span<const PlacementRow> placed = mScene.placements().getRows();
+
+        // Whether `stood` stands exactly where it says, or stands nowhere where `wanted` is false.
+        const auto standsAs = [&](const Stood& stood, const bool wanted) {
+            if (wanted != stood.isStanding())
+                return false;
+            if (!wanted)
+                return true;
+            if (stood.mSlot >= placed.size())
+                return false;
+
+            const MeshInstance& standing = placed[stood.mSlot].mInstance;
+            return standing.isPlaced() && standing.mStander == Stander::Ring && standing.mMesh == stood.mMesh
+                && standing.mMaterial == stood.mMaterial;
         };
 
         const bool inReach = around.mExterior && withinReach(cell.mCell, around.mEye, around.mReach);
@@ -240,21 +240,12 @@ namespace Rtx
         for (std::size_t at = 0; at < cell.mPlacements.size(); ++at)
         {
             const Placement& placement = cell.mPlacements[at];
-            const bool wanted = at < cell.mShown && !placement.mDisabled;
-            if (wanted != (placement.mSlot != sNoIndex))
-                return false;
-            if (wanted && !stands(placement.mSlot, placement.mMesh, placement.mMaterial))
+            if (!standsAs(placement.mStood, at < cell.mShown && !placement.mDisabled))
                 return false;
         }
 
-        if (cell.mGround.has_value())
-        {
-            const HeldGround& ground = *cell.mGround;
-            if (inReach != (ground.mSlot != sNoIndex))
-                return false;
-            if (inReach && !stands(ground.mSlot, ground.mMesh, ground.mMaterial))
-                return false;
-        }
+        if (cell.mGround.has_value() && !standsAs(cell.mGround->mStood, inReach))
+            return false;
 
         return true;
     }
@@ -262,11 +253,11 @@ namespace Rtx
     bool CellPlacer::standsNoMore() const
     {
         std::uint32_t standing = 0;
-        for (const MeshInstance& placed : mScene.placements().getAll())
-            if (placed.isPlaced() && placed.mStander == Stander::Ring)
+        for (const PlacementRow& row : mScene.placements().getRows())
+            if (row.mInstance.isPlaced() && row.mInstance.mStander == Stander::Ring)
                 ++standing;
 
-        return standing == mPlaced + mGroundPlaced;
+        return standing == getPlaced() + getGroundPlaced();
     }
 
     std::uint32_t CellPlacer::place(HeldCell& cell, const WorldAround& around)
@@ -279,27 +270,19 @@ namespace Rtx
         {
             HeldGround& ground = *cell.mGround;
 
-            if (inReach && ground.mSlot == sNoIndex)
-            {
-                ground.mSlot = mScene.addInstance(MeshInstance{
-                    .mTransform = osg::Matrixf::translate(ground.mOrigin),
-                    .mMesh = ground.mMesh,
-                    .mMaterial = ground.mMaterial,
-                    .mStander = Stander::Ring,
-                });
-                ++mGroundPlaced;
-            }
+            if (inReach && !ground.mStood.isStanding())
+                stand(ground.mStood, mGroundPlaced);
             else if (!inReach)
-                dropSlot(ground);
+                drop(ground.mStood, mGroundPlaced);
 
             // A cell crossing the grid's edge shades the other way from now on. The composite it
             // held goes with the rewrite, and one it now wants is asked for by the row.
             if (wantsFlattening(cell.mCell, ground, around) != ground.mFlattened)
             {
-                Material given = mScene.materials().getRows()[ground.mMaterial];
+                Material given = mScene.materials().getRows()[ground.mStood.mMaterial];
                 given.mFlatten = !ground.mFlattened;
                 given.mDiffuse = sNoIndex;
-                mScene.setMaterial(ground.mMaterial, given);
+                mScene.setMaterial(ground.mStood.mMaterial, given);
                 ground.mFlattened = given.mFlatten;
             }
         }
@@ -323,9 +306,9 @@ namespace Rtx
 
         for (std::size_t at = cell.mShown; at < wanted; ++at)
             if (!placements[at].mDisabled)
-                addSlot(placements[at]);
+                stand(placements[at].mStood, mPlaced);
         for (std::size_t at = wanted; at < cell.mShown; ++at)
-            dropSlot(placements[at]);
+            drop(placements[at].mStood, mPlaced);
         cell.mShown = wanted;
 
         // On every walk rather than kept, because the walk empties the lights and a flame is a

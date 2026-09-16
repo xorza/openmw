@@ -104,8 +104,8 @@ namespace Rtx::Testing
                 extractor.extract(*frames, osg::Matrixf::identity(), 0);
 
                 std::vector<osg::Vec3f> placed;
-                for (const MeshInstance& instance : scene.placements().getAll())
-                    placed.push_back(osg::Vec3f(0.0f, 0.0f, 0.0f) * instance.mTransform);
+                for (const PlacementRow& row : scene.placements().getRows())
+                    placed.push_back(osg::Vec3f(0.0f, 0.0f, 0.0f) * row.mInstance.mTransform);
 
                 return placed;
             };
@@ -172,9 +172,9 @@ namespace Rtx::Testing
 
             EXPECT_EQ(stats.mMeshesAdded, 1u);
             EXPECT_EQ(stats.mMeshesReused, 1u);
-            const std::span<const Rtx::MeshInstance> placed = mScene.placements().getAll();
+            const std::span<const Rtx::PlacementRow> placed = mScene.placements().getRows();
             ASSERT_EQ(placed.size(), 2u);
-            EXPECT_EQ(placed[0].mMesh, placed[1].mMesh);
+            EXPECT_EQ(placed[0].mInstance.mMesh, placed[1].mInstance.mMesh);
 
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
             EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
@@ -203,7 +203,7 @@ namespace Rtx::Testing
             // The night branch was not walked, so it is not a mesh either: one added rather than two.
             EXPECT_EQ(noon.mMeshesAdded, 1u);
             EXPECT_EQ(noon.mInstances, 1u);
-            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
 
             root->setSingleChildOn(1);
@@ -218,10 +218,10 @@ namespace Rtx::Testing
             // leaving the graph costs — and gone after it, in its own slot rather than by
             // renumbering the one that arrived.
             EXPECT_EQ(mExtractor.retire().mMeshes, 1u);
-            EXPECT_EQ(mScene.placements().getPlacedCount(), 1u);
-            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
-            EXPECT_FALSE(mScene.placements().getAll()[0].isPlaced()) << "the day branch outlived the sweep";
-            ASSERT_TRUE(mScene.placements().getAll()[1].isPlaced());
+            EXPECT_EQ(mScene.placements().getCounts().mPlaced, 1u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
+            EXPECT_FALSE(mScene.placements().getRows()[0].mInstance.isPlaced()) << "the day branch outlived the sweep";
+            ASSERT_TRUE(mScene.placements().getRows()[1].mInstance.isPlaced());
             EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
@@ -244,7 +244,7 @@ namespace Rtx::Testing
             const ExtractionStats stats = walk(*root);
             EXPECT_EQ(stats.mMeshesAdded, 1u) << "the far level was read";
             EXPECT_EQ(stats.mInstances, 1u);
-            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 20.0f, 0.0f)) << "the far level stands";
         }
 
@@ -256,8 +256,8 @@ namespace Rtx::Testing
             mExtractor.extract(*inner, osg::Matrixf::translate(0.0f, 0.0f, 5.0f), 0);
 
             // The quad's (1,1,0) corner doubles to (2,2,0), then rises by five.
-            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
-            EXPECT_EQ(osg::Vec3f(1.0f, 1.0f, 0.0f) * mScene.placements().getAll()[0].mTransform,
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
+            EXPECT_EQ(osg::Vec3f(1.0f, 1.0f, 0.0f) * mScene.placements().getRows()[0].mInstance.mTransform,
                 osg::Vec3f(2.0f, 2.0f, 5.0f));
         }
 
@@ -277,8 +277,8 @@ namespace Rtx::Testing
 
             walk(*scale);
 
-            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
-            const osg::Matrixf& place = mScene.placements().getAll()[0].mTransform;
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
+            const osg::Matrixf& place = mScene.placements().getRows()[0].mInstance.mTransform;
 
             // (1,0,0) shifts to (4,0,0), turns to (0,4,0), and scales to (0,8,0). Order is the whole
             // of what this asserts: composed the other way round it would be (0,2,0) moved to
@@ -326,7 +326,7 @@ namespace Rtx::Testing
             EXPECT_EQ(reads->mSaw, osg::NodeVisitor::NODE_VISITOR) << "the transform was handed a null visitor";
 
             // And it still placed what was under it, at the transform it asked for.
-            ASSERT_EQ(mScene.placements().getPlacedCount(), 1u);
+            ASSERT_EQ(mScene.placements().getCounts().mPlaced, 1u);
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 4.0f));
         }
 
@@ -359,8 +359,8 @@ namespace Rtx::Testing
                 mExtractor.setEye(eye);
                 mScene.clearPlacement();
                 walk(*parent, 0, frame);
-                EXPECT_EQ(mScene.placements().getPlacedCount(), 1u);
-                const osg::Matrixf& place = mScene.placements().getAll()[0].mTransform;
+                EXPECT_EQ(mScene.placements().getCounts().mPlaced, 1u);
+                const osg::Matrixf& place = mScene.placements().getRows()[0].mInstance.mTransform;
                 return std::pair(osg::Matrixf::transform3x3(osg::Vec3f(0.0f, 0.0f, 1.0f), place),
                     osg::Matrixf::transform3x3(osg::Vec3f(0.0f, 1.0f, 0.0f), place));
             };
@@ -435,7 +435,7 @@ namespace Rtx::Testing
 
             walk(*above);
 
-            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
 
             // The absolute one stands at its own translation and nowhere near the hundred above it.
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 7.0f));
@@ -470,8 +470,8 @@ namespace Rtx::Testing
             // at two places is still two rows of the acceleration structure — placements are not
             // deduplicated — but a second pass over an unchanged graph finds the slots those two
             // already hold rather than making two more. Nothing was added, and nothing moved.
-            EXPECT_EQ(mScene.placements().getPlacedCount(), 2u);
-            EXPECT_EQ(mScene.placements().getAll().size(), 2u);
+            EXPECT_EQ(mScene.placements().getCounts().mPlaced, 2u);
+            EXPECT_EQ(mScene.placements().getRows().size(), 2u);
 
             mScene.placements().advance();
             EXPECT_EQ(walk(*root).mInstances, 2u);
@@ -490,7 +490,7 @@ namespace Rtx::Testing
             mExtractor.extract(*shared, osg::Matrixf::translate(10.0f, 0.0f, 0.0f), 1);
             mExtractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
 
-            ASSERT_EQ(mScene.placements().getPlacedCount(), 2u);
+            ASSERT_EQ(mScene.placements().getCounts().mPlaced, 2u);
             EXPECT_EQ(mScene.meshes().getRows().size(), 1u) << "one model is still one mesh";
 
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));

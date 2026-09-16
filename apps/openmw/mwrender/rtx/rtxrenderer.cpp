@@ -138,13 +138,14 @@ namespace MWRender
         RtxSetup playedSetup()
         {
             return RtxSetup{
-                .mProfile = profileFromSettings(),
-                .mValidation
-                = { .mLevel = Rtx::sValidationByDefault ? Rtx::ValidationLevel::On : Rtx::ValidationLevel::Off },
-                .mHeadless = false,
-                .mCountHits = false,
-                .mStep = std::nullopt,
-                .mSettled = std::nullopt,
+                .mSetup = {
+                    .mProfile = profileFromSettings(),
+                    .mValidation
+                    = { .mLevel = Rtx::sValidationByDefault ? Rtx::ValidationLevel::On : Rtx::ValidationLevel::Off },
+                    .mHeadless = false,
+                    .mStep = std::nullopt,
+                    .mSettled = std::nullopt,
+                },
                 .mRun = sPlayedRun,
             };
         }
@@ -235,8 +236,10 @@ namespace MWRender
         : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
         , mMirror(knobsFromSettings())
-        , mSetup(spec.mRtx != nullptr ? *spec.mRtx : playedSetup())
+        , mInstalled(spec.mRtx != nullptr ? *spec.mRtx : playedSetup())
     {
+        const Rtx::RunSetup& setup = mInstalled.mSetup;
+
         // **Made here, because there is no viewer to make them.** Every renderer needs the four and
         // one built on `osgViewer` gets them already wired together.
         const osg::ref_ptr<osg::Camera> camera = new osg::Camera;
@@ -250,7 +253,7 @@ namespace MWRender
 
         adopt(*camera, *frameStamp, *stats);
 
-        createWindow(mSetup.mHeadless);
+        createWindow(setup.mHeadless);
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -270,7 +273,7 @@ namespace MWRender
         // **The run's answer.** A launcher making a measurement says on its command line whether
         // the layers load, because a figure taken under them is not one to compare against
         // anything; `playedSetup` says what a session with no command line answers.
-        options.mValidation = mSetup.mValidation;
+        options.mValidation = setup.mValidation;
 
         // **The two finer levels, asked for by name and never on by themselves.** The build decides
         // whether the layers load; these decide what they check, and each costs far more than the
@@ -293,19 +296,22 @@ namespace MWRender
         if (askedFor("OPENMW_RTX_GPU_VALIDATION"))
             options.mValidation.mLevel = Rtx::ValidationLevel::Gpu;
 
-        options.mCountHits = mSetup.mCountHits;
+        // **Counted exactly where a run is installed.** The count is a report's figure — it is
+        // what tells "the cell rendered" from "the camera faced away from it" — and nothing a
+        // player does ever reads it, so a played session is specialized without the atomic rather
+        // than writing a number to a buffer nobody looks at, once per pixel that hit anything.
+        options.mCountHits = spec.mRtx != nullptr;
 
         // **The knobs a measurement turns, handed over whole where the renderer is built**, so a
         // picture taken by the harness and a frame drawn by the game come from one configuration.
-        options.mProfile = mSetup.mProfile;
+        options.mProfile = setup.mProfile;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
         // one word a reader of any single line needs, and the rest — which network, at what pair of
         // sizes — is here, where it was chosen.
-        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::sUpscaleNames.name(mSetup.mProfile.mUpscaling.mMode)
-                         << ", Ray Reconstruction preset "
-                         << Rtx::sPresetNames.name(mSetup.mProfile.mUpscaling.mPreset);
+        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::sUpscaleNames.name(setup.mProfile.mUpscaling.mMode)
+                         << ", Ray Reconstruction preset " << Rtx::sPresetNames.name(setup.mProfile.mUpscaling.mPreset);
 
         // **Grass hangs off the quad tree, and this renderer has the game build none.** Its ground
         // is the cell ring's, and a quad tree beside it would build chunks nothing traces; a setting
@@ -333,7 +339,7 @@ namespace MWRender
         // would adapt by different amounts and draw different pictures. So the step is the run's
         // and nothing else's; `playedSetup` says why a played session and a run somebody watches
         // both state none.
-        mClock = Rtx::FrameClock(mSetup.mStep);
+        mClock = Rtx::FrameClock(setup.mStep);
 
         // **The same step decides whether the ground waits, unless the run says otherwise.** A
         // composite comes back whenever the baker finishes it, so which frame it lands on is a
@@ -347,9 +353,9 @@ namespace MWRender
         // one frame after a tenth of one.
         //
         // **And a run that means to time the streaming path overrides it**, because waiting is
-        // most of what that path then measures. `Rtx::SessionRequest::mSettled` says what the
+        // most of what that path then measures. `Rtx::RunSetup::mSettled` says what the
         // override costs and what it buys.
-        mMirror.setSettled(mSetup.mSettled.value_or(mClock.getStatedStep().has_value()));
+        mMirror.setSettled(setup.mSettled.value_or(mClock.getStatedStep().has_value()));
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -520,7 +526,7 @@ namespace MWRender
 
     void RtxRenderer::tickSchedule()
     {
-        mSetup.mRun.beforeFrame();
+        mInstalled.mRun.beforeFrame();
     }
 
     void RtxRenderer::updateTraversal()
@@ -904,7 +910,7 @@ namespace MWRender
         // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
         // because a second whole-graph walk is the largest cost a frame has.
         mWalked.mAgain.reset();
-        if (mSetup.mRun.wantsSecondWalk())
+        if (mInstalled.mRun.wantsSecondWalk())
             mWalked.mAgain = mMirror.mirror(frame, mFrame);
 
         // After the last walk, because a walk clears the frame's lists.
@@ -925,7 +931,7 @@ namespace MWRender
 
     void RtxRenderer::traceWorld(const SceneFrame& frame, FrameReport& report, const std::optional<double> since)
     {
-        if (mMirror.getScene().placements().getPlacedCount() == 0)
+        if (mMirror.getScene().placements().getCounts().mPlaced == 0)
             return;
 
         finishBehind(report);
@@ -1044,14 +1050,14 @@ namespace MWRender
         // **The stop's own count where a run is being made, and the game's frame number
         // otherwise.** `RtxRun::getSampleFrame` says why: a measured run has to walk the same
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
-        constants->mFrame = mSetup.mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(mFrame));
+        constants->mFrame = mInstalled.mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(mFrame));
 
         // **Both hosts light the world by the profile's rules.** `Rtx::makeCameraFromView` names
         // every field it fills and leaves the rest value-initialised, and `texturing.glsl`
         // short-circuits on a `mDelight` of nought, handing the trace Bethesda's textures with
         // their painted lighting still in them.
-        constants->mDelight = mSetup.mProfile.mDelight;
-        constants->mShowAlbedo = mSetup.mProfile.mShowAlbedo ? 1u : 0u;
+        constants->mDelight = mInstalled.mSetup.mProfile.mDelight;
+        constants->mShowAlbedo = mInstalled.mSetup.mProfile.mShowAlbedo ? 1u : 0u;
 
         return constants;
     }
@@ -1066,7 +1072,7 @@ namespace MWRender
 
         // **The schedule's and not the profile's**, because a warm-up is not averaged in — a picture
         // of a half-built cell in the sum is what `RtxRun::getAccumulated` exists to keep out.
-        const std::uint32_t accumulated = mSetup.mRun.getAccumulated();
+        const std::uint32_t accumulated = mInstalled.mRun.getAccumulated();
 
         // **The bias is carried rather than worked out here**, because a room is the exception to
         // the rule that would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell
@@ -1078,8 +1084,8 @@ namespace MWRender
         // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
 
-        Rtx::FrameOptions options
-            = Rtx::FrameOptions::forFrame(mSetup.mProfile, accumulated, mClock.getStatedStep(), exposureBias);
+        Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
+            mInstalled.mSetup.mProfile, accumulated, mClock.getStatedStep(), exposureBias);
         options.mRipples = mMirror.getScene().ripples();
 
         // What the debug modes drew, read off the world root here, after the game's own update
@@ -1099,7 +1105,7 @@ namespace MWRender
             report.mUnreadableTextures = mUnreadable;
 
             if (report.mResult.has_value())
-                mSetup.mRun.frame(describeContext(), report);
+                mInstalled.mRun.frame(describeContext(), report);
 
             // **Every frame and not the ones the device answered for**, because what this reads is
             // the wall between two traces and the device's answer is not part of it. Once a
@@ -1123,7 +1129,7 @@ namespace MWRender
             // brazier and raindrop had stopped read exactly like one whose emitters were running.
             Log(Debug::Info) << "Ray tracing: waited " << mSpeed.getWaitMs()
                              << " ms a frame for the device over the last " << mSpeed.getFrames() << ", tracing "
-                             << scene.placements().getPlacedCount() << " instances and " << scene.emitters().size()
+                             << scene.placements().getCounts().mPlaced << " instances and " << scene.emitters().size()
                              << " emitters holding " << scene.sprites().size() << " sprites at " << extents.mRenderWidth
                              << "x" << extents.mRenderHeight << ", reconstructed by "
                              << Rtx::sDenoiserNames.name(report.mReconstruction.mDenoiser) << " to "

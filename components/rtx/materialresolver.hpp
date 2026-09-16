@@ -185,11 +185,13 @@ namespace Rtx
         Material describe(
             const SurfaceDescription* described, bool animated, std::optional<bool> diffuseSolid, Worn* worn);
 
-        /// The slot `key` already holds, stamped and counted as a reuse, or `sNoIndex`.
-        Index reuse(const osg::StateSet* key);
+        using Entry = Identity<const osg::StateSet, HeldMaterial>::Entry;
+
+        /// The entry `key` already holds, stamped and counted as a reuse, or the map's end. The
+        /// one spelling of meeting a known material, whichever of the three ways in met it.
+        Entry reuse(const osg::StateSet* key);
 
         /// Adds `material` under `key`, counted as an arrival.
-        using Entry = Identity<const osg::StateSet, HeldMaterial>::Entry;
         Entry adopt(const osg::StateSet* key, const Material& material);
 
         /// Gives back every hold `worn` took on the images it names.

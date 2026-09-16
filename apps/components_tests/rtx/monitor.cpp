@@ -121,6 +121,28 @@ namespace Rtx
             EXPECT_NO_THROW(served.mMonitor.rethrowFailure());
         }
 
+        /// A monitor closed by a failure is opened again for the next worker, which serves as if
+        /// nothing had happened: `CellSupply::follow` does this for every world it is pointed at.
+        TEST(RtxMonitorTest, aReopenedMonitorServesTheNextWorker)
+        {
+            Served served;
+            served.mTurn = [](int, std::stop_token) { throw std::runtime_error("the first reader"); };
+            served.start();
+            served.give(1);
+            EXPECT_TRUE(served.awaitDone(1).empty());
+
+            served.mWorker.stop();
+            EXPECT_THROW(served.mMonitor.rethrowFailure(), std::runtime_error);
+            served.mMonitor.reopen();
+
+            served.mTurn = [](int, std::stop_token) {};
+            served.start();
+            served.give(2);
+
+            EXPECT_EQ(served.awaitDone(1), (std::vector<int>{ 2 })) << "a reopened monitor still refused its worker";
+            EXPECT_NO_THROW(served.mMonitor.rethrowFailure());
+        }
+
         /// A stop drops what is still queued rather than taking one more turn nobody collects.
         ///
         /// **The turn is what holds the join up.** A bake is tens of milliseconds, so a loop that

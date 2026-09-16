@@ -226,7 +226,7 @@ namespace Rtx
         subject.mUploader.hand(
             mRenderer, SceneUploader::Handing{ .mSlot = subject.mSlot, .mScene = *subject.mScene, .mImages = images });
 
-        return subject.mScene->placements().getPlacedCount() > 0;
+        return subject.mScene->placements().getCounts().mPlaced > 0;
     }
 
     void OffscreenTrace::traceInto(const GuiSlot texture, const bool readBack)

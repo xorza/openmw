@@ -43,7 +43,7 @@ namespace Rtx
         // Whether the backend holds this scene in this slot: appending onto a slot something else
         // filled would begin the descriptions past the end of this scene's own table.
         const SceneHeld held = renderer.describeHeld(slot);
-        const bool mine = mBuilt && held.mBuilt;
+        const bool mine = held.mBuilt && held.mScene == &scene;
 
         // Here rather than where a walk ends, because a scene can be walked more than once. The
         // game walks its precipitation beside its world, and a light met by the second walk would be
@@ -110,7 +110,6 @@ namespace Rtx
             if (!mine)
             {
                 renderer.setScene(slot, tables, mTextures.getDescriptions());
-                mBuilt = true;
                 done.mKind = SceneUpload::Kind::Rebuilt;
             }
             else

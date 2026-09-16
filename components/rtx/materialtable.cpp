@@ -19,6 +19,11 @@ namespace Rtx
         if (row == what)
             return false;
 
+        // A rewrite keeps the row's layer run, which is what the material's chunk was given and
+        // what its composite is checked against; one that named other layers would leak the run
+        // it left. Moving a material's layers is a drop and an add.
+        assert(what.mLayers == row.mLayers && "a rewrite that moves a material's layers is a remove and an add");
+
         const bool reclassed = row.getTraversed() != what.getTraversed();
 
         // The new set taken before the old is given back. A flipbook that comes round to a frame

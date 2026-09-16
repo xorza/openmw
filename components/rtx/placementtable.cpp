@@ -5,23 +5,63 @@
 
 namespace Rtx
 {
-    Index PlacementTable::add(const MeshInstance& instance)
+    InstanceCounts PlacementTable::shareOf(const PlacementRow& row)
     {
-        const Index slot = mInstances.take(instance, [this](const std::size_t slots) {
-            mPrevious.resize(slots);
-            mNextWearing.resize(slots, sNoIndex);
-            mPrevWearing.resize(slots, sNoIndex);
-        });
+        const MeshInstance& placed = row.mInstance;
+        const Material::Traversed& worn = row.mWorn;
 
+        // `InstanceRecord::mTranslucent`'s own rule: earned by the material, for a pane, or by the
+        // placement, for an actor the game is fading — and never by a surface that adds, whose
+        // alpha weights what it adds rather than deciding how much of it is there.
+        const bool translucent = !worn.mAdditive && (placed.mOpacity < 1.0f || worn.mTranslucent);
+
+        return InstanceCounts{
+            .mPlaced = 1,
+            .mCutout = worn.mCutout && !translucent ? 1u : 0u,
+            .mWater = worn.mKind == MaterialKind::Water ? 1u : 0u,
+            .mMedium = worn.mMedium ? 1u : 0u,
+            .mAdditive = worn.mAdditive ? 1u : 0u,
+            .mFirstPerson = placed.mClass == InstanceClass::FirstPerson ? 1u : 0u,
+        };
+    }
+
+    void PlacementTable::count(const Index slot)
+    {
+        const InstanceCounts share = shareOf(mRows.at(slot));
+        mCounts.mPlaced += share.mPlaced;
+        mCounts.mCutout += share.mCutout;
+        mCounts.mWater += share.mWater;
+        mCounts.mMedium += share.mMedium;
+        mCounts.mAdditive += share.mAdditive;
+        mCounts.mFirstPerson += share.mFirstPerson;
+    }
+
+    void PlacementTable::discount(const Index slot)
+    {
+        const InstanceCounts share = shareOf(mRows.at(slot));
+        mCounts.mPlaced -= share.mPlaced;
+        mCounts.mCutout -= share.mCutout;
+        mCounts.mWater -= share.mWater;
+        mCounts.mMedium -= share.mMedium;
+        mCounts.mAdditive -= share.mAdditive;
+        mCounts.mFirstPerson -= share.mFirstPerson;
+    }
+
+    Index PlacementTable::add(const MeshInstance& instance, const Material::Traversed& worn)
+    {
         // Standing where it is, not arriving from wherever the last tenant left. A reused slot
         // would otherwise inherit a previous transform from something else entirely, and a motion
         // vector built from that points across the frame.
-        mPrevious[slot] = instance.mTransform;
+        const Index slot = mRows.take(PlacementRow{
+            .mInstance = instance,
+            .mPrevious = instance.mTransform,
+            .mWorn = worn,
+        });
 
         link(slot, instance.mMaterial);
+        count(slot);
 
         mMoved.push_back(slot);
-        ++mPlacedCount;
         return slot;
     }
 
@@ -35,11 +75,12 @@ namespace Rtx
         if (material >= mFirstWearing.size())
             mFirstWearing.resize(std::size_t{ material } + 1, sNoIndex);
 
+        PlacementRow& row = mRows.at(slot);
         const Index first = mFirstWearing[material];
-        mNextWearing[slot] = first;
-        mPrevWearing[slot] = sNoIndex;
+        row.mNextWearing = first;
+        row.mPrevWearing = sNoIndex;
         if (first != sNoIndex)
-            mPrevWearing[first] = slot;
+            mRows.at(first).mPrevWearing = slot;
         mFirstWearing[material] = slot;
     }
 
@@ -48,71 +89,89 @@ namespace Rtx
         if (material == sNoIndex)
             return;
 
-        const Index next = mNextWearing[slot];
-        const Index previous = mPrevWearing[slot];
+        PlacementRow& row = mRows.at(slot);
+        const Index next = row.mNextWearing;
+        const Index previous = row.mPrevWearing;
         if (previous != sNoIndex)
-            mNextWearing[previous] = next;
+            mRows.at(previous).mNextWearing = next;
         else
             mFirstWearing[material] = next;
         if (next != sNoIndex)
-            mPrevWearing[next] = previous;
+            mRows.at(next).mPrevWearing = previous;
 
-        mNextWearing[slot] = sNoIndex;
-        mPrevWearing[slot] = sNoIndex;
+        row.mNextWearing = sNoIndex;
+        row.mPrevWearing = sNoIndex;
     }
 
-    void PlacementTable::rewriteWearing(const Index material)
+    void PlacementTable::rewriteWearing(const Index material, const Material::Traversed& worn)
     {
         if (material >= mFirstWearing.size())
             return;
 
-        for (Index slot = mFirstWearing[material]; slot != sNoIndex; slot = mNextWearing[slot])
+        for (Index slot = mFirstWearing[material]; slot != sNoIndex; slot = mRows.at(slot).mNextWearing)
+        {
+            discount(slot);
+            mRows.at(slot).mWorn = worn;
+            count(slot);
             mMoved.push_back(slot);
+        }
     }
 
     void PlacementTable::fade(const Index slot, const float opacity)
     {
-        MeshInstance& placed = mInstances.at(slot);
-        assert(placed.isPlaced() && "a slot nothing stands in");
-        assert(placed.mStander == Stander::Walk && "a fade of a placement the ring stood");
+        PlacementRow& row = mRows.at(slot);
+        assert(row.mInstance.isPlaced() && "a slot nothing stands in");
+        assert(row.mInstance.mStander == Stander::Walk && "a fade of a placement the ring stood");
 
-        if (placed.mOpacity == opacity)
+        if (row.mInstance.mOpacity == opacity)
             return;
 
-        placed.mOpacity = opacity;
+        // Counted again, because whether a cutout is asked its question turns on the opacity.
+        discount(slot);
+        row.mInstance.mOpacity = opacity;
+        count(slot);
+
         mMoved.push_back(slot);
     }
 
     bool PlacementTable::move(const Index slot, const osg::Matrixf& transform)
     {
-        MeshInstance& placed = mInstances.at(slot);
-        assert(placed.isPlaced() && "a slot nothing stands in");
-        assert(placed.mStander == Stander::Walk && "a move of a placement the ring stood");
+        PlacementRow& row = mRows.at(slot);
+        assert(row.mInstance.isPlaced() && "a slot nothing stands in");
+        assert(row.mInstance.mStander == Stander::Walk && "a move of a placement the ring stood");
 
-        if (placed.mTransform == transform)
+        if (row.mInstance.mTransform == transform)
             return false;
 
-        placed.mTransform = transform;
+        row.mInstance.mTransform = transform;
         mMoved.push_back(slot);
         return true;
     }
 
     void PlacementTable::drop(const Index slot, const Stander by)
     {
-        assert(mInstances.at(slot).isPlaced() && "a slot dropped twice, or one nothing stood in");
-        assert(mInstances.at(slot).mStander == by && "a slot dropped by a stander that did not stand it");
+        PlacementRow& row = mRows.at(slot);
+        assert(row.mInstance.isPlaced() && "a slot dropped twice, or one nothing stood in");
+        assert(row.mInstance.mStander == by && "a slot dropped by a stander that did not stand it");
 
-        unlink(slot, mInstances.at(slot).mMaterial);
-        mInstances.at(slot) = MeshInstance{};
-        mInstances.free(slot);
+        unlink(slot, row.mInstance.mMaterial);
+        discount(slot);
+
+        // Emptied, so a slot keeps no link: what the row holds after this is what `isPlaced`
+        // says, and nothing else reads it until `add` writes it whole.
+        row = PlacementRow{};
+
+        mRows.free(slot);
         mMoved.push_back(slot);
-        --mPlacedCount;
     }
 
     void PlacementTable::advance()
     {
         for (const Index slot : mMoved)
-            mPrevious[slot] = mInstances.at(slot).mTransform;
+        {
+            PlacementRow& row = mRows.at(slot);
+            row.mPrevious = row.mInstance.mTransform;
+        }
 
         // Swapped and not copied: the two lists trade buffers, and neither allocates on the frame.
         mSettled.swap(mMoved);

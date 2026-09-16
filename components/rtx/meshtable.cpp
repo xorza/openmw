@@ -36,14 +36,10 @@ namespace Rtx
         assert(indices.size() % 3 == 0);
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
         assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
-        assert(deform != Deform::Rig
-            || (deformer < mDeformers.getRigs().size()
-                && mDeformers.getRigs()[deformer].getVertexCount() == positions.size()
-                && "a rig skins exactly the vertices of the mesh on it"));
-        assert(deform != Deform::Morph
-            || (deformer < mDeformers.getMorphs().size()
-                && mDeformers.getMorphs()[deformer].getVertexCount() == positions.size()
-                && "a morph moves exactly the vertices of the mesh on it"));
+        assert(deform == Deform::None
+            || (deformer < mDeformers.getDeformers().size() && mDeformers.getDeformers()[deformer].mKind == deform
+                && mDeformers.getDeformers()[deformer].getVertexCount() == positions.size()
+                && "a deformer moves exactly the vertices of the mesh on it"));
 
         if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
             throw Error("a mesh of " + std::to_string(positions.size()) + " vertices and "

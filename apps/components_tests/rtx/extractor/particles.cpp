@@ -9,6 +9,7 @@
 #include <osg/Matrix>
 #include <osg/StateAttribute>
 #include <osg/StateSet>
+#include <osg/Texture2D>
 #include <osg/Vec3d>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
@@ -23,6 +24,8 @@
 
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
+#include <components/rtx/texturetable.hpp>
+#include <components/sceneutil/statesetupdater.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace Rtx::Testing
@@ -133,9 +136,9 @@ namespace Rtx::Testing
             EXPECT_FLOAT_EQ(mScene.emitters().front().mReach, 8.0f);
 
             // The texture, and beside it the bake of its alpha the sprites are lit by.
-            ASSERT_EQ(mScene.textures().getPaths().size(), 2u);
-            EXPECT_EQ(mScene.textures().getPaths()[0], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            EXPECT_EQ(mScene.textures().getBaked()[1],
+            ASSERT_EQ(mScene.textures().getRows().size(), 2u);
+            EXPECT_EQ(mScene.textures().getRows()[0].mPath, VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_EQ(mScene.textures().getRows()[1].mBaked,
                 SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
             EXPECT_EQ(mScene.emitters().front().mTexture, 0u);
             EXPECT_EQ(mScene.emitters().front().mLighting, 1u);
@@ -264,7 +267,7 @@ namespace Rtx::Testing
             // The texture is registered the moment the emitter is met, alive or not: it is what the
             // array is built from, and one that turns up two hundred frames later has nowhere to go.
             // The bake of its alpha arrives with it, for the same reason.
-            EXPECT_EQ(mScene.textures().getPaths().size(), 2u);
+            EXPECT_EQ(mScene.textures().getRows().size(), 2u);
 
             // A particle's whole silhouette is that texture's alpha, so an emitter with none draws
             // nothing rather than a white disc.
@@ -276,7 +279,7 @@ namespace Rtx::Testing
             Rtx::SceneDesc bareScene;
             SceneExtractor bareExtractor(bareScene);
             EXPECT_EQ(bareExtractor.extract(*bare, osg::Matrixf::identity(), 0).mEmitters, 0u);
-            EXPECT_TRUE(bareScene.textures().getPaths().empty());
+            EXPECT_TRUE(bareScene.textures().getRows().empty());
         }
 
         /// An emitter's sprite is on no material, so the sweep has to speak for it itself.
@@ -296,7 +299,7 @@ namespace Rtx::Testing
             both->addChild(plume.mRoot);
 
             walk(*both);
-            ASSERT_EQ(mScene.textures().getPaths().size(), 3u) << "the stone's, the sprite's and the sprite's bake";
+            ASSERT_EQ(mScene.textures().getRows().size(), 3u) << "the stone's, the sprite's and the sprite's bake";
             ASSERT_TRUE(mExtractor.retire().empty());
 
             mScene.clearPlacement();
@@ -311,10 +314,11 @@ namespace Rtx::Testing
             // that the sprite's texture is still *named*, which is the thing the emitter map exists
             // for: a sprite hangs off no material, so nothing else holds it. The stone's went with
             // the stone's material, which is the other half of the same statement.
-            ASSERT_EQ(mScene.textures().getPaths().size(), 3u);
-            EXPECT_TRUE(mScene.textures().getPaths()[0].value().empty()) << "the stone's texture outlived the stone";
-            EXPECT_EQ(mScene.textures().getPaths()[1], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            EXPECT_FALSE(mScene.textures().getBaked()[2].empty()) << "the sprite's bake went with the stone";
+            ASSERT_EQ(mScene.textures().getRows().size(), 3u);
+            EXPECT_TRUE(mScene.textures().getRows()[0].mPath.value().empty())
+                << "the stone's texture outlived the stone";
+            EXPECT_EQ(mScene.textures().getRows()[1].mPath, VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_FALSE(mScene.textures().getRows()[2].mBaked.empty()) << "the sprite's bake went with the stone";
 
             // And the emitter still draws with it.
             mScene.clearPlacement();
@@ -323,7 +327,7 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.emitters().size(), 1u);
             EXPECT_EQ(mScene.emitters().front().mTexture, 1u) << "the sprite lost the slot it was given";
             EXPECT_EQ(mScene.emitters().front().mLighting, 2u) << "the bake lost the slot it was given";
-            EXPECT_EQ(mScene.textures().getPaths().size(), 3u) << "the sprite's path was added a second time";
+            EXPECT_EQ(mScene.textures().getRows().size(), 3u) << "the sprite's path was added a second time";
 
             // **And the other way round, on the frame the sweep does not look at.** The stone comes
             // back and then the emitter goes, taking no mesh and no material with it — which is
@@ -332,14 +336,90 @@ namespace Rtx::Testing
             mScene.clearPlacement();
             walk(*both);
             ASSERT_TRUE(mExtractor.retire().empty());
-            ASSERT_EQ(mScene.textures().getPaths()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
+            ASSERT_EQ(mScene.textures().getRows()[0].mPath, VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
 
             mScene.clearPlacement();
             walk(*stone);
 
             EXPECT_TRUE(mExtractor.retire().empty()) << "an emitter is neither a mesh nor a material";
-            EXPECT_TRUE(mScene.textures().getPaths()[1].value().empty()) << "the sprite outlived the emitter";
-            EXPECT_TRUE(mScene.textures().getBaked()[2].empty()) << "the bake outlived the emitter";
+            EXPECT_TRUE(mScene.textures().getRows()[1].mPath.value().empty()) << "the sprite outlived the emitter";
+            EXPECT_TRUE(mScene.textures().getRows()[2].mBaked.empty()) << "the bake outlived the emitter";
+        }
+
+        /// What a system draws with is read off its chain once and kept: a texture swapped on a
+        /// state set behind the walk's back is not seen, because nothing on the chain animates and
+        /// a chain that does not is read exactly once — and under a controller, which is the one
+        /// thing that can change what a system draws with, the swap is followed and the slots
+        /// change hands.
+        TEST_F(RtxSceneExtractorTest, anEmittersSpriteIsReadOnceUnlessItsChainAnimates)
+        {
+            const Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/true);
+            emit(*plume.mParticles, osg::Vec3f(), 1.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f));
+
+            walk(*plume.mRoot);
+            ASSERT_EQ(mScene.emitters().size(), 1u);
+            const Index first = mScene.emitters().front().mTexture;
+            EXPECT_EQ(mScene.textures().getRows()[first].mPath, VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+
+            // Unit nought rebound by hand, which no controller did.
+            osg::ref_ptr<osg::Image> second = new osg::Image;
+            second->setFileName("textures/tx_fire_01.dds");
+            plume.mRoot->getStateSet()->setTextureAttribute(0, new osg::Texture2D(second), osg::StateAttribute::ON);
+
+            mScene.clearPlacement();
+            walk(*plume.mRoot);
+            ASSERT_EQ(mScene.emitters().size(), 1u);
+            EXPECT_EQ(mScene.emitters().front().mTexture, first) << "a chain nothing animates was read again";
+            EXPECT_EQ(mScene.textures().getRows().size(), 2u);
+
+            /// A controller on the root, which is what makes the chain one the walk reads again.
+            class Rebind : public SceneUtil::StateSetUpdater
+            {
+            public:
+                osg::ref_ptr<osg::Image> mSheet;
+
+                void setDefaults(osg::StateSet* stateset) override
+                {
+                    stateset->setTextureAttribute(0, new osg::Texture2D(mSheet), osg::StateAttribute::ON);
+                }
+
+                void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
+                {
+                    stateset->setTextureAttribute(0, new osg::Texture2D(mSheet), osg::StateAttribute::ON);
+                }
+            };
+
+            osg::ref_ptr<Rebind> controller = new Rebind;
+            controller->mSheet = second;
+            plume.mRoot->addUpdateCallback(controller);
+
+            mScene.clearPlacement();
+            walk(*plume.mRoot);
+            ASSERT_EQ(mScene.emitters().size(), 1u);
+            const Index swapped = mScene.emitters().front().mTexture;
+            EXPECT_EQ(mScene.textures().getRows()[swapped].mPath, VFS::Path::NormalizedView("textures/tx_fire_01.dds"))
+                << "an animated chain kept the sprite it no longer wears";
+
+            // The old sheet and its bake went back with the swap and the new pair took their
+            // slots: nothing else named them, and the table is no longer than it was.
+            EXPECT_EQ(mScene.textures().getRows().size(), 2u);
+            for (const TextureRow& row : mScene.textures().getRows())
+                EXPECT_NE(row.mPath, VFS::Path::NormalizedView("textures/tx_fire_00.dds"))
+                    << "the sprite an emitter stopped wearing was kept";
+
+            // And a chain that animates to an image with no file is a system that draws nothing:
+            // its slots go back once, on the frame it lost them, and the sweep after gives back
+            // nothing twice.
+            controller->mSheet = new osg::Image;
+            mScene.clearPlacement();
+            walk(*plume.mRoot);
+            EXPECT_TRUE(mScene.emitters().empty()) << "a system with no sprite drew";
+            for (const TextureRow& row : mScene.textures().getRows())
+                EXPECT_EQ(row.mKind, TextureKind::Free) << "a slot the emitter stopped wearing was kept";
+
+            mScene.clearPlacement();
+            walk(*plume.mRoot);
+            EXPECT_TRUE(mScene.emitters().empty());
         }
 
         /// Gives a plume what makes it run: something emitting at a fixed rate, and the updater

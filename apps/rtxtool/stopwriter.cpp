@@ -148,8 +148,8 @@ namespace RtxTool
                         "  vertex+index bytes:   {} KiB\n"
                         "  handed over:          {}\n"
                         "  laid out as:          {}\n",
-                scene.placements().getPlacedCount(), stats.mDistantStatics, stats.mGroundCells,
-                scene.meshes().getRows().size(), scene.materials().getRows().size(), scene.textures().getPaths().size(),
+                scene.placements().getCounts().mPlaced, stats.mDistantStatics, stats.mGroundCells,
+                scene.meshes().getRows().size(), scene.materials().getRows().size(), scene.textures().getRows().size(),
                 scene.meshes().getTriangleCount(), scene.meshes().getGeometryBytes() / 1024,
                 Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
@@ -253,9 +253,9 @@ namespace RtxTool
 
         // The sheet carries no lettering, so the order is printed instead: left to right, top to
         // bottom, the way it was drawn.
-        const std::span<const VFS::Path::Normalized> paths = scene.textures().getPaths();
-        for (std::size_t at = 0; at < paths.size(); ++at)
-            into.mRecord.note(std::format("  {}  {}\n", at, paths[at].value()));
+        const std::span<const Rtx::TextureRow> rows = scene.textures().getRows();
+        for (std::size_t at = 0; at < rows.size(); ++at)
+            into.mRecord.note(std::format("  {}  {}\n", at, rows[at].mPath.value()));
 
         into.mRecord.note(std::format(
             "wrote {}, {} textures at delight {}\n", Files::pathToUnicodeString(sheet), drawn.mCount, delight));
@@ -357,14 +357,15 @@ namespace RtxTool
     void StopWriter::reportFound(const Writing& into, const std::string& needle)
     {
         const Rtx::SceneDesc& scene = into.mContext.mScene;
-        const std::span<const VFS::Path::Normalized> paths = scene.textures().getPaths();
+        const std::span<const Rtx::TextureRow> rows = scene.textures().getRows();
 
         // **Found by texture and reported by placement**, because a mesh carries no name of its own
         // once it is a run of triangles: what a walk keeps is the material it arrived wearing, and a
         // material names the file it samples.
         std::uint32_t met = 0;
-        for (const Rtx::MeshInstance& instance : scene.placements().getAll())
+        for (const Rtx::PlacementRow& row : scene.placements().getRows())
         {
+            const Rtx::MeshInstance& instance = row.mInstance;
             if (!instance.isPlaced())
                 continue;
 
@@ -375,7 +376,7 @@ namespace RtxTool
             if (material.mDiffuse == Rtx::sNoIndex)
                 continue;
 
-            const std::string_view path = paths[material.mDiffuse].value();
+            const std::string_view path = rows[material.mDiffuse].mPath.value();
             if (path.find(needle) == std::string_view::npos)
                 continue;
 
@@ -528,7 +529,7 @@ namespace RtxTool
 
             case Rtx::Check::TexturesReadable:
                 found = std::format("{} of {} textures could not be read", report.mUnreadableTextures,
-                    scene.textures().getPaths().size());
+                    scene.textures().getRows().size());
                 return report.mUnreadableTextures == 0;
 
             case Rtx::Check::CrossingsAppend:

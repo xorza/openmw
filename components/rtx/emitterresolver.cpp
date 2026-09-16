@@ -1,5 +1,6 @@
 #include "emitterresolver.hpp"
 
+#include <algorithm>
 #include <cstdint>
 
 #include <osg/Vec3f>
@@ -45,41 +46,72 @@ namespace Rtx
         }
     }
 
+    void EmitterResolver::describeSprite(HeldSprite& held, const std::span<const Shading> shading)
+    {
+        // One question, because a particle's whole silhouette is its texture's alpha and an emitter
+        // this cannot name a sprite for draws nothing.
+        SurfaceDescription described;
+        const TextureUse& use = described.getTextureUse(TextureRole::Diffuse);
+        const osg::Image* sprite = describeSurface(shading, described) ? use.get() : nullptr;
+        if (sprite != nullptr && sprite->getFileName().empty())
+            sprite = nullptr;
+
+        held.mBlend = described.mBlend;
+        if (sprite == held.mSprite)
+            return;
+
+        // The image changed under a controller, which no shipped system does but a chain that
+        // animates may: the slots for the old one go back and the new one's are taken. Unnamed
+        // in between, or `retire` would give a slot back twice for a system that lost its sprite.
+        releaseSprite(held);
+        held.mIndex = sNoIndex;
+        held.mLighting = sNoIndex;
+        held.mSprite = sprite;
+        if (sprite == nullptr)
+            return;
+
+        const VFS::Path::Normalized path(sprite->getFileName());
+        held.mIndex = mScene.textures().add(path, use.mWrap);
+
+        // The bake is keyed on the file, so two emitters drawing with one texture share one
+        // bake, and it is made when the texture is opened for upload — `SceneTextures`.
+        held.mLighting = mScene.textures().addBaked(SpriteLightMap::keyFor(path));
+
+        // Held, because nothing else can name them. An emitter is a placement and is thrown
+        // away every frame, so this entry is the only lasting thing that says the sprite is in
+        // use; the scene frees the slots when the sweep lets go of them.
+        mScene.textures().hold(held.mIndex);
+        mScene.textures().hold(held.mLighting);
+    }
+
+    void EmitterResolver::releaseSprite(const HeldSprite& held)
+    {
+        mScene.textures().drop(held.mIndex);
+        mScene.textures().drop(held.mLighting);
+    }
+
     void EmitterResolver::add(
         const osgParticle::ParticleSystem& particles, std::span<const Shading> shading, const osg::Matrixf& place)
     {
         ExtractionStats& stats = mPass.getStats();
 
-        // One question and one count, because a particle's whole silhouette is its texture's alpha
-        // and an emitter this cannot name a sprite for draws nothing.
-        SurfaceDescription described;
-        const TextureUse& use = described.getTextureUse(TextureRole::Diffuse);
-        const osg::Image* sprite = describeSurface(shading, described) ? use.get() : nullptr;
-
-        if (sprite == nullptr || sprite->getFileName().empty())
-        {
-            ++stats.mSpritelessEmitters;
-            return;
-        }
-
         // Registered the first time the emitter is seen and not the first time it has a particle
         // alive, or a flame that lights up two hundred frames later would add a texture on a frame
         // that only re-places. In a map of its own, because a sprite's texture is on no material.
         const auto [known, arrived] = mHeld.reach(&particles);
-        if (arrived)
+        HeldSprite& held = known->second;
+
+        // Read where the entry arrives, and again where a link of the chain animates; every other
+        // frame the reading is the one held.
+        const bool animated
+            = std::any_of(shading.begin(), shading.end(), [](const Shading& link) { return link.mAnimated; });
+        if (arrived || animated)
+            describeSprite(held, shading);
+
+        if (held.mSprite == nullptr)
         {
-            const VFS::Path::Normalized path(sprite->getFileName());
-            known->second.mIndex = mScene.textures().add(path, use.mWrap);
-
-            // The bake is keyed on the file, so two emitters drawing with one texture share one
-            // bake, and it is made when the texture is opened for upload — `SceneTextures`.
-            known->second.mLighting = mScene.textures().addBaked(SpriteLightMap::keyFor(path));
-
-            // Held, because nothing else can name them. An emitter is a placement and is thrown
-            // away every frame, so this entry is the only lasting thing that says the sprite is in
-            // use; the scene frees the slots when the sweep below lets go of them.
-            mScene.textures().hold(known->second.mIndex);
-            mScene.textures().hold(known->second.mLighting);
+            ++stats.mSpritelessEmitters;
+            return;
         }
 
         // Noted now and read when the walk is over. Whether this system has been integrated
@@ -89,11 +121,8 @@ namespace Rtx
         mPending.push_back(Pending{
             .mParticles = &particles,
             .mPlace = place,
-            .mTexture = known->second.mIndex,
-            .mLighting = known->second.mLighting,
-            .mBlend = described.mBlend,
+            .mHeld = &held,
             .mFalls = mPass.mFalls,
-            .mSprite = sprite,
         });
     }
 
@@ -111,6 +140,7 @@ namespace Rtx
 
         const osgParticle::ParticleSystem& particles = *pending.mParticles;
         const osg::Matrixf& place = pending.mPlace;
+        const HeldSprite& held = *pending.mHeld;
 
         const float scale = scaleOf(place);
 
@@ -142,8 +172,8 @@ namespace Rtx
         osg::Vec3f axis = orient(authored);
 
         mSpriteScratch.clear();
-        const int held = particles.numParticles();
-        for (int at = 0; at < held; ++at)
+        const int alive = particles.numParticles();
+        for (int at = 0; at < alive; ++at)
         {
             const osgParticle::Particle* particle = particles.getParticle(at);
 
@@ -162,7 +192,7 @@ namespace Rtx
             // A blend that adds whole reads no alpha at all, so its sprite is all there whatever
             // its ramps say — one file in the game, and its silhouette is still its texture's.
             const osg::Vec4f colour = particle->getCurrentColor();
-            const float alpha = pending.mBlend == BlendKind::AddWhole ? 1.0f : colour.a() * particle->getCurrentAlpha();
+            const float alpha = held.mBlend == BlendKind::AddWhole ? 1.0f : colour.a() * particle->getCurrentAlpha();
             if (!(alpha > 0.0f))
                 continue;
 
@@ -186,10 +216,10 @@ namespace Rtx
         if (mSpriteScratch.empty())
             return;
 
-        stats.mFormats.count(*pending.mSprite);
+        stats.mFormats.count(*held.mSprite);
 
-        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mBlend != BlendKind::Over, width, pending.mLighting,
-            pending.mFalls);
+        mScene.addEmitter(
+            mSpriteScratch, held.mIndex, held.mBlend != BlendKind::Over, width, held.mLighting, pending.mFalls);
 
         ++stats.mEmitters;
         stats.mSprites += static_cast<std::uint32_t>(mSpriteScratch.size());
@@ -200,9 +230,6 @@ namespace Rtx
         // The sprite's own references go back with the emitter that took them, which is what makes
         // an emitter leaving enough to free its textures — a frame where no mesh and no material
         // died is exactly the frame the mirror's sweep returns from without looking.
-        mHeld.retire([this](const HeldSprite& held) {
-            mScene.textures().drop(held.mIndex);
-            mScene.textures().drop(held.mLighting);
-        });
+        mHeld.retire([this](const HeldSprite& held) { releaseSprite(held); });
     }
 }

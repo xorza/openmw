@@ -132,8 +132,10 @@ namespace Rtx
         // table by address, which it has once the table is taken; the shelter launch reads the
         // block and zeroes the drops under a roof in that table; and the shade and the bin read
         // what is left. Every launch after reads the same block.
-        SpriteBin& bin = mBins.at(what.mTraceSlot);
         const VisibilityInputs& inputs = what.mInputs;
+        assert(inputs.mChannels == mChannels.get() && "a trace whose inputs name another chain's channels");
+
+        SpriteBin& bin = mBins.at(inputs.mTraceSlot);
         const bool bins = inputs.mSpriteList == 0;
         const SpriteSource sprites = what.mBuffers->describeSprites(inputs.mSlot);
         if (bins)
@@ -143,14 +145,13 @@ namespace Rtx
 
         if (bins)
         {
-            mVisibility.recordSpriteShelter(commands, inputs, *mChannels, *what.mCounts, what.mSampled,
-                sprites.mSpriteCount, what.mTraceSlot, what.mTimer);
+            mVisibility.recordSpriteShelter(commands, inputs, what.mSampled, sprites.mSpriteCount, what.mTimer);
             bin.record(mSpriteShade, mSpriteBin, sprites, what.mAsked.mOrigin, what.mAsked.mCamera,
                 what.mAsked.mSun.mDirection, commands, what.mTimer);
         }
 
         mChannels->begin(commands);
-        mVisibility.record(commands, inputs, *mChannels, *what.mCounts, what.mSampled, what.mTraceSlot, what.mTimer);
+        mVisibility.record(commands, inputs, what.mSampled, what.mTimer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote where

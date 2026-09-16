@@ -118,10 +118,10 @@ namespace Rtx
             return Shaders::GpuLayer{
                 .mDiffuse = layer.mDiffuse,
                 .mMaskOffset = layer.mMask.mOffset,
-                .mMaskWidth = layer.mMaskWidth,
-                .mMaskHeight = layer.mMaskHeight,
-                .mDiffuseTransform = layer.mDiffuseTransform,
-                .mMaskTransform = layer.mMaskTransform,
+                .mMaskWidth = layer.mPlacing.mMaskWidth,
+                .mMaskHeight = layer.mPlacing.mMaskHeight,
+                .mDiffuseTransform = layer.mPlacing.mDiffuseTransform,
+                .mMaskTransform = layer.mPlacing.mMaskTransform,
             };
         }
 
@@ -357,7 +357,7 @@ namespace Rtx
         // Indexed by slot, gaps included. A hit reads its slot back as the custom index and
         // looks the row up here directly, so a table that closed its gaps would answer for the
         // wrong placement. A gap's row is never read, so it is never written either.
-        const std::span<const MeshInstance> placements = scene.placements().getAll();
+        const std::span<const PlacementRow> placements = scene.placements().getRows();
 
         const std::size_t had = mInstanceTable.size();
         mInstanceTable.resize(records.size());
@@ -369,8 +369,9 @@ namespace Rtx
 
             Shaders::GpuInstance& row = mInstanceTable.write(static_cast<Index>(at));
             row.mMesh = record.mMesh;
-            row.mMaterial = placements[at].mMaterial == sNoIndex ? sentinel : placements[at].mMaterial;
-            row.mOpacity = placements[at].mOpacity;
+            const MeshInstance& placed = placements[at].mInstance;
+            row.mMaterial = placed.mMaterial == sNoIndex ? sentinel : placed.mMaterial;
+            row.mOpacity = placed.mOpacity;
 
             for (int r = 0; r < 3; ++r)
                 row.mMotion[r] = osg::Vec4f(record.mMotion.mRows[r][0], record.mMotion.mRows[r][1],

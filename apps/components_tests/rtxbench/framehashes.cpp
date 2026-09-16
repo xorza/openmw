@@ -12,16 +12,20 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/BoundingBox>
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include <components/rtx/deformertable.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/skinning.h>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -175,6 +179,51 @@ namespace Rtx
                 const auto [movedScene, movedLayout] = digestsOfMaterial(change);
                 EXPECT_NE(scene, movedScene) << what;
                 EXPECT_NE(layout, movedLayout) << what;
+            }
+        }
+
+        /// One quad on a one-bone rig whose single influence weighs `weight`, posed with its bone
+        /// `up` units high, digested part by part.
+        ScenePartDigests partsOfSkin(const float weight, const float up)
+        {
+            Rtx::SceneDesc scene;
+
+            const std::array<std::uint32_t, 4> runs{ 1u, 1u, 1u, 1u };
+            const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = weight } };
+            const Rtx::Index rig = scene.deformers().addRig(runs, influences, 1);
+
+            const std::array positions{ osg::Vec3f(), osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f) };
+            const std::array<std::uint32_t, 6> indices{ 0, 1, 2, 0, 2, 3 };
+            const Rtx::Index quad
+                = scene.addMesh(MeshArrays{ .mPositions = positions, .mIndices = indices }, {}, Rtx::Deform::Rig, rig);
+
+            const std::array bones{ toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, up)) };
+            std::vector<PoseWord> words;
+            packBones(bones, words);
+            // One reach whatever the pose, because the reach is the mesh's own row and so the
+            // meshes column's: what this asks is what the words move on their own.
+            scene.pose(quad, words, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 10.0f)));
+
+            return digestParts(scene);
+        }
+
+        /// **A pose moves the poses column alone, and a skin the deformers column alone.** The two
+        /// are one table and one buffer in the scene; a column apiece is what lets a pair say
+        /// whether the actor moved or the actor changed.
+        TEST(RtxSceneDigestTest, aPoseAndASkinEachMoveTheirOwnColumn)
+        {
+            const ScenePartDigests one = partsOfSkin(1.0f, 5.0f);
+            EXPECT_EQ(one, partsOfSkin(1.0f, 5.0f)) << "one scene built twice";
+
+            const ScenePartDigests posed = partsOfSkin(1.0f, 7.0f);
+            const ScenePartDigests reskinned = partsOfSkin(0.5f, 5.0f);
+            for (std::size_t at = 0; at < one.size(); ++at)
+            {
+                const auto part = static_cast<ScenePart>(at);
+                EXPECT_EQ(one[at] != posed[at], part == ScenePart::Poses) << nameOf(part) << " under another pose";
+                EXPECT_EQ(one[at] != reskinned[at], part == ScenePart::Deformers)
+                    << nameOf(part) << " under another skin";
             }
         }
     }

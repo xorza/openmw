@@ -61,9 +61,10 @@ namespace Rtx
             if (texture == sNoIndex)
                 return;
 
-            const std::string_view path = scene.textures().getPaths()[texture].value();
+            const TextureRow& row = scene.textures().getRows()[texture];
+            const std::string_view path = row.mPath.value();
             digest.add(std::span<const char>(path.data(), path.size()));
-            digest.add(scene.textures().getWraps()[texture]);
+            digest.add(row.mWrap);
         }
 
         /// Hands every field of `material` to one of three callables.
@@ -125,8 +126,8 @@ namespace Rtx
             for (const Rtx::MaterialLayer& layer : material.mLayers.in(scene.materials().getLayers()))
             {
                 addTexture(digest, scene, layer.mDiffuse);
-                digest.add(layer.mDiffuseTransform);
-                digest.add(layer.mMaskTransform);
+                digest.add(layer.mPlacing.mDiffuseTransform);
+                digest.add(layer.mPlacing.mMaskTransform);
                 digest.add(layer.mMask.in(scene.materials().getMasks()));
             }
         }
@@ -149,6 +150,13 @@ namespace Rtx
         {
             const auto& [transform, mesh, material, opacity, instanceClass, stander] = instance;
             return std::tie(transform, mesh, material, opacity, instanceClass, stander);
+        }
+
+        /// Field by field, because the kind is a byte and the row carries padding after it.
+        auto fieldsOf(const Deformer& deformer)
+        {
+            const auto& [kind, runs, influences, offsets, rows] = deformer;
+            return std::tie(kind, runs, influences, offsets, rows);
         }
 
         auto fieldsOf(const SpriteEmitter& emitter)
@@ -226,8 +234,9 @@ namespace Rtx
     {
         Unordered whole;
 
-        for (const Rtx::MeshInstance& instance : scene.placements().getAll())
+        for (const Rtx::PlacementRow& row : scene.placements().getRows())
         {
+            const Rtx::MeshInstance& instance = row.mInstance;
             if (instance.mMesh == sNoIndex)
                 continue;
 
@@ -277,8 +286,6 @@ namespace Rtx
     static_assert(sizeof(Light) == 40, "Light is read whole and must have no padding");
     static_assert(sizeof(Sprite) == 44, "Sprite is read whole and must have no padding");
     static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
-    static_assert(sizeof(Rig) == 20, "Rig is read whole and must have no padding");
-    static_assert(sizeof(Morph) == 12, "Morph is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
 
@@ -322,12 +329,10 @@ namespace Rtx
                 return "sprites";
             case ScenePart::Emitters:
                 return "emitters";
-            case ScenePart::Rigs:
-                return "rigs";
-            case ScenePart::Morphs:
-                return "morphs";
-            case ScenePart::Bones:
-                return "bones";
+            case ScenePart::Deformers:
+                return "deformers";
+            case ScenePart::Poses:
+                return "poses";
             case ScenePart::Count:
                 break;
         }
@@ -365,11 +370,12 @@ namespace Rtx
             addFields(one, fieldsOf(mesh));
         take(ScenePart::Meshes);
 
-        for (const MeshInstance& instance : scene.placements().getAll())
-            addFields(one, fieldsOf(instance));
+        for (const PlacementRow& row : scene.placements().getRows())
+            addFields(one, fieldsOf(row.mInstance));
         take(ScenePart::Instances);
 
-        one.add(scene.placements().getPrevious());
+        for (const PlacementRow& row : scene.placements().getRows())
+            one.add(row.mPrevious);
         take(ScenePart::Previous);
 
         // The slot a texture landed in and the offset a layer run was placed at, because that is
@@ -393,16 +399,12 @@ namespace Rtx
         // renderer made has no path, so a column of paths alone reads every baked slot as the same
         // empty string — and a run whose bakes landed in another order comes out identical here
         // while the materials naming them move.
-        const std::span<const VFS::Path::Normalized> paths = scene.textures().getPaths();
-        const std::span<const std::string> baked = scene.textures().getBaked();
-        assert(paths.size() == baked.size() && "a texture table whose two names disagree on how many slots it has");
-
-        for (std::size_t slot = 0; slot < paths.size(); ++slot)
+        for (const TextureRow& row : scene.textures().getRows())
         {
-            const std::string_view path = paths[slot].value();
+            const std::string_view path = row.mPath.value();
             one.add(std::span<const char>(path.data(), path.size()));
 
-            one.add(std::span<const char>(baked[slot].data(), baked[slot].size()));
+            one.add(std::span<const char>(row.mBaked.data(), row.mBaked.size()));
         }
         take(ScenePart::Textures);
 
@@ -425,18 +427,15 @@ namespace Rtx
 
         // What poses a mesh that deforms, and the pose itself. The trace reads the posed vertices,
         // which live on the device and nowhere here, so these are what stands for them.
-        one.add(scene.deformers().getRigs());
+        for (const Deformer& deformer : scene.deformers().getDeformers())
+            addFields(one, fieldsOf(deformer));
         one.add(scene.deformers().getRuns());
         one.add(scene.deformers().getInfluences());
-        take(ScenePart::Rigs);
-
-        one.add(scene.deformers().getMorphs());
         one.add(scene.deformers().getMorphOffsets());
-        take(ScenePart::Morphs);
+        take(ScenePart::Deformers);
 
-        one.add(scene.deformers().getBones());
-        one.add(scene.deformers().getWeights());
-        take(ScenePart::Bones);
+        one.add(scene.deformers().getPoses());
+        take(ScenePart::Poses);
 
         return parts;
     }

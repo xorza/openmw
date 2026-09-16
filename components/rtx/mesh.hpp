@@ -149,13 +149,13 @@ namespace Rtx
         /// means; the scene keeps them and draws nothing from them.
         FoldedShape mShape;
 
-        /// Whether this mesh is re-posed by `poseRig` or `poseMorph` — a skinned body, a morphed
+        /// Whether this mesh is re-posed by `SceneDesc::pose` — a skinned body, a morphed
         /// face — which is what tells a backend to build its structure so it can be refitted rather
         /// than built again, and which kernel poses it. The caller's finding, like `mShape`.
         Deform mDeform = Deform::None;
 
-        /// The rig or the morph that poses it, into `getRigs` or `getMorphs`. `sNoIndex` for a mesh
-        /// that stands.
+        /// The rig or the morph that poses it, into `DeformerTable::getDeformers`. `sNoIndex` for
+        /// a mesh that stands.
         Index mDeformer = sNoIndex;
 
         /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
@@ -164,8 +164,8 @@ namespace Rtx
         /// and a bind table that mirrored them would hold megabytes of the cell for a few bodies.
         Index mBindOffset = 0;
 
-        /// Where this mesh's bone rows or morph weights start in `getBones` or `getWeights`. The
-        /// count is the rig's or the morph's.
+        /// Where this mesh's pose starts in `DeformerTable::getPoses`, in words. The count is the
+        /// deformer's.
         Index mPoseOffset = 0;
 
         /// Whether a pose has been written since the mesh arrived. The first pose names the mesh

@@ -97,7 +97,9 @@ namespace Rtx
         /// Reads all of `stats`, for a scene that has just been built or extended.
         void readStats(SceneStats& stats) const;
 
-        const InstanceCounts& getCounts() const { return mAcceleration.getInstanceCounts(); }
+        /// What the copy the last placement wrote counts as, as the scene counted it then: the
+        /// trace of that copy reads this, and the scene may have moved on since.
+        const InstanceCounts& getCounts() const { return mCounts; }
         const SceneAcceleration& getAcceleration() const { return mAcceleration; }
         const SceneBuffers& getBuffers() const { return mBuffers; }
 
@@ -134,7 +136,14 @@ namespace Rtx
         /// an uploader appends against.
         std::uint64_t mBuiltStructure = 0;
 
+        /// Which description that was, as `SceneHeld::mScene` reports it.
+        const SceneDesc* mBuiltFrom = nullptr;
+
         FrameSlot mSlot;
+
+        /// The scene's counts as they stood at the last placement — `PlacementTable::getCounts`,
+        /// copied because the placement is the last time this reads the scene before its trace.
+        InstanceCounts mCounts;
 
         /// The submit a picture of each copy rides, as the timeline value it was recorded for.
         std::array<std::uint64_t, sFrameSlots> mPictureRides{};

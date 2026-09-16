@@ -44,14 +44,12 @@ namespace Rtx
         /// What disturbed the water this frame, which the ripple field is stepped by.
         Ripples,
 
-        /// What poses a mesh that deforms: the rigs, their runs and their influences.
-        Rigs,
+        /// What poses a mesh that deforms: the deformers, a rig's runs and influences and a
+        /// morph's offsets.
+        Deformers,
 
-        /// The morph targets and the offsets they move by.
-        Morphs,
-
-        /// The pose itself: a bone and a weight per influence.
-        Bones,
+        /// The poses themselves, in the words both kinds are laid in.
+        Poses,
 
         Count,
     };

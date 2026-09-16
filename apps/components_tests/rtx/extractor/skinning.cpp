@@ -5,12 +5,15 @@
 
 #include <osg/BoundingBox>
 #include <osg/Callback>
+#include <osg/CopyOp>
+#include <osg/Group>
 #include <osg/Matrix>
 #include <osg/NodeVisitor>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include <components/rtx/deformertable.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
@@ -26,7 +29,7 @@ namespace Rtx::Testing
         /// and no skin transform, so a translated bone is exactly what the walk has to hand over.
         osg::Vec4f boneRow(const Rtx::SceneDesc& scene, Rtx::Index mesh)
         {
-            return scene.getMeshBones(mesh)[0].mRows[2];
+            return Rtx::boneAt(scene.getMeshPose(mesh), 0).mRows[2];
         }
 
         /// A skinned body is mirrored as its bind pose and its bone rows, and not as vertices.
@@ -56,9 +59,9 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.meshes().getRows()[0].mDeform, Rtx::Deform::Rig);
             EXPECT_EQ(mScene.meshes().getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
                 << "the bind pose, never a vertex posed";
-            ASSERT_EQ(mScene.deformers().getRigs().size(), 1u);
-            EXPECT_EQ(mScene.deformers().getRigs()[0].mBoneCount, 1u);
-            EXPECT_EQ(mScene.deformers().getRigs()[0].getVertexCount(), 4u);
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[0].mRows, 1u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[0].getVertexCount(), 4u);
             EXPECT_EQ(mScene.deformers().getRuns().size(), 4u);
             EXPECT_EQ(mScene.deformers().getRuns()[3], 1u) << "first nought, count one";
             ASSERT_EQ(mScene.deformers().getInfluences().size(), 1u);
@@ -69,8 +72,8 @@ namespace Rtx::Testing
             // bone itself, whose translation lands in the last column of the last row.
             ASSERT_EQ(mScene.meshes().getDeformed().size(), 1u);
             EXPECT_EQ(mScene.meshes().getDeformed()[0], 0u);
-            EXPECT_EQ(mScene.getMeshBones(0)[0].mRows[0], osg::Vec4f(1.0f, 0.0f, 0.0f, 0.0f));
-            EXPECT_EQ(mScene.getMeshBones(0)[0].mRows[1], osg::Vec4f(0.0f, 1.0f, 0.0f, 0.0f));
+            EXPECT_EQ(Rtx::boneAt(mScene.getMeshPose(0), 0).mRows[0], osg::Vec4f(1.0f, 0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(Rtx::boneAt(mScene.getMeshPose(0), 0).mRows[1], osg::Vec4f(0.0f, 1.0f, 0.0f, 0.0f));
             EXPECT_EQ(boneRow(mScene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f)) << "the bind pose moved by the bone";
 
             // The reach is the drawable's own bound, which `updateBounds` made from the bone's
@@ -103,7 +106,7 @@ namespace Rtx::Testing
             EXPECT_EQ(again.mMeshesReused, 1u);
             EXPECT_EQ(again.mDeformed, 1u);
             EXPECT_EQ(mScene.meshes().getRows().size(), 1u) << "a second pose is the same mesh";
-            EXPECT_EQ(mScene.deformers().getRigs().size(), 1u) << "and the same rig";
+            EXPECT_EQ(mScene.deformers().getDeformers().size(), 1u) << "and the same rig";
             EXPECT_EQ(boneRow(mScene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
             ASSERT_EQ(mScene.meshes().getDeformed().size(), 1u);
             EXPECT_EQ(mScene.meshes().getDeformed()[0], 0u);
@@ -163,7 +166,7 @@ namespace Rtx::Testing
             walk(*root);
             ASSERT_EQ(mScene.meshes().getRows().size(), 2u);
             ASSERT_EQ(mScene.meshes().getMeshPositions(0).size(), 4u);
-            ASSERT_EQ(mScene.deformers().getRigs().size(), 1u);
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u);
 
             // The quad standing next to the rig, whose vertices the overrun would land in.
             const std::vector<osg::Vec3f> before(
@@ -191,9 +194,9 @@ namespace Rtx::Testing
 
             EXPECT_EQ(again.mMeshesAdded, 1u) << "the rig is met as something the mirror has not seen";
             EXPECT_EQ(mScene.meshes().getRows().size(), 3u) << "and takes a slot of its own rather than the old one";
-            EXPECT_EQ(mScene.deformers().getRigs().size(), 2u)
+            EXPECT_EQ(mScene.deformers().getDeformers().size(), 2u)
                 << "on a rig of its own, because the skin is six vertices now";
-            EXPECT_EQ(mScene.deformers().getRigs()[1].getVertexCount(), 6u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[1].getVertexCount(), 6u);
             EXPECT_EQ(mScene.meshes().getRows()[2].mDeformer, 1u);
 
             const std::vector<osg::Vec3f> after(
@@ -338,7 +341,7 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mUnskinned, 1u);
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
             EXPECT_EQ(mScene.meshes().getRows()[0].mDeform, Rtx::Deform::None);
-            EXPECT_TRUE(mScene.deformers().getRigs().empty());
+            EXPECT_TRUE(mScene.deformers().getDeformers().empty());
             EXPECT_EQ(mScene.meshes().getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
                 << "the bind pose, where it stands";
         }
@@ -384,15 +387,15 @@ namespace Rtx::Testing
                 << "the base, and never a pose";
 
             // The offsets, target by target: the base's four zeroes and then the unit lift.
-            ASSERT_EQ(mScene.deformers().getMorphs().size(), 1u);
-            EXPECT_EQ(mScene.deformers().getMorphs()[0].mTargetCount, 2u);
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[0].mRows, 2u);
             ASSERT_EQ(mScene.deformers().getMorphOffsets().size(), 8u);
             EXPECT_EQ(mScene.deformers().getMorphOffsets()[2], osg::Vec3f());
             EXPECT_EQ(mScene.deformers().getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
 
             // The weights as the drawable numbers them, the base's carried and never read.
-            ASSERT_EQ(mScene.getMeshWeights(sFace).size(), 2u);
-            EXPECT_EQ(mScene.getMeshWeights(sFace)[1], 1.0f);
+            ASSERT_EQ(mScene.getMeshPose(sFace).size(), 1u) << "two weights fit one word";
+            EXPECT_EQ(Rtx::weightAt(mScene.getMeshPose(sFace), 1), 1.0f);
 
             mScene.clearPlacement();
             morph->getMorphTarget(1).setWeight(3.0f);
@@ -407,7 +410,7 @@ namespace Rtx::Testing
 
             ASSERT_EQ(mScene.meshes().getDeformed().size(), 1u);
             EXPECT_EQ(mScene.meshes().getDeformed()[0], sFace) << "the still quad's structure is not refitted";
-            EXPECT_EQ(mScene.getMeshWeights(sFace)[1], 3.0f);
+            EXPECT_EQ(Rtx::weightAt(mScene.getMeshPose(sFace), 1), 3.0f);
             EXPECT_EQ(mScene.meshes().getMeshPositions(sStill)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
                 << "and the neighbour is intact";
 
@@ -422,9 +425,83 @@ namespace Rtx::Testing
 
             EXPECT_EQ(spent, 0u) << spent << " allocations to pose a face the walk already held";
             EXPECT_EQ(third.mMeshesReused, 2u);
-            EXPECT_EQ(mScene.getMeshWeights(sFace)[1], 3.0f) << "at the same weight";
+            EXPECT_EQ(Rtx::weightAt(mScene.getMeshPose(sFace), 1), 3.0f) << "at the same weight";
             EXPECT_EQ(mScene.meshes().getMeshPositions(sFace)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "off the same base";
             EXPECT_TRUE(mScene.meshes().getDeformed().empty()) << "a pose that stood still named a structure to refit";
+        }
+
+        /// **A skin two drawables share is one deformer**, held twice. `NpcAnimation` clones a body
+        /// part's rig per actor and the clone keeps the template's `InfluenceData`, so the runs and
+        /// the influences are read once and the second mesh stands on the same row.
+        TEST_F(RtxSceneExtractorTest, aSkinTwoDrawablesShareIsOneDeformerHeldTwice)
+        {
+            RiggedQuad rigged;
+            osg::ref_ptr<SceneUtil::RigGeometry> twin
+                = new SceneUtil::RigGeometry(*rigged.mRig, osg::CopyOp::SHALLOW_COPY);
+            ASSERT_EQ(twin->getInfluenceData(), rigged.mRig->getInfluenceData());
+
+            osg::ref_ptr<osg::Group> holder = new osg::Group;
+            holder->addChild(twin);
+            rigged.mSkeleton->addChild(holder);
+            rigged.update(1);
+
+            const ExtractionStats first = walk(*rigged.mSkeleton);
+            EXPECT_EQ(first.mMeshesAdded, 2u);
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u) << "one skin, one row";
+            EXPECT_EQ(mScene.deformers().getHolds(0), 2u);
+            EXPECT_EQ(mScene.deformers().getRuns().size(), 4u) << "read once";
+            EXPECT_EQ(mScene.meshes().getRows()[0].mDeformer, 0u);
+            EXPECT_EQ(mScene.meshes().getRows()[1].mDeformer, 0u);
+
+            rigged.update(2);
+            mScene.clearPlacement();
+            const ExtractionStats again = walk(*rigged.mSkeleton, 0, 1);
+            EXPECT_EQ(again.mMeshesReused, 2u);
+            EXPECT_EQ(mScene.deformers().getDeformers().size(), 1u);
+            EXPECT_EQ(mScene.deformers().getHolds(0), 2u);
+        }
+
+        /// **A set of targets that grew under the same base is a new deformer**, because a pose is
+        /// as many weights as the set has targets and the words a mesh holds were given out for the
+        /// count it arrived with. The base's offsets keep their address, which is what the map is
+        /// keyed on, so the fit is what has to say so.
+        TEST_F(RtxSceneExtractorTest, aMorphWhoseTargetCountChangedIsANewDeformer)
+        {
+            osg::ref_ptr<SceneUtil::MorphGeometry> morph = new SceneUtil::MorphGeometry;
+            morph->setSourceGeometry(makeQuad());
+            morph->addMorphTarget(makePositions({ osg::Vec3f(), osg::Vec3f(), osg::Vec3f(), osg::Vec3f() }));
+            morph->addMorphTarget(makePositions({
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+                osg::Vec3f(0.0f, 0.0f, 1.0f),
+            }));
+
+            walk(*morph);
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[0].mRows, 2u);
+            EXPECT_EQ(mScene.meshes().getRows()[0].mDeformer, 0u);
+
+            morph->addMorphTarget(makePositions({
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+            }));
+            morph->getMorphTarget(2).setWeight(0.25f);
+            morph->dirty();
+
+            mScene.clearPlacement();
+            const ExtractionStats again = walk(*morph, 0, 1);
+            EXPECT_EQ(again.mMeshesAdded, 1u) << "the face is met as something the mirror has not seen";
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 2u) << "on a set of its own";
+            EXPECT_EQ(mScene.deformers().getDeformers()[1].mRows, 3u);
+            EXPECT_EQ(mScene.deformers().getMorphOffsets().size(), 20u) << "the old set stands until its mesh goes";
+
+            ASSERT_EQ(mScene.meshes().getRows().size(), 2u) << "and takes a slot of its own rather than the old one";
+            EXPECT_EQ(mScene.meshes().getRows()[1].mDeformer, 1u);
+            EXPECT_EQ(mScene.getMeshPose(1).size(), 1u) << "three weights fit one word";
+            EXPECT_EQ(Rtx::weightAt(mScene.getMeshPose(1), 2), 0.25f);
         }
 
         /// Shading that exists only inside a cull traversal is applied by the walk and read from it.

@@ -142,7 +142,7 @@ namespace Rtx::Testing
     /// transform the walk gave it.
     inline osg::Vec3f placedAt(const Rtx::SceneDesc& scene, std::size_t index)
     {
-        return osg::Vec3f() * scene.placements().getAll()[index].mTransform;
+        return osg::Vec3f() * scene.placements().getRows()[index].mInstance.mTransform;
     }
 
     /// A unit quad in the xy plane: four vertices, two triangles.

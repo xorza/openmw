@@ -182,8 +182,8 @@ namespace Rtx::Testing
             walk(*parent);
 
             ASSERT_EQ(mScene.materials().getRows().size(), 1u);
-            ASSERT_EQ(mScene.textures().getPaths().size(), 1u);
-            EXPECT_EQ(mScene.textures().getPaths()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
+            ASSERT_EQ(mScene.textures().getRows().size(), 1u);
+            EXPECT_EQ(mScene.textures().getRows()[0].mPath, VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
             EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, 0u);
 
             // Nothing on the chain turned culling off, so the surface shows one face: the scene
@@ -359,11 +359,11 @@ namespace Rtx::Testing
             EXPECT_NEAR(material.mEnvironmentColour.z(), 0.0f, 1.0e-6f);
 
             EXPECT_NE(material.mDiffuse, material.mEmissive) << "one file under two wraps is two slots";
-            EXPECT_EQ(
-                mScene.textures().getPaths()[material.mDiffuse], mScene.textures().getPaths()[material.mEmissive]);
-            EXPECT_EQ(mScene.textures().getWraps()[material.mDiffuse], TextureWrap::Repeat);
-            EXPECT_EQ(mScene.textures().getWraps()[material.mEmissive], TextureWrap::Clamp);
-            EXPECT_EQ(mScene.textures().getPaths().size(), 4u);
+            EXPECT_EQ(mScene.textures().getRows()[material.mDiffuse].mPath,
+                mScene.textures().getRows()[material.mEmissive].mPath);
+            EXPECT_EQ(mScene.textures().getRows()[material.mDiffuse].mWrap, TextureWrap::Repeat);
+            EXPECT_EQ(mScene.textures().getRows()[material.mEmissive].mWrap, TextureWrap::Clamp);
+            EXPECT_EQ(mScene.textures().getRows().size(), 4u);
         }
 
         /// An animated material keeps every texture it has worn, so a controller that cycles
@@ -425,7 +425,7 @@ namespace Rtx::Testing
                 // A slot per distinct sheet as each is first shown, and none given back: on the
                 // second time round every slot is already there.
                 const std::size_t worn = std::min<std::size_t>(frame, 32);
-                EXPECT_EQ(mScene.textures().getPaths().size(), worn) << "on frame " << frame;
+                EXPECT_EQ(mScene.textures().getRows().size(), worn) << "on frame " << frame;
                 if (frame > 32)
                 {
                     EXPECT_TRUE(mScene.textures().getArrived().empty()) << "a sheet arrived again on frame " << frame;
@@ -476,7 +476,7 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*parent, osg::Matrixf::identity(), 0);
 
-                EXPECT_EQ(scene.placements().getAll().size(), 1u);
+                EXPECT_EQ(scene.placements().getRows().size(), 1u);
                 EXPECT_EQ(scene.materials().getRows().size(), 1u);
 
                 // The material is asked as well, because the fade landing there instead would pass
@@ -489,7 +489,7 @@ namespace Rtx::Testing
                 EXPECT_EQ(records.size(), 1u);
                 EXPECT_TRUE(records.front().mCutout) << "a fade is not a hole, and the mask still has some";
 
-                return scene.placements().getAll().front().mOpacity;
+                return scene.placements().getRows().front().mInstance.mOpacity;
             };
 
             // Halves and quarters, so the product is exact in binary and the assertion is the
@@ -518,8 +518,8 @@ namespace Rtx::Testing
             walk(*parent);
 
             std::vector<Rtx::InstanceRecord> records;
-            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
-            EXPECT_EQ(mScene.placements().getAll().front().mOpacity, 1.0f);
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
+            EXPECT_EQ(mScene.placements().getRows().front().mInstance.mOpacity, 1.0f);
             Rtx::makeInstanceRecords(mScene, records);
             EXPECT_FALSE(records.front().mTranslucent) << "an actor at full brightness stops every ray";
 
@@ -527,8 +527,8 @@ namespace Rtx::Testing
             fade->set(0.25f);
             walk(*parent);
 
-            EXPECT_EQ(mScene.placements().getAll().size(), 1u) << "a second placement rather than the one that faded";
-            EXPECT_EQ(mScene.placements().getAll().front().mOpacity, 0.25f);
+            EXPECT_EQ(mScene.placements().getRows().size(), 1u) << "a second placement rather than the one that faded";
+            EXPECT_EQ(mScene.placements().getRows().front().mInstance.mOpacity, 0.25f);
 
             // A fade is a row to rewrite — what traversal is told changed — and not a move: the
             // record carries no motion, or the actor would smear across the frame it faded on.
@@ -793,9 +793,9 @@ namespace Rtx::Testing
             EXPECT_FALSE(mScene.materials().getRows()[0].mAnimated);
             EXPECT_TRUE(mScene.materials().getRows()[0].isCutout());
             EXPECT_EQ(stats.mInstances, 2u);
-            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
-            EXPECT_EQ(mScene.placements().getAll()[0].mMaterial, 0u);
-            EXPECT_EQ(mScene.placements().getAll()[1].mMaterial, 0u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
+            EXPECT_EQ(mScene.placements().getRows()[0].mInstance.mMaterial, 0u);
+            EXPECT_EQ(mScene.placements().getRows()[1].mInstance.mMaterial, 0u);
         }
 
         /// A cutout under a controller is an animated material, so every placement of it reaches
@@ -853,9 +853,9 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
             ASSERT_EQ(mScene.materials().getRows().size(), 2u);
             EXPECT_EQ(stats.mInstances, 2u);
-            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
-            EXPECT_EQ(mScene.placements().getAll()[0].mMaterial, 0u);
-            EXPECT_EQ(mScene.placements().getAll()[1].mMaterial, 1u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
+            EXPECT_EQ(mScene.placements().getRows()[0].mInstance.mMaterial, 0u);
+            EXPECT_EQ(mScene.placements().getRows()[1].mInstance.mMaterial, 1u);
         }
 
         /// A material a controller rewrites resolves its texture out of the image, not its name.
@@ -905,7 +905,7 @@ namespace Rtx::Testing
                 ASSERT_EQ(mScene.materials().getRows().size(), 1u) << "on frame " << frame;
                 EXPECT_TRUE(mScene.materials().getRows()[0].mAnimated);
                 EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, 0u) << "the same slot, on frame " << frame;
-                EXPECT_EQ(mScene.textures().getPaths().size(), 1u) << "a second slot arrived on frame " << frame;
+                EXPECT_EQ(mScene.textures().getRows().size(), 1u) << "a second slot arrived on frame " << frame;
 
                 mExtractor.retire();
             }

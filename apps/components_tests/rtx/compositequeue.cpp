@@ -48,8 +48,8 @@ namespace Rtx
             layers[0].mDiffuse = scene.textures().add(under);
             layers[1].mDiffuse = scene.textures().add(over);
             layers[1].mMask = scene.materials().addMask(weights);
-            layers[1].mMaskWidth = 2;
-            layers[1].mMaskHeight = 2;
+            layers[1].mPlacing.mMaskWidth = 2;
+            layers[1].mPlacing.mMaskHeight = 2;
 
             Material material;
             material.mKind = MaterialKind::Terrain;

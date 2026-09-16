@@ -85,8 +85,7 @@ namespace RtxTool
     /// engine is built exactly as `apps/openmw/main.cpp` builds one, out of `variables`.
     /// `printLeft` prints where the eye was left as a `views.cfg` block.
     int runHosted(const boost::program_options::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, Rtx::RenderProfile profile, Rtx::SessionRequest request,
-        bool printLeft = false);
+        const std::filesystem::path& resources, Rtx::SessionRequest request, bool printLeft = false);
 
     /// A list of places to profile, by view id and not by coordinates, so the frame a screenshot
     /// shows and the frame a number was measured on are the same frame.
@@ -99,7 +98,7 @@ namespace RtxTool
         std::vector<std::string> mViews;
 
         /// Whether each hand-over waits for the distant ground it collects, or nothing to let the
-        /// frame clock decide: `Rtx::SessionRequest::mSettled`. A suite that times the streaming
+        /// frame clock decide: `Rtx::RunSetup::mSettled`. A suite that times the streaming
         /// path says no, because waiting is most of what that path then measures — and a run
         /// under it may not be compared with a picture.
         std::optional<bool> mSettled;

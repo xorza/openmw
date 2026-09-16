@@ -15,17 +15,10 @@ namespace Rtx
         return mMeshes.add(arrays, shape, deform, deformer);
     }
 
-    void SceneDesc::poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds)
+    void SceneDesc::pose(Index mesh, std::span<const PoseWord> words, const osg::BoundingBoxf& bounds)
     {
         assert(mesh < mMeshes.size());
-        if (mDeformers.poseRig(mMeshes.getRows()[mesh], bones))
-            mMeshes.notePosed(mesh, bounds);
-    }
-
-    void SceneDesc::poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds)
-    {
-        assert(mesh < mMeshes.size());
-        if (mDeformers.poseMorph(mMeshes.getRows()[mesh], weights))
+        if (mDeformers.pose(mMeshes.getRows()[mesh], words))
             mMeshes.notePosed(mesh, bounds);
     }
 
@@ -34,7 +27,7 @@ namespace Rtx
         if (!mMaterials.set(material, what))
             return;
 
-        mPlacements.rewriteWearing(material);
+        mPlacements.rewriteWearing(material, what.getTraversed());
     }
 
     bool SceneDesc::hasDroppedHolds() const
@@ -100,13 +93,20 @@ namespace Rtx
         assert((instance.mMaterial == sNoIndex || mMaterials.isLive(instance.mMaterial))
             && "a placement wearing a material nothing holds");
 
-        return mPlacements.add(instance);
+        // A plain opaque surface where the instance carries no material, which the untextured
+        // test scenes place.
+        const Material::Traversed worn = instance.mMaterial == sNoIndex
+            ? Material::Traversed{}
+            : mMaterials.getRows()[instance.mMaterial].getTraversed();
+
+        return mPlacements.add(instance, worn);
     }
 
     bool SceneDesc::placementsStandOnLiveRows() const
     {
-        for (const MeshInstance& placed : mPlacements.getAll())
+        for (const PlacementRow& row : mPlacements.getRows())
         {
+            const MeshInstance& placed = row.mInstance;
             if (!placed.isPlaced())
                 continue;
 
@@ -175,21 +175,17 @@ namespace Rtx
         mDeformers.clearArrivals();
     }
 
-    std::span<const Shaders::GpuBone> SceneDesc::getMeshBones(const Index mesh) const
+    std::span<const PoseWord> SceneDesc::getMeshPose(const Index mesh) const
     {
-        return mDeformers.getMeshBones(mMeshes.getRows()[mesh]);
-    }
-
-    std::span<const float> SceneDesc::getMeshWeights(const Index mesh) const
-    {
-        return mDeformers.getMeshWeights(mMeshes.getRows()[mesh]);
+        return mDeformers.getMeshPose(mMeshes.getRows()[mesh]);
     }
 
     template <class Visit>
     void SceneDesc::forEachPlacement(Visit&& visit) const
     {
-        for (const MeshInstance& instance : mPlacements.getAll())
+        for (const PlacementRow& row : mPlacements.getRows())
         {
+            const MeshInstance& instance = row.mInstance;
             if (!instance.isPlaced())
                 continue;
 

@@ -198,7 +198,7 @@ namespace Rtx::Testing
             const std::array<Index, 1> keptMaterials{ red };
             ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
             ASSERT_TRUE(scene.textures().isFree(blueTexture));
-            ASSERT_EQ(scene.textures().getPaths().size(), 2u) << "the table does not shrink";
+            ASSERT_EQ(scene.textures().getRows().size(), 2u) << "the table does not shrink";
 
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1));
 
@@ -974,15 +974,12 @@ namespace Rtx::Testing
                     MaterialLayer{
                         .mDiffuse = 0,
                         .mMask = scene.materials().addMask(firstMask),
-                        .mMaskWidth = 2,
-                        .mMaskHeight = 1,
+                        .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 },
                     },
                     MaterialLayer{
                         .mDiffuse = second,
                         .mMask = scene.materials().addMask(secondMask),
-                        .mMaskWidth = 2,
-                        .mMaskHeight = 1,
-                        .mDiffuseTransform = secondTransform,
+                        .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1, .mDiffuseTransform = secondTransform },
                     },
                 };
                 const Rtx::Run run = scene.materials().addLayers(layers);

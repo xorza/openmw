@@ -114,7 +114,7 @@ namespace Rtx
             {
                 // Opened here and not on a baker, so the image manager is only ever asked from the
                 // thread that owns it; a baker reads what the reference keeps alive.
-                request.mImages.push_back(openImage(images, scene.textures().getPaths()[layer.mDiffuse]));
+                request.mImages.push_back(openImage(images, scene.textures().getRows()[layer.mDiffuse].mPath));
 
                 request.mMaskRuns.push_back(
                     Run{ .mOffset = static_cast<std::uint32_t>(request.mMasks.size()), .mCount = layer.mMask.mCount });
@@ -332,11 +332,8 @@ namespace Rtx
             mStackScratch.push_back(CompositeLayer{
                 .mDiffuse = *described,
                 .mShading = mPainted.estimate(*described, image->getFileName()).getValues(),
-                .mDiffuseTransform = layer.mDiffuseTransform,
                 .mMask = mask.in(std::span<const float>(asked.mMasks)),
-                .mMaskWidth = layer.mMaskWidth,
-                .mMaskHeight = layer.mMaskHeight,
-                .mMaskTransform = layer.mMaskTransform,
+                .mPlacing = layer.mPlacing,
             });
         }
 

@@ -410,7 +410,7 @@ namespace MWRender
         /// answers. The two hosts cannot come to draw one picture through two differently configured
         /// renderers, because both reach the renderer through this one record. The run inside it is
         /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this.
-        const RtxSetup mSetup;
+        const RtxSetup mInstalled;
 
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.

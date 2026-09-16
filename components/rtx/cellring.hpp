@@ -142,9 +142,10 @@ namespace Rtx
         void discard(PreparedCell& cell);
 
         /// Hands the supply a cell's holds on its models and its ground's textures, for a cell the
-        /// frame is letting go of. A hold is a cell's, which is what makes a return exact whatever
-        /// the thread read in between.
-        void giveBackHolds(std::span<PreparedModel* const> models, std::span<PreparedTexture* const> textures);
+        /// frame is letting go of — one it adopted, or one handed over that it never did. A hold
+        /// is a cell's, which is what makes a return exact whatever the thread read in between.
+        void giveBackHolds(const HeldCell& cell);
+        void giveBackHolds(const PreparedCell& cell);
 
         void dropCell(HeldCell& cell);
         void dropPlacements();

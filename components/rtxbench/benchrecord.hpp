@@ -20,13 +20,14 @@
 
 namespace Rtx
 {
-    /// How many cell boundaries a route crossed, and what the rings cost.
+    /// How many cell boundaries a route crossed, and what the frames that crossed them cost.
     ///
     /// **A count and totals rather than a distribution**, because a run of six hundred frames
     /// crosses a couple of dozen: percentiles over that say nothing, and the number worth reading is
     /// the worst one — that is the frame a player feels. The whole cost is in `BenchPlace::mFrame`
     /// too, which is where it belongs: a crossing is not a separate budget, it is the frame that
-    /// dropped.
+    /// dropped. The whole frame and not a split into reading and building, because the game gives
+    /// none: the ring arrives on the loading threads.
     struct Crossings
     {
         std::uint32_t mCount = 0;
@@ -41,22 +42,15 @@ namespace Rtx
         std::uint32_t mRebuilds = 0;
 
         double mWorstMs = 0.0;
+        double mTotalMs = 0.0;
 
-        /// **Split, because the two halves are fixed by different work.** Reading is the content
-        /// files, the models instanced out of them and the terrain chunks built. Building is what
-        /// the renderer then does with what arrived, and is the only half this fork can fix in
-        /// `components/rtx`.
-        double mReadMs = 0.0;
-        double mBuildMs = 0.0;
-
-        /// Counts one crossing, from what its two halves took.
-        void add(bool rebuilt, double readMs, double buildMs)
+        /// Counts one crossing, from what the frame that crossed took.
+        void add(bool rebuilt, double frameMs)
         {
             ++mCount;
             mRebuilds += rebuilt ? 1u : 0u;
-            mReadMs += readMs;
-            mBuildMs += buildMs;
-            mWorstMs = std::max(mWorstMs, readMs + buildMs);
+            mTotalMs += frameMs;
+            mWorstMs = std::max(mWorstMs, frameMs);
         }
     };
 
@@ -93,10 +87,6 @@ namespace Rtx
         float mHour = 12.0f;
         std::string mWeather;
 
-        /// What the first hand-over cost: every bottom-level structure built and every texture
-        /// uploaded. The same cost a cell arriving in the game pays.
-        double mBuildMs = 0.0;
-
         std::uint32_t mFrames = 0;
         double mWallSeconds = 0.0;
 
@@ -123,9 +113,9 @@ namespace Rtx
 
         Overlap mOverlap;
 
-        /// How far along its route the camera got, as a fraction. One where it arrived, and less
-        /// where the run ended first — a route flown too slowly to finish is measuring a shorter
-        /// journey than it reads as.
+        /// How far along its route the camera got, as a fraction. One where it arrived, or where
+        /// the route named no destination, and less where the run ended first — a route flown too
+        /// slowly to finish is measuring a shorter journey than it reads as.
         double mTravelled = 1.0;
 
         SceneStats mScene;

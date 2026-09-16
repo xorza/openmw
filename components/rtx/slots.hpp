@@ -185,8 +185,7 @@ namespace Rtx
     /// rig by the meshes on it, a ground row by the residency that stood it. What a freed row holds
     /// is the table's business too — a mesh row keeps its last tenant's offsets because a backend
     /// walks every slot, a material row is emptied — so `free` writes nothing and `sweep` hands
-    /// each row to the caller before it goes. `take`'s growth hook reaches the arrays a table
-    /// keeps parallel to its rows.
+    /// each row to the caller before it goes.
     template <class Row>
     class SlotRows
     {
@@ -219,35 +218,26 @@ namespace Rtx
             return mRows[slot];
         }
 
-        /// Puts `row` in a free slot, or in a new one. The slot arrives with no holds.
-        ///
-        /// @param grew called with the table's new length wherever the table grew, so a caller
-        ///        holding arrays parallel to this one follows in the same call. `TextureTable`
-        ///        keeps two names beside its rows, and `PlacementTable` keeps a previous transform.
-        template <class Grew>
-        Index take(const Row& row, Grew grew)
+        /// Puts `row` in a free slot, or in a new one. The slot arrives with no holds. Everything
+        /// a table knows about a slot is in the row, so nothing beside the rows has to follow a
+        /// growth. By value and moved in, so a row that owns a name is built once.
+        Index take(Row row)
         {
             const Index index = mFree.take();
             if (index == sNoIndex)
             {
-                mRows.push_back(row);
+                mRows.push_back(std::move(row));
                 mHolds.push_back(0);
                 mLive.push_back(1);
-                grew(mRows.size());
 
                 return static_cast<Index>(mRows.size() - 1);
             }
 
             assert(mHolds[index] == 0 && "a free slot something still holds");
-            mRows[index] = row;
+            mRows[index] = std::move(row);
             mLive[index] = 1;
 
             return index;
-        }
-
-        Index take(const Row& row)
-        {
-            return take(row, [](std::size_t) {});
         }
 
         /// Puts `slot` back. What its row now holds is the caller's to have decided.
@@ -387,8 +377,8 @@ namespace Rtx
         /// The row `key` names, or null where nothing holds it.
         const Row* find(const Key& key) const
         {
-            const const_iterator at = lowerBound(key);
-            return at != mRows.end() && !(key < KeyOf{}(*at)) ? &*at : nullptr;
+            const const_iterator at = locate(key);
+            return at != mRows.end() ? &*at : nullptr;
         }
 
         Row* find(const Key& key) { return const_cast<Row*>(std::as_const(*this).find(key)); }
@@ -400,8 +390,8 @@ namespace Rtx
         /// with a path that reads through nought.
         const Row& at(const Key& key) const
         {
-            const const_iterator found = lowerBound(key);
-            contract(found != mRows.end() && !(key < KeyOf{}(*found)), "a key read that nothing holds");
+            const const_iterator found = locate(key);
+            contract(found != mRows.end(), "a key read that nothing holds");
 
             return *found;
         }
@@ -432,8 +422,8 @@ namespace Rtx
         /// Takes the row `key` names away and answers it. Asserts where nothing holds it.
         Row take(const Key& key)
         {
-            const iterator at = lowerBound(key);
-            contract(at != mRows.end() && !(key < KeyOf{}(*at)), "a key taken that nothing holds");
+            const iterator at = locate(key);
+            contract(at != mRows.end(), "a key taken that nothing holds");
 
             Row taken = std::move(*at);
             mRows.erase(at);
@@ -443,8 +433,8 @@ namespace Rtx
         /// Drops the row `key` names. Asserts where nothing holds it.
         void erase(const Key& key)
         {
-            const iterator at = lowerBound(key);
-            contract(at != mRows.end() && !(key < KeyOf{}(*at)), "a key dropped that nothing holds");
+            const iterator at = locate(key);
+            contract(at != mRows.end(), "a key dropped that nothing holds");
 
             mRows.erase(at);
         }
@@ -473,6 +463,19 @@ namespace Rtx
         const_iterator lowerBound(const Key& key) const
         {
             return std::lower_bound(mRows.begin(), mRows.end(), key, before);
+        }
+
+        /// The row `key` names, or `end()` — the one place the search and its bound check are
+        /// spelled, so no reader can disagree with another about whether a key is held.
+        iterator locate(const Key& key)
+        {
+            const iterator at = lowerBound(key);
+            return at != mRows.end() && !(key < KeyOf{}(*at)) ? at : mRows.end();
+        }
+        const_iterator locate(const Key& key) const
+        {
+            const const_iterator at = lowerBound(key);
+            return at != mRows.end() && !(key < KeyOf{}(*at)) ? at : mRows.end();
         }
 
         static bool before(const Row& row, const Key& wanted) { return KeyOf{}(row) < wanted; }

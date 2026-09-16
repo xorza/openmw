@@ -204,6 +204,23 @@ namespace Rtx
         }
     };
 
+    /// How one layer's textures are addressed over a chunk: the grid its weights form and the two
+    /// transforms from cell coordinates. Stated once and carried whole from the land record to
+    /// the scene's row to the bake, so the three cannot disagree about where a texel lands.
+    struct LayerPlacing
+    {
+        /// The grid the weights form. Nought by nought where the layer covers everything.
+        std::uint16_t mMaskWidth = 0;
+        std::uint16_t mMaskHeight = 0;
+
+        /// Cell texture coordinates to this layer's, as `uv * xy + zw`. `GroundReader` derives both
+        /// from the tile count as `Terrain::createPasses` does, and a test holds the numbers.
+        osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
+        osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
+
+        bool operator==(const LayerPlacing& other) const = default;
+    };
+
     /// One layer of a terrain material: a ground texture and the weights that place it. OpenMW
     /// draws the stack as one alpha-blended pass per layer; a ray tracer has one hit and sums the
     /// layers at it instead.
@@ -212,17 +229,12 @@ namespace Rtx
         /// The ground texture, which tiles many times across a chunk.
         Index mDiffuse = sNoIndex;
 
-        /// This layer's weights in the scene's mask table, and the grid they form. An empty run
-        /// means the layer covers everything. The run holds `mMaskWidth * mMaskHeight` weights and
-        /// is kept rather than rebuilt from the sides, so that what is given back is what was taken.
+        /// This layer's weights in the scene's mask table. An empty run means the layer covers
+        /// everything. The run holds the placing's grid of weights and is kept rather than rebuilt
+        /// from the sides, so that what is given back is what was taken.
         Run mMask;
-        std::uint16_t mMaskWidth = 0;
-        std::uint16_t mMaskHeight = 0;
 
-        /// Cell texture coordinates to this layer's, as `uv * xy + zw`. `GroundReader` derives both
-        /// from the tile count as `Terrain::createPasses` does, and a test holds the numbers.
-        osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-        osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
+        LayerPlacing mPlacing;
 
         /// Two layers are the same when every field is, which is what says a chunk still stands
         /// where a bake of it began.

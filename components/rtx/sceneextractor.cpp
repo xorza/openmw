@@ -94,7 +94,7 @@ namespace Rtx
     class MirrorTraversal : public osg::NodeVisitor
     {
     public:
-        explicit MirrorTraversal(SceneExtractor& extractor);
+        MirrorTraversal(SceneExtractor& extractor, const NodeKinds& kinds);
 
         /// Points the walk at a root, at where it stands, and at the frame it is mirroring.
         void begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal, std::size_t identity);
@@ -136,11 +136,10 @@ namespace Rtx
 
         SceneExtractor& mExtractor;
 
-        /// What kind each class of *node* this walk meets is. A member because the answers are a
-        /// fact about the classes in the world rather than about one frame; a drawable is dispatched
-        /// to its own `apply` and never reaches the one that asks about a node, so `SceneExtractor`
-        /// holds a classifier of its own for those.
-        NodeKinds mKinds;
+        /// The extractor's own classifier, which answers for a node here and for a drawable there:
+        /// one table, because the answers are a fact about the classes in the world, and both are
+        /// asked on the one thread that walks.
+        const NodeKinds& mKinds;
 
         /// The clock every controller under this walk reads. Its simulation time is the world's;
         /// its frame number is the walk's own, for the reason `begin` gives.
@@ -186,9 +185,10 @@ namespace Rtx
         std::vector<Shading> mShading;
     };
 
-    MirrorTraversal::MirrorTraversal(SceneExtractor& extractor)
+    MirrorTraversal::MirrorTraversal(SceneExtractor& extractor, const NodeKinds& kinds)
         : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
         , mExtractor(extractor)
+        , mKinds(kinds)
     {
         setFrameStamp(mStamp);
         mSequenceClock.setFrameStamp(mStamp);
@@ -418,7 +418,7 @@ namespace Rtx
     /// said are not there.
     SceneExtractor::SceneExtractor(SceneDesc& scene, Traversals* traversals)
         : mScene(scene)
-        , mWalk(std::make_unique<MirrorTraversal>(*this))
+        , mWalk(std::make_unique<MirrorTraversal>(*this, mKinds))
         , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
         , mTraversalMask(~NifOsg::Loader::getHiddenNodeMask())
     {
@@ -649,7 +649,7 @@ namespace Rtx
         // replaced is mirrored afresh under the path it kept. Moved, the slot would carry the old
         // surface at the new place until the next sweep, standing on a row the sweep may free.
         Index& slot = held->second.mIndex;
-        const MeshInstance& standing = mScene.placements().getAll()[slot];
+        const MeshInstance& standing = mScene.placements().getRows()[slot].mInstance;
         if (standing.mMesh != resolved.mMesh || standing.mMaterial != resolved.mMaterial
             || standing.mClass != resolved.mClass)
         {

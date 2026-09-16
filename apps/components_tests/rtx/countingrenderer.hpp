@@ -48,8 +48,8 @@ namespace Rtx::Testing
 
             // What the backend does: the array is made again and ends where the scene's table
             // does, whatever it held before.
-            countAt(slot) = static_cast<std::uint32_t>(scene.textures().getPaths().size());
-            heldAt(slot) = { true, scene.getStructureRevision() };
+            countAt(slot) = static_cast<std::uint32_t>(scene.textures().getRows().size());
+            heldAt(slot) = { true, &scene, scene.getStructureRevision() };
         }
 
         void extendScene(
@@ -67,7 +67,7 @@ namespace Rtx::Testing
 
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.
-            mAppendedToWrongEnd |= countAt(slot) != scene.textures().getPaths().size();
+            mAppendedToWrongEnd |= countAt(slot) != scene.textures().getRows().size();
             heldAt(slot).mRevision = scene.getStructureRevision();
         }
 
@@ -80,9 +80,10 @@ namespace Rtx::Testing
         Rtx::SceneHeld describeHeld(Rtx::SceneSlot slot) const override
         {
             const Built& built = heldAt(slot);
-            return Rtx::SceneHeld{
-                .mBuilt = built.mBuilt, .mStructureRevision = built.mRevision, .mTextureCount = countAt(slot)
-            };
+            return Rtx::SceneHeld{ .mBuilt = built.mBuilt,
+                .mScene = built.mScene,
+                .mStructureRevision = built.mRevision,
+                .mTextureCount = countAt(slot) };
         }
 
         /// **The texture array does not shrink**, which is what `mTextures` staying put records: a
@@ -129,6 +130,7 @@ namespace Rtx::Testing
         struct Built
         {
             bool mBuilt = false;
+            const Rtx::SceneDesc* mScene = nullptr;
             std::uint64_t mRevision = 0;
         };
 

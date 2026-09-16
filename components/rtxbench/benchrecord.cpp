@@ -44,9 +44,8 @@ namespace Rtx
 
         std::string asJson(const Crossings& crossings)
         {
-            return std::format(
-                R"({{"count": {}, "rebuilds": {}, "worstMs": {:.2f}, "readMs": {:.2f}, "buildMs": {:.2f}}})",
-                crossings.mCount, crossings.mRebuilds, crossings.mWorstMs, crossings.mReadMs, crossings.mBuildMs);
+            return std::format(R"({{"count": {}, "rebuilds": {}, "worstMs": {:.2f}, "totalMs": {:.2f}}})",
+                crossings.mCount, crossings.mRebuilds, crossings.mWorstMs, crossings.mTotalMs);
         }
 
         std::string asJson(const FrameTimes& times)
@@ -125,9 +124,6 @@ namespace Rtx
         // second is the one a card with a small host-visible heap runs out of first.
         out += describeMemory(place.mMemory);
 
-        if (place.mBuildMs > 0.0)
-            out += std::format("  build {:.0f} ms\n", place.mBuildMs);
-
         if (place.mHitPercent > 0.0)
             out += std::format("  {:.1f}% of primary rays hit\n", place.mHitPercent);
 
@@ -151,12 +147,9 @@ namespace Rtx
         // worst is the one to read: a crossing is a dropped frame, and an average over six hundred
         // frames of which four were the expensive ones hides exactly the thing.
         if (place.mCrossings.mCount > 0)
-            out += std::format(
-                "  {} crossings, {} of them rebuilds — {:.0f} ms worst; {:.1f} s over the run, "
-                "{:.1f} reading and {:.1f} building{}\n",
+            out += std::format("  {} crossings, {} of them rebuilds — {:.0f} ms worst, {:.1f} s over the run{}\n",
                 place.mCrossings.mCount, place.mCrossings.mRebuilds, place.mCrossings.mWorstMs,
-                (place.mCrossings.mReadMs + place.mCrossings.mBuildMs) / 1000.0, place.mCrossings.mReadMs / 1000.0,
-                place.mCrossings.mBuildMs / 1000.0,
+                place.mCrossings.mTotalMs / 1000.0,
                 place.mTravelled < 1.0 ? std::format(", {:.0f}% of the route flown", place.mTravelled * 100.0) : "");
 
         out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", place.mFrames,
@@ -205,7 +198,7 @@ namespace Rtx
             const BenchPlace& place = places[at];
             file << std::format(R"(    {{"view": "{}", "cell": "{}", "hour": {}, "weather": "{}", )", place.mView,
                 place.mCell, place.mHour, place.mWeather)
-                 << std::format(R"("buildMs": {:.2f}, )", place.mBuildMs) << R"("scene": )" << asJson(place.mScene)
+                 << R"("scene": )" << asJson(place.mScene)
                  << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                         place.mWallSeconds, place.mHitPercent)
                  << R"("crossings": )" << asJson(place.mCrossings)

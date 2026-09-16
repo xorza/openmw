@@ -3,8 +3,7 @@
 #include <cstdint>
 #include <optional>
 
-#include <components/rtx/reconstruction.hpp>
-#include <components/rtx/renderer.hpp>
+#include <components/rtxbench/runsetup.hpp>
 
 namespace MWRender
 {
@@ -53,28 +52,8 @@ namespace MWRender
     /// session installs none, and `RtxRenderer` makes one from `[RTX]` and the played answers.
     struct RtxSetup
     {
-        /// The knobs the run was made with, every one of them stated.
-        Rtx::RenderProfile mProfile;
-
-        /// Which validation layers the run asked for.
-        Rtx::ValidationOptions mValidation;
-
-        /// Whether the window stays hidden, which saves a present per frame and nothing else.
-        bool mHeadless = false;
-
-        /// Whether the trace counts what its rays hit. A report's figure — it is what tells "the
-        /// cell rendered" from "the camera faced away from it" — and nothing a player does ever
-        /// reads it, so a played session is specialized without the atomic rather than writing a
-        /// number to a buffer nobody looks at, once per pixel that hit anything.
-        bool mCountHits = false;
-
-        /// How long every frame of the run stands for, or nothing for the wall: what the renderer's
-        /// clock is made from.
-        std::optional<float> mStep;
-
-        /// Whether this run states for itself that the ground waits, or nothing to let the frame
-        /// clock decide. `Rtx::SessionRequest::mSettled` says which runs state one.
-        std::optional<bool> mSettled;
+        /// The knobs the run was made with, every one of them stated — the request's own.
+        Rtx::RunSetup mSetup;
 
         /// The run this process drives. The harness's own, and it outlives the engine.
         RtxRun& mRun;

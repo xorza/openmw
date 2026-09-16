@@ -319,13 +319,16 @@ namespace Rtx
         return const_cast<DeviceScene&>(std::as_const(*this).sceneAt(slot));
     }
 
-    VisibilityInputs VulkanRenderer::describeInputs(
-        const DeviceScene& held, const TraceChain& chain, const std::uint32_t rayMask, const Image& shown) const
+    VisibilityInputs VulkanRenderer::describeInputs(const DeviceScene& held, const TraceChain& chain,
+        const std::uint32_t rayMask, const Image& shown, const Buffer& counts, const FrameSlot traceSlot) const
     {
         return VisibilityInputs{
             .mScene = held.getAcceleration().getTopLevel(),
             .mBuffers = &held.getBuffers(),
             .mSlot = held.getSlot(),
+            .mTraceSlot = traceSlot,
+            .mChannels = &chain.getChannels(),
+            .mCounts = &counts,
             .mIndexBlocks = held.getAcceleration().getIndexBlocks(),
             .mTextures = held.getTextures(),
             .mWaves = &mWaves,
@@ -733,8 +736,8 @@ namespace Rtx
         // The puffs are composited over the reconstruction where something upscales, and over the
         // trace's own composite where nothing does. Named before the trace, because the set that
         // carries it is pushed for every launch.
-        const VisibilityInputs inputs = describeInputs(
-            *mWorld, mFrame, camera.mRayMask, upscaling() ? mUpscaler->getOutput() : mFrame.getColour());
+        const VisibilityInputs inputs = describeInputs(*mWorld, mFrame, camera.mRayMask,
+            upscaling() ? mUpscaler->getOutput() : mFrame.getColour(), frame.mHitCount, mRing.getRecordingSlot());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
@@ -790,11 +793,9 @@ namespace Rtx
         const Image* shown = &mFrame.record(commands,
             TraceRecording{
                 .mInputs = inputs,
-                .mTraceSlot = mRing.getRecordingSlot(),
                 .mBuffers = &mWorld->getBuffers(),
                 .mAsked = camera,
                 .mSampled = sampled,
-                .mCounts = &frame.mHitCount,
                 .mTarget = &target,
                 .mSum = mSum.isEmpty() ? nullptr : &mSum,
                 .mAccumulate = options.mAccumulate,
@@ -846,11 +847,8 @@ namespace Rtx
             Display{
                 .mShown = *shown,
                 .mExtent = VkExtent2D{ mOutputWidth, mOutputHeight },
-                .mChannels = channels,
                 .mInputs = inputs,
                 .mSampled = sampled,
-                .mCounts = frame.mHitCount,
-                .mTraceSlot = mRing.getRecordingSlot(),
                 .mTarget = target,
                 .mExposure = exposure,
                 .mBloom = true,
@@ -949,7 +947,8 @@ namespace Rtx
 
         DeviceScene& traced = sceneAt(options.mScene);
 
-        const VisibilityInputs inputs = describeInputs(traced, mView, camera.mRayMask, mView.getColour());
+        const VisibilityInputs inputs
+            = describeInputs(traced, mView, camera.mRayMask, mView.getColour(), mViewCounts, FrameSlot{});
 
         // Nothing reconstructs a picture, so nothing jitters it, and it has no frame before it.
         Shaders::VisibilityConstants sampled = sampleCamera(camera, traced, Reconstruction{}, nullptr);
@@ -969,7 +968,6 @@ namespace Rtx
         Batch trace(mDevice.getPool());
         {
             const VkCommandBuffer commands = trace.getCommands();
-            const GBuffer& channels = mView.getChannels();
 
             // A doll and a map tile are one frame with no frame before them, so every history says
             // so: the accumulator becomes a pass-through handing on the largest variance there is,
@@ -980,7 +978,6 @@ namespace Rtx
                     .mBuffers = &traced.getBuffers(),
                     .mAsked = camera,
                     .mSampled = sampled,
-                    .mCounts = &mViewCounts,
                     .mTarget = &mViewTarget,
                 });
 
@@ -993,11 +990,8 @@ namespace Rtx
                 Display{
                     .mShown = mView.getColour(),
                     .mExtent = extent,
-                    .mChannels = channels,
                     .mInputs = inputs,
                     .mSampled = sampled,
-                    .mCounts = mViewCounts,
-                    .mTraceSlot = FrameSlot{},
                     .mTarget = mViewTarget,
                     .mExposure = Display::Picture{},
                 });

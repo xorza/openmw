@@ -14,6 +14,12 @@
 
 namespace Rtx
 {
+    TextureData MipChain::withChain(const TextureData& described, MipChain& chain)
+    {
+        chain.build(described);
+        return chain.isEmpty() ? described : chain.describe();
+    }
+
     namespace
     {
         std::byte quantise(float value)

@@ -99,12 +99,20 @@ namespace Rtx
             mHanded.begin(), mHanded.end(), [&](const PreparedCell* held) { return held->mCell == cell; });
     }
 
-    void CellRing::giveBackHolds(
-        const std::span<PreparedModel* const> models, const std::span<PreparedTexture* const> textures)
+    void CellRing::giveBackHolds(const HeldCell& cell)
     {
         CellReturns& back = mSupply.giveBack();
-        back.mModels.insert(back.mModels.end(), models.begin(), models.end());
-        back.mTextures.insert(back.mTextures.end(), textures.begin(), textures.end());
+        back.mModels.insert(back.mModels.end(), cell.mModels.begin(), cell.mModels.end());
+        if (cell.mGround.has_value())
+            back.mTextures.insert(back.mTextures.end(), cell.mGround->mTextures.begin(), cell.mGround->mTextures.end());
+    }
+
+    void CellRing::giveBackHolds(const PreparedCell& cell)
+    {
+        CellReturns& back = mSupply.giveBack();
+        back.mModels.insert(back.mModels.end(), cell.mModels.begin(), cell.mModels.end());
+        for (const PreparedLayer& layer : cell.mGround.mLayers)
+            back.mTextures.push_back(layer.mTexture);
     }
 
     void CellRing::takeDone()
@@ -202,16 +210,10 @@ namespace Rtx
 
     void CellRing::adopt(PreparedCell& cell, SceneAdopter& into, ExtractionStats& stats)
     {
+        // A spare comes back through `reuse`, so what it holds is room and nothing else.
         HeldCell held = mSpareCells.take();
-        held.mDropped = false;
         held.mCell = cell.mCell;
         held.mStatics = cell.mStatics;
-        held.mModels.clear();
-
-        // Emptied and kept, not reset, so the texture list a spare cell grew is room the next
-        // one refills rather than a heap call on the frame a cell lands.
-        if (held.mGround.has_value())
-            held.mGround->reuse();
 
         mPlacer.adoptGround(cell, held, mHolds, mAround, stats);
 
@@ -238,12 +240,8 @@ namespace Rtx
 
         // Every hold the reader counted for the cell goes back with it: the models, and the
         // images its ground names.
-        CellReturns& back = mSupply.giveBack();
-        for (const PreparedLayer& layer : cell.mGround.mLayers)
-            back.mTextures.push_back(layer.mTexture);
-        giveBackHolds(cell.mModels, {});
-
-        back.mCells.push_back(&cell);
+        giveBackHolds(cell);
+        mSupply.giveBack().mCells.push_back(&cell);
     }
 
     void CellRing::dropCell(HeldCell& cell)
@@ -253,16 +251,11 @@ namespace Rtx
         for (PreparedModel* model : cell.mModels)
             mHolds.release(*model);
 
-        const std::span<PreparedTexture* const> textures = cell.mGround.has_value()
-            ? std::span<PreparedTexture* const>(cell.mGround->mTextures)
-            : std::span<PreparedTexture* const>();
-        giveBackHolds(cell.mModels, textures);
+        giveBackHolds(cell);
 
         mPlacer.dropGround(cell, mHolds);
 
-        cell.mPlacements.clear();
-        cell.mModels.clear();
-        cell.mLights.clear();
+        cell.reuse();
         mSpareCells.give(std::move(cell));
     }
 
@@ -286,7 +279,7 @@ namespace Rtx
     {
         for (const HeldCell& cell : mCells)
             for (std::size_t at = 0; at < cell.mShown; ++at)
-                if (cell.mPlacements[at].mSlot != sNoIndex)
+                if (cell.mPlacements[at].mStood.isStanding())
                     into.push_back(cell.mPlacements[at].mRefNum);
     }
 

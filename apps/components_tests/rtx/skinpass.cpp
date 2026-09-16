@@ -128,19 +128,19 @@ namespace Rtx
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 
             const std::array atFive{ boneUp(5.0f) };
-            scene.poseRig(raised, atFive, anywhere);
+            Testing::poseRig(scene, raised, atFive, anywhere);
 
             const std::array fourAndEight{ boneUp(4.0f), boneUp(8.0f) };
-            scene.poseRig(blended, fourAndEight, anywhere);
+            Testing::poseRig(scene, blended, fourAndEight, anywhere);
 
             // A quarter turn about z, in OpenSceneGraph's row-vector convention: `(x, y)` goes to
             // `(-y, x)`, and so does a normal along x.
             const std::array quarterTurn{ toGpuBone(osg::Matrixf(
                 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f)) };
-            scene.poseRig(turned, quarterTurn, anywhere);
+            Testing::poseRig(scene, turned, quarterTurn, anywhere);
 
             const std::array halfway{ 1.0f, 0.5f };
-            scene.poseMorph(lifted, halfway, anywhere);
+            Testing::poseMorph(scene, lifted, halfway, anywhere);
 
             ASSERT_EQ(scene.meshes().getDeformed().size(), 4u);
 
@@ -267,7 +267,7 @@ namespace Rtx
             // 2 there and 1 elsewhere, so a stale bind, a stale row or a stale influence would each
             // show as a different number.
             const MeshRange went = scene.meshes().getRows()[blended];
-            const Rig wentRig = scene.deformers().getRigs()[twoBones];
+            const Deformer wentRig = scene.deformers().getDeformers()[twoBones];
             scene.clearArrivals();
             const std::array kept{ raised, still, turned, lifted };
             ASSERT_TRUE(scene.release(kept, {}));
@@ -288,12 +288,12 @@ namespace Rtx
             ASSERT_EQ(arrived, blended) << "the slot was not handed out again";
             ASSERT_EQ(taken.mBindOffset, went.mBindOffset) << "the bind run was not handed out again";
             ASSERT_EQ(taken.mPoseOffset, went.mPoseOffset) << "the rows were not handed out again";
-            ASSERT_EQ(scene.deformers().getRigs()[twoMore].mRuns, wentRig.mRuns) << "the run words were not";
-            ASSERT_EQ(scene.deformers().getRigs()[twoMore].mInfluences, wentRig.mInfluences)
+            ASSERT_EQ(scene.deformers().getDeformers()[twoMore].mRuns, wentRig.mRuns) << "the run words were not";
+            ASSERT_EQ(scene.deformers().getDeformers()[twoMore].mInfluences, wentRig.mInfluences)
                 << "the influences were not";
 
             const std::array oneAndThree{ boneUp(1.0f), boneUp(3.0f) };
-            scene.poseRig(arrived, oneAndThree, anywhere);
+            Testing::poseRig(scene, arrived, oneAndThree, anywhere);
 
             {
                 Batch arrival(pool);
@@ -353,7 +353,7 @@ namespace Rtx
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
                 {}, Deform::Rig, oneBone);
             const std::array atFive{ boneUp(5.0f) };
-            scene.poseRig(first, atFive, anywhere);
+            Testing::poseRig(scene, first, atFive, anywhere);
 
             constexpr VkBufferUsageFlags readable
                 = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -385,7 +385,7 @@ namespace Rtx
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
                 {}, Deform::Rig, oneBone);
             const std::array atTwo{ boneUp(2.0f) };
-            scene.poseRig(second, atTwo, anywhere);
+            Testing::poseRig(scene, second, atTwo, anywhere);
             ASSERT_EQ(scene.meshes().getArrived().size(), 1u);
 
             {
@@ -418,9 +418,9 @@ namespace Rtx
             // returned early records this over a submit the hold still keeps on the queue, which
             // is the write the assert fires on.
             const std::array atOne{ boneUp(1.0f) };
-            scene.poseRig(first, atOne, anywhere);
+            Testing::poseRig(scene, first, atOne, anywhere);
             const std::array atThree{ boneUp(3.0f) };
-            scene.poseRig(second, atThree, anywhere);
+            Testing::poseRig(scene, second, atThree, anywhere);
 
             const VkDeviceSize poseBytes = 8 * sizeof(osg::Vec3f);
             const Buffer read = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");

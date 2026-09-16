@@ -32,7 +32,7 @@ namespace Rtx
         , mBuffers(device, batch, scene, mRecords, sFrameSlots)
         , mSkinTables(device, batch, scene, sFrameSlots)
         , mTextures(
-              device, batch, textureLayout, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures)
+              device, batch, textureLayout, static_cast<std::uint32_t>(scene.textures().getRows().size()), textures)
     {
         // Posed before it is built. The structures are built over the first copy of the
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the
@@ -43,6 +43,8 @@ namespace Rtx
         mAcceleration.build(batch, scene, mRecords);
         mBuiltMeshes = scene.meshes().getRevision();
         mBuiltStructure = scene.getStructureRevision();
+        mBuiltFrom = &scene;
+        mCounts = scene.placements().getCounts();
 
         // The first copy's set, which the first frame binds before any placement pays it.
         mTextures.sync(FrameSlot{});
@@ -98,6 +100,8 @@ namespace Rtx
         // of it is tens of milliseconds on a nine-by-nine region.
         mBuffers.place(scene, mRecords, mChangedRecords, placing);
 
+        mCounts = scene.placements().getCounts();
+
         return posed || built;
     }
 
@@ -113,6 +117,7 @@ namespace Rtx
     {
         return SceneHeld{
             .mBuilt = true,
+            .mScene = mBuiltFrom,
             .mStructureRevision = mBuiltStructure,
             .mTextureCount = mTextures.getCount(),
         };
@@ -120,7 +125,7 @@ namespace Rtx
 
     void DeviceScene::readPlacedStats(SceneStats& stats) const
     {
-        stats.mInstances = mAcceleration.getInstanceCounts();
+        stats.mInstances = mCounts;
         stats.mTableBytes = mBuffers.getBytes() + mSkinTables.getBytes();
 
         // Read every placement and not with the rest of the report, because a placement is

@@ -87,8 +87,10 @@ namespace Rtx
             const std::array<float, 4> half{ 0.5f, 0.5f, 0.5f, 0.5f };
 
             const std::array layers{
-                CompositeLayer{ .mDiffuse = red.describe(), .mMask = half, .mMaskWidth = 2, .mMaskHeight = 2 },
-                CompositeLayer{ .mDiffuse = green.describe(), .mMask = half, .mMaskWidth = 2, .mMaskHeight = 2 },
+                CompositeLayer{
+                    .mDiffuse = red.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
+                CompositeLayer{
+                    .mDiffuse = green.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
             };
 
             // **A chain of two reductions and one of one**, because the sum and the buffer it is
@@ -149,8 +151,10 @@ namespace Rtx
             const std::array<float, 1> half{ 0.5f };
 
             const std::array layers{
-                CompositeLayer{ .mDiffuse = red.describe(), .mMask = half, .mMaskWidth = 1, .mMaskHeight = 1 },
-                CompositeLayer{ .mDiffuse = green.describe(), .mMask = half, .mMaskWidth = 1, .mMaskHeight = 1 },
+                CompositeLayer{
+                    .mDiffuse = red.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 } },
+                CompositeLayer{
+                    .mDiffuse = green.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 } },
             };
 
             CompositeScratch scratch;
@@ -191,8 +195,10 @@ namespace Rtx
             const std::array<float, 2> east{ 0.0f, 1.0f };
 
             const std::array layers{
-                CompositeLayer{ .mDiffuse = red.describe(), .mMask = west, .mMaskWidth = 2, .mMaskHeight = 1 },
-                CompositeLayer{ .mDiffuse = green.describe(), .mMask = east, .mMaskWidth = 2, .mMaskHeight = 1 },
+                CompositeLayer{
+                    .mDiffuse = red.describe(), .mMask = west, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } },
+                CompositeLayer{
+                    .mDiffuse = green.describe(), .mMask = east, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } },
             };
 
             CompositeScratch scratch;
@@ -236,8 +242,8 @@ namespace Rtx
             const Flat ground(4, texels);
 
             const std::array straight{ CompositeLayer{ .mDiffuse = ground.describe() } };
-            const std::array rolled{ CompositeLayer{
-                .mDiffuse = ground.describe(), .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f) } };
+            const std::array rolled{ CompositeLayer{ .mDiffuse = ground.describe(),
+                .mPlacing = { .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f) } } };
 
             // One scratch for both, which is what a queue does with every chunk it bakes.
             CompositeScratch scratch;

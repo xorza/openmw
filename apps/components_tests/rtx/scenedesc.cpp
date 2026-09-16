@@ -13,6 +13,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/rtx/deformertable.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightbuilder.hpp>
@@ -167,7 +168,7 @@ namespace Rtx
             EXPECT_EQ(scene.textures().add(stone), 0u);
             EXPECT_EQ(scene.textures().add(wood), 1u);
             EXPECT_EQ(scene.textures().add(stone), 0u);
-            EXPECT_EQ(scene.textures().getPaths().size(), 2u);
+            EXPECT_EQ(scene.textures().getRows().size(), 2u);
         }
 
         /// **Which slot a thing lands in cannot depend on the order the dead left in.**
@@ -381,13 +382,13 @@ namespace Rtx
             EXPECT_TRUE(mScene.meshes().getDeformed().empty()) << "nothing has been posed yet";
 
             // The rig's tables: four run words and one influence, and one bone per mesh on it.
-            ASSERT_EQ(mScene.deformers().getRigs().size(), 1u);
-            EXPECT_EQ(mScene.deformers().getRigs()[mRig].getVertexCount(), 4u);
-            EXPECT_EQ(mScene.deformers().getRigs()[mRig].mBoneCount, 1u);
-            EXPECT_EQ(mScene.deformers().getRigHolds(mRig), 2u);
+            ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[mRig].getVertexCount(), 4u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[mRig].mRows, 1u);
+            EXPECT_EQ(mScene.deformers().getHolds(mRig), 2u);
             EXPECT_EQ(mScene.deformers().getRuns().size(), 4u);
             EXPECT_EQ(mScene.deformers().getInfluences().size(), 1u);
-            EXPECT_EQ(mScene.deformers().getArrivedRigs().size(), 1u);
+            EXPECT_EQ(mScene.deformers().getArrived().size(), 1u);
 
             // The still mesh has no bind run and no rows; the two skinned ones have one apiece,
             // laid end to end.
@@ -399,8 +400,8 @@ namespace Rtx
             EXPECT_EQ(mScene.meshes().getRows()[mOther].mBindOffset, 4u);
             EXPECT_EQ(mScene.deformers().getBindVertexCount(), 8u) << "the bind table holds the skinned meshes alone";
             EXPECT_EQ(mScene.meshes().getRows()[mMoving].mPoseOffset, 0u);
-            EXPECT_EQ(mScene.meshes().getRows()[mOther].mPoseOffset, 1u);
-            EXPECT_EQ(mScene.deformers().getBones().size(), 2u);
+            EXPECT_EQ(mScene.meshes().getRows()[mOther].mPoseOffset, 3u) << "three words a bone";
+            EXPECT_EQ(mScene.deformers().getPoses().size(), 6u) << "one bone a mesh";
         }
 
         /// A pose is rows and never vertices, and it names its mesh once a frame it moves.
@@ -408,12 +409,12 @@ namespace Rtx
         {
             // **The first pose names the mesh whatever it is**, and a second in the same frame is
             // the same structure to refit.
-            mScene.poseRig(mMoving, mAtFive, mReach);
-            mScene.poseRig(mMoving, mAtFive, mReach);
+            Testing::poseRig(mScene, mMoving, mAtFive, mReach);
+            Testing::poseRig(mScene, mMoving, mAtFive, mReach);
 
             ASSERT_EQ(mScene.meshes().getDeformed().size(), 1u) << "twice in a frame is one structure to refit";
             EXPECT_EQ(mScene.meshes().getDeformed()[0], mMoving);
-            EXPECT_EQ(mScene.getMeshBones(mMoving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
+            EXPECT_EQ(boneAt(mScene.getMeshPose(mMoving), 0).mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
             EXPECT_EQ(mScene.meshes().getRows()[mMoving].mBounds, mReach)
                 << "the reach is the caller's and not the bind's";
 
@@ -422,7 +423,8 @@ namespace Rtx
             EXPECT_EQ(mScene.meshes().getRows()[mMoving].mVertices.mOffset, 4u);
             EXPECT_EQ(mScene.meshes().getMeshPositions(mMoving)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(mScene.meshes().getMeshPositions(mStill)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
-            EXPECT_EQ(mScene.getMeshBones(mOther)[0], Shaders::GpuBone{}) << "the neighbour's rows are untouched";
+            EXPECT_EQ(boneAt(mScene.getMeshPose(mOther), 0), Shaders::GpuBone{})
+                << "the neighbour's rows are untouched";
 
             // The list is a frame's worth, so it goes when the frame's placements do.
             mScene.clearPlacement();
@@ -431,14 +433,14 @@ namespace Rtx
 
             // **A pose that did not change names nothing.** The walk poses every rig it meets and
             // cannot tell which of them the engine animated; the scene can, by looking.
-            mScene.poseRig(mMoving, mAtFive, mReach);
+            Testing::poseRig(mScene, mMoving, mAtFive, mReach);
             EXPECT_TRUE(mScene.meshes().getDeformed().empty()) << "an unchanged pose named a structure to refit";
 
-            mScene.poseRig(mMoving, mAtSeven, mReach);
-            mScene.poseRig(mOther, mAtFive, mReach);
+            Testing::poseRig(mScene, mMoving, mAtSeven, mReach);
+            Testing::poseRig(mScene, mOther, mAtFive, mReach);
             EXPECT_EQ(sorted(mScene.meshes().getDeformed()), (std::vector<Index>{ mMoving, mOther }));
-            EXPECT_EQ(mScene.getMeshBones(mMoving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
-            EXPECT_EQ(mScene.getMeshBones(mOther)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
+            EXPECT_EQ(boneAt(mScene.getMeshPose(mMoving), 0).mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
+            EXPECT_EQ(boneAt(mScene.getMeshPose(mOther), 0).mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
         }
 
         /// **The rig goes with the last mesh on it, and not before.** Freeing one of the two gives
@@ -446,28 +448,29 @@ namespace Rtx
         /// rig, and the next skin to arrive takes its slot and its runs.
         TEST_F(RtxSkinnedMeshTest, aRigGoesWithTheLastMeshOnItAndTheNextSkinTakesItsSlot)
         {
-            mScene.poseRig(mMoving, mAtFive, mReach);
-            mScene.poseRig(mOther, mAtFive, mReach);
+            Testing::poseRig(mScene, mMoving, mAtFive, mReach);
+            Testing::poseRig(mScene, mOther, mAtFive, mReach);
             mScene.clearArrivals();
 
             const std::array keepTwo{ mStill, mOther };
             ASSERT_TRUE(mScene.release(keepTwo, {}));
-            EXPECT_EQ(mScene.deformers().getRigHolds(mRig), 1u);
-            EXPECT_EQ(mScene.deformers().getRigs()[mRig].getVertexCount(), 4u) << "a rig with a mesh on it stays";
+            EXPECT_EQ(mScene.deformers().getHolds(mRig), 1u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[mRig].getVertexCount(), 4u) << "a rig with a mesh on it stays";
             EXPECT_EQ(std::vector<Index>(mScene.meshes().getDeformed().begin(), mScene.meshes().getDeformed().end()),
                 (std::vector<Index>{ mOther }))
                 << "the freed slot left the list and the survivor stayed where it was named";
 
             const std::array keepOne{ mStill };
             ASSERT_TRUE(mScene.release(keepOne, {}));
-            EXPECT_EQ(mScene.deformers().getRigHolds(mRig), 0u);
-            EXPECT_EQ(mScene.deformers().getRigs()[mRig].getVertexCount(), 0u) << "a rig nothing stands on is free";
-            EXPECT_TRUE(mScene.deformers().getArrivedRigs().empty());
+            EXPECT_EQ(mScene.deformers().getHolds(mRig), 0u);
+            EXPECT_EQ(mScene.deformers().getDeformers()[mRig].getVertexCount(), 0u)
+                << "a rig nothing stands on is free";
+            EXPECT_TRUE(mScene.deformers().getArrived().empty());
             EXPECT_TRUE(mScene.meshes().getDeformed().empty()) << "a slot given back still named a structure to refit";
 
             EXPECT_EQ(Testing::addOneBoneRig(mScene, 4), mRig) << "the freed slot is the one handed out";
             EXPECT_EQ(mScene.deformers().getRuns().size(), 4u) << "the freed run is the one handed out";
-            EXPECT_EQ(sorted(mScene.deformers().getArrivedRigs()), (std::vector<Index>{ mRig }));
+            EXPECT_EQ(sorted(mScene.deformers().getArrived()), (std::vector<Index>{ mRig }));
 
             // `mMoving` and not `mOther`, though `mOther` went last: `Rtx::SlotRows` answers with
             // the lowest free slot, so which of the two arrives next is not the sweep's to decide.
@@ -476,9 +479,9 @@ namespace Rtx
             EXPECT_EQ(mScene.meshes().getRows()[back].mBindOffset, 0u) << "the freed bind run is the one handed out";
             EXPECT_EQ(mScene.deformers().getBindVertexCount(), 4u)
                 << "both runs went, so the table reaches only as far as this one";
-            EXPECT_EQ(mScene.getMeshBones(back)[0], Shaders::GpuBone{}) << "a reused pose run holds no old pose";
+            EXPECT_EQ(boneAt(mScene.getMeshPose(back), 0), Shaders::GpuBone{}) << "a reused pose run holds no old pose";
 
-            mScene.poseRig(back, mAtFive, mReach);
+            Testing::poseRig(mScene, back, mAtFive, mReach);
             EXPECT_EQ(sorted(mScene.meshes().getDeformed()), (std::vector<Index>{ back }))
                 << "a reused slot's first pose names it";
         }
@@ -512,12 +515,12 @@ namespace Rtx
             ASSERT_LT(early, late);
 
             ASSERT_TRUE(scene.release({}, {}));
-            ASSERT_EQ(scene.deformers().getRigHolds(first), 0u);
-            ASSERT_EQ(scene.deformers().getRigHolds(second), 0u);
+            ASSERT_EQ(scene.deformers().getHolds(first), 0u);
+            ASSERT_EQ(scene.deformers().getHolds(second), 0u);
 
             // **Read after two removals in one sweep**, which is the pass `DeformerTable::compact`
             // owes: a set with a removal outstanding refuses to answer at all.
-            EXPECT_TRUE(scene.deformers().getArrivedRigs().empty()) << "both arrivals left with their rigs";
+            EXPECT_TRUE(scene.deformers().getArrived().empty()) << "both arrivals left with their rigs";
 
             EXPECT_EQ(Testing::addOneBoneRig(scene, 4), first)
                 << "the lowest free rig slot, and not the last one the sweep gave back";
@@ -525,7 +528,7 @@ namespace Rtx
         }
 
         /// **Every table hands out its lowest free slot**, which is what `Rtx::SlotRows` promises
-        /// once for all six of them.
+        /// once for all five of them.
         ///
         /// Two slots are freed high first here, because that is the order a list built by pushing
         /// leaves out of order: `[2]` and then `[2, 0]` is no heap, and a pop of it answers with 2.
@@ -593,40 +596,89 @@ namespace Rtx
                 offsets[vertex] = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
             const Index morph = scene.deformers().addMorph(offsets, 2);
-            ASSERT_EQ(scene.deformers().getMorphs().size(), 1u);
-            EXPECT_EQ(scene.deformers().getMorphs()[morph].mTargetCount, 2u);
-            EXPECT_EQ(scene.deformers().getMorphs()[morph].getVertexCount(), 4u);
+            ASSERT_EQ(scene.deformers().getDeformers().size(), 1u);
+            EXPECT_EQ(scene.deformers().getDeformers()[morph].mRows, 2u);
+            EXPECT_EQ(scene.deformers().getDeformers()[morph].getVertexCount(), 4u);
             EXPECT_EQ(scene.deformers().getMorphOffsets().size(), 8u);
             EXPECT_EQ(scene.deformers().getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
-            EXPECT_EQ(sorted(scene.deformers().getArrivedMorphs()), (std::vector<Index>{ morph }));
+            EXPECT_EQ(sorted(scene.deformers().getArrived()), (std::vector<Index>{ morph }));
 
             const Index face
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     Deform::Morph, morph);
             EXPECT_EQ(scene.meshes().getRows()[face].mDeform, Deform::Morph);
-            EXPECT_EQ(scene.deformers().getMorphHolds(morph), 1u);
-            EXPECT_EQ(scene.deformers().getWeights().size(), 2u);
+            EXPECT_EQ(scene.deformers().getHolds(morph), 1u);
+            EXPECT_EQ(scene.deformers().getPoses().size(), 1u) << "two weights fit one word";
             EXPECT_EQ(scene.deformers().getBindVertexCount(), 4u);
 
             const std::array smiling{ 1.0f, 0.5f };
             const osg::BoundingBoxf reach(osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 1.0f, 0.5f));
-            scene.poseMorph(face, smiling, reach);
-            scene.poseMorph(face, smiling, reach);
+            Testing::poseMorph(scene, face, smiling, reach);
+            Testing::poseMorph(scene, face, smiling, reach);
             EXPECT_EQ(sorted(scene.meshes().getDeformed()), (std::vector<Index>{ face }));
-            EXPECT_EQ(scene.getMeshWeights(face)[1], 0.5f);
+            EXPECT_EQ(weightAt(scene.getMeshPose(face), 1), 0.5f);
             EXPECT_EQ(scene.meshes().getRows()[face].mBounds, reach);
 
             scene.clearPlacement();
-            scene.poseMorph(face, smiling, reach);
+            Testing::poseMorph(scene, face, smiling, reach);
             EXPECT_TRUE(scene.meshes().getDeformed().empty()) << "an unchanged pose named a structure to refit";
 
             // The morph goes with its mesh and its offsets with it: the next set of the same shape
             // lands where they were.
             ASSERT_TRUE(scene.release({}, {}));
-            EXPECT_EQ(scene.deformers().getMorphHolds(morph), 0u);
-            EXPECT_EQ(scene.deformers().getMorphs()[morph].getVertexCount(), 0u);
+            EXPECT_EQ(scene.deformers().getHolds(morph), 0u);
+            EXPECT_EQ(scene.deformers().getDeformers()[morph].getVertexCount(), 0u);
             EXPECT_EQ(scene.deformers().addMorph(offsets, 2), morph);
             EXPECT_EQ(scene.deformers().getMorphOffsets().size(), 8u);
+        }
+
+        /// **A pose is words, and a morph's last word is zero past its weights.** Five targets are
+        /// two words: (5 + 3) / 4. The three floats past the fifth weight are what the compare
+        /// reads and the digest hashes, so they are written and not left as the run's last tenant
+        /// left them — a run handed out again would otherwise name a structure to refit on a pose
+        /// that did not change.
+        TEST(RtxSceneDescTest, aMorphOfFiveTargetsTakesTwoWordsZeroPastTheLastWeight)
+        {
+            SceneDesc scene;
+
+            const std::vector<osg::Vec3f> offsets(20, osg::Vec3f(0.0f, 0.0f, 1.0f));
+            const Index morph = scene.deformers().addMorph(offsets, 5);
+            EXPECT_EQ(scene.deformers().getDeformers()[morph].getPoseWords(), 2u);
+            EXPECT_EQ(scene.deformers().getDeformers()[morph].getVertexCount(), 4u);
+
+            const Index face
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    Deform::Morph, morph);
+            ASSERT_EQ(scene.deformers().getPoses().size(), 2u);
+
+            const std::array weights{ 1.0f, 0.125f, 0.25f, 0.375f, 0.5f };
+            const osg::BoundingBoxf reach(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
+            Testing::poseMorph(scene, face, weights, reach);
+
+            const std::span<const PoseWord> pose = scene.getMeshPose(face);
+            ASSERT_EQ(pose.size(), 2u);
+            EXPECT_EQ(pose[0], (PoseWord{ { 1.0f, 0.125f, 0.25f, 0.375f } }));
+            EXPECT_EQ(pose[1], (PoseWord{ { 0.5f, 0.0f, 0.0f, 0.0f } }));
+            EXPECT_EQ(weightAt(pose, 4), 0.5f);
+
+            // The same five again is nothing to refit, and a change in the fifth, in the second
+            // word, is.
+            scene.clearPlacement();
+            Testing::poseMorph(scene, face, weights, reach);
+            EXPECT_TRUE(scene.meshes().getDeformed().empty());
+
+            const std::array lifted{ 1.0f, 0.125f, 0.25f, 0.375f, 0.75f };
+            Testing::poseMorph(scene, face, lifted, reach);
+            EXPECT_EQ(sorted(scene.meshes().getDeformed()), (std::vector<Index>{ face }));
+            EXPECT_EQ(weightAt(scene.getMeshPose(face), 4), 0.75f);
+
+            // And a bone is three words, laid row by row, so the same words read back as the bone.
+            const std::array bones{ boneUp(5.0f), boneUp(7.0f) };
+            std::vector<PoseWord> words;
+            packBones(bones, words);
+            ASSERT_EQ(words.size(), 6u);
+            EXPECT_EQ(words[2], (PoseWord{ { 0.0f, 0.0f, 1.0f, 5.0f } }));
+            EXPECT_EQ(boneAt(words, 1), bones[1]);
         }
 
         /// The finding the caller made about a mesh is kept beside its range, for a backend that
@@ -650,6 +702,59 @@ namespace Rtx
             const std::array<Index, 2> keptMeshes{ still, rig };
             ASSERT_TRUE(scene.release(keptMeshes, {}));
             EXPECT_EQ(scene.meshes().getRows()[dressed].mVertices.mCount, 0u);
+        }
+
+        /// The counts follow every write to a placement: placed, faded across opaque, reclassed
+        /// through the material it wears, and dropped. Each step is hand-counted, and the flags a
+        /// row keeps take back exactly what they added.
+        TEST(RtxSceneDescTest, theCountsFollowEachPlacementAsItIsStoodFadedReclassedAndDropped)
+        {
+            SceneDesc scene;
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index leaf = scene.textures().add(VFS::Path::NormalizedView("textures/leaf.dds"));
+
+            // A cutout: blended, all there, with a diffuse map to read a mask out of.
+            const Index foliage = scene.materials().add(Material{ .mDiffuse = leaf, .mAlphaMode = AlphaMode::Blend });
+            const Index sea = scene.materials().add(Material{ .mKind = MaterialKind::Water });
+
+            const auto counts = [&] { return scene.placements().getCounts(); };
+            EXPECT_EQ(counts().mPlaced, 0u);
+
+            const Index one = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = foliage });
+            EXPECT_EQ(counts().mPlaced, 1u);
+            EXPECT_EQ(counts().mCutout, 1u);
+            EXPECT_EQ(counts().mWater, 0u);
+
+            // The player's arms: the class is counted beside the cutout.
+            scene.addInstance(
+                MeshInstance{ .mMesh = mesh, .mMaterial = foliage, .mClass = InstanceClass::FirstPerson });
+            EXPECT_EQ(counts().mPlaced, 2u);
+            EXPECT_EQ(counts().mCutout, 2u);
+            EXPECT_EQ(counts().mFirstPerson, 1u);
+
+            // A cutout the game is fading is translucent and never asked the cutout's question.
+            scene.placements().fade(one, 0.5f);
+            EXPECT_EQ(counts().mCutout, 1u);
+            scene.placements().fade(one, 1.0f);
+            EXPECT_EQ(counts().mCutout, 2u);
+
+            // The material turns to water under both, and the row's own facts follow it.
+            scene.setMaterial(foliage, Material{ .mKind = MaterialKind::Water, .mDiffuse = leaf });
+            EXPECT_EQ(counts().mCutout, 0u);
+            EXPECT_EQ(counts().mWater, 2u);
+            EXPECT_EQ(counts().mFirstPerson, 1u);
+            EXPECT_EQ(scene.placements().getRows()[one].mWorn.mKind, MaterialKind::Water);
+
+            scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = sea });
+            EXPECT_EQ(counts().mWater, 3u);
+            EXPECT_EQ(counts().mPlaced, 3u);
+
+            scene.placements().drop(one, Stander::Walk);
+            EXPECT_EQ(counts().mPlaced, 2u);
+            EXPECT_EQ(counts().mWater, 2u);
+            EXPECT_EQ(counts().mFirstPerson, 1u);
+            EXPECT_EQ(counts().mCutout, 0u);
         }
 
         /// A reclass reaches the placements wearing the material and no other, through the list
@@ -866,7 +971,7 @@ namespace Rtx
             scene.clearPlacement();
             EXPECT_TRUE(scene.emitters().empty());
             EXPECT_TRUE(scene.sprites().empty());
-            EXPECT_EQ(scene.textures().getPaths().size(), 2u);
+            EXPECT_EQ(scene.textures().getRows().size(), 2u);
         }
 
         /// A quad that hangs in the world reaches further than its own width, and its sphere knows.
@@ -1202,8 +1307,7 @@ namespace Rtx
             {
                 const std::array droppedLayers{ MaterialLayer{ .mDiffuse = mGround,
                     .mMask = mScene.materials().addMask(sGroundWeights),
-                    .mMaskWidth = 2,
-                    .mMaskHeight = 2 } };
+                    .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } } };
                 const Rtx::Run droppedRun = mScene.materials().addLayers(droppedLayers);
                 mDropped = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
 
@@ -1211,8 +1315,7 @@ namespace Rtx
 
                 const std::array keptLayers{ MaterialLayer{ .mDiffuse = mSand,
                                                  .mMask = mScene.materials().addMask(sSandWeights),
-                                                 .mMaskWidth = 3,
-                                                 .mMaskHeight = 3 },
+                                                 .mPlacing = { .mMaskWidth = 3, .mMaskHeight = 3 } },
                     MaterialLayer{ .mDiffuse = mMoss } };
                 const Rtx::Run keptRun = mScene.materials().addLayers(keptLayers);
                 mKept = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
@@ -1251,8 +1354,7 @@ namespace Rtx
             // is any longer than it was.
             const std::array arrivingLayers{ MaterialLayer{ .mDiffuse = terrain.mMoss,
                 .mMask = scene.materials().addMask(ReleasedTerrain::sGroundWeights),
-                .mMaskWidth = 2,
-                .mMaskHeight = 2 } };
+                .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } } };
             const Rtx::Run arrivingRun = scene.materials().addLayers(arrivingLayers);
 
             EXPECT_EQ(arrivingLayers[0].mMask, (Rtx::Run{ .mOffset = 0, .mCount = 4 })) << "the freed mask run";
@@ -1282,19 +1384,22 @@ namespace Rtx
             EXPECT_EQ(sorted(scene.textures().getArrived()),
                 (std::vector<Index>{ terrain.mStone, terrain.mSand, terrain.mMoss }));
 
-            ASSERT_EQ(scene.textures().getPaths().size(), 4u) << "the table shrank, so something was renumbered";
-            EXPECT_TRUE(scene.textures().getPaths()[terrain.mGround].value().empty())
+            ASSERT_EQ(scene.textures().getRows().size(), 4u) << "the table shrank, so something was renumbered";
+            EXPECT_TRUE(scene.textures().getRows()[terrain.mGround].mPath.value().empty())
                 << "a texture nothing wears was kept";
 
             // The three the survivors wear are untouched, at the indices they were given.
-            EXPECT_EQ(scene.textures().getPaths()[terrain.mStone], VFS::Path::NormalizedView("textures/tx_stone.dds"));
-            EXPECT_EQ(scene.textures().getPaths()[terrain.mSand], VFS::Path::NormalizedView("textures/tx_sand.dds"));
-            EXPECT_EQ(scene.textures().getPaths()[terrain.mMoss], VFS::Path::NormalizedView("textures/tx_moss.dds"));
+            EXPECT_EQ(
+                scene.textures().getRows()[terrain.mStone].mPath, VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            EXPECT_EQ(
+                scene.textures().getRows()[terrain.mSand].mPath, VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            EXPECT_EQ(
+                scene.textures().getRows()[terrain.mMoss].mPath, VFS::Path::NormalizedView("textures/tx_moss.dds"));
 
             // The freed slot is what the next texture takes, and the path lookup went with it: asking
             // for `tx_ground` again is a new arrival rather than a hit on a slot nothing stands in.
             EXPECT_EQ(scene.textures().add(VFS::Path::NormalizedView("textures/tx_ground.dds")), terrain.mGround);
-            EXPECT_EQ(scene.textures().getPaths().size(), 4u) << "the table grew past a free slot";
+            EXPECT_EQ(scene.textures().getRows().size(), 4u) << "the table grew past a free slot";
             EXPECT_EQ(scene.textures().getArrived().back(), terrain.mGround)
                 << "a slot taken over was not reported as arriving";
             EXPECT_TRUE(scene.textures().getFreed().empty()) << "a slot taken back was still reported as gone";
@@ -1373,7 +1478,7 @@ namespace Rtx
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 0, .mCount = 4 } }));
 
             const std::array layers{
-                MaterialLayer{ .mMask = mask, .mMaskWidth = 2, .mMaskHeight = 2 },
+                MaterialLayer{ .mMask = mask, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
                 MaterialLayer{},
             };
             const Rtx::Run run = scene.materials().addLayers(layers);
@@ -1392,7 +1497,7 @@ namespace Rtx
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 4, .mCount = 2 } }));
 
             const std::array one{ MaterialLayer{
-                .mMask = Rtx::Run{ .mOffset = 4, .mCount = 2 }, .mMaskWidth = 2, .mMaskHeight = 1 } };
+                .mMask = Rtx::Run{ .mOffset = 4, .mCount = 2 }, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } } };
             EXPECT_EQ(scene.materials().addLayers(one), (Rtx::Run{ .mOffset = 2, .mCount = 1 }));
             EXPECT_EQ(runs(scene.materials().getArrived().mLayers),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 2, .mCount = 1 } }));
@@ -1447,7 +1552,7 @@ namespace Rtx
 
             // A texture nothing has been told to name is nobody's to give back, so it stays — which
             // is what `addTexture` says of a caller that asks for one and then puts it nowhere.
-            EXPECT_EQ(scene.textures().getPaths().size(), 1u);
+            EXPECT_EQ(scene.textures().getRows().size(), 1u);
             EXPECT_TRUE(scene.textures().getFreed().empty());
         }
 
@@ -1505,14 +1610,14 @@ namespace Rtx
             ASSERT_TRUE(scene.release(meshes, keepSecond));
 
             EXPECT_TRUE(scene.textures().getFreed().empty()) << "a texture another material still names";
-            EXPECT_EQ(scene.textures().getPaths()[shared], VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            EXPECT_EQ(scene.textures().getRows()[shared].mPath, VFS::Path::NormalizedView("textures/tx_stone.dds"));
 
             const std::array<Index, 0> none{};
             ASSERT_TRUE(scene.release(meshes, none));
 
             EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ shared, lone }));
-            EXPECT_TRUE(scene.textures().getPaths()[shared].value().empty());
-            EXPECT_TRUE(scene.textures().getPaths()[lone].value().empty());
+            EXPECT_TRUE(scene.textures().getRows()[shared].mPath.value().empty());
+            EXPECT_TRUE(scene.textures().getRows()[lone].mPath.value().empty());
         }
 
         /// An image with no file behind it takes a slot like any other and gives it back like any
@@ -1533,12 +1638,12 @@ namespace Rtx
             // Standing, and standing is not free — the path is empty because it has none, which is
             // the same thing a free slot's path says and not the same fact.
             EXPECT_FALSE(scene.textures().isFree(baked));
-            EXPECT_TRUE(scene.textures().getPaths()[baked].value().empty()) << "it came from no file";
-            EXPECT_EQ(scene.textures().getBaked()[baked], "composite/-3,-2/2");
+            EXPECT_TRUE(scene.textures().getRows()[baked].mPath.value().empty()) << "it came from no file";
+            EXPECT_EQ(scene.textures().getRows()[baked].mBaked, "composite/-3,-2/2");
 
             // The key is what makes two chunks that would bake the same image share one slot.
             EXPECT_EQ(scene.textures().addBaked("composite/-3,-2/2"), baked) << "the same bake took a second slot";
-            EXPECT_EQ(scene.textures().getPaths().size(), 1u);
+            EXPECT_EQ(scene.textures().getRows().size(), 1u);
 
             // A file beside it, so the free list has to hand back the right one.
             const Index file = scene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
@@ -1548,15 +1653,15 @@ namespace Rtx
             scene.textures().drop(baked);
 
             EXPECT_TRUE(scene.textures().isFree(baked)) << "nothing names it and it is still standing";
-            EXPECT_TRUE(scene.textures().getBaked()[baked].empty());
+            EXPECT_TRUE(scene.textures().getRows()[baked].mBaked.empty());
             EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ baked }));
 
             // And the slot comes back, to a file this time — a freed slot is a row and not a kind.
             const Index next = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
             EXPECT_EQ(next, baked) << "the table grew past a free slot";
-            EXPECT_EQ(scene.textures().getPaths().size(), 2u);
-            EXPECT_EQ(scene.textures().getPaths()[next], VFS::Path::NormalizedView("textures/tx_sand.dds"));
-            EXPECT_TRUE(scene.textures().getBaked()[next].empty()) << "the slot kept what the last tenant was";
+            EXPECT_EQ(scene.textures().getRows().size(), 2u);
+            EXPECT_EQ(scene.textures().getRows()[next].mPath, VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            EXPECT_TRUE(scene.textures().getRows()[next].mBaked.empty()) << "the slot kept what the last tenant was";
 
             // The key is free again too, or a bake that came back would find a slot somebody else has.
             const Index again = scene.textures().addBaked("composite/-3,-2/2");
@@ -1579,8 +1684,8 @@ namespace Rtx
             scene.setMaterial(material, Material{ .mDiffuse = second });
 
             EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ first }));
-            EXPECT_TRUE(scene.textures().getPaths()[first].value().empty()) << "the frame it left is still named";
-            EXPECT_EQ(scene.textures().getPaths()[second], VFS::Path::NormalizedView("textures/tx_fire_01.dds"));
+            EXPECT_TRUE(scene.textures().getRows()[first].mPath.value().empty()) << "the frame it left is still named";
+            EXPECT_EQ(scene.textures().getRows()[second].mPath, VFS::Path::NormalizedView("textures/tx_fire_01.dds"));
 
             // **And round again onto a frame it already had.** Taking the new set before giving the
             // old one back is the whole of what stops this: the other order takes the slot to zero,
@@ -1588,7 +1693,7 @@ namespace Rtx
             // identity under a material that never stopped naming it.
             scene.setMaterial(material, Material{ .mDiffuse = second, .mTwoSided = true });
 
-            EXPECT_EQ(scene.textures().getPaths()[second], VFS::Path::NormalizedView("textures/tx_fire_01.dds"))
+            EXPECT_EQ(scene.textures().getRows()[second].mPath, VFS::Path::NormalizedView("textures/tx_fire_01.dds"))
                 << "a texture the material still names was let go and taken again";
             EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ first })) << "and reported as going";
         }
@@ -1607,16 +1712,16 @@ namespace Rtx
             const std::array meshes{ mesh };
             const std::array materials{ material };
             EXPECT_FALSE(scene.release(meshes, materials));
-            EXPECT_EQ(scene.textures().getPaths()[sprite], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_EQ(scene.textures().getRows()[sprite].mPath, VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
             scene.textures().drop(sprite);
 
             EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ sprite }));
-            EXPECT_TRUE(scene.textures().getPaths()[sprite].value().empty());
+            EXPECT_TRUE(scene.textures().getRows()[sprite].mPath.value().empty());
 
             // And the slot is handed out again rather than the table growing.
             EXPECT_EQ(scene.textures().add(VFS::Path::NormalizedView("textures/tx_smoke.dds")), sprite);
-            EXPECT_EQ(scene.textures().getPaths().size(), 1u);
+            EXPECT_EQ(scene.textures().getRows().size(), 1u);
         }
 
         /// A mesh's vertices never straddle a block, and the tail one skipped is handed out again.
@@ -1763,7 +1868,8 @@ namespace Rtx
             // The same square three units along x, which is what a pose is: the count a deforming
             // mesh keeps and the places it keeps none of, with the reach the caller read.
             const std::array along{ toGpuBone(osg::Matrixf::translate(3.0f, 0.0f, 0.0f)) };
-            scene.poseRig(quad, along, osg::BoundingBoxf(osg::Vec3f(3.0f, 0.0f, 0.0f), osg::Vec3f(4.0f, 1.0f, 0.0f)));
+            Testing::poseRig(
+                scene, quad, along, osg::BoundingBoxf(osg::Vec3f(3.0f, 0.0f, 0.0f), osg::Vec3f(4.0f, 1.0f, 0.0f)));
 
             EXPECT_FLOAT_EQ(scene.getBounds().xMin(), 3.0f) << "the extent stayed where the first pose put it";
             EXPECT_FLOAT_EQ(scene.getBounds().xMax(), 4.0f);

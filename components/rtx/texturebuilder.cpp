@@ -103,7 +103,7 @@ namespace Rtx
     void SceneTextures::describeAll(const SceneDesc& scene, Resource::ImageManager& images,
         const CompositeQueue* composites, const CellHolds* readings)
     {
-        mEverything.resize(scene.textures().getPaths().size());
+        mEverything.resize(scene.textures().getRows().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
         describe(scene, images, mEverything, composites, readings);
@@ -137,10 +137,10 @@ namespace Rtx
             osg::ref_ptr<const osg::Image> image;
             Index light = sNoIndex;
 
-            const std::string& baked = scene.textures().getBaked()[slot];
-            if (baked.empty())
-                image = openImage(images, scene.textures().getPaths()[slot]);
-            else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(baked))
+            const TextureRow& row = scene.textures().getRows()[slot];
+            if (row.mKind == TextureKind::File)
+                image = openImage(images, row.mPath);
+            else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(row.mBaked))
             {
                 // Baked from the sprite texture's alpha, here, because here is where a file is
                 // opened for upload. The source's own description is transient — its levels go
@@ -151,14 +151,11 @@ namespace Rtx
                     mSourceLevels.clear();
                     try
                     {
-                        TextureData painted = describeImage(*sprite, mSourceLevels);
-
                         // The same chain the sprite's own slot gets, because a bake is read at
                         // whatever level the ray can resolve and a source with one level would bake
                         // one answer for every distance.
-                        mSourceChain.build(painted);
-                        if (!mSourceChain.isEmpty())
-                            painted = mSourceChain.describe();
+                        const TextureData painted
+                            = MipChain::withChain(describeImage(*sprite, mSourceLevels), mSourceChain);
 
                         mSourceAlpha.build(painted);
                         if (!mSourceAlpha.isEmpty())
@@ -218,14 +215,11 @@ namespace Rtx
                     {
                         // What the file did not carry, built rather than done without.
                         // `MipChain` says why almost nothing in the game needs this and why the
-                        // rain does.
+                        // rain does. The pool's entry is kept only where a chain was built.
                         MipChain& chain = mChains.next();
-                        chain.build(*described);
+                        described = MipChain::withChain(*described, chain);
                         if (!chain.isEmpty())
-                        {
-                            described = chain.describe();
                             mChains.keep();
-                        }
                     }
                 }
                 catch (const Error&)
@@ -249,16 +243,15 @@ namespace Rtx
                 // Named rather than tallied, because a count says a texture is grey and nothing
                 // about which one. Whichever of the two named the slot, or a composite that could
                 // not be flattened reports itself as a file with no name.
-                const std::string_view baked = scene.textures().getBaked()[kept.mSlot];
-                Log(Debug::Warning) << "Texture \""
-                                    << (baked.empty() ? scene.textures().getPaths()[kept.mSlot].value() : baked)
+                const TextureRow& row = scene.textures().getRows()[kept.mSlot];
+                Log(Debug::Warning) << "Texture \"" << (row.mKind == TextureKind::File ? row.mPath.value() : row.mBaked)
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);
             }
 
             described->mSlot = kept.mSlot;
-            described->mWrap = scene.textures().getWraps()[kept.mSlot];
+            described->mWrap = scene.textures().getRows()[kept.mSlot].mWrap;
             mDescriptions.push_back(*described);
         }
 

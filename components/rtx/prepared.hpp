@@ -20,6 +20,7 @@
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "material.hpp"
 #include "materialresolver.hpp"
 #include "meshreader.hpp"
 #include "mipchain.hpp"
@@ -72,13 +73,9 @@ namespace Rtx
 
         /// Into `PreparedGround::mWeights`. An empty run is a layer covering the whole cell.
         Run mWeights;
-        std::uint16_t mMaskWidth = 0;
-        std::uint16_t mMaskHeight = 0;
 
-        /// Cell texture coordinates to this layer's, as `uv * xy + zw`. `GroundReader` says where
-        /// the two come from.
-        osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-        osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
+        /// As the scene's row will carry it, so adopting a layer copies one value.
+        LayerPlacing mPlacing;
     };
 
     /// One cell's ground, read off the land records on a thread that is not the frame's. A cell

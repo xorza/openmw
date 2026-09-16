@@ -116,6 +116,19 @@ namespace Rtx
                 std::rethrow_exception(failed);
         }
 
+        /// Takes a closed monitor back into service for a new worker: a supply pointed at another
+        /// world after its reader failed starts a reader that has not. Only with no worker
+        /// running and nobody waiting on either side, which the owner guarantees by joining
+        /// first; a failure nobody took is dropped with the worker that made it, so an owner that
+        /// wants it asks `rethrowFailure` before this.
+        void reopen()
+        {
+            under([&] {
+                mClosed = false;
+                mFailed = nullptr;
+            });
+        }
+
     private:
         /// Keeps the first failure and closes. The first and not the last, so the message names
         /// what actually went wrong rather than whichever worker finished after it.

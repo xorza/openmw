@@ -133,6 +133,12 @@ namespace Rtx
         /// Whether `setScene` has ever filled this slot.
         bool mBuilt = false;
 
+        /// The description the slot was built from, by address and never read: an uploader
+        /// handing another description to a slot has to build, because the structures and the
+        /// texture array are the first description's, and appending the second's arrivals onto
+        /// them would begin past the end of its own table. Null where nothing was built.
+        const SceneDesc* mScene = nullptr;
+
         /// `SceneDesc::getStructureRevision` as it stood at the last `setScene` or `extendScene`.
         std::uint64_t mStructureRevision = 0;
 

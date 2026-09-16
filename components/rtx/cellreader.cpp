@@ -81,11 +81,7 @@ namespace Rtx
         try
         {
             mLevelScratch.clear();
-            TextureData described = describeImage(image, mLevelScratch);
-
-            texture.mChain.build(described);
-            if (!texture.mChain.isEmpty())
-                described = texture.mChain.describe();
+            const TextureData described = MipChain::withChain(describeImage(image, mLevelScratch), texture.mChain);
 
             const ShadingMap map(described);
             const std::span<const float> values = map.getValues();

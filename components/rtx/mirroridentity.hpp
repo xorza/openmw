@@ -199,23 +199,7 @@ namespace Rtx
             live.clear();
             live.reserve(mKnown.size());
 
-            std::uint32_t dropped = 0;
-            for (auto entry = mKnown.begin(); entry != mKnown.end();)
-            {
-                if (keeps(entry->second))
-                {
-                    live.push_back(entry->second.mIndex);
-                    ++entry;
-                    continue;
-                }
-
-                drop(entry->second);
-                entry = mKnown.erase(entry);
-                ++dropped;
-            }
-
-            settle();
-            return dropped;
+            return dropStale(&live, drop);
         }
 
         /// The same where the entry holds nothing to give back.
@@ -232,15 +216,7 @@ namespace Rtx
             if (whole())
                 return;
 
-            std::erase_if(mKnown, [this, &drop](const auto& entry) {
-                if (keeps(entry.second))
-                    return false;
-
-                drop(entry.second);
-                return true;
-            });
-
-            settle();
+            dropStale(nullptr, drop);
         }
 
         /// The same where the entry holds nothing to give back.
@@ -250,6 +226,32 @@ namespace Rtx
         }
 
     private:
+        /// The one walk both sweeps are: every entry `keeps` names stays and is listed into `live`
+        /// where a list was handed over, and every other is handed to `drop` and erased. Answers
+        /// how many went.
+        template <class Drop>
+        std::uint32_t dropStale(std::vector<Index>* live, Drop& drop)
+        {
+            std::uint32_t dropped = 0;
+            for (auto entry = mKnown.begin(); entry != mKnown.end();)
+            {
+                if (keeps(entry->second))
+                {
+                    if (live != nullptr)
+                        live->push_back(entry->second.mIndex);
+                    ++entry;
+                    continue;
+                }
+
+                drop(entry->second);
+                entry = mKnown.erase(entry);
+                ++dropped;
+            }
+
+            settle();
+            return dropped;
+        }
+
         /// Whether a sweep keeps `held`: met this epoch, or held by something.
         bool keeps(const Known& held) const { return held.mHolds != 0 || held.mEpoch == mPass.mEpoch; }
 

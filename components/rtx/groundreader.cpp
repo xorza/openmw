@@ -161,7 +161,7 @@ namespace Rtx
 
             PreparedLayer layer;
             layer.mImage = std::move(image);
-            layer.mDiffuseTransform = diffuseTransform(mTileCount);
+            layer.mPlacing.mDiffuseTransform = diffuseTransform(mTileCount);
 
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)
             {
@@ -169,13 +169,13 @@ namespace Rtx
                 layer.mWeights.mOffset = static_cast<std::uint32_t>(into.mWeights.size());
                 readMask(mask, into.mWeights);
                 layer.mWeights.mCount = static_cast<std::uint32_t>(into.mWeights.size()) - layer.mWeights.mOffset;
-                layer.mMaskWidth = static_cast<std::uint16_t>(mask.s());
-                layer.mMaskHeight = static_cast<std::uint16_t>(mask.t());
+                layer.mPlacing.mMaskWidth = static_cast<std::uint16_t>(mask.s());
+                layer.mPlacing.mMaskHeight = static_cast<std::uint16_t>(mask.t());
 
                 // An ESM4 blend map is sampled as it stands: `createPasses` attaches no matrix
                 // for one.
                 if (!mEsm4)
-                    layer.mMaskTransform = maskTransform(mTileCount);
+                    layer.mPlacing.mMaskTransform = maskTransform(mTileCount);
             }
 
             into.mLayers.push_back(std::move(layer));

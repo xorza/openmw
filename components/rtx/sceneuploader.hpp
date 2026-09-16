@@ -51,7 +51,8 @@ namespace Rtx
     /// Takes, once a frame, the cheapest of the three ways to hand a mirrored scene over, written
     /// once for the game and the harness: a place is under a millisecond, an extend a few, a
     /// rebuild a fifth of a second, and choosing wrongly is fatal rather than slow. Stateless
-    /// against the backend, which says what it holds through `Renderer::describeHeld`.
+    /// against the backend, which says what it holds and which description it holds it from
+    /// through `Renderer::describeHeld`.
     class SceneUploader
     {
     public:
@@ -85,10 +86,6 @@ namespace Rtx
         SceneUpload hand(Renderer& renderer, const Handing& handing);
 
     private:
-        /// Whether this uploader has ever built its scene into a backend. With the backend's own
-        /// answer, what decides between building and appending.
-        bool mBuilt = false;
-
         /// What an arrival is described into, and the storage the descriptions point at. Held, so
         /// an arrival frame does not pay for the buffers; nothing reads them between calls.
         SceneTextures mTextures;

@@ -19,13 +19,9 @@ namespace Rtx
     /// this list rather than an object. Nothing here is held.
     struct TraceRecording
     {
-        /// What the rays meet, and where the sea and the sprites the trace reads were left.
+        /// What the rays meet, where the sea and the sprites the trace reads were left, and what
+        /// every launch binds beside them: the channels, the census and the chain's slot.
         VisibilityInputs mInputs;
-
-        /// Which of the chain's sprite bins this trace records into and reads, and which copy of
-        /// the air it writes: the frame's own slot in the world's chain, so the frame behind keeps
-        /// its bin and its history, and the first of each in the pictures' chain.
-        FrameSlot mTraceSlot;
 
         /// Where the sprites the bin copies are, in `mInputs.mSlot`'s copy of the tables. Read
         /// and never written here: a placement is what writes a copy, and it waits for every
@@ -40,10 +36,6 @@ namespace Rtx
         /// The same camera as this trace will sample it — the jitter, the previous basis, the
         /// medium and the layer decision are already in it. What the composite covers is its extent.
         Shaders::VisibilityConstants mSampled;
-
-        /// What the trace sums its census into: the frame's own, or for a picture inside the
-        /// interface one nothing reads — the buffer is bound because the shader writes it regardless.
-        const Buffer* mCounts = nullptr;
 
         /// What the display curve will write into, discarded beside the chain's colour because both
         /// are rewritten whole.
