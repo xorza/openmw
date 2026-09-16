@@ -337,24 +337,17 @@ namespace Rtx
         }
 
         // A cell held with the statics the other way is dropped whole and read again, for the
-        // reason `takeDone` gives.
-        // Dropped in place and compacted once: an erase per cell shifts the tail per cell, and a
-        // worldspace change drops many in one frame.
-        bool dropped = false;
-        for (HeldCell& cell : mCells)
-        {
+        // reason `takeDone` gives. Dropped in one walk and compacted once, because a worldspace
+        // change drops many in one frame.
+        const std::size_t dropped = mCells.dropIf([&](HeldCell& cell) {
             if (withinReach(cell.mCell, eye, band) && cell.mStatics == mStatics)
-                continue;
+                return false;
 
             dropCell(cell);
-            cell.mDropped = true;
-            dropped = true;
-        }
-        if (dropped)
-        {
-            mCells.eraseIf([](const HeldCell& cell) { return cell.mDropped; });
+            return true;
+        });
+        if (dropped > 0)
             mAskStale = true;
-        }
 
         sift(eye, band);
 

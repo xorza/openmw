@@ -90,7 +90,7 @@ namespace Rtx
 
     bool Buffer::mayDestroy() const
     {
-        return isEmpty() || isIdle() || mDevice->mayDestroy();
+        return isEmpty() || isIdle();
     }
 
     Buffer Buffer::make(const Device& device, const BufferKind kind, const VkDeviceSize size,
@@ -132,7 +132,7 @@ namespace Rtx
     {
         assert(!isEmpty() && "an address of a buffer nobody made");
 
-        nameFor(mDevice->getTimeline().getNext());
+        nameForNext();
         return getDeviceAddress();
     }
 
@@ -140,7 +140,7 @@ namespace Rtx
     {
         assert(!isEmpty() && "a descriptor of a buffer nobody made");
 
-        nameFor(mDevice->getTimeline().getNext());
+        nameForNext();
         return VkDescriptorBufferInfo{ mHandle.get(), 0, VK_WHOLE_SIZE };
     }
 
@@ -204,9 +204,8 @@ namespace Rtx
 
         // Both ends, because a copy takes handles and an address names nothing: a host write over
         // either end while the copy is on the queue is the hazard `isIdle` is asked about.
-        const std::uint64_t next = mDevice->getTimeline().getNext();
-        nameFor(next);
-        into.nameFor(next);
+        nameForNext();
+        into.nameForNext();
 
         const VkBufferCopy region{ .size = bytes };
         vkCmdCopyBuffer(commands, mHandle.get(), into.mHandle.get(), 1, &region);

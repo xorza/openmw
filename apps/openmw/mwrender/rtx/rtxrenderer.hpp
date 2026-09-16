@@ -21,6 +21,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/visibility.h>
+#include <components/rtx/stepped.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
@@ -205,6 +206,35 @@ namespace MWRender
         void forgetView(TracedView& view);
 
     private:
+        /// Where a frame stands, asserted at every entry point: the order `renderFrame` takes is
+        /// the one order the mirror, the pictures, the backend and the run's hook agree on, and a
+        /// call out of its turn — a hook that traced a frame from inside the frame, a picture
+        /// drawn under the walk — is a nested frame the backend cannot tell from a frame.
+        enum class Phase
+        {
+            /// Between two frames, which is where the engine's own calls land.
+            Between,
+
+            /// The graph is being mirrored.
+            Walking,
+
+            /// The scene is being handed to the backend.
+            Placing,
+
+            /// The pictures asked for since the last frame are being drawn.
+            Views,
+
+            /// The world's own trace is being recorded.
+            Tracing,
+
+            /// The run's hook has the frame: it may draw pictures and read the backend, and
+            /// nothing else.
+            Run,
+
+            /// The interface is being drawn and the frame presented.
+            Gui,
+        };
+
         /// Where one frame began and ended inside this renderer, and what it presented. Stamps and not
         /// a report: `Rtx::Timing::Update` is the gap between one frame leaving this renderer and the
         /// next arriving, and only the object that stamps both ends can measure it.
@@ -323,6 +353,8 @@ namespace MWRender
         /// — or null before anything was presented. Bottom row first, because every reader here
         /// takes OpenGL's order: `LoadingScreen` inverts V for it, and `osgDB`'s writers expect it.
         osg::ref_ptr<osg::Image> readFrame(int width = 0, int height = 0, Rtx::Channels channels = Rtx::Channels::Rgba);
+
+        Rtx::Stepped<Phase> mPhase{ Phase::Between };
 
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;

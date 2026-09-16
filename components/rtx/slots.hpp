@@ -442,10 +442,27 @@ namespace Rtx
         /// Drops the row at `at` and answers what follows it, for a sweep that walks them all.
         iterator erase(const_iterator at) { return mRows.erase(at); }
 
+        /// Hands every row to `gone`, which answers whether it goes — and may take from it,
+        /// because a row that goes is given back somewhere first, which `std::erase_if` forbids
+        /// its predicate. The rows that stay keep their order, and the table shifts once however
+        /// many go. @return how many went.
         template <class Gone>
-        void eraseIf(Gone gone)
+        std::size_t dropIf(Gone gone)
         {
-            std::erase_if(mRows, gone);
+            auto kept = mRows.begin();
+            for (Row& row : mRows)
+            {
+                if (gone(row))
+                    continue;
+
+                if (&row != &*kept)
+                    *kept = std::move(row);
+                ++kept;
+            }
+
+            const auto went = static_cast<std::size_t>(mRows.end() - kept);
+            mRows.erase(kept, mRows.end());
+            return went;
         }
 
         void clear() { mRows.clear(); }

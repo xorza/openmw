@@ -1,6 +1,7 @@
 #include "emitterresolver.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 
 #include <osg/Vec3f>
@@ -227,6 +228,9 @@ namespace Rtx
 
     void EmitterResolver::retire()
     {
+        // After the flush, because a pending emitter points into the map this erases from.
+        assert(mPending.empty() && "a sweep with emitters noted and not yet placed");
+
         // The sprite's own references go back with the emitter that took them, which is what makes
         // an emitter leaving enough to free its textures — a frame where no mesh and no material
         // died is exactly the frame the mirror's sweep returns from without looking.

@@ -1,5 +1,6 @@
 #include "devicescene.hpp"
 
+#include <cassert>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -43,7 +44,7 @@ namespace Rtx
         mAcceleration.build(batch, scene, mRecords);
         mBuiltMeshes = scene.meshes().getRevision();
         mBuiltStructure = scene.getStructureRevision();
-        mBuiltFrom = &scene;
+        mBuiltFrom = scene.getIdentity();
         mCounts = scene.placements().getCounts();
 
         // The first copy's set, which the first frame binds before any placement pays it.
@@ -53,6 +54,8 @@ namespace Rtx
     void DeviceScene::extend(
         Batch& batch, const SceneDesc& scene, std::span<const TextureData> arrived, GpuTimer* const timer)
     {
+        assert(scene.getIdentity() == mBuiltFrom && "an extension of a scene this slot was not built from");
+
         mTextures.write(batch, arrived);
 
         if (scene.meshes().getRevision() != mBuiltMeshes)
@@ -75,6 +78,8 @@ namespace Rtx
 
     bool DeviceScene::place(const SceneDesc& scene, const Placing& placing)
     {
+        assert(scene.getIdentity() == mBuiltFrom && "a placement of a scene this slot was not built from");
+
         // What the scene let go of, given back here: walking away from a ring frees its meshes and
         // nothing arrives to take them over until the next ring, so a frame that only places is the
         // one that must not hold their structures.
@@ -117,7 +122,7 @@ namespace Rtx
     {
         return SceneHeld{
             .mBuilt = true,
-            .mScene = mBuiltFrom,
+            .mIdentity = mBuiltFrom,
             .mStructureRevision = mBuiltStructure,
             .mTextureCount = mTextures.getCount(),
         };

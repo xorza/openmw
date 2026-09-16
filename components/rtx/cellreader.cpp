@@ -65,14 +65,14 @@ namespace Rtx
 
         if (PreparedTexture* const* const known = mByImage.find(&image))
         {
-            ++(*known)->mLent;
+            mTextures.lend(**known);
             return *known;
         }
 
         PreparedTexture& texture = mTextures.take();
+        mTextures.lend(texture);
         texture.mImage = &image;
         texture.mPath = VFS::Path::Normalized(image.getFileName());
-        texture.mLent = 1;
 
         // What the frame's describe would have done, done here. A file that carried no chain
         // gets one built; every file gets its shading estimated. Both read every texel, and both
@@ -148,6 +148,7 @@ namespace Rtx
     PreparedCell& CellReader::read(const osg::Vec2i& cell, const bool statics)
     {
         PreparedCell& prepared = mCells.take();
+        mCells.lend(prepared);
         prepared.mCell = cell;
         prepared.mStatics = statics;
 
@@ -224,7 +225,7 @@ namespace Rtx
             if (index == prepared.mModels.size())
             {
                 prepared.mModels.push_back(read);
-                ++read->mLent;
+                mModels.lend(*read);
             }
 
             prepared.mRefs.push_back(PreparedRef{
@@ -240,14 +241,16 @@ namespace Rtx
 
     void CellReader::giveBack(PreparedCell& cell)
     {
+        if (!mCells.release(cell))
+            return;
+
         cell.reuse();
         mCells.give(cell);
     }
 
     void CellReader::giveBack(PreparedTexture& texture)
     {
-        assert(texture.mLent > 0 && "an image given back more often than it was lent");
-        if (--texture.mLent > 0)
+        if (!mTextures.release(texture))
             return;
 
         mByImage.erase(texture.mImage.get());
@@ -257,8 +260,7 @@ namespace Rtx
 
     void CellReader::giveBack(PreparedModel& model)
     {
-        assert(model.mLent > 0 && "a model given back more often than it was lent");
-        if (--model.mLent > 0)
+        if (!mModels.release(model))
             return;
 
         for (PreparedTexture* texture : model.mTextures)

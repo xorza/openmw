@@ -508,11 +508,6 @@ namespace Rtx
         node.accept(*mWalk);
     }
 
-    void SceneExtractor::advance()
-    {
-        mScene.placements().advance();
-    }
-
     Retirement SceneExtractor::retire()
     {
         Retirement went;

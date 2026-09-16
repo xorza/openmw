@@ -44,12 +44,6 @@ namespace Rtx
         /// an error: the caller resizes and asks again.
         bool present(const Image& frame);
 
-        /// Waits until the present that last read `frame` has finished with it. A present's blit
-        /// outlives the call that queued it — under FIFO it waits until the presentation engine has
-        /// let that swapchain image go — and no barrier's source scope reaches across a submit. A
-        /// no-op for an image this has never presented.
-        void waitForLastUse(const Image& frame);
-
         /// Whether the swapchain has to be remade to show `extent`. Split from `rebuild` because a
         /// rebuild frees the command buffers a handed-over batch may be sitting beside, so the
         /// caller has to drain first, and that drain costs more than the rebuild it guards. Not
@@ -74,9 +68,6 @@ namespace Rtx
 
         /// Destroys what `remakeImageSync` made. The caller owes the `waitIdle` before it.
         void releaseImageSync();
-
-        /// Records that `image` was read by the blit that signalled `value`.
-        void rememberUse(VkImage image, std::uint64_t value);
 
         void destroy();
 
@@ -135,15 +126,6 @@ namespace Rtx
 
         /// One per swapchain image, indexed by the image the acquire answered with.
         std::vector<SwapImage> mImages;
-
-        /// Which blit a frame image was last read by. One entry per image the renderer alternates
-        /// between, so a linear scan is the whole lookup.
-        struct LastUse
-        {
-            VkImage mImage = VK_NULL_HANDLE;
-            std::uint64_t mBlit = 0;
-        };
-        std::vector<LastUse> mLastUse;
 
         /// Whether the surface stopped matching the window since the last rebuild. An acquire or a
         /// present can fail at a size nothing asked to change, and a resize that only rebuilt when

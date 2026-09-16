@@ -302,7 +302,7 @@ namespace Rtx::Testing
                 mRing.setFrame(frame);
                 const ExtractionStats stats
                     = mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, frame, mRing);
-                mExtractor.advance();
+                mScene.placements().advance();
                 return stats;
             }
 

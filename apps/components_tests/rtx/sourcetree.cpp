@@ -138,6 +138,41 @@ namespace Rtx
                 << joined(found);
         }
 
+        /// A device object answers for its own readers, and the device answers for none of them.
+        ///
+        /// **`Device::mayDestroy` was the question every destructor asked**, and it answered "the
+        /// queue is idle, or the graveyard is freeing": a flag set for a whole sweep, under which
+        /// no destructor could tell a buried object from one destroyed by mistake. Every object a
+        /// submit can name carries a `ReadStamp` now and asks it, so the one place the word is
+        /// allowed is the object's own file, and a device-wide answer cannot come back.
+        TEST(RtxSourceTreeTest, onlyAnObjectAnswersWhetherItMayBeDestroyed)
+        {
+            const std::set<std::string> owners{ "buffer.hpp", "buffer.cpp", "image.hpp", "image.cpp" };
+
+            std::vector<std::string> found;
+            for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(sBackend))
+            {
+                const std::filesystem::path& file = entry.path();
+                if (file.extension() != ".cpp" && file.extension() != ".hpp")
+                    continue;
+                if (owners.contains(file.filename().string()))
+                    continue;
+
+                const std::vector<std::string> lines = linesOf(file);
+                for (std::size_t at = 0; at < lines.size(); ++at)
+                {
+                    const std::string code = lines[at].substr(0, lines[at].find("//"));
+                    if (code.find("mayDestroy") != std::string::npos || code.find("isReaping") != std::string::npos)
+                        found.push_back(file.filename().string() + ':' + std::to_string(at + 1) + ": " + code);
+                }
+            }
+
+            EXPECT_TRUE(found.empty())
+                << "a device object asks something other than its own stamp whether it may be destroyed — "
+                   "give it a ReadStamp and ask that:\n"
+                << joined(found);
+        }
+
         /// Every file `shader` reaches through `#include`, itself included, by the paths the
         /// shaders spell: relative to the including file.
         void reachedBy(const std::filesystem::path& shader, std::set<std::filesystem::path>& reached)

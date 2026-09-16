@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -89,10 +91,6 @@ namespace Rtx
         /// read again.
         bool mStatics = false;
 
-        /// Marked by the ring's sweep and compacted after it, so a frame that drops many cells
-        /// shifts the table once.
-        bool mDropped = false;
-
         /// Largest radius first, which `CellPlacer::adoptPlacements` sorts once.
         std::vector<Placement> mPlacements;
 
@@ -115,9 +113,15 @@ namespace Rtx
         /// keeps its room too.
         void reuse()
         {
+            // Nothing may stand: a spare that still stood would stand twice on the next adopt.
+            // `CellPlacer::dropSlots` is what every caller runs first.
+            assert(std::none_of(mPlacements.begin(), mPlacements.end(),
+                       [](const Placement& placement) { return placement.mStood.isStanding(); })
+                && (!mGround.has_value() || !mGround->mStood.isStanding())
+                && "a cell reused with something still standing");
+
             mCell = osg::Vec2i();
             mStatics = false;
-            mDropped = false;
             mShown = 0;
             mPlacements.clear();
             mModels.clear();

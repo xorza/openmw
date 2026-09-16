@@ -4,6 +4,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "readstamp.hpp"
 #include "structurestorage.hpp"
 
 namespace Rtx
@@ -16,9 +17,10 @@ namespace Rtx
     /// and not a function the header declares. Made once with its address asked once — a handle
     /// lasts until the mesh it belongs to is released, and the alternative was the same question
     /// per instance per frame. Destroying one gives its room back after the handle has gone, so
-    /// two structures never stand in one place — and asserts `Device::mayDestroy`, because a
-    /// structure is read by every top-level build without being named again, so the queue idle or
-    /// the graveyard reaping is the whole of what says nothing reads it.
+    /// two structures never stand in one place — and asserts `isIdle`, as a buffer's does. A
+    /// bottom level is read by every top-level build without being named again; the store it
+    /// stands in carries that naming for all of its rows, and a row goes through the graveyard,
+    /// which stamps after every top level made.
     class AccelerationStructure
     {
     public:
@@ -41,10 +43,27 @@ namespace Rtx
         AccelerationStructure(AccelerationStructure&& other) noexcept;
         AccelerationStructure& operator=(AccelerationStructure&& other) noexcept;
 
-        VkAccelerationStructureKHR getHandle() const { return mHandle; }
+        /// The handle, and a hand-out: names the structure for the next submit, as a build, a
+        /// copy, a query and a launch all take it. Null for an empty slot, which nothing can hand
+        /// a submit and so names nothing.
+        VkAccelerationStructureKHR getHandle() const
+        {
+            if (!isEmpty())
+                nameForNext();
+            return mHandle;
+        }
+
         VkDeviceAddress getAddress() const { return mAddress; }
 
         bool isEmpty() const { return mHandle == VK_NULL_HANDLE; }
+
+        /// Names the structure for the next submit where a caller reaches it through a handle it
+        /// kept — a top-level build reuses the description it was made with.
+        void nameForNext() const;
+
+        /// Whether every submit that names this structure has run — what the destructor asserts,
+        /// and what the graveyard asserts as it frees.
+        bool isIdle() const;
 
     private:
         AccelerationStructure(const Device& device, VkAccelerationStructureTypeKHR type, VkBuffer buffer,
@@ -53,6 +72,7 @@ namespace Rtx
         void reset();
 
         const Device* mDevice = nullptr;
+        ReadStamp mRead;
         VkAccelerationStructureKHR mHandle = VK_NULL_HANDLE;
         VkDeviceAddress mAddress = 0;
 

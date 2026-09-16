@@ -131,6 +131,7 @@ namespace Rtx
             assert(mayDestroy() && "an image written over while a submit may still read it; replace it");
 
             mDevice = other.mDevice;
+            mRead = other.mRead;
             mHandle = std::move(other.mHandle);
             mView = std::move(other.mView);
             mStorageView = std::move(other.mStorageView);
@@ -149,7 +150,24 @@ namespace Rtx
 
     bool Image::mayDestroy() const
     {
-        return isEmpty() || mDevice->mayDestroy();
+        return isEmpty() || isIdle();
+    }
+
+    bool Image::isIdle() const
+    {
+        return mDevice == nullptr || mRead.isIdle(*mDevice);
+    }
+
+    void Image::waitIdle(const char* const what) const
+    {
+        if (mDevice != nullptr)
+            mRead.waitIdle(*mDevice, what);
+    }
+
+    void Image::nameForNext() const
+    {
+        assert(!isEmpty() && "a submit named on an image nobody made");
+        mRead.nameFor(mDevice->getTimeline().getNext());
     }
 
     void Image::transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const
@@ -186,6 +204,10 @@ namespace Rtx
         assert(extent.width <= into.getWidth() && extent.height <= into.getHeight()
             && "a copy of more than the target holds");
 
+        // Both ends, because a copy takes handles and names nothing on its own.
+        nameForNext();
+        into.nameForNext();
+
         const VkImageCopy region{
             .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
@@ -200,6 +222,9 @@ namespace Rtx
     {
         assert(!isEmpty() && "a barrier on an image nobody made");
 
+        // A barrier is the one thing every use in a command buffer records around itself, so
+        // a description of one is where a use of the handle names the image.
+        nameForNext();
         return imageBarrier(mHandle.get(), base, count, from, to);
     }
 
@@ -277,6 +302,7 @@ namespace Rtx
         assert(into.getSize() >= getReadBytes(level) && "a read into a buffer too short for the level");
 
         transition(commands, before, Use::sCopyRead);
+        into.nameForNext();
 
         const VkBufferImageCopy region{
             .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },

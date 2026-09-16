@@ -136,8 +136,9 @@ namespace Rtx
         /// an uploader appends against.
         std::uint64_t mBuiltStructure = 0;
 
-        /// Which description that was, as `SceneHeld::mScene` reports it.
-        const SceneDesc* mBuiltFrom = nullptr;
+        /// Which description that was — `SceneDesc::getIdentity` — as `SceneHeld::mIdentity`
+        /// reports it, and what every placement and extension is asserted against.
+        std::uint64_t mBuiltFrom = 0;
 
         FrameSlot mSlot;
 

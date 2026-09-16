@@ -54,11 +54,11 @@ namespace Rtx
     FrameRecord& FrameRing::begin()
     {
         FrameRecord& frame = recording();
-        if (frame.mBegun)
+        if (frame.mState.get() == FrameState::Begun)
             return frame;
+        frame.mState.step(FrameState::Begun, FrameState::Idle);
 
         frame.mTimer.beginFrame(mFrame);
-        frame.mBegun = true;
         frame.mPlacements = 0;
         frame.mReconstruction = Reconstruction{};
         return frame;
@@ -74,10 +74,8 @@ namespace Rtx
 
     void FrameRing::submit(FrameRecord& frame)
     {
+        frame.mState.step(FrameState::Submitted, FrameState::Begun);
         frame.mWorld.mSubmitted = mDevice.getPool().submit(frame.mWorld.mCommands);
-
-        frame.mBegun = false;
-        frame.mWorld.mPending = true;
         ++mFrame;
         frame.mInFlight = static_cast<std::uint32_t>(mFrame - mFinished);
     }
@@ -87,13 +85,13 @@ namespace Rtx
         assert(mFinished < mFrame && "nothing in flight to finish");
 
         FrameRecord& frame = slotOf(mFinished);
-        assert(frame.mWorld.mPending && "a frame in flight that was never submitted");
+        frame.mState.expect(FrameState::Submitted);
 
         const auto start = std::chrono::steady_clock::now();
         mDevice.waitFor(frame.mWorld.mSubmitted, "a frame");
         const double waited = since(start, std::chrono::steady_clock::now());
 
-        frame.mWorld.mPending = false;
+        frame.mState.step(FrameState::Idle, FrameState::Submitted);
 
         // Read after the wait and never before: the count is the device's sum, and the queries
         // are the device's clock.

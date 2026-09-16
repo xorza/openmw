@@ -61,9 +61,9 @@ namespace Rtx
             const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
         static Buffer staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
 
-        /// Asserts that no submit still reads the buffer — `isIdle`, or `Device::mayDestroy` —
-        /// because a buffer destroyed under one is the use after free the graveyard exists to
-        /// prevent, and nothing else would say so before the device did.
+        /// Asserts that no submit still reads the buffer — `isIdle` — because a buffer destroyed
+        /// under one is the use after free the graveyard exists to prevent, and nothing else
+        /// would say so before the device did.
         ~Buffer();
 
         Buffer(Buffer&&) noexcept = default;
@@ -79,14 +79,14 @@ namespace Rtx
         /// Which memory this is in, so what grows it makes the same kind.
         BufferKind getKind() const { return mKind; }
 
-        /// Says a submit signalling `value` names this buffer. `addressFor` and `describe` say it
-        /// for the next submit as they hand the buffer out, and `copyTo` and `stageInto` for a
-        /// copy's ends; this is for a hand-out by handle nothing else covers — a vertex buffer
-        /// bound. What `isIdle` checks a host write against.
-        void nameFor(std::uint64_t value) const
+        /// Says the next submit names this buffer. `addressFor` and `describe` say it as they
+        /// hand the buffer out, and `copyTo` and `stageInto` for a copy's ends; this is for a
+        /// hand-out by handle nothing else covers — a vertex buffer bound. What `isIdle` checks a
+        /// host write against.
+        void nameForNext() const
         {
             assert(!isEmpty() && "a submit named on a buffer nobody made");
-            mRead.nameFor(value);
+            mRead.nameFor(mDevice->getTimeline().getNext());
         }
 
         /// The last value a submit naming this buffer signals, or nought where nothing has.

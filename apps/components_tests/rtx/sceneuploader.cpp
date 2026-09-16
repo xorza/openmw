@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -256,6 +257,22 @@ namespace Rtx
                                   .mSlot = Rtx::SceneSlot::world(), .mScene = sparse, .mImages = images })
                           .mKind,
                 SceneUpload::Kind::Placed);
+
+            // **A description is what it is and not where it is.** Moved, it keeps its identity
+            // and the slot built from it is still its own; a description made after it is
+            // another, at whatever address, and gets a build of its own.
+            Rtx::SceneDesc moved = std::move(sparse);
+            EXPECT_EQ(moved.getIdentity(), renderer.describeHeld(Rtx::SceneSlot::world()).mIdentity);
+            EXPECT_EQ(next.hand(renderer,
+                              Rtx::SceneUploader::Handing{
+                                  .mSlot = Rtx::SceneSlot::world(), .mScene = moved, .mImages = images })
+                          .mKind,
+                SceneUpload::Kind::Placed)
+                << "a move was taken for another description";
+
+            Rtx::SceneDesc another;
+            EXPECT_NE(another.getIdentity(), moved.getIdentity());
+            EXPECT_NE(another.getIdentity(), 0u);
         }
         /// A picture inside the interface is handed over the same way a cell is, and neither
         /// disturbs the other.

@@ -1,6 +1,7 @@
 #include "scenedesc.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -10,6 +11,18 @@
 
 namespace Rtx
 {
+    namespace
+    {
+        /// Atomic, because a picture's description is built wherever a view is made and the
+        /// tests build theirs on any thread.
+        std::atomic<std::uint64_t> sIdentities{ 0 };
+    }
+
+    SceneDesc::SceneDesc()
+        : mIdentity(++sIdentities)
+    {
+    }
+
     Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
     {
         return mMeshes.add(arrays, shape, deform, deformer);

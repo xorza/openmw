@@ -65,6 +65,10 @@ namespace Rtx
     template <class T>
     void Graveyard::free(Retiring<T>& held, const std::uint64_t finished)
     {
+        // Written over with an empty one, which is how every object here destroys itself — and
+        // asserts, against its own stamp, that nothing on the queue still reads it. The stamp is
+        // at or before the burial's, so the assert fires exactly where a buried object was named
+        // again after its burial.
         held.releaseThrough(finished, [](T& object) { object = T(); });
     }
 
@@ -82,17 +86,11 @@ namespace Rtx
 
     void Graveyard::freeThrough(const std::uint64_t finished)
     {
-        // Set for the whole sweep and not per object, because a scene freed last destroys every
-        // structure and texture it still holds on its way out.
-        mReaping = true;
-
         free(mStructures, finished);
         free(mQueryPools, finished);
         free(mBuffers, finished);
         free(mTextures, finished);
         free(mImages, finished);
         free(mOthers, finished);
-
-        mReaping = false;
     }
 }

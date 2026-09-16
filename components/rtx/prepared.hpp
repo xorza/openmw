@@ -33,8 +33,11 @@ namespace Rtx
 {
     /// One image, described where the model that names it was read: the levels its file did not
     /// carry, and the light painted into it — the two things describing a texture costs, both of
-    /// which read every texel, done off the frame. Lent by a `Spares` and given back.
-    struct PreparedTexture
+    /// which read every texel, done off the frame. Lent by a `Spares`, held once by every lent
+    /// model and cell that names it, and given back with the last of them. The reader's count,
+    /// and the frame never reads it: `CellReader::giveBack` says why a hold is a cell's and not
+    /// the frame's.
+    struct PreparedTexture : Lent
     {
         /// The image itself, which is what the frame's describe looks a texture up by: the loader's
         /// cache hands the same object to the template and to whoever asks for the path.
@@ -53,10 +56,6 @@ namespace Rtx
         /// False where the image is in a format this renderer does not upload, which the frame
         /// draws the stand-in for. Nothing above is meaningful then.
         bool mReadable = false;
-
-        /// How many lent models and cells name it. The reader's count, and given back with the last
-        /// of them — `PreparedModel::mLent` is the same count for a model.
-        std::uint32_t mLent = 0;
 
         /// Makes room for the next image. The chain keeps its bytes.
         void reuse() { reuseKeeping(*this, &PreparedTexture::mPath, &PreparedTexture::mChain); }
@@ -146,10 +145,10 @@ namespace Rtx
 
     /// A model read whole on a thread that is not the frame's: its parts, the folded geometry of
     /// every one of them in the format the scene copies from, and the images they name. Owned by
-    /// the reader and lent to every cell that names it, once per cell; refilled for the next model
-    /// once every hold is back. Flat, one buffer per attribute, because a cell names hundreds of
-    /// models of a handful of parts each.
-    struct PreparedModel
+    /// the reader and lent to every cell that names it, once per cell — `Lent` counts them;
+    /// refilled for the next model once every hold is back. Flat, one buffer per attribute,
+    /// because a cell names hundreds of models of a handful of parts each.
+    struct PreparedModel : Lent
     {
         /// The corrected path the model was read under, which is what the reader finds it by.
         std::string mPath;
@@ -159,11 +158,6 @@ namespace Rtx
 
         /// The template's own bound, which is what the paging measured a reference by.
         float mRadius = 0.0f;
-
-        /// How many cells the reader has lent this to and not yet had back. The reader's own, and
-        /// the frame never reads it: `CellReader::giveBack` says why a hold is a cell's and not
-        /// the frame's.
-        std::uint32_t mLent = 0;
 
         std::vector<PreparedPart> mParts;
 
@@ -237,7 +231,7 @@ namespace Rtx
     /// What a thread hands the frame for one cell: its ground, the references that page, reduced
     /// the way the content files stack, the models they name, and the lights the paging never
     /// draws. Owned by the reader and lent to the frame, as a model is.
-    struct PreparedCell
+    struct PreparedCell : Lent
     {
         osg::Vec2i mCell;
 

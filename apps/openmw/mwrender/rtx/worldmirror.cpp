@@ -237,20 +237,13 @@ namespace MWRender
     {
         assert(mResources != nullptr && "a hand-over before the world was attached");
 
-        const Rtx::SceneUpload handed = mUploader.hand(renderer,
+        return mUploader.hand(renderer,
             Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(),
                 .mScene = mScene,
                 .mImages = *mResources->getImageManager(),
                 .mComposites = &mComposites,
                 .mReadings = &mRing.getHolds(),
                 .mSpend = &spend });
-
-        // Here and not at the frame's end, because a frame that walked and handed nothing over —
-        // a world with nothing placed — must keep its change lists for the hand-over that will:
-        // `Rtx::PlacementTable::advance` says what a list emptied unread costs.
-        mExtractor.advance();
-
-        return handed;
     }
 
     void WorldMirror::settle()

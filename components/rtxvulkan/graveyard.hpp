@@ -68,11 +68,6 @@ namespace Rtx
         /// through `Device::collectIdle`.
         void collectIdle();
 
-        /// Whether this is in the middle of freeing what the timeline has passed — the one moment a
-        /// device object a submit has read is destroyed with the queue still running, and so the
-        /// one `Device::mayDestroy` allows.
-        bool isReaping() const { return mReaping; }
-
         // Read by the tests and by nothing else.
         std::size_t getHeldCount() const
         {
@@ -92,8 +87,6 @@ namespace Rtx
         static void free(Retiring<T>& held, std::uint64_t finished);
 
         const Device& mDevice;
-
-        bool mReaping = false;
 
         Retiring<Buffer> mBuffers;
         Retiring<Texture> mTextures;

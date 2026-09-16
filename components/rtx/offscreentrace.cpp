@@ -213,18 +213,15 @@ namespace Rtx
         // is handed to the device as rows: no cull runs here and no traversal number gates it.
         subject.mExtractor->extract(*subject.mNode, osg::Matrixf::identity(), 0, worldFrame);
 
-        // No `advance` between them, unlike the world's frame: a picture drawn when the subject
-        // changes rather than when the frame does has no motion to describe, and `SceneDesc` answers
-        // a scene that has never advanced with a previous transform equal to its current one — which
-        // is the right answer here and a stale one otherwise.
-        //
         // The sweep is what takes the parts that came off. It is sound for the same reason it is
         // sound for the world: this walk is the whole of what this picture is of.
         subject.mExtractor->retire();
 
-        // It consumes the arrivals, so nothing here clears them.
-        subject.mUploader.hand(
-            mRenderer, SceneUploader::Handing{ .mSlot = subject.mSlot, .mScene = *subject.mScene, .mImages = images });
+        // It consumes the arrivals, so nothing here clears them. Never advanced, unlike the
+        // world's frame: `Handing::mAdvance` says why a picture has no motion to describe.
+        subject.mUploader.hand(mRenderer,
+            SceneUploader::Handing{
+                .mSlot = subject.mSlot, .mScene = *subject.mScene, .mImages = images, .mAdvance = false });
 
         return subject.mScene->placements().getCounts().mPlaced > 0;
     }
@@ -242,6 +239,11 @@ namespace Rtx
                 .mScene = mSubject != nullptr ? mSubject->mSlot : SceneSlot::world(),
                 .mReadBack = readBack,
             });
+    }
+
+    bool OffscreenTrace::takeCopy(const GuiSlot texture, const std::span<std::uint8_t> into) const
+    {
+        return mRenderer.takeGuiCopy(texture, into);
     }
 
     bool OffscreenTrace::pick(float x, float y, osg::NodePath& hit) const

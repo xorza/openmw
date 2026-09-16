@@ -140,12 +140,6 @@ namespace Rtx
                 image.mPresented = makeSignalledFence(mDevice);
             image.mCommands = commands[index];
         }
-
-        // The blits those entries name have run, and forgetting is the whole of what is owed: the
-        // device was waited idle to get here. It is also what keeps an entry from meeting a new
-        // image on a recycled handle — a renderer resizes its targets through this, and always
-        // after this.
-        mLastUse.clear();
     }
 
     bool Presenter::wantsResize(const VkExtent2D extent)
@@ -276,34 +270,11 @@ namespace Rtx
 
         acquisition.mBlit = blitted;
         image.mBlitOn = blitted;
-        rememberUse(frame.getHandle(), blitted);
 
         if (mSwapchain->present(image.mRendered.get(), index, image.mPresented.get()))
             return true;
 
         mStale = true;
         return false;
-    }
-
-    void Presenter::rememberUse(VkImage image, std::uint64_t value)
-    {
-        for (LastUse& use : mLastUse)
-            if (use.mImage == image)
-            {
-                use.mBlit = value;
-                return;
-            }
-
-        mLastUse.push_back(LastUse{ .mImage = image, .mBlit = value });
-    }
-
-    void Presenter::waitForLastUse(const Image& frame)
-    {
-        for (const LastUse& use : mLastUse)
-            if (use.mImage == frame.getHandle())
-            {
-                mDevice.waitFor(use.mBlit, "the blit that last read this frame");
-                return;
-            }
     }
 }

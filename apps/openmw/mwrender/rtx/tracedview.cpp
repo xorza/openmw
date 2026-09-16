@@ -158,7 +158,7 @@ namespace MWRender
         // a cell from and a cell is the whole tile. Taken straight into the image the caller is
         // handed, the first time it is asked for after the trace that made it has landed.
         if (mCopyState == CopyState::Recorded
-            && mHost.getBackend().takeGuiCopy(
+            && mTrace.takeCopy(
                 mTexture.getSlot(), std::span<std::uint8_t>(mCopy->data(), mCopy->getTotalSizeInBytes())))
             mCopyState = CopyState::Taken;
 

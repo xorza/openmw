@@ -43,6 +43,8 @@ set(RTX_TEST_FILES
     rtx/memory.cpp
     rtx/mipchain.cpp
     rtx/monitor.cpp
+    rtx/readstamp.cpp
+    rtx/stepped.cpp
     rtx/moonbuilder.cpp
     rtx/nodekind.cpp
     rtx/offscreentrace.cpp

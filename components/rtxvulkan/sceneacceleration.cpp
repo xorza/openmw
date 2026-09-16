@@ -396,6 +396,12 @@ namespace Rtx
         const VkAccelerationStructureBuildRangeInfoKHR range{ .primitiveCount = mTopLevelSlots };
         const VkAccelerationStructureBuildRangeInfoKHR* ranges = &range;
 
+        // The build reads every bottom level through the instance table, so the store is named
+        // for it as one; the top level is named by hand, because the build keeps the handle it
+        // was made with.
+        mBottomLevel.nameForNext();
+        mTopLevel.nameForNext();
+
         openZone(timer, commands, "tlas");
         mDevice.getFunctions().mCmdBuildAccelerationStructures(commands, 1, &mTopLevelBuild, &ranges);
         barrierAfterBuild(commands);

@@ -37,7 +37,8 @@ namespace Rtx
         /// caller is about to record into is the oldest frame's, and the next drain waits that
         /// frame alone while the newer one is still tracing.
         ///
-        /// The ring is filled first, and `mPending` is what says a frame is still on the queue.
+        /// The ring is filled first, and `FrameState::Submitted` is what says a frame is still on
+        /// the queue.
         TEST_F(RtxFrameRingTest, theSlotHandedOutForRecordingIsNotOneAFrameInFlightHolds)
         {
             if (mHarness == nullptr)
@@ -52,9 +53,11 @@ namespace Rtx
                 submitEmpty(ring);
 
             EXPECT_EQ(ring.getRecording(), sFrameSlots) << "the ring did not take the frames";
-            EXPECT_TRUE(ring.slotOf(0).mWorld.mPending) << "the first frame was finished by something";
+            EXPECT_EQ(ring.slotOf(0).mState.get(), FrameState::Submitted)
+                << "the first frame was finished by something";
 
-            EXPECT_FALSE(ring.recording().mWorld.mPending) << "the slot handed out is a frame still on the queue";
+            EXPECT_EQ(ring.recording().mState.get(), FrameState::Idle)
+                << "the slot handed out is a frame still on the queue";
 
             // And the same answer to the same question, which is what a caller taking a graveyard
             // and then beginning the frame asks.

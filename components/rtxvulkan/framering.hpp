@@ -9,6 +9,7 @@
 
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/stepped.hpp>
 
 #include "buffer.hpp"
 #include "frameslots.hpp"
@@ -33,9 +34,17 @@ namespace Rtx
 
         /// What the submit signalled on the device's timeline, which is what says it has run.
         std::uint64_t mSubmitted = 0;
+    };
 
-        /// Submitted and not yet waited for.
-        bool mPending = false;
+    /// Where a frame's slot stands between one use and the next: nothing recorded, begun by a
+    /// placement or a trace and not yet submitted, or submitted and not yet waited for. One
+    /// step and not two flags, so a frame submitted twice or never begun is a call out of its
+    /// turn and not a wait on a value nothing signals.
+    enum class FrameState
+    {
+        Idle,
+        Begun,
+        Submitted,
     };
 
     struct FrameRecord
@@ -58,8 +67,7 @@ namespace Rtx
         /// and waited for on its own, by the stamp its vertices carry.
         VkCommandBuffer mGuiCommands = VK_NULL_HANDLE;
 
-        /// Begun by a placement or a trace and not yet submitted.
-        bool mBegun = false;
+        Stepped<FrameState> mState{ FrameState::Idle };
 
         /// `FrameResult::mInFlight`, taken at the submit.
         std::uint32_t mInFlight = 0;

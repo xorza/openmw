@@ -49,7 +49,7 @@ namespace Rtx::Testing
             // What the backend does: the array is made again and ends where the scene's table
             // does, whatever it held before.
             countAt(slot) = static_cast<std::uint32_t>(scene.textures().getRows().size());
-            heldAt(slot) = { true, &scene, scene.getStructureRevision() };
+            heldAt(slot) = { true, scene.getIdentity(), scene.getStructureRevision() };
         }
 
         void extendScene(
@@ -81,7 +81,7 @@ namespace Rtx::Testing
         {
             const Built& built = heldAt(slot);
             return Rtx::SceneHeld{ .mBuilt = built.mBuilt,
-                .mScene = built.mScene,
+                .mIdentity = built.mIdentity,
                 .mStructureRevision = built.mRevision,
                 .mTextureCount = countAt(slot) };
         }
@@ -130,7 +130,7 @@ namespace Rtx::Testing
         struct Built
         {
             bool mBuilt = false;
-            const Rtx::SceneDesc* mScene = nullptr;
+            std::uint64_t mIdentity = 0;
             std::uint64_t mRevision = 0;
         };
 

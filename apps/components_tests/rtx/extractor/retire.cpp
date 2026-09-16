@@ -289,7 +289,7 @@ namespace Rtx::Testing
             // between one frame and the next: clear, walk the world, close the frame, sweep.
             mScene.clearPlacement();
             const ExtractionStats arrived = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 1);
-            mExtractor.advance();
+            mScene.placements().advance();
             ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found them is the epoch they survive";
 
             EXPECT_EQ(arrived.mMeshesAdded, 3u);
@@ -307,7 +307,7 @@ namespace Rtx::Testing
 
             mScene.clearPlacement();
             const ExtractionStats after = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 2);
-            mExtractor.advance();
+            mScene.placements().advance();
             const Retirement went = mExtractor.retire();
 
             EXPECT_EQ(after.mInstances, 1u);
@@ -353,7 +353,7 @@ namespace Rtx::Testing
             actor.update(1);
             mScene.clearPlacement();
             const ExtractionStats arrived = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 1);
-            mExtractor.advance();
+            mScene.placements().advance();
             ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found them is the epoch they survive";
 
             ASSERT_EQ(arrived.mMeshesAdded, 2u);
@@ -379,7 +379,7 @@ namespace Rtx::Testing
             actor.update(2);
             mScene.clearPlacement();
             const ExtractionStats again = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 2);
-            mExtractor.advance();
+            mScene.placements().advance();
             const Retirement went = mExtractor.retire();
 
             // Both drawables were reached and the map is the size it was, so the sweep erased no

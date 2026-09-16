@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cassert>
 #include <condition_variable>
+#include <cstdint>
 #include <exception>
 #include <mutex>
 #include <stop_token>
@@ -53,7 +55,9 @@ namespace Rtx
         bool await(Ready ready)
         {
             std::unique_lock<std::mutex> lock(mMutex);
+            ++mWaiting;
             mToFrame.wait(lock, [&] { return mClosed || ready(); });
+            --mWaiting;
 
             return !mClosed;
         }
@@ -77,10 +81,10 @@ namespace Rtx
                 {
                     {
                         std::unique_lock<std::mutex> lock(mMutex);
-                        if (!mToWorker.wait(lock, stop, [&] { return mClosed || ready(); }))
-                            return;
-
-                        if (mClosed || stop.stop_requested())
+                        ++mWaiting;
+                        const bool woken = mToWorker.wait(lock, stop, [&] { return mClosed || ready(); });
+                        --mWaiting;
+                        if (!woken || mClosed || stop.stop_requested())
                             return;
 
                         take();
@@ -124,6 +128,7 @@ namespace Rtx
         void reopen()
         {
             under([&] {
+                assert(mWaiting == 0 && "a monitor reopened under a waiter");
                 mClosed = false;
                 mFailed = nullptr;
             });
@@ -152,5 +157,8 @@ namespace Rtx
 
         std::exception_ptr mFailed;
         bool mClosed = false;
+
+        /// How many stand inside either wait, under the lock. Read by `reopen`'s assert alone.
+        std::uint32_t mWaiting = 0;
     };
 }

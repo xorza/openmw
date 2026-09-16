@@ -43,7 +43,7 @@ namespace Rtx
         // Whether the backend holds this scene in this slot: appending onto a slot something else
         // filled would begin the descriptions past the end of this scene's own table.
         const SceneHeld held = renderer.describeHeld(slot);
-        const bool mine = held.mBuilt && held.mScene == &scene;
+        const bool mine = held.mBuilt && held.mIdentity == scene.getIdentity();
 
         // Here rather than where a walk ends, because a scene can be walked more than once. The
         // game walks its precipitation beside its world, and a light met by the second walk would be
@@ -136,6 +136,11 @@ namespace Rtx
         // them past the frame that read them would be paying for one picture twice.
         if (composites != nullptr)
             composites->releaseFinished();
+
+        // Last, after every branch has read what moved: a walk that handed nothing over keeps its
+        // lists for the hand-over that will.
+        if (handing.mAdvance)
+            scene.placements().advance();
 
         return done;
     }

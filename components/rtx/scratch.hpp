@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -34,14 +36,24 @@ namespace Rtx
         std::vector<T> mSpare;
     };
 
+    /// What `Spares` counts on every object it lends: how many hold it. Nought is spare. The
+    /// count is the pool's and not the holder's, so one assert says an object was given back
+    /// once too often whatever kind of object it is.
+    struct Lent
+    {
+        std::uint32_t mLent = 0;
+    };
+
     /// Objects lent out and given back, and never freed while this stands, so a loader reads a
     /// cell into buffers the last cell grew. Addresses are stable, which is what makes a raw
     /// pointer the right thing to hand another thread. Not thread-safe: one owner, on one thread.
     template <class T>
+    requires std::derived_from<T, Lent>
     class Spares
     {
     public:
-        /// An object nobody holds, made where none is spare.
+        /// An object nobody holds, made where none is spare. Held by nobody until `lend` says
+        /// who, so the taker fills it first.
         T& take()
         {
             if (mSpare.empty())
@@ -56,12 +68,28 @@ namespace Rtx
 
             T& spare = *mSpare.back();
             mSpare.pop_back();
+            assert(spare.mLent == 0 && "a spare something still holds");
             return spare;
         }
 
-        /// Gives `object` back for the next `take`. The caller has already emptied it. Allocates
-        /// nothing.
-        void give(T& object) { mSpare.push_back(&object); }
+        /// One more holder of `object`.
+        void lend(T& object) { ++object.mLent; }
+
+        /// One holder fewer. @return whether that was the last, so the caller empties the object
+        /// before it gives it back.
+        bool release(T& object)
+        {
+            assert(object.mLent > 0 && "an object given back more often than it was lent");
+            return --object.mLent == 0;
+        }
+
+        /// Gives `object` back for the next `take`. The caller has already emptied it, and nobody
+        /// holds it. Allocates nothing.
+        void give(T& object)
+        {
+            assert(object.mLent == 0 && "an object given back while something holds it");
+            mSpare.push_back(&object);
+        }
 
         /// How many objects this has made, spare or lent.
         std::size_t size() const { return mAll.size(); }

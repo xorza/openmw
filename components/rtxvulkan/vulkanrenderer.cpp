@@ -630,7 +630,7 @@ namespace Rtx
 
         // Named by hand, because a vertex buffer is bound by handle and not handed out as an
         // address or a descriptor.
-        gui.mGuiVertices.nameFor(mDevice.getTimeline().getNext());
+        gui.mGuiVertices.nameForNext();
 
         mGuiDraws.clear();
         mGuiDraws.reserve(batches.size());
@@ -679,10 +679,10 @@ namespace Rtx
 
     Image& VulkanRenderer::claimTarget()
     {
-        return mTargets.claim([this](const Image& target) {
-            if (mPresenter != nullptr)
-                mPresenter->waitForLastUse(target);
-        });
+        // A present's blit outlives the call that queued it — under FIFO it waits until the
+        // presentation engine has let that swapchain image go — and no barrier's source scope
+        // reaches across a submit, so the target is waited for by the stamp the blit left on it.
+        return mTargets.claim([](const Image& target) { target.waitIdle("the blit that last read this frame"); });
     }
 
     FrameExtents VulkanRenderer::getExtents() const

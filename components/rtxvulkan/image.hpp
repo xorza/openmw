@@ -10,6 +10,7 @@
 #include "imageuse.hpp"
 #include "memory.hpp"
 #include "owned.hpp"
+#include "readstamp.hpp"
 
 namespace Rtx
 {
@@ -35,9 +36,8 @@ namespace Rtx
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
             std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1);
 
-        /// Asserts `Device::mayDestroy`: an image carries no stamp of its last reader, so the one
-        /// thing a safe destruction can be checked against is that the queue is idle or the
-        /// graveyard is the one destroying.
+        /// Asserts that no submit still reads the image — `isIdle` — as a buffer's does: an image
+        /// a submit may still read is buried, never destroyed.
         ~Image();
 
         /// Movable, because the channels of a g-buffer are built by a loop over a table rather
@@ -50,16 +50,31 @@ namespace Rtx
 
         bool isEmpty() const { return mHandle.get() == VK_NULL_HANDLE; }
 
-        /// The view a sampler reads, which covers every level.
-        VkImageView getView() const { return mView.get(); }
+        /// The view a sampler reads, which covers every level. A hand-out: names the image for
+        /// the next submit, as every way a submit can reach it does.
+        VkImageView getView() const
+        {
+            nameForNext();
+            return mView.get();
+        }
 
         /// The view a storage descriptor takes, which is the first level alone, because Vulkan will
         /// not let a storage image name a chain. An image without a chain hands back the only view
-        /// it has.
+        /// it has. A hand-out, as `getView` is.
         VkImageView getStorageView() const
         {
+            nameForNext();
             return mStorageView.get() != VK_NULL_HANDLE ? mStorageView.get() : mView.get();
         }
+
+        /// Whether every submit that names this image has run — what the destructor asserts, and
+        /// what the graveyard asserts as it frees. `ReadStamp::isIdle` says what a stamp for a
+        /// submit not yet made means.
+        bool isIdle() const;
+
+        /// Blocks until `isIdle`, where a submit naming this image is still on the queue. `what`
+        /// names the wait in the error a device that stops answering produces.
+        void waitIdle(const char* what) const;
 
         /// This image as a storage descriptor takes it: the storage view, in `GENERAL`. Every
         /// storage image this renderer binds rests in `GENERAL`, and the view is the one a chain
@@ -130,14 +145,19 @@ namespace Rtx
         std::uint32_t getMipLevels() const { return mMipLevels; }
 
     private:
-        /// What the destructor and a move over this assert: empty, or the device says so.
+        /// What the destructor and a move over this assert: empty, or nothing on the queue reads it.
         bool mayDestroy() const;
+
+        /// Names this image for the next submit — every hand-out to a command or a descriptor
+        /// funnels through here, which is what makes `isIdle` exact.
+        void nameForNext() const;
 
         /// The same barrier `transition` records, over `count` levels from `base`.
         void transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, const ImageUse& from,
             const ImageUse& to) const;
 
         const Device* mDevice = nullptr;
+        ReadStamp mRead;
         Owned<VkImage, vkDestroyImage> mHandle;
         Owned<VkImageView, vkDestroyImageView> mView;
         Owned<VkImageView, vkDestroyImageView> mStorageView;

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 
 #include <osg/Matrixf>
 #include <osg/Node>
@@ -128,8 +129,13 @@ namespace Rtx
         bool rebuildSubject(const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images);
 
         /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`, and leaves a
-        /// copy for `Renderer::takeGuiCopy` where `readBack` asks for one.
+        /// copy for `takeCopy` where `readBack` asks for one.
         void traceInto(GuiSlot texture, bool readBack = false);
+
+        /// The copy the last `traceInto(texture, true)` left, into `into`, or false while the
+        /// trace that leaves it has not landed — `Renderer::takeGuiCopy`, through the renderer
+        /// this traces with, so a view reaches no further than its own trace for its picture.
+        bool takeCopy(GuiSlot texture, std::span<std::uint8_t> into) const;
 
         /// What is at this point of the picture, in normalised device coordinates, as the path
         /// through the subject to whatever was hit. Nothing for a picture of the world. On the

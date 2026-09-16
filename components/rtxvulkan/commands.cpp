@@ -336,7 +336,7 @@ namespace Rtx
         // while the copy is still on the queue is a race between two writers: named, so `isIdle`
         // says so. The source needs no stamp: a staging block is the ring's, and the batch gives it
         // back stamped with the submit that carries it.
-        into.nameFor(batch.getDevice().getTimeline().getNext());
+        into.nameForNext();
     }
 
     Buffer uploadBuffer(Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage, std::string_view name)

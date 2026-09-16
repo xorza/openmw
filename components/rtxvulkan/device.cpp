@@ -359,11 +359,6 @@ namespace Rtx
         mPool->collectIdle();
     }
 
-    bool Device::mayDestroy() const
-    {
-        return mTimeline->isIdle() || mGraveyard->isReaping();
-    }
-
     std::string Device::describeCheckpoints() const
     {
         if (mGetQueueCheckpointData == nullptr)

@@ -14,6 +14,7 @@
 #include "blockedbuffer.hpp"
 #include "bufferusage.hpp"
 #include "handles.hpp"
+#include "readstamp.hpp"
 #include "structurebuild.hpp"
 #include "structurestorage.hpp"
 
@@ -56,6 +57,10 @@ namespace Rtx
     {
     public:
         explicit BottomLevelStore(const Device& device);
+
+        /// Names every structure held for the next submit — what a top-level build does, once,
+        /// for all of them.
+        void nameForNext() const { mRead.nameFor(mDevice.getTimeline().getNext()); }
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
         /// A slot that already holds one has it destroyed first: a slot the scene handed out again
@@ -190,6 +195,11 @@ namespace Rtx
         };
 
         const Device& mDevice;
+
+        /// The one naming every row shares: a top-level build reads every structure here
+        /// through the instance table, and naming rows one by one would be a walk of the table
+        /// per frame. A row that goes is buried, and the graveyard's stamp is after this one.
+        ReadStamp mRead;
 
         // Before the rows, which give their rooms back to it as they go.
         StructureStorage mStorage{ sStructureStorageUsage, "bottom level structures" };

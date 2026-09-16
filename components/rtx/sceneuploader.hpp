@@ -80,6 +80,16 @@ namespace Rtx
             /// and `Upload`. Timed here, because a backend that timed itself would be answering a
             /// question about the host's frame.
             FrameSpend* mSpend = nullptr;
+
+            /// Whether the hand-over ends the placement it handed over — `PlacementTable::advance`,
+            /// so what moved becomes where things were. Here and nowhere else, because the
+            /// hand-over is the one thing that reads the change lists through a backend, and a
+            /// slot that left the lists unread would stand on the device as it stood before. The
+            /// world's frame says yes. A picture of a subject says no: it is drawn when the
+            /// subject changes and not when the frame does, has no motion to describe, and a
+            /// scene that never advanced answers a previous transform equal to the current one,
+            /// which is the right answer there and a stale one otherwise.
+            bool mAdvance = true;
         };
 
         /// Hands the scene to `renderer`, building only what has to be built.

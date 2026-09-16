@@ -397,16 +397,20 @@ namespace MWRender
 
     void RtxRenderer::enableReference(const ESM::RefNum refnum, const bool enabled)
     {
+        mPhase.expect(Phase::Between);
         mMirror.setReferenceEnabled(refnum, enabled);
     }
 
     void RtxRenderer::forgetReferences()
     {
+        mPhase.expect(Phase::Between);
         mMirror.forgetReferences();
     }
 
     void RtxRenderer::detachWorld()
     {
+        // No phase expected: the world goes on the way out of an exception a frame threw, and
+        // the assert would stand between the throw and its message.
         mMirror.detach();
         mRipples.clear();
         mWorldRoot = nullptr;
@@ -438,11 +442,13 @@ namespace MWRender
 
     void RtxRenderer::addCell(const MWWorld::CellStore* cell)
     {
+        mPhase.expect(Phase::Between);
         mMirror.standSea(*cell);
     }
 
     void RtxRenderer::removeCell(const MWWorld::CellStore* cell)
     {
+        mPhase.expect(Phase::Between);
         mRipples.removeCell(*cell);
     }
 
@@ -479,6 +485,7 @@ namespace MWRender
 
     void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
     {
+        mPhase.expect(Phase::Between);
         // Straight under the root: the rasterizer hangs its shadowed scene between the two, and
         // this renderer has nothing to put there. The root is kept for what the game hangs on it
         // beside the scene: its debug nodes, which every frame reads off it.
@@ -494,6 +501,7 @@ namespace MWRender
 
     void RtxRenderer::adoptTraversalRoot(osg::Group& root)
     {
+        mPhase.expect(Phase::Between);
         // Under the camera, whose matrices are what put a viewport ray in the world; parented once
         // however often it is said.
         osg::Camera& camera = getCamera();
@@ -510,6 +518,7 @@ namespace MWRender
 
     void RtxRenderer::advance(double simulationTime)
     {
+        mPhase.expect(Phase::Between);
         getFrameStamp().setFrameNumber(getFrameStamp().getFrameNumber() + 1);
 
         // **What OpenMW ages its caches by**, which is why it comes from the frame's own clock and
@@ -526,11 +535,13 @@ namespace MWRender
 
     void RtxRenderer::tickSchedule()
     {
+        mPhase.expect(Phase::Between);
         mInstalled.mRun.beforeFrame();
     }
 
     void RtxRenderer::updateTraversal()
     {
+        mPhase.expect(Phase::Between);
         // **Before the early return, because a main menu has no scene root.** MyGUI's widget
         // animation, its key repeat, its tooltip timers and its screen faders all hang off this one
         // call, and the other backend gets it from an update callback on a node that is always in
@@ -616,6 +627,8 @@ namespace MWRender
 
     std::optional<PoseMoment> RtxRenderer::describePose()
     {
+        mPhase.expect(Phase::Views, Phase::Run);
+
         if (mResources == nullptr)
             return std::nullopt;
 
@@ -639,6 +652,9 @@ namespace MWRender
 
     double RtxRenderer::drawViews()
     {
+        mPhase.expect(Phase::Views, Phase::Run);
+        assert(mDrawing.empty() && "drawViews inside drawViews");
+
         // **Asked for before there is a world, every time a game starts.** A cell asks for its map
         // tile as it loads, which is the frame before the one that first mirrors it; the tile is
         // drawn when there is something to draw it against rather than left blank until the local
@@ -688,6 +704,10 @@ namespace MWRender
     /// main menu, or the moment before the first cell finishes loading.
     void RtxRenderer::renderGui()
     {
+        // From between two frames, which is a loading screen presenting; from the walk, which is
+        // a frame with the world hidden; or from the frame's own trace and the run's hook after it.
+        mPhase.step(Phase::Gui, Phase::Between, Phase::Walking, Phase::Tracing, Phase::Run);
+
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 
         drawGui();
@@ -705,10 +725,15 @@ namespace MWRender
         mSpan.addPresent(Rtx::since(began, ended));
 
         mSpan.leave(ended);
+        mPhase.step(Phase::Between, Phase::Gui);
     }
 
     osg::ref_ptr<osg::Image> RtxRenderer::readFrame(const int width, const int height, const Rtx::Channels channels)
     {
+        // A readback drains the queue, which a frame may not pay for and a stop or a loading
+        // screen may.
+        mPhase.expect(Phase::Between, Phase::Run);
+
         const Rtx::FrameExtents extents = mRenderer->getExtents();
         if (extents.mOutputWidth == 0 || extents.mOutputHeight == 0)
             return nullptr;
@@ -841,6 +866,7 @@ namespace MWRender
 
     void RtxRenderer::notifyWorldSpaceChanged()
     {
+        mPhase.expect(Phase::Between);
         // **Told rather than worked out.** The mirror grows and recycles its slots and is never
         // cleared, so a cell load leaves it looking exactly as a step across a room does; the
         // renderer has nothing to notice. `Rtx::Renderer::resetHistory` says what that costs.
@@ -849,6 +875,8 @@ namespace MWRender
 
     void RtxRenderer::renderFrame(const SceneFrame& frame)
     {
+        mPhase.step(Phase::Walking, Phase::Between);
+
         const osg::FrameStamp& when = frame.mWhen;
 
         FrameReport report;
@@ -934,6 +962,7 @@ namespace MWRender
         if (mMirror.getScene().placements().getCounts().mPlaced == 0)
             return;
 
+        mPhase.step(Phase::Placing, Phase::Walking);
         finishBehind(report);
         handOver(frame, report);
 
@@ -943,8 +972,10 @@ namespace MWRender
         //
         // Above the eye, because a picture inside the interface brought its own: an eye the trace
         // cannot look along is no reason to leave a map tile blank.
+        mPhase.step(Phase::Views, Phase::Placing);
         report.mSpend.at(Rtx::Timing::Views) = drawViews();
 
+        mPhase.step(Phase::Tracing, Phase::Views);
         const std::optional<Rtx::Shaders::VisibilityConstants> constants = describeTrace(frame);
         if (!constants.has_value())
             return;
@@ -1105,7 +1136,10 @@ namespace MWRender
             report.mUnreadableTextures = mUnreadable;
 
             if (report.mResult.has_value())
+            {
+                mPhase.step(Phase::Run, Phase::Tracing);
                 mInstalled.mRun.frame(describeContext(), report);
+            }
 
             // **Every frame and not the ones the device answered for**, because what this reads is
             // the wall between two traces and the device's answer is not part of it. Once a

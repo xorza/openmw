@@ -127,6 +127,7 @@ set(RTX_FILES
     surface.cpp
     surface.hpp
     sprite.hpp
+    stepped.hpp
     cellring.cpp
     cellsupply.cpp
     cellring.hpp

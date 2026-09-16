@@ -32,6 +32,20 @@ namespace Rtx
         static constexpr Index sVertexBlock = MeshTable::sVertexBlock;
         static constexpr Index sIndexBlock = MeshTable::sIndexBlock;
 
+        SceneDesc();
+        SceneDesc(SceneDesc&&) noexcept = default;
+        SceneDesc& operator=(SceneDesc&&) noexcept = default;
+
+        /// Never copied: a copy would be two descriptions under one identity, and a backend built
+        /// from either would append the other's arrivals onto its own tables.
+        SceneDesc(const SceneDesc&) = delete;
+        SceneDesc& operator=(const SceneDesc&) = delete;
+
+        /// Which description this is, for a backend that holds a slot built from one: never
+        /// nought, never handed out twice in a process, and kept across a move — so a slot can say
+        /// what it was built from without naming an address a later description may take over.
+        std::uint64_t getIdentity() const { return mIdentity; }
+
         /// Copies the vertex data into the shared buffers and returns the new mesh's index. Every
         /// attribute but `MeshArrays::mPositions` may be empty; when one is not it must match the
         /// positions in length, and `MeshArrays::mIndices` must be a whole number of triangles
@@ -158,6 +172,8 @@ namespace Rtx
     private:
         template <class Visit>
         void forEachPlacement(Visit&& visit) const;
+
+        std::uint64_t mIdentity;
 
         /// The two borrowed tables first, because a member is constructed in declaration order.
         /// `MeshTable` takes a `DeformerTable&` and `MaterialTable` a `TextureTable&`, so either
