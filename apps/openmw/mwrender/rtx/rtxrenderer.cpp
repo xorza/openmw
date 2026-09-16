@@ -256,7 +256,7 @@ namespace MWRender
         // Kept, so that the first of those sees a size that has already settled.
         int width = 0;
         int height = 0;
-        SDL_GetWindowSizeInPixels(mWindow, &width, &height);
+        SDL_GetWindowSizeInPixels(mWindow.get(), &width, &height);
         mAskedWidth = static_cast<std::uint32_t>(std::max(width, 1));
         mAskedHeight = static_cast<std::uint32_t>(std::max(height, 1));
 
@@ -265,7 +265,7 @@ namespace MWRender
         options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mAskedWidth;
         options.mHeight = mAskedHeight;
-        options.mWindow = mWindow;
+        options.mWindow = mWindow.get();
         options.mVerticalSync = Settings::video().mVsyncMode;
         // **The run's answer.** A launcher making a measurement says on its command line whether
         // the layers load, because a figure taken under them is not one to compare against
@@ -356,15 +356,8 @@ namespace MWRender
     RtxRenderer::~RtxRenderer()
     {
         // `Engine` has stopped the screenshot writer by now, so no write on the queue still holds
-        // an image of a frame this owns the memory for.
-
-        // Its slot is in the renderer's table, so it goes back before the table does.
-        mFrozenFrameTexture.reset();
-
-        mRenderer.reset();
-
-        if (mWindow != nullptr)
-            SDL_DestroyWindow(mWindow);
+        // an image of a frame this owns the memory for. The members go in the order they are
+        // declared for: the frozen texture, the backend, the window.
     }
 
     void RtxRenderer::createWindow(const bool hidden)
@@ -379,7 +372,8 @@ namespace MWRender
         // the compositor from raising a window over whatever the person running it is doing.
         const Uint32 flags = hidden ? (placement.mFlags | SDL_WINDOW_HIDDEN) : placement.mFlags;
 
-        mWindow = SDL_CreateWindow("OpenMW", placement.mX, placement.mY, placement.mWidth, placement.mHeight, flags);
+        mWindow.reset(
+            SDL_CreateWindow("OpenMW", placement.mX, placement.mY, placement.mWidth, placement.mHeight, flags));
         if (mWindow == nullptr)
             throw std::runtime_error(std::string("failed to create SDL window: ") + SDL_GetError());
     }
@@ -564,7 +558,7 @@ namespace MWRender
     {
         int width = 0;
         int height = 0;
-        SDL_GetWindowSizeInPixels(mWindow, &width, &height);
+        SDL_GetWindowSizeInPixels(mWindow.get(), &width, &height);
 
         const osg::Timer_t now = osg::Timer::instance()->tick();
         const auto wide = static_cast<std::uint32_t>(std::max(width, 1));
@@ -1112,8 +1106,8 @@ namespace MWRender
             // second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
             if (const std::string_view title = mSpeed.addFrame(*since);
-                !title.empty() && (SDL_GetWindowFlags(mWindow) & SDL_WINDOW_HIDDEN) == 0)
-                SDL_SetWindowTitle(mWindow, title.data());
+                !title.empty() && (SDL_GetWindowFlags(mWindow.get()) & SDL_WINDOW_HIDDEN) == 0)
+                SDL_SetWindowTitle(mWindow.get(), title.data());
         }
 
         // **Counted where it is summed**, because `finishFrame` answers nothing until a frame it

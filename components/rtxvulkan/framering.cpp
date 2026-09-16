@@ -90,7 +90,7 @@ namespace Rtx
         assert(frame.mWorld.mPending && "a frame in flight that was never submitted");
 
         const auto start = std::chrono::steady_clock::now();
-        mDevice.getTimeline().waitFor(frame.mWorld.mSubmitted, "a frame");
+        mDevice.waitFor(frame.mWorld.mSubmitted, "a frame");
         const double waited = since(start, std::chrono::steady_clock::now());
 
         frame.mWorld.mPending = false;

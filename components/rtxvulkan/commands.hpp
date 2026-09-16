@@ -11,6 +11,7 @@
 #include "buffer.hpp"
 #include "image.hpp"
 #include "owned.hpp"
+#include "retiring.hpp"
 
 namespace Rtx
 {
@@ -62,13 +63,10 @@ namespace Rtx
         /// apart — a resize and shutdown — which have no next submit to give a deferred batch.
         void finishDeferred();
 
-        /// Whether a batch is waiting for the next submit to carry it.
-        bool hasDeferred() const { return !mDeferred.empty(); }
-
         /// Submits `commands` behind whatever was deferred and does not wait — the frame's own
-        /// submit. Ends `commands`. The deferred batches' command buffers go to the graveyard, to
-        /// be freed when a wait says the queue has passed them. Returns the value the submit
-        /// signals on the device's timeline, which is what says when that is.
+        /// submit. Ends `commands`. The deferred batches' command buffers retire under the value
+        /// this signals, and `collect` gives them back once a wait has passed it. Returns the
+        /// value the submit signals on the device's timeline, which is what says when that is.
         ///
         /// @param waits,signals binary semaphores the submit waits and signals beside the
         ///        timeline: what a present's blit needs, and what nothing else does. Through here
@@ -85,6 +83,20 @@ namespace Rtx
 
     private:
         friend class Batch;
+
+        /// Gives back the retired command buffers the timeline has passed. The device's, after
+        /// every wait, as the graveyard's `collect` is.
+        friend class Device;
+        void collect();
+
+        /// Gives back every retired command buffer, for a queue nothing is on: asserted, with
+        /// nothing deferred, because the same call one wait too early is a buffer begun again
+        /// while the queue still executes it.
+        void collectIdle();
+
+        /// What both share: every retired buffer stamped at or below `finished` goes to the spare
+        /// list.
+        void releaseRetired(std::uint64_t finished);
 
         /// The device's alone, because the graveyard gives a finished command buffer back to the
         /// device's pool: a second pool's buffer would land in the first's spare list and outlive
@@ -120,6 +132,9 @@ namespace Rtx
 
         /// Recorded and ended, waiting for the next submit to carry them first.
         std::vector<VkCommandBuffer> mDeferred;
+
+        /// Carried by a submit and not yet known to have run.
+        Retiring<VkCommandBuffer> mRetiring;
 
         /// Given back and not yet taken again.
         std::vector<VkCommandBuffer> mSpare;

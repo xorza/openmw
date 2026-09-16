@@ -149,7 +149,7 @@ namespace Rtx
 
             // Before the store goes: a buried structure gives its room back to the store's storage.
             getDevice().waitIdle();
-            getDevice().getGraveyard().collectIdle();
+            getDevice().collectIdle();
         }
 
         /// A structure released before its answer is read is neither read nor copied, and what the
@@ -177,7 +177,7 @@ namespace Rtx
 
             // Before the store goes: a buried structure gives its room back to the store's storage.
             getDevice().waitIdle();
-            getDevice().getGraveyard().collectIdle();
+            getDevice().collectIdle();
         }
     }
 }

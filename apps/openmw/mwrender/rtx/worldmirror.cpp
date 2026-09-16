@@ -219,13 +219,12 @@ namespace MWRender
 
         mRing.setFrame(frameNumber);
 
-        // Told once a frame, because what the graph does not hold is the frame's to say. Every
-        // world walk asks it from here, and the precipitation walk above cannot: it is a subtree.
+        // Told once a frame, because what the graph does not hold is the frame's to say. The
+        // world walk asks it, and the precipitation walk above cannot: it is a subtree.
         mRing.follow(around);
-        mExtractor.follow(&mRing);
 
         // One walk over the whole graph, where every path is already distinct.
-        return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber);
+        return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber, mRing);
     }
 
     void WorldMirror::addRipples(std::span<const Rtx::RippleImpulse> impulses)

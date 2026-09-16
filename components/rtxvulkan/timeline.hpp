@@ -29,9 +29,10 @@ namespace Rtx
     /// two builds of one tree drew three pixels apart. `repeat` could not see it, because two runs
     /// of one binary keep the same phase.
     ///
-    /// **Every wait ends with the graveyard collected**, here and nowhere else: a wait is where
-    /// what the clock knows changes, so it is where what the queue may still read changes, and a
-    /// caller that waited and forgot to collect would hold what it could have freed.
+    /// **Every wait is the device's**, `Device::waitFor` or `Device::waitIdle`, and nothing else
+    /// waits: a wait is where what the clock knows changes, so it is where what the queue may
+    /// still read changes, and the device is what collects that — a caller that waited here and
+    /// forgot to collect would hold what it could have freed.
     class Timeline
     {
     public:
@@ -54,26 +55,25 @@ namespace Rtx
         /// than once per object.
         std::uint64_t getKnownFinished() const { return mFinished; }
 
-        /// Blocks until the queue has signalled `value`. `what` names the wait in the error a
-        /// device that stops answering produces.
-        void waitFor(std::uint64_t value, const char* what) const;
-
-        /// What a device idle leaves behind: every submit made has run. `Device::waitIdle` says
-        /// so after `vkDeviceWaitIdle`, which is a wait the semaphore is not asked about.
-        void markIdle() const;
-
         /// The signal a submit puts in its `pSignalSemaphoreInfos` for `value`.
         VkSemaphoreSubmitInfo signal(std::uint64_t value) const;
 
     private:
         friend class CommandPool;
+        friend class Device;
 
         /// Takes the value the next submit signals, which the pool signals with `signal`. The
         /// pool's alone: a second caller would put the clock ahead of the queue.
         std::uint64_t next() { return ++mSubmitted; }
 
-        /// What every wait ends with.
-        void settle(std::uint64_t finished) const;
+        /// Blocks until the queue has signalled `value`. `what` names the wait in the error a
+        /// device that stops answering produces. The device's alone, for the reason the class
+        /// doc gives.
+        void waitFor(std::uint64_t value, const char* what) const;
+
+        /// What a device idle leaves behind: every submit made has run. The device says so after
+        /// `vkDeviceWaitIdle`, which is a wait the semaphore is not asked about.
+        void markIdle() const;
 
         const Device& mDevice;
         Semaphore mHandle;

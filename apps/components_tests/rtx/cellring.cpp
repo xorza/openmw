@@ -255,7 +255,6 @@ namespace Rtx::Testing
                     for (int y = -8; y <= 30; ++y)
                         mLand.mWithData.emplace_back(x, y);
 
-                mExtractor.follow(&mRing);
                 mRing.setMinSize(0.0f);
                 mRing.setSettled(true);
 
@@ -294,7 +293,8 @@ namespace Rtx::Testing
             {
                 mScene.clearPlacement();
                 mRing.setFrame(frame);
-                const ExtractionStats stats = mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, frame);
+                const ExtractionStats stats
+                    = mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, frame, mRing);
                 mExtractor.advance();
                 return stats;
             }

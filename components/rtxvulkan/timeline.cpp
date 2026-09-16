@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include "device.hpp"
-#include "graveyard.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -27,18 +26,12 @@ namespace Rtx
             .pValues = &value,
         };
         checkVkWait(mDevice, vkWaitSemaphores(mDevice.getHandle(), &wait, sPatience), what, sPatience);
-        settle(value);
+        mFinished = std::max(mFinished, value);
     }
 
     void Timeline::markIdle() const
     {
-        settle(mSubmitted);
-    }
-
-    void Timeline::settle(const std::uint64_t finished) const
-    {
-        mFinished = std::max(mFinished, finished);
-        mDevice.getGraveyard().collect();
+        mFinished = mSubmitted;
     }
 
     VkSemaphoreSubmitInfo Timeline::signal(const std::uint64_t value) const

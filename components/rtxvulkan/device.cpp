@@ -191,100 +191,64 @@ namespace Rtx
             .pEnabledFeatures = nullptr,
         };
 
-        checkVk(vkCreateDevice(mPhysicalDevice.getHandle(), &createInfo, nullptr, &mHandle), "vkCreateDevice");
+        checkVk(vkCreateDevice(mPhysicalDevice.getHandle(), &createInfo, nullptr, mHandle.put()), "vkCreateDevice");
 
-        // A constructor that throws runs no destructor, and a driver that advertises an extension it
-        // cannot dispatch is exactly the case this reports — so the device goes back before the
-        // failure leaves here.
-        try
+        // From here on a throw — a driver that advertises an extension it cannot dispatch, which
+        // a load below reports — destroys the members already made, in reverse, and the device's
+        // own handle last of all, which is what `LogicalDevice` is for.
+        vkGetDeviceQueue(mHandle.get(), mPhysicalDevice.getQueueFamily(), 0, &mQueue);
+
+        load(mHandle.get(), mFunctions.mGetAccelerationStructureBuildSizes, "vkGetAccelerationStructureBuildSizesKHR");
+        load(mHandle.get(), mFunctions.mCreateAccelerationStructure, "vkCreateAccelerationStructureKHR");
+        load(mHandle.get(), mFunctions.mDestroyAccelerationStructure, "vkDestroyAccelerationStructureKHR");
+        load(mHandle.get(), mFunctions.mCmdBuildAccelerationStructures, "vkCmdBuildAccelerationStructuresKHR");
+        load(mHandle.get(), mFunctions.mCmdWriteAccelerationStructuresProperties,
+            "vkCmdWriteAccelerationStructuresPropertiesKHR");
+        load(mHandle.get(), mFunctions.mCmdCopyAccelerationStructure, "vkCmdCopyAccelerationStructureKHR");
+        load(mHandle.get(), mFunctions.mGetAccelerationStructureDeviceAddress,
+            "vkGetAccelerationStructureDeviceAddressKHR");
+        load(mHandle.get(), mFunctions.mCreateRayTracingPipelines, "vkCreateRayTracingPipelinesKHR");
+        load(mHandle.get(), mFunctions.mGetRayTracingShaderGroupHandles, "vkGetRayTracingShaderGroupHandlesKHR");
+        load(mHandle.get(), mFunctions.mCmdTraceRays, "vkCmdTraceRaysKHR");
+        load(mHandle.get(), mFunctions.mGetPipelineExecutableProperties, "vkGetPipelineExecutablePropertiesKHR");
+        load(mHandle.get(), mFunctions.mGetPipelineExecutableStatistics, "vkGetPipelineExecutableStatisticsKHR");
+
+        if (describesFault)
+            load(mHandle.get(), mGetDeviceFaultInfo, "vkGetDeviceFaultInfoEXT");
+
+        if (mPhysicalDevice.hasOptionalExtension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
         {
-            vkGetDeviceQueue(mHandle, mPhysicalDevice.getQueueFamily(), 0, &mQueue);
-
-            load(mHandle, mFunctions.mGetAccelerationStructureBuildSizes, "vkGetAccelerationStructureBuildSizesKHR");
-            load(mHandle, mFunctions.mCreateAccelerationStructure, "vkCreateAccelerationStructureKHR");
-            load(mHandle, mFunctions.mDestroyAccelerationStructure, "vkDestroyAccelerationStructureKHR");
-            load(mHandle, mFunctions.mCmdBuildAccelerationStructures, "vkCmdBuildAccelerationStructuresKHR");
-            load(mHandle, mFunctions.mCmdWriteAccelerationStructuresProperties,
-                "vkCmdWriteAccelerationStructuresPropertiesKHR");
-            load(mHandle, mFunctions.mCmdCopyAccelerationStructure, "vkCmdCopyAccelerationStructureKHR");
-            load(mHandle, mFunctions.mGetAccelerationStructureDeviceAddress,
-                "vkGetAccelerationStructureDeviceAddressKHR");
-            load(mHandle, mFunctions.mCreateRayTracingPipelines, "vkCreateRayTracingPipelinesKHR");
-            load(mHandle, mFunctions.mGetRayTracingShaderGroupHandles, "vkGetRayTracingShaderGroupHandlesKHR");
-            load(mHandle, mFunctions.mCmdTraceRays, "vkCmdTraceRaysKHR");
-            load(mHandle, mFunctions.mGetPipelineExecutableProperties, "vkGetPipelineExecutablePropertiesKHR");
-            load(mHandle, mFunctions.mGetPipelineExecutableStatistics, "vkGetPipelineExecutableStatisticsKHR");
-
-            if (describesFault)
-                load(mHandle, mGetDeviceFaultInfo, "vkGetDeviceFaultInfoEXT");
-
-            if (mPhysicalDevice.hasOptionalExtension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
-            {
-                load(mHandle, mCmdSetCheckpoint, "vkCmdSetCheckpointNV");
-                load(mHandle, mGetQueueCheckpointData, "vkGetQueueCheckpointDataNV");
-            }
-
-            if (instance.hasDebugUtils())
-            {
-                mSetObjectName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
-                    vkGetDeviceProcAddr(mHandle, "vkSetDebugUtilsObjectNameEXT"));
-                mBeginLabel = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(
-                    vkGetDeviceProcAddr(mHandle, "vkCmdBeginDebugUtilsLabelEXT"));
-                mEndLabel = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(
-                    vkGetDeviceProcAddr(mHandle, "vkCmdEndDebugUtilsLabelEXT"));
-            }
-
-            mPipelineCache = std::make_unique<PipelineCache>(
-                mHandle, mPhysicalDevice.getProperties().mProperties2.properties, cache);
-            mMemory = std::make_unique<MemoryAllocator>(mHandle, mPhysicalDevice.getHandle(),
-                mPhysicalDevice.getProperties().mMemory,
-                mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
-            mTimeline = std::make_unique<Timeline>(*this);
-            // `new` and not `make_unique`, which the pool's private constructor does not admit.
-            mPool.reset(new CommandPool(*this));
-            mGraveyard = std::make_unique<Graveyard>(*this);
+            load(mHandle.get(), mCmdSetCheckpoint, "vkCmdSetCheckpointNV");
+            load(mHandle.get(), mGetQueueCheckpointData, "vkGetQueueCheckpointDataNV");
         }
-        catch (...)
+
+        if (instance.hasDebugUtils())
         {
-            // Before the device, and by name rather than by member order. Unwinding runs these
-            // destructors after this block, and each calls into the device: the cache reads itself
-            // back out of it and a block hands its memory to it. A device destroyed first would be
-            // a handle they then use.
-            mGraveyard.reset();
-            mPool.reset();
-            mTimeline.reset();
-            mMemory.reset();
-            mPipelineCache.reset();
-
-            vkDestroyDevice(mHandle, nullptr);
-            mHandle = VK_NULL_HANDLE;
-            throw;
+            mSetObjectName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
+                vkGetDeviceProcAddr(mHandle.get(), "vkSetDebugUtilsObjectNameEXT"));
+            mBeginLabel = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(
+                vkGetDeviceProcAddr(mHandle.get(), "vkCmdBeginDebugUtilsLabelEXT"));
+            mEndLabel = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(
+                vkGetDeviceProcAddr(mHandle.get(), "vkCmdEndDebugUtilsLabelEXT"));
         }
+
+        mPipelineCache = std::make_unique<PipelineCache>(
+            mHandle.get(), mPhysicalDevice.getProperties().mProperties2.properties, cache);
+        mMemory = std::make_unique<MemoryAllocator>(mHandle.get(), mPhysicalDevice.getHandle(),
+            mPhysicalDevice.getProperties().mMemory,
+            mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
+        mTimeline = std::make_unique<Timeline>(*this);
+        // `new` and not `make_unique`, which the pool's private constructor does not admit.
+        mPool.reset(new CommandPool(*this));
+        mGraveyard = std::make_unique<Graveyard>(*this);
     }
 
     Device::~Device()
     {
-        if (mHandle != VK_NULL_HANDLE)
-        {
-            // Through the wrapper and so through `tearDown`, which is what keeps the fault
-            // description a lost device carries: the raw call answered with a number nobody read.
-            tearDown("the device would not finish before it was destroyed", [&] { waitIdle(); });
-
-            // Before the device it was made on, and explicitly rather than by member order: saving
-            // it calls into the device, so it cannot outlive one this destructor is about to close.
-            mPipelineCache.reset();
-
-            // What was buried goes first, because it frees through the pool and hands memory to
-            // the allocator; then the pool, then the clock; and the allocator last, after
-            // everything it stood has gone, because a block is freed by a call on the device this
-            // is about to close.
-            mGraveyard.reset();
-            mPool.reset();
-            mTimeline.reset();
-            mMemory.reset();
-
-            vkDestroyDevice(mHandle, nullptr);
-        }
+        // Through the wrapper and so through `tearDown`, which is what keeps the fault description
+        // a lost device carries: the raw call answered with a number nobody read. The members
+        // then go in the order they are declared for.
+        tearDown("the device would not finish before it was destroyed", [&] { waitIdle(); });
     }
 
     MemoryAllocator& Device::getMemory() const
@@ -305,7 +269,7 @@ namespace Rtx
         };
 
         std::uint32_t executables = 0;
-        checkVk(mFunctions.mGetPipelineExecutableProperties(mHandle, &asked, &executables, nullptr),
+        checkVk(mFunctions.mGetPipelineExecutableProperties(mHandle.get(), &asked, &executables, nullptr),
             "vkGetPipelineExecutablePropertiesKHR");
 
         // Said once per pipeline rather than left as a missing line: NVIDIA's compiler reports no
@@ -330,7 +294,7 @@ namespace Rtx
                 = enumerateVk<VkPipelineExecutableStatisticKHR>(
                     "vkGetPipelineExecutableStatisticsKHR",
                     [&](std::uint32_t* count, VkPipelineExecutableStatisticKHR* into) {
-                        return mFunctions.mGetPipelineExecutableStatistics(mHandle, &which, count, into);
+                        return mFunctions.mGetPipelineExecutableStatistics(mHandle.get(), &which, count, into);
                     },
                     VkPipelineExecutableStatisticKHR{ .sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR });
 
@@ -370,10 +334,29 @@ namespace Rtx
         }
     }
 
+    void Device::waitFor(const std::uint64_t value, const char* const what) const
+    {
+        mTimeline->waitFor(value, what);
+        collect();
+    }
+
     void Device::waitIdle() const
     {
-        checkVk(*this, vkDeviceWaitIdle(mHandle), "vkDeviceWaitIdle");
+        checkVk(*this, vkDeviceWaitIdle(mHandle.get()), "vkDeviceWaitIdle");
         mTimeline->markIdle();
+        collect();
+    }
+
+    void Device::collect() const
+    {
+        mGraveyard->collect();
+        mPool->collect();
+    }
+
+    void Device::collectIdle() const
+    {
+        mGraveyard->collectIdle();
+        mPool->collectIdle();
     }
 
     bool Device::mayDestroy() const
@@ -418,7 +401,7 @@ namespace Rtx
         constexpr const char* sUnsaid = "\nthe driver would not say where the device faulted";
 
         VkDeviceFaultCountsEXT counts{ .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT };
-        if (mGetDeviceFaultInfo(mHandle, &counts, nullptr) != VK_SUCCESS)
+        if (mGetDeviceFaultInfo(mHandle.get(), &counts, nullptr) != VK_SUCCESS)
             return sUnsaid + describeCheckpoints();
 
         std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
@@ -435,7 +418,7 @@ namespace Rtx
 
         // `VK_INCOMPLETE` is the driver having more to say than the counts it gave a moment ago
         // allowed for, and what it did say is still worth reading.
-        const VkResult result = mGetDeviceFaultInfo(mHandle, &counts, &info);
+        const VkResult result = mGetDeviceFaultInfo(mHandle.get(), &counts, &info);
         if (result != VK_SUCCESS && result != VK_INCOMPLETE)
             return sUnsaid + describeCheckpoints();
 
@@ -468,7 +451,7 @@ namespace Rtx
         // that gets created; a failure here must not be what stops a renderer that is otherwise
         // working, and the only documented failure is host memory exhaustion, which will announce
         // itself elsewhere within microseconds.
-        mSetObjectName(mHandle, &info);
+        mSetObjectName(mHandle.get(), &info);
     }
 
     void Device::beginLabelImpl(VkCommandBuffer commands, const char* name) const

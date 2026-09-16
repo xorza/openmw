@@ -141,14 +141,14 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.meshes().getLiveCount(), 1u);
 
             osg::ref_ptr<osg::Group> nothing = new osg::Group;
-            mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 1);
+            mExtractor.extract(*nothing, osg::Matrixf::identity(), 0, 1);
 
             EXPECT_TRUE(mExtractor.retire().empty()) << "a held row is a survivor";
             EXPECT_EQ(mScene.meshes().getLiveCount(), 1u);
 
             // A second walk with nothing else in it: every map stands whole, and the row still
             // stands.
-            mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 2);
+            mExtractor.extract(*nothing, osg::Matrixf::identity(), 0, 2);
             EXPECT_TRUE(mExtractor.retire().empty());
             EXPECT_EQ(mScene.meshes().getLiveCount(), 1u);
 
@@ -156,7 +156,7 @@ namespace Rtx::Testing
             // next — whose maps stand whole, so it is the dropped hold alone that runs it.
             rows.letGo();
             EXPECT_TRUE(mScene.hasDroppedHolds());
-            mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 3);
+            mExtractor.extract(*nothing, osg::Matrixf::identity(), 0, 3);
 
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
@@ -286,7 +286,7 @@ namespace Rtx::Testing
             // `RtxRenderer::renderFrame`'s own order, because what this guards against lives
             // between one frame and the next: clear, walk the world, close the frame, sweep.
             mScene.clearPlacement();
-            const ExtractionStats arrived = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 1);
+            const ExtractionStats arrived = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 1);
             mExtractor.advance();
             ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found them is the epoch they survive";
 
@@ -304,7 +304,7 @@ namespace Rtx::Testing
             stays.update(2);
 
             mScene.clearPlacement();
-            const ExtractionStats after = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 2);
+            const ExtractionStats after = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 2);
             mExtractor.advance();
             const Retirement went = mExtractor.retire();
 
@@ -349,7 +349,7 @@ namespace Rtx::Testing
 
             actor.update(1);
             mScene.clearPlacement();
-            const ExtractionStats arrived = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 1);
+            const ExtractionStats arrived = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 1);
             mExtractor.advance();
             ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found them is the epoch they survive";
 
@@ -375,7 +375,7 @@ namespace Rtx::Testing
 
             actor.update(2);
             mScene.clearPlacement();
-            const ExtractionStats again = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 2);
+            const ExtractionStats again = mExtractor.extract(*root, osg::Matrixf::identity(), 0, 2);
             mExtractor.advance();
             const Retirement went = mExtractor.retire();
 

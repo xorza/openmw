@@ -119,23 +119,27 @@ namespace Rtx
 
     bool Buffer::isIdle() const
     {
-        return mDevice == nullptr || mRead.isIdle(mDevice->getTimeline());
+        return mDevice == nullptr || mRead.isIdle(*mDevice);
     }
 
     void Buffer::waitIdle(const char* const what) const
     {
         if (mDevice != nullptr)
-            mRead.waitIdle(mDevice->getTimeline(), what);
+            mRead.waitIdle(*mDevice, what);
     }
 
     VkDeviceAddress Buffer::addressFor() const
     {
+        assert(!isEmpty() && "an address of a buffer nobody made");
+
         nameFor(mDevice->getTimeline().getNext());
         return getDeviceAddress();
     }
 
     VkDescriptorBufferInfo Buffer::describe() const
     {
+        assert(!isEmpty() && "a descriptor of a buffer nobody made");
+
         nameFor(mDevice->getTimeline().getNext());
         return VkDescriptorBufferInfo{ mHandle.get(), 0, VK_WHOLE_SIZE };
     }
@@ -178,6 +182,8 @@ namespace Rtx
 
     void Buffer::transition(VkCommandBuffer commands, const BufferUse& from, const BufferUse& to) const
     {
+        assert(!isEmpty() && "a barrier on a buffer nobody made");
+
         Barriers barriers(commands);
         barriers.add(describeBarrier(from, to));
         barriers.flush();
@@ -185,11 +191,15 @@ namespace Rtx
 
     void Buffer::clear(const VkCommandBuffer commands, const VkDeviceSize bytes) const
     {
+        assert(!isEmpty() && "a clear of a buffer nobody made");
+
         vkCmdFillBuffer(commands, mHandle.get(), 0, bytes, 0);
     }
 
     void Buffer::copyTo(const VkCommandBuffer commands, const Buffer& into, const VkDeviceSize bytes) const
     {
+        assert(!isEmpty() && "a copy out of a buffer nobody made");
+
         assert(bytes <= mSize && bytes <= into.mSize && "a copy of more than either buffer holds");
 
         // Both ends, because a copy takes handles and an address names nothing: a host write over
@@ -204,6 +214,8 @@ namespace Rtx
 
     void Buffer::orderForHostRead(VkCommandBuffer commands) const
     {
+        assert(!isEmpty() && "a host read of a buffer nobody made");
+
         assert(mKind == BufferKind::Staging && "a host-read dependency on memory nothing reads back");
 
         // Every way this renderer fills one: a copy out of an image, and a shader writing through
@@ -219,6 +231,8 @@ namespace Rtx
     void Buffer::updateInline(
         VkCommandBuffer commands, const BufferUse& readers, const std::span<const std::byte> bytes) const
     {
+        assert(!isEmpty() && "a write into a buffer nobody made");
+
         assert(bytes.size() <= mSize);
 
         // Both directions, because one buffer serves every frame: the write has to wait for the

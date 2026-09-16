@@ -83,7 +83,11 @@ namespace Rtx
         /// for the next submit as they hand the buffer out, and `copyTo` and `stageInto` for a
         /// copy's ends; this is for a hand-out by handle nothing else covers — a vertex buffer
         /// bound. What `isIdle` checks a host write against.
-        void nameFor(std::uint64_t value) const { mRead.nameFor(value); }
+        void nameFor(std::uint64_t value) const
+        {
+            assert(!isEmpty() && "a submit named on a buffer nobody made");
+            mRead.nameFor(value);
+        }
 
         /// The last value a submit naming this buffer signals, or nought where nothing has.
         std::uint64_t getNamedUntil() const { return mRead.getNamedUntil(); }

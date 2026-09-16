@@ -1,13 +1,10 @@
 #include "graveyard.hpp"
 
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <limits>
-#include <span>
 #include <utility>
 
-#include "commands.hpp"
 #include "device.hpp"
 #include "timeline.hpp"
 
@@ -32,60 +29,43 @@ namespace Rtx
     void Graveyard::bury(Buffer&& buffer)
     {
         if (!buffer.isEmpty())
-            mBuffers.push_back({ stamp(), std::move(buffer) });
+            mBuffers.hold(stamp(), std::move(buffer));
     }
 
     void Graveyard::bury(Texture&& texture)
     {
         if (!texture.isEmpty())
-            mTextures.push_back({ stamp(), std::move(texture) });
+            mTextures.hold(stamp(), std::move(texture));
     }
 
     void Graveyard::bury(AccelerationStructure&& structure)
     {
         if (!structure.isEmpty())
-            mStructures.push_back({ stamp(), std::move(structure) });
+            mStructures.hold(stamp(), std::move(structure));
     }
 
     void Graveyard::bury(QueryPool&& pool)
     {
         if (pool.get() != VK_NULL_HANDLE)
-            mQueryPools.push_back({ stamp(), std::move(pool) });
+            mQueryPools.hold(stamp(), std::move(pool));
     }
 
     void Graveyard::bury(std::shared_ptr<void>&& held)
     {
         if (held != nullptr)
-            mOthers.push_back({ stamp(), std::move(held) });
-    }
-
-    void Graveyard::bury(VkCommandBuffer commands)
-    {
-        if (commands != VK_NULL_HANDLE)
-            mCommands.push_back({ stamp(), commands });
+            mOthers.hold(stamp(), std::move(held));
     }
 
     void Graveyard::bury(Image&& image)
     {
         if (!image.isEmpty())
-            mImages.push_back({ stamp(), std::move(image) });
-    }
-
-    template <class T, class Destroy>
-    void Graveyard::free(std::vector<Held<T>>& held, const std::uint64_t finished, Destroy&& destroy)
-    {
-        const auto kept = std::find_if(
-            held.begin(), held.end(), [finished](const Held<T>& each) { return each.mUntil > finished; });
-        for (auto at = held.begin(); at != kept; ++at)
-            destroy(at->mObject);
-
-        held.erase(held.begin(), kept);
+            mImages.hold(stamp(), std::move(image));
     }
 
     template <class T>
-    void Graveyard::free(std::vector<Held<T>>& held, const std::uint64_t finished)
+    void Graveyard::free(Retiring<T>& held, const std::uint64_t finished)
     {
-        free(held, finished, [](T& object) { object = T(); });
+        held.releaseThrough(finished, [](T& object) { object = T(); });
     }
 
     void Graveyard::collect()
@@ -96,7 +76,6 @@ namespace Rtx
     void Graveyard::collectIdle()
     {
         assert(mDevice.getTimeline().isIdle() && "everything held destroyed under a submit still on the queue");
-        assert(!mDevice.getPool().hasDeferred() && "everything held destroyed under a batch not yet submitted");
 
         freeThrough(std::numeric_limits<std::uint64_t>::max());
     }
@@ -112,9 +91,6 @@ namespace Rtx
         free(mBuffers, finished);
         free(mTextures, finished);
         free(mImages, finished);
-        free(mCommands, finished, [&](const VkCommandBuffer commands) {
-            mDevice.getPool().recycle(std::span<const VkCommandBuffer>(&commands, 1));
-        });
         free(mOthers, finished);
 
         mReaping = false;

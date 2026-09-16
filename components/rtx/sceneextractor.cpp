@@ -458,9 +458,9 @@ namespace Rtx
     }
 
     ExtractionStats SceneExtractor::extractWorld(
-        const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame)
+        const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame, CellRing& ring)
     {
-        return walk(root, transform, anchor, frame, mRing, false);
+        return walk(root, transform, anchor, frame, &ring, false);
     }
 
     ExtractionStats SceneExtractor::extractFalling(

@@ -18,7 +18,6 @@
 #include "imageuse.hpp"
 #include "result.hpp"
 #include "swapchain.hpp"
-#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -195,15 +194,13 @@ namespace Rtx
 
     bool Presenter::present(const Image& frame)
     {
-        const Timeline& timeline = mDevice.getTimeline();
-
         Acquisition& acquisition = mAcquiring[mAcquisition];
         mAcquisition = (mAcquisition + 1) % static_cast<std::uint32_t>(mAcquiring.size());
 
         // A slot is free when its blit has run, and not when the call that queued it returned.
         // The blit waits the semaphore the acquire signalled, so until it runs both operations are
         // still pending on that semaphore and it may not be handed to another acquire.
-        timeline.waitFor(acquisition.mBlit, "the blit that last took this acquire semaphore");
+        mDevice.waitFor(acquisition.mBlit, "the blit that last took this acquire semaphore");
 
         std::uint32_t index = 0;
         if (!mSwapchain->acquire(acquisition.mSemaphore.get(), index))
@@ -217,7 +214,7 @@ namespace Rtx
         // that queued it has consumed its semaphore — the case a count of frames in flight does not
         // cover, because it counts frames rather than images.
         SwapImage& image = mImages[index];
-        timeline.waitFor(image.mBlitOn, "the blit that last wrote this image");
+        mDevice.waitFor(image.mBlitOn, "the blit that last wrote this image");
 
         // And the present itself, which is a different moment: the blit's value says the queue has
         // run the copy, and this says the compositor has let go of what it copied into. Without it
@@ -305,7 +302,7 @@ namespace Rtx
         for (const LastUse& use : mLastUse)
             if (use.mImage == frame.getHandle())
             {
-                mDevice.getTimeline().waitFor(use.mBlit, "the blit that last read this frame");
+                mDevice.waitFor(use.mBlit, "the blit that last read this frame");
                 return;
             }
     }

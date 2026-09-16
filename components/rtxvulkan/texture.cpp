@@ -218,7 +218,7 @@ namespace Rtx
 
     void TextureArray::finishReads(const FrameSlot slot) const
     {
-        mBound.at(slot).waitIdle(mDevice.getTimeline(), "a trace still sampling a texture set");
+        mBound.at(slot).waitIdle(mDevice, "a trace still sampling a texture set");
     }
 
     void TextureArray::sync(const FrameSlot slot)
@@ -227,8 +227,7 @@ namespace Rtx
         if (owed.empty())
             return;
 
-        assert(
-            mBound.at(slot).isIdle(mDevice.getTimeline()) && "a descriptor written under a submit still bound to it");
+        assert(mBound.at(slot).isIdle(mDevice) && "a descriptor written under a submit still bound to it");
 
         // One write per slot and per array rather than one over a range: the arrivals are wherever
         // the scene's free list put them, and a run is no longer what they are. Reserved before

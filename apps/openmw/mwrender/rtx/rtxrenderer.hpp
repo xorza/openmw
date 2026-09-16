@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include <SDL_video.h>
 #include <osg/Node>
 #include <osg/Timer>
 #include <osg/ref_ptr>
@@ -123,7 +124,7 @@ namespace MWRender
         void detachWorld() override;
 
         float getGroundReach() const override;
-        SDL_Window* getWindow() const override { return mWindow; }
+        SDL_Window* getWindow() const override { return mWindow.get(); }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void adoptTraversalRoot(osg::Group& root) override;
@@ -182,8 +183,10 @@ namespace MWRender
         /// `WorldMirror::collectStanding`, for the harness's check that no static stands twice.
         void collectStanding(std::vector<ESM::RefNum>& into) const { mMirror.collectStanding(into); }
 
-        /// The knobs this run was made with, for a stop that writes a picture by the same rules.
-        const Rtx::RenderProfile& getProfile() const { return mSetup.mProfile; }
+        /// `Rtx::Renderer::getProfile`: the knobs the frames are traced under now, for a stop that
+        /// writes a picture by the same rules. Not `mSetup`'s, which is what the backend was made
+        /// with and stays so.
+        const Rtx::RenderProfile& getProfile() const { return mRenderer->getProfile(); }
 
         /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
         std::optional<PoseMoment> describePose();
@@ -348,12 +351,12 @@ namespace MWRender
         /// The frame a loading screen holds up, as the image the GUI mirrors. The texture is made
         /// on the first freeze and the image under it swapped on every one after.
         osg::ref_ptr<osg::Texture2D> mFrozenFrame;
-        std::unique_ptr<MyGUI::ITexture> mFrozenFrameTexture;
 
         /// What a frame is read back into, refilled per read and never freed.
         std::vector<std::uint8_t> mReadBack;
 
-        SDL_Window* mWindow = nullptr;
+        /// Before the backend, whose surface is on it: the members below die first.
+        std::unique_ptr<SDL_Window, void (*)(SDL_Window*)> mWindow{ nullptr, SDL_DestroyWindow };
 
         /// Made here because there is no viewer to make it, and held because the frame is driven
         /// from it.
@@ -364,6 +367,10 @@ namespace MWRender
         osg::Timer_t mStartTick = 0;
 
         std::unique_ptr<Rtx::Renderer> mRenderer;
+
+        /// After the backend, because its slot is in the backend's table and goes back before the
+        /// table does.
+        std::unique_ptr<MyGUI::ITexture> mFrozenFrameTexture;
 
         /// The size the window last reported and the moment it first reported it — not the extent
         /// anything is drawn at, which `Rtx::FrameExtents` says. A tick of nought is further back

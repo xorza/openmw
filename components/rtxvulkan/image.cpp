@@ -165,6 +165,8 @@ namespace Rtx
     void Image::clear(
         VkCommandBuffer commands, const ImageUse& from, const VkClearColorValue& colour, const ImageUse& to) const
     {
+        assert(!isEmpty() && "a clear of an image nobody made");
+
         assert((mUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0 && "a clear of an image not made to be written");
 
         transition(commands, from, Use::sClearWrite);
@@ -178,6 +180,8 @@ namespace Rtx
     void Image::copyTo(
         VkCommandBuffer commands, const Image& into, const VkImageLayout intoLayout, const VkExtent2D extent) const
     {
+        assert(!isEmpty() && "a copy out of an image nobody made");
+
         assert(extent.width <= mWidth && extent.height <= mHeight && "a copy of more than this image holds");
         assert(extent.width <= into.getWidth() && extent.height <= into.getHeight()
             && "a copy of more than the target holds");
@@ -194,6 +198,8 @@ namespace Rtx
     VkImageMemoryBarrier2 Image::describeLevels(
         std::uint32_t base, std::uint32_t count, const ImageUse& from, const ImageUse& to) const
     {
+        assert(!isEmpty() && "a barrier on an image nobody made");
+
         return imageBarrier(mHandle.get(), base, count, from, to);
     }
 
@@ -207,6 +213,8 @@ namespace Rtx
 
     void Image::buildMips(VkCommandBuffer commands) const
     {
+        assert(!isEmpty() && "a chain built on an image nobody made");
+
         assert((mUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0 && "a chain reads the level above it");
         assert((mUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0 && "a chain writes the level below it");
         assert(mDepth == 1 && "a volume's chain is uploaded rather than blitted");
@@ -264,6 +272,8 @@ namespace Rtx
     void Image::recordRead(const VkCommandBuffer commands, const ImageUse& before, const ImageUse& after,
         const Buffer& into, const std::uint32_t level) const
     {
+        assert(!isEmpty() && "a read of an image nobody made");
+
         assert(into.getSize() >= getReadBytes(level) && "a read into a buffer too short for the level");
 
         transition(commands, before, Use::sCopyRead);

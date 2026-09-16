@@ -80,6 +80,7 @@ namespace Rtx
 
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
         FrameExtents getExtents() const override;
+        const RenderProfile& getProfile() const override { return mProfile; }
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
         std::optional<FrameResult> finishFrame() override;
         std::optional<FrameResult> collectFrame() override;

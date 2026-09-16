@@ -247,6 +247,7 @@ set(RTX_VULKAN_FILES
     presenttargets.hpp
     presenter.hpp
     readstamp.hpp
+    retiring.hpp
     requirements.cpp
     requirements.hpp
     ripplepass.cpp

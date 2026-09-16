@@ -359,6 +359,11 @@ namespace Rtx
         /// Multi-line report: the device and what it can trace with.
         virtual std::string describeDevice() const = 0;
 
+        /// The knobs the frames are traced under now: what the renderer was made with, and then
+        /// whatever a setting moved since. The one copy, so a stop that writes a picture by the
+        /// same rules reads the rules the game draws by.
+        virtual const RenderProfile& getProfile() const = 0;
+
         /// Whether instrumentation is actually running, which a missing layer makes different from
         /// having asked. Anything quoting a frame time has to say so.
         virtual bool isValidating() const = 0;

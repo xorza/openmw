@@ -82,7 +82,7 @@ namespace Rtx
             // first: the counts below are of this test's burial alone.
             Graveyard& graveyard = getDevice().getGraveyard();
             getDevice().waitIdle();
-            graveyard.collectIdle();
+            getDevice().collectIdle();
 
             FrameRing ring(getDevice(), false);
 

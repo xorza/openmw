@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "device.hpp"
 #include "timeline.hpp"
 
 namespace Rtx
@@ -37,17 +38,18 @@ namespace Rtx
         /// value, so this says nothing about an older submit still reading; a resource handed to
         /// two submits in flight is what the two copies of every table a frame writes exist to
         /// prevent. True of a resource nothing has named.
-        bool isIdle(const Timeline& timeline) const
+        bool isIdle(const Device& device) const
         {
+            const Timeline& timeline = device.getTimeline();
             return mNamedUntil >= timeline.getNext() || timeline.hasFinished(mNamedUntil);
         }
 
         /// Blocks until `isIdle`, where a submit naming the resource is still on the queue. `what`
         /// names the wait in the error a device that stops answering produces.
-        void waitIdle(const Timeline& timeline, const char* what) const
+        void waitIdle(const Device& device, const char* what) const
         {
-            if (!isIdle(timeline))
-                timeline.waitFor(mNamedUntil, what);
+            if (!isIdle(device))
+                device.waitFor(mNamedUntil, what);
         }
 
     private:

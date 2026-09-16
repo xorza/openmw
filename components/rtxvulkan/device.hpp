@@ -118,6 +118,32 @@ namespace Rtx
         std::uint64_t mFrame = 0;
     };
 
+    /// The logical device's own handle, with the destructor `Owned` cannot give it: a device is
+    /// destroyed by `vkDestroyDevice(device, allocator)`, with no parent to name. A member declared
+    /// before everything made on the device, so that whatever ends the `Device` — its destructor or
+    /// a constructor that throws half way — destroys those first and this last, in the one order.
+    class LogicalDevice
+    {
+    public:
+        LogicalDevice() = default;
+        ~LogicalDevice()
+        {
+            if (mHandle != VK_NULL_HANDLE)
+                vkDestroyDevice(mHandle, nullptr);
+        }
+
+        LogicalDevice(const LogicalDevice&) = delete;
+        LogicalDevice& operator=(const LogicalDevice&) = delete;
+
+        VkDevice get() const { return mHandle; }
+
+        /// Where `vkCreateDevice` puts one.
+        VkDevice* put() { return &mHandle; }
+
+    private:
+        VkDevice mHandle = VK_NULL_HANDLE;
+    };
+
     /// A logical device, its single queue, and the extension entry points.
     class Device
     {
@@ -132,7 +158,7 @@ namespace Rtx
             const std::vector<const char*>& extraExtensions = {});
         ~Device();
 
-        VkDevice getHandle() const { return mHandle; }
+        VkDevice getHandle() const { return mHandle.get(); }
         VkQueue getQueue() const { return mQueue; }
         std::uint32_t getQueueFamily() const { return mPhysicalDevice.getQueueFamily(); }
         const PhysicalDevice& getPhysicalDevice() const { return mPhysicalDevice; }
@@ -224,9 +250,20 @@ namespace Rtx
 #endif
         }
 
-        /// Blocks until the queue has finished everything, and tells the clock so. For tearing
-        /// down and for resizing, not for pacing a frame.
+        /// Blocks until the queue has signalled `value` on the timeline, and then lets go of what
+        /// the queue can no longer be reading: the graveyard's burials and the pool's finished
+        /// command buffers. The one way to wait, so that no wait is made without the collect a
+        /// wait owes. `what` names the wait in the error a device that stops answering produces.
+        void waitFor(std::uint64_t value, const char* what) const;
+
+        /// Blocks until the queue has finished everything, tells the clock so, and collects as
+        /// `waitFor` does. For tearing down and for resizing, not for pacing a frame.
         void waitIdle() const;
+
+        /// Lets go of everything the graveyard and the pool hold, a burial stamped for a submit
+        /// nobody has made included. For a queue nothing is on and nothing is recorded for — a
+        /// drain and a teardown — which both assert.
+        void collectIdle() const;
 
         /// Whether a device object a submit may have read can be destroyed now: the queue is idle,
         /// or the graveyard is freeing what the timeline has passed. Every other destruction of
@@ -251,6 +288,10 @@ namespace Rtx
         std::string describeFault() const;
 
     private:
+        /// What every wait ends with: the graveyard's burials and the pool's finished command
+        /// buffers, let go of as far as the clock now reaches.
+        void collect() const;
+
         /// The last checkpoint each stage of the queue passed, as lines for the fault report.
         /// Nothing where the driver offers no checkpoints.
         std::string describeCheckpoints() const;
@@ -259,7 +300,9 @@ namespace Rtx
         void beginLabelImpl(VkCommandBuffer commands, const char* name) const;
 
         PhysicalDevice mPhysicalDevice;
-        VkDevice mHandle = VK_NULL_HANDLE;
+
+        /// Before every member made on it — `LogicalDevice` says why.
+        LogicalDevice mHandle;
         VkQueue mQueue = VK_NULL_HANDLE;
         DeviceFunctions mFunctions;
         PFN_vkSetDebugUtilsObjectNameEXT mSetObjectName = nullptr;
@@ -276,10 +319,10 @@ namespace Rtx
 
         bool mPresentFences = false;
 
-        // Last, so that they are torn down first: saving the cache reads from the device, and
-        // freeing a block writes to it, which the members above are still holding open at that
-        // point. Torn down by name in the destructor, because the graveyard frees through the pool
-        // and gives memory back to the allocator, so it goes before both.
+        // Last, so that they are torn down first, and in this order, because a later one dies
+        // earlier: the graveyard frees through the pool and gives memory back to the allocator,
+        // the pool and the clock hold device objects, and saving the cache and freeing a block
+        // both call on the device that `mHandle` closes last of all.
         std::unique_ptr<PipelineCache> mPipelineCache;
         std::unique_ptr<MemoryAllocator> mMemory;
         std::unique_ptr<Timeline> mTimeline;

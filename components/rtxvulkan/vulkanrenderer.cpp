@@ -171,7 +171,7 @@ namespace Rtx
         tearDown("the device would not finish before the renderer was taken apart", [&] { mDevice.waitIdle(); });
 
         // Before the scenes below it, which own the storage the buried rooms are rooms in.
-        mDevice.getGraveyard().collectIdle();
+        mDevice.collectIdle();
     }
 
     void VulkanRenderer::startUpscaler()
@@ -197,7 +197,7 @@ namespace Rtx
         mDevice.waitIdle();
 
         // Everything buried, the scenes given back included, before what replaces them is made.
-        mDevice.getGraveyard().collectIdle();
+        mDevice.collectIdle();
     }
 
     void VulkanRenderer::setUpscale(Upscale upscale)

@@ -132,22 +132,19 @@ namespace Rtx
         ExtractionStats extract(
             const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
 
-        /// The same, for the walk that is the whole world — the one `retire` is sound after. The
-        /// ring comes from `follow` rather than from an argument, so no caller can be the one that
-        /// forgets it and has the distant ground swept on every frame after the first.
-        ExtractionStats extractWorld(
-            const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
+        /// The same, for the walk that is the whole world — the one `retire` is sound after — with
+        /// what the graph does not parent walked inside it: the cell ring's ground, statics and
+        /// lamps, which have no node anywhere. A reference and not a stored pointer, so no caller
+        /// can be the one that forgets it and has the distant ground swept on every frame after the
+        /// first, and the extractor holds nothing of the ring between two walks.
+        ExtractionStats extractWorld(const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor,
+            std::size_t frame, CellRing& ring);
 
         /// `extract`, for what falls from the sky: every emitter met under `node` is placed as one
         /// whose sprites a roof keeps off — `MirrorPass::mFalls`. The precipitation's walk and
         /// nothing else, because a hearth's smoke under a roof is where it belongs.
         ExtractionStats extractFalling(
             const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
-
-        /// What the graph does not parent, walked with every world walk from here on: the cell
-        /// ring's ground, statics and lamps, which have no node anywhere. Null for a caller that
-        /// walks a graph and nothing else — a doll, a staged world.
-        void follow(CellRing* ring) { mRing = ring; }
 
         /// Where this walk's traversal numbers come from — the one handed in, or its own.
         Traversals& getTraversals() { return mTraversals; }
@@ -244,9 +241,6 @@ namespace Rtx
         };
         std::array<ClassMask, 3> mClassMasks{ ClassMask{ InstanceClass::Actor }, ClassMask{ InstanceClass::Effect },
             ClassMask{ InstanceClass::FirstPerson } };
-
-        /// Geometry no node parents, asked of every world walk, or null.
-        CellRing* mRing = nullptr;
 
         /// See `setEye`.
         std::optional<ViewBasis> mEye;

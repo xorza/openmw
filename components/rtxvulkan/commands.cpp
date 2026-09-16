@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <exception>
+#include <limits>
 #include <utility>
 
 #include "barriers.hpp"
@@ -84,14 +85,33 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        // Buried before the value is taken, so the stamp is the value this submit signals: the
-        // deferred batches run ahead of `commands` and are finished when it is.
-        for (const VkCommandBuffer deferred : mDeferred)
-            mDevice.getGraveyard().bury(deferred);
-
         const std::uint64_t value = submitWithDeferred(commands, waits, signals);
+
+        // Under the value this submit signals: the deferred batches run ahead of `commands` and
+        // are finished when it is.
+        for (VkCommandBuffer deferred : mDeferred)
+            mRetiring.hold(value, std::move(deferred));
         mDeferred.clear();
+
         return value;
+    }
+
+    void CommandPool::collect()
+    {
+        releaseRetired(mDevice.getTimeline().getKnownFinished());
+    }
+
+    void CommandPool::collectIdle()
+    {
+        assert(mDevice.getTimeline().isIdle() && "command buffers given back under a submit still on the queue");
+        assert(mDeferred.empty() && "command buffers given back under a batch not yet submitted");
+
+        releaseRetired(std::numeric_limits<std::uint64_t>::max());
+    }
+
+    void CommandPool::releaseRetired(const std::uint64_t finished)
+    {
+        mRetiring.releaseThrough(finished, [&](const VkCommandBuffer commands) { mSpare.push_back(commands); });
     }
 
     void CommandPool::discard(VkCommandBuffer commands)
@@ -204,11 +224,11 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        mDevice.getTimeline().waitFor(submitWithDeferred(commands, {}, {}), "a one-off submit");
+        mDevice.waitFor(submitWithDeferred(commands, {}, {}), "a one-off submit");
 
-        // The copies have run, so every buffer that carried a deferred batch can go back to the
-        // pool; what the batches read was buried when they were handed over, and the wait above
-        // collected it.
+        // The copies have run, so every buffer that carried a deferred batch can go back; what
+        // the batches read was buried when they were handed over, and the wait above collected
+        // it.
         recycle(mDeferred);
         recycle(std::span<const VkCommandBuffer>(&commands, 1));
         mDeferred.clear();

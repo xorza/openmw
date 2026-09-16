@@ -32,6 +32,7 @@ namespace Rtx::Testing
     {
     public:
         std::string describeDevice() const override { return "a renderer that counts rather than draws"; }
+        const Rtx::RenderProfile& getProfile() const override { return mProfile; }
         bool isValidating() const override { return false; }
 
         /// Counted rather than acted on: what a caller has to prove is that the discontinuity
@@ -197,5 +198,6 @@ namespace Rtx::Testing
 
         /// Whatever it was last told, since nothing here traces and no mode can be refused.
         Upscale mUpscale = Upscale::Off;
+        Rtx::RenderProfile mProfile;
     };
 }

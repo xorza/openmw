@@ -164,6 +164,12 @@ namespace MWRender
         Rtx::Traversals mTraversals;
 
         Rtx::SceneDesc mScene;
+
+        /// Where the ring's models and images come from: the game's own. Made where the world is
+        /// attached, because that is when there is a scene manager. Before the ring, whose reader
+        /// thread reads it: the members below die first, and the thread with them.
+        std::unique_ptr<Rtx::ContentSource> mContent;
+
         Rtx::SceneExtractor mExtractor;
 
         bool mShowsPlayer = true;
@@ -177,10 +183,6 @@ namespace MWRender
         /// The cells themselves: their ground off the land records, their statics as instances
         /// of their templates, and their lamps. After the scene, which it adopts into.
         Rtx::CellRing mRing{ mScene };
-
-        /// Where the ring's models and images come from: the game's own. Made where the world is
-        /// attached, because that is when there is a scene manager.
-        std::unique_ptr<Rtx::ContentSource> mContent;
 
         Rtx::SceneUploader mUploader;
 
