@@ -15,6 +15,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "gputimer.hpp"
 #include "imageuse.hpp"
 #include "pipeline.hpp"
 
@@ -109,7 +110,8 @@ namespace Rtx
     }
 
     void RipplePass::record(const VkCommandBuffer commands, const FrameSlot slot,
-        const std::span<const RippleImpulse> impulses, const osg::Vec2f& eye, const double skySeconds)
+        const std::span<const RippleImpulse> impulses, const osg::Vec2f& eye, const double skySeconds,
+        GpuTimer* const timer)
     {
         // A field that was reset, or never started, stands still where the eye is now and owes
         // nothing to where it stood.
@@ -141,6 +143,8 @@ namespace Rtx
             return;
 
         mSteppedTick = tick;
+
+        openZone(timer, commands, "ripples");
 
         // The window follows the eye by whole texels, and the step reads the old field at the
         // offset the window moved by.
@@ -198,5 +202,7 @@ namespace Rtx
 
         for (const Image* image : { &mSurface, &mCurvature })
             image->buildMips(commands);
+
+        closeZone(timer, commands);
     }
 }

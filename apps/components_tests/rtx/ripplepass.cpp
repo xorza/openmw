@@ -38,9 +38,9 @@ namespace Rtx
             const double sixtieth = 1.0 / static_cast<double>(Shaders::RIPPLE_STEP_RATE);
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 // The first record stands the window and presses; each one after steps once.
-                ripples.record(commands, FrameSlot{ 0 }, impulses, osg::Vec2f(0.0f, 0.0f), 0.0);
+                ripples.record(commands, FrameSlot{ 0 }, impulses, osg::Vec2f(0.0f, 0.0f), 0.0, nullptr);
                 for (int step = 1; step <= steps; ++step)
-                    ripples.record(commands, FrameSlot{ 0 }, {}, osg::Vec2f(0.0f, 0.0f), step * sixtieth);
+                    ripples.record(commands, FrameSlot{ 0 }, {}, osg::Vec2f(0.0f, 0.0f), step * sixtieth, nullptr);
             });
         }
 
@@ -141,7 +141,7 @@ namespace Rtx
             const double sixtieth = 1.0 / static_cast<double>(Shaders::RIPPLE_STEP_RATE);
             const float walked = 100.0f * Shaders::RIPPLE_TEXEL;
             getPool().submitAndWait([&](VkCommandBuffer commands) {
-                ripples.record(commands, FrameSlot{ 0 }, {}, osg::Vec2f(walked, 0.0f), 31.0 * sixtieth);
+                ripples.record(commands, FrameSlot{ 0 }, {}, osg::Vec2f(walked, 0.0f), 31.0 * sixtieth, nullptr);
             });
             const std::vector<float> after = Testing::readHalves(getPool(), ripples.getSurface(), 0);
 

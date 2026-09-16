@@ -14,6 +14,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/camera.hpp>
+#include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -43,6 +44,21 @@ namespace Rtx
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallCorners, .mIndices = Testing::sQuadIndices }) });
+
+            return scene;
+        }
+
+        /// The wall over a sheet of water, which is what makes a scene one the ripple field is
+        /// stood for: the field is read where a ray meets water, so a scene with none stands none.
+        SceneDesc wallOverWater()
+        {
+            SceneDesc scene = wall();
+            Material water;
+            water.mKind = MaterialKind::Water;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(
+                    MeshArrays{ .mPositions = Testing::sheetAt(1000.0f, -100.0f), .mIndices = Testing::sQuadIndices }),
+                .mMaterial = scene.materials().add(water) });
 
             return scene;
         }
@@ -115,7 +131,7 @@ namespace Rtx
             // The passes every frame records, whatever it is drawing. `filter` is here too — the
             // shared renderer does not upscale, so the wavelet runs — and is left out of the list
             // because a build without it is not a failure of this.
-            for (const char* const pass : { "trace", "composite", "exposure", "tone" })
+            for (const char* const pass : { "trace", "composite", "exposure", "glare", "tone" })
                 EXPECT_TRUE(reports(drawn.mGpu.spans(), pass)) << "no zone called " << pass;
 
             // **And the sea is not among them where the frame has none.** `makeCamera` names no
@@ -192,6 +208,25 @@ namespace Rtx
             // And only on the frame the arrival landed in.
             const Drawn settled = draw(*mRenderer, camera);
             EXPECT_FALSE(reports(settled.mGpu.spans(), "blas")) << "nothing arrived, so nothing was built";
+
+            // **The ripple field is stood for a scene that holds water and stepped only where the
+            // sky's clock has moved a sixtieth**, before the sea reads it. The frame the field is
+            // stood on steps nothing and reports no zone; a sixtieth on, the step comes first of
+            // all, ahead of the sea.
+            const SceneDesc flooding = wallOverWater();
+            mRenderer->setScene(Rtx::SceneSlot::world(), flooding, {});
+
+            Shaders::VisibilityConstants standing = flooded;
+            standing.mWaterLevel = -100.0f;
+            const Drawn stood = draw(*mRenderer, standing);
+            EXPECT_FALSE(reports(stood.mGpu.spans(), "ripples")) << "a frame with no step due stepped the field";
+
+            Shaders::VisibilityConstants later = standing;
+            later.mSkyTime = 1.0f / 60.0f;
+            const Drawn stepped = draw(*mRenderer, later);
+            EXPECT_TRUE(reports(stepped.mGpu.spans(), "ripples")) << "a sixtieth on, the field was not stepped";
+            EXPECT_EQ(stepped.mGpu.spans().front().mName, "ripples")
+                << "the field was stepped somewhere other than before the sea";
         }
     }
 }

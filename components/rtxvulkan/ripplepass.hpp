@@ -25,6 +25,7 @@ namespace Rtx
 {
     class CommandPool;
     class Device;
+    class GpuTimer;
 
     /// What walked through the water, as a height field around the eye the sea reads beside its
     /// cascades: stepped by the wave equation, pressed where the game says something disturbed
@@ -47,8 +48,10 @@ namespace Rtx
         /// they were.
         ///
         /// @param slot the frame's, which names the copy of the impulse buffer this frame writes.
+        /// @param timer where the step's zone goes, or nothing where nobody is counting. Opened
+        ///        only on a frame that steps, so a frame that stands still reports no zone.
         void record(VkCommandBuffer commands, FrameSlot slot, std::span<const RippleImpulse> impulses,
-            const osg::Vec2f& eye, double skySeconds);
+            const osg::Vec2f& eye, double skySeconds, GpuTimer* timer);
 
         /// Drops what the field holds, for a world that was replaced rather than moved through.
         void reset() { mReset = true; }

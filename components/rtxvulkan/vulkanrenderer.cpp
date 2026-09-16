@@ -995,7 +995,7 @@ namespace Rtx
         if (inputs.mWater)
         {
             mRipples.record(commands, mRing.getRecordingSlot(), options.mRipples,
-                osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), static_cast<double>(camera.mSkyTime));
+                osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), static_cast<double>(camera.mSkyTime), &timer);
             sampled.mRippleOrigin = mRipples.getOrigin();
             sampled.mRippleExtent = RipplePass::getExtent();
         }
@@ -1102,7 +1102,9 @@ namespace Rtx
         // What the eye saw of the sun's quad, eased at the query's own rate, which the curve
         // lays the glare fader over the picture by. Read after the trace and before the curve,
         // on the device: a frame's own count is a frame's own wash.
+        timer.open(commands, "glare");
         mSunGlare.record(commands, 0.001f * sinceLastMs, historyLost);
+        timer.close(commands);
 
         timer.open(commands, "tone");
         mTone->record(commands, *shown, mExposure.getExposure(), mSunGlare.getShare(),
