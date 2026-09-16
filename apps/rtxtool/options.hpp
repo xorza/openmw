@@ -1,11 +1,9 @@
 #pragma once
 
-#include <array>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include <boost/program_options/options_description.hpp>
@@ -13,7 +11,6 @@
 #include <boost/program_options/variables_map.hpp>
 #include <osg/Vec3f>
 
-#include <components/rtx/namedenum.hpp>
 #include <components/rtx/renderer.hpp>
 
 #include "verbs.hpp"
@@ -53,41 +50,9 @@ namespace RtxTool
         std::string complainAbout(const boost::program_options::parsed_options& line, Verbs verb) const;
     };
 
-    /// Which layers a run loads, as `--validation` names them. One level and not three switches,
-    /// because the three implied one another — either finer check needs the layer under it — and
-    /// the two finer checks together took the device down in three runs of four: four of the eight
-    /// combinations meant anything, and a fifth was fatal.
-    enum class Validation
-    {
-        Off,
-
-        /// The core checks.
-        On,
-
-        /// The core checks and synchronization validation, which catches a missing barrier.
-        Sync,
-
-        /// The core checks and GPU-assisted validation, which instruments every shader and
-        /// catches what a ray query does with its own arguments, at about half the frame rate. The
-        /// layer itself asks not to be run beside the core checks, so it is never a default.
-        Gpu,
-    };
-
-    inline constexpr Rtx::NamedEnum sValidationNames{ std::array{
-        std::pair{ Validation::Off, std::string_view("off") },
-        std::pair{ Validation::On, std::string_view("on") },
-        std::pair{ Validation::Sync, std::string_view("sync") },
-        std::pair{ Validation::Gpu, std::string_view("gpu") },
-    } };
-
-    /// What `level` loads. `demanded` is whether somebody typed it: a run that asked for the layers
-    /// and cannot have them fails naming what is missing, because an empty log reads as a clean
-    /// pass, while a build that turned them on by default only warns.
-    Rtx::ValidationOptions validationOf(Validation level, bool demanded);
-
     /// `validationByDefault` is what `--validation` reads when nobody names it — a decision about the
     /// command line, which only the executable has: `sync` outside a Release build, `off` in one.
-    ToolOptions makeOptions(Validation validationByDefault);
+    ToolOptions makeOptions(Rtx::ValidationLevel validationByDefault);
 
     /// The number `text` spells, or nothing where it spells anything else — the whole of the text,
     /// so `speed = 1500u` is a refusal and not a run that flew at 1500. Read under the classic

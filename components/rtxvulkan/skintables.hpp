@@ -87,10 +87,10 @@ namespace Rtx
         /// Stages the rows or the weights of `meshes` into the first copy.
         void writeRows(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
-        const Device* mDevice = nullptr;
+        const Device& mDevice;
 
         /// Where a table this outgrows goes, held until the frames still reading it have run.
-        Graveyard* mGraveyard = nullptr;
+        Graveyard& mGraveyard;
 
         Buffer mBindPositions;
         Buffer mBindNormals;

@@ -548,7 +548,7 @@ namespace Rtx::Testing
             const auto expectTheMiddleAtTheWaterline = [&](const osg::Matrixf& view, float worldHeight,
                                                            const char* which) {
                 Shaders::VisibilityConstants camera
-                    = makeOrthographicCameraFromView(view, span, worldHeight, size, size, 5.0f, 20000.0f);
+                    = makeOrthographicCameraFromView(view, span, worldHeight, size, size, 5.0f, 20000.0f).value();
                 camera.mWaterLevel = 0.0f;
                 camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mSkyZenith = osg::Vec3f(1.0f, 1.0f, 1.0f);

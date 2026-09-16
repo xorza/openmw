@@ -20,7 +20,7 @@
 
 namespace Rtx
 {
-    class Batch;
+    class CommandPool;
     class Device;
     class FogTile;
     class FogVolume;
@@ -71,10 +71,6 @@ namespace Rtx
         /// a camera that draws no sprites: the slot's list holds whatever the last bin into it left,
         /// sized for another camera. An empty list is two words, and one buffer serves every extent.
         VkDeviceAddress mSpriteList = 0;
-
-        /// The bin the trace reads its sprites and its tiles from, which the chain that records the
-        /// trace owns and filled ahead of it. Always set by the time the pass records.
-        const SpriteBin* mBin = nullptr;
 
         /// The frame as it will be shown, at the output's extent and in `GENERAL`, which
         /// `recordSpriteComposite` composites the puffs over. Bound for every launch, because one
@@ -128,8 +124,8 @@ namespace Rtx
         /// @param volumeLayout the same again, for the set a `FogVolume` hands over.
         /// @param countHits whether the trace counts the primary rays that hit anything — a
         ///        harness facility, specialized away rather than branched on.
-        VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
-            VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
+        VisibilityPass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory,
+            const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
             bool countHits);
 
         /// Writes the frame's block: `constants` with what only the passes know filled in — the
@@ -137,11 +133,13 @@ namespace Rtx
         /// sprites among them. Before every launch of this frame, `recordSpriteShelter` first,
         /// because that one runs before the bin and reads the block like the rest.
         ///
+        /// @param bin where this trace's sprites and tiles are, which the chain recording the
+        ///        trace owns and filled ahead of it.
         /// @param historyLost whether the frame before this one is worth reprojecting into. Written
         ///        into the block as a basis of nothing, which every shader here reads as "there is
         ///        no previous frame". The fog volume's answer and not the denoisers'
         ///        (`VulkanRenderer::mAirStale`).
-        void writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs,
+        void writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs, const SpriteBin& bin,
             const Shaders::VisibilityConstants& constants, bool historyLost) const;
 
         /// Zeroes, in the bin's own table, every falling sprite that stands under a roof — one ray
@@ -150,8 +148,9 @@ namespace Rtx
         /// none. Nothing for a frame the block says has no shelter in it.
         ///
         /// @param count how many sprites the bin took, which is the launch's width.
+        /// @param trace which copy of the air the trace writes — `TraceRecording::mTraceSlot`.
         void recordSpriteShelter(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, std::uint32_t count,
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, std::uint32_t count, FrameSlot trace,
             GpuTimer* timer) const;
 
         /// Records the trace, in whichever kernel this frame calls for. After `writeFrame`, which
@@ -161,9 +160,11 @@ namespace Rtx
         ///        and at least as large as the frame. Channels and not a picture, because the
         ///        indirect term has to survive to the filter with the albedo still divided out.
         /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
+        /// @param trace which copy of the air this trace writes, the other being its history.
         /// @param timer where the three zones this records go, or nothing where nobody is counting.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const;
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, FrameSlot trace,
+            GpuTimer* timer) const;
 
         /// Composites the puffs over `inputs.mShown`, in place, at the picture's own extent: the
         /// sprites' shape marched there against the bin the trace binned over its own grid, their
@@ -171,12 +172,12 @@ namespace Rtx
         /// whatever denoised and upscaled the frame, because neither should touch a particle —
         /// `spritecomposite.rgen` says what an upscaler's overlay costs.
         ///
-        /// @param frame which frame's air volume, as `record` was handed it. The block is the one
+        /// @param trace which copy of the air, as `record` was handed it. The block is the one
         ///        the trace wrote, so the traced camera and the bin are read from there.
         /// @param shown how much of `inputs.mShown` the picture is, from its corner: the whole of
         ///        a frame's, and a picture's own size inside an image that may be larger.
         void recordSpriteComposite(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, std::uint64_t frame, VkExtent2D shown, GpuTimer* timer) const;
+            const Buffer& hitCount, FrameSlot trace, VkExtent2D shown, GpuTimer* timer) const;
 
     private:
         /// Makes every kernel this pass can ever need, before it returns, because the frame path
@@ -197,7 +198,7 @@ namespace Rtx
         /// Pushes set zero — everything both passes read — and binds the three sets nothing pushes.
         /// Any of the pipelines here, because the volume reads the same world the trace does.
         void pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs,
-            const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
+            const GBuffer& buffer, const Buffer& hitCount, FrameSlot trace) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;

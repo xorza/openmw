@@ -16,7 +16,6 @@
 #include <osg/Math>
 #include <osg/PositionAttitudeTransform>
 
-#include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sky/skyclock.hpp>
 
@@ -163,10 +162,8 @@ namespace MWRender
 
         // **A room's facts, read off the cell the player stands in.** The weather system stops the
         // moment they step inside, so everything the setters above wrote for the sky is the last
-        // outdoor hour's: the record the content wrote for the room, the depth of its fog, and a
-        // sun that is all there — a renderer that scaled its sunlight by the share would light the
-        // room with whatever fraction of a sunset it walked in on. The sun's position is the one
-        // `configureAmbient` gave the light, which is where the rasterizer points it too.
+        // outdoor hour's. The ray tracer lights a room from the record alone; the rasterizer's
+        // chain reads the sun `configureAmbient` gave the light, which is where it points it too.
         const MWWorld::Ptr& player = MWMechanics::getPlayer();
         if (described.mLocation == Location::Interior && player.isInCell())
         {
@@ -177,12 +174,9 @@ namespace MWRender
                 .mFog = mood.mFogColor,
                 .mFogDensity = mood.mFogDensity,
             };
-            described.mSky.mFogDepth = mood.mFogDensity;
             described.mSky.mSunPosition = mSunLight->getPosition();
             described.mSky.mSunVector = -mSunLight->getPosition();
             described.mSky.mSunAtNight = false;
-            described.mSky.mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
-            described.mSky.mSunGlare = 1.f;
         }
 
         described.mUnderwater = underwater;
@@ -212,7 +206,6 @@ namespace MWRender
             .mWhen = mRenderer.getFrameStamp(),
             .mWorld = mFrameWorld,
             .mEye = mFrameEye,
-            .mImages = *mResourceSystem->getImageManager(),
             .mTerrain = *mTerrain,
             .mObjectStorage = mObjectStorage,
             .mDeltaTime = mFrameDelta,

@@ -10,32 +10,22 @@
 namespace Rtx
 {
     class Buffer;
-    class CompositePass;
     class GpuTimer;
     class Image;
     class SceneBuffers;
-    class SpriteBinPass;
-    class SpriteShadePass;
 
     /// What one camera's trace records against, and what makes this trace different from the
     /// other: a frame and a picture inside the interface record one chain, and what they share is
     /// this list rather than an object. Nothing here is held.
     struct TraceRecording
     {
-        /// The passes every trace runs, whichever camera it is for. Borrowed from the renderer,
-        /// which keeps one of each: what differs between two traces is the scene and the camera.
-        const VisibilityPass* mVisibility = nullptr;
-        const CompositePass* mComposite = nullptr;
-        const SpriteBinPass* mSpriteBin = nullptr;
-        const SpriteShadePass* mSpriteShade = nullptr;
-
         /// What the rays meet, and where the sea and the sprites the trace reads were left.
         VisibilityInputs mInputs;
 
-        /// Which of the chain's sprite bins this trace records into and reads: the frame's own
-        /// slot in the world's chain, so the frame behind keeps its bin, and the first bin of the
-        /// pictures' chain.
-        FrameSlot mBinSlot;
+        /// Which of the chain's sprite bins this trace records into and reads, and which copy of
+        /// the air it writes: the frame's own slot in the world's chain, so the frame behind keeps
+        /// its bin and its history, and the first of each in the pictures' chain.
+        FrameSlot mTraceSlot;
 
         /// Where the sprites the bin copies are, in `mInputs.mSlot`'s copy of the tables. Read
         /// and never written here: a placement is what writes a copy, and it waits for every

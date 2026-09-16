@@ -1,5 +1,7 @@
 #include "held.hpp"
 
+#include <cassert>
+
 namespace Rtx
 {
     void CellHolds::holdTexture(const PreparedTexture& texture)
@@ -34,8 +36,7 @@ namespace Rtx
             HeldModel taking = mSpareModels.take();
             taking.mModel = &model;
             taking.mParts.clear();
-            taking.mHeld = 0;
-            taking.mHanded = 0;
+            taking.mNamed = 0;
             return taking;
         });
 
@@ -60,10 +61,8 @@ namespace Rtx
 
         for (const PreparedPart& part : model.mParts)
         {
-            // The material before the mesh, as the walk resolves them: a mesh records the
-            // material it arrives wearing.
             const Index material = into.adoptMaterial(part.mMaterial);
-            const Index mesh = into.adoptMesh(*part.mDrawable, model.readingOf(part), material);
+            const Index mesh = into.adoptMesh(*part.mDrawable, model.readingOf(part));
 
             held.mParts.push_back(AdoptedPart{
                 .mMesh = mesh,
@@ -74,15 +73,11 @@ namespace Rtx
         }
     }
 
-    void CellHolds::release(PreparedModel& model, const bool wasHeld)
+    void CellHolds::release(PreparedModel& model)
     {
         HeldModel& known = mModels.at(&model);
-        if (wasHeld)
-            --known.mHeld;
-        else
-            --known.mHanded;
-
-        if (known.mHeld > 0 || known.mHanded > 0)
+        assert(known.mNamed > 0 && "a model released by more cells than named it");
+        if (--known.mNamed > 0)
             return;
 
         for (const PreparedTexture* texture : model.mTextures)

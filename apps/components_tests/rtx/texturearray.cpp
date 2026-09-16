@@ -12,6 +12,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
+#include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "harness.hpp"
@@ -40,8 +41,9 @@ namespace Rtx
             CommandPool& pool = getPool();
             Graveyard graveyard(device, pool);
 
+            const SetLayout layout = TextureArray::describeLayout(device);
             Batch setup(pool);
-            TextureArray textures(device, graveyard, setup, 1, {});
+            TextureArray textures(device, graveyard, setup, layout, 1, {});
             setup.flush();
 
             // An arrival, owed to every set: what `sync` has to write once the set is free. Ahead

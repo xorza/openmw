@@ -13,6 +13,8 @@
 
 #include <components/debug/debuglog.hpp>
 
+#include "sharedtexture.hpp"
+#include "slottexture.hpp"
 #include "texture.hpp"
 
 namespace MyGUIRtx
@@ -46,7 +48,7 @@ namespace MyGUIRtx
         };
     }
 
-    RenderManager::RenderManager(Rtx::Renderer& renderer, Resource::ImageManager* imageManager, float scalingFactor)
+    RenderManager::RenderManager(Rtx::GuiRenderer& renderer, Resource::ImageManager* imageManager, float scalingFactor)
         : mRenderer(renderer)
         , mImageManager(imageManager)
     {
@@ -105,7 +107,7 @@ namespace MyGUIRtx
         delete buffer;
     }
 
-    MyGUI::ITexture* RenderManager::createTexture(const std::string& name)
+    Texture& RenderManager::makeTexture(const std::string& name)
     {
         const auto it = mTextures.find(name);
         if (it != mTextures.end())
@@ -116,10 +118,15 @@ namespace MyGUIRtx
             // not be left pointing at freed memory. The other backend keeps the address by holding
             // its textures by value; this one has to be told to.
             it->second->destroy();
-            return it->second.get();
+            return *it->second;
         }
 
-        return mTextures.emplace(name, std::make_unique<Texture>(name, mRenderer, mImageManager)).first->second.get();
+        return *mTextures.emplace(name, std::make_unique<Texture>(name, mRenderer, mImageManager)).first->second;
+    }
+
+    MyGUI::ITexture* RenderManager::createTexture(const std::string& name)
+    {
+        return &makeTexture(name);
     }
 
     void RenderManager::destroyTexture(MyGUI::ITexture* texture)
@@ -162,12 +169,12 @@ namespace MyGUIRtx
     {
         // Not in `mTextures`: MyGUI's table is keyed by name and this one has no name to be found
         // under. It belongs to the caller, who is drawing something it already owns.
-        return std::make_unique<Texture>(mRenderer, texture);
+        return std::make_unique<SharedTexture>(mRenderer, texture);
     }
 
     void RenderManager::doRender(MyGUI::IVertexBuffer* buffer, MyGUI::ITexture* texture, size_t count)
     {
-        auto* texel = static_cast<Texture*>(texture);
+        auto* texel = static_cast<SlotTexture*>(texture);
         if (texel == nullptr || count == 0)
             return;
 

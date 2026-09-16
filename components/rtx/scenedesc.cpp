@@ -10,11 +10,9 @@
 
 namespace Rtx
 {
-    Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material)
+    Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
     {
-        assert((material == sNoIndex || material < mMaterials.size()) && "a mesh wearing a material the scene lacks");
-
-        return mMeshes.add(arrays, shape, deform, deformer, material);
+        return mMeshes.add(arrays, shape, deform, deformer);
     }
 
     void SceneDesc::poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds)
@@ -36,12 +34,7 @@ namespace Rtx
         if (!mMaterials.set(material, what))
             return;
 
-        // Linear over the placements on the frame a surface crosses opaque, which a fade does twice
-        // in its life; the flipbooks that animate every frame never come here.
-        const std::span<const MeshInstance> placed = mPlacements.getAll();
-        for (Index slot = 0; slot < placed.size(); ++slot)
-            if (placed[slot].isPlaced() && placed[slot].mMaterial == material)
-                mPlacements.rewrite(slot);
+        mPlacements.rewriteWearing(material);
     }
 
     bool SceneDesc::hasDroppedHolds() const

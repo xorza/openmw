@@ -156,11 +156,10 @@ namespace Rtx
             return reading;
         }
 
-        // The same two facts `Material::isTranslucent` reads, off the description they are
-        // copied from, so the reader walks the texels of exactly the images `describe` would.
+        // Off the description the material is copied from, so the reader walks the texels of
+        // exactly the images `describe` would.
         const SurfaceDescription& described = *reading.mDescribed;
-        const bool translucent = described.mAlphaMode == AlphaMode::Blend && described.mOpacity < 1.0f
-            && described.mBlend == BlendKind::Over;
+        const bool translucent = translucentSurface(described.mAlphaMode, described.mOpacity, described.mBlend);
         const osg::Image* const diffuse = described.getTexture(TextureRole::Diffuse);
 
         if (translucent && diffuse != nullptr && !diffuse->getFileName().empty())

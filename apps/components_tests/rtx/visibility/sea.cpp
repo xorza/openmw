@@ -644,7 +644,7 @@ namespace Rtx::Testing
                 const osg::Matrixf view = osg::Matrixf::lookAt(
                     osg::Vec3f(0.0f, 0.0f, 500.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f));
                 Shaders::VisibilityConstants camera
-                    = makeOrthographicCameraFromView(view, across, across, size, size, 1.0f, 100000.0f);
+                    = makeOrthographicCameraFromView(view, across, across, size, size, 1.0f, 100000.0f).value();
 
                 camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
                 camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);

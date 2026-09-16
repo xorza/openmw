@@ -7,14 +7,14 @@
 #include <osg/ref_ptr>
 
 #include <components/rtx/offscreentrace.hpp>
-#include <components/rtx/slot.hpp>
 #include <components/rtx/walk.hpp>
 
 #include "../offscreenview.hpp"
 
-namespace MyGUI
+namespace MyGUIRtx
 {
-    class ITexture;
+    class RenderManager;
+    class Texture;
 }
 
 namespace osg
@@ -70,7 +70,9 @@ namespace MWRender
         ///
         /// @param subject the spec's scene where the picture is of a subject, null where it is of
         ///        the world — `Rtx::ViewRequest::mSubject`'s own word.
-        TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host, Rtx::Traversals& traversals);
+        /// @param gui whose texture the trace writes into, and which draws it.
+        TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host, MyGUIRtx::RenderManager& gui,
+            Rtx::Traversals& traversals);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }
@@ -87,35 +89,43 @@ namespace MWRender
         void keepCopy() override;
         const osg::Image* getCopy() override;
         bool pick(float x, float y, osg::NodePath& hit) const override { return mTrace.pick(x, y, hit); }
-        MyGUI::ITexture& getTexture() const override { return *mTexture; }
+        MyGUI::ITexture& getTexture() const override;
 
     private:
+        /// Where the copy in main memory stands, for `getCopy`.
+        ///
+        /// **`OffscreenView::getCopy` promises null until the copy holds the picture the most
+        /// recent `redraw()` asked for**, and a black image is not a picture that has not arrived —
+        /// it is a picture of nothing. The global map paints the tile it is handed and marks the
+        /// cell done, so answering early paints that cell black for the rest of the session. So
+        /// between `redraw` and the `draw` the host answers it with, and until the trace that
+        /// `draw` recorded has landed, the answer is null: what the backend holds until then is
+        /// the trace before.
+        enum class CopyState
+        {
+            /// Nobody asked `keepCopy`, so no trace leaves one.
+            NotWanted,
+
+            /// A redraw is asked for and not yet drawn.
+            Queued,
+
+            /// The trace that leaves the copy is recorded, and the copy not yet taken.
+            Recorded,
+
+            /// `mCopy` holds the picture.
+            Taken,
+        };
+
         RtxRenderer& mHost;
+        MyGUIRtx::RenderManager& mGui;
         Rtx::OffscreenTrace mTrace;
 
-        /// Made through MyGUI's own factory, so which backend is behind it is not this class's
-        /// business — but its slot in the renderer's table is, because that is what is traced into.
-        MyGUI::ITexture* mTexture = nullptr;
-        Rtx::GuiSlot mSlot;
-
-        int mWidth = 0;
-        int mHeight = 0;
+        /// The interface's own texture, made by the manager's typed factory: its slot in the
+        /// renderer's table is what is traced into.
+        MyGUIRtx::Texture& mTexture;
 
         osg::ref_ptr<osg::Image> mCopy;
-
-        /// Whether `mCopy` holds the picture the most recent `redraw()` asked for.
-        ///
-        /// **Because `OffscreenView::getCopy` promises null until it does**, and a black image is
-        /// not a picture that has not arrived — it is a picture of nothing. The global map paints
-        /// the tile it is handed and marks the cell done, so answering early paints that cell black
-        /// for the rest of the session.
-        bool mCopyIsCurrent = false;
-
-        /// Between `redraw` and the `draw` the host answers it with. `getCopy` is null throughout,
-        /// because what the backend holds until then is the trace before.
-        bool mRedrawPending = false;
-
-        bool mKeepCopy = false;
+        CopyState mCopyState = CopyState::NotWanted;
     };
 
 }

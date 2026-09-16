@@ -258,8 +258,9 @@ namespace Rtx
         /// Everything handed over and not yet collected, which is what `gather` checks against.
         std::vector<Asked> mAsked;
 
-        /// Collected this frame, by the slot they were given. Emptied by `releaseFinished`.
-        std::unordered_map<Index, TerrainComposite> mFinished;
+        /// Collected this frame, each beside the slot it was given, at most `sCompositesPerFrame`
+        /// of them. Emptied by `releaseFinished` and never freed.
+        std::vector<std::pair<Index, TerrainComposite>> mFinished;
 
         std::uint32_t mUnreadable = 0;
 

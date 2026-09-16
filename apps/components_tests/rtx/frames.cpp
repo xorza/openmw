@@ -250,7 +250,7 @@ namespace Rtx
             const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
 
             mRenderer->renderFrame(ahead(), FrameOptions{});
-            mRenderer->traceGuiTexture(texture, ahead(), GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize });
+            mRenderer->traceGuiTexture(texture, ahead(), GuiTraceOptions{});
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
             EXPECT_EQ(finishedHits(), sEveryPixel) << "the frame before the picture";
@@ -270,8 +270,7 @@ namespace Rtx
             const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
             std::vector<std::uint8_t> copy(std::size_t{ sSize } * sSize * 4);
 
-            mRenderer->traceGuiTexture(
-                texture, ahead(), GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mReadBack = true });
+            mRenderer->traceGuiTexture(texture, ahead(), GuiTraceOptions{ .mReadBack = true });
             EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "recorded and carried by nothing yet";
 
             mRenderer->renderFrame(ahead(), FrameOptions{});
@@ -282,8 +281,7 @@ namespace Rtx
             EXPECT_TRUE(mRenderer->takeGuiCopy(texture, copy)) << "the frame that carried it is finished";
             EXPECT_EQ(copy[3], 255) << "the wall, opaque, at the first pixel";
 
-            mRenderer->traceGuiTexture(
-                texture, ahead(), GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mReadBack = true });
+            mRenderer->traceGuiTexture(texture, ahead(), GuiTraceOptions{ .mReadBack = true });
             EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "a new trace is a new wait";
             mRenderer->finishGuiTraces();
             EXPECT_TRUE(mRenderer->takeGuiCopy(texture, copy)) << "drained";
@@ -372,8 +370,7 @@ namespace Rtx
             // pixel the wall does not cover is the one number that says so.
             Shaders::VisibilityConstants camera = ahead();
             camera.mTransparentBackground = 1;
-            mRenderer->traceGuiTexture(texture, camera,
-                GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mScene = doll, .mReadBack = true });
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mScene = doll, .mReadBack = true });
 
             // Faded out, and placed twice: into the other copy, which leaves the picture deferred,
             // and then into the picture's own.
@@ -408,8 +405,7 @@ namespace Rtx
 
             Shaders::VisibilityConstants camera = ahead();
             camera.mTransparentBackground = 1;
-            mRenderer->traceGuiTexture(texture, camera,
-                GuiTraceOptions{ .mWidth = sSize, .mHeight = sSize, .mScene = doll, .mReadBack = true });
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mScene = doll, .mReadBack = true });
 
             // Given back with the picture still deferred, and the world drawn on as if nothing
             // happened: three frames, which is more than the ring holds, so the scene's submit has

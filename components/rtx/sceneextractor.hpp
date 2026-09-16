@@ -190,9 +190,9 @@ namespace Rtx
         /// implemented privately, so the five calls that only mean anything inside one walk are
         /// reachable through that interface and not in front of every reader of this class.
         void take(osg::Node& node) override;
-        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material) override
+        Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading) override
         {
-            return mMeshes.adopt(drawable, reading, material);
+            return mMeshes.adopt(drawable, reading);
         }
         Index adoptMaterial(const MaterialReading& reading) override { return mMaterials.adopt(reading); }
         void releaseMesh(const osg::Drawable& drawable) override { mMeshes.release(drawable); }
@@ -247,9 +247,6 @@ namespace Rtx
 
         /// See `setEye`.
         std::optional<ViewBasis> mEye;
-
-        /// What the walk in progress was told it is placing. See `extract`.
-        std::size_t mAnchor = 0;
 
         /// Which sweep is current, and where the walk in progress puts its counts. Declared before
         /// the walk and every resolver below, which borrow it rather than keep a copy that could

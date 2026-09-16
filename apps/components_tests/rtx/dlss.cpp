@@ -352,7 +352,7 @@ namespace Rtx
             /// and with no history behind it — so a test reads its own frames rather than what the
             /// test before it left. Null where this machine cannot upscale, with the reason in
             /// `reason`.
-            static Renderer* upscalingAt(std::uint32_t width, std::uint32_t height, std::string& reason)
+            static VulkanRenderer* upscalingAt(std::uint32_t width, std::uint32_t height, std::string& reason)
             {
                 reason = sObstacle;
                 if (sUpscaling == nullptr)
@@ -371,7 +371,7 @@ namespace Rtx
             static constexpr std::uint32_t sBuiltWidth = 1280;
             static constexpr std::uint32_t sBuiltHeight = 720;
 
-            static inline std::unique_ptr<Renderer> sUpscaling;
+            static inline std::unique_ptr<VulkanRenderer> sUpscaling;
             static inline std::string sObstacle;
         };
 
@@ -398,7 +398,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, anUpscaledFrameIsTheSameFrameLarger)
         {
             std::string reason;
-            Renderer* const upscaling = upscalingAt(1281, 721, reason);
+            VulkanRenderer* const upscaling = upscalingAt(1281, 721, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -473,7 +473,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, aSpriteIsCompositedOnThePicturesOwnGridWhateverWasTraced)
         {
             std::string reason;
-            Renderer* const upscaling = upscalingAt(721, 721, reason);
+            VulkanRenderer* const upscaling = upscalingAt(721, 721, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -561,7 +561,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, aFrameAfterAResizeIsUpscaledAtTheExtentTheResizeAskedFor)
         {
             std::string reason;
-            Renderer* const upscaling = upscalingAt(1280, 720, reason);
+            VulkanRenderer* const upscaling = upscalingAt(1280, 720, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -610,7 +610,7 @@ namespace Rtx
         TEST_F(RtxUpscaledFrameTest, theUpscaleModeCanBeChangedWhileTheRendererRuns)
         {
             std::string reason;
-            Renderer* const upscaling = upscalingAt(1280, 720, reason);
+            VulkanRenderer* const upscaling = upscalingAt(1280, 720, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 

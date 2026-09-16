@@ -452,7 +452,7 @@ namespace Rtx
             osg::Matrixf view;
             view.makeLookAt(osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 1.0f));
             const Shaders::VisibilityConstants constants
-                = makeOrthographicCameraFromView(view, 128.0f, 96.0f, sWidth, sHeight, 1.0f, 10000.0f);
+                = makeOrthographicCameraFromView(view, 128.0f, 96.0f, sWidth, sHeight, 1.0f, 10000.0f).value();
 
             const Binned tiles = bin(layer, constants, sPlenty);
             ASSERT_FALSE(tiles.isUnbinned());

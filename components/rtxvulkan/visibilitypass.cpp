@@ -116,6 +116,16 @@ namespace Rtx
 
             return declared;
         }();
+
+        /// The sampler's tile, once for the life of the pass, in a submit of its own.
+        Buffer uploadBlueNoise(CommandPool& pool)
+        {
+            Batch batch(pool);
+            Buffer noise = uploadBuffer(
+                batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise");
+            batch.flush();
+            return noise;
+        }
     }
 
     // The hit table is the material kinds, in their own order. Traversal reads an instance's
@@ -164,19 +174,18 @@ namespace Rtx
         return name;
     }
 
-    VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
-        VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-        bool countHits)
+    VisibilityPass::VisibilityPass(const Device& device, CommandPool& pool,
+        const std::filesystem::path& shaderDirectory, const SetLayout& textureLayout, const SetLayout& channelLayout,
+        const SetLayout& volumeLayout, bool countHits)
         : mDevice(device)
-        , mBlueNoise(uploadBuffer(
-              batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise"))
+        , mBlueNoise(uploadBlueNoise(pool))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCountHits(countHits ? 1u : 0u)
         , mChannelLayout(channelLayout.get())
         , mVolumeLayout(volumeLayout.get())
     {
-        compileEvery(shaderDirectory, textureLayout);
+        compileEvery(shaderDirectory, textureLayout.get());
     }
 
     void VisibilityPass::compileEvery(const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout)
@@ -289,7 +298,7 @@ namespace Rtx
     }
 
     void VisibilityPass::pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs,
-        const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const
+        const GBuffer& buffer, const Buffer& hitCount, const FrameSlot trace) const
     {
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
@@ -355,11 +364,11 @@ namespace Rtx
         // trace writes, and the air in front of the camera. Each is written when what it names is
         // made, and bound as it is.
         const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(),
-            inputs.mFogVolume->getSet(frame) };
+            inputs.mFogVolume->getSet(trace) };
         bindSets(commands, pipeline, sets);
     }
 
-    void VisibilityPass::writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs,
+    void VisibilityPass::writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs, const SpriteBin& bin,
         const Shaders::VisibilityConstants& constants, const bool historyLost) const
     {
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
@@ -412,10 +421,8 @@ namespace Rtx
 
         // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
         // for a camera that draws no sprites and binned none.
-        assert(inputs.mBin != nullptr && "a trace with no bin to read its sprites from");
-        described.mTables.mSprites = inputs.mBin->getSpritesAddress();
-        described.mTables.mSpriteTileList
-            = inputs.mSpriteList != 0 ? inputs.mSpriteList : inputs.mBin->getTileListAddress();
+        described.mTables.mSprites = bin.getSpritesAddress();
+        described.mTables.mSpriteTileList = inputs.mSpriteList != 0 ? inputs.mSpriteList : bin.getTileListAddress();
 
         // Nothing addressed here may be nothing, and every address must be what its reference
         // claims. A descriptor bound as a null handle cost this renderer a device with no message;
@@ -428,7 +435,7 @@ namespace Rtx
 
     void VisibilityPass::recordSpriteShelter(const VkCommandBuffer commands, const VisibilityInputs& inputs,
         const GBuffer& buffer, const Buffer& hitCount, const Shaders::VisibilityConstants& constants,
-        const std::uint32_t count, GpuTimer* const timer) const
+        const std::uint32_t count, const FrameSlot trace, GpuTimer* const timer) const
     {
         // Nearly every frame: nothing falls, or what falls is the kind a roof does not stop. A
         // frame with sprites and no shelter pays no launch for it.
@@ -438,7 +445,7 @@ namespace Rtx
         openZone(timer, commands, "shelter");
 
         bind(commands, *mSpriteShelterPipeline);
-        pushInputs(commands, *mSpriteShelterPipeline, inputs, buffer, hitCount, constants.mFrame);
+        pushInputs(commands, *mSpriteShelterPipeline, inputs, buffer, hitCount, trace);
 
         // One invocation a sprite, over the bin's own copy of the list.
         mSpriteShelterPipeline->traceRays(commands, count, 1);
@@ -450,7 +457,8 @@ namespace Rtx
     }
 
     void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const
+        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, const FrameSlot trace,
+        GpuTimer* timer) const
     {
         assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
 
@@ -463,7 +471,7 @@ namespace Rtx
         // kept between frames: a dusk moves the tuple and a doorway moves it again.
         const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater);
 
-        inputs.mFogVolume->begin(commands, constants.mFrame);
+        inputs.mFogVolume->begin(commands, trace);
 
         const TracePipeline& scatter = scatterPipelineFor(variant);
 
@@ -479,7 +487,7 @@ namespace Rtx
         // Where each column's ray stops, before anything is drawn along it. One ray a
         // column, and the froxels of the column keep their draws short of the answer.
         bind(commands, *mDepthPipeline);
-        pushInputs(commands, *mDepthPipeline, inputs, buffer, hitCount, constants.mFrame);
+        pushInputs(commands, *mDepthPipeline, inputs, buffer, hitCount, trace);
 
         mDepthPipeline->traceRays(commands, columns, rows);
 
@@ -495,14 +503,14 @@ namespace Rtx
 
         closeZone(timer, commands);
 
-        inputs.mFogVolume->scattered(commands, constants.mFrame);
+        inputs.mFogVolume->scattered(commands, trace);
 
         openZone(timer, commands, "column");
 
         // The integrate pass is a dispatch and reads what the launches wrote, so it is handed the
         // set again at its own bind point.
         bind(commands, *mIntegratePipeline);
-        pushInputs(commands, *mIntegratePipeline, inputs, buffer, hitCount, constants.mFrame);
+        pushInputs(commands, *mIntegratePipeline, inputs, buffer, hitCount, trace);
 
         vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
             groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
@@ -528,7 +536,7 @@ namespace Rtx
     }
 
     void VisibilityPass::recordSpriteComposite(const VkCommandBuffer commands, const VisibilityInputs& inputs,
-        const GBuffer& buffer, const Buffer& hitCount, const std::uint64_t frame, const VkExtent2D shown,
+        const GBuffer& buffer, const Buffer& hitCount, const FrameSlot trace, const VkExtent2D shown,
         GpuTimer* const timer) const
     {
         assert(inputs.mShown != nullptr && "a composite over no frame");
@@ -540,7 +548,7 @@ namespace Rtx
         openZone(timer, commands, "puffs");
 
         bind(commands, *mSpriteCompositePipeline);
-        pushInputs(commands, *mSpriteCompositePipeline, inputs, buffer, hitCount, frame);
+        pushInputs(commands, *mSpriteCompositePipeline, inputs, buffer, hitCount, trace);
 
         // One invocation a pixel of the picture, whose extent the shader reads off the launch.
         mSpriteCompositePipeline->traceRays(commands, shown.width, shown.height);

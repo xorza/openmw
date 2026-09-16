@@ -30,18 +30,18 @@ namespace Rtx
     /// One type, because a material's textures have to be given back before the run that says
     /// which they were is handed to the next chunk. The textures are borrowed and not owned: a slot
     /// is named by holds nothing here can see.
-    class MaterialTable : protected SlotRows<Material>
+    class MaterialTable
     {
     public:
-        /// The half of `SlotRows` a reader and a sweep use; `take`, `at` and `sweep` stay this
-        /// table's own, because a row goes only through `add` and `sweep`.
-        using SlotRows::drop;
-        using SlotRows::getLiveCount;
-        using SlotRows::getRows;
-        using SlotRows::hasDroppedHolds;
-        using SlotRows::hold;
-        using SlotRows::mark;
-        using SlotRows::size;
+        /// The half of `SlotRows` a reader and a sweep use. A row goes in through `add` and out
+        /// through `sweep`, so `take`, `at` and the sweep stay this table's own.
+        std::size_t size() const { return mRows.size(); }
+        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
+        std::span<const Material> getRows() const { return mRows.getRows(); }
+        void hold(Index slot) { mRows.hold(slot); }
+        bool drop(Index slot) { return mRows.drop(slot); }
+        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
+        std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
 
         explicit MaterialTable(TextureTable& textures)
             : mTextures(textures)
@@ -102,6 +102,8 @@ namespace Rtx
         void dropTextures(const Material& material);
 
         TextureTable& mTextures;
+
+        SlotRows<Material> mRows;
 
         /// Rows written since the last `clearArrivals` — a flipbook that is added and then
         /// rewritten on one frame is one row, not two.

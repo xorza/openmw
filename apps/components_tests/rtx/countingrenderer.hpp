@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include <components/rtx/frameimage.hpp>
+#include <components/rtx/guirenderer.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
@@ -18,7 +18,6 @@
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/upscale.hpp>
-#include <components/rtx/wavespectrum.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 
 namespace Rtx::Testing
@@ -98,7 +97,6 @@ namespace Rtx::Testing
         void resize(std::uint32_t, std::uint32_t) override {}
         void setUpscale(Upscale upscale) override { mUpscale = upscale; }
         Upscale getUpscale() const override { return mUpscale; }
-        void setSea(const Rtx::SeaState&) override {}
         void setVerticalSync(SDLUtil::VSyncMode) override {}
         Rtx::FrameExtents getExtents() const override { return {}; }
         Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
@@ -163,11 +161,7 @@ namespace Rtx::Testing
         void dropViewScene(Rtx::SceneSlot) override {}
         bool takeGuiCopy(Rtx::GuiSlot, std::span<std::uint8_t>) override { return false; }
         void finishGuiTraces() override {}
-        void readGuiTexture(Rtx::GuiSlot, std::vector<std::uint8_t>&) override {}
         void readPixels(std::vector<std::uint8_t>&) override {}
-        void readChannel(Rtx::Channel, std::vector<float>&) override {}
-        void readComposite(std::vector<float>&) override {}
-        void takeValidationErrors(std::vector<std::string>&) override {}
 
         std::uint32_t mHistoryResets = 0;
 

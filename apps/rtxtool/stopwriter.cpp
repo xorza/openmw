@@ -212,10 +212,9 @@ namespace RtxTool
                         "  empty geometry:       {}\n"
                         "  undescribed surfaces: {} drawn as a default material\n"
                         "  spriteless emitters:  {} dropped whole\n"
-                        "  worn otherwise:       {} placements wearing another material than their mesh\n"
                         "  sheets:               {} of the meshes, doubled for their backs\n",
                 stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces,
-                stats.mSpritelessEmitters, stats.mWornOtherwise, sheets));
+                stats.mSpritelessEmitters, sheets));
 
         if (into.mReport.mWalked.mAgain.has_value())
         {

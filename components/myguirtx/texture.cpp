@@ -1,24 +1,19 @@
 #include "texture.hpp"
 
-#include <algorithm>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <stdexcept>
 #include <utility>
 
 #include <MyGUI_RenderFormat.h>
-#include <osg/GL>
 #include <osg/Image>
-#include <osg/Texture2D>
-#include <osg/Vec4f>
+#include <osg/ref_ptr>
 
-#include <components/debug/debuglog.hpp>
 #include <components/resource/imagemanager.hpp>
-#include <components/rtx/renderer.hpp>
-#include <components/rtx/slot.hpp>
+#include <components/rtx/guirenderer.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "rgbarows.hpp"
 
 namespace MyGUIRtx
 {
@@ -40,65 +35,17 @@ namespace MyGUIRtx
                     return 0;
             }
         }
-
-        /// `count` rows of `image` from `firstRow`, into `into` as four bytes a pixel. One `memcpy`
-        /// where the image already is that, and a pixel at a time where it is not:
-        /// `osg::Image::getColor` is the only thing that reads every format OpenSceneGraph loads,
-        /// and it is a virtual call and a `Vec4f` per pixel.
-        void writeRgbaRows(const osg::Image& image, const int firstRow, const int count, std::uint8_t* into)
-        {
-            assert(firstRow >= 0 && count >= 0 && firstRow + count <= image.t());
-            const std::size_t pixels = static_cast<std::size_t>(image.s()) * count;
-            if (image.getPixelFormat() == GL_RGBA && image.getDataType() == GL_UNSIGNED_BYTE && image.isDataContiguous()
-                && image.getTotalSizeInBytes() == static_cast<std::size_t>(image.s()) * image.t() * 4)
-            {
-                std::memcpy(into, image.data(0, firstRow), pixels * 4);
-                return;
-            }
-
-            for (int y = firstRow; y < firstRow + count; ++y)
-                for (int x = 0; x < image.s(); ++x, into += 4)
-                {
-                    const osg::Vec4f colour = image.getColor(x, y);
-                    into[0] = static_cast<std::uint8_t>(std::clamp(colour.r(), 0.f, 1.f) * 255.f + 0.5f);
-                    into[1] = static_cast<std::uint8_t>(std::clamp(colour.g(), 0.f, 1.f) * 255.f + 0.5f);
-                    into[2] = static_cast<std::uint8_t>(std::clamp(colour.b(), 0.f, 1.f) * 255.f + 0.5f);
-                    into[3] = static_cast<std::uint8_t>(std::clamp(colour.a(), 0.f, 1.f) * 255.f + 0.5f);
-                }
-        }
     }
 
-    Texture::Texture(std::string name, Rtx::Renderer& renderer, Resource::ImageManager* imageManager)
-        : mName(std::move(name))
-        , mRenderer(renderer)
+    Texture::Texture(std::string name, Rtx::GuiRenderer& renderer, Resource::ImageManager* imageManager)
+        : SlotTexture(std::move(name), renderer)
         , mImageManager(imageManager)
     {
     }
 
-    Texture::Texture(Rtx::Renderer& renderer, osg::Texture2D& source)
-        : mRenderer(renderer)
-        , mImageManager(nullptr)
-        , mFormat(MyGUI::PixelFormat::R8G8B8A8)
-        , mUsage(MyGUI::TextureUsage::Static)
-        , mNumElemBytes(4)
-        , mSource(&source)
-    {
-        refresh();
-    }
-
-    Texture::~Texture()
-    {
-        release();
-    }
-
     void Texture::release()
     {
-        if (!mSlot.isNone())
-            mRenderer.dropGuiTexture(mSlot);
-
-        mSlot = Rtx::GuiSlot::none();
-        mWidth = 0;
-        mHeight = 0;
+        drop();
         mFormat = MyGUI::PixelFormat::Unknow;
         mUsage = MyGUI::TextureUsage::Default;
         mNumElemBytes = 0;
@@ -114,12 +61,10 @@ namespace MyGUIRtx
 
         release();
 
-        mWidth = width;
-        mHeight = height;
         mFormat = format;
         mUsage = usage;
         mNumElemBytes = elements;
-        mSlot = mRenderer.addGuiTexture(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
+        take(width, height);
 
         // Nothing at four channels: `lock` hands out the renderer's own bytes there, and this is
         // only what a narrower format is widened out of.
@@ -140,14 +85,9 @@ namespace MyGUIRtx
 
         createManual(image->s(), image->t(), MyGUI::TextureUsage::Static, MyGUI::PixelFormat::R8G8B8A8);
 
-        writeRgbaRows(*image, 0, image->t(), mRenderer.lendGuiTexture(mSlot, whole()).data());
+        writeRgbaRows(*image, 0, image->t(), mRenderer.lendGuiTexture(getSlot(), whole()).data());
 
-        mRenderer.sendGuiTexture(mSlot);
-    }
-
-    void Texture::saveToFile(const std::string& fname)
-    {
-        Log(Debug::Warning) << "Would save image to file " << fname;
+        mRenderer.sendGuiTexture(getSlot());
     }
 
     void Texture::destroy()
@@ -157,14 +97,14 @@ namespace MyGUIRtx
 
     void* Texture::lock(MyGUI::TextureUsage /*access*/)
     {
-        if (mSlot.isNone())
+        if (getSlot().isNone())
             throw std::runtime_error("Texture is not created");
         if (mLocked)
             throw std::runtime_error("Texture already locked");
 
         mLocked = true;
 
-        return mNumElemBytes == 4 ? mRenderer.lendGuiTexture(mSlot, whole()).data() : mPixels.data();
+        return mNumElemBytes == 4 ? mRenderer.lendGuiTexture(getSlot(), whole()).data() : mPixels.data();
     }
 
     void Texture::unlock()
@@ -175,7 +115,7 @@ namespace MyGUIRtx
         mLocked = false;
 
         if (mNumElemBytes == 4)
-            mRenderer.sendGuiTexture(mSlot);
+            mRenderer.sendGuiTexture(getSlot());
         else
             widen();
     }
@@ -185,8 +125,8 @@ namespace MyGUIRtx
         // MyGUI asked for fewer channels than the table holds, so they are widened here rather than
         // by giving the table a second format to know about: a font atlas is written once and this
         // is the only place that knows what its bytes meant.
-        const std::size_t count = static_cast<std::size_t>(mWidth) * mHeight;
-        std::uint8_t* const into = mRenderer.lendGuiTexture(mSlot, whole()).data();
+        const std::size_t count = static_cast<std::size_t>(getWidth()) * getHeight();
+        std::uint8_t* const into = mRenderer.lendGuiTexture(getSlot(), whole()).data();
 
         for (std::size_t i = 0; i < count; ++i)
         {
@@ -212,78 +152,6 @@ namespace MyGUIRtx
             }
         }
 
-        mRenderer.sendGuiTexture(mSlot);
-    }
-
-    void Texture::refresh()
-    {
-        if (mSource == nullptr)
-            return;
-
-        const osg::Image* const image = mSource->getImage();
-        if (image == nullptr || image->s() <= 0 || image->t() <= 0)
-            return;
-
-        if (image == mSeen && image->getModifiedCount() == mSeenCount)
-            return;
-
-        // A picture of another shape is another slot: the table sizes a slot once.
-        if (mSlot.isNone() || image->s() != mWidth || image->t() != mHeight)
-        {
-            if (!mSlot.isNone())
-                mRenderer.dropGuiTexture(mSlot);
-
-            mWidth = image->s();
-            mHeight = image->t();
-            mSlot = mRenderer.addGuiTexture(static_cast<std::uint32_t>(mWidth), static_cast<std::uint32_t>(mHeight));
-            mLastSent.clear();
-        }
-
-        // The run of rows that differ from what was sent, against the image's own bytes rather
-        // than the widened ones: the comparison is over the picture as the game wrote it, and
-        // widening is paid for the rows that go. The same image with a moved count is the fog of
-        // war or the world map, written in a corner; another image under the texture is a video
-        // frame, and goes whole.
-        const std::size_t rowBytes = image->getRowSizeInBytes();
-        const std::size_t total = rowBytes * static_cast<std::size_t>(mHeight);
-        int first = 0;
-        int last = mHeight - 1;
-        if (image == mSeen && image->isDataContiguous() && mLastSent.size() == total)
-        {
-            while (
-                first <= last && std::memcmp(image->data(0, first), mLastSent.data() + rowBytes * first, rowBytes) == 0)
-                ++first;
-            while (last > first && std::memcmp(image->data(0, last), mLastSent.data() + rowBytes * last, rowBytes) == 0)
-                --last;
-        }
-
-        mSeen = image;
-        mSeenCount = image->getModifiedCount();
-
-        if (first > last)
-            return;
-
-        const std::uint32_t count = static_cast<std::uint32_t>(last - first + 1);
-        const Rtx::GuiRegion rows{ 0, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(mWidth), count };
-        writeRgbaRows(*image, first, static_cast<int>(count), mRenderer.lendGuiTexture(mSlot, rows).data());
-        mRenderer.sendGuiTexture(mSlot);
-
-        if (image->isDataContiguous())
-        {
-            mLastSent.resize(total);
-            std::memcpy(mLastSent.data() + rowBytes * first, image->data(0, first), rowBytes * count);
-        }
-        else
-            mLastSent.clear();
-    }
-
-    Rtx::GuiRegion Texture::whole() const
-    {
-        return Rtx::GuiRegion{ 0, 0, static_cast<std::uint32_t>(mWidth), static_cast<std::uint32_t>(mHeight) };
-    }
-
-    void Texture::setShader(const std::string& /*shaderName*/)
-    {
-        Log(Debug::Warning) << "Texture::setShader is not implemented";
+        mRenderer.sendGuiTexture(getSlot());
     }
 }

@@ -33,8 +33,8 @@ namespace Rtx
         /// the host hands over in heap order. `shuffled` stores the same vertices in reverse and
         /// spells the same triangles from another corner, which is what the host's geometry merge
         /// does to a shape.
-        Rtx::Index addBox(Rtx::SceneDesc& scene, const bool mirrored, const Rtx::Index material,
-            const float lift = 0.0f, const bool shuffled = false)
+        Rtx::Index addBox(
+            Rtx::SceneDesc& scene, const bool mirrored, const float lift = 0.0f, const bool shuffled = false)
         {
             std::vector<osg::Vec3f> positions;
             std::vector<osg::Vec3f> normals;
@@ -59,7 +59,7 @@ namespace Rtx
             return scene.addMesh(
                 MeshArrays{
                     .mPositions = positions, .mNormals = normals, .mTexCoords = texCoords, .mIndices = indices },
-                {}, Rtx::Deform::None, Rtx::sNoIndex, material);
+                {}, Rtx::Deform::None, Rtx::sNoIndex);
         }
 
         /// The two boxes under one placement, added in the order given, and one lamp.
@@ -76,7 +76,7 @@ namespace Rtx
                 const bool mirrored = (which == 0) == mirroredFirst;
                 Rtx::MeshInstance instance;
                 instance.mTransform = mirrored ? osg::Matrixf::translate(aside, 0.0f, 0.0f) * stood : stood;
-                instance.mMesh = addBox(scene, mirrored, wearing, mirrored ? lift : 0.0f, shuffled);
+                instance.mMesh = addBox(scene, mirrored, mirrored ? lift : 0.0f, shuffled);
                 instance.mMaterial = wearing;
                 scene.addInstance(instance);
             }
@@ -151,7 +151,7 @@ namespace Rtx
 
             Rtx::MeshInstance instance;
             instance.mMaterial = scene.materials().add(material);
-            instance.mMesh = addBox(scene, false, instance.mMaterial);
+            instance.mMesh = addBox(scene, false);
             scene.addInstance(instance);
 
             return { spellHash(digestScene(scene)), spellHash(digestLayout(digestParts(scene))) };

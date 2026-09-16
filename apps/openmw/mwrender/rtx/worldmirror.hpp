@@ -15,18 +15,15 @@
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
-#include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/residency.hpp>
 #include <components/rtx/ripple.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
-#include <components/rtx/skybuilder.hpp>
 #include <components/rtx/walk.hpp>
 
 namespace Resource
 {
-    class ImageManager;
     class ResourceSystem;
 }
 
@@ -43,7 +40,24 @@ namespace Rtx
 namespace MWRender
 {
     struct SceneFrame;
-    struct WorldState;
+
+    /// What the mirror is handed of the settings, and never reads for itself: the two knobs the
+    /// paging read for the distance's statics, which this renderer stands itself, and how far out
+    /// the world is built. Handed once, because a frame reads what it was handed: the reach is one
+    /// number for the ground, the air, the distant lights and the checks, and a host that asked
+    /// the registry per frame could answer it differently in each. The statics need a restart; the
+    /// reach follows the menu through `setReach`.
+    struct MirrorKnobs
+    {
+        /// `Rtx::distantLandReach`, in units.
+        float mReach = 0.0f;
+
+        /// `object paging`: whether the distance's statics stand at all.
+        bool mDistantStatics = true;
+
+        /// `object paging min size`: the size rule's constant.
+        float mMinSize = 0.0f;
+    };
 
     /// The engine's scene graph mirrored into what a ray can meet.
     ///
@@ -58,17 +72,10 @@ namespace MWRender
     class WorldMirror
     {
     public:
-        /// Reads three settings once: the two knobs the paging read for the distance's statics,
-        /// which this renderer stands itself, and how far out the world is built.
-        ///
-        /// **Once, because a frame reads what it was handed.** The reach is one number for the
-        /// ground, the air, the distant lights and the checks; a host that asked the registry per
-        /// frame could answer it differently in each. The statics need a restart; the reach follows
-        /// the menu through `setReach`.
-        WorldMirror();
+        explicit WorldMirror(const MirrorKnobs& knobs);
 
-        /// The resource system the sky's own meshes are loaded through, and the cell ring's models
-        /// and images with them. Told once, where the world is attached.
+        /// The resource system the cell ring's models and images are loaded through. Told once,
+        /// where the world is attached.
         void attach(Resource::ResourceSystem& resources);
 
         /// The world is going: every thread that reads it stops, and what was read of it goes.
@@ -92,8 +99,9 @@ namespace MWRender
         /// where its middle is does not show; kept the rasterizer's so the two pictures agree.
         void standSea(const MWWorld::CellStore& cell);
 
-        /// Hands the scene to `renderer`, building only what has to be built.
-        Rtx::SceneUpload hand(Rtx::Renderer& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend);
+        /// Hands the scene to `renderer`, building only what has to be built. After `attach`,
+        /// because a texture the mirror has not seen before is read through the world's images.
+        Rtx::SceneUpload hand(Rtx::Renderer& renderer, Rtx::FrameSpend& spend);
 
         /// Whether each hand-over waits for the composites it collects, and each walk for the one
         /// cell it adopts. `Rtx::CompositeQueue::setSettled` and `Rtx::CellRing::setSettled` say why
@@ -146,15 +154,6 @@ namespace MWRender
         // Read by the tests and by nothing else.
         osg::Node::NodeMask getTraversalMask() const { return mExtractor.getTraversalMask(); }
 
-        /// Turns what the game says about this frame's world into what the renderer builds a sky,
-        /// an air and a sea out of: the colours decoded, whether the cell has a sky decided, and
-        /// every reading handed to the one builder that decides what a sun, a room light, an air
-        /// and a moon may be — which is what keeps the game and the harness under the same sky.
-        /// Nothing here touches a device, and nothing here is a decision this host makes on its own.
-        ///
-        /// @param seconds the world's clock, which the sea is animated by.
-        Rtx::WorldReading readWorld(const WorldState& world, float seconds) const;
-
     private:
         /// Shared by everything that can reach one graph — the world's walk and every traced view.
         Rtx::Traversals mTraversals;
@@ -163,21 +162,6 @@ namespace MWRender
         Rtx::SceneExtractor mExtractor;
 
         bool mShowsPlayer = true;
-
-        /// The moons' portraits and the sky's own meshes, added once and never given back.
-        Rtx::MoonFaces mMoonFaces;
-        Rtx::SkyContent mSkyContent;
-
-        /// What a script paints Secunda, `Moons_Script_Color` decoded, read once as the
-        /// rasterizer's `SkyManager` reads it. `SkySettled::mMoonRed` says when.
-        osg::Vec3f mMoonPaint;
-
-        /// The sun glare fader's three constants, read once as `SunGlareCallback` reads them:
-        /// `Weather_Sun_Glare_Fader_Color` doubled and clamped, `_Max`, and `_Angle_Max` in
-        /// radians. `Rtx::Shaders::glare.h` says what each is.
-        osg::Vec3f mGlareColour;
-        float mGlareMax;
-        float mGlareAngleMax;
 
         /// The sea: upstream's water geometry under `Mask_Water`, which is how the extractor
         /// knows a sea from a floor, stood at the frame's water height and hidden where the frame
@@ -203,7 +187,8 @@ namespace MWRender
         /// picture inside the interface goes through that same call with no ground to flatten.
         Rtx::CompositeQueue mComposites;
 
-        /// Where the sky's meshes are loaded from. Borrowed: the world outlives this.
+        /// Where the ring's models and images are loaded from, and the pictures the hand-over
+        /// resolves. Borrowed: the world outlives this.
         Resource::ResourceSystem* mResources = nullptr;
 
         /// Where the world's clock stood on the last frame, so the emitters are given the gap.

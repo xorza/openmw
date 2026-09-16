@@ -2,6 +2,7 @@
 
 #include <span>
 #include <string>
+#include <vector>
 
 #include <SDL_error.h>
 #include <SDL_stdinc.h>
@@ -98,20 +99,22 @@ namespace Rtx
         // Waited before the semaphores they guard go. A present holds its wait semaphore until
         // the presentation engine is done, and only these say when that is: the device-idle the
         // caller owes proves the queue is empty and nothing more.
-        for (const Fence& fence : mPresented)
-            awaitVk(mDevice, fence.get(), "the presentation engine letting go of an image");
+        if (mDevice.hasPresentFences())
+            for (const SwapImage& image : mImages)
+                awaitVk(mDevice, image.mPresented.get(), "the presentation engine letting go of an image");
 
         // Freed and not merely reset: a recording that blitted from the renderer's target still
         // names it, and a rebuild that allocated a fresh set would leave the old one in the pool
         // for the presenter's life — a window resized or a vsync changed a few dozen times is a
         // few dozen sets.
-        mPool.free(mCommands);
-        mCommands.clear();
+        std::vector<VkCommandBuffer> commands;
+        commands.reserve(mImages.size());
+        for (const SwapImage& image : mImages)
+            commands.push_back(image.mCommands);
+        mPool.free(commands);
 
         mAcquiring.clear();
-        mRendered.clear();
-        mPresented.clear();
-        mBlitOn.clear();
+        mImages.clear();
     }
 
     void Presenter::remakeImageSync()
@@ -129,18 +132,18 @@ namespace Rtx
             acquisition.mSemaphore = makeSemaphore(mDevice);
         mAcquisition = 0;
 
-        mRendered.resize(images);
-        for (Semaphore& semaphore : mRendered)
-            semaphore = makeSemaphore(mDevice);
-
-        // Nought, which the timeline has passed: no image has been blitted onto yet.
-        mBlitOn.assign(images, 0);
-
-        if (mDevice.hasPresentFences())
+        // A blit stamp of nought, which the timeline has passed: no image has been blitted onto
+        // yet.
+        const std::vector<VkCommandBuffer> commands = mPool.allocate(images);
+        mImages.resize(images);
+        for (std::uint32_t index = 0; index < images; ++index)
         {
-            mPresented.resize(images);
-            for (Fence& fence : mPresented)
-                fence = makeSignalledFence(mDevice);
+            SwapImage& image = mImages[index];
+            image.mRendered = makeSemaphore(mDevice);
+            image.mBlitOn = 0;
+            if (mDevice.hasPresentFences())
+                image.mPresented = makeSignalledFence(mDevice);
+            image.mCommands = commands[index];
         }
 
         // The blits those entries name have run, and forgetting is the whole of what is owed: the
@@ -148,8 +151,6 @@ namespace Rtx
         // image on a recycled handle — a renderer resizes its targets through this, and always
         // after this.
         mLastUse.clear();
-
-        mCommands = mPool.allocate(images);
     }
 
     bool Presenter::wantsResize(const VkExtent2D extent)
@@ -219,19 +220,20 @@ namespace Rtx
         // the moment a newer one replaces it, so an image can come back round before the present
         // that queued it has consumed its semaphore — the case a count of frames in flight does not
         // cover, because it counts frames rather than images.
-        timeline.waitFor(mBlitOn[index], "the blit that last wrote this image");
+        SwapImage& image = mImages[index];
+        timeline.waitFor(image.mBlitOn, "the blit that last wrote this image");
 
         // And the present itself, which is a different moment: the blit's value says the queue has
         // run the copy, and this says the compositor has let go of what it copied into. Without it
         // the semaphore below is signalled again while a present still waits on it.
-        if (!mPresented.empty())
+        if (mDevice.hasPresentFences())
         {
-            const VkFence presented = mPresented[index].get();
+            const VkFence presented = image.mPresented.get();
             awaitVk(mDevice, presented, "the presentation engine letting go of this image");
             checkVk(vkResetFences(mDevice.getHandle(), 1, &presented), "vkResetFences");
         }
 
-        const VkCommandBuffer commands = mCommands[index];
+        const VkCommandBuffer commands = image.mCommands;
         mPool.begin(commands);
 
         frame.transition(commands, Use::sAnyGeneralWrite, Use::sBlitRead);
@@ -273,18 +275,17 @@ namespace Rtx
         };
         const VkSemaphoreSubmitInfo signal{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = mRendered[index].get(),
+            .semaphore = image.mRendered.get(),
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
         const std::uint64_t blitted = mPool.submit(commands, mGraveyard,
             std::span<const VkSemaphoreSubmitInfo>(&wait, 1), std::span<const VkSemaphoreSubmitInfo>(&signal, 1));
 
         acquisition.mBlit = blitted;
-        mBlitOn[index] = blitted;
+        image.mBlitOn = blitted;
         rememberUse(frame.getHandle(), blitted);
 
-        if (mSwapchain->present(
-                mRendered[index].get(), index, mPresented.empty() ? VK_NULL_HANDLE : mPresented[index].get()))
+        if (mSwapchain->present(image.mRendered.get(), index, image.mPresented.get()))
             return true;
 
         mStale = true;

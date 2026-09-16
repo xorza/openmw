@@ -9,10 +9,10 @@
 
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderFormat.h>
-#include <MyGUI_RenderManager.h>
 #include <osg/GL>
 #include <osg/Image>
 
+#include <components/myguirtx/rendermanager.hpp>
 #include <components/myguirtx/texture.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/walk.hpp>
@@ -47,18 +47,27 @@ namespace MWRender
         }
     }
 
-    TracedView::TracedView(
-        const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host, Rtx::Traversals& traversals)
-        : mHost(host)
-        , mTrace(host.getBackend(), requestFor(spec, subject, traversals))
-        , mWidth(spec.mWidth)
-        , mHeight(spec.mHeight)
+    namespace
     {
-        // MyGUI keys its textures by name, so each view names its own.
-        static unsigned int next = 0;
-        mTexture = MyGUI::RenderManager::getInstance().createTexture("rtx offscreen view " + std::to_string(next++));
-        mTexture->createManual(
-            mWidth, mHeight, MyGUI::TextureUsage::Static | MyGUI::TextureUsage::Write, MyGUI::PixelFormat::R8G8B8A8);
+        /// MyGUI keys its textures by name, so each view names its own.
+        std::string nextViewName()
+        {
+            static unsigned int next = 0;
+            return "rtx offscreen view " + std::to_string(next++);
+        }
+    }
+
+    TracedView::TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host,
+        MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals)
+        : mHost(host)
+        , mGui(gui)
+        , mTrace(host.getBackend(), requestFor(spec, subject, traversals))
+        , mTexture(gui.makeTexture(nextViewName()))
+    {
+        const int width = static_cast<int>(mTrace.getWidth());
+        const int height = static_cast<int>(mTrace.getHeight());
+        mTexture.createManual(
+            width, height, MyGUI::TextureUsage::Static | MyGUI::TextureUsage::Write, MyGUI::PixelFormat::R8G8B8A8);
 
         // **The clear colour, before anything has been traced.** A view is shown from the frame it
         // is made on and drawn on some later one — a map tile is asked for as its cell arrives —
@@ -66,19 +75,22 @@ namespace MWRender
         const std::uint8_t colour[4] = { channel(spec.mClearColour.r()), channel(spec.mClearColour.g()),
             channel(spec.mClearColour.b()), channel(spec.mClearColour.a()) };
 
-        auto* pixels = static_cast<std::uint8_t*>(mTexture->lock(MyGUI::TextureUsage::Write));
-        for (int i = 0; i < mWidth * mHeight; ++i)
+        auto* pixels = static_cast<std::uint8_t*>(mTexture.lock(MyGUI::TextureUsage::Write));
+        for (int i = 0; i < width * height; ++i)
             std::memcpy(pixels + i * 4, colour, sizeof(colour));
-        mTexture->unlock();
-
-        mSlot = static_cast<MyGUIRtx::Texture*>(mTexture)->getSlot();
+        mTexture.unlock();
     }
 
     TracedView::~TracedView()
     {
         mHost.forgetView(*this);
 
-        MyGUI::RenderManager::getInstance().destroyTexture(mTexture);
+        mGui.destroyTexture(&mTexture);
+    }
+
+    MyGUI::ITexture& TracedView::getTexture() const
+    {
+        return mTexture;
     }
 
     void TracedView::setExtent(int width, int height)
@@ -97,8 +109,8 @@ namespace MWRender
     void TracedView::redraw()
     {
         // Whatever is in the copy is a picture of the last redraw, and this is a new one.
-        mCopyIsCurrent = false;
-        mRedrawPending = true;
+        if (mCopyState != CopyState::NotWanted)
+            mCopyState = CopyState::Queued;
 
         mHost.redraw(*this);
     }
@@ -115,41 +127,42 @@ namespace MWRender
                 return;
         }
 
-        mRedrawPending = false;
-        mTrace.traceInto(mSlot, mKeepCopy);
+        const bool keepCopy = mCopyState != CopyState::NotWanted;
+        mTrace.traceInto(mTexture.getSlot(), keepCopy);
+        if (keepCopy)
+            mCopyState = CopyState::Recorded;
     }
 
     void TracedView::keepCopy()
     {
-        if (mKeepCopy)
+        if (mCopyState != CopyState::NotWanted)
             return;
 
-        mKeepCopy = true;
+        mCopyState = CopyState::Queued;
         mCopy = new osg::Image;
-        mCopy->allocateImage(mWidth, mHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+        mCopy->allocateImage(
+            static_cast<int>(mTrace.getWidth()), static_cast<int>(mTrace.getHeight()), 1, GL_RGBA, GL_UNSIGNED_BYTE);
         std::memset(mCopy->data(), 0, mCopy->getTotalSizeInBytes());
 
         // The copy is left by the trace that is told to leave one, so a picture already traced
-        // without it is traced again; one still queued carries it.
-        if (!mRedrawPending)
-            redraw();
+        // without it is traced again; one still queued carries it, and the host queues a view once.
+        redraw();
     }
 
     const osg::Image* TracedView::getCopy()
     {
         // Nothing while the redraw is queued and not yet recorded: the backend would hand over the
         // copy the last trace left, which landed, as if it were this one's.
-        if (mCopy == nullptr || mRedrawPending)
-            return nullptr;
-
+        //
         // **The whole texture and not the extent**, because the copy is what the global map paints
         // a cell from and a cell is the whole tile. Taken straight into the image the caller is
         // handed, the first time it is asked for after the trace that made it has landed.
-        if (!mCopyIsCurrent)
-            mCopyIsCurrent = mHost.getBackend().takeGuiCopy(
-                mSlot, std::span<std::uint8_t>(mCopy->data(), mCopy->getTotalSizeInBytes()));
+        if (mCopyState == CopyState::Recorded
+            && mHost.getBackend().takeGuiCopy(
+                mTexture.getSlot(), std::span<std::uint8_t>(mCopy->data(), mCopy->getTotalSizeInBytes())))
+            mCopyState = CopyState::Taken;
 
-        return mCopyIsCurrent ? mCopy.get() : nullptr;
+        return mCopyState == CopyState::Taken ? mCopy.get() : nullptr;
     }
 
 }

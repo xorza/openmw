@@ -77,25 +77,6 @@ namespace Rtx
             VkDescriptorSetLayoutBinding{
                 sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
         };
-
-        SetLayout makeLayout(const Device& device)
-        {
-            // Partially bound because a scene with fewer textures than the array can hold leaves the
-            // tail unwritten. Update after bind, because an arrival writes this set while work that
-            // named it is still on the queue — legal as long as no pending command reads that
-            // descriptor, and a slot nothing has described is a slot no material names.
-            constexpr VkDescriptorBindingFlags sBound
-                = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-            constexpr std::array<VkDescriptorBindingFlags, 2> flags{ sBound, sBound };
-            const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-                .bindingCount = static_cast<std::uint32_t>(flags.size()),
-                .pBindingFlags = flags.data(),
-            };
-
-            return makeSetLayout(
-                device, sBindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
-        }
     }
 
     Texture::Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name,
@@ -145,20 +126,38 @@ namespace Rtx
         mBytes = data.mBytes.size() + sizeof(stored);
     }
 
-    TextureArray::TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, std::uint32_t slots,
-        std::span<const TextureData> textures)
+    SetLayout TextureArray::describeLayout(const Device& device)
+    {
+        // Partially bound because a scene with fewer textures than the array can hold leaves the
+        // tail unwritten. Update after bind, because an arrival writes this set while work that
+        // named it is still on the queue — legal as long as no pending command reads that
+        // descriptor, and a slot nothing has described is a slot no material names.
+        constexpr VkDescriptorBindingFlags sBound
+            = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+        constexpr std::array<VkDescriptorBindingFlags, 2> flags{ sBound, sBound };
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+            .bindingCount = static_cast<std::uint32_t>(flags.size()),
+            .pBindingFlags = flags.data(),
+        };
+
+        return makeSetLayout(
+            device, sBindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
+    }
+
+    TextureArray::TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, const SetLayout& layout,
+        const std::uint32_t slots, std::span<const TextureData> textures)
         : mDevice(device)
         , mGraveyard(graveyard)
         , mSamplers{ makeContentSampler(device, "textures repeating", TextureWrap::Repeat),
             makeContentSampler(device, "textures clamped along s", TextureWrap::ClampS),
             makeContentSampler(device, "textures clamped along t", TextureWrap::ClampT),
             makeContentSampler(device, "textures clamped", TextureWrap::Clamp) }
-        , mLayout(makeLayout(device))
         // Allocated at the maximum the layout declares, not at what this scene brought. Sizing the
         // set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `write` then only ever owes the slots that are new.
-        , mSets(device, sBindings, mLayout.get(), sFrameSlots, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT)
+        , mSets(device, sBindings, layout.get(), sFrameSlots, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT)
     {
         if (slots > sMaxTextures)
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "

@@ -567,7 +567,7 @@ namespace RtxTool
             // nothing: the ends of a place agree to within a couple of per cent while the card
             // moves a fifth of its clock between them, and a leg that lost its clock then reads
             // like a leg that lost its speed. `Rtx::ClockWatch` says what the sampling costs.
-            mClock.start();
+            mClockWatch.start();
             mProfiling.enable();
         }
 
@@ -625,7 +625,7 @@ namespace RtxTool
 
         // After the frames and not before them, so the last spawn it costs is outside the run it
         // describes.
-        mProgress.mClock = mClock.stop();
+        mProgress.mClock = mClockWatch.stop();
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 

@@ -32,6 +32,7 @@
 #include "framereport.hpp"
 #include "rippleemitters.hpp"
 #include "rtxrun.hpp"
+#include "skyreader.hpp"
 #include "worldmirror.hpp"
 
 namespace Resource
@@ -126,13 +127,9 @@ namespace MWRender
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void adoptTraversalRoot(osg::Group& root) override;
 
-        /// Read off `getViewMask` at the trace, so nothing to put anywhere.
+        /// Read off the seam at the trace, so nothing to put anywhere.
         void applyViewMask(unsigned int mask) override {}
-        void showWorld(bool shown) override { mWorldShown = shown; }
-
-        /// `Render_Scene` is a word here; `Render_Wireframe` is a rasterizer's polygon mode and
-        /// stays off.
-        bool toggleRenderMode(RenderMode mode) override;
+        void applyWorldShown() override {}
 
         void tickSchedule() override;
         double beginFrame(double measured) override;
@@ -182,7 +179,7 @@ namespace MWRender
         Rtx::Renderer& getBackend() { return *mRenderer; }
 
         /// The knobs this run was made with, for a stop that writes a picture by the same rules.
-        const Rtx::RenderProfile& getProfile() const { return mProfile; }
+        const Rtx::RenderProfile& getProfile() const { return mSetup.mProfile; }
 
         /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
         std::optional<PoseMoment> describePose();
@@ -298,9 +295,11 @@ namespace MWRender
         /// report, and says whether it was rebuilt from nothing.
         void handOver(const SceneFrame& frame, FrameReport& report);
 
-        /// The eye the frame arrived with, built for the render extent — or nothing for a camera the
-        /// builder refused, which is reported once.
-        std::optional<Rtx::Shaders::VisibilityConstants> aim(const SceneFrame& frame);
+        /// Everything the frame is traced with that is the host's to say: the eye the frame
+        /// arrived with, built for the render extent, the arms' own, the classes the eye sees, the
+        /// sample to take, and the profile's rules for the textures. The world's half is
+        /// `Rtx::describeWorld`'s. Nothing for a camera the builder refused, which is reported once.
+        std::optional<Rtx::Shaders::VisibilityConstants> describeTrace(const SceneFrame& frame);
 
         /// Traces one frame from `constants`, with the world's sky described into it, and closes
         /// the report with what it came to.
@@ -320,20 +319,6 @@ namespace MWRender
 
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
-
-        /// Whether a screen is over the world. False behind a loading screen and the main menu's
-        /// cover, where the walk would read a world nothing is updating. `Renderer::showWorld`.
-        bool mWorldShown = true;
-
-        /// Whether the player asked to see the world at all. The `tws` console command, and a
-        /// second answer rather than the same one: a loading screen that ends while `tws` is off
-        /// must not bring the world back, and a world `tws` hides is still updated, as it is under
-        /// the rasterizer's cull mask. `Renderer::toggleRenderMode(Render_Scene)`.
-        bool mWorldToggled = true;
-
-        /// Whether this frame draws a world: both of the answers above, said once so a frame
-        /// cannot walk on one and trace on the other.
-        bool drawsWorld() const { return mWorldShown && mWorldToggled; }
 
         /// What the GUI, the preload list and a picture of its own resolve their textures through.
         /// Null until `prepareResources`, which is before any of them asks.
@@ -387,6 +372,10 @@ namespace MWRender
         /// puts it on the device.
         WorldMirror mMirror;
 
+        /// What the game says about the sky, turned into what the trace is handed. Attached where
+        /// the mirror is, because the sheets it holds are the mirror's scene's.
+        SkyReader mSky;
+
         /// What disturbs the water this frame, decided game-side and pressed into the trace's
         /// ripple field.
         RippleEmitters mRipples;
@@ -405,9 +394,12 @@ namespace MWRender
         /// only instrument on this path, and the number that says whether this is playable.
         SpeedReport mSpeed;
 
-        /// The run the harness installed before the engine started, or the played session's own.
-        /// Borrowed: `RtxSetup::mRun` says whose it is and that it outlives this.
-        RtxRun& mRun;
+        /// What the run was made with, and the run itself: the setup the harness installed before
+        /// the engine started, or the played session's own, made from `[RTX]` and the played
+        /// answers. The two hosts cannot come to draw one picture through two differently configured
+        /// renderers, because both reach the renderer through this one record. The run inside it is
+        /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this.
+        const RtxSetup mSetup;
 
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.
@@ -418,11 +410,6 @@ namespace MWRender
         /// because it cannot change while a run is being made; a played session follows the wall.
         Rtx::FrameClock mClock;
 
-        /// The knobs a measurement turns, read once at construction. The harness hands them over
-        /// in `RendererSpec::mRtx` and a played binary reads `[RTX]`, so the two hosts cannot come
-        /// to draw one picture through two differently configured renderers.
-        Rtx::RenderProfile mProfile;
-
         /// Where this frame began and ended inside this renderer, and what it presented.
         FrameSpan mSpan;
 
@@ -430,8 +417,8 @@ namespace MWRender
         /// jitters and what the sampler walks are the same sequence the world is counting.
         std::size_t mFrame = 0;
 
-        /// Whether a camera the builder refused has already been reported. `aim` says why once is
-        /// the whole of it.
+        /// Whether a camera the builder refused has already been reported. `describeTrace` says why
+        /// once is the whole of it.
         bool mComplained = false;
     };
 }

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 #include <osg/Math>
 #include <osg/Matrixd>
@@ -89,17 +90,17 @@ namespace Rtx
             };
         }
 
-        ViewBasis basisOf(const osg::Matrixf& view)
+        std::optional<ViewBasis> basisOf(const osg::Matrixf& view)
         {
             osg::Matrixf world;
             if (!world.invert(view))
-                throw Error("the view matrix cannot be inverted, so it names no viewpoint");
+                return std::nullopt;
 
             return viewBasisOf(osg::Matrixd(world));
         }
     }
 
-    ViewBasis viewBasisOf(const osg::Matrixd& world)
+    std::optional<ViewBasis> viewBasisOf(const osg::Matrixd& world)
     {
         // The rows of the inverse are the eye's axes written in world coordinates, and its
         // translation is where the eye stands.
@@ -111,7 +112,7 @@ namespace Rtx
         };
 
         if (basis.mForward.normalize() <= 0.f || basis.mRight.normalize() <= 0.f || basis.mUp.normalize() <= 0.f)
-            throw Error("the view matrix has no basis to look along");
+            return std::nullopt;
 
         return basis;
     }
@@ -130,19 +131,22 @@ namespace Rtx
         return widened;
     }
 
-    Shaders::VisibilityConstants makeCameraFromView(const osg::Matrixf& view, float verticalFovDegrees,
+    std::optional<Shaders::VisibilityConstants> makeCameraFromView(const osg::Matrixf& view, float verticalFovDegrees,
         std::uint32_t width, std::uint32_t height, float near, float far)
     {
         assert(width > 0 && height > 0);
 
-        const ViewBasis basis = basisOf(view);
+        const std::optional<ViewBasis> basis = basisOf(view);
+        if (!basis.has_value())
+            return std::nullopt;
+
         const Spread spread = spreadOf(verticalFovDegrees, width, height);
 
-        Shaders::VisibilityConstants camera = beforeWorld(basis.mOrigin, near, far);
+        Shaders::VisibilityConstants camera = beforeWorld(basis->mOrigin, near, far);
         camera.mCamera = Shaders::Camera{
-            .mForward = basis.mForward,
-            .mRight = basis.mRight * spread.mHalfWidth,
-            .mUp = basis.mUp * spread.mHalfHeight,
+            .mForward = basis->mForward,
+            .mRight = basis->mRight * spread.mHalfWidth,
+            .mUp = basis->mUp * spread.mHalfHeight,
             .mSpreadAngle = spread.mAngle,
             .mOrthographic = 0,
             .mWidth = width,
@@ -153,21 +157,23 @@ namespace Rtx
         return camera;
     }
 
-    Shaders::VisibilityConstants makeOrthographicCameraFromView(const osg::Matrixf& view, float worldWidth,
-        float worldHeight, std::uint32_t width, std::uint32_t height, float near, float far)
+    std::optional<Shaders::VisibilityConstants> makeOrthographicCameraFromView(const osg::Matrixf& view,
+        float worldWidth, float worldHeight, std::uint32_t width, std::uint32_t height, float near, float far)
     {
         assert(width > 0 && height > 0);
 
         if (!(worldWidth > 0.f) || !(worldHeight > 0.f))
             throw Error("an orthographic camera with no extent sees nothing");
 
-        const ViewBasis basis = basisOf(view);
+        const std::optional<ViewBasis> basis = basisOf(view);
+        if (!basis.has_value())
+            return std::nullopt;
 
-        Shaders::VisibilityConstants camera = beforeWorld(basis.mOrigin, near, far);
+        Shaders::VisibilityConstants camera = beforeWorld(basis->mOrigin, near, far);
         camera.mCamera = Shaders::Camera{
-            .mForward = basis.mForward,
-            .mRight = basis.mRight * (worldWidth * 0.5f),
-            .mUp = basis.mUp * (worldHeight * 0.5f),
+            .mForward = basis->mForward,
+            .mRight = basis->mRight * (worldWidth * 0.5f),
+            .mUp = basis->mUp * (worldHeight * 0.5f),
 
             // Zero, and not for want of an answer. A parallel ray's cone does not widen with
             // distance; what it has instead is a footprint one pixel of the box wide for its whole

@@ -6,7 +6,7 @@
 #include <cstring>
 #include <span>
 
-#include <components/rtx/renderer.hpp>
+#include <components/rtx/guirenderer.hpp>
 #include <components/rtx/slot.hpp>
 
 namespace Rtx::Testing
@@ -14,7 +14,7 @@ namespace Rtx::Testing
     /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first: `lend` and
     /// `send` with a copy in front of them, for a test that already holds the pixels.
     inline void writeTexture(
-        Renderer& renderer, const GuiSlot slot, const GuiRegion& region, const std::span<const std::uint8_t> rgba)
+        GuiRenderer& renderer, const GuiSlot slot, const GuiRegion& region, const std::span<const std::uint8_t> rgba)
     {
         const std::span<std::uint8_t> into = renderer.lendGuiTexture(slot, region);
         assert(rgba.size() == into.size() && "the region's own rows");

@@ -63,10 +63,14 @@ namespace RtxTool
         /// nobody ran.
         Rtx::ValidationOptions validationFrom(const bpo::variables_map& variables)
         {
-            const Validation level
-                = sValidationNames.require(variables["validation"].as<std::string>(), "a validation level");
-
-            return validationOf(level, !variables["validation"].defaulted());
+            // A level somebody typed is demanded: a run that asked for the layers and cannot have
+            // them fails naming what is missing, because an empty log reads as a clean pass, while
+            // a build that turned them on by default only warns.
+            return Rtx::ValidationOptions{
+                .mLevel
+                = Rtx::sValidationNames.require(variables["validation"].as<std::string>(), "a validation level"),
+                .mDemanded = !variables["validation"].defaulted(),
+            };
         }
 
         /// Reports go to the unprefixed stream.
@@ -847,7 +851,8 @@ namespace RtxTool
             const bool hasVerb = argc >= 2 && argv[1][0] != '-';
             const std::string_view command = hasVerb ? argv[1] : "view";
 
-            const ToolOptions options = makeOptions(Rtx::sValidationByDefault ? Validation::Sync : Validation::Off);
+            const ToolOptions options
+                = makeOptions(Rtx::sValidationByDefault ? Rtx::ValidationLevel::Sync : Rtx::ValidationLevel::Off);
 
             // Boost skips the first token as the program name; when there is a verb, that token is
             // the verb.

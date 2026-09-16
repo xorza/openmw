@@ -31,7 +31,6 @@ namespace Rtx
             &ExtractionStats::mSpritelessEmitters,
             &ExtractionStats::mSkippedEmpty,
             &ExtractionStats::mLights,
-            &ExtractionStats::mWornOtherwise,
             &ExtractionStats::mDistantStatics,
             &ExtractionStats::mGroundCells,
         };

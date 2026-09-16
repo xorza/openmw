@@ -110,15 +110,13 @@ namespace Rtx
             return mSlots.at(FrameSlot{ static_cast<std::uint32_t>(frame % sFrameSlots) });
         }
 
-        /// How many frames have been submitted, which is the number the next one will carry.
+        /// How many frames have been submitted, which is the number the next one will carry. Read
+        /// by the tests and by nothing else.
         std::uint64_t getRecording() const { return mFrame; }
 
         /// The slot the frame being recorded uses, for whatever else keeps one of a thing per
         /// frame in flight.
         FrameSlot getRecordingSlot() const { return FrameSlot{ static_cast<std::uint32_t>(mFrame % sFrameSlots) }; }
-
-        /// Every frame below this has been waited for.
-        std::uint64_t getFinished() const { return mFinished; }
 
         /// The frame being recorded, begun if it was not: the frame that last used its slot is
         /// waited for, its timer and hit count cleared.

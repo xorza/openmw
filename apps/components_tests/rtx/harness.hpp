@@ -24,6 +24,7 @@
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/pipelinecache.hpp>
+#include <components/rtxvulkan/vulkanrenderer.hpp>
 
 namespace Rtx
 {
@@ -146,7 +147,7 @@ namespace Rtx::Testing
     /// after that costs between one and fifteen. So a test that traces through this one is free and
     /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
     /// because the mode is fixed when the renderer is built.
-    Renderer* getRenderer(std::string& reason);
+    VulkanRenderer* getRenderer(std::string& reason);
 
     /// The same, with no validation layers loaded, for the one test that counts allocations.
     ///
@@ -154,7 +155,7 @@ namespace Rtx::Testing
     /// `getAllocationCount` replaces the global `operator new`, so it cannot tell one of theirs from
     /// the renderer's — a frame measured through the shared renderer reports hundreds of allocations
     /// that no change to this code could remove. Built only if something asks, and asked by one test.
-    Renderer* getUnvalidatedRenderer(std::string& reason);
+    VulkanRenderer* getUnvalidatedRenderer(std::string& reason);
 
     /// The base of a test that drives Vulkan directly.
     ///
@@ -210,12 +211,12 @@ namespace Rtx::Testing
         ///
         /// **For a fixture with a renderer of its own**, which a renderer that upscales has to be:
         /// each one owns its instance and so its own log, and `mRenderer` is already done here.
-        void forgetErrors(Renderer& renderer) { renderer.takeValidationErrors(mErrors); }
+        void forgetErrors(VulkanRenderer& renderer) { renderer.takeValidationErrors(mErrors); }
 
         /// Reports what `renderer` raised since `forgetErrors`, each failure headed by `what`.
-        void reportErrors(Renderer& renderer, std::string_view what);
+        void reportErrors(VulkanRenderer& renderer, std::string_view what);
 
-        Renderer* mRenderer = nullptr;
+        VulkanRenderer* mRenderer = nullptr;
 
     private:
         std::vector<std::string> mErrors;

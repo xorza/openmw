@@ -1,4 +1,4 @@
-# MyGUI over `Rtx::Renderer`, and so over whichever graphics API this build has.
+# MyGUI over `Rtx::GuiRenderer`, and so over whichever graphics API this build has.
 #
 # **One backend for both of them.** Most of MyGUI's interface is bookkeeping no API has an opinion
 # about; what is left is a table of textures and a list of triangles, which is what `components/rtx`
@@ -7,6 +7,12 @@
 set(MYGUIRTX_FILES
     rendermanager.cpp
     rendermanager.hpp
+    rgbarows.cpp
+    rgbarows.hpp
+    sharedtexture.cpp
+    sharedtexture.hpp
+    slottexture.cpp
+    slottexture.hpp
     texture.cpp
     texture.hpp
 )

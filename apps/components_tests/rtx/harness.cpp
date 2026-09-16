@@ -39,10 +39,10 @@ namespace Rtx::Testing
         }
 
         /// Keyed on validation, the way the devices are and for the same reason.
-        Once<Renderer>& rendererCache(bool validation)
+        Once<VulkanRenderer>& rendererCache(bool validation)
         {
-            static Once<Renderer> sValidated;
-            static Once<Renderer> sPlain;
+            static Once<VulkanRenderer> sValidated;
+            static Once<VulkanRenderer> sPlain;
             return validation ? sValidated : sPlain;
         }
 
@@ -62,8 +62,7 @@ namespace Rtx::Testing
             // and another way beside it answers a different question in each file. It costs no
             // measurable time here either.
             const ValidationOptions options{
-                .mEnabled = validation,
-                .mSynchronization = validation,
+                .mLevel = validation ? ValidationLevel::Sync : ValidationLevel::Off,
                 .mAbortOnError = false,
             };
 
@@ -93,7 +92,7 @@ namespace Rtx::Testing
             });
         }
 
-        std::unique_ptr<Renderer> buildRenderer(bool validation, std::string& reason)
+        std::unique_ptr<VulkanRenderer> buildRenderer(bool validation, std::string& reason)
         {
             // Every test resizes to what it needs; one texel is only what the first target costs.
             try
@@ -107,7 +106,7 @@ namespace Rtx::Testing
             }
         }
 
-        Renderer* cachedRenderer(bool validation, std::string& reason)
+        VulkanRenderer* cachedRenderer(bool validation, std::string& reason)
         {
             return rendererCache(validation).get(reason, [validation](std::string& why) {
                 return buildRenderer(validation, why);
@@ -217,26 +216,26 @@ namespace Rtx::Testing
         options.mCacheDirectory = getPipelineCacheSpec().mDirectory;
         options.mWidth = width;
         options.mHeight = height;
-        options.mValidation.mEnabled = validation;
+        // **Synchronization validation wherever the layers are, because a missing barrier is what
+        // this suite is worst at seeing.** Every test here submits and waits, so the ordering a
+        // frame relies on is supplied by the harness rather than by the code under test, and a
+        // hazard shows as nothing at all — a traced view wrote its picture with no dependency on
+        // the write before it for as long as there have been traced views. It costs no measurable
+        // time in this suite.
+        options.mValidation.mLevel = validation ? ValidationLevel::Sync : ValidationLevel::Off;
         // Tests provoke errors deliberately and assert on them; aborting would take the suite down
         // with the first one.
         options.mValidation.mAbortOnError = false;
-        // **On wherever the layers are, because a missing barrier is what this suite is worst at
-        // seeing.** Every test here submits and waits, so the ordering a frame relies on is supplied
-        // by the harness rather than by the code under test, and a hazard shows as nothing at all —
-        // a traced view wrote its picture with no dependency on the write before it for as long as
-        // there have been traced views. It costs no measurable time in this suite.
-        options.mValidation.mSynchronization = validation;
 
         return options;
     }
 
-    Renderer* getRenderer(std::string& reason)
+    VulkanRenderer* getRenderer(std::string& reason)
     {
         return cachedRenderer(true, reason);
     }
 
-    Renderer* getUnvalidatedRenderer(std::string& reason)
+    VulkanRenderer* getUnvalidatedRenderer(std::string& reason)
     {
         return cachedRenderer(false, reason);
     }
@@ -304,7 +303,7 @@ namespace Rtx::Testing
         reportErrors(*mRenderer, "validation error");
     }
 
-    void RendererTest::reportErrors(Renderer& renderer, std::string_view what)
+    void RendererTest::reportErrors(VulkanRenderer& renderer, std::string_view what)
     {
         renderer.takeValidationErrors(mErrors);
         for (const std::string& error : mErrors)

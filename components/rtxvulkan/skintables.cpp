@@ -32,8 +32,8 @@ namespace Rtx
 
     SkinTables::SkinTables(
         const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
-        : mDevice(&device)
-        , mGraveyard(&graveyard)
+        : mDevice(device)
+        , mGraveyard(graveyard)
     {
         mBones.open(slots);
         mWeights.open(slots);
@@ -46,8 +46,8 @@ namespace Rtx
 
     void SkinTables::extend(Batch& batch, const SceneDesc& scene)
     {
-        const Device& device = *mDevice;
-        Graveyard& graveyard = *mGraveyard;
+        const Device& device = mDevice;
+        Graveyard& graveyard = mGraveyard;
 
         // Grown to what the scene reaches, and written whole where a growth moved it. The
         // arrivals are what a frame with an actor walking in costs; a table made again is what a

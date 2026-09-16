@@ -243,7 +243,12 @@ namespace Rtx
             given.mDiffuse = scene.textures().addBaked(mKey);
             scene.setMaterial(asked.mMaterial, given);
 
-            mFinished.insert_or_assign(given.mDiffuse, std::move(*baked.mComposite));
+            const auto landed = std::find_if(mFinished.begin(), mFinished.end(),
+                [&](const std::pair<Index, TerrainComposite>& one) { return one.first == given.mDiffuse; });
+            if (landed != mFinished.end())
+                landed->second = std::move(*baked.mComposite);
+            else
+                mFinished.emplace_back(given.mDiffuse, std::move(*baked.mComposite));
             ++finished;
         }
 
@@ -262,8 +267,11 @@ namespace Rtx
 
     const TerrainComposite* CompositeQueue::find(const Index slot) const
     {
-        const auto found = mFinished.find(slot);
-        return found == mFinished.end() ? nullptr : &found->second;
+        for (const std::pair<Index, TerrainComposite>& finished : mFinished)
+            if (finished.first == slot)
+                return &finished.second;
+
+        return nullptr;
     }
 
     void CompositeQueue::work(Baker& baker, std::stop_token stop)

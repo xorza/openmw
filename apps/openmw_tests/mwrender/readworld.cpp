@@ -13,9 +13,8 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
-#include <components/settings/values.hpp>
 
-#include "apps/openmw/mwrender/rtx/worldmirror.hpp"
+#include "apps/openmw/mwrender/rtx/skyreader.hpp"
 #include "apps/openmw/mwrender/sceneframe.hpp"
 
 namespace MWRender
@@ -42,14 +41,13 @@ namespace MWRender
             return world;
         }
 
-        /// A mirror built to the reach the assertions below count on, with the sky and the moons
-        /// it holds before a world arrives: none.
+        /// A reader at the reach the assertions below count on, with the sky and the moons it
+        /// holds before a world arrives: none.
         Rtx::WorldReading readFrom(const WorldState& world)
         {
-            Settings::rtx().mDistantLandCells.set(4.0f);
-            const WorldMirror mirror;
+            const SkyReader reader;
 
-            return mirror.readWorld(world, 0.0f);
+            return reader.read(world, 0.0f, sReach);
         }
 
         /// A quasi-exterior stands under the exterior's sun and in the exterior's air.

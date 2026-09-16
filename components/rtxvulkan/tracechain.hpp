@@ -23,9 +23,13 @@
 namespace Rtx
 {
     class CommandPool;
+    class CompositePass;
     class Device;
     class GpuTimer;
     class Graveyard;
+    class SpriteBinPass;
+    class SpriteShadePass;
+    class VisibilityPass;
     struct TraceRecording;
 
     /// Everything one camera's trace writes, at one extent — one chain however many cameras have
@@ -36,16 +40,20 @@ namespace Rtx
     class TraceChain
     {
     public:
-        /// The passes are built here and the images are not: nothing has an extent until `resize`
-        /// or `grow` is called.
+        /// The denoising passes are built here and the images are not: nothing has an extent
+        /// until `resize` or `grow` is called.
         ///
         /// @param channels, fog the layouts every `GBuffer` and every `FogVolume` here is shaped by.
+        /// @param visibility, composite, spriteBin, spriteShade the passes every trace runs,
+        ///        whichever camera it is for: the renderer keeps one of each, and what differs
+        ///        between two chains is the extent and what becomes of the picture.
         /// @param colourUsage what the composite's output has done to it besides being written: an
         ///        upscaler samples a frame's and a measurement copies it out.
         /// @param colourName what a capture and a validation message call that image.
         TraceChain(const Device& device, Graveyard& graveyard, CommandPool& pool, const SetLayout& channels,
-            const SetLayout& fog, const std::filesystem::path& shaders, VkImageUsageFlags colourUsage,
-            std::string_view colourName);
+            const SetLayout& fog, const VisibilityPass& visibility, const CompositePass& composite,
+            const SpriteBinPass& spriteBin, const SpriteShadePass& spriteShade, const std::filesystem::path& shaders,
+            VkImageUsageFlags colourUsage, std::string_view colourName);
 
         /// Builds the chain at exactly this extent, whatever it was before. The caller has waited
         /// for anything still reading what this replaces.
@@ -103,6 +111,11 @@ namespace Rtx
         const SetLayout& mChannelLayout;
         const SetLayout& mFogVolumeLayout;
 
+        const VisibilityPass& mVisibility;
+        const CompositePass& mComposite;
+        const SpriteBinPass& mSpriteBin;
+        const SpriteShadePass& mSpriteShade;
+
         VkImageUsageFlags mColourUsage;
         std::string mColourName;
 
@@ -113,7 +126,7 @@ namespace Rtx
         std::unique_ptr<GBuffer> mChannels;
         std::unique_ptr<FogVolume> mFogVolume;
 
-        /// One sprite bin per frame in flight — `TraceRecording::mBinSlot` picks — so the frame
+        /// One sprite bin per frame in flight — `TraceRecording::mTraceSlot` picks — so the frame
         /// behind keeps the tables its trace reads while this frame's bin writes its own.
         PerSlot<SpriteBin> mBins;
 

@@ -200,7 +200,11 @@ set(RTX_VULKAN_FILES
     descriptorsets.hpp
     device.cpp
     device.hpp
+    devicescene.cpp
+    devicescene.hpp
     dispatch.hpp
+    displaychain.cpp
+    displaychain.hpp
     exposurepass.cpp
     exposurepass.hpp
     fogvolume.cpp

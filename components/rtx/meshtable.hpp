@@ -21,18 +21,18 @@ namespace Rtx
     /// Every mesh the scene holds, and the shared buffers its triangles live in. One type, because
     /// a mesh that deforms has to give its deformer back between the free list and the two
     /// allocators. The deformers are borrowed: a rig is shared by every mesh built from one skin.
-    class MeshTable : protected SlotRows<MeshRange>
+    class MeshTable
     {
     public:
-        /// The half of `SlotRows` a reader and a sweep use; `take`, `at` and `sweep` stay this
-        /// table's own, because a row goes only through `add` and `sweep`.
-        using SlotRows::drop;
-        using SlotRows::getLiveCount;
-        using SlotRows::getRows;
-        using SlotRows::hasDroppedHolds;
-        using SlotRows::hold;
-        using SlotRows::mark;
-        using SlotRows::size;
+        /// The half of `SlotRows` a reader and a sweep use. A row goes in through `add` and out
+        /// through `sweep`, so `take`, `at` and the sweep stay this table's own.
+        std::size_t size() const { return mRows.size(); }
+        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
+        std::span<const MeshRange> getRows() const { return mRows.getRows(); }
+        void hold(Index slot) { mRows.hold(slot); }
+        bool drop(Index slot) { return mRows.drop(slot); }
+        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
+        std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
 
         /// How many vertices one block of the vertex attribute buffers holds, and how many indices
         /// one block of the index buffer does — the shaders' own numbers, because a shader resolves
@@ -48,7 +48,7 @@ namespace Rtx
         /// Copies the vertex data into the shared buffers and returns the new mesh's index. Throws
         /// where the mesh is longer than a block, because a vertex count comes out of a content
         /// file.
-        Index add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material);
+        Index add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer);
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the
         /// frame, once.
@@ -93,6 +93,8 @@ namespace Rtx
         void note(Index slot, SlotNews what);
 
         DeformerTable& mDeformers;
+
+        SlotRows<MeshRange> mRows;
 
         /// Where a mesh's vertices and its indices live — runs and not slots, because the geometry
         /// behind a row is as long as the model. One buffer holds the run and the three parallel

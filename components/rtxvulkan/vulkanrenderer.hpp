@@ -1,9 +1,7 @@
 #pragma once
 
-#include <array>
 #include <chrono>
 #include <cstdint>
-#include <filesystem>
 #include <memory>
 #include <optional>
 #include <span>
@@ -11,7 +9,7 @@
 #include <vector>
 
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/instancerecord.hpp>
+#include <components/rtx/guirenderer.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
@@ -24,12 +22,11 @@
 #include <components/rtx/wavespectrum.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 
-#include "bloompass.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "compositepass.hpp"
 #include "device.hpp"
-#include "exposurepass.hpp"
+#include "displaychain.hpp"
 #include "fogvolume.hpp"
 #include "framering.hpp"
 #include "frameslots.hpp"
@@ -39,15 +36,11 @@
 #include "handles.hpp"
 #include "image.hpp"
 #include "instance.hpp"
-#include "linepass.hpp"
-#include "placing.hpp"
 #include "presenttargets.hpp"
 #include "ripplepass.hpp"
 #include "skinpass.hpp"
 #include "spritepasses.hpp"
 #include "stresspass.hpp"
-#include "sunglarepass.hpp"
-#include "tonepass.hpp"
 #include "tracechain.hpp"
 #include "visibilitypass.hpp"
 #include "wavepass.hpp"
@@ -58,69 +51,12 @@ namespace Rtx
     class Dlss;
     class DlssPass;
 #endif
+    class DeviceScene;
     class Presenter;
-    class SceneAcceleration;
-    class SceneBuffers;
-    class SkinTables;
-    class TextureArray;
 
     /// `Renderer` over Vulkan.
     class VulkanRenderer final : public Renderer
     {
-        /// Everything one scene is traced against — the world's, or a picture's in the interface —
-        /// the same objects for both, which is what lets `Rtx::SceneUploader` hand a doll over
-        /// exactly as a cell. `VisibilityPass` and `SkinPass` are shared: every texture array
-        /// declares the same bindless layout, and identically defined layouts are compatible.
-        struct ViewScene
-        {
-            std::unique_ptr<SceneAcceleration> mAcceleration;
-            std::unique_ptr<SceneBuffers> mBuffers;
-            std::unique_ptr<TextureArray> mTextures;
-
-            /// What this scene's skinned bodies and morphed faces are posed from.
-            std::unique_ptr<SkinTables> mSkinTables;
-
-            /// One row per placement slot, made whole when the scene is built and kept across
-            /// frames, with the rows the scene says changed rewritten by each placement. Here
-            /// rather than in either half, because the acceleration structure and the instance
-            /// table need the same rows, and each building its own was fifty thousand matrix
-            /// inverses on a nine-by-nine exterior.
-            std::vector<InstanceRecord> mRecords;
-
-            /// Which of those `updateInstanceRecords` wrote this placement, cleared and refilled.
-            /// One list read by both halves, because two answers to which changed is one of them
-            /// wrong and terrain a frame behind.
-            std::vector<Index> mChangedRecords;
-
-            /// Which revision of the mesh table the structures were built from, so `extendScene` can
-            /// tell a scene that only gained textures from one that gained geometry too. A revision
-            /// and not a size, because a freed slot taken over is a mesh arriving at a table that
-            /// did not grow.
-            std::uint64_t mBuiltMeshes = 0;
-
-            /// The revision of the whole structure this was built from: what `describeHeld` answers
-            /// and an uploader appends against.
-            std::uint64_t mBuiltStructure = 0;
-
-            /// Which copy of the tables the last placement wrote — what a trace of this scene reads,
-            /// and the copy the next placement leaves alone. A placement's parity and not a frame's,
-            /// because a frame need not place; per scene, so a doll redrawn on consecutive frames
-            /// places exactly as the world does.
-            FrameSlot mSlot;
-
-            /// The submit a picture of each copy rides, as the timeline value it was recorded for.
-            /// A picture is deferred, and until it is carried its trace has to find the copy as it
-            /// was placed for it: the top level a deferred placement built and the rows a later
-            /// placement wrote from the host would otherwise disagree about which instance is
-            /// which. So a placement into a copy whose picture is still deferred carries the
-            /// picture first. Not a memory hazard, which the tables' own stamps answer.
-            std::array<std::uint64_t, sFrameSlots> mPictureRides{};
-
-            /// Waits until nothing on the queue reads or writes `slot`'s copy of any table a
-            /// placement writes from the host. Asked of each table, which carries the value itself.
-            void finishReads(FrameSlot slot) const;
-        };
-
     public:
         /// Throws `Unsupported` where this machine cannot run it and `Error` where it should have.
         /// `createVulkanRenderer` is how a host makes one.
@@ -144,9 +80,8 @@ namespace Rtx
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
         void setUpscale(Upscale upscale) override;
-        Upscale getUpscale() const override { return mUpscaling.mMode; }
+        Upscale getUpscale() const override { return mProfile.mUpscaling.mMode; }
 
-        void setSea(const SeaState& sea) override;
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
         FrameExtents getExtents() const override;
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
@@ -166,11 +101,30 @@ namespace Rtx
             GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options) override;
         bool takeGuiCopy(GuiSlot texture, std::span<std::uint8_t> into) override;
         void finishGuiTraces() override;
-        void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) override;
         void readPixels(std::vector<std::uint8_t>& pixels) override;
-        void readChannel(Channel channel, std::vector<float>& values) override;
-        void readComposite(std::vector<float>& values) override;
-        void takeValidationErrors(std::vector<std::string>& errors) override;
+
+        /// What a test asks of this backend and a game never does. None of the five is on a frame
+        /// path: each that reads submits a copy and waits for it, so none is const.
+
+        /// The sea every scene is traced with, `SeaState{}` until told. Uploads a spectrum and
+        /// waits the frames in flight out first.
+        void setSea(const SeaState& sea);
+
+        /// Copies one of the last frame's g-buffer channels into `values`, tightly packed, widened
+        /// to floats whatever the channel holds. The frame's, never a view scene's.
+        void readChannel(Channel channel, std::vector<float>& values);
+
+        /// The same for the composite's own output, which no channel holds: the frame a measurement
+        /// is taken on, where `readPixels` gives the one a display would show.
+        void readComposite(std::vector<float>& values);
+
+        /// The whole of a GUI texture as the device holds it, four bytes a pixel, tightly packed,
+        /// row zero first.
+        void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels);
+
+        /// Moves whatever the API has complained about since the last call into `errors`, so that
+        /// clearing before a test and reading after it are the same call.
+        void takeValidationErrors(std::vector<std::string>& errors);
 
     private:
         /// Widens a channel stored as bytes or as halves on the way out.
@@ -180,41 +134,31 @@ namespace Rtx
         /// frame, at the first of the trace and the interface to want it.
         Image& claimTarget();
 
-        /// Draws `debug` over the frame's target after the curve and before the interface, from
-        /// the slot's own vertex buffer, depth-tested against `channels`' depth. Nothing at all
-        /// for a frame with none, which is nearly every frame.
-        void recordDebugLines(VkCommandBuffer commands, FrameRecord& frame, const Shaders::VisibilityConstants& sampled,
-            const GBuffer& channels, const DebugLines& debug, GpuTimer& timer);
+        /// Where the scene a slot names sits — the world's, or a picture's — which holds null until
+        /// `setScene` fills it. A slot nothing was ever given is a caller bug, so it is asserted.
+        const std::unique_ptr<DeviceScene>& slotAt(SceneSlot slot) const;
+        std::unique_ptr<DeviceScene>& slotAt(SceneSlot slot);
 
-        /// The scene a slot names — the world's, or a picture's. A slot nothing holds is a caller
+        /// The scene a slot names, which `setScene` has filled: asked of an empty slot is a caller
         /// bug, so it is asserted rather than reported.
-        const ViewScene& sceneAt(SceneSlot slot) const;
-        ViewScene& sceneAt(SceneSlot slot);
+        const DeviceScene& sceneAt(SceneSlot slot) const;
+        DeviceScene& sceneAt(SceneSlot slot);
 
         /// What the trace reads a scene through, for the copy its last placement wrote. One
-        /// description for a frame and for a picture inside the interface, which differ in the fog
-        /// volume they march and in nothing else.
-        VisibilityInputs describeInputs(const ViewScene& held, const FogVolume* volume, std::uint32_t rayMask) const;
+        /// description for a frame and for a picture inside the interface, which differ in the
+        /// chain they trace into and in the image the puffs are composited over.
+        VisibilityInputs describeInputs(
+            const DeviceScene& held, const TraceChain& chain, std::uint32_t rayMask, const Image& shown) const;
 
-        /// The frame's camera as its trace will sample it: what the caller wrote, plus every field
-        /// only the renderer can fill. The one place a sampled camera is made, so no field goes
-        /// missing.
-        Shaders::VisibilityConstants sampleCamera(
-            const Shaders::VisibilityConstants& camera, const Reconstruction& reconstruction) const;
-
-        /// Everything a placement of `held` is, recorded and written where `placing` says. True
-        /// where anything was recorded, which is whether its command buffer is worth submitting.
-        /// What differs between the world's placement and a picture's is around this and not in it.
-        static bool recordPlacement(
-            const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing);
-
-        /// Reads into `mStats` what a placement can have moved, which is every figure but the three
-        /// a build settles — one of which is a loop over every texture, and a placement runs on the
-        /// frame path.
-        void readPlacedStats(const ViewScene& held);
-
-        /// Reads all of `mStats`, for a scene that has just been built or extended.
-        void readStats(const ViewScene& held);
+        /// A camera as its trace will sample it: what the caller wrote, plus every field only the
+        /// renderer can fill — the jitter, what the scene behind it holds, and where the eye was.
+        /// The one place a sampled camera is made, for a frame and for a picture inside the
+        /// interface alike, so no field goes missing from either.
+        ///
+        /// @param previous the camera the last frame was traced with, to reproject against, or
+        ///        null for a picture, which has no frame before it.
+        Shaders::VisibilityConstants sampleCamera(const Shaders::VisibilityConstants& camera, const DeviceScene& scene,
+            const Reconstruction& reconstruction, const Shaders::VisibilityConstants* previous) const;
 
         /// @param width, height what the frame is presented at. What it is traced at is the
         ///        upscaler's answer for that, or the same numbers where nothing upscales.
@@ -264,25 +208,21 @@ namespace Rtx
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;
 
-        std::filesystem::path mShaderDirectory;
-
         /// Whether the trace this builds counts its hits. `RendererOptions::mCountHits` says why the
         /// game's does not.
         bool mCountHits = false;
 
         /// What the run decided once, read where each knob is used: how wide both chains store
-        /// their radiance, how long the queue is held. What a frame
-        /// carries — the reconstruction request, the exposure, the delight, the sample — is read
-        /// off the frame's own blocks instead, which is where a frame that asks otherwise says so.
+        /// their radiance, how long the queue is held, and what the frames are traced under —
+        /// `mUpscaling` as it was handed over, and then whatever `setUpscale` moved it to, which
+        /// rebuilds every target and is why the mode is a setting rather than a frame option. What
+        /// a frame carries — the reconstruction request, the exposure, the delight, the sample —
+        /// is read off the frame's own blocks instead, which is where a frame that asks otherwise
+        /// says so.
         RenderProfile mProfile;
 
         /// The frames in flight and what each came to. After the counters it is handed.
         FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits };
-
-        /// What the frames are traced under: `mProfile.mUpscaling` as it stood, and then whatever
-        /// `setUpscale` moved it to. Changing the mode rebuilds every target, which is what
-        /// `setUpscale` is for and why it is a setting rather than a frame option.
-        Upscaling mUpscaling;
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
         /// spent by the next frame that reconstructs from one, which is not always the one after.
@@ -321,6 +261,21 @@ namespace Rtx
         /// chains for the reason `mChannelLayout` is.
         SetLayout mFogVolumeLayout;
 
+        /// And what every scene's texture array is shaped by, so one pass samples any scene's set.
+        SetLayout mTextureLayout;
+
+        /// The passes every trace runs, whichever camera it is for, before the two chains that
+        /// hold them. Built here and once: every kernel the trace can ever need is compiled by
+        /// `mPass` — 6.3 s on a cold cache, measured — and a frame that stopped for one was a
+        /// device reset.
+        VisibilityPass mPass;
+        CompositePass mComposite;
+
+        /// One bin for everything binned: what differs per scene is the tables, and the camera
+        /// arrives with the frame. And one shade, which runs ahead of the bin over the same tables.
+        SpriteBinPass mSpriteBin;
+        SpriteShadePass mSpriteShade;
+
         /// What the frame is traced into, at the render extent — which is the output extent
         /// wherever nothing upscales.
         TraceChain mFrame;
@@ -335,14 +290,15 @@ namespace Rtx
         /// reads as "there is no previous frame" and answers with no motion at all.
         Shaders::VisibilityConstants mPreviousCamera{};
 
-        /// The world's, which is one of these like any other: what `SceneSlot::world` names.
-        ViewScene mWorld;
+        /// The world's, which is one of these like any other: what `SceneSlot::world` names. Null
+        /// until the first `setScene`.
+        std::unique_ptr<DeviceScene> mWorld;
 
-        std::unique_ptr<VisibilityPass> mPass;
         SceneStats mStats;
 
-        CompositePass mComposite;
-        BloomPass mBloom;
+        /// Everything between a finished trace and a target, for the frame and for every picture
+        /// inside the interface.
+        DisplayChain mDisplay;
 
         /// One sea for everything traced, the doll and the map included: the water is not a
         /// property of a scene, so it is synthesised once a frame here rather than held per scene.
@@ -356,23 +312,10 @@ namespace Rtx
         /// it turns on the weather or the cell — those decide the extinction and the layer's height,
         /// which are numbers the shader already has.
         FogTile mFog;
-        ExposurePass mExposure;
-
-        /// How much of the sun's quad the frame's rays could see, eased, which the frame's curve
-        /// lays the glare fader over the picture by. The frame's alone: a picture inside the
-        /// interface is mapped with no share at all.
-        SunGlarePass mSunGlare;
 
         /// One pass for everything posed, the doll included: what differs per scene is the
-        /// tables, which each `ViewScene` holds.
+        /// tables, which each `DeviceScene` holds. Before the scenes, which hold it by reference.
         SkinPass mSkinPass;
-
-        /// One pass for everything binned, for the same reason: what differs per scene is the
-        /// tables, and the camera arrives with the frame.
-        SpriteBinPass mSpriteBin;
-
-        /// And one for everything shaded, which runs ahead of the bin over the same tables.
-        SpriteShadePass mSpriteShade;
 
         /// The hold `RenderProfile::mStressOverlapMs` asked for, or nothing.
         std::unique_ptr<StressPass> mStress;
@@ -386,25 +329,18 @@ namespace Rtx
         /// them.
         Buffer mViewCounts;
 
-        /// Held like `mPass` and for its reason: it samples the scene's textures, so it needs a
-        /// layout that only a scene brings, and the layout every scene brings is the same one.
-        std::unique_ptr<TonePass> mTone;
-
         /// The interface: `GuiTextures` holds the part with a rule, and the rest is a pipeline, a
         /// scratch vector and a counter with nothing binding them.
         GuiPass mGuiPass;
-
-        /// The debug modes' lines and triangles, over the picture and under the interface.
-        LinePass mLines;
         GuiTextures mGuiTextures;
 
         /// The batches, resolved from slots to what the pass wants. Kept so that a frame of GUI
         /// allocates nothing.
         std::vector<GuiDraw> mGuiDraws;
 
-        /// Scenes belonging to pictures rather than to the world, by slot, and the slots nothing
-        /// holds.
-        std::vector<std::unique_ptr<ViewScene>> mViewScenes;
+        /// Scenes belonging to pictures rather than to the world, by slot — null until each is
+        /// given a scene — and the slots nothing holds.
+        std::vector<std::unique_ptr<DeviceScene>> mViewScenes;
         SlotPool mFreeViewScenes;
 
         /// A picture's scene given back and not yet gone. Held until the timeline passes the
@@ -416,7 +352,7 @@ namespace Rtx
         struct DyingScene
         {
             std::uint64_t mUntil = 0;
-            std::unique_ptr<ViewScene> mScene;
+            std::unique_ptr<DeviceScene> mScene;
         };
         std::vector<DyingScene> mDyingScenes;
 

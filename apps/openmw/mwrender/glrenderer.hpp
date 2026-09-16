@@ -85,8 +85,8 @@ namespace MWRender
         void detachWorld() override;
         void adoptTraversalRoot(osg::Group& root) override;
         void applyViewMask(unsigned int mask) override;
-        void showWorld(bool shown) override;
-        bool toggleRenderMode(RenderMode mode) override;
+        void applyWorldShown() override;
+        bool toggleOwnRenderMode(RenderMode mode) override;
 
         PostProcessor* getPostProcessor() override;
 
@@ -179,8 +179,8 @@ namespace MWRender
 
         osg::ref_ptr<osgViewer::Viewer> mViewer;
 
-        /// What the update traversal was set to before the world was hidden. Restored rather than
-        /// defaulted, because somebody else chose it; the cull comes back from the seam's view mask.
+        /// What the update traversal runs with while the world is shown: the viewer's own, read
+        /// once, because nothing but a cover ever writes it.
         unsigned int mShownUpdateMask = 0;
 
         /// What the compiler was given per frame before a loading screen took the whole of it.
@@ -189,6 +189,9 @@ namespace MWRender
 
         /// Writes `mask` to the master camera and to the stereo pair, which are no-ops in mono.
         void cull(unsigned int mask);
+
+        /// The seam's view mask, less the world's bits while `tws` is off.
+        unsigned int worldCullMask() const;
 
         osg::ref_ptr<SceneUtil::SelectDepthFormatOperation> mSelectDepthFormatOperation;
         osg::ref_ptr<SceneUtil::Color::SelectColorFormatOperation> mSelectColorFormatOperation;

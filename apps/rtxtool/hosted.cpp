@@ -127,7 +127,15 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
-            const MWRender::RtxSetup setup{ .mProfile = std::move(profile), .mRun = session };
+            const MWRender::RtxSetup setup{
+                .mProfile = std::move(profile),
+                .mValidation = request.mValidation,
+                .mHeadless = request.mHeadless,
+                .mCountHits = true,
+                .mStep = request.mStep,
+                .mSettled = request.mSettled,
+                .mRun = session,
+            };
             engine.setRtxSetup(&setup);
 
             engine.go();

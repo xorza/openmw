@@ -22,6 +22,7 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
+#include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "../allocations.hpp"
@@ -201,8 +202,9 @@ namespace Rtx::Testing
                 };
             };
 
+            const SetLayout layout = TextureArray::describeLayout(device);
             Batch setup(pool);
-            TextureArray array(device, graveyard, setup, slots, {});
+            TextureArray array(device, graveyard, setup, layout, slots, {});
             setup.flush();
 
             const auto arrive = [&](Batch& batch, std::uint32_t slot) {

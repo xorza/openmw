@@ -372,7 +372,7 @@ namespace Rtx::Testing
         {
             const osg::Matrixd view = osg::Matrixd::lookAt(
                 osg::Vec3d(10.0, -50.0, 5.0), osg::Vec3d(10.0, 50.0, 5.0), osg::Vec3d(0.0, 0.0, 1.0));
-            const ViewBasis eye = viewBasisOf(osg::Matrixd::inverse(view));
+            const ViewBasis eye = viewBasisOf(osg::Matrixd::inverse(view)).value();
 
             EXPECT_NEAR(eye.mOrigin.x(), 10.0f, 1e-4f);
             EXPECT_NEAR(eye.mOrigin.y(), -50.0f, 1e-4f);

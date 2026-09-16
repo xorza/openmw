@@ -96,8 +96,6 @@ namespace Rtx
         stands.mOrigin = ground.mOrigin;
         stands.mFlattened = wantsFlattening(held.mCell, stands, around);
 
-        // The material before the mesh, here too: a mesh records the material it arrives
-        // wearing, and a cell's ground wears one for its life.
         Material material;
         material.mKind = MaterialKind::Terrain;
         material.mFlatten = stands.mFlattened;
@@ -116,7 +114,7 @@ namespace Rtx
                                           .mTexCoords = ground.mTexCoords,
                                           .mColours = ground.mColours,
                                           .mIndices = ground.mIndices },
-            FoldedShape{}, Deform::None, sNoIndex, stands.mMaterial);
+            FoldedShape{}, Deform::None, sNoIndex);
 
         // Held on the scene, because no drawable and no state set will ever name them. The
         // sweep keeps a held row, and `dropGround` is what lets go.

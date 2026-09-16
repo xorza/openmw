@@ -15,19 +15,13 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/camera.hpp>
-#include <components/rtx/debuglines.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/frameworld.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/shaders/camera.h>
-#include <components/rtx/shaders/gbuffer.h>
-#include <components/rtx/shaders/line.h>
 #include <components/rtx/shaders/scene.h>
-#include <components/rtx/shaders/tone.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
@@ -35,6 +29,7 @@
 #include <components/rtx/wavespectrum.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 
+#include "devicescene.hpp"
 #include "gbuffer.hpp"
 #include "graphicspipeline.hpp"
 #include "image.hpp"
@@ -42,12 +37,10 @@
 #include "memory.hpp"
 #include "physicaldevice.hpp"
 #include "pipelinecache.hpp"
+#include "placing.hpp"
 #include "presenter.hpp"
 #include "requirements.hpp"
 #include "result.hpp"
-#include "sceneacceleration.hpp"
-#include "scenebuffers.hpp"
-#include "skintables.hpp"
 #include "texture.hpp"
 #include "timeline.hpp"
 #include "tracerecording.hpp"
@@ -112,23 +105,6 @@ namespace Rtx
             return osg::Vec2f(frame.mArms.mRight.length() / frame.mCamera.mRight.length(),
                 frame.mArms.mUp.length() / frame.mCamera.mUp.length());
         }
-
-        /// The display pass's own description of the frame, on the picture's grid. The alpha
-        /// carries the puffs' transmittance wherever it is not the picture's coverage, which is
-        /// the same test `spritecomposite.rgen` makes.
-        Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, std::uint32_t width,
-            std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
-        {
-            return Shaders::ToneConstants{
-                .mTracedWidth = tracedWidth,
-                .mTracedHeight = tracedHeight,
-                .mCoverAlpha = frame.mTransparentBackground == 0 ? 1u : 0u,
-                .mCamera = Shaders::cameraOnGrid(frame.mCamera, width, height),
-                .mStars = frame.mStars,
-                .mGlareColour = frame.mGlareColour,
-                .mGlareAmount = sunGlareAmount(frame),
-            };
-        }
     }
 
     VulkanRenderer::VulkanRenderer(const RendererOptions& options)
@@ -138,43 +114,42 @@ namespace Rtx
               deviceExtensionsFor(options))
         , mPool(mDevice)
         , mGraveyard(mDevice, mPool)
-        , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
         , mProfile(options.mProfile)
-        , mUpscaling(mProfile.mUpscaling)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
+        , mTextureLayout(TextureArray::describeLayout(mDevice))
+        , mPass(mDevice, mPool, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits)
+        , mComposite(mDevice, mPool, options.mShaderDirectory)
+        , mSpriteBin(mDevice, options.mShaderDirectory)
+        , mSpriteShade(mDevice, options.mShaderDirectory)
         // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
         // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
         // `TRANSFER_SRC` because `readComposite` copies this out: it is the frame a measurement is
         // taken on, where `readPixels` gives the one a display would show.
-        , mFrame(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
+        , mFrame(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin,
+              mSpriteShade, options.mShaderDirectory,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
-        , mView(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
-              VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
-        , mComposite(mDevice, mPool, options.mShaderDirectory)
-        , mBloom(mDevice, options.mShaderDirectory)
+        , mView(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin,
+              mSpriteShade, options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
+        , mDisplay(mDevice, mPool, mGraveyard, mPass, mTextureLayout.get(), options.mShaderDirectory,
+              PresentTargets::sFormat)
         , mWaves(mDevice, mPool, options.mShaderDirectory)
         , mRipples(mDevice, mPool, options.mShaderDirectory)
         , mFog(mDevice, mPool)
-        , mExposure(mDevice, options.mShaderDirectory)
-        , mSunGlare(mDevice, options.mShaderDirectory)
         , mSkinPass(mDevice, options.mShaderDirectory)
-        , mSpriteBin(mDevice, options.mShaderDirectory)
-        , mSpriteShade(mDevice, options.mShaderDirectory)
         , mNoSprites(Buffer::hostWritten(
               mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "no sprites"))
         , mViewCounts(
               Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
-        , mLines(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice, mGraveyard, mPool)
     {
         // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
         mNoSprites.clear();
 
         // Before the first targets, because what to trace at is its answer and not ours.
-        if (mUpscaling.mMode != Upscale::Off)
+        if (mProfile.mUpscaling.mMode != Upscale::Off)
             startUpscaler();
 
         if (mProfile.mStressOverlapMs > 0.0)
@@ -236,7 +211,7 @@ namespace Rtx
     bool VulkanRenderer::upscaling() const
     {
 #ifdef OPENMW_RTX_DLSS
-        return mNgx != nullptr && mUpscaling.mMode != Upscale::Off;
+        return mNgx != nullptr && mProfile.mUpscaling.mMode != Upscale::Off;
 #else
         return false;
 #endif
@@ -273,7 +248,7 @@ namespace Rtx
 
     void VulkanRenderer::setUpscale(Upscale upscale)
     {
-        if (upscale == mUpscaling.mMode)
+        if (upscale == mProfile.mUpscaling.mMode)
             return;
 
         // Before anything is torn down, so a mode this machine cannot reach leaves the renderer
@@ -281,7 +256,7 @@ namespace Rtx
         if (upscale != Upscale::Off)
             startUpscaler();
 
-        mUpscaling.mMode = upscale;
+        mProfile.mUpscaling.mMode = upscale;
 
         // What is about to be replaced may still be in flight.
         drain();
@@ -313,7 +288,7 @@ namespace Rtx
         VkExtent2D render{ width, height };
 #ifdef OPENMW_RTX_DLSS
         if (upscaling())
-            render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscaling.mMode);
+            render = mNgx->getRenderSize(VkExtent2D{ width, height }, mProfile.mUpscaling.mMode);
 #endif
         mFrame.resize(render.width, render.height, mProfile.mRadianceWidth);
 
@@ -342,7 +317,7 @@ namespace Rtx
             // once per frame.
             mPool.submitAndWait([&](VkCommandBuffer commands) {
                 mUpscaler = std::make_unique<DlssPass>(*mNgx, commands, render,
-                    VkExtent2D{ mOutputWidth, mOutputHeight }, mUpscaling.mMode, mUpscaling.mPreset);
+                    VkExtent2D{ mOutputWidth, mOutputHeight }, mProfile.mUpscaling.mMode, mProfile.mUpscaling.mPreset);
             });
         }
 #endif
@@ -352,7 +327,7 @@ namespace Rtx
         // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
         const std::uint32_t shownWidth = upscaling() ? mOutputWidth : mFrame.getWidth();
         const std::uint32_t shownHeight = upscaling() ? mOutputHeight : mFrame.getHeight();
-        mBloom.resize(shownWidth, shownHeight);
+        mDisplay.resize(shownWidth, shownHeight);
 
         // A frame of a different size is not one this one can be reprojected against.
         mPreviousCamera = Shaders::VisibilityConstants{};
@@ -402,42 +377,55 @@ namespace Rtx
         return mInstance.getValidationLog() != nullptr;
     }
 
-    const VulkanRenderer::ViewScene& VulkanRenderer::sceneAt(const SceneSlot slot) const
+    const std::unique_ptr<DeviceScene>& VulkanRenderer::slotAt(const SceneSlot slot) const
     {
         if (slot.isWorld())
             return mWorld;
 
-        assert(slot.getViewIndex() < mViewScenes.size() && mViewScenes[slot.getViewIndex()] != nullptr
-            && "a scene slot nothing holds");
-        return *mViewScenes[slot.getViewIndex()];
+        assert(slot.getViewIndex() < mViewScenes.size() && "a scene slot nothing was given");
+        return mViewScenes[slot.getViewIndex()];
     }
 
-    VulkanRenderer::ViewScene& VulkanRenderer::sceneAt(const SceneSlot slot)
+    std::unique_ptr<DeviceScene>& VulkanRenderer::slotAt(const SceneSlot slot)
     {
-        return const_cast<ViewScene&>(std::as_const(*this).sceneAt(slot));
+        return const_cast<std::unique_ptr<DeviceScene>&>(std::as_const(*this).slotAt(slot));
+    }
+
+    const DeviceScene& VulkanRenderer::sceneAt(const SceneSlot slot) const
+    {
+        const std::unique_ptr<DeviceScene>& held = slotAt(slot);
+        assert(held != nullptr && "a scene slot nothing holds");
+        return *held;
+    }
+
+    DeviceScene& VulkanRenderer::sceneAt(const SceneSlot slot)
+    {
+        return const_cast<DeviceScene&>(std::as_const(*this).sceneAt(slot));
     }
 
     VisibilityInputs VulkanRenderer::describeInputs(
-        const ViewScene& held, const FogVolume* const volume, const std::uint32_t rayMask) const
+        const DeviceScene& held, const TraceChain& chain, const std::uint32_t rayMask, const Image& shown) const
     {
         return VisibilityInputs{
-            .mScene = held.mAcceleration->getTopLevel(),
-            .mBuffers = held.mBuffers.get(),
-            .mSlot = held.mSlot,
-            .mIndexBlocks = held.mAcceleration->getIndexBlocks(),
-            .mTextures = held.mTextures->getSet(held.mSlot),
+            .mScene = held.getAcceleration().getTopLevel(),
+            .mBuffers = &held.getBuffers(),
+            .mSlot = held.getSlot(),
+            .mIndexBlocks = held.getAcceleration().getIndexBlocks(),
+            .mTextures = held.getTextures(),
             .mWaves = &mWaves,
             .mRipples = &mRipples,
             .mFog = &mFog,
-            .mFogVolume = volume,
+            .mFogVolume = &chain.getFogVolume(),
             .mSpriteList = (rayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.addressFor(),
-            .mSunGlare = &mSunGlare.getCounts(),
-            .mWater = held.mAcceleration->getInstanceCounts().mWater > 0,
+            .mShown = &shown,
+            .mSunGlare = &mDisplay.getGlareCounts(),
+            .mWater = held.getCounts().mWater > 0,
         };
     }
 
-    Shaders::VisibilityConstants VulkanRenderer::sampleCamera(
-        const Shaders::VisibilityConstants& camera, const Reconstruction& reconstruction) const
+    Shaders::VisibilityConstants VulkanRenderer::sampleCamera(const Shaders::VisibilityConstants& camera,
+        const DeviceScene& scene, const Reconstruction& reconstruction,
+        const Shaders::VisibilityConstants* previous) const
     {
         Shaders::VisibilityConstants sampled = camera;
 
@@ -454,25 +442,29 @@ namespace Rtx
         // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
         // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
         // at from. The arms are the scene's and the camera's both: a map draws none.
-        const InstanceCounts& counts = mWorld.mAcceleration->getInstanceCounts();
+        const InstanceCounts& counts = scene.getCounts();
         sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
         sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
         sampled.mArmsInFrame = counts.mFirstPerson > 0 && (camera.mRayMask & Shaders::MASK_FIRST_PERSON) != 0 ? 1 : 0;
 
         // The one subtraction of two world points, and it happens here. Two camera positions a
         // step apart subtract exactly in a float; the same difference taken on the device, between
-        // coordinates six figures long, would be rounding.
-        sampled.mCameraMotion = camera.mOrigin - mPreviousCamera.mOrigin;
-        sampled.mPreviousForward = mPreviousCamera.mCamera.mForward;
-        sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
-        sampled.mPreviousUp = mPreviousCamera.mCamera.mUp;
+        // coordinates six figures long, would be rounding. A picture has no last frame and keeps
+        // the caller's nothing.
+        if (previous != nullptr)
+        {
+            sampled.mCameraMotion = camera.mOrigin - previous->mOrigin;
+            sampled.mPreviousForward = previous->mCamera.mForward;
+            sampled.mPreviousRight = previous->mCamera.mRight;
+            sampled.mPreviousUp = previous->mCamera.mUp;
+        }
 
         return sampled;
     }
 
     void VulkanRenderer::setScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures)
     {
-        ViewScene& held = sceneAt(slot);
+        std::unique_ptr<DeviceScene>& held = slotAt(slot);
 
         // Nothing may be in flight over what is about to go. A rebuild is a load, and a load
         // waits: for a picture recorded against the old scene and not yet carried, for the frames
@@ -481,12 +473,8 @@ namespace Rtx
         drain();
 
         // Torn down before anything is built, so a second scene does not hold two of everything at
-        // once — a cell's structures and textures are most of what this renderer occupies. The pass
-        // is not among them; see below.
-        held.mTextures.reset();
-        held.mSkinTables.reset();
-        held.mBuffers.reset();
-        held.mAcceleration.reset();
+        // once — a cell's structures and textures are most of what this renderer occupies.
+        held.reset();
 
         if (slot.isWorld())
         {
@@ -503,65 +491,20 @@ namespace Rtx
             mPreviousCamera = Shaders::VisibilityConstants{};
         }
 
-        // The copies are new and alike, so nothing has read either.
-        held.mSlot = FrameSlot{};
-        held.mPictureRides.fill(0);
-
-        // Made here for the same reason a frame's are: both of the two below want them, and this is
-        // the only place that knows both.
-        makeInstanceRecords(scene, held.mRecords);
-
-        // One submit for the whole cell. Every structure, every table and every texture is
-        // recorded into this and the queue is asked once, at the flush below; a round trip apiece
-        // would be hundreds for a town.
+        // One submit for the whole cell, asked of the queue once at the flush below — by hand
+        // rather than left to the destructor, so a submit that fails throws out of here instead
+        // of being logged on the way past.
         Batch setup(mPool);
-
-        // Every scene is traced by two frames at once, the doll's included: a picture inside the
-        // interface rides the frame it was asked on, and the next frame may place it again while
-        // that one is still tracing.
-        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, mGraveyard, setup, scene, sFrameSlots);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, mGraveyard, setup, scene, held.mRecords, sFrameSlots);
-        held.mSkinTables = std::make_unique<SkinTables>(mDevice, mGraveyard, setup, scene, sFrameSlots);
-
-        held.mTextures = std::make_unique<TextureArray>(
-            mDevice, mGraveyard, setup, static_cast<std::uint32_t>(scene.textures().getPaths().size()), textures);
-
-        // Built once and kept, because building one compiles every kernel the trace can ever need
-        // — 6.3 s on a cold cache, measured. Every texture array declares the same bindless
-        // layout, and identically defined layouts are compatible, so the pass belongs to neither
-        // scene.
-        if (mPass == nullptr)
-        {
-            mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
-                mChannelLayout, mFogVolumeLayout, mCountHits);
-            mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
-        }
-
-        // Posed before it is built. The structures are built over the first copy of the
-        // positions, and a skinned body's bind pose is not where the body is; the pass writes the
-        // pose into that copy and the build then reads it. The other copy is owed the same pose and
-        // takes it on the first placement that writes it.
-        mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
-            held.mBuffers->getNormals(), nullptr);
-        held.mAcceleration->build(setup, scene, held.mRecords);
-        held.mBuiltMeshes = scene.meshes().getRevision();
-        held.mBuiltStructure = scene.getStructureRevision();
-
-        // The first copy's set, which the first frame binds before any placement pays it.
-        held.mTextures->sync(FrameSlot{});
-
-        // By hand rather than left to the destructor, so a submit that fails throws out of here
-        // instead of being logged on the way past.
+        held = std::make_unique<DeviceScene>(mDevice, mGraveyard, setup, mTextureLayout, mSkinPass, scene, textures);
         setup.flush();
 
         if (slot.isWorld())
-            readStats(held);
+            held->readStats(mStats);
     }
 
     void VulkanRenderer::extendScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived)
     {
-        ViewScene& held = sceneAt(slot);
-        assert(held.mAcceleration != nullptr && "extendScene before setScene");
+        DeviceScene& held = sceneAt(slot);
 
         // An arrival does not wait for the frames in flight: what arrives is written on the queue,
         // behind whatever a frame in flight still reads of the room it was given, and the writes
@@ -572,32 +515,12 @@ namespace Rtx
             timer = &mRing.begin().mTimer;
 
         Batch setup(mPool);
-        held.mTextures->write(setup, arrived);
-
-        // The meshes that arrived, and no others: the geometry blocks are appended to rather than
-        // replaced, so every address a structure was built from is still its own. The revision and
-        // not the count, because a freed slot taken over holds different geometry at the same size.
-        if (scene.meshes().getRevision() != held.mBuiltMeshes)
-        {
-            held.mBuffers->extend(setup, scene);
-            held.mSkinTables->extend(setup, scene);
-            held.mAcceleration->extend(setup, scene);
-
-            // Posed before it is built, as `setScene` does, into the first copy, which is what the
-            // build reads — and only the meshes that arrived, over the rows `SkinTables::extend`
-            // staged. `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
-            mSkinPass.recordArrived(setup.getCommands(), scene, FrameSlot{}, scene.meshes().getArrived(),
-                *held.mSkinTables, held.mAcceleration->getPoses(), held.mBuffers->getNormals());
-            held.mAcceleration->buildArrived(setup, scene, timer);
-            held.mBuiltMeshes = scene.meshes().getRevision();
-        }
+        held.extend(setup, scene, arrived, timer);
 
         // Deferred to the placement's submit: `placeScene` submits this ahead of the refit and the
         // top level, and the barrier every upload and build ends in orders them, so a composite
         // landing costs no submit, fence or wait of its own.
         setup.defer();
-
-        held.mBuiltStructure = scene.getStructureRevision();
 
         // Always, because the top level names every instance and an arrival changed the list. It is
         // rebuilt every frame regardless, so an arrival costs it nothing.
@@ -607,83 +530,35 @@ namespace Rtx
         // describes the same surfaces — and throwing it away is a visible flash every time an actor
         // walks into view with a texture nobody has worn yet.
         if (slot.isWorld())
-            readStats(held);
-    }
-
-    void VulkanRenderer::ViewScene::finishReads(const FrameSlot slot) const
-    {
-        mBuffers->finishReads(slot);
-        mAcceleration->finishReads(slot);
-        mSkinTables->finishReads(slot);
-        mTextures->finishReads(slot);
+            held.readStats(mStats);
     }
 
     SceneHeld VulkanRenderer::describeHeld(const SceneSlot slot) const
     {
-        const ViewScene& held = sceneAt(slot);
-        return SceneHeld{
-            .mBuilt = held.mAcceleration != nullptr,
-            .mStructureRevision = held.mBuiltStructure,
-            .mTextureCount = held.mTextures == nullptr ? 0 : held.mTextures->getCount(),
-        };
+        const std::unique_ptr<DeviceScene>& held = slotAt(slot);
+        return held != nullptr ? held->describe() : SceneHeld{};
     }
 
     void VulkanRenderer::dropTextures(const SceneSlot slot, std::span<const Index> textures)
     {
-        ViewScene& held = sceneAt(slot);
-
-        // Before there is an array at all, which is a scene that swept before it was ever handed
-        // over. There is nothing holding the images to destroy.
-        if (held.mTextures == nullptr)
-            return;
-
-        held.mTextures->drop(textures);
-    }
-
-    bool VulkanRenderer::recordPlacement(
-        const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing)
-    {
-        // What the scene let go of, given back here: walking away from a ring frees its meshes and
-        // nothing arrives to take them over until the next ring, so a frame that only places is the
-        // one that must not hold their structures.
-        held.mAcceleration->release(scene.meshes().getFreed());
-
-        // Once, for the slots that changed, and both halves read it: a nine-by-nine exterior is
-        // fifty thousand rows with a matrix inverse apiece, and a frame changes a hundred.
-        updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
-
-        // The descriptors this copy's set owes, now that nothing on the queue reads it.
-        held.mTextures->sync(placing.mSlot);
-
-        // The pose first, because the refit reads it. Every skinned body and morphed face this
-        // copy owes is computed into it here, and the barrier the pass ends in is what the refit
-        // and the trace wait on.
-        const bool posed = skin.record(placing.mCommands, scene, placing.mSlot, *held.mSkinTables,
-            held.mAcceleration->getPoses(), held.mBuffers->getNormals(), placing.mTimer);
-
-        const bool built = held.mAcceleration->place(scene, held.mRecords, held.mChangedRecords, placing);
-
-        // Nothing to report, because nothing here is recorded: the tables are host-visible and the
-        // submit that follows makes them visible. Only what a moving world changed — rebuilding all
-        // of it is tens of milliseconds on a nine-by-nine region.
-        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, placing);
-
-        return posed || built;
+        // Before there is a scene at all, which is one that swept before it was ever handed over.
+        // There is nothing holding the images to destroy.
+        if (DeviceScene* const held = slotAt(slot).get(); held != nullptr)
+            held->dropTextures(textures);
     }
 
     void VulkanRenderer::placeScene(const SceneSlot slot, const SceneDesc& scene)
     {
-        ViewScene& held = sceneAt(slot);
-        assert(held.mAcceleration != nullptr && "placeScene before setScene");
+        DeviceScene& held = sceneAt(slot);
 
         // The copy this placement writes is the one the last frame did not trace. The other copy
         // and not a parity of its own, because a frame need not place.
-        const FrameSlot into = held.mSlot.next();
+        const FrameSlot into = held.getSlot().next();
 
         // A picture of this copy recorded and carried by nothing yet is carried first, for what
-        // `ViewScene::mPictureRides` says. Three placements of one scene inside one frame is the
+        // `DeviceScene::pictureRides` says. Three placements of one scene inside one frame is the
         // only way here, which a game never takes.
-        if (held.mPictureRides[into.get()] == mDevice.getTimeline().getNext())
+        if (held.pictureRides(into, mDevice.getTimeline().getNext()))
             mPool.finishDeferred();
 
         // Whatever last read or wrote this copy on the queue is waited for here, and each table
@@ -699,13 +574,13 @@ namespace Rtx
         if (!slot.isWorld())
         {
             Batch placement(mPool);
-            recordPlacement(mSkinPass, held, scene,
+            held.place(scene,
                 Placing{
                     .mCommands = placement.getCommands(),
                     .mSlot = into,
                 });
             placement.defer();
-            held.mSlot = into;
+            held.placed(into);
             return;
         }
 
@@ -720,7 +595,7 @@ namespace Rtx
         const VkCommandBuffer placement = mRing.takePlaceCommands(frame);
         mPool.begin(placement);
 
-        if (recordPlacement(mSkinPass, held, scene,
+        if (held.place(scene,
                 Placing{
                     .mCommands = placement,
                     .mSlot = into,
@@ -730,39 +605,14 @@ namespace Rtx
         else
             mPool.end(placement);
 
-        held.mSlot = into;
+        held.placed(into);
 
-        readPlacedStats(held);
+        held.readPlacedStats(mStats);
     }
 
     MemoryReport VulkanRenderer::getMemoryReport() const
     {
         return mDevice.getMemory().report();
-    }
-
-    void VulkanRenderer::readPlacedStats(const ViewScene& held)
-    {
-        mStats.mInstances = held.mAcceleration->getInstanceCounts();
-        mStats.mTableBytes = held.mBuffers->getBytes() + held.mSkinTables->getBytes();
-
-        // Read every placement and not with the rest of the report, because a placement is
-        // where the answer lands: the queries a build wrote are read some placements later, so a
-        // pair read at the build would be the nought that stands between the question and its
-        // answer. `BottomLevelStore::getCompactableBytes` says why it is not asked for sooner.
-        mStats.mCompactableBytes = held.mAcceleration->getCompactableBytes();
-        mStats.mCompactableNowBytes = held.mAcceleration->getCompactableNowBytes();
-    }
-
-    void VulkanRenderer::readStats(const ViewScene& held)
-    {
-        readPlacedStats(held);
-
-        mStats.mStructureBytes = held.mAcceleration->getStructureBytes();
-        mStats.mStructureLiveBytes = held.mAcceleration->getStructureLiveBytes();
-
-        const TexturesHeld textures = held.mTextures->getHeld();
-        mStats.mTextureCount = textures.mCount;
-        mStats.mTextureBytes = textures.mBytes;
     }
 
     void VulkanRenderer::setVerticalSync(SDLUtil::VSyncMode mode)
@@ -915,44 +765,6 @@ namespace Rtx
         return shown;
     }
 
-    void VulkanRenderer::recordDebugLines(const VkCommandBuffer commands, FrameRecord& frame,
-        const Shaders::VisibilityConstants& sampled, const GBuffer& channels, const DebugLines& debug, GpuTimer& timer)
-    {
-        if (debug.empty())
-            return;
-
-        // The lines first and the triangles after them, in the slot's own buffer: the frame
-        // behind read its own slot's, so nothing here is written under a submit.
-        const std::size_t count = debug.mLines.size() + debug.mTriangles.size();
-        mGraveyard.bury(growTo(frame.mDebugVertices, mDevice, BufferKind::HostWritten, count * sizeof(DebugVertex),
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "debug vertices"));
-
-        const std::span<DebugVertex> written = frame.mDebugVertices.writable<DebugVertex>(0, count);
-        std::copy(debug.mLines.begin(), debug.mLines.end(), written.begin());
-        std::copy(debug.mTriangles.begin(), debug.mTriangles.end(), written.begin() + debug.mLines.size());
-
-        timer.open(commands, "lines");
-
-        // Drawn over what the curve wrote, and left where the curve left it: the interface and
-        // the presenter both take the target from there.
-        Image& target = mTargets.current();
-        target.transition(commands, Use::sComputeWrite, Use::sColourAttachment);
-
-        mLines.record(commands, target, channels.get(Channel::Depth),
-            Shaders::LineConstants{
-                .mCamera = Shaders::cameraOnGrid(sampled.mCamera, target.getWidth(), target.getHeight()),
-                .mOrigin = sampled.mOrigin,
-                .mNear = sampled.mNear,
-                .mTraced = Shaders::uvec2(channels.getWidth(), channels.getHeight()),
-            },
-            frame.mDebugVertices.getHandle(), static_cast<std::uint32_t>(debug.mLines.size()),
-            static_cast<std::uint32_t>(debug.mTriangles.size()));
-
-        target.transition(commands, Use::sColourAttachment, Use::sComputeWrite);
-
-        timer.close(commands);
-    }
-
     Image& VulkanRenderer::claimTarget()
     {
         return mTargets.claim([this](const Image& target) {
@@ -973,13 +785,13 @@ namespace Rtx
 
     Reconstruction VulkanRenderer::renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options)
     {
-        assert(mPass != nullptr && "renderFrame before setScene");
+        assert(mWorld != nullptr && "renderFrame before setScene");
         assert(camera.mCamera.mWidth == mFrame.getWidth() && camera.mCamera.mHeight == mFrame.getHeight()
             && "the camera has to be built for the render extent; ask getExtents");
 
         // Coverage and an upscaler do not meet: NGX writes the upscaled image itself and was never
         // given `pInAlpha`, so a picture that stops where nothing was hit is `traceGuiTexture`'s.
-        assert((camera.mTransparentBackground == 0 || mUpscaling.mMode == Upscale::Off)
+        assert((camera.mTransparentBackground == 0 || mProfile.mUpscaling.mMode == Upscale::Off)
             && "a frame that stops where nothing was hit belongs to traceGuiTexture, which does not upscale");
 
         // The frame `placeScene` opened, or a new one where nothing was placed.
@@ -1004,17 +816,16 @@ namespace Rtx
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
         // result, so what a run reports and what it did are one answer.
-        const Reconstruction reconstruction = Reconstruction::resolve(mUpscaling, options.mReconstruction);
+        const Reconstruction reconstruction = Reconstruction::resolve(mProfile.mUpscaling, options.mReconstruction);
         frame.mReconstruction = reconstruction;
 
-        Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);
+        Shaders::VisibilityConstants sampled = sampleCamera(camera, *mWorld, reconstruction, &mPreviousCamera);
 
-        VisibilityInputs inputs = describeInputs(mWorld, &mFrame.getFogVolume(), camera.mRayMask);
-
-        // Where the puffs are composited: over the reconstruction where something upscales, and
-        // over the trace's own composite where nothing does. Named before the trace, because the
-        // set that carries it is pushed for every launch.
-        inputs.mShown = upscaling() ? &mUpscaled : &mFrame.getColour();
+        // The puffs are composited over the reconstruction where something upscales, and over the
+        // trace's own composite where nothing does. Named before the trace, because the set that
+        // carries it is pushed for every launch.
+        const VisibilityInputs inputs
+            = describeInputs(*mWorld, mFrame, camera.mRayMask, upscaling() ? mUpscaled : mFrame.getColour());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
@@ -1045,7 +856,7 @@ namespace Rtx
 #endif
 
         // The glare fader's query starts the frame at nothing, ahead of the trace that counts.
-        mSunGlare.begin(commands);
+        mDisplay.beginGlare(commands);
 
         // What walked through the water, stepped before the trace reads it and only where the
         // world stands in a sea: one field under every picture of this frame, anchored where the
@@ -1074,20 +885,17 @@ namespace Rtx
         bool historyRead = filtering;
 
         const GBuffer& channels = mFrame.getChannels();
+        Image& target = claimTarget();
 
         const Image* shown = &mFrame.record(commands,
             TraceRecording{
-                .mVisibility = mPass.get(),
-                .mComposite = &mComposite,
-                .mSpriteBin = &mSpriteBin,
-                .mSpriteShade = &mSpriteShade,
                 .mInputs = inputs,
-                .mBinSlot = mRing.getRecordingSlot(),
-                .mBuffers = mWorld.mBuffers.get(),
+                .mTraceSlot = mRing.getRecordingSlot(),
+                .mBuffers = &mWorld->getBuffers(),
                 .mAsked = camera,
                 .mSampled = sampled,
                 .mCounts = &frame.mHitCount,
-                .mTarget = &claimTarget(),
+                .mTarget = &target,
                 .mSum = mSum.isEmpty() ? nullptr : &mSum,
                 .mAccumulate = options.mAccumulate,
                 .mAirLost = airLost,
@@ -1124,53 +932,41 @@ namespace Rtx
         }
 #endif
 
-        // The puffs over the reconstructed frame, at its own extent, and then the frame is what
-        // the lens spreads and the curve maps. The bloom samples what this leaves, rather than
-        // loading it — `BloomPass` binds the frame as a combined image sampler — so the scope
-        // after it names both reads.
+        // The rest of the frame, over the reconstruction where something upscales — which the
+        // upscaler left where the puffs want it — and over the trace's own composite where nothing
+        // does. The whole of the frame is the picture, which is the output's extent either way.
         assert(shown == inputs.mShown && "the puffs composited over a frame the set does not name");
+        assert(shown->getWidth() == mOutputWidth && shown->getHeight() == mOutputHeight);
         if (!upscaling())
             shown->transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
-        mPass->recordSpriteComposite(commands, inputs, channels, frame.mHitCount, sampled.mFrame,
-            VkExtent2D{ shown->getWidth(), shown->getHeight() }, &timer);
-        shown->transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
 
-        // What the lens will spread, built here and applied by the curve. Nothing is
-        // written back over the frame — `BloomPass` says why the trace's own answer has to
-        // reach `readComposite` untouched.
-        timer.open(commands, "bloom");
-        mBloom.record(commands, *shown);
-        timer.close(commands);
-
-        // Measured off the image the curve is about to map, which is the upscaled one
-        // wherever something upscales — see `histogram.comp` for what measuring the other one
-        // costs. One `shown` feeds both, so the two cannot come apart.
-        timer.open(commands, "exposure");
+        // The third thing that reads a lost history, and the only one that reads it on every
+        // frame: the eye has no past to adapt from either.
+        const float sinceLastSeconds = 0.001f * sinceLastMs;
+        Display::Exposure exposure
+            = Display::Measured{ .mSeconds = sinceLastSeconds, .mReset = historyLost, .mBias = options.mExposureBias };
         if (options.mExposure.has_value())
-            mExposure.recordFixed(commands, *options.mExposure);
+            exposure = Display::Fixed{ *options.mExposure };
         else
-        {
-            // The third thing that reads a lost history, and the only one that reads it on
-            // every frame: the eye has no past to adapt from either.
             historyRead = true;
-            mExposure.record(commands, *shown, 0.001f * sinceLastMs, historyLost, options.mExposureBias);
-        }
-        timer.close(commands);
 
-        // What the eye saw of the sun's quad, eased at the query's own rate, which the curve
-        // lays the glare fader over the picture by. Read after the trace and before the curve,
-        // on the device: a frame's own count is a frame's own wash.
-        timer.open(commands, "glare");
-        mSunGlare.record(commands, 0.001f * sinceLastMs, historyLost);
-        timer.close(commands);
-
-        timer.open(commands, "tone");
-        mTone->record(commands, *shown, mExposure.getExposure(), mSunGlare.getShare(),
-            channels.get(Channel::StarsShown), mBloom.getPyramid(), inputs.mTextures, mTargets.current(),
-            toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
-        timer.close(commands);
-
-        recordDebugLines(commands, frame, sampled, channels, options.mDebug, timer);
+        mDisplay.record(commands,
+            Display{
+                .mShown = *shown,
+                .mExtent = VkExtent2D{ mOutputWidth, mOutputHeight },
+                .mChannels = channels,
+                .mInputs = inputs,
+                .mSampled = sampled,
+                .mCounts = frame.mHitCount,
+                .mTraceSlot = mRing.getRecordingSlot(),
+                .mTarget = target,
+                .mExposure = exposure,
+                .mBloom = true,
+                .mGlare = Display::Glare{ .mSeconds = sinceLastSeconds, .mReset = historyLost },
+                .mDebug = options.mDebug,
+                .mDebugVertices = &frame.mDebugVertices,
+                .mTimer = &timer,
+            });
 
         // After the picture and inside the frame's trace, so the frame is finished when its value
         // has passed and the hold is the last thing it did.
@@ -1204,20 +1000,21 @@ namespace Rtx
 
     SceneSlot VulkanRenderer::addViewScene()
     {
+        // Empty until `setScene` fills it: a slot is a name, and the scene arrives with the first
+        // description.
         if (const Index taken = mFreeViewScenes.take(); taken != sNoIndex)
         {
-            mViewScenes[taken] = std::make_unique<ViewScene>();
+            mViewScenes[taken] = nullptr;
             return SceneSlot::view(taken);
         }
 
-        mViewScenes.push_back(std::make_unique<ViewScene>());
+        mViewScenes.push_back(nullptr);
         return SceneSlot::view(static_cast<std::uint32_t>(mViewScenes.size() - 1));
     }
 
     void VulkanRenderer::dropViewScene(const SceneSlot scene)
     {
-        assert(scene.getViewIndex() < mViewScenes.size() && mViewScenes[scene.getViewIndex()] != nullptr
-            && "a scene given back twice");
+        assert(scene.getViewIndex() < mViewScenes.size() && "a scene given back twice");
 
         // Held and not drained: a picture of it recorded this frame and not yet carried rides the
         // next submit, and so does the last placement's refit, so the scene goes once the timeline
@@ -1247,32 +1044,22 @@ namespace Rtx
     void VulkanRenderer::traceGuiTexture(
         const GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
     {
-        assert(mPass != nullptr && "traceGuiTexture before any scene was built");
-        assert(camera.mCamera.mWidth == options.mWidth && camera.mCamera.mHeight == options.mHeight
-            && "the camera has to be built for the part of the texture it fills");
-
         const bool held = mGuiTextures.holds(texture);
         assert(held && "a trace into a slot nothing holds");
 
-        if (!held || options.mWidth == 0 || options.mHeight == 0)
+        // The camera's own extent is how much of the texture the picture fills.
+        const VkExtent2D extent{ camera.mCamera.mWidth, camera.mCamera.mHeight };
+        if (!held || extent.width == 0 || extent.height == 0)
             return;
 
-        growViewTargets(options.mWidth, options.mHeight);
+        growViewTargets(extent.width, extent.height);
 
-        ViewScene& traced = sceneAt(options.mScene);
+        DeviceScene& traced = sceneAt(options.mScene);
 
-        VisibilityInputs inputs = describeInputs(traced, &mView.getFogVolume(), camera.mRayMask);
-        inputs.mShown = &mView.getColour();
+        const VisibilityInputs inputs = describeInputs(traced, mView, camera.mRayMask, mView.getColour());
 
-        // The scene's own, filled here rather than by the caller, because whether the scene behind
-        // a camera holds a cloud is this renderer's to answer. The only one of `sampleCamera`'s
-        // fields a picture wants. Copied because the caller's block is theirs.
-        Shaders::VisibilityConstants sampled = camera;
-        sampled.mArmsSpread = armsSpreadOf(camera);
-        const InstanceCounts& counts = traced.mAcceleration->getInstanceCounts();
-        sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
-        sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
-        sampled.mArmsInFrame = counts.mFirstPerson > 0 && (camera.mRayMask & Shaders::MASK_FIRST_PERSON) != 0 ? 1 : 0;
+        // Nothing reconstructs a picture, so nothing jitters it, and it has no frame before it.
+        Shaders::VisibilityConstants sampled = sampleCamera(camera, traced, Reconstruction{}, nullptr);
 
         // The world's ripple field where the picture is of the world, which is the one place it
         // could have a wake in it; a subject of its own stands in no sea.
@@ -1296,31 +1083,31 @@ namespace Rtx
             // which is what tells the cascade to filter as widely as it can.
             mView.record(commands,
                 TraceRecording{
-                    .mVisibility = mPass.get(),
-                    .mComposite = &mComposite,
-                    .mSpriteBin = &mSpriteBin,
-                    .mSpriteShade = &mSpriteShade,
                     .mInputs = inputs,
-                    .mBuffers = traced.mBuffers.get(),
+                    .mBuffers = &traced.getBuffers(),
                     .mAsked = camera,
                     .mSampled = sampled,
                     .mCounts = &mViewCounts,
                     .mTarget = &mViewTarget,
                 });
 
-            // The puffs over the picture, at its own extent: a torch's flame in a doll's hand is a
-            // sprite.
+            // The puffs over the picture — a torch's flame in a doll's hand is a sprite — and the
+            // curve, and nothing else: a picture is measured off nothing, mapped with no share and
+            // spread by no lens, because a map tile is a diagram and the same armour must be the
+            // same brightness in two windows.
             mView.getColour().transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
-            mPass->recordSpriteComposite(commands, inputs, channels, mViewCounts, sampled.mFrame,
-                VkExtent2D{ options.mWidth, options.mHeight }, nullptr);
-            mView.getColour().transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
-
-            // One, and measured off nothing, or the same armour would be a different brightness
-            // in two windows; out of its own buffer, for what `ExposurePass::getPictureExposure`
-            // says. And no lens, because a map tile is a diagram.
-            mTone->record(commands, mView.getColour(), mExposure.getPictureExposure(), mSunGlare.getNoShare(),
-                channels.get(Channel::StarsShown), nullptr, inputs.mTextures, mViewTarget,
-                toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
+            mDisplay.record(commands,
+                Display{
+                    .mShown = mView.getColour(),
+                    .mExtent = extent,
+                    .mChannels = channels,
+                    .mInputs = inputs,
+                    .mSampled = sampled,
+                    .mCounts = mViewCounts,
+                    .mTraceSlot = FrameSlot{},
+                    .mTarget = mViewTarget,
+                    .mExposure = Display::Picture{},
+                });
 
             mViewTarget.transition(commands, Use::sComputeWrite, Use::sCopyRead);
 
@@ -1328,7 +1115,7 @@ namespace Rtx
             // `GuiTextures`' to say, and a caller that said it here had to keep a barrier's scope in
             // step with the commands below — which it did not.
             mGuiTextures.writeWith(texture, commands, [&](const Image& into, VkImageLayout layout) {
-                assert(options.mWidth <= into.getWidth() && options.mHeight <= into.getHeight());
+                assert(extent.width <= into.getWidth() && extent.height <= into.getHeight());
 
                 // Cleared whole and then covered in part, and only where the picture does not
                 // cover it all: what the trace fills is as much of the texture as the widget is
@@ -1336,7 +1123,7 @@ namespace Rtx
                 // picture left there the last time this was drawn.
                 // Both are transfer writes to the same image and nothing orders two of those, so
                 // the clear is left as what the copy meets.
-                if (options.mWidth < into.getWidth() || options.mHeight < into.getHeight())
+                if (extent.width < into.getWidth() || extent.height < into.getHeight())
                     into.clear(commands, Use::sTransferWrite,
                         VkClearColorValue{
                             .float32 = { options.mClear[0], options.mClear[1], options.mClear[2], options.mClear[3] } },
@@ -1344,28 +1131,27 @@ namespace Rtx
 
                 assert(layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                     && "a texture lent in another layout than a copy takes");
-                mViewTarget.copyTo(commands, into, layout, VkExtent2D{ options.mWidth, options.mHeight });
+                mViewTarget.copyTo(commands, into, layout, extent);
             });
 
             if (options.mReadBack)
-                mGuiTextures.readBackWith(texture, commands, mRing.getRecording());
+                mGuiTextures.readBackWith(texture, commands);
         }
         trace.defer();
 
         // The value the batch rides: the next submit this pool makes, whichever that is. The
         // tables it reads were named the same value as they were handed out above.
-        traced.mPictureRides[traced.mSlot.get()] = mDevice.getTimeline().getNext();
+        traced.notePictureRide(traced.getSlot(), mDevice.getTimeline().getNext());
     }
 
     bool VulkanRenderer::takeGuiCopy(const GuiSlot texture, const std::span<std::uint8_t> into)
     {
-        return mGuiTextures.takeCopy(texture, into, mRing.getFinished());
+        return mGuiTextures.takeCopy(texture, into);
     }
 
     void VulkanRenderer::finishGuiTraces()
     {
         finishTraces();
-        mGuiTextures.landTraces();
     }
 
     void VulkanRenderer::readGuiTexture(const GuiSlot texture, std::vector<std::uint8_t>& pixels)

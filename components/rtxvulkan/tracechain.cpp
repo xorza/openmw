@@ -33,12 +33,17 @@ namespace Rtx
     }
 
     TraceChain::TraceChain(const Device& device, Graveyard& graveyard, CommandPool& pool, const SetLayout& channels,
-        const SetLayout& fog, const std::filesystem::path& shaders, const VkImageUsageFlags colourUsage,
-        const std::string_view colourName)
+        const SetLayout& fog, const VisibilityPass& visibility, const CompositePass& composite,
+        const SpriteBinPass& spriteBin, const SpriteShadePass& spriteShade, const std::filesystem::path& shaders,
+        const VkImageUsageFlags colourUsage, const std::string_view colourName)
         : mDevice(device)
         , mPool(pool)
         , mChannelLayout(channels)
         , mFogVolumeLayout(fog)
+        , mVisibility(visibility)
+        , mComposite(composite)
+        , mSpriteBin(spriteBin)
+        , mSpriteShade(spriteShade)
         , mColourUsage(colourUsage)
         , mColourName(colourName)
         , mBins([&](FrameSlot) {
@@ -130,26 +135,25 @@ namespace Rtx
         // table by address, which it has once the table is taken; the shelter launch reads the
         // block and zeroes the drops under a roof in that table; and the shade and the bin read
         // what is left. Every launch after reads the same block.
-        SpriteBin& bin = mBins.at(what.mBinSlot);
-        VisibilityInputs inputs = what.mInputs;
-        inputs.mBin = &bin;
+        SpriteBin& bin = mBins.at(what.mTraceSlot);
+        const VisibilityInputs& inputs = what.mInputs;
         const bool bins = inputs.mSpriteList == 0;
         const SpriteSource sprites = what.mBuffers->describeSprites(inputs.mSlot);
         if (bins)
             bin.take(sprites, what.mAsked.mCamera, commands);
 
-        what.mVisibility->writeFrame(commands, inputs, what.mSampled, what.mAirLost);
+        mVisibility.writeFrame(commands, inputs, bin, what.mSampled, what.mAirLost);
 
         if (bins)
         {
-            what.mVisibility->recordSpriteShelter(
-                commands, inputs, *mChannels, *what.mCounts, what.mSampled, sprites.mSpriteCount, what.mTimer);
-            bin.record(*what.mSpriteShade, *what.mSpriteBin, sprites, what.mAsked.mOrigin, what.mAsked.mCamera,
+            mVisibility.recordSpriteShelter(commands, inputs, *mChannels, *what.mCounts, what.mSampled,
+                sprites.mSpriteCount, what.mTraceSlot, what.mTimer);
+            bin.record(mSpriteShade, mSpriteBin, sprites, what.mAsked.mOrigin, what.mAsked.mCamera,
                 what.mAsked.mSun.mDirection, commands, what.mTimer);
         }
 
         mChannels->begin(commands);
-        what.mVisibility->record(commands, inputs, *mChannels, *what.mCounts, what.mSampled, what.mTimer);
+        mVisibility.record(commands, inputs, *mChannels, *what.mCounts, what.mSampled, what.mTraceSlot, what.mTimer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote where
@@ -160,7 +164,7 @@ namespace Rtx
                 = &recordDenoise(commands, what.mSampled.mCamera, what.mSampled.mFar, what.mHistoryLost, what.mTimer);
 
         openZone(what.mTimer, commands, "composite");
-        what.mComposite->record(commands, *mChannels, *indirect, what.mSum, mColour,
+        mComposite.record(commands, *mChannels, *indirect, what.mSum, mColour,
             Shaders::CompositeConstants{
                 .mWidth = what.mSampled.mCamera.mWidth,
                 .mHeight = what.mSampled.mCamera.mHeight,

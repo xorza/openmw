@@ -8,14 +8,14 @@ namespace Rtx
     {
         holdTextures(material);
 
-        const Index index = take(material);
+        const Index index = mRows.take(material);
         note(index);
         return index;
     }
 
     bool MaterialTable::set(Index material, const Material& what)
     {
-        Material& row = at(material);
+        Material& row = mRows.at(material);
         if (row == what)
             return false;
 
@@ -36,7 +36,7 @@ namespace Rtx
 
     void MaterialTable::note(Index slot)
     {
-        mWritten.grow(size());
+        mWritten.grow(mRows.size());
         mWritten.add(slot);
     }
 
@@ -68,7 +68,7 @@ namespace Rtx
 
     std::size_t MaterialTable::sweep()
     {
-        return SlotRows::sweep([this](Index, Material& going) {
+        return mRows.sweep([this](Index, Material& going) {
             // What it named goes with it, and before its layer run does: the run is what says
             // which textures those were, and it is about to be handed to an allocator that will let
             // the next chunk write over it.

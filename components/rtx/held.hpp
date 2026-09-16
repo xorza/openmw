@@ -127,8 +127,8 @@ namespace Rtx
         };
 
         /// A model the frame knows of: named by a cell it holds or by one the reader has handed
-        /// over and it has not adopted. Both counts, because the frame forgets a model only when
-        /// neither names it.
+        /// over and it has not adopted. The frame forgets a model when no cell of either kind
+        /// names it.
         struct HeldModel
         {
             PreparedModel* mModel = nullptr;
@@ -136,9 +136,8 @@ namespace Rtx
             /// Empty until the first cell naming the model is adopted.
             std::vector<AdoptedPart> mParts;
 
-            /// Cells adopted that name it, and cells handed over and not yet adopted that do.
-            std::uint32_t mHeld = 0;
-            std::uint32_t mHanded = 0;
+            /// Cells that name it, adopted or handed over and waiting.
+            std::uint32_t mNamed = 0;
         };
 
         /// The entry for `model`, made where the frame knows of none — and its images held for
@@ -154,7 +153,7 @@ namespace Rtx
 
         /// Counts one cell of `model` off, and forgets the model where none is left: its images
         /// stop being found, and its parts' holds go back on the next `releaseParts`.
-        void release(PreparedModel& model, bool wasHeld);
+        void release(PreparedModel& model);
 
         /// Counts one more holder of `texture`'s reading, for `find`.
         void holdTexture(const PreparedTexture& texture);

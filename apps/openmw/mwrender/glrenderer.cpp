@@ -67,10 +67,7 @@
 
 namespace
 {
-    /// What the cull mask is left at while a screen covers the world.
-    ///
-    /// **It doubles as the record of which way round `showWorld` is**: nothing else leaves the mask
-    /// at exactly the two bits the interface is drawn with.
+    /// What the cull and the update masks are left at while a screen covers the world.
     constexpr unsigned int sCoveredCullMask = MWRender::Mask_GUI | MWRender::Mask_PreCompile;
 
     void checkSDLError(int ret)
@@ -159,6 +156,7 @@ namespace MWRender
         // event visitors to the frame stamp at construction, and substituting objects underneath
         // without substituting those references is a bug that shows up frames later.
         adopt(*mViewer->getCamera(), *mViewer->getFrameStamp(), *mViewer->getViewerStats());
+        mShownUpdateMask = mViewer->getUpdateVisitor()->getTraversalMask();
 
         createWindow();
 
@@ -461,47 +459,34 @@ namespace MWRender
         mViewer->getCamera()->setCullMaskRight(mask);
     }
 
-    void GlRenderer::showWorld(bool shown)
+    unsigned int GlRenderer::worldCullMask() const
     {
-        if (!shown && mViewer->getCamera()->getCullMask() != sCoveredCullMask)
-        {
-            mShownUpdateMask = mViewer->getUpdateVisitor()->getTraversalMask();
-            mViewer->getUpdateVisitor()->setTraversalMask(sCoveredCullMask);
-            cull(sCoveredCullMask);
-        }
-        else if (shown && mViewer->getCamera()->getCullMask() == sCoveredCullMask)
-        {
-            mViewer->getUpdateVisitor()->setTraversalMask(mShownUpdateMask);
-            cull(getViewMask());
-        }
+        return isWorldToggled() ? getViewMask() : getViewMask() & ~sToggleWorldMask;
     }
 
-    void GlRenderer::applyViewMask(const unsigned int mask)
+    void GlRenderer::applyWorldShown()
+    {
+        const bool covered = !isWorldShown();
+        mViewer->getUpdateVisitor()->setTraversalMask(covered ? sCoveredCullMask : mShownUpdateMask);
+        cull(covered ? sCoveredCullMask : worldCullMask());
+
+        // The water's reflection reads `tws` on its own, and a cover leaves it as it was.
+        if (mWorld)
+            mWorld->setWorldShown(isWorldToggled());
+    }
+
+    void GlRenderer::applyViewMask(const unsigned int)
     {
         // **Not while a screen covers the world.** The camera then carries the two bits the
-        // interface is drawn with, and `showWorld` writes the seam's word when the screen ends.
-        if (mViewer->getCamera()->getCullMask() != sCoveredCullMask)
-            cull(mask);
+        // interface is drawn with, and `applyWorldShown` writes the seam's word when the screen ends.
+        if (isWorldShown())
+            cull(worldCullMask());
     }
 
-    bool GlRenderer::toggleRenderMode(const RenderMode mode)
+    bool GlRenderer::toggleOwnRenderMode(const RenderMode mode)
     {
-        if (mode == Render_Wireframe)
-            return mWorld->toggleWireframe();
-
-        assert(mode == Render_Scene && "the other modes are the game's");
-
-        unsigned int mask = getViewMask();
-
-        const bool shown = (mask & sToggleWorldMask) == 0;
-        if (shown)
-            mask |= sToggleWorldMask;
-        else
-            mask &= ~sToggleWorldMask;
-
-        setViewMask(mask);
-        mWorld->setWorldShown(shown);
-        return shown;
+        assert(mode == Render_Wireframe && "the other modes are the game's");
+        return mWorld->toggleWireframe();
     }
 
     void GlRenderer::advance(double simulationTime)

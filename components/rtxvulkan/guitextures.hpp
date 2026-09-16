@@ -8,7 +8,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/renderer.hpp>
+#include <components/rtx/guirenderer.hpp>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/slots.hpp>
 
@@ -96,21 +96,17 @@ namespace Rtx
         void read(GuiSlot slot, std::vector<std::uint8_t>& pixels);
 
         /// Records a copy of the whole texture into a host-readable buffer kept for the slot, after
-        /// whatever `commands` already holds, and remembers that `frame` is what carries it — into
-        /// the same batch as the trace that wrote the texture, so the copy costs no submit and no
-        /// wait of its own; `takeCopy` hands the bytes over once the frame has been waited for. A
-        /// buffer this replaces is buried, because a batch recorded against the old one may not
-        /// have run.
-        void readBackWith(GuiSlot slot, VkCommandBuffer commands, std::uint64_t frame);
+        /// whatever `commands` already holds, and stamps it with the timeline value the next
+        /// submit signals — the copy rides that submit, in the same batch as the trace that wrote
+        /// the texture, so it costs no submit and no wait of its own. `takeCopy` hands the bytes
+        /// over once the queue has passed that value. A buffer this replaces is buried, because a
+        /// batch recorded against the old one may not have run.
+        void readBackWith(GuiSlot slot, VkCommandBuffer commands);
 
         /// Copies what `readBackWith` left for `slot` into `into`, and answers whether it did:
-        /// false until the frame carrying the copy is behind `finished`, and never a wait, because
-        /// the caller asks again next frame. False too where nothing was ever asked of the slot.
-        bool takeCopy(GuiSlot slot, std::span<std::uint8_t> into, std::uint64_t finished);
-
-        /// Every copy recorded so far has run — the caller drained the queue, deferred batches and
-        /// frames in flight both — so each may be taken whatever frame it was stamped with.
-        void landTraces();
+        /// false until the queue has passed the submit the copy rode, and never a wait, because the
+        /// caller asks again next frame. False too where nothing was ever asked of the slot.
+        bool takeCopy(GuiSlot slot, std::span<std::uint8_t> into);
 
         /// Submits what has been recorded, and what was already handed over, and waits for both —
         /// for a resize and shutdown, where there is no next submit, and for a staging arena that
@@ -136,15 +132,17 @@ namespace Rtx
 
         std::vector<Image> mImages;
 
-        /// What a trace left for the host, per slot: the buffer, and the frame whose fence says
-        /// it has arrived. `sNever` where nothing was asked.
+        /// What a trace left for the host, per slot: the buffer, and the timeline value of the
+        /// submit that carried the copy into it — the same clock every other resource is stamped
+        /// with, and not a count of frames, because the batch rides whatever submits next. Nought
+        /// where nothing was asked, which is a value the timeline has always passed and no submit
+        /// ever signals.
         struct Copy
         {
-            static constexpr std::uint64_t sNever = ~std::uint64_t{ 0 };
+            static constexpr std::uint64_t sNever = 0;
 
             Buffer mBuffer;
-            std::uint64_t mTracedOn = sNever;
-            bool mLanded = false;
+            std::uint64_t mRides = sNever;
         };
         std::vector<Copy> mCopies;
 

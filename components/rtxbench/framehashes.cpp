@@ -138,11 +138,11 @@ namespace Rtx
         /// the one report every determinism argument in this fork rests on.
         auto fieldsOf(const MeshRange& mesh)
         {
-            const auto& [vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, material, bindOffset,
+            const auto& [vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, bindOffset,
                 poseOffset, posed, bounds]
                 = mesh;
-            return std::tie(vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, material,
-                bindOffset, poseOffset, posed, bounds);
+            return std::tie(vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, bindOffset,
+                poseOffset, posed, bounds);
         }
 
         auto fieldsOf(const MeshInstance& instance)

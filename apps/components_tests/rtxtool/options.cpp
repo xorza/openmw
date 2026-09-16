@@ -29,7 +29,7 @@ namespace RtxTool
         }
 
         /// What `--validation` comes to when nobody names it, which is what `makeOptions` is told.
-        std::string defaultValidation(const Validation byDefault)
+        std::string defaultValidation(const Rtx::ValidationLevel byDefault)
         {
             const ToolOptions options = makeOptions(byDefault);
 
@@ -44,8 +44,8 @@ namespace RtxTool
         /// spells it, so a script that names `sync` and a build that defaults to it agree.
         TEST(RtxToolOptionsTest, theBuildDecidesTheValidationLevelNobodyNamed)
         {
-            EXPECT_EQ(defaultValidation(Validation::Sync), "sync");
-            EXPECT_EQ(defaultValidation(Validation::Off), "off");
+            EXPECT_EQ(defaultValidation(Rtx::ValidationLevel::Sync), "sync");
+            EXPECT_EQ(defaultValidation(Rtx::ValidationLevel::Off), "off");
         }
 
         /// The bug: an option belonging to one command, given to another, went nowhere.
@@ -55,7 +55,7 @@ namespace RtxTool
         /// ones it knows about.
         TEST(RtxToolOptionsTest, aCommandRefusesAnOptionItDoesNotRead)
         {
-            const ToolOptions options = makeOptions(Validation::Off);
+            const ToolOptions options = makeOptions(Rtx::ValidationLevel::Off);
 
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::View),
                 "`view` does not read --views, which belongs to every command but `info` and `view`.\n");
@@ -75,7 +75,7 @@ namespace RtxTool
         /// Every option on the line is answered for, and each of them once.
         TEST(RtxToolOptionsTest, aLineIsAnsweredForOptionByOption)
         {
-            const ToolOptions options = makeOptions(Validation::Off);
+            const ToolOptions options = makeOptions(Rtx::ValidationLevel::Off);
 
             // Two the command does not read, around one it does and one nobody restricted.
             const bpo::parsed_options line
@@ -99,7 +99,7 @@ namespace RtxTool
         /// default, so `info --size=800x600 --delight=0` was taken and thrown away.
         TEST(RtxToolOptionsTest, everyOptionSaysWhichCommandsReadIt)
         {
-            const ToolOptions options = makeOptions(Validation::Off);
+            const ToolOptions options = makeOptions(Rtx::ValidationLevel::Off);
 
             // Upstream's own — `--config` and its three siblings — reach the same description
             // through `Files::ConfigurationManager` and are every command's by nature. They are the
@@ -139,7 +139,7 @@ namespace RtxTool
         /// enforces.
         TEST(RtxToolOptionsTest, anOwnedOptionSaysSoInItsHelpLine)
         {
-            const ToolOptions options = makeOptions(Validation::Off);
+            const ToolOptions options = makeOptions(Rtx::ValidationLevel::Off);
 
             const auto lineFor
                 = [&](const std::string& name) { return options.mDescription.find(name, false).description(); };
@@ -178,51 +178,6 @@ namespace RtxTool
             EXPECT_EQ(describeVerbs(Verbs::Check | Verbs::Shot | Verbs::Scene), "`scene`, `shot` and `check`")
                 << "in the order --help prints them, whatever order they were written in";
             EXPECT_EQ(describeVerbs(Verbs::None), "");
-        }
-    }
-
-    namespace
-    {
-        /// One level loads one set of layers, and only `gpu` loads the GPU-assisted one.
-        ///
-        /// **The two finer checks are never paired**, because a build that ran both took the device
-        /// down in three runs of four: `gpu` is a level of its own and never a default, and one
-        /// option to name a level with is what keeps them apart.
-        TEST(RtxValidationLevelTest, eachLevelLoadsItsOwnLayersAndNoOthers)
-        {
-            const Rtx::ValidationOptions off = validationOf(Validation::Off, false);
-            EXPECT_FALSE(off.mEnabled);
-            EXPECT_FALSE(off.mSynchronization);
-            EXPECT_FALSE(off.mGpuAssisted);
-
-            const Rtx::ValidationOptions on = validationOf(Validation::On, false);
-            EXPECT_TRUE(on.mEnabled);
-            EXPECT_FALSE(on.mSynchronization);
-            EXPECT_FALSE(on.mGpuAssisted);
-
-            const Rtx::ValidationOptions sync = validationOf(Validation::Sync, false);
-            EXPECT_TRUE(sync.mEnabled) << "synchronization validation implies the layer that carries it";
-            EXPECT_TRUE(sync.mSynchronization);
-            EXPECT_FALSE(sync.mGpuAssisted);
-
-            const Rtx::ValidationOptions gpu = validationOf(Validation::Gpu, false);
-            EXPECT_TRUE(gpu.mEnabled);
-            EXPECT_FALSE(gpu.mSynchronization) << "the two finer layers are never paired";
-            EXPECT_TRUE(gpu.mGpuAssisted);
-        }
-
-        /// A run that named a level demands it; a build that defaulted to one does not.
-        ///
-        /// **The difference decides whether a missing layer stops the run.** Without the layers
-        /// nothing reports, so a gate that asked for them and got none reads an empty log as a pass
-        /// — while a developer whose build turned them on by default still wants a renderer that
-        /// starts. `Rtx::ValidationOptions::mDemanded` is what tells the two apart, and it is the
-        /// caller's word and not the level's.
-        TEST(RtxValidationLevelTest, onlyALevelNamedOnTheCommandLineDemandsTheLayers)
-        {
-            EXPECT_FALSE(validationOf(Validation::Sync, false).mDemanded) << "a build default demanded the layers";
-            EXPECT_TRUE(validationOf(Validation::Sync, true).mDemanded);
-            EXPECT_TRUE(validationOf(Validation::Gpu, true).mDemanded);
         }
     }
 

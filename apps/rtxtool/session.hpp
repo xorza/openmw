@@ -36,11 +36,6 @@ namespace RtxTool
     public:
         explicit Session(Rtx::SessionRequest request);
 
-        bool isHeadless() const override { return mRequest.mHeadless; }
-        const Rtx::ValidationOptions& getValidation() const override { return mRequest.mValidation; }
-        bool wantsHitCounts() const override { return true; }
-        std::optional<float> getStep() const override { return mRequest.mStep; }
-        std::optional<bool> getSettled() const override { return mRequest.mSettled; }
         std::optional<std::uint32_t> getSampleFrame() const override;
         std::uint32_t getAccumulated() const override;
         bool wantsSecondWalk() const override;
@@ -192,7 +187,7 @@ namespace RtxTool
 
         /// The card, watched across each stop's measured frames. Held rather than made per stop,
         /// because what it owns is a thread.
-        Rtx::ClockWatch mClock;
+        Rtx::ClockWatch mClockWatch;
 
         StopWriter mWriter;
 

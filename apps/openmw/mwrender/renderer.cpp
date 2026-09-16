@@ -23,6 +23,7 @@
 
 namespace MWRender
 {
+    Renderer::Renderer() = default;
     Renderer::~Renderer() = default;
 
     void Renderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)
@@ -85,6 +86,26 @@ namespace MWRender
     {
         mViewMask = mask;
         applyViewMask(mask);
+    }
+
+    void Renderer::showWorld(const bool shown)
+    {
+        // Asked every frame by the window manager, and answered on the change alone.
+        if (mWorldShown == shown)
+            return;
+
+        mWorldShown = shown;
+        applyWorldShown();
+    }
+
+    bool Renderer::toggleRenderMode(const RenderMode mode)
+    {
+        if (mode != Render_Scene)
+            return toggleOwnRenderMode(mode);
+
+        mWorldToggled = !mWorldToggled;
+        applyWorldShown();
+        return mWorldToggled;
     }
 
     void Renderer::setTraversalRoot(osg::Group& root)

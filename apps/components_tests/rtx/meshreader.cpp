@@ -150,12 +150,12 @@ namespace Rtx::Testing
             ASSERT_TRUE(reader.read(readDrawable(*quad, NodeKinds{}.of(*quad)), reading));
 
             Resolving adopted;
-            const Index mesh = adopted.mResolver.adopt(*quad, reading, sNoIndex);
+            const Index mesh = adopted.mResolver.adopt(*quad, reading);
             EXPECT_EQ(mesh, 0u);
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u);
 
             Resolving resolved;
-            EXPECT_EQ(resolved.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad)), sNoIndex), 0u);
+            EXPECT_EQ(resolved.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad))), 0u);
 
             const SceneDesc& left = adopted.mScene;
             const SceneDesc& right = resolved.mScene;
@@ -168,13 +168,13 @@ namespace Rtx::Testing
                 std::vector(right.meshes().getIndices().begin(), right.meshes().getIndices().end()));
 
             // The walk meeting the drawable after the ring adopted it finds the ring's mesh.
-            EXPECT_EQ(adopted.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad)), sNoIndex), 0u);
+            EXPECT_EQ(adopted.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad))), 0u);
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u) << "resolved to the mesh already held";
             EXPECT_EQ(adopted.mStats.mMeshesReused, 1u);
 
             // And adopting again holds rather than adds, answering the same mesh — and a hold is what
             // keeps the entry through a sweep the walk did not stamp it in.
-            EXPECT_EQ(adopted.mResolver.adopt(*quad, reading, sNoIndex), mesh);
+            EXPECT_EQ(adopted.mResolver.adopt(*quad, reading), mesh);
             EXPECT_EQ(adopted.mStats.mMeshesAdded, 1u);
             EXPECT_TRUE(adopted.mResolver.whole());
 

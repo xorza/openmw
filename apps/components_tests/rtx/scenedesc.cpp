@@ -535,12 +535,11 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const auto quad = [&](const Index material) {
-                return scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
-                    {}, Deform::None, sNoIndex, material);
+            const auto quad = [&] {
+                return scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             };
 
-            const std::array meshes{ quad(sNoIndex), quad(sNoIndex), quad(sNoIndex) };
+            const std::array meshes{ quad(), quad(), quad() };
             ASSERT_EQ(meshes[2], 2u);
 
             const std::array materials{ scene.materials().add(Material{ .mAlphaRef = 0.25f }),
@@ -576,7 +575,7 @@ namespace Rtx
 
             EXPECT_EQ(scene.textures().add(path("textures/d.dds")), textures[0]) << "textures";
             EXPECT_EQ(place(meshes[1]), placed[0]) << "placements";
-            EXPECT_EQ(quad(sNoIndex), meshes[0]) << "meshes";
+            EXPECT_EQ(quad(), meshes[0]) << "meshes";
             EXPECT_EQ(scene.materials().add(Material{ .mAlphaRef = 0.125f }), materials[0]) << "materials";
         }
 
@@ -631,33 +630,76 @@ namespace Rtx
         }
 
         /// The finding the caller made about a mesh is kept beside its range, for a backend that
-        /// builds a deforming mesh's structure to be refitted.
-        TEST(RtxSceneDescTest, aMeshCarriesWhetherItDeformsAndWhatItArrivedWearing)
+        /// builds a deforming mesh's structure to be refitted, and a slot given back forgets what
+        /// stood there.
+        TEST(RtxSceneDescTest, aMeshCarriesWhetherItDeforms)
         {
             SceneDesc scene;
             const Index still
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             EXPECT_EQ(scene.meshes().getRows()[still].mDeform, Deform::None);
-            EXPECT_EQ(scene.meshes().getRows()[still].mMaterial, sNoIndex);
 
             const Index rig
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     Deform::Rig, Testing::addOneBoneRig(scene, 4));
             EXPECT_EQ(scene.meshes().getRows()[rig].mDeform, Deform::Rig);
 
-            // The material a mesh arrives wearing is kept as it was handed over, and a slot given
-            // back forgets it with the rest of what stood there.
-            const Index worn = scene.materials().add(Material{});
             const Index dressed
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    Deform::None, sNoIndex, worn);
-            EXPECT_EQ(scene.meshes().getRows()[dressed].mMaterial, worn);
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
             const std::array<Index, 2> keptMeshes{ still, rig };
-            const std::array<Index, 1> keptMaterials{ worn };
-            ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
-            EXPECT_EQ(scene.meshes().getRows()[dressed].mMaterial, sNoIndex);
+            ASSERT_TRUE(scene.release(keptMeshes, {}));
             EXPECT_EQ(scene.meshes().getRows()[dressed].mVertices.mCount, 0u);
+        }
+
+        /// A reclass reaches the placements wearing the material and no other, through the list
+        /// threaded through the slots: one that wears another material, one that was dropped and
+        /// one that took a dropped slot under another material are each left out, and a slot that
+        /// changed hands is on the list of what it wears now.
+        TEST(RtxSceneDescTest, aReclassReachesOnlyThePlacementsWearingTheMaterial)
+        {
+            SceneDesc scene;
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index glass = scene.materials().add(Material{ .mOpacity = 0.5f, .mAlphaMode = AlphaMode::Blend });
+            const Index stone = scene.materials().add(Material{ .mAlphaMode = AlphaMode::Blend });
+
+            const Index one = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });
+            const Index two = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });
+            const Index three = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = stone });
+            const Index bare = scene.addInstance(MeshInstance{ .mMesh = mesh });
+            scene.placements().advance();
+
+            const auto reclass = [&](const Index material, const float opacity) {
+                Material worn = scene.materials().getRows()[material];
+                worn.mOpacity = opacity;
+                scene.setMaterial(material, worn);
+            };
+
+            reclass(glass, 1.0f);
+            EXPECT_EQ(sorted(scene.placements().getMoved()), (std::vector<Index>{ one, two }));
+            scene.placements().advance();
+
+            // A dropped slot leaves the list, and the placement that takes the slot over under
+            // another material joins that one's.
+            scene.placements().drop(two);
+            scene.placements().advance();
+            EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = stone }), two);
+            scene.placements().advance();
+
+            reclass(glass, 0.5f);
+            EXPECT_EQ(sorted(scene.placements().getMoved()), (std::vector<Index>{ one }));
+            scene.placements().advance();
+
+            reclass(stone, 0.5f);
+            EXPECT_EQ(sorted(scene.placements().getMoved()), (std::vector<Index>{ two, three }));
+            scene.placements().advance();
+
+            // And a placement wearing nothing is on no list, so it is never reported for one.
+            scene.placements().drop(bare);
+            scene.placements().advance();
+            reclass(glass, 1.0f);
+            EXPECT_EQ(sorted(scene.placements().getMoved()), (std::vector<Index>{ one }));
         }
 
         /// Every change to a placement's row is reported, and nothing else is.

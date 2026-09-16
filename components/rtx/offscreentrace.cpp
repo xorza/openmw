@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <numbers>
+#include <optional>
 #include <variant>
 
 #include <osg/CullSettings>
@@ -89,24 +90,10 @@ namespace Rtx
 
     OffscreenTrace::OffscreenTrace(Renderer& renderer, const ViewRequest& request)
         : mRenderer(renderer)
-        , mWidth(request.mWidth)
-        , mHeight(request.mHeight)
-        , mRowOrder(request.mRowOrder)
-        , mRayMask(request.mRayMask)
-        , mFraming(request.mFraming)
-        , mAmbient(irradianceOf(request.mLight.mAmbient))
-        , mTransparent(request.mClear.a() < 1.f)
+        , mRequest(request)
+        , mExtentWidth(request.mWidth)
+        , mExtentHeight(request.mHeight)
     {
-        mSun.mPosition = request.mLight.mDirection;
-        if (mSun.mPosition.length2() > 0.f)
-            mSun.mPosition.normalize();
-        mSun.mIrradiance = irradianceOf(request.mLight.mDiffuse);
-
-        mOptions.mWidth = request.mWidth;
-        mOptions.mHeight = request.mHeight;
-        mOptions.mClear = { request.mClear.r(), request.mClear.g(), request.mClear.b(), request.mClear.a() };
-        mOptions.mScene = SceneSlot::world();
-
         if (request.mSubject == nullptr)
             return;
 
@@ -123,8 +110,6 @@ namespace Rtx
         held.mExtractor = std::make_unique<SceneExtractor>(*held.mScene, request.mTraversals);
         held.mExtractor->setTraversalMask(request.mSubjectMask);
         held.mPose->setFrameStamp(held.mPoseStamp);
-
-        mOptions.mScene = held.mSlot;
     }
 
     OffscreenTrace::Subject::~Subject() = default;
@@ -147,28 +132,37 @@ namespace Rtx
 
     void OffscreenTrace::setExtent(std::uint32_t width, std::uint32_t height)
     {
-        mOptions.mWidth = std::clamp(width, 1u, mWidth);
-        mOptions.mHeight = std::clamp(height, 1u, mHeight);
+        mExtentWidth = std::clamp(width, 1u, mRequest.mWidth);
+        mExtentHeight = std::clamp(height, 1u, mRequest.mHeight);
     }
 
-    Shaders::VisibilityConstants OffscreenTrace::describeCamera() const
+    std::optional<Shaders::VisibilityConstants> OffscreenTrace::describeCamera() const
     {
-        const auto* perspective = std::get_if<SceneUtil::Perspective>(&mFraming.mProjection);
-        Shaders::VisibilityConstants camera = perspective != nullptr
+        const SceneUtil::Framing& framing = mRequest.mFraming;
+        const auto* perspective = std::get_if<SceneUtil::Perspective>(&framing.mProjection);
+        std::optional<Shaders::VisibilityConstants> camera = perspective != nullptr
             ? makeCameraFromView(
-                mView, perspective->mFieldOfView, mOptions.mWidth, mOptions.mHeight, mFraming.mNear, mFraming.mFar)
-            : makeOrthographicCameraFromView(mView, std::get<SceneUtil::Orthographic>(mFraming.mProjection).mWidth,
-                std::get<SceneUtil::Orthographic>(mFraming.mProjection).mHeight, mOptions.mWidth, mOptions.mHeight,
-                mFraming.mNear, mFraming.mFar);
+                mView, perspective->mFieldOfView, mExtentWidth, mExtentHeight, framing.mNear, framing.mFar)
+            : makeOrthographicCameraFromView(mView, std::get<SceneUtil::Orthographic>(framing.mProjection).mWidth,
+                std::get<SceneUtil::Orthographic>(framing.mProjection).mHeight, mExtentWidth, mExtentHeight,
+                framing.mNear, framing.mFar);
+        if (!camera.has_value())
+            return std::nullopt;
 
         // `ViewRequest::mRowOrder` says why the GUI's copy comes out the other way up.
-        if (mRowOrder == RowOrder::BottomFirst)
-            camera.mCamera.mUp = -camera.mCamera.mUp;
+        if (mRequest.mRowOrder == RowOrder::BottomFirst)
+            camera->mCamera.mUp = -camera->mCamera.mUp;
 
-        camera.mSun = Shaders::sunSource(mSun.mPosition, mSun.mIrradiance);
-        camera.mAmbient = mAmbient;
-        camera.mTransparentBackground = mTransparent ? 1 : 0;
-        camera.mRayMask = mRayMask;
+        // Where the light stands, unit, in the sense `ViewRequest::mLight` states it and the
+        // trace takes it.
+        osg::Vec3f sun = mRequest.mLight.mDirection;
+        if (sun.length2() > 0.f)
+            sun.normalize();
+
+        camera->mSun = Shaders::sunSource(sun, irradianceOf(mRequest.mLight.mDiffuse));
+        camera->mAmbient = irradianceOf(mRequest.mLight.mAmbient);
+        camera->mTransparentBackground = mRequest.mClear.a() < 1.f ? 1 : 0;
+        camera->mRayMask = mRequest.mRayMask;
 
         return camera;
     }
@@ -237,9 +231,17 @@ namespace Rtx
 
     void OffscreenTrace::traceInto(const GuiSlot texture, const bool readBack)
     {
-        GuiTraceOptions options = mOptions;
-        options.mReadBack = readBack;
-        mRenderer.traceGuiTexture(texture, describeCamera(), options);
+        const std::optional<Shaders::VisibilityConstants> camera = describeCamera();
+        if (!camera.has_value())
+            return;
+
+        const osg::Vec4f& clear = mRequest.mClear;
+        mRenderer.traceGuiTexture(texture, *camera,
+            GuiTraceOptions{
+                .mClear = { clear.r(), clear.g(), clear.b(), clear.a() },
+                .mScene = mSubject != nullptr ? mSubject->mSlot : SceneSlot::world(),
+                .mReadBack = readBack,
+            });
     }
 
     bool OffscreenTrace::pick(float x, float y, osg::NodePath& hit) const
@@ -248,12 +250,15 @@ namespace Rtx
             return false;
 
         Subject& subject = *mSubject;
-        const Shaders::VisibilityConstants camera = describeCamera();
-        const osg::Vec3f direction = camera.mCamera.mForward + camera.mCamera.mRight * x - camera.mCamera.mUp * y;
+        const std::optional<Shaders::VisibilityConstants> camera = describeCamera();
+        if (!camera.has_value())
+            return false;
 
-        osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector
-            = new osgUtil::LineSegmentIntersector(osgUtil::Intersector::MODEL,
-                camera.mOrigin + direction * mFraming.mNear, camera.mOrigin + direction * mFraming.mFar);
+        const osg::Vec3f direction = camera->mCamera.mForward + camera->mCamera.mRight * x - camera->mCamera.mUp * y;
+
+        osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector = new osgUtil::LineSegmentIntersector(
+            osgUtil::Intersector::MODEL, camera->mOrigin + direction * mRequest.mFraming.mNear,
+            camera->mOrigin + direction * mRequest.mFraming.mFar);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
         // Posed here, on the processor, because the intersection reads the drawable's own copy.

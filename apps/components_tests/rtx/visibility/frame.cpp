@@ -164,7 +164,8 @@ namespace Rtx::Testing
 
             const Shaders::VisibilityConstants aimed = makeCamera(eye, at, 47.0f, 320, 200, 5000.0f);
             const Shaders::VisibilityConstants viewed = makeCameraFromView(
-                osg::Matrixf::lookAt(eye, at, osg::Vec3f(0.0f, 0.0f, 1.0f)), 47.0f, 320, 200, 1.0f, 5000.0f);
+                osg::Matrixf::lookAt(eye, at, osg::Vec3f(0.0f, 0.0f, 1.0f)), 47.0f, 320, 200, 1.0f, 5000.0f)
+                                                            .value();
 
             for (int axis = 0; axis < 3; ++axis)
             {
@@ -189,7 +190,7 @@ namespace Rtx::Testing
                 = osg::Matrixf::lookAt(osg::Vec3f(0.0f, 0.0f, 100.0f), osg::Vec3f(), osg::Vec3f(0.0f, 1.0f, 0.0f));
 
             const Shaders::VisibilityConstants camera
-                = makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 5.0f, 400.0f);
+                = makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 5.0f, 400.0f).value();
 
             EXPECT_EQ(camera.mCamera.mOrthographic, 1u);
 
@@ -221,8 +222,8 @@ namespace Rtx::Testing
 
             const std::array cameras{
                 makeCameraAlong(eye, osg::Vec3f(0.0f, 1.0f, 0.0f), 60.0f, 64, 32, 400.0f),
-                makeCameraFromView(view, 60.0f, 64, 32, 1.0f, 400.0f),
-                makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 1.0f, 400.0f),
+                makeCameraFromView(view, 60.0f, 64, 32, 1.0f, 400.0f).value(),
+                makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 1.0f, 400.0f).value(),
             };
 
             for (const Shaders::VisibilityConstants& camera : cameras)
@@ -249,7 +250,8 @@ namespace Rtx::Testing
             const osg::Matrixf view = osg::Matrixf::lookAt(eye, eye + along, osg::Vec3f(0.0f, 0.0f, 1.0f));
 
             const Shaders::VisibilityConstants aimed = makeCameraAlong(eye, along, 90.0f, 200, 100, 1000.0f);
-            const Shaders::VisibilityConstants viewed = makeCameraFromView(view, 90.0f, 200, 100, 1.0f, 1000.0f);
+            const Shaders::VisibilityConstants viewed
+                = makeCameraFromView(view, 90.0f, 200, 100, 1.0f, 1000.0f).value();
 
             EXPECT_NEAR(aimed.mCamera.mRight.length(), 2.0f, 1e-5f);
             EXPECT_NEAR(aimed.mCamera.mUp.length(), 1.0f, 1e-5f);
@@ -273,8 +275,8 @@ namespace Rtx::Testing
             const osg::Matrixf view = osg::Matrixf::lookAt(eye, eye + along, osg::Vec3f(0.0f, 0.0f, 1.0f));
 
             for (const Shaders::VisibilityConstants& built : { makeCameraAlong(eye, along, 60.0f, 200, 100, 1000.0f),
-                     makeCameraFromView(view, 60.0f, 200, 100, 1.0f, 1000.0f),
-                     makeOrthographicCameraFromView(view, 200.0f, 100.0f, 200, 100, 1.0f, 1000.0f) })
+                     makeCameraFromView(view, 60.0f, 200, 100, 1.0f, 1000.0f).value(),
+                     makeOrthographicCameraFromView(view, 200.0f, 100.0f, 200, 100, 1.0f, 1000.0f).value() })
             {
                 EXPECT_EQ(built.mArms.mForward, built.mCamera.mForward);
                 EXPECT_EQ(built.mArms.mRight, built.mCamera.mRight);
@@ -335,10 +337,10 @@ namespace Rtx::Testing
             std::vector<std::uint8_t> pixels;
 
             const std::uint32_t parallel = countHits(scene, {},
-                makeOrthographicCameraFromView(view, 200.0f, 200.0f, size, size, 1.0f, 10000.0f), size, pixels);
+                makeOrthographicCameraFromView(view, 200.0f, 200.0f, size, size, 1.0f, 10000.0f).value(), size, pixels);
 
-            const std::uint32_t pinhole
-                = countHits(scene, {}, makeCameraFromView(view, 90.0f, size, size, 1.0f, 10000.0f), size, pixels);
+            const std::uint32_t pinhole = countHits(
+                scene, {}, makeCameraFromView(view, 90.0f, size, size, 1.0f, 10000.0f).value(), size, pixels);
 
             EXPECT_EQ(parallel, 16u * 16u);
             EXPECT_EQ(pinhole, 8u * 8u);

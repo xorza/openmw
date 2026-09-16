@@ -473,7 +473,6 @@ namespace Rtx
         std::size_t frame, CellRing* const ring, const bool falls)
     {
         ExtractionStats stats;
-        mAnchor = anchor;
         mPass.mStats = &stats;
         mPass.mFalls = falls;
 
@@ -609,25 +608,11 @@ namespace Rtx
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());
 
-        // The material before the mesh, because a mesh records the material it arrives wearing.
-        // `MeshRange::mMaterial` says why a static mesh has one to record; a backend bakes its mask
-        // against that one, and the two counts past the mesh are what say the loader keeps it so.
         const MaterialResolver::Resolved material = water ? mMaterials.resolveWater() : mMaterials.resolve(shading);
 
-        const Index mesh = mMeshes.resolve(drawable, read, material.mIndex);
+        const Index mesh = mMeshes.resolve(drawable, read);
         if (mesh == sNoIndex)
             return;
-
-        // A placement wearing anything but the material its mesh arrived with is the canary —
-        // `SceneUtil::CopyOp` shares the state set under every copy, so the only material a mesh
-        // can be seen in two of is one a controller made per node.
-        const Index arrivedWearing = mScene.meshes().getRows()[mesh].mMaterial;
-        if (arrivedWearing != sNoIndex)
-        {
-            const Material& worn = mScene.materials().getRows()[arrivedWearing];
-            if (!worn.mAnimated && material.mIndex != arrivedWearing)
-                ++stats.mWornOtherwise;
-        }
 
         // The slot this placement has held since it first appeared, so a world that stands
         // still writes nothing: the scene already knows where everything is, and only a transform

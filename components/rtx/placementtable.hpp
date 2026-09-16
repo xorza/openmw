@@ -39,9 +39,12 @@ namespace Rtx
         /// tracing what stood there.
         void drop(Index slot);
 
-        /// Says `slot`'s row has to be written again for a reason this table did not make — a
-        /// material that changed what traversal is told about the surfaces standing on it.
-        void rewrite(Index slot) { mMoved.push_back(slot); }
+        /// Says every row wearing `material` has to be written again for a reason this table did
+        /// not make — the material changed what traversal is told about the surfaces standing on
+        /// it. The placements that wear it and no other: a list per material is threaded through
+        /// the slots, so a fade crossing opaque costs its own placements rather than a walk of the
+        /// world's.
+        void rewriteWearing(Index material);
 
         /// Ends a frame's placement: what moved becomes where things were. Costs what moved and not
         /// what stands. What was moved becomes `getSettled`, and `getMoved` starts empty.
@@ -65,8 +68,21 @@ namespace Rtx
         std::span<const Index> getSettled() const { return mSettled; }
 
     private:
+        /// Puts `slot` at the head of `material`'s list, and takes it out again. Nothing for a
+        /// placement wearing no material.
+        void link(Index slot, Index material);
+        void unlink(Index slot, Index material);
+
         SlotRows<MeshInstance> mInstances;
         std::vector<osg::Matrixf> mPrevious;
+
+        /// The list of slots wearing each material, doubly linked through the slots and headed by
+        /// material: `mFirstWearing[material]` is the newest placement wearing it, and each slot
+        /// names the ones before and after it. Parallel to the slots and to the materials, grown
+        /// with each, and `sNoIndex` at every end.
+        std::vector<Index> mNextWearing;
+        std::vector<Index> mPrevWearing;
+        std::vector<Index> mFirstWearing;
 
         /// Plain lists that hold duplicates, where every other change list in this scene is a
         /// `SlotSet`: a slot named twice is a memcpy of a hundred bytes, bounded by the three facts

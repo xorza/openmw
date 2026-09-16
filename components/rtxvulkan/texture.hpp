@@ -105,8 +105,15 @@ namespace Rtx
         /// given back still sits between two that are. `textures` may be empty: a slot nothing
         /// describes is one no material names, which is what `descriptorBindingPartiallyBound` is
         /// required for.
-        TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, std::uint32_t slots,
-            std::span<const TextureData> textures);
+        ///
+        /// @param layout what `describeLayout` made: every array is shaped by the one the renderer
+        ///        keeps, which is what lets one pass be handed any scene's set.
+        TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, const SetLayout& layout,
+            std::uint32_t slots, std::span<const TextureData> textures);
+
+        /// The shape of every set an array here holds: two bindless arrays, partially bound and
+        /// updated after bind. Made once by whoever owns the passes that name it.
+        static SetLayout describeLayout(const Device& device);
 
         /// Uploads each of `arrived` into the slot it names, leaving every other texture alone —
         /// why the sets are allocated at the maximum rather than at the scene's count. By slot and
@@ -128,8 +135,6 @@ namespace Rtx
         /// makes legal: no live material names a freed slot. The array does not shrink, because the
         /// scene's table has not either.
         void drop(std::span<const std::uint32_t> slots);
-
-        VkDescriptorSetLayout getLayout() const { return mLayout.get(); }
 
         /// The set `slot`'s frame binds, which `sync(slot)` brought up to date. A hand-out, so it
         /// names the set for the next submit the way `Buffer::addressFor` names a buffer.
@@ -173,7 +178,6 @@ namespace Rtx
         /// One per `TextureWrap`, indexed by it: the sampler a slot is bound through is the one its
         /// file's wrap names, for the texture and for its shading map alike.
         std::array<Sampler, sTextureWrapCount> mSamplers;
-        SetLayout mLayout;
 
         /// One set per frame in flight, both bindings at the maximum the layout declares.
         DescriptorSets mSets;

@@ -86,7 +86,7 @@ namespace Rtx
         virtual Index adoptMaterial(const MaterialReading& reading) = 0;
 
         /// The same for a mesh, held under the identity the walk will find a clone's mesh under.
-        virtual Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading, Index material) = 0;
+        virtual Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading) = 0;
 
         /// Gives one hold back on what `adoptMesh` held under `drawable`.
         virtual void releaseMesh(const osg::Drawable& drawable) = 0;

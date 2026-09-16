@@ -116,25 +116,32 @@ namespace Rtx
         /// Which slot the next acquire takes.
         std::uint32_t mAcquisition = 0;
 
-        /// Signalled by the blit and waited by the present. Per swapchain image and not one: a
-        /// present may still be reading the semaphore a frame signalled, and there is no fence that
-        /// says when it stopped.
-        std::vector<Semaphore> mRendered;
+        /// What one swapchain image is presented through.
+        struct SwapImage
+        {
+            /// Signalled by the blit and waited by the present. Per image and not one: a present
+            /// may still be reading the semaphore a frame signalled, and there is no fence that says
+            /// when it stopped.
+            Semaphore mRendered;
 
-        /// What the last blit onto each image signalled on the timeline, so one is not written
-        /// again while its present is still outstanding.
-        std::vector<std::uint64_t> mBlitOn;
+            /// What the last blit onto the image signalled on the timeline, so it is not written
+            /// again while its present is still outstanding.
+            std::uint64_t mBlitOn = 0;
 
-        /// What the presentation engine signals when it has finished with each image, where the
-        /// device offers `VK_KHR_swapchain_maintenance1` — the only thing that says a present is
-        /// over, since a queue-idle proves the queue is empty rather than that the compositor has
-        /// let go, and the one thing here the timeline cannot say. A present rejected with
-        /// `VK_ERROR_OUT_OF_DATE_KHR` still signals its fence, so waiting on every one of these is
-        /// safe.
-        std::vector<Fence> mPresented;
+            /// What the presentation engine signals when it has finished with the image, where the
+            /// device offers `VK_KHR_swapchain_maintenance1` — the only thing that says a present
+            /// is over, since a queue-idle proves the queue is empty rather than that the
+            /// compositor has let go, and the one thing here the timeline cannot say. A present
+            /// rejected with `VK_ERROR_OUT_OF_DATE_KHR` still signals its fence, so waiting on it is
+            /// safe. Null where the device offers none.
+            Fence mPresented;
 
-        /// Out of the renderer's pool, which allows a buffer to be reset by beginning it again.
-        std::vector<VkCommandBuffer> mCommands;
+            /// Out of the renderer's pool, which allows a buffer to be reset by beginning it again.
+            VkCommandBuffer mCommands = VK_NULL_HANDLE;
+        };
+
+        /// One per swapchain image, indexed by the image the acquire answered with.
+        std::vector<SwapImage> mImages;
 
         /// Which blit a frame image was last read by. One entry per image the renderer alternates
         /// between, so a linear scan is the whole lookup.

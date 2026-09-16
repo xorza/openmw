@@ -144,12 +144,6 @@ namespace Rtx
         /// that stands.
         Index mDeformer = sNoIndex;
 
-        /// The material this mesh arrived wearing, or `sNoIndex` for one that arrived with none. A
-        /// mesh's and not a placement's, because `SceneUtil::CopyOp` shares drawables and state
-        /// sets, so a hundred crates are one drawable and one state set. A placement wearing
-        /// another is `ExtractionStats::mWornOtherwise`, and the loader says there is none.
-        Index mMaterial = sNoIndex;
-
         /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
         /// backend's bind table is indexed by. A run as long as `mVertices` beside the mesh's
         /// own, allocated only for a mesh that deforms: the shared vertex buffers hold every mesh,

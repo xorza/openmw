@@ -109,12 +109,6 @@ namespace Rtx
         /// what Morrowind lights with, and a glowing texture lights nothing.
         std::uint32_t mLights = 0;
 
-        /// Placements wearing a material other than the one their mesh arrived with, where that one
-        /// is not animated. A canary that should be zero: a backend bakes against the mesh's
-        /// material, and a placement wearing another would be traced against a mask it does not
-        /// carry.
-        std::uint32_t mWornOtherwise = 0;
-
         /// Placements the cell ring stood this walk: the distant statics, as instances of their
         /// templates rather than as the paging's merged chunks, and the cells' ground, one
         /// placement a cell. Among `mInstances` as well.

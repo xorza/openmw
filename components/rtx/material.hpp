@@ -24,6 +24,17 @@ namespace Rtx
         Water,
     };
 
+    /// Whether what is behind a surface is meant to show through it. `AlphaMode::Blend` alone
+    /// does not say so: Morrowind keeps its foliage under `NiAlphaProperty`, so a leaf card and a
+    /// pane of glass carry the same mode, and what tells them apart is the surface's own alpha. An
+    /// additive surface is neither: it covers nothing at any alpha. The one rule, over the three
+    /// facts as the content states them, so a reading made off a description and a material made
+    /// from it cannot answer differently.
+    inline bool translucentSurface(const AlphaMode mode, const float opacity, const BlendKind blend)
+    {
+        return mode == AlphaMode::Blend && opacity < 1.0f && blend == BlendKind::Over;
+    }
+
     /// How a surface is shaded, as the file says it. Vanilla textures are pre-lit, so `mDiffuse` is
     /// not an albedo yet.
     ///
@@ -149,14 +160,11 @@ namespace Rtx
         /// `additiveAlong` on a mask of its own and met by no other ray.
         bool isAdditive() const { return mAlphaMode == AlphaMode::Blend && mBlend != BlendKind::Over; }
 
-        /// Whether what is behind this surface is meant to show through it. `AlphaMode::Blend`
-        /// alone does not say so: Morrowind keeps its foliage under `NiAlphaProperty`, so a leaf
-        /// card and a pane of glass carry the same mode, and what tells them apart is the
-        /// *material's* own alpha. The two want opposite answers from traversal — a mask averaged
-        /// and tested is right for the leaf, light attenuated as it passes is right for the pane
-        /// and turns the leaf to gauze. Not the opposite of `isCutout`, and a pane is both. An
-        /// additive surface is neither: it covers nothing at any alpha.
-        bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mOpacity < 1.0f && !isAdditive(); }
+        /// `translucentSurface` of this material. The two answers want opposite things from
+        /// traversal — a mask averaged and tested is right for the leaf, light attenuated as it
+        /// passes is right for the pane and turns the leaf to gauze. Not the opposite of
+        /// `isCutout`, and a pane is both.
+        bool isTranslucent() const { return translucentSurface(mAlphaMode, mOpacity, mBlend); }
 
         /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
         /// Two facts and neither alone — the material's own alpha, which a leaf's does not say, and

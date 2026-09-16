@@ -40,8 +40,8 @@ namespace Rtx
         /// that deforms names the rig or the morph that poses it, whose vertex count must be this
         /// mesh's, and hands over its bind pose, which stays in the shared buffers for as long as
         /// the mesh does.
-        Index addMesh(const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None,
-            Index deformer = sNoIndex, Index material = sNoIndex);
+        Index addMesh(
+            const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None, Index deformer = sNoIndex);
 
         /// Poses one skinned mesh: its bone rows, and the box the pose reaches — the whole of what
         /// the host says about a body per frame, because its vertices are computed on the device

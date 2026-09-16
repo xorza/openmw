@@ -8,15 +8,16 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <components/sdlutil/vsyncmode.hpp>
 
 #include "debuglines.hpp"
-#include "frameimage.hpp"
+#include "guirenderer.hpp"
 #include "memoryreport.hpp"
 #include "mesh.hpp"
+#include "namedenum.hpp"
 #include "reconstruction.hpp"
 #include "ripple.hpp"
 #include "runs.hpp"
@@ -24,7 +25,6 @@
 #include "slot.hpp"
 #include "texturedata.hpp"
 #include "upscale.hpp"
-#include "wavespectrum.hpp"
 
 struct SDL_Window;
 
@@ -32,17 +32,41 @@ namespace Rtx
 {
     class SceneDesc;
 
+    /// Which of the validation layers' checks a run loads. One level and not three switches,
+    /// because the three implied one another — either finer check needs the layer under it — and
+    /// the two finer checks together took the device down in three runs of four: four of the eight
+    /// combinations meant anything, and a fifth was fatal.
+    enum class ValidationLevel
+    {
+        Off,
+
+        /// The core checks.
+        On,
+
+        /// The core checks and synchronization validation, which catches a missing barrier. Costs
+        /// enough to be opt-in among developers.
+        Sync,
+
+        /// The core checks and GPU-assisted validation, which instruments every shader and
+        /// catches what a ray query does with its own arguments, at about half the frame rate. The
+        /// layer itself asks not to be run beside the core checks, so it is never a default.
+        Gpu,
+    };
+
+    /// How a level is spelled on a command line and in a report. The one list of the names, for
+    /// the reason `sUpscaleNames` gives.
+    inline constexpr NamedEnum sValidationNames{ std::array{
+        std::pair{ ValidationLevel::Off, std::string_view("off") },
+        std::pair{ ValidationLevel::On, std::string_view("on") },
+        std::pair{ ValidationLevel::Sync, std::string_view("sync") },
+        std::pair{ ValidationLevel::Gpu, std::string_view("gpu") },
+    } };
+
     /// Developer instrumentation. Nobody enables any of this in a run they care about the frame rate
     /// of, and a backend reads whichever of it its API offers.
     struct ValidationOptions
     {
-        bool mEnabled = false;
-
-        /// Catch missing barriers and wrong stage masks. Costs enough to be opt-in among developers.
-        bool mSynchronization = false;
-
-        /// Instrument shaders to catch out-of-bounds access. Costs a great deal.
-        bool mGpuAssisted = false;
+        ValidationLevel mLevel = ValidationLevel::Off;
 
         /// Stop the process on the first error. Off for a test suite, which provokes errors
         /// deliberately.
@@ -102,78 +126,6 @@ namespace Rtx
         bool mCountHits = true;
     };
 
-    /// One vertex of the GUI, in MyGUI's own layout: a position already in clip space, a colour
-    /// packed a byte a channel, and a texture coordinate. MyGUI fills these by the thousand a frame.
-    struct GuiVertex
-    {
-        float mX;
-        float mY;
-        float mZ;
-
-        /// Red in the low byte, alpha in the high one — MyGUI's `ColourABGR`.
-        std::uint32_t mColour;
-
-        float mU;
-        float mV;
-    };
-
-    /// A frame of GUI is copied out of the buffer MyGUI filled rather than walked.
-    static_assert(sizeof(GuiVertex) == 24, "a GUI vertex is what MyGUI writes, and the buffer is read as its own");
-    static_assert(std::is_trivial_v<GuiVertex>);
-
-    /// How a run of GUI reaches what is already on the screen.
-    enum class GuiBlend : std::uint32_t
-    {
-        /// Source alpha over the destination, which is every widget there is.
-        Over,
-
-        /// Added to the destination. One layer asks for this — the flash when the player is hit —
-        /// and over it the same red reads as a tint on the world rather than light in front of it.
-        Additive,
-    };
-
-    /// One run of vertices drawn with one texture. A run and not an index range, because MyGUI
-    /// hands over triangle lists and no indices.
-    struct GuiBatch
-    {
-        /// A slot from `addGuiTexture`.
-        GuiSlot mTexture;
-        std::uint32_t mFirstVertex = 0;
-        std::uint32_t mVertexCount = 0;
-        GuiBlend mBlend = GuiBlend::Over;
-    };
-
-    /// Which part of a GUI texture a write covers, with the origin at the top left.
-    struct GuiRegion
-    {
-        std::uint32_t mX = 0;
-        std::uint32_t mY = 0;
-        std::uint32_t mWidth = 0;
-        std::uint32_t mHeight = 0;
-    };
-
-    /// What a picture inside the interface is asked for, beyond where its camera stands.
-    struct GuiTraceOptions
-    {
-        /// How much of the texture to fill, from its top-left corner, and what the camera must have
-        /// been built for; the rest is left at `mClear`. The inventory doll's window resizes and the
-        /// texture behind it does not.
-        std::uint32_t mWidth = 0;
-        std::uint32_t mHeight = 0;
-
-        /// What the rest of the texture holds, red first: transparent black for a picture the GUI
-        /// composites over what is behind it.
-        std::array<float, 4> mClear{};
-
-        /// What to trace against: a slot `addViewScene` gave out, or the world's for the one the
-        /// frame is drawn from. A map tile is a picture of the world; a doll is not.
-        SceneSlot mScene = SceneSlot::world();
-
-        /// Whether to leave a copy of the whole texture where `takeGuiCopy` can hand it to the host,
-        /// which is the one time a picture inside the interface comes back to main memory.
-        bool mReadBack = false;
-    };
-
     /// What a backend holds in one of its slots, as it says so itself. A slot and a scene are one
     /// to one, so nothing here has to name which scene.
     struct SceneHeld
@@ -213,19 +165,6 @@ namespace Rtx
         /// the two cannot disagree about which slots they counted.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
-    };
-
-    /// What the renderer traces at, and what it presents at. Equal wherever nothing is upscaling.
-    struct FrameExtents
-    {
-        /// The trace's own resolution, and so the size of every G-buffer channel, of the camera the
-        /// trace is handed, and of what `readChannel` gives back.
-        std::uint32_t mRenderWidth = 0;
-        std::uint32_t mRenderHeight = 0;
-
-        /// The size of what `readPixels` gives back, which is what `resize` was asked for.
-        std::uint32_t mOutputWidth = 0;
-        std::uint32_t mOutputHeight = 0;
     };
 
     /// What a frame is asked for, beyond where the camera stands.
@@ -343,14 +282,9 @@ namespace Rtx
     /// outright — so a method here is worth a whole scene or a whole frame, and none is reached per
     /// instance or per pixel. `slot` says which scene throughout: the world's, or one
     /// `addViewScene` handed out for a picture inside the interface.
-    class Renderer
+    class Renderer : public GuiRenderer
     {
     public:
-        virtual ~Renderer() = default;
-
-        Renderer(const Renderer&) = delete;
-        Renderer& operator=(const Renderer&) = delete;
-
         /// Builds everything a scene needs, replacing whatever was there. `textures` are decoded
         /// already and indexed by the scene's texture index, and must outlive the call.
         virtual void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) = 0;
@@ -380,48 +314,6 @@ namespace Rtx
 
         virtual void dropViewScene(SceneSlot slot) = 0;
 
-        /// What the last `Renderer::resize` settled on. The camera has to be built for the render
-        /// extent, because the trace's per-pixel ray spread comes from it.
-        virtual FrameExtents getExtents() const = 0;
-
-        /// A texture the GUI draws with, sized once and written whenever it changes, in a table of
-        /// its own because a font atlas outlives every scene.
-        virtual GuiSlot addGuiTexture(std::uint32_t width, std::uint32_t height) = 0;
-
-        /// Bytes for a rectangle of a texture, four a pixel, tightly packed, row zero first, to be
-        /// filled and handed back with `sendGuiTexture`: MyGUI's `lock` and `unlock`. The rectangle
-        /// must lie inside the texture and only one may be lent at a time, both asserts. Write the
-        /// span and do not read it back: a backend may lend memory the device reads directly.
-        virtual std::span<std::uint8_t> lendGuiTexture(GuiSlot texture, const GuiRegion& region) = 0;
-
-        /// Sends what `lendGuiTexture` handed out. The span stops being writable here.
-        virtual void sendGuiTexture(GuiSlot texture) = 0;
-
-        virtual void dropGuiTexture(GuiSlot texture) = 0;
-
-        /// Everything the GUI asked to draw, over the finished picture, after the tone curve because
-        /// the GUI's colours are display-referred. Vertices are in clip space with +Y up, as MyGUI
-        /// produces them.
-        virtual void drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches) = 0;
-
-        /// Traces the scene from `camera` into a GUI texture rather than into the frame: a map
-        /// tile, the inventory doll. Not the frame's chain — nothing upscales or averages and the
-        /// exposure is one, because a still has no previous frame. Recorded and not run: the picture
-        /// rides the next submit, reads the copy of the scene its last placement wrote, and the next
-        /// placement of that scene waits for the frame it rode.
-        virtual void traceGuiTexture(
-            GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
-            = 0;
-
-        /// The copy the last `traceGuiTexture` with `mReadBack` left of `texture`, four bytes a
-        /// pixel, tightly packed, row zero first, into `into` as far as it reaches. False until the
-        /// copy arrived, which is two frames on, and never a wait.
-        virtual bool takeGuiCopy(GuiSlot texture, std::span<std::uint8_t> into) = 0;
-
-        /// Submits every picture recorded and not yet carried and waits for them, for a harness or a
-        /// test standing outside any frame. A game never calls it.
-        virtual void finishGuiTraces() = 0;
-
         /// The next frame has no usable past: a door, a teleport, a cut. Only the simulation knows,
         /// because a cell load looks like a step from here. Costs one frame of reconstruction.
         virtual void resetHistory() = 0;
@@ -437,10 +329,6 @@ namespace Rtx
 
         /// Which mode the frames are traced under, which a refused mode leaves where it was.
         virtual Upscale getUpscale() const = 0;
-
-        /// The sea every scene is traced with, `SeaState{}` until told. A settings-change call: it
-        /// uploads a spectrum and waits the frames in flight out first.
-        virtual void setSea(const SeaState& sea) = 0;
 
         /// How the presented image meets the monitor's refresh. Costs a swapchain rebuild, so a
         /// settings-change call and not a frame one.
@@ -483,27 +371,9 @@ namespace Rtx
         /// `Renderer::setScene` has been called for the world.
         virtual const SceneStats& getSceneStats() const = 0;
 
-        /// What reads a frame back. None of the five below is on a frame path: each submits a copy
-        /// and waits for it, so none is const.
-
-        /// Copies the traced image into `pixels`, four bytes per pixel, tightly packed.
+        /// Copies the traced image into `pixels`, four bytes per pixel, tightly packed. Not on a
+        /// frame path: it submits a copy and waits for it, so it is not const.
         virtual void readPixels(std::vector<std::uint8_t>& pixels) = 0;
-
-        /// Copies one of the last frame's g-buffer channels into `values`, tightly packed, widened
-        /// to floats whatever the channel holds. The frame's, never a view scene's.
-        virtual void readChannel(Channel channel, std::vector<float>& values) = 0;
-
-        /// The same for the composite's own output, which no channel holds: the frame a measurement
-        /// is taken on, where `readPixels` gives the one a display would show.
-        virtual void readComposite(std::vector<float>& values) = 0;
-
-        /// The whole of a GUI texture as the device holds it, four bytes a pixel, tightly packed,
-        /// row zero first.
-        virtual void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) = 0;
-
-        /// Moves whatever the API has complained about since the last call into `errors`, so that
-        /// clearing before a test and reading after it are the same call.
-        virtual void takeValidationErrors(std::vector<std::string>& errors) = 0;
 
     protected:
         Renderer() = default;

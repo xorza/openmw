@@ -64,7 +64,7 @@ namespace Rtx
 #ifdef OPENMW_RTX_DEBUG_NAMES
         const bool wantDebugUtils = true;
 #else
-        const bool wantDebugUtils = options.mEnabled;
+        const bool wantDebugUtils = options.mLevel != ValidationLevel::Off;
 #endif
         // What the device half of swapchain maintenance rests on: a present fence is the only
         // thing that says the presentation engine has finished with an image. Taken where the
@@ -83,8 +83,9 @@ namespace Rtx
         // Validation reaches us only through the messenger, so without the extension it would run
         // and report nothing — worse than not running at all, because the clean output would read
         // as a pass.
-        const bool validation = options.mEnabled && mDebugUtils && hasLayer(sValidationLayer);
-        if (options.mEnabled && !validation)
+        const bool wanted = options.mLevel != ValidationLevel::Off;
+        const bool validation = wanted && mDebugUtils && hasLayer(sValidationLayer);
+        if (wanted && !validation)
         {
             const std::string missing = std::string(sValidationLayer) + " or " + VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
@@ -145,7 +146,7 @@ namespace Rtx
             messengerInfo = makeMessengerCreateInfo(*mValidationLog);
             next = &messengerInfo;
 
-            if (options.mSynchronization)
+            if (options.mLevel == ValidationLevel::Sync)
             {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);
 
@@ -155,7 +156,7 @@ namespace Rtx
                 turnOn("syncval_shader_accesses_heuristic");
             }
 
-            if (options.mGpuAssisted)
+            if (options.mLevel == ValidationLevel::Gpu)
             {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
 

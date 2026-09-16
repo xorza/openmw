@@ -765,12 +765,12 @@ namespace Rtx::Testing
             float mOffset = 0.0f;
         };
 
-        /// A mesh records the material it arrived wearing, and a hundred crates wear it once.
+        /// A hundred crates wear one material.
         ///
         /// One drawable under two transforms is the shape `SceneUtil::CopyOp` makes of a model
         /// placed twice: nodes copied, the drawable and its state set shared. Both placements
-        /// resolve to one material, and it is the mesh's.
-        TEST_F(RtxSceneExtractorTest, aMeshRecordsTheMaterialItArrivedWearingAndACopyWearsTheSame)
+        /// resolve to one material.
+        TEST_F(RtxSceneExtractorTest, aCopyOfADrawableWearsTheSameMaterial)
         {
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
             osg::StateSet& state = *quad->getOrCreateStateSet();
@@ -790,15 +790,16 @@ namespace Rtx::Testing
 
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
             ASSERT_EQ(mScene.materials().getRows().size(), 1u);
-            EXPECT_EQ(mScene.meshes().getRows()[0].mMaterial, 0u);
             EXPECT_FALSE(mScene.materials().getRows()[0].mAnimated);
             EXPECT_TRUE(mScene.materials().getRows()[0].isCutout());
             EXPECT_EQ(stats.mInstances, 2u);
-            EXPECT_EQ(stats.mWornOtherwise, 0u);
+            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
+            EXPECT_EQ(mScene.placements().getAll()[0].mMaterial, 0u);
+            EXPECT_EQ(mScene.placements().getAll()[1].mMaterial, 0u);
         }
 
         /// A cutout under a controller is an animated material, so every placement of it reaches
-        /// the any-hit and none of them is the `mWornOtherwise` canary.
+        /// the any-hit.
         TEST_F(RtxSceneExtractorTest, aCutoutUnderAControllerIsAnimated)
         {
             osg::ref_ptr<osg::Group> node = new osg::Group;
@@ -813,14 +814,12 @@ namespace Rtx::Testing
             update.setTraversalNumber(1);
             node->accept(update);
 
-            const ExtractionStats stats = walk(*node, 0, 1);
+            walk(*node, 0, 1);
 
             ASSERT_EQ(mScene.materials().getRows().size(), 1u);
             EXPECT_TRUE(mScene.materials().getRows()[0].mAnimated);
             EXPECT_TRUE(mScene.materials().getRows()[0].isCutout());
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
-            EXPECT_EQ(mScene.meshes().getRows()[0].mMaterial, 0u);
-            EXPECT_EQ(stats.mWornOtherwise, 0u);
 
             // And it stays animated on the frame after, when the material is read again: the flag
             // is a fact about the state set and not about what the controller wrote this time.
@@ -831,12 +830,12 @@ namespace Rtx::Testing
             EXPECT_TRUE(mScene.materials().getRows()[0].mAnimated);
         }
 
-        /// A placement wearing a material other than the one its mesh arrived with is counted.
+        /// A placement wears the material of its own chain, whatever its mesh wore elsewhere.
         ///
         /// **The case the loader cannot produce, built by hand**: one drawable with no state set
-        /// of its own, under two parents describing two surfaces. The mesh records the first, and
-        /// the second placement is the canary.
-        TEST_F(RtxSceneExtractorTest, aPlacementWearingAnotherMaterialThanItsMeshIsCounted)
+        /// of its own, under two parents describing two surfaces. One mesh, two materials, and each
+        /// placement wears its parent's.
+        TEST_F(RtxSceneExtractorTest, aPlacementWearsTheMaterialOfItsOwnChain)
         {
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
 
@@ -853,9 +852,10 @@ namespace Rtx::Testing
 
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
             ASSERT_EQ(mScene.materials().getRows().size(), 2u);
-            EXPECT_EQ(mScene.meshes().getRows()[0].mMaterial, 0u) << "the material it arrived wearing";
             EXPECT_EQ(stats.mInstances, 2u);
-            EXPECT_EQ(stats.mWornOtherwise, 1u);
+            ASSERT_EQ(mScene.placements().getAll().size(), 2u);
+            EXPECT_EQ(mScene.placements().getAll()[0].mMaterial, 0u);
+            EXPECT_EQ(mScene.placements().getAll()[1].mMaterial, 1u);
         }
 
         /// A material a controller rewrites resolves its texture out of the image, not its name.

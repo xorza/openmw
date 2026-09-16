@@ -191,14 +191,21 @@ namespace MWRender
         /// screen and the main menu's cover say no, and want nothing animating behind them. Said as
         /// intent, because the rasterizer answers it with its cull masks and the ray tracer by not
         /// walking the scene.
-        virtual void showWorld(bool shown) = 0;
+        void showWorld(bool shown);
+        bool isWorldShown() const { return mWorldShown; }
 
         /// A render mode this renderer owns, turned off and back on, and which it now is:
         /// `Render_Scene` is the `tws` console command — a second reason apart from `showWorld`,
-        /// because a loading screen that ends while `tws` is off must not bring the world back —
-        /// and `Render_Wireframe` is the rasterizer's polygon mode. The game keeps the modes that
+        /// because a loading screen that ends while `tws` is off must not bring the world back,
+        /// and a world `tws` hides is still updated — and the rest are the renderer's own
+        /// (`Render_Wireframe` is the rasterizer's polygon mode). The game keeps the modes that
         /// are its own nodes (paths, meshes, the pathgrid) and the water.
-        virtual bool toggleRenderMode(RenderMode mode) = 0;
+        bool toggleRenderMode(RenderMode mode);
+        bool isWorldToggled() const { return mWorldToggled; }
+
+        /// Whether a frame draws the world: both of the answers above, said once so a frame cannot
+        /// walk on one and trace on the other.
+        bool drawsWorld() const { return mWorldShown && mWorldToggled; }
 
         /// The shader chain over the frame, or null where this renderer has none. Owned here,
         /// because what happens between the scene and the screen is the whole of what a renderer is
@@ -316,7 +323,8 @@ namespace MWRender
             = 0;
 
     protected:
-        Renderer() = default;
+        /// Out of line with the destructor, so a subclass needs none of what the handles point at.
+        Renderer();
 
         /// Taken from whatever made them, once, before anything asks.
         void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osg::Stats& stats);
@@ -327,6 +335,13 @@ namespace MWRender
 
         /// The view mask has changed; put it where this renderer reads it from.
         virtual void applyViewMask(unsigned int mask) = 0;
+
+        /// `isWorldShown` or `isWorldToggled` has changed; put both where this renderer reads
+        /// them from.
+        virtual void applyWorldShown() = 0;
+
+        /// A render mode other than `Render_Scene`, which the seam answers itself.
+        virtual bool toggleOwnRenderMode(RenderMode mode) { return false; }
 
         /// What `renderLoadingFrame` says before it draws: how long the frame stands for, which is
         /// what the rasterizer's compiler is given to spend on what a loader handed over.
@@ -341,6 +356,12 @@ namespace MWRender
         osg::ref_ptr<osg::Stats> mStats;
         osg::ref_ptr<osg::Group> mTraversalRoot;
         unsigned int mViewMask = ~0u;
+
+        /// False behind a loading screen and the main menu's cover, where nothing updates.
+        bool mWorldShown = true;
+
+        /// False while `tws` is off, where the world updates and is not drawn.
+        bool mWorldToggled = true;
     };
 
     /// The one place the choice is made. Throws naming the name where there is no such renderer,

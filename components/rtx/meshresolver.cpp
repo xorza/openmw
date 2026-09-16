@@ -55,7 +55,7 @@ namespace Rtx
 
     }
 
-    Index MeshResolver::resolve(const osg::Drawable& drawable, const DrawableRead& read, const Index material)
+    Index MeshResolver::resolve(const osg::Drawable& drawable, const DrawableRead& read)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -115,7 +115,7 @@ namespace Rtx
 
         const Index deformer = addDeformer(read, reading.mArrays.mPositions.size());
 
-        const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, read.mDeform, deformer, material);
+        const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, read.mDeform, deformer);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 
@@ -126,7 +126,7 @@ namespace Rtx
         return mesh;
     }
 
-    Index MeshResolver::adopt(const osg::Drawable& drawable, const MeshReading& reading, const Index material)
+    Index MeshResolver::adopt(const osg::Drawable& drawable, const MeshReading& reading)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -146,7 +146,7 @@ namespace Rtx
             if (reading.mShape.mSheet)
                 ++stats.mSheets;
 
-            const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex, material);
+            const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex);
             known = mMeshes.add(&drawable, Known{ .mIndex = mesh });
             ++stats.mMeshesAdded;
         }

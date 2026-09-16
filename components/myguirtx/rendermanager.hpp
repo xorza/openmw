@@ -13,7 +13,7 @@
 #include <MyGUI_Types.h>
 
 #include <components/myguiplatform/guirendermanager.hpp>
-#include <components/rtx/renderer.hpp>
+#include <components/rtx/guirenderer.hpp>
 
 namespace Resource
 {
@@ -25,12 +25,12 @@ namespace MyGUIRtx
 
     class Texture;
 
-    /// MyGUI over `Rtx::Renderer`, whichever graphics API is behind that.
+    /// MyGUI over `Rtx::GuiRenderer`, whichever graphics API is behind that.
     ///
     /// **Written once for every backend, and that is the whole design.** MyGUI's own interface is
     /// thirty functions and most of them are bookkeeping no API has an opinion about: a name-to-
     /// texture map, a view size, a lock and unlock contract, the batching. What is left is a table
-    /// of textures and one call that draws a list of triangles, and those are what `Rtx::Renderer`
+    /// of textures and one call that draws a list of triangles, and those are what `Rtx::GuiRenderer`
     /// offers. The scene, the frame and the instruments are three interfaces this cannot reach.
     ///
     /// **Nothing here is driven by a scene graph.** The other backend hangs its update on an OSG
@@ -40,7 +40,7 @@ namespace MyGUIRtx
     {
     public:
         /// @param scalingFactor how many device pixels a GUI pixel is worth. Zero means one.
-        RenderManager(Rtx::Renderer& renderer, Resource::ImageManager* imageManager, float scalingFactor);
+        RenderManager(Rtx::GuiRenderer& renderer, Resource::ImageManager* imageManager, float scalingFactor);
         ~RenderManager() override;
 
         RenderManager(const RenderManager&) = delete;
@@ -70,6 +70,10 @@ namespace MyGUIRtx
         void destroyVertexBuffer(MyGUI::IVertexBuffer* buffer) override;
 
         MyGUI::ITexture* createTexture(const std::string& name) override;
+
+        /// `createTexture`, as the type it makes: for a view inside the interface, which traces
+        /// into the slot the texture holds and so needs to ask for it.
+        Texture& makeTexture(const std::string& name);
         void destroyTexture(MyGUI::ITexture* texture) override;
         MyGUI::ITexture* getTexture(const std::string& name) override;
 
@@ -98,7 +102,7 @@ namespace MyGUIRtx
         void collectDrawCalls();
 
     private:
-        Rtx::Renderer& mRenderer;
+        Rtx::GuiRenderer& mRenderer;
         Resource::ImageManager* mImageManager;
 
         MyGUI::IntSize mViewSize;

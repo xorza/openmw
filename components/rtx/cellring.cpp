@@ -115,7 +115,7 @@ namespace Rtx
         {
             // Counted as it arrives, so the frame knows of every model a cell it may adopt names.
             for (PreparedModel* model : cell->mModels)
-                ++mHolds.know(*model).mHanded;
+                ++mHolds.know(*model).mNamed;
 
             // The switch is a setting the game can move while it runs, and a cell read under the
             // other answer is read again. A cell the reader is part-way through is neither held nor
@@ -220,8 +220,6 @@ namespace Rtx
             if (known.mParts.empty())
                 mHolds.adoptParts(known, into);
 
-            ++known.mHeld;
-            --known.mHanded;
             held.mModels.push_back(model);
         }
 
@@ -235,7 +233,7 @@ namespace Rtx
     void CellRing::discard(PreparedCell& cell)
     {
         for (PreparedModel* model : cell.mModels)
-            mHolds.release(*model, false);
+            mHolds.release(*model);
 
         // Every hold the reader counted for the cell goes back with it: the models, and the
         // images its ground names.
@@ -252,7 +250,7 @@ namespace Rtx
         mPlacer.dropSlots(cell);
 
         for (PreparedModel* model : cell.mModels)
-            mHolds.release(*model, true);
+            mHolds.release(*model);
 
         const std::span<PreparedTexture* const> textures = cell.mGround.has_value()
             ? std::span<PreparedTexture* const>(cell.mGround->mTextures)

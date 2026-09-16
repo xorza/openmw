@@ -14,6 +14,7 @@
 #include "image.hpp"
 #include "imageuse.hpp"
 #include "memory.hpp"
+#include "timeline.hpp"
 
 namespace Rtx
 {
@@ -175,12 +176,10 @@ namespace Rtx
         mFree.free(slot.get());
 
         // The buffer stays for whatever takes the slot next; what was in it is nobody's now.
-        Copy& copy = mCopies[slot.get()];
-        copy.mTracedOn = Copy::sNever;
-        copy.mLanded = false;
+        mCopies[slot.get()].mRides = Copy::sNever;
     }
 
-    void GuiTextures::readBackWith(const GuiSlot slot, const VkCommandBuffer commands, const std::uint64_t frame)
+    void GuiTextures::readBackWith(const GuiSlot slot, const VkCommandBuffer commands)
     {
         assert(holds(slot) && "a read back of a slot nothing holds");
 
@@ -195,33 +194,20 @@ namespace Rtx
 
         image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, copy.mBuffer);
 
-        copy.mTracedOn = frame;
-        copy.mLanded = false;
+        copy.mRides = mDevice.getTimeline().getNext();
     }
 
-    bool GuiTextures::takeCopy(const GuiSlot slot, const std::span<std::uint8_t> into, const std::uint64_t finished)
+    bool GuiTextures::takeCopy(const GuiSlot slot, const std::span<std::uint8_t> into)
     {
         assert(holds(slot) && "a copy of a slot nothing holds");
 
-        Copy& copy = mCopies[slot.get()];
-        if (copy.mTracedOn == Copy::sNever)
+        const Copy& copy = mCopies[slot.get()];
+        if (copy.mRides == Copy::sNever || !mDevice.getTimeline().hasFinished(copy.mRides))
             return false;
-
-        if (!copy.mLanded && copy.mTracedOn >= finished)
-            return false;
-
-        copy.mLanded = true;
 
         const std::size_t bytes = std::min<std::size_t>(into.size(), copy.mBuffer.getSize());
         std::memcpy(into.data(), copy.mBuffer.map(), bytes);
         return true;
-    }
-
-    void GuiTextures::landTraces()
-    {
-        for (Copy& copy : mCopies)
-            if (copy.mTracedOn != Copy::sNever)
-                copy.mLanded = true;
     }
 
     void GuiTextures::read(const GuiSlot slot, std::vector<std::uint8_t>& pixels)

@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include <osg/Matrixf>
 #include <osg/Node>
-#include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
@@ -16,7 +16,6 @@
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
 #include "shaders/visibility.h"
-#include "skylight.hpp"
 #include "slot.hpp"
 #include "walk.hpp"
 
@@ -110,6 +109,10 @@ namespace Rtx
 
         bool isOfWorld() const { return mSubject == nullptr; }
 
+        /// The size the picture was made at: the texture's, whatever `setExtent` fills of it.
+        std::uint32_t getWidth() const { return mRequest.mWidth; }
+        std::uint32_t getHeight() const { return mRequest.mHeight; }
+
         /// The mirror of the subject, or null for a picture of the world — which has no scene of its
         /// own, and traces against the one the frame's own walk built.
         const SceneDesc* getScene() const;
@@ -139,8 +142,9 @@ namespace Rtx
 
     private:
         /// The camera this picture is taken with, as the trace takes it. What `traceInto` traces
-        /// with and what `pick` builds its ray from, so the two cannot disagree.
-        Shaders::VisibilityConstants describeCamera() const;
+        /// with and what `pick` builds its ray from, so the two cannot disagree. Nothing for a view
+        /// with no basis, which neither can use.
+        std::optional<Shaders::VisibilityConstants> describeCamera() const;
 
         Renderer& mRenderer;
 
@@ -191,26 +195,14 @@ namespace Rtx
         /// built.
         std::unique_ptr<Subject> mSubject;
 
-        GuiTraceOptions mOptions;
+        /// What this picture was asked for, as it was asked: its size is what `setExtent` is
+        /// clamped against, and the camera is built from the rest at every trace.
+        ViewRequest mRequest;
+
         osg::Matrixf mView;
 
-        /// The size the picture was made at, which is what `setExtent` is clamped against.
-        std::uint32_t mWidth = 0;
-        std::uint32_t mHeight = 0;
-
-        RowOrder mRowOrder = RowOrder::TopFirst;
-        std::uint32_t mRayMask = 0;
-
-        /// One value and not a flag beside four floats, three of which would mean nothing in
-        /// whichever case the flag did not name, and all four of which the caller already holds as a
-        /// `SceneUtil::Framing`.
-        SceneUtil::Framing mFraming;
-
-        /// Where the light stands, unit, in the sense `ViewRequest::mLight` states it and the trace
-        /// takes it.
-        Sun mSun;
-        osg::Vec3f mAmbient;
-
-        bool mTransparent = false;
+        /// How much of the picture is filled, from its top-left corner.
+        std::uint32_t mExtentWidth = 0;
+        std::uint32_t mExtentHeight = 0;
     };
 }

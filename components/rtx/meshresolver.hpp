@@ -49,16 +49,13 @@ namespace Rtx
         }
 
         /// The mesh index for one drawable, adding it or posing it as its kind requires.
-        ///
-        /// @param material what the drawable wears, resolved first, which a mesh records as it
-        ///        arrives — `MeshRange::mMaterial`.
-        Index resolve(const osg::Drawable& drawable, const DrawableRead& read, Index material);
+        Index resolve(const osg::Drawable& drawable, const DrawableRead& read);
 
         /// The mesh index for a drawable somebody else has already read, adding it where the mirror
         /// does not hold it and stamping it where it does — the insertion half of `resolve`, for a
         /// reading made off the frame, under the drawable so a clone met by the walk resolves to
         /// this mesh. Standing only. One hold is taken on the entry until `release` gives it back.
-        Index adopt(const osg::Drawable& drawable, const MeshReading& reading, Index material);
+        Index adopt(const osg::Drawable& drawable, const MeshReading& reading);
 
         /// Gives one `adopt` back. The mirror must hold `drawable`, which it does for as long as
         /// anything holds it.

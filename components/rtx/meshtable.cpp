@@ -21,7 +21,7 @@ namespace Rtx
         }
     }
 
-    Index MeshTable::add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer, Index material)
+    Index MeshTable::add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
     {
         const std::span<const osg::Vec3f> positions = arrays.mPositions;
         const std::span<const std::uint32_t> indices = arrays.mIndices;
@@ -64,7 +64,6 @@ namespace Rtx
             .mShape = shape,
             .mDeform = deform,
             .mDeformer = deformer,
-            .mMaterial = material,
             .mBounds = boundsOf(positions),
         };
 
@@ -72,7 +71,7 @@ namespace Rtx
 
         writeAttributes(range, arrays);
 
-        const Index index = take(range);
+        const Index index = mRows.take(range);
         note(index, SlotNews::Arrived);
         return index;
     }
@@ -82,8 +81,8 @@ namespace Rtx
         // Grown here rather than beside every push, so everything keyed on a mesh slot reaches the
         // table's size in one place. A resize to the size it already is does not allocate, which is
         // what the frame path pays.
-        mChanges.grow(size());
-        mDeformed.grow(size());
+        mChanges.grow(mRows.size());
+        mDeformed.grow(mRows.size());
         mChanges.note(slot, what);
     }
 
@@ -115,7 +114,7 @@ namespace Rtx
 
     void MeshTable::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
     {
-        MeshRange& range = at(mesh);
+        MeshRange& range = mRows.at(mesh);
         range.mPosed = true;
 
         // A pose the size of the last one still reaches somewhere else. An arm that came down is
@@ -130,13 +129,13 @@ namespace Rtx
 
     std::span<const osg::Vec3f> MeshTable::getMeshPositions(Index mesh) const
     {
-        const MeshRange& range = at(mesh);
+        const MeshRange& range = mRows.at(mesh);
         return range.mVertices.in(getPositions());
     }
 
     std::span<const std::uint32_t> MeshTable::getMeshIndices(Index mesh) const
     {
-        const MeshRange& range = at(mesh);
+        const MeshRange& range = mRows.at(mesh);
         return range.mIndices.in(getIndices());
     }
 
@@ -147,7 +146,7 @@ namespace Rtx
 
     std::size_t MeshTable::sweep()
     {
-        const std::size_t freed = SlotRows::sweep([this](const Index index, MeshRange& range) {
+        const std::size_t freed = mRows.sweep([this](const Index index, MeshRange& range) {
             // The slot stays where it is and only its geometry goes back, because every index
             // above it names a bottom-level acceleration structure that would otherwise be built
             // again. The allocators merge the room with whatever it touches, so a cell leaves as
@@ -162,7 +161,6 @@ namespace Rtx
             range.mIndices.mCount = 0;
             range.mSecondTexCoords.mCount = 0;
             range.mUnitStreams = 0;
-            range.mMaterial = sNoIndex;
             range.mBounds = osg::BoundingBoxf();
 
             // A slot given back names no structure to refit, however it was posed this frame: the

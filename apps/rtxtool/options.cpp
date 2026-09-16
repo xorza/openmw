@@ -110,7 +110,7 @@ namespace RtxTool
         return complaint;
     }
 
-    ToolOptions makeOptions(const Validation validationByDefault)
+    ToolOptions makeOptions(const Rtx::ValidationLevel validationByDefault)
     {
         ToolOptions result{ bpo::options_description("Options"), {} };
         auto declare = result.mDescription.add_options();
@@ -135,7 +135,7 @@ namespace RtxTool
         option(Verbs::Every, "help", bpo::bool_switch(), "print this message and quit");
 
         option(Verbs::Every, "validation",
-            bpo::value<std::string>()->default_value(std::string(sValidationNames.name(validationByDefault))),
+            bpo::value<std::string>()->default_value(std::string(Rtx::sValidationNames.name(validationByDefault))),
             std::format("which of VK_LAYER_KHRONOS_validation's checks to load: {}. `on` is the core "
                         "checks; `sync` adds synchronization validation, which catches a missing "
                         "barrier; `gpu` adds GPU-assisted validation instead, which instruments every "
@@ -143,7 +143,7 @@ namespace RtxTool
                         "beside the core checks. `sync` by default outside a Release build and `off` "
                         "in one; a run that names a level and cannot have it fails rather than "
                         "reporting nothing",
-                sValidationNames.list())
+                Rtx::sValidationNames.list())
                 .c_str());
 
         option(sPlaces, "cell", bpo::value<std::string>()->default_value(""),
@@ -440,16 +440,6 @@ namespace RtxTool
         }
 
         return result;
-    }
-
-    Rtx::ValidationOptions validationOf(const Validation level, const bool demanded)
-    {
-        return Rtx::ValidationOptions{
-            .mEnabled = level != Validation::Off,
-            .mSynchronization = level == Validation::Sync,
-            .mGpuAssisted = level == Validation::Gpu,
-            .mDemanded = demanded,
-        };
     }
 
     namespace

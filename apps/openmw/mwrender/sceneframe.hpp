@@ -18,11 +18,6 @@ namespace osg
     class Node;
 }
 
-namespace Resource
-{
-    class ImageManager;
-}
-
 namespace Terrain
 {
     class ObjectStorage;
@@ -290,9 +285,6 @@ namespace MWRender
         const WorldState& mWorld;
 
         const EyeState& mEye;
-
-        /// Where a texture the mirror has not seen before is read from.
-        Resource::ImageManager& mImages;
 
         /// The world's terrain, for its storage, its worldspace and the active grid — not for its
         /// chunks, which a renderer that stands the ground itself is given none of.
