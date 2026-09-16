@@ -185,7 +185,7 @@ behind the host — under the layers it is the barrier gate. `view` is for what 
 how something moves, whether an artefact is a still or a shimmer — and it is the game, with the
 player's own camera and collision off, at the player's own settings; `--frames N` closes it.
 
-**A run is the same run twice.** `Rtx::SessionRequest::mStep` is how far the simulation steps and how
+**A run is the same run twice.** `Rtx::RunSetup::mStep` is how far the simulation steps and how
 long the renderer is told a frame took — a run's, never a setting's, so a played game cannot be
 made to step by frames — and a stop's own frame count is what the trace's sampler and the
 upscaler's jitter are walked by. A game's frame number counts loading-screen frames, which is why it
