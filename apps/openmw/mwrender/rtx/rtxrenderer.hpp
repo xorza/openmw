@@ -28,6 +28,7 @@
 #include "../ground.hpp"
 #include "../renderer.hpp"
 #include "../rendermode.hpp"
+#include "debugwalk.hpp"
 #include "framereport.hpp"
 #include "rippleemitters.hpp"
 #include "rtxrun.hpp"
@@ -389,6 +390,11 @@ namespace MWRender
         /// What disturbs the water this frame, decided game-side and pressed into the trace's
         /// ripple field.
         RippleEmitters mRipples;
+
+        /// The world root the game hangs its debug nodes on, and the walk that reads them off it
+        /// into the frame's lines. Borrowed: the world outlives this, and `detachWorld` lets go.
+        osg::Group* mWorldRoot = nullptr;
+        DebugWalk mDebugWalk;
 
         /// What the last walk found, and what a second walk added. Kept because a report is written
         /// at the end of a stop and the walks are over by then.

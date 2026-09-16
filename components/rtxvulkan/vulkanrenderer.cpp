@@ -1,11 +1,13 @@
 #include "vulkanrenderer.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <ratio>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -13,6 +15,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/camera.hpp>
+#include <components/rtx/debuglines.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameworld.hpp>
@@ -22,6 +25,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/gbuffer.h>
+#include <components/rtx/shaders/line.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/tone.h>
 #include <components/rtx/shaders/visibility.h>
@@ -101,6 +105,14 @@ namespace Rtx
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
 
+        /// How much wider the arms' image plane is than the eye's, per axis —
+        /// `VisibilityConstants::mArmsSpread`.
+        osg::Vec2f armsSpreadOf(const Shaders::VisibilityConstants& frame)
+        {
+            return osg::Vec2f(frame.mArms.mRight.length() / frame.mCamera.mRight.length(),
+                frame.mArms.mUp.length() / frame.mCamera.mUp.length());
+        }
+
         /// The display pass's own description of the frame, on the picture's grid. The alpha
         /// carries the puffs' transmittance wherever it is not the picture's coverage, which is
         /// the same test `spritecomposite.rgen` makes.
@@ -155,6 +167,7 @@ namespace Rtx
         , mViewCounts(
               Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
+        , mLines(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice, mGraveyard, mPool)
     {
         // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
@@ -433,11 +446,18 @@ namespace Rtx
         if (reconstruction.mJitter)
             sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
 
+        // The arms' eye samples where the world's does, or the two halves of one frame would be
+        // reconstructed from two grids.
+        sampled.mArms.mJitter = sampled.mCamera.mJitter;
+        sampled.mArmsSpread = armsSpreadOf(camera);
+
         // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
         // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
-        // at from.
-        sampled.mMediumInFrame = mWorld.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
-        sampled.mAdditiveInFrame = mWorld.mAcceleration->getInstanceCounts().mAdditive > 0 ? 1 : 0;
+        // at from. The arms are the scene's and the camera's both: a map draws none.
+        const InstanceCounts& counts = mWorld.mAcceleration->getInstanceCounts();
+        sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
+        sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
+        sampled.mArmsInFrame = counts.mFirstPerson > 0 && (camera.mRayMask & Shaders::MASK_FIRST_PERSON) != 0 ? 1 : 0;
 
         // The one subtraction of two world points, and it happens here. Two camera positions a
         // step apart subtract exactly in a float; the same difference taken on the device, between
@@ -895,6 +915,44 @@ namespace Rtx
         return shown;
     }
 
+    void VulkanRenderer::recordDebugLines(const VkCommandBuffer commands, FrameRecord& frame,
+        const Shaders::VisibilityConstants& sampled, const GBuffer& channels, const DebugLines& debug, GpuTimer& timer)
+    {
+        if (debug.empty())
+            return;
+
+        // The lines first and the triangles after them, in the slot's own buffer: the frame
+        // behind read its own slot's, so nothing here is written under a submit.
+        const std::size_t count = debug.mLines.size() + debug.mTriangles.size();
+        mGraveyard.bury(growTo(frame.mDebugVertices, mDevice, BufferKind::HostWritten, count * sizeof(DebugVertex),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "debug vertices"));
+
+        const std::span<DebugVertex> written = frame.mDebugVertices.writable<DebugVertex>(0, count);
+        std::copy(debug.mLines.begin(), debug.mLines.end(), written.begin());
+        std::copy(debug.mTriangles.begin(), debug.mTriangles.end(), written.begin() + debug.mLines.size());
+
+        timer.open(commands, "lines");
+
+        // Drawn over what the curve wrote, and left where the curve left it: the interface and
+        // the presenter both take the target from there.
+        Image& target = mTargets.current();
+        target.transition(commands, Use::sComputeWrite, Use::sColourAttachment);
+
+        mLines.record(commands, target, channels.get(Channel::Depth),
+            Shaders::LineConstants{
+                .mCamera = Shaders::cameraOnGrid(sampled.mCamera, target.getWidth(), target.getHeight()),
+                .mOrigin = sampled.mOrigin,
+                .mNear = sampled.mNear,
+                .mTraced = Shaders::uvec2(channels.getWidth(), channels.getHeight()),
+            },
+            frame.mDebugVertices.getHandle(), static_cast<std::uint32_t>(debug.mLines.size()),
+            static_cast<std::uint32_t>(debug.mTriangles.size()));
+
+        target.transition(commands, Use::sColourAttachment, Use::sComputeWrite);
+
+        timer.close(commands);
+    }
+
     Image& VulkanRenderer::claimTarget()
     {
         return mTargets.claim([this](const Image& target) {
@@ -1112,6 +1170,8 @@ namespace Rtx
             toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
         timer.close(commands);
 
+        recordDebugLines(commands, frame, sampled, channels, options.mDebug, timer);
+
         // After the picture and inside the frame's trace, so the frame is finished when its value
         // has passed and the hold is the last thing it did.
         if (mStress != nullptr)
@@ -1208,8 +1268,11 @@ namespace Rtx
         // a camera holds a cloud is this renderer's to answer. The only one of `sampleCamera`'s
         // fields a picture wants. Copied because the caller's block is theirs.
         Shaders::VisibilityConstants sampled = camera;
-        sampled.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
-        sampled.mAdditiveInFrame = traced.mAcceleration->getInstanceCounts().mAdditive > 0 ? 1 : 0;
+        sampled.mArmsSpread = armsSpreadOf(camera);
+        const InstanceCounts& counts = traced.mAcceleration->getInstanceCounts();
+        sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
+        sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
+        sampled.mArmsInFrame = counts.mFirstPerson > 0 && (camera.mRayMask & Shaders::MASK_FIRST_PERSON) != 0 ? 1 : 0;
 
         // The world's ripple field where the picture is of the world, which is the one place it
         // could have a wake in it; a subject of its own stands in no sea.

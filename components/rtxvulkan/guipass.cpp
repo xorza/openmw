@@ -1,7 +1,6 @@
 #include "guipass.hpp"
 
 #include <array>
-#include <cassert>
 #include <cstddef>
 
 #include <components/rtx/renderer.hpp>
@@ -60,43 +59,11 @@ namespace Rtx
     void GuiPass::record(
         VkCommandBuffer commands, const Image& target, VkBuffer vertices, std::span<const GuiDraw> draws) const
     {
-        assert((target.getUsage() & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0);
-
         if (draws.empty())
             return;
 
-        const VkRenderingAttachmentInfo colour{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = target.getView(),
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        };
-        const VkRenderingInfo rendering{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = { { 0, 0 }, { target.getWidth(), target.getHeight() } },
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &colour,
-        };
-
-        vkCmdBeginRendering(commands, &rendering);
-
-        // Upside down on purpose. MyGUI computes its vertices for a clip space with +Y up,
-        // which is OpenGL's; Vulkan's points the other way. Flipping the viewport rather than the
-        // vertices leaves the vertex shader a pass-through and costs nothing at all.
-        const VkViewport viewport{
-            .x = 0.0f,
-            .y = static_cast<float>(target.getHeight()),
-            .width = static_cast<float>(target.getWidth()),
-            .height = -static_cast<float>(target.getHeight()),
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-        const VkRect2D scissor{ { 0, 0 }, { target.getWidth(), target.getHeight() } };
-
-        vkCmdSetViewport(commands, 0, 1, &viewport);
-        vkCmdSetScissor(commands, 0, 1, &scissor);
+        // MyGUI computes its vertices for a clip space with +Y up, which is OpenGL's.
+        beginDrawingOver(commands, target, ClipUp::Up);
 
         const VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(commands, 0, 1, &vertices, &offset);

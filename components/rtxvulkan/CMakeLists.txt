@@ -67,6 +67,8 @@ set(RTX_SHADERS
     shaders/gui.frag
     shaders/gui.vert
     shaders/histogram.comp
+    shaders/line.frag
+    shaders/line.vert
     shaders/morph.comp
     shaders/ripplecompose.comp
     shaders/ripplestep.comp
@@ -216,6 +218,8 @@ set(RTX_VULKAN_FILES
     graveyard.hpp
     guipass.cpp
     guipass.hpp
+    linepass.cpp
+    linepass.hpp
     guitextures.cpp
     guitextures.hpp
     image.cpp

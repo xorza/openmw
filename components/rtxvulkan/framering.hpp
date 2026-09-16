@@ -77,6 +77,10 @@ namespace Rtx
         /// to the busiest frame so far. Host-visible device memory, so writing it is a memcpy
         /// and there is no staging copy and no transfer to record.
         Buffer mGuiVertices;
+
+        /// The debug lines' vertices, the same way, in the frame's own commands: the slot is the
+        /// frame's, so a write lands under no submit in flight.
+        Buffer mDebugVertices;
     };
 
     /// The frames in flight, and the discipline that keeps them apart: two slots, and the CPU

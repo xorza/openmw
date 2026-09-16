@@ -76,7 +76,9 @@ namespace Rtx
     {
         // The visitor goes with it, as the frame's walk hands itself over. A visitor that is
         // not a cull visitor takes the branch a null one would in every transform this tree has —
-        // an `AutoTransform` included — so a billboard reads the same here as under the frame.
+        // an `AutoTransform` included, which the frame's walk turns toward its eye and this one
+        // leaves at its base rotation: no vanilla static carries a billboard, so the ring has no
+        // eye to turn one to.
         const osg::Matrix above = mHere;
         node.computeLocalToWorldMatrix(mHere, this);
 

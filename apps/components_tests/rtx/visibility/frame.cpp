@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <vector>
 
 #include <osg/Math>
@@ -13,12 +14,17 @@
 #include <osg/Vec3f>
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/camera.hpp>
+#include <components/rtx/debuglines.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
+#include <components/rtx/texturedata.hpp>
+#include <components/vfs/pathutil.hpp>
 
 namespace Rtx::Testing
 {
@@ -252,6 +258,51 @@ namespace Rtx::Testing
             EXPECT_NEAR(viewed.mCamera.mRight.length(), aimed.mCamera.mRight.length(), 1e-5f);
             EXPECT_NEAR(viewed.mCamera.mUp.length(), aimed.mCamera.mUp.length(), 1e-5f);
             EXPECT_EQ(viewed.mCamera.mSpreadAngle, aimed.mCamera.mSpreadAngle);
+        }
+
+        /// The arms' eye is the eye's own until something widens it, and widening keeps the basis
+        /// and moves the plane.
+        ///
+        /// Ninety degrees over 200 by 100 is the plane `theTwoPerspectiveBuildersMeasureOnePlane`
+        /// works out — half-height one, half-width two, `atan(2 / 100)` a pixel — reached here
+        /// from a sixty-degree camera whose own half-height is `tan(30°)`.
+        TEST(RtxCameraTest, theArmsEyeIsTheEyesOwnUntilWidened)
+        {
+            const osg::Vec3f eye(3.0f, 4.0f, 5.0f);
+            const osg::Vec3f along(0.0f, 1.0f, 0.0f);
+            const osg::Matrixf view = osg::Matrixf::lookAt(eye, eye + along, osg::Vec3f(0.0f, 0.0f, 1.0f));
+
+            for (const Shaders::VisibilityConstants& built : { makeCameraAlong(eye, along, 60.0f, 200, 100, 1000.0f),
+                     makeCameraFromView(view, 60.0f, 200, 100, 1.0f, 1000.0f),
+                     makeOrthographicCameraFromView(view, 200.0f, 100.0f, 200, 100, 1.0f, 1000.0f) })
+            {
+                EXPECT_EQ(built.mArms.mForward, built.mCamera.mForward);
+                EXPECT_EQ(built.mArms.mRight, built.mCamera.mRight);
+                EXPECT_EQ(built.mArms.mUp, built.mCamera.mUp);
+                EXPECT_EQ(built.mArms.mSpreadAngle, built.mCamera.mSpreadAngle);
+                EXPECT_EQ(built.mArms.mWidth, built.mCamera.mWidth);
+            }
+
+            const Shaders::VisibilityConstants narrow = makeCameraAlong(eye, along, 60.0f, 200, 100, 1000.0f);
+            const Shaders::Camera wide = cameraAtFieldOfView(narrow.mCamera, 90.0f);
+
+            EXPECT_EQ(wide.mForward, narrow.mCamera.mForward);
+            EXPECT_NEAR(wide.mRight.length(), 2.0f, 1e-5f);
+            EXPECT_NEAR(wide.mUp.length(), 1.0f, 1e-5f);
+            EXPECT_NEAR(wide.mSpreadAngle, std::atan(2.0f / 100.0f), 1e-6f);
+            EXPECT_EQ(wide.mWidth, 200u);
+            EXPECT_EQ(wide.mHeight, 100u);
+
+            // The same axes, only longer.
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                EXPECT_NEAR(wide.mRight[axis] / wide.mRight.length(),
+                    narrow.mCamera.mRight[axis] / narrow.mCamera.mRight.length(), 1e-6f)
+                    << "right " << axis;
+                EXPECT_NEAR(
+                    wide.mUp[axis] / wide.mUp.length(), narrow.mCamera.mUp[axis] / narrow.mCamera.mUp.length(), 1e-6f)
+                    << "up " << axis;
+            }
         }
 
         /// Parallel rays, and the whole difference between them and a pinhole's.
@@ -916,6 +967,164 @@ namespace Rtx::Testing
             deformTo(-1000.0f);
             mRenderer->renderFrame(camera, FrameOptions{});
             EXPECT_EQ(mRenderer->finishFrame().value().mHits, 0u);
+        }
+
+        /// A debug line is drawn over the picture where it stands in front of what was traced,
+        /// and not where it stands behind it.
+        ///
+        /// **The trace's own depth is the test.** A wall a hundred units ahead, and a red line
+        /// across the middle of the frame: fifty units ahead it is drawn, replacing the wall's
+        /// grey along the middle row at full alpha; a hundred and fifty units ahead it is behind
+        /// the wall and the row is the wall. A triangle over the lower half of the frame at a
+        /// quarter alpha is blended, so the pixel it covers is a quarter of the way from the
+        /// wall to red and the pixel it does not cover is the wall.
+        TEST_F(RtxVisibilityTest, aDebugLineIsDrawnInFrontOfTheTraceAndNotBehindIt)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t middle = centreValueOf(size);
+            constexpr std::size_t low = (std::size_t{ 28 } * size + size / 2) * 4;
+
+            const SceneDesc scene = makeWall();
+            const Shaders::VisibilityConstants camera = wallCamera(
+                size, osg::Vec3f(2.0f, 2.0f, 2.0f), osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f));
+
+            const auto shown = [&](float ahead, std::span<const DebugVertex> triangles) {
+                // Half a unit under the eye's own height: fifty ahead that is three tenths of a
+                // pixel under the middle row's centre, so the line rasterizes on that row and not
+                // on the boundary between two.
+                const std::array<DebugVertex, 2> line{
+                    DebugVertex{ .mPosition = osg::Vec3f(-500.0f, -100.0f + ahead, -0.5f),
+                        .mColour = osg::Vec4f(1.0f, 0.0f, 0.0f, 1.0f) },
+                    DebugVertex{ .mPosition = osg::Vec3f(500.0f, -100.0f + ahead, -0.5f),
+                        .mColour = osg::Vec4f(1.0f, 0.0f, 0.0f, 1.0f) },
+                };
+                renderShot(scene, {}, camera, size, Shot{ .mDebug = { .mLines = line, .mTriangles = triangles } });
+
+                std::vector<std::uint8_t> pixels;
+                mRenderer->readPixels(pixels);
+                requireFrame(pixels, size);
+                return pixels;
+            };
+
+            const std::vector<std::uint8_t> bare = shown(150.0f, {});
+            ASSERT_GT(int{ bare[middle] }, 20) << "the wall is not lit";
+            EXPECT_EQ(bare[middle], bare[middle + 1]) << "a line behind the wall was drawn";
+
+            const std::vector<std::uint8_t> lined = shown(50.0f, {});
+            EXPECT_EQ(int{ lined[middle] }, 255) << "the line in front of the wall was not drawn";
+            EXPECT_EQ(int{ lined[middle + 1] }, 0);
+            EXPECT_EQ(lined[low], bare[low]) << "the line reached a row it does not cross";
+
+            // A triangle over the lower half, fifty ahead, at a quarter alpha: over what the wall
+            // encodes to, a quarter of the way to red.
+            const std::array<DebugVertex, 3> lower{
+                DebugVertex{
+                    .mPosition = osg::Vec3f(-500.0f, -50.0f, -2.0f), .mColour = osg::Vec4f(1.0f, 0.0f, 0.0f, 0.25f) },
+                DebugVertex{
+                    .mPosition = osg::Vec3f(500.0f, -50.0f, -2.0f), .mColour = osg::Vec4f(1.0f, 0.0f, 0.0f, 0.25f) },
+                DebugVertex{
+                    .mPosition = osg::Vec3f(0.0f, -50.0f, -500.0f), .mColour = osg::Vec4f(1.0f, 0.0f, 0.0f, 0.25f) },
+            };
+            const std::vector<std::uint8_t> filled = shown(150.0f, lower);
+            EXPECT_NEAR(int{ filled[low] }, static_cast<int>(0.75f * bare[low] + 0.25f * 255.0f), 1)
+                << "the triangle was not blended over the wall";
+            EXPECT_NEAR(int{ filled[low + 1] }, static_cast<int>(0.75f * bare[low + 1]), 1);
+            EXPECT_EQ(filled[middle], bare[middle]) << "the triangle reached a row above it";
+        }
+
+        /// The player's arms are seen through their own eye and stand in front of everything.
+        ///
+        /// **Two decisions the rasterizer makes for `Mask_FirstPerson`, both of them the
+        /// picture's.** `NpcAnimation` swaps the projection under the arms for
+        /// `first person field of view`, and clears the depth under them so no wall clips a
+        /// hand. An eye a hundred units short of a grey wall that fills the frame, and a red pane
+        /// placed as first person a hundred units past the wall, ten units either side of
+        /// `x = 70`: through a thirty-degree eye the pane is off the picture, since that eye
+        /// reaches 53.6 units either side at the pane's depth, and every pixel is the wall;
+        /// through arms at sixty degrees the eye reaches 115.5, and column 26 of thirty-three —
+        /// whose centre looks seventy units across at that depth — is the pane, red and at the
+        /// pane's own distance, with the wall a hundred units nearer along the world's ray. The
+        /// middle of the frame is the wall either way.
+        TEST_F(RtxVisibilityTest, theArmsAreSeenThroughTheirOwnEyeAndInFrontOfEverything)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t row = size / 2;
+            constexpr std::size_t column = 26;
+            constexpr std::size_t centre = centreOf(size);
+            constexpr std::size_t arm = row * size + column;
+
+            constexpr std::array<std::uint8_t, 4> sGrey{ 128, 128, 128, 255 };
+            constexpr std::array<std::uint8_t, 4> sRed{ 255, 0, 0, 255 };
+            const std::array<TextureData, 2> textures{ describeTexel(sGrey, 0), describeTexel(sRed, 1) };
+
+            const std::array<osg::Vec3f, 4> pane{
+                osg::Vec3f(60.0f, 100.0f, -20.0f),
+                osg::Vec3f(80.0f, 100.0f, -20.0f),
+                osg::Vec3f(80.0f, 100.0f, 20.0f),
+                osg::Vec3f(60.0f, 100.0f, 20.0f),
+            };
+
+            SceneDesc scene;
+            const Index grey = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
+            const Index red = scene.textures().add(VFS::Path::NormalizedView("red.dds"));
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                .mMaterial = scene.materials().add(Material{ .mDiffuse = grey }) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = pane, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                .mMaterial = scene.materials().add(Material{ .mDiffuse = red }),
+                .mClass = InstanceClass::FirstPerson });
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 30.0f, size, size, 10000.0f);
+            camera.mShowAlbedo = 1u;
+            camera.mDelight = 0.0f;
+
+            struct Seen
+            {
+                std::array<std::uint8_t, 3> mArm;
+                std::array<std::uint8_t, 3> mMiddle;
+                float mArmDistance;
+                float mMiddleDistance;
+            };
+
+            const auto seenWith = [&](const Shaders::Camera& arms) {
+                camera.mArms = arms;
+                EXPECT_EQ(renderShot(scene, textures, camera, size), size * size);
+
+                std::vector<std::uint8_t> pixels;
+                mRenderer->readPixels(pixels);
+                requireFrame(pixels, size);
+
+                // Two floats a pixel: clip depth, then distance from the eye.
+                std::vector<float> depth;
+                mRenderer->readChannel(Channel::Depth, depth);
+
+                return Seen{
+                    .mArm = { pixels[arm * 4], pixels[arm * 4 + 1], pixels[arm * 4 + 2] },
+                    .mMiddle = { pixels[centre * 4], pixels[centre * 4 + 1], pixels[centre * 4 + 2] },
+                    .mArmDistance = depth[arm * 2 + 1],
+                    .mMiddleDistance = depth[centre * 2 + 1],
+                };
+            };
+
+            const Seen narrow = seenWith(camera.mCamera);
+            EXPECT_EQ(narrow.mArm, narrow.mMiddle) << "the pane is off a thirty-degree picture";
+            EXPECT_NEAR(narrow.mMiddleDistance, 100.0f, 0.01f);
+
+            const Seen wide = seenWith(cameraAtFieldOfView(camera.mCamera, 60.0f));
+            EXPECT_GT(int{ wide.mArm[0] }, 200) << "the arms' eye did not see the pane";
+            EXPECT_LT(int{ wide.mArm[1] }, 50) << "the arms' eye saw something other than the pane";
+            EXPECT_EQ(wide.mMiddle, narrow.mMiddle) << "the arms' eye moved the wall";
+            EXPECT_NEAR(wide.mMiddleDistance, 100.0f, 0.01f);
+
+            // Where column 26's centre lands at sixty degrees: `(26.5 / 33) * 2 - 1` of the
+            // half-extent `tan(30°)` per unit ahead, and the pane stands two hundred ahead.
+            const float across = ((26.5f / 33.0f) * 2.0f - 1.0f) * std::tan(osg::DegreesToRadians(30.0f));
+            EXPECT_NEAR(wide.mArmDistance, 200.0f * std::sqrt(1.0f + across * across), 0.05f)
+                << "the pane stands a hundred units behind the wall, and is drawn in front of it";
         }
     }
 }

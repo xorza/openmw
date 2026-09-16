@@ -101,10 +101,13 @@ MediumAhead mediumAhead(uvec2 pixel, vec3 origin, vec3 direction, float air, flo
 /// @param layer which layer of the peel this trace is for, counting the eye's own as nought. Added
 ///        to the instance's shader-table offset, so the hit lands on the record that says so —
 ///        `HitRecord` in `visibility.h` says why it travels that way and not in the payload.
+#define RTX_TRACE(object, from, tmin, along, mask, layer)                                                   \
+    hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), (layer), 0u, MISS_RECORD_SKY, (from), \
+        (tmin), (along), frame.mFar, RTX_TRAVERSAL_PAYLOAD);
+
 #define RTX_TRACE_AND_SHADE(object, from, tmin, along, mask, layer)                                         \
     {                                                                                                       \
-        hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), (layer), 0u, MISS_RECORD_SKY,     \
-            (from), (tmin), (along), frame.mFar, RTX_TRAVERSAL_PAYLOAD);                                    \
+        RTX_TRACE(object, from, tmin, along, mask, layer)                                                   \
         hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                                     \
     }
 
@@ -121,11 +124,31 @@ void main()
     //
     // **The ray is built into the call and not kept.** The same rays the wavelet rebuilds come from
     // the same `rayAt`, and the hit object hands them back below.
+    //
+    // **The arms first, through their own eye, and the world only where they are not.** The
+    // rasterizer draws the player's arms under a projection of their own field of view and clears
+    // the depth under them, so they stand in front of everything — a decision about what the
+    // picture is, which `worldMask` says the world's ray keeps out of. The arms' ray is traced and
+    // not shaded until it is known to have hit, so a pixel beside the arms pays one traversal on
+    // a mask a handful of instances carry and no second shading of the sky.
     hitObjectEXT found;
+    bool arms = false;
+    if (frame.mArmsInFrame != 0u)
+    {
+        const Ray ray = rayAt(frame.mArms, vec2(pixel));
+        RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, frame.mRayMask & MASK_FIRST_PERSON, 0u)
+        arms = hitObjectIsHitEXT(found);
+    }
+    if (!arms)
     {
         const Ray ray = rayAt(frame.mCamera, vec2(pixel));
-        RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, frame.mRayMask, 0u)
+        RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, worldMask(frame.mRayMask), 0u)
     }
+    hitObjectExecuteShaderEXT(found, RTX_PAYLOAD);
+
+    // What every ray after the eye's own casts with along this pixel's ray: past the arms, the
+    // peel may meet the world behind them as well as the next layer of them.
+    const uint peelMask = arms ? frame.mRayMask : worldMask(frame.mRayMask);
 
     // **Read back rather than carried across.** The hit object holds the ray it was traced with, so
     // asking it costs nothing where six floats of the launch's own would have been kept live across
@@ -139,8 +162,8 @@ void main()
 
     // **Made before the peel, because each layer of it is charged the medium in front of itself.**
     // Both are the eye's own and neither moves as the ray carries on past a layer: the cone is the
-    // camera's, and what stands over the eye is what the eye stands in.
-    const Cone cone = coneAt(frame.mCamera);
+    // eye's the ray was cast from, and what stands over the eye is what the eye stands in.
+    const Cone cone = arms ? coneAt(frame.mArms) : coneAt(frame.mCamera);
     const bool submerged = waterOver(origin) > 0.0;
 
     // **The surfaces the eye is looking through, peeled off nearest first and kept.** A pane of
@@ -197,7 +220,7 @@ void main()
 
         // The layer this trace is for, which on the last one the budget allows is the record that
         // says whatever it finds is to be shaded as a solid.
-        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, frame.mRayMask, layer + 1u)
+        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, peelMask, layer + 1u)
 
         origin = hitObjectGetWorldRayOriginEXT(found);
         direction = hitObjectGetWorldRayDirectionEXT(found);
@@ -295,8 +318,10 @@ void main()
         layer = mergedPuffs(layer, shells);
     }
 
+    // And which eye this pixel's ray was cast from, for the composite to march its own again
+    // through the same one: `spritecomposite.rgen` reads it beside the depth.
     imageStore(puffs, ivec2(pixel), vec4(layer.mColour, layer.mTransmittance));
-    imageStore(puffsDepth, ivec2(pixel), vec4(layer.mCoveredAt, shellsThrough, 0.0, 0.0));
+    imageStore(puffsDepth, ivec2(pixel), vec4(layer.mCoveredAt, shellsThrough, arms ? 1.0 : 0.0, 0.0));
 
     if (COUNT_HITS && hit)
         atomicAdd(hits, 1);
@@ -337,7 +362,11 @@ void main()
     // **The sky moves too, and only its turn moves it.** `skyMotionOf` says why storing nothing here
     // is a smear across every camera rotation. The frame's own vector, always: no puff is in the
     // frame, so nothing in it moves with a puff.
-    const vec2 moved = hit ? motionOf(pixel, origin, direction, distance, instance) : skyMotionOf(pixel, direction);
+    // Projected through the eye it was found by: the arms' plane is wider than the world's by
+    // `mArmsSpread`, and a point on them reprojects through that.
+    const vec2 moved = hit
+        ? motionOf(pixel, origin, direction, distance, instance, arms ? frame.mArmsSpread : vec2(1.0))
+        : skyMotionOf(pixel, direction);
     imageStore(motion, at, vec4(moved, 0.0, 0.0));
 
     // **The one surface in this frame that shows something standing somewhere else.** Water is
@@ -354,5 +383,6 @@ void main()
     imageStore(starsShown, at, vec4(answer.mSkyShown * transmittance, 1.0));
 
     // A miss is as far away as anything can be, and the hit object already carries `mFar` for it.
+    // The arms' depth is the eye's own: `clipDepth` measures along the forward the two share.
     imageStore(depth, at, vec4(hit ? clipDepth(direction, distance) : 1.0, distance, 0.0, 0.0));
 }

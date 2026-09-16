@@ -61,7 +61,10 @@ struct PreviousScreen
 /// **An offset from the eye and never a world position.** `mCameraMotion` is the step between two
 /// eyes, differenced on the host where a float still has digits to spare — where the two positions
 /// themselves are six figures long and nearly equal.
-PreviousScreen previousScreen(vec3 was)
+/// @param spread how much wider the image plane the point projects through is than the eye's own,
+///        per axis — one for the eye, and `frame.mArmsSpread` for the arms. The previous frame
+///        carries the eye's basis alone, and the arms' is that basis at the arms' own half extents.
+PreviousScreen previousScreenThrough(vec3 was, vec2 spread)
 {
     // A basis of nothing is what the frame carries where there is no previous frame at all: the
     // first, a resize, a new scene, and any jump a motion vector could not describe. Behind the
@@ -72,13 +75,19 @@ PreviousScreen previousScreen(vec3 was)
         return PreviousScreen(vec2(0.0), false);
 
     // The basis carries the image plane's half extents, so dividing by each vector's own square
-    // undoes the direction and the scale together.
-    const float across = dot(was, frame.mPreviousRight) / dot(frame.mPreviousRight, frame.mPreviousRight);
-    const float down = -dot(was, frame.mPreviousUp) / dot(frame.mPreviousUp, frame.mPreviousUp);
+    // undoes the direction and the scale together; a plane `spread` times wider puts the same
+    // point that much nearer its middle.
+    const float across = dot(was, frame.mPreviousRight) / dot(frame.mPreviousRight, frame.mPreviousRight) / spread.x;
+    const float down = -dot(was, frame.mPreviousUp) / dot(frame.mPreviousUp, frame.mPreviousUp) / spread.y;
 
     const vec2 at = (vec2(across, down) / ahead) * 0.5 + 0.5;
 
     return PreviousScreen(clamp(at, vec2(-PREVIOUS_SCREEN_REACH), vec2(1.0 + PREVIOUS_SCREEN_REACH)), true);
+}
+
+PreviousScreen previousScreen(vec3 was)
+{
+    return previousScreenThrough(was, vec2(1.0));
 }
 
 /// Where a surface stood on the previous frame's screen, less where it stands on this one, in
@@ -95,7 +104,7 @@ PreviousScreen previousScreen(vec3 was)
 /// centre instead returns the jitter for a world that did not move, and an upscaler handed that
 /// fetches its history a fraction of a pixel out, by a different fraction every frame. That is a
 /// still image that shakes.
-vec2 reprojected(uvec2 pixel, vec3 was)
+vec2 reprojected(uvec2 pixel, vec3 was, vec2 spread)
 {
     // **No answer under a parallel projection.** The inverse below divides by the distance along
     // the view axis, which is the perspective divide and not this camera's projection. Nothing that
@@ -103,7 +112,7 @@ vec2 reprojected(uvec2 pixel, vec3 was)
     if (frame.mCamera.mOrthographic != 0u)
         return vec2(0.0);
 
-    const PreviousScreen screen = previousScreen(was);
+    const PreviousScreen screen = previousScreenThrough(was, spread);
     if (!screen.mFound)
         return vec2(0.0);
 
@@ -111,11 +120,18 @@ vec2 reprojected(uvec2 pixel, vec3 was)
     return before - (vec2(pixel) + 0.5 + frame.mCamera.mJitter);
 }
 
-vec2 motionOf(uvec2 pixel, vec3 origin, vec3 direction, float distance, uint instance)
+vec2 reprojected(uvec2 pixel, vec3 was)
+{
+    return reprojected(pixel, was, vec2(1.0));
+}
+
+/// @param spread which image plane the surface projects through — the eye's at one, or the arms'
+///        at `frame.mArmsSpread` for a surface the arms' ray found.
+vec2 motionOf(uvec2 pixel, vec3 origin, vec3 direction, float distance, uint instance, vec2 spread)
 {
     const vec3 point = origin + direction * distance;
 
-    return reprojected(pixel, direction * distance + frame.mCameraMotion + movedBy(instance, point));
+    return reprojected(pixel, direction * distance + frame.mCameraMotion + movedBy(instance, point), spread);
 }
 
 /// Where what a water surface reflects stood on the previous frame's screen, in pixels.

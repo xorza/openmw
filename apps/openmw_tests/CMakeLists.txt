@@ -42,6 +42,7 @@ endif()
 if (OPENMW_RTX)
     set(RTX_TEST_FILES
         ${CMAKE_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
+        mwrender/debugwalk.cpp
         mwrender/readworld.cpp
         mwrender/renderer.cpp
         mwrender/rtxrenderer.cpp

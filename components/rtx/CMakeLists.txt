@@ -28,6 +28,7 @@ set(RTX_FILES
     cellreader.cpp
     cellreader.hpp
     residency.hpp
+    debuglines.hpp
     ripple.hpp
     frameimage.hpp
     cloudshell.cpp
@@ -163,6 +164,7 @@ set(RTX_SHADER_HEADERS
     shaders/gbuffer.h
     shaders/glare.h
     shaders/hosttypes.h
+    shaders/line.h
     shaders/look.h
     shaders/portable.h
     shaders/probe.h

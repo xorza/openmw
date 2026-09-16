@@ -50,12 +50,18 @@ void main()
     const uvec2 extent = gl_LaunchSizeEXT.xy;
     const uvec2 tracedExtent = uvec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
 
-    // The traced camera on this grid — `cameraOnGrid` says why it is the same basis — and where
-    // this pixel's centre lands on the traced one. Nearest and not filtered: a depth is not a
-    // quantity that averages, and the bin is a list.
-    const Camera camera = cameraOnGrid(frame.mCamera, extent.x, extent.y);
+    // Where this pixel's centre lands on the traced grid. Nearest and not filtered: a depth is
+    // not a quantity that averages, and the bin is a list.
     const vec2 across = vec2(tracedExtent) / vec2(extent);
     const uvec2 traced = min(uvec2((vec2(pixel) + 0.5) * across), tracedExtent - 1u);
+
+    // What the trace left at that pixel: how far the puffs stand, what the shells let through, and
+    // which eye the ray was cast from — the arms' where the arms were found, so the march here runs
+    // along the same ray the trace lit them on.
+    const vec3 stood = imageLoad(puffsDepth, ivec2(traced)).xyz;
+
+    // The traced camera on this grid — `cameraOnGrid` says why it is the same basis.
+    const Camera camera = cameraOnGrid(stood.z > 0.5 ? frame.mArms : frame.mCamera, extent.x, extent.y);
 
     const Ray ray = rayAt(camera, vec2(pixel));
     const vec3 origin = frame.mOrigin + ray.mOffset;
@@ -66,7 +72,6 @@ void main()
 
     const Cone cone = coneAt(camera);
     const PuffLayer shape = spritesAlong(traced, cone, origin, direction, distance, false);
-    const vec2 stood = imageLoad(puffsDepth, ivec2(traced)).xy;
 
     PuffLayer layer = shape;
     layer.mTransmittance = shape.mTransmittance * stood.y;

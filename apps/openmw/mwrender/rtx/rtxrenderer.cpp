@@ -401,6 +401,7 @@ namespace MWRender
     {
         mMirror.detach();
         mRipples.clear();
+        mWorldRoot = nullptr;
     }
 
     float RtxRenderer::getGroundReach() const
@@ -478,8 +479,10 @@ namespace MWRender
     void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
     {
         // Straight under the root: the rasterizer hangs its shadowed scene between the two, and
-        // this renderer has nothing to put there.
+        // this renderer has nothing to put there. The root is kept for what the game hangs on it
+        // beside the scene: its debug nodes, which every frame reads off it.
         worldRoot.addChild(world.getSceneRoot());
+        mWorldRoot = &worldRoot;
 
         // Only for the pictures inside the interface: a doll resolves its own textures. Nothing
         // about the frame needs it — the mirror is handed an image manager by whoever drives it.
@@ -1014,6 +1017,9 @@ namespace MWRender
             Rtx::Shaders::VisibilityConstants constants = Rtx::makeCameraFromView(frame.mCamera.getViewMatrix(),
                 frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
 
+            // The arms' own eye, at the field of view the game draws them through.
+            constants.mArms = Rtx::cameraAtFieldOfView(constants.mCamera, frame.mEye.mArmsFieldOfView);
+
             // What the game decided the eye sees, read where the rasterizer reads it.
             constants.mRayMask = rayMaskOf(getViewMask());
             return constants;
@@ -1077,6 +1083,11 @@ namespace MWRender
         Rtx::FrameOptions options
             = Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias);
         options.mRipples = mMirror.getScene().ripples();
+
+        // What the debug modes drew, read off the world root here, after the game's own update
+        // has rebuilt them for this frame and before the frame is recorded.
+        if (mWorldRoot != nullptr)
+            options.mDebug = mDebugWalk.walk(*mWorldRoot);
 
         report.mReconstruction = mRenderer->renderFrame(constants, options);
 

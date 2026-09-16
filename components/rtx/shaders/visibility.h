@@ -69,6 +69,18 @@ namespace Rtx::Shaders
         /// the reason `Camera` gives.
         Camera mCamera;
 
+        /// The eye the player's own arms are seen through: the same place and the same basis,
+        /// at `first person field of view` — `NpcAnimation`'s `OverrideFieldOfViewCallback`
+        /// swaps the projection under `Mask_FirstPerson` for exactly this. The eye's own camera
+        /// where nobody widened it, which is what every camera built here starts as.
+        Camera mArms;
+
+        /// How much wider the arms' image plane is than the eye's, per axis — one where the two
+        /// fields of view are equal, which is what they ship as. What a point on the arms
+        /// reprojects through, worked out once on the host rather than at every pixel that found
+        /// them.
+        vec2 mArmsSpread;
+
         /// Where the depth buffer's zero sits, in world units from the eye.
         ///
         /// **A ray tracer has no near plane and an upscaler asks for one anyway.** Nothing here
@@ -405,6 +417,12 @@ namespace Rtx::Shaders
         /// pixel, and a frame that holds none is nearly every frame.
         uint mAdditiveInFrame;
 
+        /// Non-zero where this scene holds the player's arms and this camera draws them, for the
+        /// same reason again: `visibility.rgen` traces `mArms`'s ray on `MASK_FIRST_PERSON` ahead
+        /// of the world's, and a picture with no arms in it — every third-person frame, every
+        /// picture inside the interface — pays no second trace.
+        uint mArmsInFrame;
+
         /// Which classes of instance this camera draws — the rasterizer's cull mask, in the bits
         /// `scene.h` names. The eye's rays cast with it whole and every other ray with
         /// `solidMask` of it; `MASK_PARTICLE` in it is whether the sprites are drawn at all.
@@ -457,8 +475,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1080, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1208, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1152, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1280, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

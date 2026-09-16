@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <span>
 #include <string_view>
@@ -11,6 +12,7 @@
 namespace Rtx
 {
     class Device;
+    class Image;
 
     /// How what a pipeline draws reaches what is already in the attachment.
     enum class Blend
@@ -44,6 +46,13 @@ namespace Rtx
 
         Blend mBlend = Blend::None;
 
+        /// What the vertices make: triangles, which the interface is, or lines, which the debug
+        /// modes are.
+        VkPrimitiveTopology mTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        /// The one push range, for both stages, or nought for a pipeline told nothing.
+        std::uint32_t mPushConstantBytes = 0;
+
         std::filesystem::path mVertexModule;
         std::filesystem::path mFragmentModule;
 
@@ -58,4 +67,21 @@ namespace Rtx
     public:
         GraphicsPipeline(const Device& device, const GraphicsPipelineOptions& options);
     };
+
+    /// Which way the clip space a pass writes has `+Y`: Vulkan's own, down as a picture is
+    /// indexed, or OpenGL's, up, which MyGUI computes its vertices for and a flipped viewport
+    /// answers at no cost.
+    enum class ClipUp
+    {
+        Down,
+        Up,
+    };
+
+    /// Begins drawing over the whole of `target`, loaded rather than cleared because the frame is
+    /// already in it, with the viewport and the scissor set to its extent. Dynamic rendering, so
+    /// there is no render pass and no framebuffer; `vkCmdEndRendering` ends it.
+    ///
+    /// @param target in `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` and made with
+    ///        `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT`, which is asserted.
+    void beginDrawingOver(VkCommandBuffer commands, const Image& target, ClipUp up);
 }

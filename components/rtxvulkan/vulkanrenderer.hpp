@@ -39,6 +39,7 @@
 #include "handles.hpp"
 #include "image.hpp"
 #include "instance.hpp"
+#include "linepass.hpp"
 #include "placing.hpp"
 #include "presenttargets.hpp"
 #include "ripplepass.hpp"
@@ -178,6 +179,12 @@ namespace Rtx
         /// The image this frame writes, with the present that last read it waited for — once per
         /// frame, at the first of the trace and the interface to want it.
         Image& claimTarget();
+
+        /// Draws `debug` over the frame's target after the curve and before the interface, from
+        /// the slot's own vertex buffer, depth-tested against `channels`' depth. Nothing at all
+        /// for a frame with none, which is nearly every frame.
+        void recordDebugLines(VkCommandBuffer commands, FrameRecord& frame, const Shaders::VisibilityConstants& sampled,
+            const GBuffer& channels, const DebugLines& debug, GpuTimer& timer);
 
         /// The scene a slot names — the world's, or a picture's. A slot nothing holds is a caller
         /// bug, so it is asserted rather than reported.
@@ -386,6 +393,9 @@ namespace Rtx
         /// The interface: `GuiTextures` holds the part with a rule, and the rest is a pipeline, a
         /// scratch vector and a counter with nothing binding them.
         GuiPass mGuiPass;
+
+        /// The debug modes' lines and triangles, over the picture and under the interface.
+        LinePass mLines;
         GuiTextures mGuiTextures;
 
         /// The batches, resolved from slots to what the pass wants. Kept so that a frame of GUI

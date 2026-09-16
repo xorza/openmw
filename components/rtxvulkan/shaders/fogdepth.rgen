@@ -52,11 +52,13 @@ void main()
     // carries to the fog: the march clamps it to the reach, and a froxel past it is one no pixel
     // reads.
     //
-    // **And the eye's own mask, whole**, because what the column measures is where the eye's view
-    // of the air ends, and what the eye cannot meet does not end it.
+    // **And the world's mask**, because what the column measures is where the eye's view of the
+    // air ends, and what the eye cannot meet does not end it. Not the arms: they stand a few units
+    // off, on a ray of their own eye's, and the trace reads the air short of them off the froxels
+    // in front, which a column that runs on to the wall behind holds just the same.
     const Cone cone = coneAt(frame.mCamera);
-    const float surface
-        = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, frame.mRayMask, true);
+    const float surface = surfaceWithin(
+        origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, worldMask(frame.mRayMask), true);
 
     imageStore(fogColumnDepth, column, vec4(surface, 0.0, 0.0, 0.0));
 

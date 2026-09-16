@@ -82,10 +82,14 @@ namespace Rtx
         Emissive,
         Specular,
         Dark,
+
+        /// Named so a unit that carries one is a role and not an unknown, and read by nothing:
+        /// none of the four occurs in the shipped files, over every NIF the three archives hold.
         Detail,
         Decal,
         Gloss,
         Bump,
+
         Environment,
     };
 

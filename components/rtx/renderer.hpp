@@ -13,6 +13,7 @@
 
 #include <components/sdlutil/vsyncmode.hpp>
 
+#include "debuglines.hpp"
 #include "frameimage.hpp"
 #include "memoryreport.hpp"
 #include "mesh.hpp"
@@ -260,6 +261,10 @@ namespace Rtx
         /// of the call.
         std::span<const RippleImpulse> mRipples;
 
+        /// What the game's debug modes drew, over the picture and under the interface. A tool and
+        /// not the picture: nothing traces it, and a frame with none pays nothing for it.
+        DebugLines mDebug;
+
         /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,
         /// because a warm-up is not averaged in, and `sinceLast` and `exposureBias` are what a
         /// profile cannot know.
@@ -273,6 +278,7 @@ namespace Rtx
                 .mReconstruction = profile.mReconstruction,
                 .mExposure = profile.mExposure,
                 .mRipples = {},
+                .mDebug = {},
             };
         }
     };

@@ -29,6 +29,7 @@ namespace Rtx
         constexpr std::uint8_t sRowWater = 2;
         constexpr std::uint8_t sRowMedium = 4;
         constexpr std::uint8_t sRowAdditive = 8;
+        constexpr std::uint8_t sRowFirstPerson = 16;
     }
 
     VkTransformMatrixKHR toVulkanTransform(const Transform3x4& transform)
@@ -334,6 +335,8 @@ namespace Rtx
             --mCounts.mMedium;
         if ((counted & sRowAdditive) != 0)
             --mCounts.mAdditive;
+        if ((counted & sRowFirstPerson) != 0)
+            --mCounts.mFirstPerson;
         counted = 0;
     }
 
@@ -371,6 +374,12 @@ namespace Rtx
         {
             counted |= sRowAdditive;
             ++mCounts.mAdditive;
+        }
+
+        if ((record.mMask & Shaders::MASK_FIRST_PERSON) != 0)
+        {
+            counted |= sRowFirstPerson;
+            ++mCounts.mFirstPerson;
         }
 
         // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.

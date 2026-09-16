@@ -340,6 +340,15 @@ namespace Rtx::Shaders
         return rayMask & ~(MASK_FIRST_PERSON | MASK_WATER | MASK_PARTICLE);
     }
 
+    /// What the world's own eye ray casts with: what the camera draws, less the arms, which are
+    /// the arms' eye's alone — `VisibilityConstants::mArms`. The rasterizer draws them under a
+    /// projection of their own and clears the depth under them, so they stand in front of
+    /// everything; here they are traced first, and the world's ray never meets them.
+    RTX_SHADER uint worldMask(uint rayMask)
+    {
+        return rayMask & ~MASK_FIRST_PERSON;
+    }
+
     /// What shelters a falling sprite: the statics and the objects, and nothing that moves. The
     /// rasterizer's `PrecipitationOccluder` draws its depth map with a cull mask of
     /// `Mask_Object | Mask_Static`, so an actor's hat keeps no rain off and a rain-soaked NPC is

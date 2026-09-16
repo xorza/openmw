@@ -20,6 +20,7 @@
 #include <osg/Vec4f>
 
 #include <components/rtx/camera.hpp>
+#include <components/rtx/debuglines.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
@@ -308,6 +309,9 @@ namespace Rtx::Testing
         /// still, which is what every test that is not about it wants.
         std::span<const RippleImpulse> mRipples;
         float mSkyStep = 0.0f;
+
+        /// What the debug modes drew, over the picture. Nothing, for every test not about it.
+        DebugLines mDebug;
     };
 
     class RtxVisibilityTest : public Testing::RendererTest
@@ -348,7 +352,8 @@ namespace Rtx::Testing
                     FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
                         .mReconstruction = { .mFilter = shot.mFilter, .mJitter = shot.mJitter },
                         .mExposure = shot.mExposure,
-                        .mRipples = shot.mRipples });
+                        .mRipples = shot.mRipples,
+                        .mDebug = shot.mDebug });
 
                 // Every frame hits the same primary geometry, so the last one's count is the answer
                 // rather than a sum to be divided back down.

@@ -199,5 +199,9 @@ namespace Rtx
         /// whether `additiveAlong` has to walk the structure at all
         /// (`VisibilityConstants::mAdditiveInFrame`).
         std::uint32_t mAdditive = 0;
+
+        /// How many are the player's own arms — `InstanceClass::FirstPerson` — and so whether the
+        /// eye traces them ahead of the world at all (`VisibilityConstants::mArmsInFrame`).
+        std::uint32_t mFirstPerson = 0;
     };
 }
