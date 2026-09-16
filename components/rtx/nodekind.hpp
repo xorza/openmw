@@ -23,6 +23,9 @@ namespace Rtx
 
         /// A `NiBillboardNode` — `NifOsg::AutoTransform` — which turns to face whoever is looking.
         Billboard,
+
+        /// A `NiLODNode` — `osg::LOD` — whose children are one thing at several budgets.
+        Lod,
     };
 
     /// Answers what kind a node is by its class, learning each class once. Keyed on the pair of

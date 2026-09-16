@@ -129,6 +129,11 @@ namespace MWRender
         /// distance itself. The paging is told by its own route.
         virtual void enableReference(ESM::RefNum refnum, bool enabled) {}
 
+        /// The world is cleared for a new game or a saved one, so nothing a script said of a
+        /// reference holds any more: `enableReference`'s list starts again, as the paging's does
+        /// in `RenderingManager::clear`.
+        virtual void forgetReferences() {}
+
         /// The world's own events, as `RenderingManager` receives them: a cell comes and goes, an
         /// actor that makes ripples comes and goes, something splashes. The rasterizer's water
         /// listens; a renderer with no effect to hang on them hears nothing.

@@ -63,12 +63,13 @@ namespace Rtx::Testing
             frames->setValue(1);
             moved->addChild(frames);
 
-            // An LOD is walked whole: a ray is owed the finest child, and the frame walk takes all.
+            // An LOD stands its nearest level, the far one first so that the answer is not the
+            // first child: a ray is owed the finest, as the frame walk takes it.
             osg::ref_ptr<osg::LOD> levels = new osg::LOD;
             osg::ref_ptr<osg::Geometry> near = makeQuad();
             osg::ref_ptr<osg::Geometry> far = makeQuad();
-            levels->addChild(near, 0.0f, 100.0f);
             levels->addChild(far, 100.0f, 1000.0f);
+            levels->addChild(near, 0.0f, 100.0f);
             moved->addChild(levels);
 
             // What the loader hid, under a mask the walk is told to keep out of.
@@ -81,8 +82,8 @@ namespace Rtx::Testing
             TemplateWalk walk;
             walk.read(*root, ~hidden, model);
 
-            ASSERT_EQ(model.mParts.size(), 4u) << "the branch that is on, the frame shown, and both levels";
-            EXPECT_EQ(model.mPositions.size(), 16u) << "four quads' corners, appended in turn";
+            ASSERT_EQ(model.mParts.size(), 3u) << "the branch that is on, the frame shown, and the near level";
+            EXPECT_EQ(model.mPositions.size(), 12u) << "three quads' corners, appended in turn";
 
             EXPECT_EQ(model.mParts[0].mDrawable, on.get());
             EXPECT_EQ(model.mParts[0].mMaterial.mKey, onState) << "held under the drawable's own state set";
@@ -98,12 +99,12 @@ namespace Rtx::Testing
             EXPECT_EQ(model.mParts[1].mVertices, (Rtx::Run{ .mOffset = 4, .mCount = 4 }));
 
             EXPECT_EQ(model.mParts[2].mDrawable, near.get());
-            EXPECT_EQ(model.mParts[3].mDrawable, far.get());
 
             for (const PreparedPart& part : model.mParts)
             {
                 EXPECT_NE(part.mDrawable, off.get()) << "a branch that is off is not in the world";
                 EXPECT_NE(part.mDrawable, first.get()) << "a frame the flipbook is not on is not shown";
+                EXPECT_NE(part.mDrawable, far.get()) << "a level for a farther eye is not the finest";
                 EXPECT_NE(part.mDrawable, collision.get()) << "what the loader hid is not walked";
             }
 

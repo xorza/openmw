@@ -119,6 +119,7 @@ namespace MWRender
         Ground createGround(const GroundSpec& spec) override;
 
         void enableReference(ESM::RefNum refnum, bool enabled) override;
+        void forgetReferences() override;
         void detachWorld() override;
 
         float getGroundReach() const override;

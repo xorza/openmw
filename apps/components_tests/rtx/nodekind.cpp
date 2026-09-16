@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <osg/Group>
+#include <osg/LOD>
 #include <osg/MatrixTransform>
 #include <osg/Node>
 #include <osg/Object>
@@ -30,11 +31,12 @@ namespace Rtx
         };
 
         /// One object of every kind, a subclass for one of them, and two plain classes.
-        std::array<Named, 10> everyKind()
+        std::array<Named, 11> everyKind()
         {
             return {
                 Named{ new osg::Group, NodeKind::Other, "Group" },
                 Named{ new osg::MatrixTransform, NodeKind::Other, "MatrixTransform" },
+                Named{ new osg::LOD, NodeKind::Lod, "LOD" },
                 Named{ new SceneUtil::Skeleton, NodeKind::Skeleton, "Skeleton" },
                 Named{ new SceneUtil::LightSource, NodeKind::LightSource, "LightSource" },
                 Named{ new osgParticle::ParticleSystem, NodeKind::ParticleSystem, "ParticleSystem" },
@@ -58,7 +60,7 @@ namespace Rtx
                 EXPECT_EQ(kinds.of(*named.mObject), named.mKind) << "the second ask at " << named.mName;
             }
 
-            EXPECT_EQ(kinds.getOverflow(), 0u) << "ten classes fit the table";
+            EXPECT_EQ(kinds.getOverflow(), 0u) << "eleven classes fit the table";
         }
 
         /// A table holding every class still tells them apart when asked round and round: a memo
@@ -67,7 +69,7 @@ namespace Rtx
         TEST(RtxNodeKindTest, aTableHoldingEveryClassStillTellsThemApart)
         {
             const NodeKinds kinds;
-            const std::array<Named, 10> named = everyKind();
+            const std::array<Named, 11> named = everyKind();
 
             for (int round = 0; round < 3; ++round)
                 for (const Named& one : named)

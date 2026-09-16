@@ -35,20 +35,30 @@ namespace Rtx
         // enough that the walk is cheaper than an index kept for it.
         for (HeldCell& cell : held)
             for (std::size_t slot = 0; slot < cell.mPlacements.size(); ++slot)
-            {
-                Placement& placement = cell.mPlacements[slot];
-                if (placement.mRefNum != refnum)
-                    continue;
+                if (cell.mPlacements[slot].mRefNum == refnum)
+                    setPlacementEnabled(cell.mPlacements[slot], slot < cell.mShown, enabled);
+    }
 
-                placement.mDisabled = !enabled;
-                if (slot >= cell.mShown)
-                    continue;
+    void CellPlacer::forgetReferences(const std::span<HeldCell> held)
+    {
+        mDisabled.clear();
 
-                if (enabled && placement.mSlot == sNoIndex)
-                    addSlot(placement);
-                else if (!enabled)
-                    dropSlot(placement);
-            }
+        for (HeldCell& cell : held)
+            for (std::size_t slot = 0; slot < cell.mPlacements.size(); ++slot)
+                if (cell.mPlacements[slot].mDisabled)
+                    setPlacementEnabled(cell.mPlacements[slot], slot < cell.mShown, true);
+    }
+
+    void CellPlacer::setPlacementEnabled(Placement& placement, const bool shown, const bool enabled)
+    {
+        placement.mDisabled = !enabled;
+        if (!shown)
+            return;
+
+        if (enabled && placement.mSlot == sNoIndex)
+            addSlot(placement);
+        else if (!enabled)
+            dropSlot(placement);
     }
 
     bool CellPlacer::isDisabled(const ESM::RefNum refnum) const

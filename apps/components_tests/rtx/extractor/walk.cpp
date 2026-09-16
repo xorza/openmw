@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <osg/Array>
+#include <osg/LOD>
 #include <osg/Math>
 #include <osg/Matrix>
 #include <osg/MatrixTransform>
@@ -222,6 +223,29 @@ namespace Rtx::Testing
             EXPECT_FALSE(mScene.placements().getAll()[0].isPlaced()) << "the day branch outlived the sweep";
             ASSERT_TRUE(mScene.placements().getAll()[1].isPlaced());
             EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
+        }
+
+        /// **An LOD stands its nearest level and nothing else, wherever the eye is**, and
+        /// `osg::LOD::traverse` does not say so either: under `TRAVERSE_ALL_CHILDREN` every level is
+        /// visited, and a `NiLODNode` would be traced with all of its budgets standing at once. The
+        /// level is the one whose range starts nearest, whatever order the loader left them in.
+        TEST_F(RtxSceneExtractorTest, onlyTheNearestLevelOfAnLodIsMirrored)
+        {
+            osg::ref_ptr<osg::MatrixTransform> far = new osg::MatrixTransform(osg::Matrix::translate(10.0, 0.0, 0.0));
+            far->addChild(makeQuad());
+            osg::ref_ptr<osg::MatrixTransform> near = new osg::MatrixTransform(osg::Matrix::translate(0.0, 20.0, 0.0));
+            near->addChild(makeQuad());
+
+            // The far level first, so the answer cannot be the first child.
+            osg::ref_ptr<osg::LOD> root = new osg::LOD;
+            root->addChild(far, 500.0f, 4000.0f);
+            root->addChild(near, 0.0f, 500.0f);
+
+            const ExtractionStats stats = walk(*root);
+            EXPECT_EQ(stats.mMeshesAdded, 1u) << "the far level was read";
+            EXPECT_EQ(stats.mInstances, 1u);
+            ASSERT_EQ(mScene.placements().getAll().size(), 1u);
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 20.0f, 0.0f)) << "the far level stands";
         }
 
         TEST_F(RtxSceneExtractorTest, theRootTransformIsAppliedAfterTheGraphsOwn)

@@ -400,6 +400,11 @@ namespace MWRender
         mMirror.setReferenceEnabled(refnum, enabled);
     }
 
+    void RtxRenderer::forgetReferences()
+    {
+        mMirror.forgetReferences();
+    }
+
     void RtxRenderer::detachWorld()
     {
         mMirror.detach();

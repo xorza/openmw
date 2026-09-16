@@ -839,6 +839,7 @@ namespace MWRender
         mSky.mMoonRed = false;
 
         notifyWorldSpaceChanged();
+        mRenderer.forgetReferences();
         if (mObjectPaging)
             mObjectPaging->clear();
     }

@@ -84,8 +84,9 @@ namespace Rtx
         /// either way. `CompositeQueue::setSettled` is the same rule for the ground's composites.
         void setSettled(bool settled);
 
-        /// `CellPlacer::setReferenceEnabled`, over the cells held.
+        /// `CellPlacer::setReferenceEnabled` and `forgetReferences`, over the cells held.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
+        void forgetReferences();
 
         /// Hands `into` everything held that the graph does not parent, and adds what it stood to
         /// `stats` — the walk's own, because the ring is stood inside the walk.

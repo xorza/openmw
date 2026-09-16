@@ -116,8 +116,9 @@ namespace MWRender
         }
 
         /// What the game says of one reference, which the content files cannot: a script has
-        /// disabled it, or enabled it again.
+        /// disabled it, or enabled it again. A cleared world says it of none.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled) { mRing.setReferenceEnabled(refnum, enabled); }
+        void forgetReferences() { mRing.forgetReferences(); }
 
         /// How much world this renderer builds, in units: the ground, the air and the distant
         /// lights are all measured over it — `Rtx::distantLandReach`, as the settings stood when

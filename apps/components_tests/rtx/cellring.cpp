@@ -598,8 +598,8 @@ namespace Rtx::Testing
 
         /// What the size rule admits is a prefix of the cell's placements, largest first, and a
         /// walk touches only what crossed the prefix's end since the last one. A disabled
-        /// reference leaves and returns the moment the script says so, and one disabled before its
-        /// cell is held arrives that way.
+        /// reference leaves and returns the moment the script says so, one disabled before its
+        /// cell is held arrives that way, and a cleared world forgets them all.
         ///
         /// Five trees of one sheet at scales five to one, so their radii are 424.26 times each —
         /// 2121.3, 1697.1, 1272.8, 848.5 and 424.3. The eye stands half a cell in and cell 3 begins
@@ -691,6 +691,16 @@ namespace Rtx::Testing
 
             // The tree in the next cell was disabled before its cell was held; enabled, it stands.
             mRing.setReferenceEnabled(ESM::RefNum{ 6, 0 }, true);
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 6u);
+
+            // The world is cleared: what two scripts kept out stands again at once, and the walk
+            // keeps it — a disabled list carried into the next game would be the first game's
+            // holes in the second one's distance.
+            mRing.setReferenceEnabled(ESM::RefNum{ 2, 0 }, false);
+            mRing.setReferenceEnabled(ESM::RefNum{ 6, 0 }, false);
+            EXPECT_EQ(heights(standing()), trees({ 1, 3, 4, 5 }));
+            mRing.forgetReferences();
+            EXPECT_EQ(heights(standing()), trees({ 1, 2, 3, 4, 5 }));
             EXPECT_EQ(walk(mWalked++).mDistantStatics, 6u);
         }
 

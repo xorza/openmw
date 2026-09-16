@@ -42,6 +42,11 @@ namespace Rtx
         /// yet held, which arrive with the flag set.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled, std::span<HeldCell> held);
 
+        /// Forgets everything a script said: the world is cleared for a new game or a saved one,
+        /// and what was disabled in the old one stands in the new. Every reference kept out of the
+        /// cells `held` stands again at once, as `setReferenceEnabled` would stand each.
+        void forgetReferences(std::span<HeldCell> held);
+
         /// Adopts a cell's ground into the scene, on rows held on the scene, and holds its textures
         /// on `holds` for the frame's describe. `around` says whether it shades from its stack.
         void adoptGround(const PreparedCell& cell, HeldCell& held, CellHolds& holds, const WorldAround& around,
@@ -83,6 +88,10 @@ namespace Rtx
 
     private:
         bool isDisabled(ESM::RefNum refnum) const;
+
+        /// What a script's word does to one placement: the flag, and the slot where the size rule
+        /// has the placement `shown`.
+        void setPlacementEnabled(Placement& placement, bool shown, bool enabled);
 
         void addSlot(Placement& placement);
         void dropSlot(Placement& placement);

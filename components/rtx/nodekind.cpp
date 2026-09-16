@@ -1,5 +1,6 @@
 #include "nodekind.hpp"
 
+#include <osg/LOD>
 #include <osg/Sequence>
 #include <osgParticle/ParticleProcessor>
 #include <osgParticle/ParticleSystem>
@@ -35,6 +36,8 @@ namespace Rtx
                 return NodeKind::MorphGeometry;
             if (dynamic_cast<const NifOsg::AutoTransform*>(&object) != nullptr)
                 return NodeKind::Billboard;
+            if (dynamic_cast<const osg::LOD*>(&object) != nullptr)
+                return NodeKind::Lod;
 
             return NodeKind::Other;
         }
