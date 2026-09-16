@@ -14,7 +14,6 @@
 namespace Rtx
 {
     class Buffer;
-    class CommandPool;
     class Device;
 
     /// An image, its allocation and its view.
@@ -105,8 +104,7 @@ namespace Rtx
         /// Copies one level to host memory, one texel's bytes per pixel, tightly packed, row by row.
         /// Left in the layout it was handed. Submits and waits, so it belongs to a screenshot
         /// rather than to a frame.
-        void read(
-            CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level = 0) const;
+        void read(VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level = 0) const;
 
         /// What `read` records: one level copied into `into`, a host-readable buffer of at least
         /// `getReadBytes(level)`, ordered for the host, with the image met as `before` and left as
@@ -153,6 +151,5 @@ namespace Rtx
     /// descriptor has to point somewhere and the real thing would be sixteen bytes a pixel of the
     /// frame. Laid out once by `usage` and never moved again. Submits and waits, so it belongs to a
     /// pass's construction rather than to a frame.
-    Image makeStandIn(
-        const Device& device, CommandPool& pool, VkFormat format, VkImageUsageFlags usage, std::string_view name);
+    Image makeStandIn(const Device& device, VkFormat format, VkImageUsageFlags usage, std::string_view name);
 }

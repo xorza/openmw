@@ -245,8 +245,7 @@ namespace Rtx
         transition(commands, Use::sCopyRead, after);
     }
 
-    void Image::read(
-        CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
+    void Image::read(VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
     {
         const VkDeviceSize bytes = getReadBytes(level);
         const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "read back");
@@ -254,7 +253,7 @@ namespace Rtx
         // Back where it was found. Reading an image is not a change to it, and a caller that
         // has to know a read moved it is one that will forget: the GUI's own table is sampled
         // straight after the global map takes a copy of a tile out of it.
-        pool.submitAndWait([&](VkCommandBuffer commands) {
+        mDevice->getPool().submitAndWait([&](VkCommandBuffer commands) {
             recordRead(commands, ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT },
                 ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
@@ -265,8 +264,8 @@ namespace Rtx
         std::memcpy(pixels.data(), staging.map(), bytes);
     }
 
-    Image makeStandIn(const Device& device, CommandPool& pool, const VkFormat format, const VkImageUsageFlags usage,
-        const std::string_view name)
+    Image makeStandIn(
+        const Device& device, const VkFormat format, const VkImageUsageFlags usage, const std::string_view name)
     {
         assert((usage == VK_IMAGE_USAGE_STORAGE_BIT || usage == VK_IMAGE_USAGE_SAMPLED_BIT)
             && "a stand-in is read one way or the other, never both");
@@ -275,7 +274,7 @@ namespace Rtx
 
         const VkAccessFlags2 read = usage == VK_IMAGE_USAGE_STORAGE_BIT ? VK_ACCESS_2_SHADER_STORAGE_READ_BIT
                                                                         : VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-        pool.submitAndWait([&](VkCommandBuffer commands) {
+        device.getPool().submitAndWait([&](VkCommandBuffer commands) {
             made.transition(commands, Use::sUndefined,
                 ImageUse{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, read });
         });

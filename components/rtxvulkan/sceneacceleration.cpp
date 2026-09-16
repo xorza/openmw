@@ -43,13 +43,12 @@ namespace Rtx
     }
 
     SceneAcceleration::SceneAcceleration(
-        const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
+        const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
-        , mGraveyard(graveyard)
-        , mBottomLevel(device, graveyard)
+        , mBottomLevel(device)
     {
         mPoses.open(device, slots, sBuildInputUsage, "poses");
-        mRowTable.open(device, graveyard, slots, sBuildInputUsage, "instances");
+        mRowTable.open(device, slots, sBuildInputUsage, "instances");
         mIndices.open(device, sBuildInputUsage, "indices");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -163,8 +162,7 @@ namespace Rtx
             scratchTotal = alignUp(scratchTotal + mBottomLevel.getUpdateScratch(mesh), scratchAlignment);
         }
 
-        mGraveyard.bury(
-            growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "refit scratch"));
+        growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "refit scratch");
 
         const VkDeviceAddress scratchAddress = mRefitScratch.addressFor();
 
@@ -451,17 +449,17 @@ namespace Rtx
         // The old structure is buried, and its storage with it where that has to grow. A cell
         // arriving is what brings this here, and an arrival waits every frame out first — but the
         // rule is one rule, and burying costs nothing where nothing is in flight.
-        mGraveyard.bury(std::move(mTopLevel));
+        mDevice.getGraveyard().bury(std::move(mTopLevel));
 
         mTopLevelBytes = sizes.accelerationStructureSize;
         mTopLevelSlots = slots;
 
         // Grown to the high-water mark and kept, both of them. A structure is created at offset zero
         // of whatever this holds and asks only that it be large enough.
-        mGraveyard.bury(growTo(mTopLevelStorage, mDevice, BufferKind::DeviceLocal, sizes.accelerationStructureSize,
-            sStructureStorageUsage, "top level storage"));
-        mGraveyard.bury(growTo(mTopLevelScratch, mDevice, BufferKind::DeviceLocal, sizes.buildScratchSize,
-            sScratchUsage, "top level scratch"));
+        growTo(mTopLevelStorage, mDevice, BufferKind::DeviceLocal, sizes.accelerationStructureSize,
+            sStructureStorageUsage, "top level storage");
+        growTo(mTopLevelScratch, mDevice, BufferKind::DeviceLocal, sizes.buildScratchSize, sScratchUsage,
+            "top level scratch");
 
         mTopLevel
             = AccelerationStructure::topLevel(mDevice, mTopLevelStorage, sizes.accelerationStructureSize, "scene");

@@ -7,7 +7,6 @@
 
 #include "commands.hpp"
 #include "device.hpp"
-#include "graveyard.hpp"
 #include "timeline.hpp"
 
 namespace Rtx
@@ -19,17 +18,15 @@ namespace Rtx
     {
     }
 
-    FrameRing::FrameRing(const Device& device, CommandPool& pool, Graveyard& graveyard, const bool countHits)
+    FrameRing::FrameRing(const Device& device, const bool countHits)
         : mDevice(device)
-        , mPool(pool)
-        , mGraveyard(graveyard)
         , mCountHits(countHits)
         , mSlots([&](FrameSlot) { return FrameRecord{ device }; })
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
         // interface's — allocated once and recorded into again. A frame placed more than once takes
         // another from the same pool and keeps it, which `FrameRecord::mPlaceCommands` explains.
-        const std::vector<VkCommandBuffer> commands = mPool.allocate(3 * sFrameSlots);
+        const std::vector<VkCommandBuffer> commands = mDevice.getPool().allocate(3 * sFrameSlots);
         for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
         {
             FrameRecord& frame = mSlots.at(FrameSlot{ slot });
@@ -70,14 +67,14 @@ namespace Rtx
     VkCommandBuffer FrameRing::takePlaceCommands(FrameRecord& frame)
     {
         if (frame.mPlacements == frame.mPlaceCommands.size())
-            frame.mPlaceCommands.push_back(mPool.allocate(1).front());
+            frame.mPlaceCommands.push_back(mDevice.getPool().allocate(1).front());
 
         return frame.mPlaceCommands[frame.mPlacements++];
     }
 
     void FrameRing::submit(FrameRecord& frame)
     {
-        frame.mWorld.mSubmitted = mPool.submit(frame.mWorld.mCommands, mGraveyard);
+        frame.mWorld.mSubmitted = mDevice.getPool().submit(frame.mWorld.mCommands);
 
         frame.mBegun = false;
         frame.mWorld.mPending = true;
@@ -103,9 +100,6 @@ namespace Rtx
         FrameCounts counted;
         if (mCountHits)
             counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
-
-        // What the timeline has passed is nothing's now, this frame's burials among it.
-        mGraveyard.collect();
 
         ++mFinished;
 

@@ -21,7 +21,6 @@ namespace Rtx
 {
     class Batch;
     class Device;
-    class Graveyard;
     class GpuTimer;
     class SceneDesc;
 
@@ -56,7 +55,7 @@ namespace Rtx
     class BottomLevelStore
     {
     public:
-        BottomLevelStore(const Device& device, Graveyard& graveyard);
+        explicit BottomLevelStore(const Device& device);
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
         /// A slot that already holds one has it destroyed first: a slot the scene handed out again
@@ -191,10 +190,6 @@ namespace Rtx
         };
 
         const Device& mDevice;
-
-        /// Where a structure goes when its slot is retired or its tight copy takes over: the last
-        /// frame's top level still names it.
-        Graveyard& mGraveyard;
 
         // Before the rows, which give their rooms back to it as they go.
         StructureStorage mStorage{ sStructureStorageUsage, "bottom level structures" };

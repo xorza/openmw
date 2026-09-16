@@ -18,7 +18,6 @@ namespace Rtx
 {
     class Batch;
     class Device;
-    class Graveyard;
 
     /// What one scene's deforming meshes are posed from: their bind poses, their rigs and morphs,
     /// and the rows and weights a frame writes. The bind poses live here and not in the shared
@@ -34,8 +33,7 @@ namespace Rtx
     public:
         /// @param batch what the first arrival rides, which is every deforming mesh the scene holds.
         /// @param slots how many frames may be posing this scene at once.
-        SkinTables(
-            const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
+        SkinTables(const Device& device, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
 
         /// Takes in what the scene says arrived: the bind poses of the deforming meshes, the rigs
         /// and the morphs, and the arrived meshes' rows into the first copy, which is the one an
@@ -88,9 +86,6 @@ namespace Rtx
         void writeRows(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
         const Device& mDevice;
-
-        /// Where a table this outgrows goes, held until the frames still reading it have run.
-        Graveyard& mGraveyard;
 
         Buffer mBindPositions;
         Buffer mBindNormals;

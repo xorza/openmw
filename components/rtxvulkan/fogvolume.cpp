@@ -13,12 +13,13 @@
 
 #include "barriers.hpp"
 #include "commands.hpp"
+#include "device.hpp"
 #include "dispatch.hpp"
 #include "imageuse.hpp"
 
 namespace Rtx
 {
-    FogTile::FogTile(const Device& device, CommandPool& pool)
+    FogTile::FogTile(const Device& device)
         : mField(device, Shaders::FOG_FIELD_SIZE, Shaders::FOG_FIELD_SIZE, VK_FORMAT_R8G8_UNORM,
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "fog field", Shaders::FOG_FIELD_LEVELS,
             Shaders::FOG_FIELD_SIZE)
@@ -37,7 +38,7 @@ namespace Rtx
                 .imageExtent = { mField.getWidthAt(level), mField.getHeightAt(level), mField.getDepthAt(level) },
             });
 
-        Batch batch(pool);
+        Batch batch(device.getPool());
         uploadImage(batch, mField, std::as_bytes(std::span(noise.mBytes)), regions);
         batch.flush();
     }
@@ -96,8 +97,7 @@ namespace Rtx
         return makeSetLayout(device, sLayoutBindings);
     }
 
-    FogVolume::FogVolume(
-        const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
+    FogVolume::FogVolume(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
         : mColumns(columnsFor(width))
         , mRows(columnsFor(height))
         , mScatter{ Image(device, mColumns, mRows, sFormat, sUsage, "fog scatter 0", 1, Shaders::FOG_VOLUME_SLICES),
@@ -160,7 +160,7 @@ namespace Rtx
         // Emptied and in `GENERAL` from the moment they exist: `begin` does not discard the point
         // pair, so the first frame reads a history nothing has written, and over a suballocator's
         // range that is a departed image's bits rather than the driver's zeroed pages.
-        pool.submitAndWait([&](VkCommandBuffer commands) {
+        device.getPool().submitAndWait([&](VkCommandBuffer commands) {
             constexpr VkClearColorValue nothing{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
 
             for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,

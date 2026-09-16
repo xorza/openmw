@@ -145,10 +145,9 @@ namespace Rtx
             device, sBindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
     }
 
-    TextureArray::TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, const SetLayout& layout,
-        const std::uint32_t slots, std::span<const TextureData> textures)
+    TextureArray::TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const std::uint32_t slots,
+        std::span<const TextureData> textures)
         : mDevice(device)
-        , mGraveyard(graveyard)
         , mSamplers{ makeContentSampler(device, "textures repeating", TextureWrap::Repeat),
             makeContentSampler(device, "textures clamped along s", TextureWrap::ClampS),
             makeContentSampler(device, "textures clamped along t", TextureWrap::ClampT),
@@ -202,8 +201,8 @@ namespace Rtx
 
             // What the slot held is buried and not destroyed: its descriptor is the one a frame in
             // flight bound, and it stays valid until the timeline says nothing reads it.
-            mGraveyard.bury(
-                std::exchange(mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch)));
+            mDevice.getGraveyard().replace(
+                mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch));
 
             for (SlotSet& owed : mOwed.live())
                 owed.addMakingRoom(texture.mSlot);
@@ -270,7 +269,7 @@ namespace Rtx
 
             // Exchanged rather than erased, so the slot stays where it is and the image goes under
             // the frame that may still name it.
-            mGraveyard.bury(std::exchange(mTextures[slot], Texture()));
+            mDevice.getGraveyard().replace(mTextures[slot], Texture());
         }
     }
 

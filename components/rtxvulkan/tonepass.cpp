@@ -30,12 +30,12 @@ namespace Rtx
         };
     }
 
-    TonePass::TonePass(const Device& device, CommandPool& pool, VkDescriptorSetLayout textureLayout,
-        const std::filesystem::path& shaderDirectory)
+    TonePass::TonePass(
+        const Device& device, VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaderDirectory)
         : mPipeline(device, sBindings, sizeof(Shaders::ToneConstants), std::span(&textureLayout, 1),
             shaderDirectory / "tone.comp.spv", "tone")
         , mSampler(makeTargetSampler(device, "tone"))
-        , mNoBloom(makeStandIn(device, pool, BLOOM_LEVEL, VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom"))
+        , mNoBloom(makeStandIn(device, BLOOM_LEVEL, VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom"))
     {
     }
 

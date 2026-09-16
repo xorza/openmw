@@ -11,7 +11,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
     class GBuffer;
 
@@ -23,7 +22,7 @@ namespace Rtx
     {
     public:
         /// @param pool used once, to lay out the stand-in below. Nothing here touches it again.
-        CompositePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
+        CompositePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
         /// @param buffer must have been handed over, so its writes are visible to this read. Its
         ///        indirect channel is not read: `indirect` says where the bounce actually is.

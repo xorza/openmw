@@ -26,7 +26,6 @@ namespace Rtx
     class Batch;
     class GpuTimer;
     class Device;
-    class Graveyard;
     class SceneDesc;
 
     /// The neutral transform in Vulkan's storage: three rows of four, which is exactly what
@@ -46,8 +45,7 @@ namespace Rtx
         ///
         /// @param slots how many frames may be tracing this scene at once, which is how many copies
         ///        there are of the rows and of the positions a refit reads.
-        SceneAcceleration(
-            const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
+        SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
 
         /// Builds every mesh's structure, writes every row, and builds the top level, in one submit
         /// with each stage ending in the barrier the next one needs. Once, after the constructor.
@@ -153,10 +151,6 @@ namespace Rtx
         bool placeCompacted(std::span<const InstanceRecord> records);
 
         const Device& mDevice;
-
-        /// Where every buffer and structure this replaces goes, held until the frames still reading
-        /// it have run.
-        Graveyard& mGraveyard;
 
         /// Every deforming mesh's vertices as the frame tracing them sees them: the bind pose on
         /// arrival, and afterwards what `SkinPass` writes every frame a body moves. Indexed by

@@ -11,7 +11,6 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
-#include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
@@ -39,11 +38,10 @@ namespace Rtx
         {
             Device& device = getDevice();
             CommandPool& pool = getPool();
-            Graveyard graveyard(device, pool);
 
             const SetLayout layout = TextureArray::describeLayout(device);
             Batch setup(pool);
-            TextureArray textures(device, graveyard, setup, layout, 1, {});
+            TextureArray textures(device, setup, layout, 1, {});
             setup.flush();
 
             // An arrival, owed to every set: what `sync` has to write once the set is free. Ahead
@@ -58,7 +56,7 @@ namespace Rtx
             const VkCommandBuffer binder = pool.allocate(1).front();
             pool.begin(binder);
             EXPECT_NE(textures.getSet(FrameSlot{ 0 }), VK_NULL_HANDLE);
-            hold.submit(pool, binder, graveyard);
+            hold.submit(binder);
 
             constexpr std::chrono::milliseconds held{ 20 };
             const auto asked = std::chrono::steady_clock::now();

@@ -45,7 +45,7 @@ namespace Rtx
         {
             const Device& device = getDevice();
             CommandPool& pool = getPool();
-            const WavePass waves(device, pool, Testing::getShaderDirectory());
+            const WavePass waves(device, Testing::getShaderDirectory());
 
             synthesise(waves, pool, 0.0f);
 
@@ -62,7 +62,7 @@ namespace Rtx
                 const std::uint32_t last = surface.getMipLevels() - 1;
                 ASSERT_EQ(surface.getWidthAt(last), 1u) << "cascade " << cascade << " does not reduce to one texel";
 
-                const std::vector<float> mean = Testing::readHalves(pool, surface, last);
+                const std::vector<float> mean = Testing::readHalves(surface, last);
 
                 // A field of zero mean, which is what a spectrum with no entry at the origin means
                 // and what every variance below is taken about. Against the field's own root mean
@@ -114,7 +114,7 @@ namespace Rtx
         {
             const Device& device = getDevice();
             CommandPool& pool = getPool();
-            const WavePass waves(device, pool, Testing::getShaderDirectory());
+            const WavePass waves(device, Testing::getShaderDirectory());
 
             synthesise(waves, pool, 0.0f);
 
@@ -123,8 +123,8 @@ namespace Rtx
             const Image& surface = waves.getSurface(cascade);
             const std::uint32_t width = surface.getWidth();
 
-            const std::vector<float> fine = Testing::readHalves(pool, surface, 0);
-            const std::vector<float> coarse = Testing::readHalves(pool, surface, 1);
+            const std::vector<float> fine = Testing::readHalves(surface, 0);
+            const std::vector<float> coarse = Testing::readHalves(surface, 1);
 
             ASSERT_EQ(fine.size(), std::size_t{ width } * width * 4);
             ASSERT_EQ(coarse.size(), std::size_t{ width } / 2 * (width / 2) * 4);
@@ -158,7 +158,7 @@ namespace Rtx
             //
             // An integer level, because a fraction of one is a blend of two boxes and this is about
             // the box.
-            const std::vector<float> slopes = Testing::readHalves(pool, surface, 1);
+            const std::vector<float> slopes = Testing::readHalves(surface, 1);
 
             float lost = 0.0f;
             for (std::size_t at = 0; at < slopes.size(); at += 4)
@@ -195,7 +195,7 @@ namespace Rtx
         {
             const Device& device = getDevice();
             CommandPool& pool = getPool();
-            const WavePass waves(device, pool, Testing::getShaderDirectory());
+            const WavePass waves(device, Testing::getShaderDirectory());
 
             synthesise(waves, pool, 0.0f);
 
@@ -207,7 +207,7 @@ namespace Rtx
 
                 for (std::uint32_t level = 0; level < curvature.getMipLevels(); ++level)
                 {
-                    const std::vector<float> held = Testing::readHalves(pool, curvature, level);
+                    const std::vector<float> held = Testing::readHalves(curvature, level);
                     const std::uint32_t width = curvature.getWidthAt(level);
 
                     constexpr std::uint32_t inside = 4;
@@ -255,15 +255,15 @@ namespace Rtx
         {
             const Device& device = getDevice();
             CommandPool& pool = getPool();
-            const WavePass waves(device, pool, Testing::getShaderDirectory());
+            const WavePass waves(device, Testing::getShaderDirectory());
 
             const Image& surface = waves.getSurface(0);
 
             synthesise(waves, pool, 0.0f);
-            const std::vector<float> before = Testing::readHalves(pool, surface, 0);
+            const std::vector<float> before = Testing::readHalves(surface, 0);
 
             synthesise(waves, pool, 2.0f);
-            const std::vector<float> after = Testing::readHalves(pool, surface, 0);
+            const std::vector<float> after = Testing::readHalves(surface, 0);
 
             ASSERT_EQ(before.size(), after.size());
 
@@ -287,7 +287,7 @@ namespace Rtx
 
             // A run of nought is the same field twice, which is what makes a screenshot repeatable.
             synthesise(waves, pool, 0.0f);
-            const std::vector<float> again = Testing::readHalves(pool, surface, 0);
+            const std::vector<float> again = Testing::readHalves(surface, 0);
             EXPECT_EQ(again, before) << "the same moment is not the same sea";
         }
     }

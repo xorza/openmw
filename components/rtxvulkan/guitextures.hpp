@@ -21,7 +21,6 @@
 namespace Rtx
 {
     class Device;
-    class Graveyard;
 
     /// Every texture the GUI draws with, addressed by slot — a font atlas, a skin sheet, a map, a
     /// video frame — nothing like the scene's bindless array. A slot a texture gave back is taken
@@ -35,7 +34,7 @@ namespace Rtx
     class GuiTextures
     {
     public:
-        GuiTextures(const Device& device, Graveyard& graveyard, CommandPool& pool);
+        explicit GuiTextures(const Device& device);
         ~GuiTextures();
 
         /// A slot holding a texture of this size, cleared to nothing.
@@ -54,11 +53,8 @@ namespace Rtx
 
         void drop(GuiSlot slot);
 
-        /// Opens an interface frame: buries every texture given back since the last one, and
-        /// takes the staging that frame's fence has just freed. A texture is given back a frame
-        /// after it was last drawn with, and that draw is still on the queue, so the graveyard is
-        /// what knows when it stops being read. Once per interface frame, after that frame's fence
-        /// and before anything is handed over.
+        /// Opens an interface frame: takes the staging that frame's fence has just freed. Once per
+        /// interface frame, after that frame's fence and before anything is handed over.
         void startFrame();
 
         /// What the pass samples, or null where nothing holds that slot.
@@ -124,12 +120,6 @@ namespace Rtx
 
         const Device& mDevice;
 
-        /// Where a texture given back and a read-back buffer outgrown go, until nothing on the queue
-        /// reads them.
-        Graveyard& mGraveyard;
-
-        CommandPool& mPool;
-
         std::vector<Image> mImages;
 
         /// What a trace left for the host, per slot: the buffer, and the timeline value of the
@@ -169,12 +159,9 @@ namespace Rtx
         GuiRegion mLentRegion;
         VkDeviceSize mLentAt = 0;
 
-        /// Textures given back, held until `startFrame` hands them to a frame's graveyard.
-        std::vector<Image> mRetired;
-
         /// Last, so that it is destroyed first: its own destructor flushes, and what it has
-        /// recorded names images, retired images and staging that must still exist when that
-        /// happens.
+        /// recorded names images and staging that must still exist when that happens. A texture
+        /// given back is kept on it, because the copy recorded against it may not have run.
         Batch mBatch;
     };
 }

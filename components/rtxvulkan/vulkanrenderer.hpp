@@ -30,7 +30,6 @@
 #include "fogvolume.hpp"
 #include "framering.hpp"
 #include "frameslots.hpp"
-#include "graveyard.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "handles.hpp"
@@ -177,10 +176,6 @@ namespace Rtx
         /// picture chain replaces — and the frame's own chain is left alone.
         void finishTraces();
 
-        /// Lets go of every dying scene the timeline has passed. After a wait, which is where what
-        /// the timeline is known to have passed changes; `drain` lets go of all of them.
-        void buryDyingScenes();
-
         /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
         /// second.
@@ -195,11 +190,6 @@ namespace Rtx
         Instance mInstance;
 
         Device mDevice;
-        CommandPool mPool;
-
-        /// What every submit this renderer makes may still be reading, held until the timeline
-        /// says it has run.
-        Graveyard mGraveyard;
 
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;
@@ -218,7 +208,7 @@ namespace Rtx
         RenderProfile mProfile;
 
         /// The frames in flight and what each came to. After the counters it is handed.
-        FrameRing mRing{ mDevice, mPool, mGraveyard, mCountHits };
+        FrameRing mRing{ mDevice, mCountHits };
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
         /// spent by the next frame that reconstructs from one, which is not always the one after.
@@ -339,25 +329,12 @@ namespace Rtx
         std::vector<std::unique_ptr<DeviceScene>> mViewScenes;
         SlotPool mFreeViewScenes;
 
-        /// A picture's scene given back and not yet gone. Held until the timeline passes the
-        /// submit that was next when it was given back — the graveyard's own rule, and for the
-        /// same reason: a picture recorded against the scene and not yet carried rides that
-        /// submit, and every submit that could read its tables is before it. Freed after the
-        /// graveyard has let go of what the scene retired, because a buried structure gives its
-        /// room back to a storage the scene owns.
-        struct DyingScene
-        {
-            std::uint64_t mUntil = 0;
-            std::unique_ptr<DeviceScene> mScene;
-        };
-        std::vector<DyingScene> mDyingScenes;
-
         /// The picture as bytes, which is what the interface's texture is copied out of. Empty
         /// until something asks for a picture, and grown with `mView`.
         Image mViewTarget;
 
         /// Null where nothing asked for a window. Last, so it is destroyed first: its command
-        /// buffers, out of `mPool`, still hold recordings that blit out of `mTarget`, and destroying
+        /// buffers, out of the device's pool, still hold recordings that blit out of `mTarget`, and destroying
         /// that image while a recording names it is `VUID-vkDestroyImage-image-01000`.
         std::unique_ptr<Presenter> mPresenter;
 

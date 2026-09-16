@@ -20,7 +20,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
     class FogTile;
     class FogVolume;
@@ -124,7 +123,7 @@ namespace Rtx
         /// @param volumeLayout the same again, for the set a `FogVolume` hands over.
         /// @param countHits whether the trace counts the primary rays that hit anything — a
         ///        harness facility, specialized away rather than branched on.
-        VisibilityPass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory,
+        VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
             const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
             bool countHits);
 

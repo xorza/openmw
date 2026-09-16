@@ -73,13 +73,11 @@ namespace Rtx
         /// wrong would abort rather than fail.
         struct Bloomed
         {
-            CommandPool mPool;
             BloomPass mBloom;
             Image mFrame;
 
             Bloomed(const Device& device, std::uint32_t width, std::uint32_t height)
-                : mPool(device)
-                , mBloom(device, Testing::getShaderDirectory())
+                : mBloom(device, Testing::getShaderDirectory())
                 , mFrame(makeFrame(device, width, height))
             {
                 mBloom.resize(width, height);
@@ -89,11 +87,11 @@ namespace Rtx
             /// pyramid.
             std::vector<float> over(const Device& device, std::span<const float> pixels)
             {
-                paint(mPool, device, mFrame, pixels);
-                mPool.submitAndWait([&](VkCommandBuffer commands) { mBloom.record(commands, mFrame); });
+                paint(device.getPool(), device, mFrame, pixels);
+                device.getPool().submitAndWait([&](VkCommandBuffer commands) { mBloom.record(commands, mFrame); });
 
                 const Image* pyramid = mBloom.getPyramid();
-                return pyramid != nullptr ? Testing::readHalves(mPool, *pyramid) : std::vector<float>();
+                return pyramid != nullptr ? Testing::readHalves(*pyramid) : std::vector<float>();
             }
         };
 

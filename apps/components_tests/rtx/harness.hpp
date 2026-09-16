@@ -28,7 +28,6 @@
 
 namespace Rtx
 {
-    class Graveyard;
 }
 
 namespace Rtx::Testing
@@ -181,8 +180,8 @@ namespace Rtx::Testing
 
         Device& getDevice() const { return *mHarness->mDevice; }
 
-        /// A pool on that device, opened on the first ask and closed with the test.
-        CommandPool& getPool();
+        /// The device's own pool.
+        CommandPool& getPool() const;
 
         Harness* mHarness = nullptr;
 
@@ -190,7 +189,6 @@ namespace Rtx::Testing
         void takeRaised();
 
         const bool mValidation;
-        std::unique_ptr<CommandPool> mPool;
         std::vector<std::string> mRaised;
     };
 
@@ -265,10 +263,10 @@ namespace Rtx::Testing
         HeldSubmit(const HeldSubmit&) = delete;
         HeldSubmit& operator=(const HeldSubmit&) = delete;
 
-        /// Submits `commands`, begun through `pool`, behind the hold, with whatever `pool` has
-        /// deferred ahead of it. Ends `commands`. What the deferred batches read from goes to
-        /// `graveyard`. Returns the value the submit signals on the pool's timeline.
-        std::uint64_t submit(CommandPool& pool, VkCommandBuffer commands, Graveyard& graveyard);
+        /// Submits `commands`, begun through the device's pool, behind the hold, with whatever the
+        /// pool has deferred ahead of it. Ends `commands`. Returns the value the submit signals on
+        /// the timeline.
+        std::uint64_t submit(VkCommandBuffer commands);
 
         /// Lets the queue start the submit.
         void release();
@@ -290,5 +288,5 @@ namespace Rtx::Testing
     /// **Left in the layout it was found in**, which `Image::read` promises: reading an image is not
     /// a change to it. Several passes keep their output in halves, so this is the read-back beside
     /// the decoder rather than one copy of it per suite.
-    std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level = 0);
+    std::vector<float> readHalves(const Image& image, std::uint32_t level = 0);
 }

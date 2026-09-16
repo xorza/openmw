@@ -90,7 +90,7 @@ namespace Rtx
                     mPass->record(commands, target, buffer.getHandle(), draws);
                 });
 
-                target.read(getPool(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, pixels);
+                target.read(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, pixels);
                 ASSERT_EQ(pixels.size(), std::size_t{ sExtent } * sExtent * 4);
             }
 

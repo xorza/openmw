@@ -14,7 +14,6 @@ namespace Rtx
 {
     class Device;
     class GpuTimer;
-    class Graveyard;
     class SpriteBinPass;
     class SpriteShadePass;
 
@@ -38,7 +37,7 @@ namespace Rtx
     class SpriteBin
     {
     public:
-        SpriteBin(const Device& device, Graveyard& graveyard);
+        explicit SpriteBin(const Device& device);
 
         /// Grows every table here to what `source` and the tiles of `camera` need — the list from
         /// what the last bin here reported it needed, where the timeline says that report has
@@ -64,9 +63,6 @@ namespace Rtx
 
     private:
         const Device& mDevice;
-
-        /// Where a list this outgrows goes, until the frame reading it has run.
-        Graveyard& mGraveyard;
 
         /// The shaded sprites, copied from the placement's before every shade because the shade
         /// writes over what it reads.

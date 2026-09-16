@@ -13,7 +13,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
     class DlssPass;
 
@@ -30,7 +29,7 @@ namespace Rtx
         ~DlssUpscaler() override;
 
         VkExtent2D renderSizeFor(VkExtent2D output, Upscale mode) const override;
-        void resize(CommandPool& pool, VkExtent2D render, VkExtent2D output, const Upscaling& how) override;
+        void resize(VkExtent2D render, VkExtent2D output, const Upscaling& how) override;
         void release() override;
         const Image& getOutput() const override { return mOutput; }
         const Image& record(VkCommandBuffer commands, const UpscaleInputs& inputs) override;

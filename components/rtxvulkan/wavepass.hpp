@@ -18,7 +18,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
 
     /// The sea, synthesised into textures a trace reads: one tile a cascade, three textures a tile.
@@ -32,7 +31,7 @@ namespace Rtx
     public:
         /// Draws the amplitudes of `SeaState{}` and synthesises the first frame's tiles. Submits and
         /// waits.
-        WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
+        WavePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
         /// Draws the amplitudes for another sea, replacing whatever was drawn before. Submits and
         /// waits, and frees the spectrum it replaces, so nothing may be in flight: `Renderer::setSea`
@@ -98,7 +97,6 @@ namespace Rtx
         void transform(VkCommandBuffer commands, const Tile& tile, std::uint32_t count) const;
 
         const Device& mDevice;
-        CommandPool& mPool;
 
         ComputePipeline mFormPipeline;
         ComputePipeline mLinePipeline;

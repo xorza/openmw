@@ -6,8 +6,7 @@
 
 namespace Rtx
 {
-    void PresentTargets::resize(
-        const Device& device, CommandPool& pool, const std::uint32_t width, const std::uint32_t height)
+    void PresentTargets::resize(const Device& device, const std::uint32_t width, const std::uint32_t height)
     {
         const auto make = [&](const char* const name) {
             return Image(device, width, height, sFormat,
@@ -23,7 +22,7 @@ namespace Rtx
         mSparePresented = false;
         mClaimed = false;
 
-        pool.submitAndWait([&](VkCommandBuffer commands) {
+        device.getPool().submitAndWait([&](VkCommandBuffer commands) {
             const VkClearColorValue black{ .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };
 
             for (const Image* target : { &mTarget, &mSpare })

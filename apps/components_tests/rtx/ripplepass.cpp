@@ -48,11 +48,11 @@ namespace Rtx
         /// on the eye.
         TEST_F(RtxRipplePassTest, aFieldNothingDisturbedIsStillWater)
         {
-            RipplePass ripples(getDevice(), getPool(), Testing::getShaderDirectory());
+            RipplePass ripples(getDevice(), Testing::getShaderDirectory());
             run(ripples, getPool(), {}, 10);
 
-            const std::vector<float> surface = Testing::readHalves(getPool(), ripples.getSurface(), 0);
-            const std::vector<float> curvature = Testing::readHalves(getPool(), ripples.getCurvature(), 0);
+            const std::vector<float> surface = Testing::readHalves(ripples.getSurface(), 0);
+            const std::vector<float> curvature = Testing::readHalves(ripples.getCurvature(), 0);
             ASSERT_EQ(surface.size(), std::size_t{ Shaders::RIPPLE_GRID } * Shaders::RIPPLE_GRID * 4);
 
             for (std::size_t at = 0; at < surface.size(); ++at)
@@ -80,7 +80,7 @@ namespace Rtx
         /// by symmetry.
         TEST_F(RtxRipplePassTest, aFootfallPressesARingThatSpreadsAndStaysSymmetric)
         {
-            RipplePass ripples(getDevice(), getPool(), Testing::getShaderDirectory());
+            RipplePass ripples(getDevice(), Testing::getShaderDirectory());
 
             // On the middle texel's own centre, half a texel past the origin along each axis, so
             // the ring is symmetric about that texel and not about the corner between two.
@@ -89,8 +89,8 @@ namespace Rtx
                 .mAt = osg::Vec2f(middle, middle), .mSize = 12.0f } };
             run(ripples, getPool(), footfall, 60);
 
-            const std::vector<float> surface = Testing::readHalves(getPool(), ripples.getSurface(), 0);
-            const std::vector<float> curvature = Testing::readHalves(getPool(), ripples.getCurvature(), 0);
+            const std::vector<float> surface = Testing::readHalves(ripples.getSurface(), 0);
+            const std::vector<float> curvature = Testing::readHalves(ripples.getCurvature(), 0);
 
             // The eye's own texel: the impulse landed on the middle texel's centre, which the
             // window puts at the grid's middle.
@@ -131,7 +131,7 @@ namespace Rtx
         /// The window follows the eye by whole texels and the ring stays where it was pressed.
         TEST_F(RtxRipplePassTest, theWindowFollowsTheEyeAndTheRingStaysWhereItWasPressed)
         {
-            RipplePass ripples(getDevice(), getPool(), Testing::getShaderDirectory());
+            RipplePass ripples(getDevice(), Testing::getShaderDirectory());
 
             const std::array<RippleImpulse, 1> footfall{ RippleImpulse{
                 .mAt = osg::Vec2f(0.0f, 0.0f), .mSize = 12.0f } };
@@ -143,7 +143,7 @@ namespace Rtx
             getPool().submitAndWait([&](VkCommandBuffer commands) {
                 ripples.record(commands, FrameSlot{ 0 }, {}, osg::Vec2f(walked, 0.0f), 31.0 * sixtieth, nullptr);
             });
-            const std::vector<float> after = Testing::readHalves(getPool(), ripples.getSurface(), 0);
+            const std::vector<float> after = Testing::readHalves(ripples.getSurface(), 0);
 
             EXPECT_FLOAT_EQ(ripples.getOrigin().x(), walked - 0.5f * RipplePass::getExtent());
 

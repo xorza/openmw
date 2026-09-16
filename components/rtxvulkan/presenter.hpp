@@ -14,9 +14,7 @@ struct SDL_Window;
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
-    class Graveyard;
     class Image;
     class Swapchain;
 
@@ -34,14 +32,11 @@ namespace Rtx
         /// the instance has to be created with these enabled before the surface can be made.
         static std::vector<const char*> getInstanceExtensions(SDL_Window* window);
 
-        /// Throws `Error` where the surface or the swapchain will not come up.
-        ///
-        /// @param pool,graveyard the renderer's: the blit is a submit of the pool like any other,
-        ///        so it signals the timeline and carries what was deferred ahead of it — a submit
-        ///        of its own that took a timeline value would let the graveyard free what a
-        ///        deferred batch names before it ran.
-        Presenter(const Device& device, CommandPool& pool, Graveyard& graveyard, VkInstance instance,
-            SDL_Window* window, SDLUtil::VSyncMode verticalSync);
+        /// Throws `Error` where the surface or the swapchain will not come up. The blit is a submit
+        /// of the device's pool like any other, so it signals the timeline and carries what was
+        /// deferred ahead of it — a submit of its own that took a timeline value would let the
+        /// graveyard free what a deferred batch names before it ran.
+        Presenter(const Device& device, VkInstance instance, SDL_Window* window, SDLUtil::VSyncMode verticalSync);
         ~Presenter();
 
         /// Blits `frame`, in `VK_IMAGE_LAYOUT_GENERAL` and left there, onto the next swapchain
@@ -86,8 +81,6 @@ namespace Rtx
         void destroy();
 
         const Device& mDevice;
-        CommandPool& mPool;
-        Graveyard& mGraveyard;
         VkInstance mInstance = VK_NULL_HANDLE;
         VkSurfaceKHR mSurface = VK_NULL_HANDLE;
 
@@ -136,7 +129,7 @@ namespace Rtx
             /// safe. Null where the device offers none.
             Fence mPresented;
 
-            /// Out of the renderer's pool, which allows a buffer to be reset by beginning it again.
+            /// Out of the device's pool, which allows a buffer to be reset by beginning it again.
             VkCommandBuffer mCommands = VK_NULL_HANDLE;
         };
 

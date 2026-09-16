@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstdint>
 #include <exception>
-#include <iterator>
 #include <utility>
 
 #include "barriers.hpp"
@@ -30,20 +29,10 @@ namespace Rtx
             device.getHandle(), vkCreateCommandPool, create, "vkCreateCommandPool");
     }
 
-    void CommandPool::reset()
-    {
-        assert(mDeferred.empty() && "a batch deferred to a submit that never came");
-
-        checkVk(vkResetCommandPool(mDevice.getHandle(), mHandle.get(), VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT),
-            "vkResetCommandPool");
-    }
-
-    void CommandPool::defer(VkCommandBuffer commands, std::vector<Buffer>&& staging)
+    void CommandPool::defer(VkCommandBuffer commands)
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
         mDeferred.push_back(commands);
-
-        std::move(staging.begin(), staging.end(), std::back_inserter(mDeferredStaging));
     }
 
     std::uint64_t CommandPool::submitWithDeferred(VkCommandBuffer commands,
@@ -82,12 +71,6 @@ namespace Rtx
         return value;
     }
 
-    void CommandPool::forgetDeferred()
-    {
-        mDeferred.clear();
-        mDeferredStaging.clear();
-    }
-
     void CommandPool::finishDeferred()
     {
         if (mDeferred.empty())
@@ -96,20 +79,18 @@ namespace Rtx
         submitAndWait([](VkCommandBuffer) {});
     }
 
-    std::uint64_t CommandPool::submit(VkCommandBuffer commands, Graveyard& kept,
-        const std::span<const VkSemaphoreSubmitInfo> waits, const std::span<const VkSemaphoreSubmitInfo> signals)
+    std::uint64_t CommandPool::submit(VkCommandBuffer commands, const std::span<const VkSemaphoreSubmitInfo> waits,
+        const std::span<const VkSemaphoreSubmitInfo> signals)
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
         // Buried before the value is taken, so the stamp is the value this submit signals: the
         // deferred batches run ahead of `commands` and are finished when it is.
         for (const VkCommandBuffer deferred : mDeferred)
-            kept.bury(deferred);
-        for (Buffer& staging : mDeferredStaging)
-            kept.bury(std::move(staging));
+            mDevice.getGraveyard().bury(deferred);
 
         const std::uint64_t value = submitWithDeferred(commands, waits, signals);
-        forgetDeferred();
+        mDeferred.clear();
         return value;
     }
 
@@ -187,12 +168,12 @@ namespace Rtx
 
         mDevice.getTimeline().waitFor(submitWithDeferred(commands, {}, {}), "a one-off submit");
 
-        // The copies have run, so this is where a deferred batch's staging stops being read, and
-        // where every buffer that carried one can go back to the pool.
+        // The copies have run, so every buffer that carried a deferred batch can go back to the
+        // pool; what the batches read was buried when they were handed over, and the wait above
+        // collected it.
         free(mDeferred);
         free(std::span<const VkCommandBuffer>(&commands, 1));
-
-        forgetDeferred();
+        mDeferred.clear();
     }
 
     Batch::~Batch()
@@ -216,9 +197,14 @@ namespace Rtx
         return mCommands;
     }
 
-    void Batch::keep(Buffer&& staging)
+    void Batch::keep(Buffer&& buffer)
     {
-        mStaging.push_back(std::move(staging));
+        mKeptBuffers.push_back(std::move(buffer));
+    }
+
+    void Batch::keep(Image&& image)
+    {
+        mKeptImages.push_back(std::move(image));
     }
 
     StagingRun Batch::stage(std::span<const std::byte> bytes)
@@ -241,42 +227,39 @@ namespace Rtx
 
     void Batch::release()
     {
-        mStaging.clear();
+        Graveyard& graveyard = getDevice().getGraveyard();
+        for (Buffer& buffer : mKeptBuffers)
+            graveyard.bury(std::move(buffer));
+        for (Image& image : mKeptImages)
+            graveyard.bury(std::move(image));
+        for (Buffer& block : mBlocks)
+            graveyard.bury(std::move(block));
+
+        mKeptBuffers.clear();
+        mKeptImages.clear();
         mBlocks.clear();
         mFilled = 0;
     }
 
     void Batch::flush()
     {
-        if (mCommands == VK_NULL_HANDLE)
-        {
-            // Staging with nothing recorded is a caller that kept a buffer and then decided against
-            // the copy; it has no reader either way.
-            release();
-            return;
-        }
-
-        // Released before the wait can be skipped and after it cannot: the copies have run by the
-        // time `endAndWait` returns, so this is where a staging buffer stops being read.
-        mPool.endAndWait(std::exchange(mCommands, VK_NULL_HANDLE));
+        // Buried ahead of the submit, so the stamp is the value the wait below waits for, and the
+        // wait's own collect is what frees them. Nothing recorded is a caller that kept something
+        // and decided against the copy; what it kept may still have an earlier reader, and the
+        // burial covers that too.
         release();
+
+        if (mCommands != VK_NULL_HANDLE)
+            mPool.endAndWait(std::exchange(mCommands, VK_NULL_HANDLE));
     }
 
     void Batch::defer()
     {
-        if (mCommands == VK_NULL_HANDLE)
-        {
-            release();
-            return;
-        }
-
-        // The blocks go with what callers handed over, because a deferred copy has not run: the
-        // pool holds both until the submit that carries this batch has been waited on.
-        mStaging.insert(
-            mStaging.end(), std::make_move_iterator(mBlocks.begin()), std::make_move_iterator(mBlocks.end()));
-
-        mPool.defer(std::exchange(mCommands, VK_NULL_HANDLE), std::move(mStaging));
+        // Buried under the next submit, which is the one the pool puts this batch ahead of.
         release();
+
+        if (mCommands != VK_NULL_HANDLE)
+            mPool.defer(std::exchange(mCommands, VK_NULL_HANDLE));
     }
 
     void stageInto(Batch& batch, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes)

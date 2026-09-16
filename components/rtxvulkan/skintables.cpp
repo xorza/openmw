@@ -13,7 +13,6 @@
 #include "bufferusage.hpp"
 #include "commands.hpp"
 #include "device.hpp"
-#include "graveyard.hpp"
 
 namespace Rtx
 {
@@ -30,10 +29,8 @@ namespace Rtx
         }
     }
 
-    SkinTables::SkinTables(
-        const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
+    SkinTables::SkinTables(const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
-        , mGraveyard(graveyard)
     {
         mBones.open(slots);
         mWeights.open(slots);
@@ -47,39 +44,36 @@ namespace Rtx
     void SkinTables::extend(Batch& batch, const SceneDesc& scene)
     {
         const Device& device = mDevice;
-        Graveyard& graveyard = mGraveyard;
 
         // Grown to what the scene reaches, and written whole where a growth moved it. The
         // arrivals are what a frame with an actor walking in costs; a table made again is what a
         // cell full of them costs, once per doubling.
         const VkDeviceSize bind = VkDeviceSize{ scene.deformers().getBindVertexCount() } * sizeof(osg::Vec3f);
-        const bool bindMoved = outgrow(mBindPositions, device, BufferKind::DeviceLocal, bind, sTableFilledUsage,
-                                   "bind positions", graveyard)
-            | outgrow(
-                mBindNormals, device, BufferKind::DeviceLocal, bind, sTableFilledUsage, "bind normals", graveyard);
+        const bool bindMoved
+            = outgrow(mBindPositions, device, BufferKind::DeviceLocal, bind, sTableFilledUsage, "bind positions")
+            | outgrow(mBindNormals, device, BufferKind::DeviceLocal, bind, sTableFilledUsage, "bind normals");
         writeBind(batch, scene, scene.meshes().getArrived(), bindMoved);
 
         const bool rigsMoved
             = outgrow(mRuns, device, BufferKind::DeviceLocal,
-                  scene.deformers().getRuns().size() * sizeof(std::uint32_t), sTableFilledUsage, "rig runs", graveyard)
+                  scene.deformers().getRuns().size() * sizeof(std::uint32_t), sTableFilledUsage, "rig runs")
             | outgrow(mInfluences, device, BufferKind::DeviceLocal,
                 scene.deformers().getInfluences().size() * sizeof(Shaders::GpuInfluence), sTableFilledUsage,
-                "rig influences", graveyard);
+                "rig influences");
         writeRigs(batch, scene, scene.deformers().getArrivedRigs(), rigsMoved);
 
         const bool morphsMoved = outgrow(mMorphOffsets, device, BufferKind::DeviceLocal,
-            scene.deformers().getMorphOffsets().size() * sizeof(osg::Vec3f), sTableFilledUsage, "morph offsets",
-            graveyard);
+            scene.deformers().getMorphOffsets().size() * sizeof(osg::Vec3f), sTableFilledUsage, "morph offsets");
         writeMorphs(batch, scene, scene.deformers().getArrivedMorphs(), morphsMoved);
 
         // The arrivals' rows into the first copy alone. Every other row of a copy reaches it in
         // the placement that dispatches over it, and the other copies owe the arrivals theirs.
         for (Buffer& bones : mBones.live())
             outgrow(bones, device, BufferKind::HostWritten,
-                scene.deformers().getBones().size() * sizeof(Shaders::GpuBone), sTableFilledUsage, "bones", graveyard);
+                scene.deformers().getBones().size() * sizeof(Shaders::GpuBone), sTableFilledUsage, "bones");
         for (Buffer& weights : mWeights.live())
             outgrow(weights, device, BufferKind::HostWritten, scene.deformers().getWeights().size() * sizeof(float),
-                sTableFilledUsage, "weights", graveyard);
+                sTableFilledUsage, "weights");
         writeRows(batch, scene, scene.meshes().getArrived());
 
         orderStagedWrites(batch);

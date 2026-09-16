@@ -9,16 +9,14 @@
 #include "bufferusage.hpp"
 #include "device.hpp"
 #include "gputimer.hpp"
-#include "graveyard.hpp"
 #include "imageuse.hpp"
 #include "spritepasses.hpp"
 #include "timeline.hpp"
 
 namespace Rtx
 {
-    SpriteBin::SpriteBin(const Device& device, Graveyard& graveyard)
+    SpriteBin::SpriteBin(const Device& device)
         : mDevice(device)
-        , mGraveyard(graveyard)
         , mSprites(Buffer::hostWritten(device, 0, sTableFilledUsage, "binned sprites"))
         , mOrder(Buffer::hostWritten(device, 0, sTableUsage, "sprite order"))
         , mRects(Buffer::hostWritten(device, 0, sTableUsage, "sprite rects"))
@@ -36,11 +34,11 @@ namespace Rtx
         const std::uint32_t count = source.mSpriteCount;
         const VkDeviceSize bytes = source.mSprites->getSize();
 
-        mGraveyard.bury(growTo(mSprites, mDevice, BufferKind::HostWritten, bytes, sTableFilledUsage, "binned sprites"));
-        mGraveyard.bury(growTo(mOrder, mDevice, BufferKind::HostWritten,
-            VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), sTableUsage, "sprite order"));
-        mGraveyard.bury(growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t),
-            sTableUsage, "sprite rects"));
+        growTo(mSprites, mDevice, BufferKind::HostWritten, bytes, sTableFilledUsage, "binned sprites");
+        growTo(mOrder, mDevice, BufferKind::HostWritten,
+            VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), sTableUsage, "sprite order");
+        growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t), sTableUsage,
+            "sprite rects");
 
         // Sized from what the last bin here said it needed, with room over it, because the need is
         // only known once the tiles are counted and that happens on the device. Read where the
@@ -53,8 +51,8 @@ namespace Rtx
             = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
         mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
 
-        mGraveyard.bury(growTo(
-            mTileList, mDevice, BufferKind::HostWritten, mListSize.getBytes(), sTableFilledUsage, "sprite tile list"));
+        growTo(
+            mTileList, mDevice, BufferKind::HostWritten, mListSize.getBytes(), sTableFilledUsage, "sprite tile list");
 
         // The placement's table, whole, because the shade writes over what it reads: the copy is
         // what lets a second trace against the same placement — a picture, or the frame after a

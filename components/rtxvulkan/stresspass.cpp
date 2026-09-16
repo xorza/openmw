@@ -26,8 +26,8 @@ namespace Rtx
         constexpr double sCalibrationMs = 100.0;
     }
 
-    StressPass::StressPass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory,
-        const double milliseconds)
+    StressPass::StressPass(
+        const Device& device, const std::filesystem::path& shaderDirectory, const double milliseconds)
         : mPipeline(
             device, sBindings, sizeof(Shaders::StressConstants), {}, shaderDirectory / "stress.comp.spv", "stress")
         , mSink(Buffer::deviceLocal(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "stress sink"))
@@ -38,7 +38,7 @@ namespace Rtx
         {
             mIterations = sCalibrationIterations;
             timer.beginFrame();
-            pool.submitAndWait([&](VkCommandBuffer commands) { record(commands, timer); });
+            device.getPool().submitAndWait([&](VkCommandBuffer commands) { record(commands, timer); });
 
             GpuZones zones;
             timer.resolve(zones);

@@ -1,6 +1,7 @@
 #include "graveyard.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <limits>
 #include <span>
@@ -12,25 +13,15 @@
 
 namespace Rtx
 {
-    bool outgrow(Buffer& held, const Device& device, const BufferKind kind, const VkDeviceSize bytes,
-        const VkBufferUsageFlags usage, const std::string_view name, Graveyard& graveyard)
-    {
-        if (!held.isEmpty() && held.getSize() >= bytes)
-            return false;
-
-        graveyard.bury(growTo(held, device, kind, std::max(bytes, held.getSize() * 2), usage, name));
-        return true;
-    }
-
-    Graveyard::Graveyard(const Device& device, CommandPool& pool)
+    Graveyard::Graveyard(const Device& device)
         : mDevice(device)
-        , mPool(pool)
     {
     }
 
     Graveyard::~Graveyard()
     {
-        clear();
+        // What the device's own idle left: burials stamped for a submit nobody will make now.
+        collectIdle();
     }
 
     std::uint64_t Graveyard::stamp() const
@@ -40,7 +31,7 @@ namespace Rtx
 
     void Graveyard::bury(Buffer&& buffer)
     {
-        if (buffer.getHandle() != VK_NULL_HANDLE)
+        if (!buffer.isEmpty())
             mBuffers.push_back({ stamp(), std::move(buffer) });
     }
 
@@ -56,10 +47,16 @@ namespace Rtx
             mStructures.push_back({ stamp(), std::move(structure) });
     }
 
-    void Graveyard::bury(VkQueryPool pool)
+    void Graveyard::bury(QueryPool&& pool)
     {
-        if (pool != VK_NULL_HANDLE)
-            mQueryPools.push_back({ stamp(), pool });
+        if (pool.get() != VK_NULL_HANDLE)
+            mQueryPools.push_back({ stamp(), std::move(pool) });
+    }
+
+    void Graveyard::bury(std::shared_ptr<void>&& held)
+    {
+        if (held != nullptr)
+            mOthers.push_back({ stamp(), std::move(held) });
     }
 
     void Graveyard::bury(VkCommandBuffer commands)
@@ -85,25 +82,35 @@ namespace Rtx
         held.erase(held.begin(), kept);
     }
 
+    template <class T>
+    void Graveyard::free(std::vector<Held<T>>& held, const std::uint64_t finished)
+    {
+        free(held, finished, [](T& object) { object = T(); });
+    }
+
     void Graveyard::collect()
     {
         freeThrough(mDevice.getTimeline().getKnownFinished());
     }
 
-    void Graveyard::clear()
+    void Graveyard::collectIdle()
     {
+        assert(mDevice.getTimeline().isIdle() && "everything held destroyed under a submit still on the queue");
+        assert(!mDevice.getPool().hasDeferred() && "everything held destroyed under a batch not yet submitted");
+
         freeThrough(std::numeric_limits<std::uint64_t>::max());
     }
 
     void Graveyard::freeThrough(const std::uint64_t finished)
     {
-        free(mStructures, finished, [](AccelerationStructure& structure) { structure = AccelerationStructure(); });
-        free(mQueryPools, finished,
-            [&](const VkQueryPool pool) { vkDestroyQueryPool(mDevice.getHandle(), pool, nullptr); });
-        free(mBuffers, finished, [](Buffer& buffer) { buffer = Buffer(); });
-        free(mTextures, finished, [](Texture& texture) { texture = Texture(); });
-        free(mImages, finished, [](Image& image) { image = Image(); });
-        free(mCommands, finished,
-            [&](const VkCommandBuffer commands) { mPool.free(std::span<const VkCommandBuffer>(&commands, 1)); });
+        free(mStructures, finished);
+        free(mQueryPools, finished);
+        free(mBuffers, finished);
+        free(mTextures, finished);
+        free(mImages, finished);
+        free(mCommands, finished, [&](const VkCommandBuffer commands) {
+            mDevice.getPool().free(std::span<const VkCommandBuffer>(&commands, 1));
+        });
+        free(mOthers, finished);
     }
 }

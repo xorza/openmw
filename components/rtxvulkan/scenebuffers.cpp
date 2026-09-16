@@ -148,17 +148,16 @@ namespace Rtx
         }
     }
 
-    SceneBuffers::SceneBuffers(const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene,
+    SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
         std::span<const InstanceRecord> records, const std::uint32_t slots)
         : mDevice(device)
-        , mGraveyard(graveyard)
     {
         mTables.open(slots);
         mTexCoords.open(device, sTableUsage, "uvs");
         mSecondTexCoords.open(device, sTableUsage, "second uvs");
         mColours.open(device, sTableUsage, "vertex colours");
-        mInstanceTable.open(device, graveyard, slots, sTableUsage, "instance rows");
-        mMaterialTable.open(device, graveyard, slots, sTableUsage, "materials");
+        mInstanceTable.open(device, slots, sTableUsage, "instance rows");
+        mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -242,7 +241,7 @@ namespace Rtx
         // behind, still tracing the mesh that was there, would read as that mesh's geometry. One
         // copy is the versioned kind, and a version is never written in place.
         const VkDeviceSize bytes = mMeshScratch.size() * sizeof(Shaders::GpuMesh);
-        mGraveyard.bury(std::exchange(mMeshes, Buffer::hostWritten(mDevice, bytes, sTableUsage, "meshes")));
+        mDevice.getGraveyard().replace(mMeshes, Buffer::hostWritten(mDevice, bytes, sTableUsage, "meshes"));
         mMeshes.write(std::span<const Shaders::GpuMesh>(mMeshScratch));
     }
 
@@ -307,8 +306,7 @@ namespace Rtx
         // last, and the copy recorded here runs behind that frame. What a flipbook does every frame
         // never touches these tables.
         if (outgrow(mLayers, mDevice, BufferKind::DeviceLocal,
-                std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer), sTableFilledUsage, "layers",
-                mGraveyard))
+                std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer), sTableFilledUsage, "layers"))
         {
             mLayerScratch.clear();
             mLayerScratch.reserve(layers.size());
@@ -336,7 +334,7 @@ namespace Rtx
         }
 
         if (outgrow(mMasks, mDevice, BufferKind::DeviceLocal, std::max<std::size_t>(masks.size(), 1) * sizeof(float),
-                sTableFilledUsage, "masks", mGraveyard))
+                sTableFilledUsage, "masks"))
             stageInto(batch, mMasks, 0, std::as_bytes(masks.empty() ? std::span<const float>(&noMask, 1) : masks));
         else
             for (const Run run : scene.materials().getArrived().mMasks)
@@ -427,14 +425,11 @@ namespace Rtx
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
         const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
 
-        mGraveyard.bury(
-            growTo(tables.mLights, mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights"));
-        mGraveyard.bury(growTo(
-            tables.mLightList, mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list"));
-        mGraveyard.bury(
-            growTo(tables.mEmitters, mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters"));
-        mGraveyard.bury(growTo(
-            tables.mSprites, mDevice, BufferKind::HostWritten, sprites.size_bytes(), sTableCopiedFromUsage, "sprites"));
+        growTo(tables.mLights, mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights");
+        growTo(tables.mLightList, mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list");
+        growTo(tables.mEmitters, mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters");
+        growTo(
+            tables.mSprites, mDevice, BufferKind::HostWritten, sprites.size_bytes(), sTableCopiedFromUsage, "sprites");
 
         tables.mLights.write(lights);
         tables.mLightList.write(lightList);

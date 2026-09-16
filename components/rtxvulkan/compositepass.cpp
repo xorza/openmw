@@ -19,10 +19,10 @@ namespace Rtx
             = computeBindings<5>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     }
 
-    CompositePass::CompositePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
+    CompositePass::CompositePass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mPipeline(device, sBindings, sizeof(Shaders::CompositeConstants), {}, shaderDirectory / "composite.comp.spv",
             "composite")
-        , mNoSum(makeStandIn(device, pool, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-sum"))
+        , mNoSum(makeStandIn(device, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-sum"))
     {
     }
 

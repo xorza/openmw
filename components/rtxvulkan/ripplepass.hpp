@@ -23,7 +23,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
     class GpuTimer;
 
@@ -40,7 +39,7 @@ namespace Rtx
     public:
         /// Makes the field still, and leaves every tile in the layout the trace samples it in.
         /// Submits and waits.
-        RipplePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory);
+        RipplePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
         /// Steps the field once where a sixtieth has accrued on `skySeconds` since the last step,
         /// presses `impulses`, and unpacks the tiles. The window follows `eye` by whole texels.
@@ -76,7 +75,6 @@ namespace Rtx
         void standWindow(const osg::Vec2i& window);
 
         const Device& mDevice;
-        CommandPool& mPool;
 
         ComputePipeline mStepPipeline;
         ComputePipeline mComposePipeline;

@@ -173,8 +173,8 @@ namespace Rtx
                     groupsFor(sCount, Shaders::WAVE_TILE_WORKGROUP));
             });
 
-            const std::vector<float> heights = Testing::readHalves(pool, surface);
-            const std::vector<float> curves = Testing::readHalves(pool, curvature);
+            const std::vector<float> heights = Testing::readHalves(surface);
+            const std::vector<float> curves = Testing::readHalves(curvature);
 
             std::vector<Sampled> read(sCells);
             for (std::size_t at = 0; at < sCells; ++at)

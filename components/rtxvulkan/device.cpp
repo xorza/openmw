@@ -12,6 +12,8 @@
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
+#include "commands.hpp"
+#include "graveyard.hpp"
 #include "instance.hpp"
 #include "memory.hpp"
 #include "pipelinecache.hpp"
@@ -238,6 +240,8 @@ namespace Rtx
                 mPhysicalDevice.getProperties().mMemory,
                 mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
             mTimeline = std::make_unique<Timeline>(*this);
+            mPool = std::make_unique<CommandPool>(*this);
+            mGraveyard = std::make_unique<Graveyard>(*this);
         }
         catch (...)
         {
@@ -245,6 +249,8 @@ namespace Rtx
             // destructors after this block, and each calls into the device: the cache reads itself
             // back out of it and a block hands its memory to it. A device destroyed first would be
             // a handle they then use.
+            mGraveyard.reset();
+            mPool.reset();
             mTimeline.reset();
             mMemory.reset();
             mPipelineCache.reset();
@@ -267,8 +273,12 @@ namespace Rtx
             // it calls into the device, so it cannot outlive one this destructor is about to close.
             mPipelineCache.reset();
 
-            // Likewise, and after everything it stood has gone: a block is freed by a call on the
-            // device this is about to close.
+            // What was buried goes first, because it frees through the pool and hands memory to
+            // the allocator; then the pool, then the clock; and the allocator last, after
+            // everything it stood has gone, because a block is freed by a call on the device this
+            // is about to close.
+            mGraveyard.reset();
+            mPool.reset();
             mTimeline.reset();
             mMemory.reset();
 
@@ -362,6 +372,7 @@ namespace Rtx
     void Device::waitIdle() const
     {
         checkVk(*this, vkDeviceWaitIdle(mHandle), "vkDeviceWaitIdle");
+        mTimeline->markIdle();
     }
 
     std::string Device::describeCheckpoints() const

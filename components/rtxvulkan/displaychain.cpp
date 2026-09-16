@@ -15,7 +15,6 @@
 #include "buffer.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
-#include "graveyard.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
 #include "visibilitypass.hpp"
@@ -42,16 +41,14 @@ namespace Rtx
         }
     }
 
-    DisplayChain::DisplayChain(const Device& device, CommandPool& pool, Graveyard& graveyard,
-        const VisibilityPass& puffs, const VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaders,
-        const VkFormat targetFormat)
+    DisplayChain::DisplayChain(const Device& device, const VisibilityPass& puffs,
+        const VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaders, const VkFormat targetFormat)
         : mDevice(device)
-        , mGraveyard(graveyard)
         , mPuffs(puffs)
         , mBloom(device, shaders)
         , mExposure(device, shaders)
         , mSunGlare(device, shaders)
-        , mTone(device, pool, textureLayout, shaders)
+        , mTone(device, textureLayout, shaders)
         , mLines(device, shaders, targetFormat)
     {
     }
@@ -140,8 +137,8 @@ namespace Rtx
         // The lines first and the triangles after them, in the slot's own buffer: the frame
         // behind read its own slot's, so nothing here is written under a submit.
         const std::size_t count = debug.mLines.size() + debug.mTriangles.size();
-        mGraveyard.bury(growTo(*what.mDebugVertices, mDevice, BufferKind::HostWritten, count * sizeof(DebugVertex),
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "debug vertices"));
+        growTo(*what.mDebugVertices, mDevice, BufferKind::HostWritten, count * sizeof(DebugVertex),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "debug vertices");
 
         const std::span<DebugVertex> written = what.mDebugVertices->writable<DebugVertex>(0, count);
         std::copy(debug.mLines.begin(), debug.mLines.end(), written.begin());

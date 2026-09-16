@@ -56,9 +56,8 @@ namespace Rtx
         }
     }
 
-    RipplePass::RipplePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
+    RipplePass::RipplePass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mDevice(device)
-        , mPool(pool)
         , mStepPipeline(device, sStepBindings, sizeof(Shaders::RippleStepConstants), {},
               shaderDirectory / "ripplestep.comp.spv", "ripple step")
         , mComposePipeline(
@@ -85,7 +84,7 @@ namespace Rtx
 
         // Still water in every tile from the first frame, in the layout the trace samples them in:
         // a frame with no water records nothing here and binds them anyway.
-        mPool.submitAndWait([&](VkCommandBuffer commands) {
+        mDevice.getPool().submitAndWait([&](VkCommandBuffer commands) {
             const VkClearColorValue still{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
             for (const Image* image : { &mSurface, &mCurvature })
                 image->clear(commands, Use::sUndefined, still, Use::sShaderSample);

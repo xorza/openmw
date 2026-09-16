@@ -16,7 +16,6 @@
 #include <components/rtxvulkan/blockedbuffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
-#include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/slottable.hpp>
 
 #include "harness.hpp"
@@ -52,8 +51,7 @@ namespace Rtx
                 if (mHarness == nullptr)
                     return;
 
-                mGraveyard = std::make_unique<Graveyard>(getDevice(), getPool());
-                mTable.open(getDevice(), *mGraveyard, 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
+                mTable.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
             }
 
             /// Which rows `slot` is owed, sorted so that a debt compares equal whatever order it
@@ -70,7 +68,6 @@ namespace Rtx
 
             void sync(std::uint32_t slot) { mTable.sync(FrameSlot{ slot }); }
 
-            std::unique_ptr<Graveyard> mGraveyard;
             SlotTable<TestRow> mTable;
         };
 
@@ -360,7 +357,7 @@ namespace Rtx
             const VkCommandBuffer reader = getPool().allocate(1).front();
             getPool().begin(reader);
             EXPECT_NE(mTable.addressFor(FrameSlot{ 0 }), 0u);
-            hold.submit(getPool(), reader, *mGraveyard);
+            hold.submit(reader);
 
             constexpr std::chrono::milliseconds held{ 20 };
             const auto asked = std::chrono::steady_clock::now();

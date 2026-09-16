@@ -259,7 +259,7 @@ namespace Rtx
             });
 
             std::vector<std::uint8_t> bytes;
-            output.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes);
+            output.read(VK_IMAGE_LAYOUT_GENERAL, bytes);
             ASSERT_EQ(bytes.size(), std::size_t{ sOutput.width } * sOutput.height * 16);
 
             std::vector<float> pixels(bytes.size() / sizeof(float));

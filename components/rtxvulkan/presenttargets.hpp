@@ -9,7 +9,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
 
     /// The frame as bytes at the output extent, which is what anything outside the renderer reads.
@@ -27,7 +26,7 @@ namespace Rtx
 
         /// Makes both, black and in `VK_IMAGE_LAYOUT_GENERAL`, because the GUI is drawn over one
         /// whether or not a frame was traced into it.
-        void resize(const Device& device, CommandPool& pool, std::uint32_t width, std::uint32_t height);
+        void resize(const Device& device, std::uint32_t width, std::uint32_t height);
 
         bool isOpen() const { return !mTarget.isEmpty(); }
 

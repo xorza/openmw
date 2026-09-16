@@ -24,7 +24,6 @@ namespace Rtx
     class Batch;
     class Device;
     class GpuTimer;
-    class Graveyard;
     class SceneDesc;
     class SkinPass;
     struct Placing;
@@ -47,8 +46,8 @@ namespace Rtx
         /// again while that one is still tracing — so every table has `sFrameSlots` copies.
         ///
         /// @param skin what poses this scene's bodies, at the build and at every placement.
-        DeviceScene(const Device& device, Graveyard& graveyard, Batch& batch, const SetLayout& textureLayout,
-            const SkinPass& skin, const SceneDesc& scene, std::span<const TextureData> textures);
+        DeviceScene(const Device& device, Batch& batch, const SetLayout& textureLayout, const SkinPass& skin,
+            const SceneDesc& scene, std::span<const TextureData> textures);
 
         /// Takes in what the scene says arrived: the textures, and the meshes where the mesh table's
         /// revision moved — the geometry blocks are appended to rather than replaced, so every

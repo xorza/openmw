@@ -53,9 +53,8 @@ namespace Rtx
         }
     }
 
-    WavePass::WavePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
+    WavePass::WavePass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mDevice(device)
-        , mPool(pool)
         , mFormPipeline(device, sFormBindings, sizeof(Shaders::WaveFormConstants), {},
               shaderDirectory / "waveform.comp.spv", "wave form")
         , mLinePipeline(device, sLineBindings, sizeof(Shaders::WaveConstants), {},
@@ -85,7 +84,7 @@ namespace Rtx
         // Every tile in the layout the trace binds it in, from the first frame: a frame with no
         // water synthesises nothing and binds the tiles anyway, and a descriptor naming an image
         // that was never transitioned is an error whether or not a ray samples it.
-        mPool.submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
+        mDevice.getPool().submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
     }
 
     void WavePass::describe(const SeaState& sea)
@@ -95,7 +94,7 @@ namespace Rtx
         mSlope = waveSlope(cascades);
         mCurvature = waveCurvature(cascades);
 
-        Batch batch(mPool);
+        Batch batch(mDevice.getPool());
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
             mTiles[index].mAmplitudes = uploadBuffer(batch, std::span<const osg::Vec2f>(cascades[index].mAmplitudes),

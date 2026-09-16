@@ -12,7 +12,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
 
     /// The fog's fractal field, on the device, drawn once for the run: what the weather, the hour
@@ -21,7 +20,7 @@ namespace Rtx
     {
     public:
         /// `pool` submits the one upload and waits for it. Not on the frame path.
-        FogTile(const Device& device, CommandPool& pool);
+        explicit FogTile(const Device& device);
 
         /// The shape a coverage band is cut out of, and a second field decorrelated from it.
         const Image& getField() const { return mField; }
@@ -48,8 +47,7 @@ namespace Rtx
     public:
         /// `pool` is used once, to lay every image out and empty it, because nothing times a
         /// not-a-number is still one. `width` and `height` are the camera's, in pixels.
-        FogVolume(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
-            std::uint32_t height);
+        FogVolume(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height);
 
         /// The set every fog volume is addressed through, made once and outliving all of them, for
         /// the reason `GBuffer::describeLayout` gives.

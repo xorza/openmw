@@ -277,12 +277,9 @@ namespace Rtx::Testing
             log->takeErrorsOnThisThread(mRaised);
     }
 
-    CommandPool& DeviceTest::getPool()
+    CommandPool& DeviceTest::getPool() const
     {
-        if (mPool == nullptr)
-            mPool = std::make_unique<CommandPool>(getDevice());
-
-        return *mPool;
+        return getDevice().getPool();
     }
 
     void RendererTest::SetUp()
@@ -332,7 +329,7 @@ namespace Rtx::Testing
             release();
     }
 
-    std::uint64_t HeldSubmit::submit(CommandPool& pool, VkCommandBuffer commands, Graveyard& graveyard)
+    std::uint64_t HeldSubmit::submit(VkCommandBuffer commands)
     {
         const VkSemaphoreSubmitInfo wait{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -340,7 +337,7 @@ namespace Rtx::Testing
             .value = 1,
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
-        return pool.submit(commands, graveyard, std::span(&wait, 1));
+        return mDevice.getPool().submit(commands, std::span(&wait, 1));
     }
 
     void HeldSubmit::releaseAfter(const std::chrono::milliseconds delay)
@@ -363,10 +360,10 @@ namespace Rtx::Testing
         checkVk(mDevice, vkSignalSemaphore(mDevice.getHandle(), &signal), "vkSignalSemaphore");
     }
 
-    std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level)
+    std::vector<float> readHalves(const Image& image, std::uint32_t level)
     {
         std::vector<std::uint8_t> bytes;
-        image.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes, level);
+        image.read(VK_IMAGE_LAYOUT_GENERAL, bytes, level);
 
         std::vector<float> values(bytes.size() / sizeof(std::uint16_t));
         for (std::size_t at = 0; at < values.size(); ++at)

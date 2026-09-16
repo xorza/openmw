@@ -16,9 +16,7 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
-    class Graveyard;
 
     /// What the trace counts over a frame: the host's spelling of `lib/bindings.glsl`'s `HitCount`
     /// block, so the frame that clears the buffer and the frame that reads it back agree about
@@ -91,11 +89,9 @@ namespace Rtx
     class FrameRing
     {
     public:
-        /// @param graveyard the renderer's, collected after every wait this ring makes, because a
-        ///        wait is where what the timeline is known to have passed changes.
         /// @param countHits whether a frame's count is worth reading back. Borrowed from the
         ///        renderer, which decides it once and compiles its pipeline against the same answer.
-        FrameRing(const Device& device, CommandPool& pool, Graveyard& graveyard, bool countHits);
+        FrameRing(const Device& device, bool countHits);
 
         FrameRing(const FrameRing&) = delete;
         FrameRing& operator=(const FrameRing&) = delete;
@@ -152,12 +148,10 @@ namespace Rtx
         std::optional<FrameResult> takeReport();
 
         const Device& mDevice;
-        CommandPool& mPool;
-        Graveyard& mGraveyard;
 
-        /// By value, because both are settled at construction and never move. References into
-        /// the renderer's own members would tie this ring's correctness to where two booleans
-        /// happen to live.
+        /// By value, because it is settled at construction and never moves. A reference into the
+        /// renderer's own members would tie this ring's correctness to where a boolean happens to
+        /// live.
         bool mCountHits = false;
 
         PerSlot<FrameRecord> mSlots;

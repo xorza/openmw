@@ -1,11 +1,11 @@
 #include "vulkanrenderer.hpp"
 
-#include <algorithm>
 #include <bit>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
+#include <memory>
 #include <ratio>
 #include <span>
 #include <string>
@@ -32,6 +32,7 @@
 #include "devicescene.hpp"
 #include "gbuffer.hpp"
 #include "graphicspipeline.hpp"
+#include "graveyard.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
 #include "memory.hpp"
@@ -108,38 +109,35 @@ namespace Rtx
         , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()),
               PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory },
               deviceExtensionsFor(options))
-        , mPool(mDevice)
-        , mGraveyard(mDevice, mPool)
         , mCountHits(options.mCountHits)
         , mProfile(options.mProfile)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         , mTextureLayout(TextureArray::describeLayout(mDevice))
-        , mPass(mDevice, mPool, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits)
-        , mComposite(mDevice, mPool, options.mShaderDirectory)
+        , mPass(mDevice, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits)
+        , mComposite(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
         // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
         // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
         // `TRANSFER_SRC` because `readComposite` copies this out: it is the frame a measurement is
         // taken on, where `readPixels` gives the one a display would show.
-        , mFrame(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin,
-              mSpriteShade, options.mShaderDirectory,
+        , mFrame(mDevice, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin, mSpriteShade,
+              options.mShaderDirectory,
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
-        , mView(mDevice, mGraveyard, mPool, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin,
-              mSpriteShade, options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
-        , mDisplay(mDevice, mPool, mGraveyard, mPass, mTextureLayout.get(), options.mShaderDirectory,
-              PresentTargets::sFormat)
-        , mWaves(mDevice, mPool, options.mShaderDirectory)
-        , mRipples(mDevice, mPool, options.mShaderDirectory)
-        , mFog(mDevice, mPool)
+        , mView(mDevice, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin, mSpriteShade,
+              options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
+        , mDisplay(mDevice, mPass, mTextureLayout.get(), options.mShaderDirectory, PresentTargets::sFormat)
+        , mWaves(mDevice, options.mShaderDirectory)
+        , mRipples(mDevice, options.mShaderDirectory)
+        , mFog(mDevice)
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mNoSprites(Buffer::hostWritten(
               mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "no sprites"))
         , mViewCounts(
               Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
-        , mGuiTextures(mDevice, mGraveyard, mPool)
+        , mGuiTextures(mDevice)
     {
         // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
         mNoSprites.clear();
@@ -149,13 +147,13 @@ namespace Rtx
             startUpscaler();
 
         if (mProfile.mStressOverlapMs > 0.0)
-            mStress = std::make_unique<StressPass>(mDevice, mPool, options.mShaderDirectory, mProfile.mStressOverlapMs);
+            mStress = std::make_unique<StressPass>(mDevice, options.mShaderDirectory, mProfile.mStressOverlapMs);
 
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
         if (options.mWindow != nullptr)
-            mPresenter = std::make_unique<Presenter>(
-                mDevice, mPool, mGraveyard, mInstance.getHandle(), options.mWindow, options.mVerticalSync);
+            mPresenter
+                = std::make_unique<Presenter>(mDevice, mInstance.getHandle(), options.mWindow, options.mVerticalSync);
 
         const VkExtent2D output
             = mPresenter != nullptr ? mPresenter->getExtent() : VkExtent2D{ options.mWidth, options.mHeight };
@@ -172,10 +170,8 @@ namespace Rtx
         // Every frame in flight, and the presenter's last blit, before anything they name goes.
         tearDown("the device would not finish before the renderer was taken apart", [&] { mDevice.waitIdle(); });
 
-        // Before the scenes below it, the dying ones included, which own the storage the buried
-        // rooms are rooms in.
-        mGraveyard.clear();
-        mDyingScenes.clear();
+        // Before the scenes below it, which own the storage the buried rooms are rooms in.
+        mDevice.getGraveyard().collectIdle();
     }
 
     void VulkanRenderer::startUpscaler()
@@ -196,30 +192,17 @@ namespace Rtx
 
     void VulkanRenderer::drain()
     {
-        mPool.finishDeferred();
+        mDevice.getPool().finishDeferred();
         mRing.finishAll();
         mDevice.waitIdle();
 
-        // The graveyard before the scenes, for the reason the destructor gives: a buried structure
-        // gives its room back to the storage its scene owns.
-        mGraveyard.clear();
-        mDyingScenes.clear();
-    }
-
-    void VulkanRenderer::buryDyingScenes()
-    {
-        // The graveyard first, and against the same value: a structure a dying scene retired is
-        // buried with a stamp no later than the scene's own, and gives its room back to a storage
-        // the scene owns when it goes.
-        mGraveyard.collect();
-
-        const std::uint64_t finished = mDevice.getTimeline().getKnownFinished();
-        std::erase_if(mDyingScenes, [finished](const DyingScene& dying) { return dying.mUntil <= finished; });
+        // Everything buried, the scenes given back included, before what replaces them is made.
+        mDevice.getGraveyard().collectIdle();
     }
 
     void VulkanRenderer::finishTraces()
     {
-        mPool.finishDeferred();
+        mDevice.getPool().finishDeferred();
         mRing.finishAll();
     }
 
@@ -268,12 +251,12 @@ namespace Rtx
 
         // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
-        mTargets.resize(mDevice, mPool, mOutputWidth, mOutputHeight);
+        mTargets.resize(mDevice, mOutputWidth, mOutputHeight);
 
         // A runtime that is up because somebody upscaled and then turned it off keeps nothing
         // but itself: the feature and its image go with the mode.
         if (upscaling())
-            mUpscaler->resize(mPool, render, output, mProfile.mUpscaling);
+            mUpscaler->resize(render, output, mProfile.mUpscaling);
         else if (mUpscaler != nullptr)
             mUpscaler->release();
 
@@ -433,8 +416,8 @@ namespace Rtx
         // One submit for the whole cell, asked of the queue once at the flush below — by hand
         // rather than left to the destructor, so a submit that fails throws out of here instead
         // of being logged on the way past.
-        Batch setup(mPool);
-        held = std::make_unique<DeviceScene>(mDevice, mGraveyard, setup, mTextureLayout, mSkinPass, scene, textures);
+        Batch setup(mDevice.getPool());
+        held = std::make_unique<DeviceScene>(mDevice, setup, mTextureLayout, mSkinPass, scene, textures);
         setup.flush();
 
         if (slot.isWorld())
@@ -453,7 +436,7 @@ namespace Rtx
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
 
-        Batch setup(mPool);
+        Batch setup(mDevice.getPool());
         held.extend(setup, scene, arrived, timer);
 
         // Deferred to the placement's submit: `placeScene` submits this ahead of the refit and the
@@ -498,7 +481,7 @@ namespace Rtx
         // `DeviceScene::pictureRides` says. Three placements of one scene inside one frame is the
         // only way here, which a game never takes.
         if (held.pictureRides(into, mDevice.getTimeline().getNext()))
-            mPool.finishDeferred();
+            mDevice.getPool().finishDeferred();
 
         // Whatever last read or wrote this copy on the queue is waited for here, and each table
         // says what that was: the frame before last's trace, which `collectFrame` has usually
@@ -512,7 +495,7 @@ namespace Rtx
         // the barrier `place` ends in orders the pair.
         if (!slot.isWorld())
         {
-            Batch placement(mPool);
+            Batch placement(mDevice.getPool());
             held.place(scene,
                 Placing{
                     .mCommands = placement.getCommands(),
@@ -532,7 +515,7 @@ namespace Rtx
         // covers this submit too. Nothing recorded is nothing submitted, which is every frame of a
         // standing camera in an empty place.
         const VkCommandBuffer placement = mRing.takePlaceCommands(frame);
-        mPool.begin(placement);
+        mDevice.getPool().begin(placement);
 
         if (held.place(scene,
                 Placing{
@@ -540,9 +523,9 @@ namespace Rtx
                     .mSlot = into,
                     .mTimer = &frame.mTimer,
                 }))
-            mPool.submit(placement, mGraveyard);
+            mDevice.getPool().submit(placement);
         else
-            mPool.end(placement);
+            mDevice.getPool().end(placement);
 
         held.placed(into);
 
@@ -568,16 +551,12 @@ namespace Rtx
 
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
-        std::optional<FrameResult> result = mRing.collect();
-        buryDyingScenes();
-        return result;
+        return mRing.collect();
     }
 
     std::optional<FrameResult> VulkanRenderer::collectFrame()
     {
-        std::optional<FrameResult> result = mRing.collectFinished();
-        buryDyingScenes();
-        return result;
+        return mRing.collectFinished();
     }
 
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
@@ -641,18 +620,15 @@ namespace Rtx
         // submit that bound them: that passed is what says they may be written over.
         FrameRecord& gui = mRing.slotOf(mGuiFrame);
         if (!gui.mGuiVertices.isIdle())
-        {
             gui.mGuiVertices.waitIdle("the interface drawn two frames ago");
-            mGraveyard.collect();
-        }
 
-        // After the collect and before anything is handed over: this frame's submit is the first
+        // After the wait, which collected, and before anything is handed over: this frame's submit is the first
         // that says every draw with a texture given back has finished, and the staging turns on
         // the same signal.
         mGuiTextures.startFrame();
 
-        mGraveyard.bury(growTo(gui.mGuiVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "gui vertices"));
+        growTo(gui.mGuiVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "gui vertices");
         gui.mGuiVertices.write(vertices);
 
         // Named by hand, because a vertex buffer is bound by handle and not handed out as an
@@ -678,7 +654,7 @@ namespace Rtx
         // queue draws it after the frame, the present blits after both, and the wait is for the
         // vertices alone.
         const VkCommandBuffer commands = gui.mGuiCommands;
-        mPool.begin(commands);
+        mDevice.getPool().begin(commands);
         claimTarget().transition(commands, Use::sComputeWrite, Use::sColourAttachment);
 
         mGuiPass.record(commands, mTargets.current(), gui.mGuiVertices.getHandle(), mGuiDraws);
@@ -690,7 +666,7 @@ namespace Rtx
                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT },
             Use::sAnyGeneralRead);
 
-        mPool.submit(commands, mGraveyard);
+        mDevice.getPool().submit(commands);
         ++mGuiFrame;
     }
 
@@ -783,7 +759,7 @@ namespace Rtx
 
         GpuTimer& timer = frame.mTimer;
         const VkCommandBuffer commands = frame.mWorld.mCommands;
-        mPool.begin(commands);
+        mDevice.getPool().begin(commands);
 
         // The glare fader's query starts the frame at nothing, ahead of the trace that counts.
         mDisplay.beginGlare(commands);
@@ -938,14 +914,13 @@ namespace Rtx
     {
         assert(scene.getViewIndex() < mViewScenes.size() && "a scene given back twice");
 
-        // Held and not drained: a picture of it recorded this frame and not yet carried rides the
+        // Buried and not drained: a picture of it recorded this frame and not yet carried rides the
         // next submit, and so does the last placement's refit, so the scene goes once the timeline
-        // has passed that submit and no sooner — `DyingScene` says why that is the graveyard's
-        // rule. A drain here idled the whole device every time the inventory closed.
-        mDyingScenes.push_back(DyingScene{
-            .mUntil = mDevice.getTimeline().getNext(),
-            .mScene = std::move(mViewScenes[scene.getViewIndex()]),
-        });
+        // has passed that submit and no sooner, which is the graveyard's rule for everything. The
+        // graveyard frees a scene after every structure, because a structure the scene retired
+        // gives its room back to a storage the scene owns. A drain here idled the whole device
+        // every time the inventory closed.
+        mDevice.getGraveyard().bury(std::shared_ptr<void>(std::move(mViewScenes[scene.getViewIndex()])));
         mFreeViewScenes.free(scene.getViewIndex());
     }
 
@@ -995,7 +970,7 @@ namespace Rtx
         // next placement of this scene waits for what its tables say, and what it writes nothing
         // else reads. Not counted and not timed, because the hit count and the report are the
         // frame's.
-        Batch trace(mPool);
+        Batch trace(mDevice.getPool());
         {
             const VkCommandBuffer commands = trace.getCommands();
             const GBuffer& channels = mView.getChannels();
@@ -1089,7 +1064,7 @@ namespace Rtx
         // already swapped those two; with no window nothing presents, nothing swaps, and the frame
         // just written is still the one `mTarget` names.
         const Image& frame = mTargets.lastPresented() != nullptr ? *mTargets.lastPresented() : mTargets.current();
-        frame.read(mPool, VK_IMAGE_LAYOUT_GENERAL, pixels);
+        frame.read(VK_IMAGE_LAYOUT_GENERAL, pixels);
     }
 
     void VulkanRenderer::readChannel(const Channel channel, std::vector<float>& values)
@@ -1110,7 +1085,7 @@ namespace Rtx
     void VulkanRenderer::readImage(const Image& image, std::vector<float>& values)
     {
         std::vector<std::uint8_t> bytes;
-        image.read(mPool, VK_IMAGE_LAYOUT_GENERAL, bytes);
+        image.read(VK_IMAGE_LAYOUT_GENERAL, bytes);
 
         // Every format the renderer reads back is named, and one that is not is a throw rather
         // than a `memcpy`, which is how the motion channels came back as pairs of halves the day

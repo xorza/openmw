@@ -20,11 +20,9 @@
 namespace Rtx
 {
     class Buffer;
-    class CommandPool;
     class Device;
     class GBuffer;
     class GpuTimer;
-    class Graveyard;
     class Image;
     class VisibilityPass;
     struct VisibilityInputs;
@@ -114,8 +112,8 @@ namespace Rtx
         /// @param textureLayout the scene's bindless textures, which the curve samples the star
         ///        sheet out of.
         /// @param targetFormat what the curve writes and the lines draw over.
-        DisplayChain(const Device& device, CommandPool& pool, Graveyard& graveyard, const VisibilityPass& puffs,
-            VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaders, VkFormat targetFormat);
+        DisplayChain(const Device& device, const VisibilityPass& puffs, VkDescriptorSetLayout textureLayout,
+            const std::filesystem::path& shaders, VkFormat targetFormat);
 
         /// The lens over `width` by `height`, which is what the frame is by the time the curve
         /// maps it: the upscaler's output where one runs and the trace's own extent where none
@@ -139,7 +137,6 @@ namespace Rtx
         void recordDebugLines(VkCommandBuffer commands, const Display& what);
 
         const Device& mDevice;
-        Graveyard& mGraveyard;
         const VisibilityPass& mPuffs;
 
         BloomPass mBloom;

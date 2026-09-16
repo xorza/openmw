@@ -12,7 +12,6 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
-#include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/timeline.hpp>
 
 #include "harness.hpp"
@@ -78,7 +77,6 @@ namespace Rtx
         {
             const Device& device = *mHarness->mDevice;
             CommandPool& pool = getPool();
-            Graveyard graveyard(device, pool);
 
             constexpr VkBufferUsageFlags copyable = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             const Buffer source = Buffer::staging(device, 64, copyable, "test");
@@ -102,7 +100,7 @@ namespace Rtx
             EXPECT_EQ(target.getNamedUntil(), next) << "the copy's destination was not named";
             EXPECT_TRUE(target.isIdle()) << "named for a submit nobody has made, which a host write lands ahead of";
 
-            EXPECT_EQ(hold.submit(pool, commands, graveyard), next);
+            EXPECT_EQ(hold.submit(commands), next);
             EXPECT_FALSE(source.isIdle()) << "the copy is on the queue";
             EXPECT_FALSE(target.isIdle()) << "the copy is on the queue";
 

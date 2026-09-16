@@ -12,7 +12,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
     class Image;
 
@@ -83,7 +82,7 @@ namespace Rtx
         /// the feature holds the network's weights for one pair, and the image is sixteen bytes a
         /// pixel of the output, so neither is left behind for a pair that may not come back. Once
         /// per resolution, and it uploads the weights, so never per frame.
-        virtual void resize(CommandPool& pool, VkExtent2D render, VkExtent2D output, const Upscaling& how) = 0;
+        virtual void resize(VkExtent2D render, VkExtent2D output, const Upscaling& how) = 0;
 
         /// Lets the feature and its image go and keeps the runtime, for a mode turned off that may
         /// not come back.

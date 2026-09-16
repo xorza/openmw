@@ -13,7 +13,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
 
     /// Scene-referred radiance to bytes a display understands, and the sky's own points over it.
@@ -27,8 +26,8 @@ namespace Rtx
         /// @param textureLayout the scene's bindless textures, which this samples the star sheet
         ///        out of — `ToneConstants::mStars` says why the field is drawn here.
         /// @param pool where the stand-in bound in place of a pyramid is put into its layout, once.
-        TonePass(const Device& device, CommandPool& pool, VkDescriptorSetLayout textureLayout,
-            const std::filesystem::path& shaderDirectory);
+        TonePass(
+            const Device& device, VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaderDirectory);
 
         /// @param colour the finished frame in linear radiance, in `VK_IMAGE_LAYOUT_GENERAL`.
         /// @param exposure one float, what to scale it by. `ExposurePass` writes it, measured off

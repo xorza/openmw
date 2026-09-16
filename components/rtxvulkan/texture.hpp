@@ -24,7 +24,6 @@ namespace Rtx
 {
     class Batch;
     class Device;
-    class Graveyard;
 
     /// A sampled image on the GPU, the levels a content file brought for it, and the light the
     /// file already had painted into it — two `Image`s and what was uploaded into them. The second
@@ -108,8 +107,8 @@ namespace Rtx
         ///
         /// @param layout what `describeLayout` made: every array is shaped by the one the renderer
         ///        keeps, which is what lets one pass be handed any scene's set.
-        TextureArray(const Device& device, Graveyard& graveyard, Batch& batch, const SetLayout& layout,
-            std::uint32_t slots, std::span<const TextureData> textures);
+        TextureArray(const Device& device, Batch& batch, const SetLayout& layout, std::uint32_t slots,
+            std::span<const TextureData> textures);
 
         /// The shape of every set an array here holds: two bindless arrays, partially bound and
         /// updated after bind. Made once by whoever owns the passes that name it.
@@ -159,10 +158,6 @@ namespace Rtx
         void reserveSlot(std::uint32_t slot);
 
         const Device& mDevice;
-
-        /// Where a texture goes when its slot is written over or dropped: a frame in flight may
-        /// still sample it.
-        Graveyard& mGraveyard;
 
         /// Cleared and refilled by every describe and every write, never freed. Each settles at the
         /// busiest arrival so far, and an arrival is the frame with the least room to grow one.

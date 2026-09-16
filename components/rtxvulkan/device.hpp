@@ -12,6 +12,8 @@
 
 namespace Rtx
 {
+    class CommandPool;
+    class Graveyard;
     class Instance;
     class MemoryAllocator;
     class Timeline;
@@ -145,6 +147,14 @@ namespace Rtx
         /// The queue's clock, which every submit signals and every wait reads.
         Timeline& getTimeline() const { return *mTimeline; }
 
+        /// The queue's one command pool, which every submit is made out of, and what the queue may
+        /// still be reading, which everything on the frame path lets go of through. The queue's
+        /// and not the renderer's, so whatever holds the device can submit and bury without being
+        /// handed either: a pool and a graveyard threaded through every constructor was two
+        /// references beside a third they could have been reached through.
+        CommandPool& getPool() const { return *mPool; }
+        Graveyard& getGraveyard() const { return *mGraveyard; }
+
         /// Whether `vkQueuePresentKHR` may be handed a fence it signals when the presentation
         /// engine has finished with an image — the only thing that says so, since a queue-idle
         /// proves the queue is empty and not that the compositor has let go.
@@ -214,8 +224,8 @@ namespace Rtx
 #endif
         }
 
-        /// Blocks until the queue has finished everything. For tearing down and for resizing, not
-        /// for pacing a frame.
+        /// Blocks until the queue has finished everything, and tells the clock so. For tearing
+        /// down and for resizing, not for pacing a frame.
         void waitIdle() const;
 
         // Read by the tests and by nothing else.
@@ -259,9 +269,12 @@ namespace Rtx
 
         // Last, so that they are torn down first: saving the cache reads from the device, and
         // freeing a block writes to it, which the members above are still holding open at that
-        // point.
+        // point. Torn down by name in the destructor, because the graveyard frees through the pool
+        // and gives memory back to the allocator, so it goes before both.
         std::unique_ptr<PipelineCache> mPipelineCache;
         std::unique_ptr<MemoryAllocator> mMemory;
         std::unique_ptr<Timeline> mTimeline;
+        std::unique_ptr<CommandPool> mPool;
+        std::unique_ptr<Graveyard> mGraveyard;
     };
 }

@@ -10,7 +10,6 @@
 
 namespace Rtx
 {
-    class CommandPool;
     class Device;
     class GpuTimer;
 
@@ -26,8 +25,7 @@ namespace Rtx
         /// the device's own clock after enough dispatches for the card to have come off its idle
         /// clock. A stated time and not a stated count, because the count a millisecond takes is
         /// the card's.
-        StressPass(
-            const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory, double milliseconds);
+        StressPass(const Device& device, const std::filesystem::path& shaderDirectory, double milliseconds);
 
         void record(VkCommandBuffer commands, GpuTimer& timer) const;
 

@@ -7,6 +7,7 @@
 #include <components/rtx/error.hpp>
 
 #include "commands.hpp"
+#include "device.hpp"
 #include "dlsspass.hpp"
 #include "imageuse.hpp"
 
@@ -33,7 +34,7 @@ namespace Rtx
         mOutput = Image();
     }
 
-    void DlssUpscaler::resize(CommandPool& pool, const VkExtent2D render, const VkExtent2D output, const Upscaling& how)
+    void DlssUpscaler::resize(const VkExtent2D render, const VkExtent2D output, const Upscaling& how)
     {
         // Released before the next is built: the feature holds the network's weights for one pair
         // of resolutions, and the image it writes is sixteen bytes a pixel of the output, so neither
@@ -50,7 +51,7 @@ namespace Rtx
 
         // Building uploads the network's weights, which is once per resolution rather than once
         // per frame.
-        pool.submitAndWait([&](VkCommandBuffer commands) {
+        mDevice.getPool().submitAndWait([&](VkCommandBuffer commands) {
             mPass = std::make_unique<DlssPass>(mNgx, commands, render, output, how.mMode, how.mPreset);
         });
     }

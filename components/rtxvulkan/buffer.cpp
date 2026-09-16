@@ -6,6 +6,7 @@
 
 #include "barriers.hpp"
 #include "device.hpp"
+#include "graveyard.hpp"
 #include "result.hpp"
 #include "timeline.hpp"
 
@@ -110,18 +111,25 @@ namespace Rtx
         return VkDescriptorBufferInfo{ mHandle.get(), 0, VK_WHOLE_SIZE };
     }
 
-    Buffer growTo(Buffer& held, const Device& device, const BufferKind kind, const VkDeviceSize bytes,
+    bool growTo(Buffer& held, const Device& device, const BufferKind kind, const VkDeviceSize bytes,
         const VkBufferUsageFlags usage, const std::string_view name)
     {
         assert((held.isEmpty() || held.getKind() == kind) && "a table grown into another kind of memory");
 
         if (!held.isEmpty() && held.getSize() >= bytes)
-            return Buffer();
+            return false;
 
-        Buffer displaced = std::move(held);
-        held = Buffer::make(device, kind, bytes, usage, name);
+        device.getGraveyard().replace(held, Buffer::make(device, kind, bytes, usage, name));
+        return true;
+    }
 
-        return displaced;
+    bool outgrow(Buffer& held, const Device& device, const BufferKind kind, const VkDeviceSize bytes,
+        const VkBufferUsageFlags usage, const std::string_view name)
+    {
+        if (!held.isEmpty() && held.getSize() >= bytes)
+            return false;
+
+        return growTo(held, device, kind, std::max(bytes, held.getSize() * 2), usage, name);
     }
 
     VkBufferMemoryBarrier2 Buffer::describeBarrier(const BufferUse& from, const BufferUse& to) const

@@ -24,7 +24,6 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
-#include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/skinpass.hpp>
 #include <components/rtxvulkan/skintables.hpp>
@@ -177,9 +176,8 @@ namespace Rtx
                 normals.settle(FrameSlot{ slot });
             }
 
-            Graveyard graveyard(device, pool);
             Batch tableSetup(pool);
-            SkinTables tables(device, graveyard, tableSetup, scene, 2);
+            SkinTables tables(device, tableSetup, scene, 2);
             tableSetup.flush();
             const SkinPass pass(device, Testing::getShaderDirectory());
 
@@ -365,14 +363,13 @@ namespace Rtx
             poses.open(device, 2, readable, "posed positions");
             normals.open(device, 2, readable, "posed normals");
 
-            Graveyard graveyard(device, pool);
             const SkinPass pass(device, Testing::getShaderDirectory());
 
             // The load: the tables and the room for one quad, into every copy.
             Batch load(pool);
             poses.reserve(load, 4);
             normals.reserve(load, 4);
-            SkinTables tables(device, graveyard, load, scene, 2);
+            SkinTables tables(device, load, scene, 2);
             load.flush();
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
@@ -404,7 +401,7 @@ namespace Rtx
             Testing::HeldSubmit hold(device);
             const VkCommandBuffer carrier = pool.allocate(1).front();
             pool.begin(carrier);
-            hold.submit(pool, carrier, graveyard);
+            hold.submit(carrier);
 
             // Asked before the hold starts its clock, so the bound below is exact: the hold opens
             // no sooner than `held` after this, and the wait cannot return before it opens.

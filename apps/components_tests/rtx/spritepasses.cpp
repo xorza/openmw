@@ -655,12 +655,10 @@ namespace Rtx
         struct Shading
         {
             const Device& mDevice;
-            CommandPool mPool;
             SpriteShadePass mPass;
 
             explicit Shading(const Device& device)
                 : mDevice(device)
-                , mPool(device)
                 , mPass(device, Testing::getShaderDirectory())
             {
             }
@@ -692,7 +690,8 @@ namespace Rtx
                     .mCount = static_cast<std::uint32_t>(sprites.size()),
                 };
 
-                mPool.submitAndWait([&](VkCommandBuffer commands) { mPass.record(commands, shade, nullptr); });
+                mDevice.getPool().submitAndWait(
+                    [&](VkCommandBuffer commands) { mPass.record(commands, shade, nullptr); });
 
                 std::vector<Shaders::GpuSprite> back(sprites.size());
                 std::memcpy(back.data(), spriteTable.map(), sprites.size_bytes());
@@ -1104,7 +1103,7 @@ namespace Rtx
             };
 
             std::size_t spent = 0;
-            shading.mPool.submitAndWait([&](VkCommandBuffer commands) {
+            shading.mDevice.getPool().submitAndWait([&](VkCommandBuffer commands) {
                 shading.mPass.record(commands, shade, nullptr);
 
                 const std::size_t before = Testing::getAllocationCount();

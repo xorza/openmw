@@ -17,7 +17,6 @@
 #include "buffer.hpp"
 #include "device.hpp"
 #include "frameslots.hpp"
-#include "graveyard.hpp"
 #include "timeline.hpp"
 
 namespace Rtx
@@ -33,11 +32,9 @@ namespace Rtx
     public:
         /// @param slots how many frames may be in flight, and so how many copies there are.
         /// @param usage what the device does with the copies.
-        void open(const Device& device, Graveyard& graveyard, std::uint32_t slots, VkBufferUsageFlags usage,
-            std::string_view name)
+        void open(const Device& device, std::uint32_t slots, VkBufferUsageFlags usage, std::string_view name)
         {
             mDevice = &device;
-            mGraveyard = &graveyard;
             mCopies.open(slots);
             mOwed.open(slots);
             mUsage = usage;
@@ -91,10 +88,8 @@ namespace Rtx
         /// because a copy can carry a debt from frames ago while the scene stands still.
         bool owes(FrameSlot slot) const { return mOwed.at(slot).owesAnything(); }
 
-        /// Writes what `slot`'s copy owes and clears the debt.
-        ///
-        /// @param graveyard takes the buffer a growth displaced, which a frame in flight may still
-        ///        be reading.
+        /// Writes what `slot`'s copy owes and clears the debt. A buffer a growth displaced goes to
+        /// the graveyard, because a frame in flight may still be reading it.
         void sync(FrameSlot slot)
         {
             assert(mDevice != nullptr && "sync before open");
@@ -113,8 +108,7 @@ namespace Rtx
             const VkDeviceSize least = std::max(needed, VkDeviceSize{ 1 });
             if (copy.getSize() < least)
             {
-                mGraveyard->bury(growTo(
-                    copy, *mDevice, BufferKind::HostWritten, std::max(least, copy.getSize() * 2), mUsage, mName));
+                growTo(copy, *mDevice, BufferKind::HostWritten, std::max(least, copy.getSize() * 2), mUsage, mName);
                 owed.oweEverything();
             }
 
@@ -157,7 +151,6 @@ namespace Rtx
 
     private:
         const Device* mDevice = nullptr;
-        Graveyard* mGraveyard = nullptr;
         VkBufferUsageFlags mUsage = 0;
         /// A literal, which is what every caller passes and all a debug name is asked to be.
         std::string_view mName;

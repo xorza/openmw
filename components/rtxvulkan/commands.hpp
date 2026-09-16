@@ -9,17 +9,16 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
+#include "image.hpp"
 #include "owned.hpp"
 
 namespace Rtx
 {
     class Device;
-    class Image;
-    class Graveyard;
 
-    /// The one command pool, and both ways a submit is made out of it: a load asks the queue and
-    /// waits, and a frame cannot wait, because a frame that drained the queue could not hand the
-    /// CPU the next one to walk.
+    /// The one command pool, the device's own, and both ways a submit is made out of it: a load
+    /// asks the queue and waits, and a frame cannot wait, because a frame that drained the queue
+    /// could not hand the CPU the next one to walk.
     class CommandPool
     {
     public:
@@ -48,33 +47,30 @@ namespace Rtx
         /// the buffer can be begun again next frame. Not `discard`, which frees.
         void end(VkCommandBuffer commands);
 
-        /// Frees every buffer this pool has handed out, and forgets what they referenced: a
-        /// recorded buffer keeps its resources alive as far as the layers are concerned, so an image
-        /// a resize destroys cannot still be named by the recording that blitted from it. Nothing
-        /// may be in flight and nothing deferred.
-        void reset();
-
-        /// Takes a recorded batch to submit ahead of the next submit this pool makes, and holds its
-        /// staging until that submit has been waited on — what lets an arrival ride the placement
-        /// that follows it instead of costing a round trip of its own. Ends `commands`.
-        void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging);
+        /// Takes a recorded batch to submit ahead of the next submit this pool makes — what lets an
+        /// arrival ride the placement that follows it instead of costing a round trip of its own.
+        /// Ends `commands`. What the batch read is the batch's to bury, under that same submit.
+        void defer(VkCommandBuffer commands);
 
         /// Submits whatever was deferred and waits for it, for the two paths that take the pool
         /// apart — a resize and shutdown — which have no next submit to give a deferred batch.
         void finishDeferred();
 
+        /// Whether a batch is waiting for the next submit to carry it.
+        bool hasDeferred() const { return !mDeferred.empty(); }
+
         /// Submits `commands` behind whatever was deferred and does not wait — the frame's own
-        /// submit. Ends `commands`. What the deferred batches read from goes to `kept`, to be let
-        /// go when the caller knows the queue has passed it. Returns the value the submit signals
-        /// on the device's timeline, which is what says when that is.
+        /// submit. Ends `commands`. The deferred batches' command buffers go to the graveyard, to
+        /// be freed when a wait says the queue has passed them. Returns the value the submit
+        /// signals on the device's timeline, which is what says when that is.
         ///
         /// @param waits,signals binary semaphores the submit waits and signals beside the
         ///        timeline: what a present's blit needs, and what nothing else does. Through here
         ///        and not a submit of its own, because a submit that took a timeline value without
         ///        carrying the deferred batches would let the graveyard free what they name before
         ///        they run.
-        std::uint64_t submit(VkCommandBuffer commands, Graveyard& kept,
-            std::span<const VkSemaphoreSubmitInfo> waits = {}, std::span<const VkSemaphoreSubmitInfo> signals = {});
+        std::uint64_t submit(VkCommandBuffer commands, std::span<const VkSemaphoreSubmitInfo> waits = {},
+            std::span<const VkSemaphoreSubmitInfo> signals = {});
 
         /// Frees one-shot command buffers this pool handed out and the queue has finished with.
         void free(std::span<const VkCommandBuffer> commands);
@@ -97,17 +93,11 @@ namespace Rtx
         std::uint64_t submitWithDeferred(VkCommandBuffer commands, std::span<const VkSemaphoreSubmitInfo> waits,
             std::span<const VkSemaphoreSubmitInfo> signals);
 
-        /// Lets go of what was deferred, once it has been submitted and whoever wanted its staging
-        /// has taken it.
-        void forgetDeferred();
-
         const Device& mDevice;
         Owned<VkCommandPool, vkDestroyCommandPool> mHandle;
 
-        /// Recorded and ended, waiting for the next submit to carry them first, with the staging
-        /// their copies read.
+        /// Recorded and ended, waiting for the next submit to carry them first.
         std::vector<VkCommandBuffer> mDeferred;
-        std::vector<Buffer> mDeferredStaging;
 
         /// Refilled per submit: a frame is three of them, and none allocates.
         std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
@@ -134,10 +124,11 @@ namespace Rtx
 
     /// One command buffer that a run of setup records into, submitted and waited on once. A load
     /// path's cost is round trips, not work: a cell arriving at Balmora creates 361 textures, and
-    /// a submit each is 367 waits on a queue that could have been asked once. The batch owns the
-    /// staging, because the copy has not run when an upload returns. What is recorded is readable
-    /// by what is recorded after it — `uploadBuffer` ends in a barrier, and a `Texture` leaves its
-    /// image in `SHADER_READ_ONLY_OPTIMAL` — and nothing else here orders anything.
+    /// a submit each is 367 waits on a queue that could have been asked once. The batch holds the
+    /// staging, because the copy has not run when an upload returns, and buries it under the
+    /// submit it rides when it ends — `keep` says what else it holds that way. What is recorded is
+    /// readable by what is recorded after it — `uploadBuffer` ends in a barrier, and a `Texture`
+    /// leaves its image in `SHADER_READ_ONLY_OPTIMAL` — and nothing else here orders anything.
     class Batch
     {
     public:
@@ -159,32 +150,40 @@ namespace Rtx
         /// made on.
         const Device& getDevice() const { return mPool.getDevice(); }
 
-        /// Holds `staging` until this batch has been submitted and waited on.
-        void keep(Buffer&& staging);
+        /// Holds what this recording reads, or what an earlier submit may still read, and buries
+        /// it under the submit this batch rides when the batch ends, whichever way it ends: a
+        /// buffer staged through, a build's scratch, an image the last frame drew with. Buried
+        /// then and not now, because a burial is stamped with the next submit, and the submit this
+        /// batch rides is not the next one until the batch is handed over.
+        void keep(Buffer&& buffer);
+        void keep(Image&& image);
 
         /// Writes `bytes` into the batch's own staging and says where they landed. One block serves
         /// every upload of a batch, where a buffer apiece was three driver calls per upload and a
         /// cell uploads four hundred times. Appended and never rewound, because nothing has run yet.
         StagingRun stage(std::span<const std::byte> bytes);
 
-        /// Submits what has been recorded and waits for it, then releases the staging. Does nothing
-        /// where nothing was recorded, so a batch nobody used costs nothing.
+        /// Buries what it held under the submit it is about to make, submits what has been
+        /// recorded and waits for it. A batch nobody used costs nothing.
         void flush();
 
-        /// Hands what has been recorded to the pool, staging and all, to go ahead of the pool's next
-        /// submit; records nothing more. The other way out of a batch, for a load that is followed
-        /// by a submit anyway.
+        /// Hands what has been recorded to the pool, to go ahead of the pool's next submit, and
+        /// buries what it held under that submit; records nothing more. The other way out of a
+        /// batch, for a load that is followed by a submit anyway.
         void defer();
 
     private:
-        /// Lets go of everything this batch was holding, whichever way it ended.
+        /// Buries everything this batch was holding, whichever way it ended, under the next
+        /// submit — which is the one this batch rides where it was handed over, and one after
+        /// every reader where it was flushed or thrown away.
         void release();
 
         CommandPool& mPool;
         VkCommandBuffer mCommands = VK_NULL_HANDLE;
 
-        /// What callers handed over with `keep`, which is whole buffers of their own making.
-        std::vector<Buffer> mStaging;
+        /// What callers handed over with `keep`.
+        std::vector<Buffer> mKeptBuffers;
+        std::vector<Image> mKeptImages;
 
         /// The batch's own staging, and how much of the last block is spoken for. See `stage`.
         std::vector<Buffer> mBlocks;

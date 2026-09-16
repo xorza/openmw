@@ -124,8 +124,7 @@ namespace Rtx
                 addGrid(mScene, 64, 2.0f) };
             stage();
 
-            Graveyard graveyard(getDevice(), getPool());
-            BottomLevelStore store(getDevice(), graveyard);
+            BottomLevelStore store(getDevice());
 
             // Waited for, so the first placement reads it — and the build after it changes nothing.
             build(store, std::span(grids).subspan(0, 1));
@@ -148,7 +147,9 @@ namespace Rtx
             EXPECT_EQ(store.getCompactableBytes(), 0u) << "an answer outlived its copy";
             EXPECT_EQ(store.getCompactableNowBytes(), 0u) << "an answer outlived its copy";
 
-            graveyard.clear();
+            // Before the store goes: a buried structure gives its room back to the store's storage.
+            getDevice().waitIdle();
+            getDevice().getGraveyard().collectIdle();
         }
 
         /// A structure released before its answer is read is neither read nor copied, and what the
@@ -161,8 +162,7 @@ namespace Rtx
             const std::array<Index, 2> grids{ addGrid(mScene, 64, 0.0f), addGrid(mScene, 64, 1.0f) };
             stage();
 
-            Graveyard graveyard(getDevice(), getPool());
-            BottomLevelStore store(getDevice(), graveyard);
+            BottomLevelStore store(getDevice());
             build(store, grids);
 
             store.release(std::span(grids).subspan(0, 1));
@@ -175,7 +175,9 @@ namespace Rtx
             EXPECT_EQ(store.getCompactableBytes(), 0u);
             EXPECT_EQ(store.getCompactableNowBytes(), 0u);
 
-            graveyard.clear();
+            // Before the store goes: a buried structure gives its room back to the store's storage.
+            getDevice().waitIdle();
+            getDevice().getGraveyard().collectIdle();
         }
     }
 }

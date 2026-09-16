@@ -47,11 +47,9 @@ namespace Rtx
         return names;
     }
 
-    Presenter::Presenter(const Device& device, CommandPool& pool, Graveyard& graveyard, VkInstance instance,
-        SDL_Window* window, const SDLUtil::VSyncMode verticalSync)
+    Presenter::Presenter(
+        const Device& device, VkInstance instance, SDL_Window* window, const SDLUtil::VSyncMode verticalSync)
         : mDevice(device)
-        , mPool(pool)
-        , mGraveyard(graveyard)
         , mInstance(instance)
     {
         try
@@ -111,7 +109,7 @@ namespace Rtx
         commands.reserve(mImages.size());
         for (const SwapImage& image : mImages)
             commands.push_back(image.mCommands);
-        mPool.free(commands);
+        mDevice.getPool().free(commands);
 
         mAcquiring.clear();
         mImages.clear();
@@ -134,7 +132,7 @@ namespace Rtx
 
         // A blit stamp of nought, which the timeline has passed: no image has been blitted onto
         // yet.
-        const std::vector<VkCommandBuffer> commands = mPool.allocate(images);
+        const std::vector<VkCommandBuffer> commands = mDevice.getPool().allocate(images);
         mImages.resize(images);
         for (std::uint32_t index = 0; index < images; ++index)
         {
@@ -234,7 +232,7 @@ namespace Rtx
         }
 
         const VkCommandBuffer commands = image.mCommands;
-        mPool.begin(commands);
+        mDevice.getPool().begin(commands);
 
         frame.transition(commands, Use::sAnyGeneralWrite, Use::sBlitRead);
 
@@ -278,7 +276,7 @@ namespace Rtx
             .semaphore = image.mRendered.get(),
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
-        const std::uint64_t blitted = mPool.submit(commands, mGraveyard,
+        const std::uint64_t blitted = mDevice.getPool().submit(commands,
             std::span<const VkSemaphoreSubmitInfo>(&wait, 1), std::span<const VkSemaphoreSubmitInfo>(&signal, 1));
 
         acquisition.mBlit = blitted;

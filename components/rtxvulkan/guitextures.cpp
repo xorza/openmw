@@ -25,11 +25,9 @@ namespace Rtx
         constexpr VkDeviceSize sCopyAlignment = 4;
     }
 
-    GuiTextures::GuiTextures(const Device& device, Graveyard& graveyard, CommandPool& pool)
+    GuiTextures::GuiTextures(const Device& device)
         : mDevice(device)
-        , mGraveyard(graveyard)
-        , mPool(pool)
-        , mBatch(pool)
+        , mBatch(device.getPool())
     {
     }
 
@@ -124,10 +122,9 @@ namespace Rtx
         // draw two frames back is still reading. A wait here idled the queue on every overflow,
         // and the layers still reported the arena it then destroyed as read by a pending copy.
         handOver();
-        const VkDeviceSize previous = arena.getSize();
-        mGraveyard.bury(std::move(arena));
-        arena
-            = Buffer::hostWritten(mDevice, std::max(bytes, previous), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging");
+        mDevice.getGraveyard().replace(arena,
+            Buffer::hostWritten(
+                mDevice, std::max(bytes, arena.getSize()), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging"));
 
         mStagingUsed = bytes;
         return 0;
@@ -147,7 +144,7 @@ namespace Rtx
         // Two calls, because the batch's own submit carries what was handed over before it only
         // when there is something left in the batch to submit.
         mBatch.flush();
-        mPool.finishDeferred();
+        mDevice.getPool().finishDeferred();
 
         mStagingUsed = 0;
     }
@@ -155,11 +152,6 @@ namespace Rtx
     void GuiTextures::startFrame()
     {
         assert(mLentSlot.isNone() && "an interface frame that began with a lend outstanding");
-
-        for (Image& image : mRetired)
-            mGraveyard.bury(std::move(image));
-
-        mRetired.clear();
 
         mArena = (mArena + 1) % sStagingArenas;
         mStagingUsed = 0;
@@ -169,10 +161,11 @@ namespace Rtx
     {
         assert(holds(slot) && "a slot given back twice");
 
-        // Put aside rather than destroyed, because a copy recorded against this image may not have
-        // run, and a flush here would put a round trip on every window that closes. The wait that
-        // frees it is a frame's — see `startFrame`.
-        mRetired.push_back(std::move(mImages[slot.get()]));
+        // Kept on the batch rather than buried here, because a copy recorded against this image
+        // may not have run, and the batch is what knows which submit it rides; and not flushed,
+        // because that would put a round trip on every window that closes. The draw two frames
+        // back that sampled it is before that submit either way.
+        mBatch.keep(std::move(mImages[slot.get()]));
         mFree.free(slot.get());
 
         // The buffer stays for whatever takes the slot next; what was in it is nobody's now.
@@ -189,8 +182,7 @@ namespace Rtx
         // Buried and not destroyed where it has to grow: a batch recorded against it may not have
         // run.
         Copy& copy = mCopies[slot.get()];
-        mGraveyard.bury(growTo(
-            copy.mBuffer, mDevice, BufferKind::Staging, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "gui read back"));
+        growTo(copy.mBuffer, mDevice, BufferKind::Staging, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "gui read back");
 
         image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, copy.mBuffer);
 
@@ -218,7 +210,7 @@ namespace Rtx
         // its own copy — so the bytes it takes off the device are the ones just written.
         handOver();
 
-        mImages[slot.get()].read(mPool, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pixels);
+        mImages[slot.get()].read(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pixels);
     }
 
     VkImageView GuiTextures::getView(const GuiSlot slot)

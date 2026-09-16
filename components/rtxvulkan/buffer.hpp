@@ -205,11 +205,19 @@ namespace Rtx
     };
 
     /// Grows `held` so it can hold `bytes`, and never leaves it holding nothing: an empty slot is
-    /// grown whatever `bytes` is. Keeps whatever it already has where that is big enough. Hands
-    /// back what it displaced, because a frame in flight may still be reading it.
+    /// grown whatever `bytes` is. Keeps whatever it already has where that is big enough. What it
+    /// displaced goes to the device's graveyard, here and not in the caller's hands, because a
+    /// frame in flight may still be reading it and a caller handed the old buffer once let it go
+    /// on the floor. True where it was made again, which is a table holding nothing that the
+    /// caller has to fill whole.
     ///
     /// @param kind what to make, which is asserted to be what `held` already is where it holds
     ///        anything: a table does not change memory as it grows.
-    [[nodiscard]] Buffer growTo(Buffer& held, const Device& device, BufferKind kind, VkDeviceSize bytes,
-        VkBufferUsageFlags usage, std::string_view name);
+    bool growTo(Buffer& held, const Device& device, BufferKind kind, VkDeviceSize bytes, VkBufferUsageFlags usage,
+        std::string_view name);
+
+    /// `growTo` for a table that keeps growing: at twice what it holds where that is more, so the
+    /// table is made again a logarithmic number of times rather than once per arrival.
+    bool outgrow(Buffer& held, const Device& device, BufferKind kind, VkDeviceSize bytes, VkBufferUsageFlags usage,
+        std::string_view name);
 }

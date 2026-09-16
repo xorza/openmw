@@ -24,7 +24,6 @@ namespace Rtx
 {
     class Device;
     class GpuTimer;
-    class Graveyard;
     class SceneDesc;
     class SpriteBinPass;
     class SpriteShadePass;
@@ -36,7 +35,7 @@ namespace Rtx
     {
     public:
         /// @param slots how many frames may be tracing this scene at once.
-        SceneBuffers(const Device& device, Graveyard& graveyard, Batch& batch, const SceneDesc& scene,
+        SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
             std::span<const InstanceRecord> records, std::uint32_t slots);
 
         /// Takes in the attributes of the meshes the scene says arrived, and the layer and mask
@@ -125,9 +124,6 @@ namespace Rtx
         void shade(const SceneDesc& scene, FrameSlot slot);
 
         const Device& mDevice;
-
-        /// Where a table this remakes goes, held until the frames still reading it have run.
-        Graveyard& mGraveyard;
 
         // What the scene is made of, written on arrival and read by every frame: one copy, because
         // an arrival writes it on the queue, behind every frame in flight. The colours too, where

@@ -32,12 +32,11 @@ namespace Rtx
         }
     }
 
-    TraceChain::TraceChain(const Device& device, Graveyard& graveyard, CommandPool& pool, const SetLayout& channels,
-        const SetLayout& fog, const VisibilityPass& visibility, const CompositePass& composite,
-        const SpriteBinPass& spriteBin, const SpriteShadePass& spriteShade, const std::filesystem::path& shaders,
-        const VkImageUsageFlags colourUsage, const std::string_view colourName)
+    TraceChain::TraceChain(const Device& device, const SetLayout& channels, const SetLayout& fog,
+        const VisibilityPass& visibility, const CompositePass& composite, const SpriteBinPass& spriteBin,
+        const SpriteShadePass& spriteShade, const std::filesystem::path& shaders, const VkImageUsageFlags colourUsage,
+        const std::string_view colourName)
         : mDevice(device)
-        , mPool(pool)
         , mChannelLayout(channels)
         , mFogVolumeLayout(fog)
         , mVisibility(visibility)
@@ -46,9 +45,7 @@ namespace Rtx
         , mSpriteShade(spriteShade)
         , mColourUsage(colourUsage)
         , mColourName(colourName)
-        , mBins([&](FrameSlot) {
-            return SpriteBin{ device, graveyard };
-        })
+        , mBins([&](FrameSlot) { return SpriteBin{ device }; })
         , mAccumulate(device, shaders)
         , mFilter(device, shaders)
     {
@@ -66,7 +63,7 @@ namespace Rtx
         mColour = Image(mDevice, mWidth, mHeight, radianceFormat(radiance), mColourUsage, mColourName);
 
         mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mWidth, mHeight, radiance);
-        mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mWidth, mHeight);
+        mFogVolume = std::make_unique<FogVolume>(mDevice, mFogVolumeLayout, mWidth, mHeight);
         mAccumulate.resize(mWidth, mHeight);
         mFilter.resize(mWidth, mHeight);
     }

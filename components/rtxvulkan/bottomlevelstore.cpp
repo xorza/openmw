@@ -31,9 +31,8 @@ namespace Rtx
         constexpr VkDeviceSize sCompactionPerPlacement = 8 * 1024 * 1024;
     }
 
-    BottomLevelStore::BottomLevelStore(const Device& device, Graveyard& graveyard)
+    BottomLevelStore::BottomLevelStore(const Device& device)
         : mDevice(device)
-        , mGraveyard(graveyard)
     {
     }
 
@@ -49,7 +48,7 @@ namespace Rtx
         }
 
         state.mTightness = Tightness::None;
-        mGraveyard.bury(std::move(row.mStructure));
+        mDevice.getGraveyard().bury(std::move(row.mStructure));
     }
 
     void BottomLevelStore::release(std::span<const Index> meshes)
@@ -272,14 +271,13 @@ namespace Rtx
             // The pool this replaces may be named by a batch the queue has not reached, and every
             // answer it was to carry is lost with it: whoever was asked through it is asked again
             // through the new one, below.
-            mGraveyard.bury(mCompactable.release());
-
             const VkQueryPoolCreateInfo create{
                 .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
                 .queryType = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
                 .queryCount = wanted,
             };
-            mCompactable = QueryPool::make(mDevice.getHandle(), vkCreateQueryPool, create, "vkCreateQueryPool");
+            mDevice.getGraveyard().replace(
+                mCompactable, QueryPool::make(mDevice.getHandle(), vkCreateQueryPool, create, "vkCreateQueryPool"));
             mCompactablePool = wanted;
 
             for (Row& row : mRows)
@@ -433,7 +431,7 @@ namespace Rtx
             // once the frame this is recorded into retires, and the copy runs inside that frame —
             // so what the fence covers is both this read and whatever earlier frame is still
             // tracing the structure through the top level it was named in.
-            mGraveyard.bury(std::exchange(row.mStructure, std::move(made)));
+            mDevice.getGraveyard().replace(row.mStructure, std::move(made));
 
             // The pair the report prints follows the copy, so what it says is what is left to save
             // rather than what was saved once.
