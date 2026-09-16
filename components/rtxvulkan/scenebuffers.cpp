@@ -77,6 +77,7 @@ namespace Rtx
                 .mReach = light.mReach,
                 .mSourceRadius = light.mSourceRadius,
                 .mClearance = light.mClearance,
+                .mFill = light.mFill,
             };
         }
 

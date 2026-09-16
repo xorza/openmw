@@ -226,6 +226,45 @@ namespace Rtx
             EXPECT_EQ(lightColour(*gone, 0.0), osg::Vec3f());
         }
 
+        /// A source that radiates in its ambient alone is a fill, and one with any diffuse is a
+        /// lamp, whatever ambient rides beside it.
+        ///
+        /// **The Light spell's glow and the lamp in a pack are the two ambients the game writes**,
+        /// and only the first is a fill: `ActorAnimation::addHiddenItemLight` puts a white ambient
+        /// beside the record's own diffuse, and that lamp still has a flame and a direction.
+        TEST(RtxLightBuilderTest, anAmbientOnlySourceIsAFillAndADiffuseMakesALamp)
+        {
+            const osg::Vec4f glow(1.5f, 1.5f, 1.5f, 1.0f);
+            const osg::Vec4f white(1.0f, 1.0f, 1.0f, 1.0f);
+
+            EXPECT_TRUE(isFill(*Testing::makeLightSource(440.0f, osg::Vec4f(), glow)));
+            EXPECT_FALSE(isFill(*Testing::makeLightSource(440.0f, white, white))) << "a carried lamp's ambient";
+            EXPECT_FALSE(isFill(*Testing::makeLightSource(440.0f, white))) << "a lamp";
+            EXPECT_FALSE(isFill(*Testing::makeLightSource(440.0f, osg::Vec4f(), osg::Vec4f()))) << "nothing at all";
+
+            // Light 20 is 440 units, a foot a point. The intensity is a lamp's — white at 440 is
+            // 440 * 440 * 0.25 * pi = 152053 — so a fill and a lamp of one radius cannot disagree
+            // about how bright the content meant them; the ball is three quarters of a body, 96
+            // units, stood on the ground at the glow's place and so centred 96 up, and the ball is
+            // the clearance too; the reach is four radii.
+            const std::optional<Light> fill = makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f(1, 2, 3));
+            ASSERT_TRUE(fill.has_value());
+            EXPECT_EQ(fill->mPosition, osg::Vec3f(1, 2, 99));
+            EXPECT_NEAR(fill->mIntensity.x(), 152053.0f, 1.0f);
+            EXPECT_FLOAT_EQ(fill->mSourceRadius, 96.0f);
+            EXPECT_FLOAT_EQ(fill->mClearance, 96.0f);
+            EXPECT_FLOAT_EQ(fill->mReach, 1760.0f);
+            EXPECT_EQ(fill->mFill, 1u);
+
+            const std::optional<Light> lamp = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f());
+            ASSERT_TRUE(lamp.has_value());
+            EXPECT_EQ(lamp->mFill, 0u);
+            EXPECT_EQ(lamp->mIntensity, fill->mIntensity);
+
+            EXPECT_FALSE(makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 0.0f, osg::Vec3f()).has_value()) << "no size";
+            EXPECT_FALSE(makeFill(osg::Vec3f(-1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()).has_value()) << "negative";
+        }
+
         /// The animation reaches the diffuse and stops there.
         ///
         /// **Because the ambient is not a flame.** The white one `ActorAnimation::addHiddenItemLight`

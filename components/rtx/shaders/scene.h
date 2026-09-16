@@ -450,6 +450,10 @@ namespace Rtx::Shaders
         /// How far short of the centre that ray stops. `Rtx::Light` says why it is a separate
         /// question from the size.
         float mClearance;
+
+        /// One for a fill, whose flame is a ball `mSourceRadius` wide that lights whatever stands
+        /// inside it from every side, and nought for a lamp. `Rtx::makeFill` says what a fill is.
+        uint mFill;
     };
 
     /// Where the lamps were binned, so a shader can find the few that reach a point.
@@ -726,7 +730,7 @@ namespace Rtx::Shaders
 #ifdef RTX_HOST
     static_assert(sizeof(GpuMesh) == 12, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
-    static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");
+    static_assert(sizeof(GpuLight) == 40, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
     static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");

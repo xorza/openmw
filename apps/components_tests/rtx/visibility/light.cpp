@@ -823,6 +823,135 @@ namespace Rtx::Testing
                 << "and exactly half of it stands on the shadow's own edge";
         }
 
+        /// A fill's penumbra is as wide as its whole ball, because from outside it the ray is aimed
+        /// anywhere across the ball — and the ball is the clearance, so nothing inside it shadows.
+        ///
+        /// The same lamp made a fill two hundred across: from the wall the ball subtends
+        /// `asin(200 / 400)`, thirty degrees, so a ray to its edge crosses an occluder a quarter of
+        /// the way out `100 * tan(30°) = 57.74` off the axis — an edge at 60 either side is wholly
+        /// clear of every ray or across every one, and the ball's own symmetry puts half of them
+        /// on either side of the axis. A quarter of the way and not halfway, because the ray stops
+        /// the ball's radius short of its closest approach to the centre: at twenty degrees off
+        /// the axis that is 176 units out, and an occluder at 200 would stand past its end.
+        TEST_F(RtxPenumbraTest, aFillCastsAPenumbraAsWideAsItsWholeBall)
+        {
+            Light fill = makeLamp();
+            fill.mSourceRadius = 200.0f;
+            fill.mClearance = 200.0f;
+            fill.mFill = 1;
+            const Shaders::VisibilityConstants camera = lookAtTheWall();
+            constexpr float depth = -100.0f;
+
+            const std::vector<float> open = openFor(fill, depth, camera);
+            ASSERT_GT(open[(std::size_t{ sColumn } * sSize + sColumn) * 4], 0.0f) << "the fill lights the wall";
+
+            EXPECT_FLOAT_EQ(visible(sceneWith(fill, depth, -60.0f), open, camera, 1), 1.0f)
+                << "the whole ball clears an edge outside its penumbra";
+            EXPECT_FLOAT_EQ(visible(sceneWith(fill, depth, 60.0f), open, camera, 1), 0.0f)
+                << "and none of it clears one across the far side";
+            EXPECT_NEAR(visible(sceneWith(fill, depth, 0.0f), open, camera, 64), 0.5f, 0.05f)
+                << "and half of it stands on the shadow's own edge";
+        }
+
+        /// A floor inside a fill's ball is lit by the ball from every side, and shadowed by nothing.
+        ///
+        /// **Inside the ball the cosine to the centre is blended out, and no ray is sent.** The
+        /// ball's centre stands three hundred units along the floor and half a unit over it, so the
+        /// floor's centre meets it at a cosine of 0.001667 — as a lamp, all but nothing — a quarter
+        /// of the way inside a ball four hundred across:
+        ///
+        ///   window   = 1 - (300 / 1600)^4                       = 0.998764
+        ///   falloff  = window^2 / (300^2 + 400^2)               = 3.99011e-6
+        ///   depth    = 1 - 300 / 400                             = 0.25
+        ///   cosine   = mix(0.001667, 1, 0.25)                    = 0.251249
+        ///   radiance = 500000 * falloff * cosine / pi            = 0.159554
+        ///   encoded  = 1.055 * (0.5 * 0.159554)^(1/2.4) - 0.055  = 0.31286, or 80 of 255
+        ///
+        /// where the lamp of the same record reads `500000 * falloff * 0.001667 / pi` = 0.001058,
+        /// which is 2 of 255. A sheet ten units under the floor takes nothing away, because the
+        /// ball is the ray's clearance and the floor stands inside it: drawn to a point anywhere on
+        /// the ball instead, half of a floor's rays went down through the floor into whatever was
+        /// under it, and came back as a speckle over the whole pool.
+        TEST_F(RtxVisibilityTest, aFloorInsideAFillIsLitFromEverySideAndShadowedByNothing)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            const auto render = [&](bool fill, bool underneath) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+                if (underneath)
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(
+                            MeshArrays{ .mPositions = sheetAt(4000.0f, -10.0f), .mIndices = sQuadIndices }) });
+                scene.addLight(Light{
+                    .mPosition = osg::Vec3f(300.0f, 0.0f, 0.5f),
+                    .mIntensity = osg::Vec3f(500000.0f, 500000.0f, 500000.0f),
+                    .mReach = 1600.0f,
+                    .mSourceRadius = 400.0f,
+                    .mClearance = 400.0f,
+                    .mFill = fill ? 1u : 0u,
+                });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -100.0f, 100.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+                return pixels[centre];
+            };
+
+            EXPECT_EQ(render(false, false), 2) << "the lamp of the same record, nearly level with the floor";
+            EXPECT_EQ(render(true, false), 80) << "the fill, a quarter of the way inside its ball";
+            EXPECT_EQ(render(true, true), 80) << "and the same floor with a sheet under it";
+        }
+
+        /// Outside its ball a fill is exactly the lamp of its record.
+        ///
+        /// A thousand units off, facing the centre, a fill four hundred across reads `falloff`'s
+        /// inverse square softened by that four hundred, the same as a lamp whose flame is four
+        /// hundred across would:
+        ///
+        ///   window   = 1 - (1000 / 1600)^4                       = 0.847412
+        ///   falloff  = window^2 / (1000^2 + 400^2)               = 6.19058e-7
+        ///   radiance = 600000 * falloff / pi                     = 0.118233
+        ///   encoded  = 1.055 * (0.5 * 0.118233)^(1/2.4) - 0.055  = 0.26967, or 69 of 255
+        TEST_F(RtxVisibilityTest, aFillOutsideItsBallIsTheLampOfItsRecord)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            const auto render = [&](bool fill) {
+                SceneDesc scene = makeWall();
+                scene.addLight(Light{
+                    .mPosition = osg::Vec3f(0.0f, -1000.0f, 0.0f),
+                    .mIntensity = osg::Vec3f(600000.0f, 600000.0f, 600000.0f),
+                    .mReach = 1600.0f,
+                    .mSourceRadius = 400.0f,
+                    .mClearance = 400.0f,
+                    .mFill = fill ? 1u : 0u,
+                });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+                return pixels[centre];
+            };
+
+            EXPECT_EQ(render(false), 69) << "the lamp";
+            EXPECT_EQ(render(true), 69) << "and the fill of the same record";
+        }
+
         /// A source carrying no size casts an edge, inside the band a measured one is still part-lit
         /// across.
         ///

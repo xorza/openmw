@@ -206,6 +206,9 @@ struct Lamp
 
     /// What share of that intensity arrives here, or nothing where the lamp does not reach.
     float mReaching;
+
+    /// How far the lamp's centre is, which a fill's ball is measured against.
+    float mDistance;
 };
 
 Lamp lampAt(GpuLight lamp, vec3 position)
@@ -222,11 +225,11 @@ Lamp lampAt(GpuLight lamp, vec3 position)
     // a cell lists every lamp whose reach touches it, and at a point that is several lamps for each
     // one that reaches.
     if (squared >= lamp.mReach * lamp.mReach || squared <= 0.0)
-        return Lamp(vec3(0.0), lamp.mIntensity, 0.0);
+        return Lamp(vec3(0.0), lamp.mIntensity, 0.0, 0.0);
 
     const float distance = sqrt(squared);
 
-    return Lamp(offset / distance, lamp.mIntensity, falloff(distance, lamp.mReach, lamp.mSourceRadius));
+    return Lamp(offset / distance, lamp.mIntensity, falloff(distance, lamp.mReach, lamp.mSourceRadius), distance);
 }
 
 /// One lamp held out of all the ones that could reach a point, and what it stands for.
@@ -376,11 +379,19 @@ void weighLamps(
     for (uint i = near.x; i < near.y; ++i)
     {
         const uint row = lightListAt(i);
-        const Lamp lamp = lampAt(lightAt(row), from);
+        const GpuLight held = lightAt(row);
+        const Lamp lamp = lampAt(held, from);
         if (!(lamp.mReaching > 0.0))
             continue;
 
-        const float cosine = sided ? litCosine(normal, side, lamp.mTowards, transmission) : 1.0;
+        // **Inside a fill's ball the cosine to the centre is blended out**, by how deep the point
+        // stands, because the ball glows on every side of it there. `Rtx::makeFill` says what a
+        // fill is: the rest of its weight is a lamp's, and so is its ray, which the ball's own
+        // clearance keeps out of the ball. A factor of nought for a lamp, and not a branch, which
+        // leaves a lamp's arithmetic the arithmetic it was.
+        const float faced = sided ? litCosine(normal, side, lamp.mTowards, transmission) : 1.0;
+        const float depth = float(held.mFill) * clamp(1.0 - lamp.mDistance / held.mSourceRadius, 0.0, 1.0);
+        const float cosine = mix(faced, 1.0, depth);
         if (cosine <= 0.0)
             continue;
 

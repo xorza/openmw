@@ -113,8 +113,8 @@ namespace Rtx
         // same way round every time. Tied and not built, because a tuple of references copies
         // nothing over thousands of comparisons.
         std::sort(mLights.begin(), mLights.end(), [](const Light& a, const Light& b) {
-            return std::tie(a.mPosition, a.mIntensity, a.mReach, a.mSourceRadius, a.mClearance)
-                < std::tie(b.mPosition, b.mIntensity, b.mReach, b.mSourceRadius, b.mClearance);
+            return std::tie(a.mPosition, a.mIntensity, a.mReach, a.mSourceRadius, a.mClearance, a.mFill)
+                < std::tie(b.mPosition, b.mIntensity, b.mReach, b.mSourceRadius, b.mClearance, b.mFill);
         });
     }
 

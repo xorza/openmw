@@ -44,6 +44,23 @@ namespace Rtx
         /// from it.
         constexpr float sFittingFraction = 0.25f;
 
+        /// How far a fill reaches, as a multiple of the radius the spell states — one foot a point.
+        /// The rasterizer runs its glow out to three radii on the game's attenuation curve, over an
+        /// ambient that already lights the room; here the pool stands against a night the fill
+        /// lights alone. Four radii, set by eye like `sIntensity`.
+        constexpr float sFillReachScale = 4.0f;
+
+        /// How big a fill's ball of glow is, in world units: three quarters of a body, so that a
+        /// ball stood on the ground where the game hangs the glow — the bearer's feet — holds the
+        /// bearer whole with the head well inside it. Morrowind's people stand 128 units; a ball
+        /// of 64 put a head at its very top, where the cosine to the centre is blended out by
+        /// nothing and the top of the head went dark. Inside the ball the bearer is lit from every
+        /// side and shadowed by nothing hard; outside it the ball is a source a body wide, which is
+        /// a penumbra a body wide under everything the pool reaches. The spell's radius sets the
+        /// reach and the intensity, never the ball: a ball the spell's radius wide held everything
+        /// within it flat.
+        constexpr float sFillBallRadius = 96.0f;
+
         /// The top of the ladder every animation is built from, in hertz: a buoyant diffusion flame
         /// sheds a vortex ring at about `1.5 / sqrt(D)` hertz, so a lamp flame near 28 mm across
         /// puffs at nine, which is also as high as one sample a frame can carry at 30 frames a
@@ -143,6 +160,36 @@ namespace Rtx
             .mSourceRadius = radius * sSourceFraction,
             .mClearance = radius * sFittingFraction,
         };
+    }
+
+    std::optional<Light> makeFill(const osg::Vec3f& colour, const float radius, const osg::Vec3f& position)
+    {
+        // Lifted by its own radius, so the ball stands on the ground the game hung the glow at and
+        // the bearer stands inside it rather than on top of it.
+        std::optional<Light> fill = makeLight(colour, radius, position + osg::Vec3f(0.0f, 0.0f, sFillBallRadius));
+        if (!fill.has_value())
+            return std::nullopt;
+
+        fill->mReach = radius * sFillReachScale;
+
+        // The ball is the source, so the shadow ray opens to the whole of it, and the ball is the
+        // clearance too, so the ray stops at the ball: nothing inside it casts a shadow, and what
+        // is inside it is the bearer.
+        fill->mSourceRadius = sFillBallRadius;
+        fill->mClearance = sFillBallRadius;
+        fill->mFill = 1;
+
+        return fill;
+    }
+
+    bool isFill(const SceneUtil::LightSource& source)
+    {
+        const SceneUtil::Light& light = *source.getLight(0);
+        const osg::Vec4f diffuse = light.getDiffuse();
+        const osg::Vec4f ambient = light.getAmbient();
+
+        return diffuse.x() == 0.0f && diffuse.y() == 0.0f && diffuse.z() == 0.0f
+            && (ambient.x() > 0.0f || ambient.y() > 0.0f || ambient.z() > 0.0f);
     }
 
     float lightBrightness(SceneUtil::LightController::LightType type, int id, double simulationTime)

@@ -265,7 +265,7 @@ namespace Rtx
     /// record pads with are whatever the allocator left, so a table read whole through one of them
     /// would call two identical runs different — once, unrepeatably, and for a reason nothing in
     /// the report could name.
-    static_assert(sizeof(Light) == 36, "Light is read whole and must have no padding");
+    static_assert(sizeof(Light) == 40, "Light is read whole and must have no padding");
     static_assert(sizeof(Sprite) == 44, "Sprite is read whole and must have no padding");
     static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
     static_assert(sizeof(Rig) == 20, "Rig is read whole and must have no padding");

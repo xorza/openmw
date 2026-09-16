@@ -545,8 +545,10 @@ namespace Rtx
         // from (`lightColour`). `LightSource::getEmpty` is not asked: it means the model this light
         // hangs on has no geometry, which is a rasterizer's reason to skip a light, and a `LIGH`
         // whose mesh is empty still burns.
+        const osg::Vec3f colour = lightColour(source, simulationTime);
+        const float radius = source.getSourceRadius();
         const std::optional<Light> made
-            = makeLight(lightColour(source, simulationTime), source.getSourceRadius(), place.getTrans());
+            = isFill(source) ? makeFill(colour, radius, place.getTrans()) : makeLight(colour, radius, place.getTrans());
         if (!made.has_value())
             return;
 

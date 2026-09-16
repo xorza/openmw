@@ -58,15 +58,26 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mLights, 3u);
             ASSERT_EQ(mScene.lights().size(), 3u);
 
-            for (const Rtx::Light& light : mScene.lights())
-                EXPECT_EQ(light.mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
-
-            EXPECT_NEAR(mScene.lights()[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
             const std::span<const Rtx::Light> lights = mScene.lights();
+            EXPECT_EQ(lights[0].mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
+            EXPECT_EQ(lights[1].mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
+
+            EXPECT_NEAR(lights[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
             EXPECT_EQ(lights[1].mIntensity, lights[0].mIntensity) << "an empty model dimmed the light hanging on it";
 
-            // The same lamp scaled by what 1.5 of ambient decodes to.
-            EXPECT_NEAR(mScene.lights()[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
+            // The same lamp scaled by what 1.5 of ambient decodes to — and a fill, because the
+            // ambient is the whole of what it radiates: a flame three quarters of a body wide stood
+            // on the ground where the glow hangs, the ray kept clear of the whole of it, and four
+            // radii of reach. `makeFill` says why.
+            EXPECT_NEAR(lights[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
+            EXPECT_EQ(lights[2].mFill, 1u);
+            EXPECT_EQ(lights[2].mPosition, osg::Vec3f(10.0f, 20.0f, 126.0f)) << "the ball stands on the glow's place";
+            EXPECT_EQ(lights[2].mSourceRadius, 96.0f);
+            EXPECT_EQ(lights[2].mClearance, 96.0f);
+            EXPECT_EQ(lights[2].mReach, 400.0f);
+
+            EXPECT_EQ(lights[0].mFill, 0u) << "a lamp with a diffuse is no fill";
+            EXPECT_EQ(lights[0].mSourceRadius, 100.0f / 16.0f);
         }
 
         /// A lamp the record says animates is mirrored at the instant the walk was told, not at rest.
