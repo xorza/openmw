@@ -134,20 +134,37 @@ namespace Rtx
         return createSampler(device, describe, name);
     }
 
-    Sampler makeContentSampler(const Device& device, std::string_view name)
+    Sampler makeContentSampler(const Device& device, std::string_view name, const TextureWrap wrap)
     {
         const VkSamplerCreateInfo describe{
             .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
             .magFilter = VK_FILTER_LINEAR,
             .minFilter = VK_FILTER_LINEAR,
             .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeU = clampsS(wrap) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = clampsT(wrap) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
             // Off, and not an oversight: every fetch names its own level, and anisotropic filtering
             // only applies to the implicit and gradient forms. A cone is isotropic by construction.
             .anisotropyEnable = VK_FALSE,
             .maxLod = VK_LOD_CLAMP_NONE,
+        };
+
+        return createSampler(device, describe, name);
+    }
+
+    Sampler makeBorderSampler(const Device& device, std::string_view name)
+    {
+        const VkSamplerCreateInfo describe{
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_LINEAR,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .maxLod = VK_LOD_CLAMP_NONE,
+            .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
         };
 
         return createSampler(device, describe, name);

@@ -75,6 +75,13 @@ namespace Rtx::Shaders
         /// hands this pass `GBuffer::getStarsShown`, because a moon, a deck, a pane, the water and
         /// the air all stand between the field and the eye and none of them is here.
         StarField mStars;
+
+        /// The sun glare fader's wash: its colour, and how much of it this frame lays over the
+        /// whole picture before the share of the sun the eye could see — `SunGlarePass`, bound
+        /// beside the exposure — is multiplied in. `Rtx::sunGlareAmount` folds the angle;
+        /// `glare.h` says whose wash this is. Nought for a picture inside the interface.
+        vec3 mGlareColour;
+        float mGlareAmount;
     };
 
 #ifdef RTX_HOST

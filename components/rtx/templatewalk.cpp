@@ -118,6 +118,8 @@ namespace Rtx
         part.mVertices = appended(into.mPositions, reading.mArrays.mPositions);
         part.mNormals = appended(into.mNormals, reading.mArrays.mNormals);
         part.mTexCoords = appended(into.mTexCoords, reading.mArrays.mTexCoords);
+        part.mSecondTexCoords = appended(into.mSecondTexCoords, reading.mArrays.mSecondTexCoords);
+        part.mUnitStreams = reading.mArrays.mUnitStreams;
         part.mColours = appended(into.mColours, reading.mArrays.mColours);
         part.mIndices = appended(into.mIndices, reading.mArrays.mIndices);
 

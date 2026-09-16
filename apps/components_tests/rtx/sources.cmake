@@ -55,6 +55,7 @@ set(RTX_TEST_FILES
     rtx/reconstruction.cpp
     rtx/requirements.cpp
     rtx/result.cpp
+    rtx/ripplepass.cpp
     rtx/runs.cpp
     rtx/scenedesc.cpp
     rtx/slots.cpp

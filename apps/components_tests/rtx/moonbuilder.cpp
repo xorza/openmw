@@ -11,6 +11,7 @@
 #include <components/rtx/shaders/colour.h>
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/sky.h>
 #include <components/sky/moonstate.hpp>
 
 #include "allocations.hpp"
@@ -318,6 +319,23 @@ namespace Rtx
             const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
             const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/0.5f);
             EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * luminanceOf(full.mIrradiance), 1e-7f);
+        }
+
+        /// A painted moon is drawn painted and lights painted: the paint is over the disc in the
+        /// shader and over what the placement delivers here, and a placement nobody painted is
+        /// white through both.
+        TEST(RtxMoonBuilderTest, aPaintedMoonLightsWhatItIsPainted)
+        {
+            MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, 50.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
+            const Shaders::MoonDisc plain = describeMoon(secunda);
+            EXPECT_EQ(plain.mPaint, osg::Vec3f(1.0f, 1.0f, 1.0f));
+            EXPECT_EQ(plain.mIrradiance, secunda.mIrradiance);
+
+            secunda.mPaint = osg::Vec3f(1.0f, 0.25f, 0.0f);
+            const Shaders::MoonDisc painted = describeMoon(secunda);
+            EXPECT_EQ(painted.mPaint, secunda.mPaint);
+            EXPECT_EQ(painted.mIrradiance, osg::componentMultiply(secunda.mIrradiance, secunda.mPaint));
+            EXPECT_EQ(painted.mIrradiance.z(), 0.0f) << "a moon painted with no blue lights with none";
         }
 
         /// Placing a moon goes to the heap not at all, and answers the same either way.

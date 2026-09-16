@@ -15,9 +15,11 @@
 #include <osg/Uniform>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 #include <osg/ref_ptr>
 
 #include <components/rtx/surface.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/texmat.hpp>
 #include <components/sceneutil/texturetype.hpp>
@@ -197,6 +199,191 @@ namespace Rtx
             describeStateSet(*root, material);
             EXPECT_EQ(material.mAlphaMode, AlphaMode::Opaque);
             EXPECT_FLOAT_EQ(material.mAlphaRef, 0.0f);
+        }
+
+        /// A parent that set a texture `OVERRIDE` keeps it against a child that did not set its own
+        /// `PROTECTED`, which is how OpenGL resolves the chain and how `MWRender::overrideTexture`
+        /// puts the blood's texture on an effect's root. The lock is the fold's and not the
+        /// description's: a fresh fold over the same leaf reads the leaf.
+        TEST(RtxSurfaceTest, aParentsOverrideKeepsItsTextureAgainstAChildUnlessTheChildIsProtected)
+        {
+            osg::ref_ptr<osg::Image> blood = new osg::Image;
+            osg::ref_ptr<osg::Image> own = new osg::Image;
+
+            osg::ref_ptr<osg::StateSet> root = new osg::StateSet;
+            root->setTextureAttribute(0, new osg::Texture2D(blood), osg::StateAttribute::OVERRIDE);
+            root->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"), osg::StateAttribute::OVERRIDE);
+
+            osg::ref_ptr<osg::StateSet> leaf = new osg::StateSet;
+            leaf->setTextureAttributeAndModes(0, new osg::Texture2D(own));
+            leaf->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"));
+
+            SurfaceLocks locks;
+            SurfaceDescription material;
+            EXPECT_TRUE(describeStateSet(*root, material, locks));
+            EXPECT_TRUE(describeStateSet(*leaf, material, locks));
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), blood.get());
+
+            // A protected leaf wins back what the root claimed.
+            osg::ref_ptr<osg::StateSet> protectedLeaf = new osg::StateSet;
+            protectedLeaf->setTextureAttribute(0, new osg::Texture2D(own), osg::StateAttribute::PROTECTED);
+            protectedLeaf->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"));
+
+            locks = SurfaceLocks{};
+            material = SurfaceDescription{};
+            describeStateSet(*root, material, locks);
+            describeStateSet(*protectedLeaf, material, locks);
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), own.get());
+
+            // The lock is per role: the root's diffuse claims nothing about the leaf's glow.
+            osg::ref_ptr<osg::StateSet> glowing = new osg::StateSet;
+            glowing->setTextureAttributeAndModes(1, new osg::Texture2D(own));
+            glowing->setTextureAttribute(1, new SceneUtil::TextureType("emissiveMap"));
+
+            locks = SurfaceLocks{};
+            material = SurfaceDescription{};
+            describeStateSet(*root, material, locks);
+            describeStateSet(*glowing, material, locks);
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), blood.get());
+            EXPECT_EQ(material.getTexture(TextureRole::Emissive), own.get());
+
+            // And the one-state-set fold carries no lock, so the leaf on its own reads the leaf.
+            material = SurfaceDescription{};
+            describeStateSet(*leaf, material);
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), own.get());
+        }
+
+        /// The other things a parent can claim: the material's colours, the alpha uniform, the
+        /// modes. Each under its own lock, so a `GL_CULL_FACE` a root overrides leaves a leaf's
+        /// blend alone.
+        TEST(RtxSurfaceTest, aParentsOverrideLocksEachThingItSetsAndNothingElse)
+        {
+            osg::ref_ptr<SceneUtil::Material> rootColours = new SceneUtil::Material;
+            rootColours->setDiffuse(osg::Vec4f(0.25f, 0.25f, 0.25f, 1.0f));
+            osg::ref_ptr<SceneUtil::Material> leafColours = new SceneUtil::Material;
+            leafColours->setDiffuse(osg::Vec4f(0.75f, 0.75f, 0.75f, 1.0f));
+
+            osg::ref_ptr<osg::StateSet> root = new osg::StateSet;
+            root->setAttribute(rootColours, osg::StateAttribute::OVERRIDE);
+            root->setMode(GL_CULL_FACE, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+            root->addUniform(new osg::Uniform("alpha", 0.5f), osg::StateAttribute::OVERRIDE);
+
+            osg::ref_ptr<osg::StateSet> leaf = new osg::StateSet;
+            leaf->setAttribute(leafColours);
+            leaf->setMode(GL_CULL_FACE, osg::StateAttribute::ON);
+            leaf->setAttributeAndModes(new osg::BlendFunc);
+            leaf->addUniform(new osg::Uniform("alpha", 0.125f));
+
+            SurfaceLocks locks;
+            SurfaceDescription material;
+            describeStateSet(*root, material, locks);
+            describeStateSet(*leaf, material, locks);
+
+            EXPECT_EQ(material.mDiffuseColour, (EncodedColour{ 0.25f, 0.25f, 0.25f }));
+            EXPECT_TRUE(material.mTwoSided);
+            EXPECT_FLOAT_EQ(material.mOpacity, 0.5f);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Blend) << "the blend was claimed by nobody";
+        }
+
+        /// The wrap comes off the texture, the one piece of sampler state the content decides per
+        /// texture: every banner and every torch flame in the game clamps, and a description that
+        /// dropped it repeated their edges.
+        TEST(RtxSurfaceTest, theWrapComesOffTheTextureAndAnImageAloneRepeats)
+        {
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+
+            osg::ref_ptr<osg::Texture2D> clamped = new osg::Texture2D(image);
+            clamped->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+            clamped->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP);
+
+            osg::ref_ptr<osg::Texture2D> alongT = new osg::Texture2D(image);
+            alongT->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
+            alongT->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_BORDER);
+
+            osg::ref_ptr<osg::Texture2D> mirrored = new osg::Texture2D(image);
+            mirrored->setWrap(osg::Texture::WRAP_S, osg::Texture::MIRROR);
+            mirrored->setWrap(osg::Texture::WRAP_T, osg::Texture::MIRROR);
+
+            SurfaceDescription material;
+            material.setTexture(TextureRole::Diffuse, clamped.get());
+            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::Clamp);
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), image.get());
+
+            material.setTexture(TextureRole::Diffuse, alongT.get());
+            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::ClampT);
+
+            material.setTexture(TextureRole::Diffuse, mirrored.get());
+            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::Repeat);
+
+            material.setTexture(TextureRole::Diffuse, image.get());
+            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::Repeat);
+
+            material.setTexture(TextureRole::Diffuse, static_cast<const osg::Texture*>(nullptr));
+            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), nullptr);
+
+            EXPECT_EQ(textureWrapOf(true, false), TextureWrap::ClampS);
+            EXPECT_TRUE(clampsS(TextureWrap::ClampS));
+            EXPECT_FALSE(clampsT(TextureWrap::ClampS));
+            EXPECT_TRUE(clampsT(TextureWrap::Clamp));
+        }
+
+        /// How a blend composites comes off the function's factors: a destination of `ONE` adds,
+        /// and so does `DST_ALPHA` because the frame's alpha is one; a source of `ONE` adds whole.
+        /// A `GL_BLEND` mode on its own says only that the surface blends over.
+        TEST(RtxSurfaceTest, theBlendKindComesOffTheFunctionsFactors)
+        {
+            const auto kindOf = [](GLenum source, GLenum destination) {
+                osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
+                state->setAttributeAndModes(new osg::BlendFunc(source, destination));
+                SurfaceDescription material;
+                describeStateSet(*state, material);
+                EXPECT_EQ(material.mAlphaMode, AlphaMode::Blend);
+                return material.mBlend;
+            };
+
+            EXPECT_EQ(kindOf(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA), BlendKind::Over);
+            EXPECT_EQ(kindOf(GL_SRC_ALPHA, GL_ONE), BlendKind::Add);
+            EXPECT_EQ(kindOf(GL_SRC_ALPHA, GL_DST_ALPHA), BlendKind::Add);
+            EXPECT_EQ(kindOf(GL_ONE, GL_ONE), BlendKind::AddWhole);
+
+            osg::ref_ptr<osg::StateSet> mode = new osg::StateSet;
+            mode->setMode(GL_BLEND, osg::StateAttribute::ON);
+            SurfaceDescription material;
+            describeStateSet(*mode, material);
+            EXPECT_EQ(material.mAlphaMode, AlphaMode::Blend);
+            EXPECT_EQ(material.mBlend, BlendKind::Over);
+        }
+
+        /// The environment map's tint, the ambient the game overrides for a magic effect, and the
+        /// unit a dark map is bound at are all read where the loader and the game put them.
+        TEST(RtxSurfaceTest, theEnvironmentTintTheAmbientOverrideAndTheDarkUnitAreRead)
+        {
+            osg::ref_ptr<osg::Image> sheet = new osg::Image;
+            osg::ref_ptr<osg::Image> dark = new osg::Image;
+
+            osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
+            state->setTextureAttributeAndModes(1, new osg::Texture2D(dark));
+            state->setTextureAttribute(1, new SceneUtil::TextureType("darkMap"));
+            state->setTextureAttributeAndModes(2, new osg::Texture2D(sheet));
+            state->setTextureAttribute(2, new SceneUtil::TextureType("envMap"));
+            state->addUniform(new osg::Uniform("envMapColor", osg::Vec4f(0.25f, 0.5f, 1.0f, 1.0f)));
+            state->addUniform(new osg::Uniform("sun.ambient", osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f)));
+
+            SurfaceDescription material;
+            EXPECT_TRUE(describeStateSet(*state, material));
+            EXPECT_EQ(material.getTexture(TextureRole::Environment), sheet.get());
+            EXPECT_EQ(material.mEnvironmentColour, (EncodedColour{ 0.25f, 0.5f, 1.0f }));
+            EXPECT_EQ(material.getTexture(TextureRole::Dark), dark.get());
+            EXPECT_EQ(material.mDarkUnit, 1);
+            ASSERT_TRUE(material.mAmbientOverride.has_value());
+            EXPECT_EQ(*material.mAmbientOverride, (EncodedColour{ 1.0f, 1.0f, 1.0f }));
+
+            // A state set with neither leaves both where they were, as everything else does.
+            osg::ref_ptr<osg::StateSet> plain = new osg::StateSet;
+            SurfaceDescription untouched;
+            describeStateSet(*plain, untouched);
+            EXPECT_EQ(untouched.mEnvironmentColour, (EncodedColour{ 1.0f, 1.0f, 1.0f }));
+            EXPECT_FALSE(untouched.mAmbientOverride.has_value());
         }
 
         /// The texture transform is the scale and offset `NifOsg::UVController` built its matrix

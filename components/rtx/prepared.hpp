@@ -138,6 +138,10 @@ namespace Rtx
         Run mTexCoords;
         Run mColours;
 
+        /// Empty for every part but the few that bind a second set — `MeshArrays::mSecondTexCoords`.
+        Run mSecondTexCoords;
+        std::uint32_t mUnitStreams = 0;
+
         Run mIndices;
 
         FoldedShape mShape;
@@ -172,6 +176,7 @@ namespace Rtx
         std::vector<osg::Vec3f> mPositions;
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
+        std::vector<osg::Vec2f> mSecondTexCoords;
         std::vector<osg::Vec3f> mColours;
         std::vector<std::uint32_t> mIndices;
 
@@ -184,6 +189,8 @@ namespace Rtx
                     .mPositions = part.mVertices.in(std::span<const osg::Vec3f>(mPositions)),
                     .mNormals = part.mNormals.in(std::span<const osg::Vec3f>(mNormals)),
                     .mTexCoords = part.mTexCoords.in(std::span<const osg::Vec2f>(mTexCoords)),
+                    .mSecondTexCoords = part.mSecondTexCoords.in(std::span<const osg::Vec2f>(mSecondTexCoords)),
+                    .mUnitStreams = part.mUnitStreams,
                     .mColours = part.mColours.in(std::span<const osg::Vec3f>(mColours)),
                     .mIndices = part.mIndices.in(std::span<const std::uint32_t>(mIndices)),
                 },
@@ -196,7 +203,7 @@ namespace Rtx
         {
             reuseKeeping(*this, &PreparedModel::mPath, &PreparedModel::mParts, &PreparedModel::mTextures,
                 &PreparedModel::mPositions, &PreparedModel::mNormals, &PreparedModel::mTexCoords,
-                &PreparedModel::mColours, &PreparedModel::mIndices);
+                &PreparedModel::mSecondTexCoords, &PreparedModel::mColours, &PreparedModel::mIndices);
         }
     };
 

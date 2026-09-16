@@ -119,6 +119,7 @@ namespace Rtx
             });
 
         uploadImage(batch, mImage, data.mBytes, regions);
+        mWrap = data.mWrap;
 
         // The map, in the same batch and left where the same sampler expects it. One level and
         // no chain: the map is read at level nought whatever the cone, because it has no detail for
@@ -148,7 +149,10 @@ namespace Rtx
         std::span<const TextureData> textures)
         : mDevice(device)
         , mGraveyard(graveyard)
-        , mSampler(makeContentSampler(device, "textures"))
+        , mSamplers{ makeContentSampler(device, "textures repeating", TextureWrap::Repeat),
+            makeContentSampler(device, "textures clamped along s", TextureWrap::ClampS),
+            makeContentSampler(device, "textures clamped along t", TextureWrap::ClampT),
+            makeContentSampler(device, "textures clamped", TextureWrap::Clamp) }
         , mLayout(makeLayout(device))
         // Allocated at the maximum the layout declares, not at what this scene brought. Sizing the
         // set to the cell is what made a texture arriving mean a new set, a new pool and every
@@ -246,8 +250,9 @@ namespace Rtx
             if (held.isEmpty())
                 continue;
 
-            queueWrite(set, sTextureBinding, at, held.describe(mSampler.get()), mImageScratch, mWriteScratch);
-            queueWrite(set, sShadingBinding, at, held.describeShading(mSampler.get()), mImageScratch, mWriteScratch);
+            const VkSampler sampler = mSamplers[static_cast<std::size_t>(held.getWrap())].get();
+            queueWrite(set, sTextureBinding, at, held.describe(sampler), mImageScratch, mWriteScratch);
+            queueWrite(set, sShadingBinding, at, held.describeShading(sampler), mImageScratch, mWriteScratch);
         }
 
         updateSets(mDevice, mWriteScratch);

@@ -7,6 +7,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/texturewrap.hpp>
+
 #include "owned.hpp"
 
 namespace Rtx
@@ -46,9 +48,14 @@ namespace Rtx
     /// The two shapes this renderer reads images through, both linear over the whole chain, because
     /// written out per class the fields drift where nothing decides. Targets clamp to the edge,
     /// because a bloom level or a volume slice runs to the edge of what it was given; content
-    /// repeats, because Morrowind's textures tile.
+    /// addresses its edges as the file said — repeating for what tiles, which is nearly everything,
+    /// and clamping along whichever axis a banner's or a flame's sheet stops at.
     Sampler makeTargetSampler(const Device& device, std::string_view name);
-    Sampler makeContentSampler(const Device& device, std::string_view name);
+    Sampler makeContentSampler(const Device& device, std::string_view name, TextureWrap wrap = TextureWrap::Repeat);
+
+    /// Linear over the whole chain and nothing past the edge: a field that ends in still water
+    /// reads as still water beyond it.
+    Sampler makeBorderSampler(const Device& device, std::string_view name);
 
     /// A pass's own descriptor set layout and the pipeline layout that names it and the sets bound
     /// after it — one statement for compute, trace and graphics pipelines, which differ in nothing

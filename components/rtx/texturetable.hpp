@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -13,6 +14,7 @@
 
 #include "runs.hpp"
 #include "slots.hpp"
+#include "texturewrap.hpp"
 
 namespace Rtx
 {
@@ -23,17 +25,22 @@ namespace Rtx
     /// baked, never both, in two parallel arrays because a file's name is a
     /// `VFS::Path::Normalized` with a guarantee its readers rely on. A slot that is freed keeps
     /// its index.
+    ///
+    /// **A slot is a file and its wrap.** The same file bound clamped and bound repeating is two
+    /// slots, because a sampler is per slot and the wrap is the sampler's; a file names up to
+    /// four, one per `TextureWrap`.
     class TextureTable
     {
     public:
-        /// The slot for `path`, taking one where this has not met it. Live from here, before
-        /// anything names it, and until the last thing that named it lets go.
-        Index add(VFS::Path::NormalizedView path);
+        /// The slot for `path` under `wrap`, taking one where this has not met the pair. Live from
+        /// here, before anything names it, and until the last thing that named it lets go.
+        Index add(VFS::Path::NormalizedView path, TextureWrap wrap = TextureWrap::Repeat);
 
         /// The slot for a texture this renderer made — a composite baked for a distant chunk —
         /// keyed by `key` rather than by a file, taking one where `key` is not known. Two chunks
         /// that would bake the same image must find the same slot, so `key` has to be stable across
-        /// frames. The same slots and the same reference counting as a file's.
+        /// frames. The same slots and the same reference counting as a file's. Clamped, because a
+        /// bake is one image whose coordinates run edge to edge.
         Index addBaked(std::string_view key);
 
         /// Takes and gives back one name on a slot. `sNoIndex` is "none" and costs a compare. The
@@ -52,6 +59,9 @@ namespace Rtx
 
         /// What made each slot that no file did, parallel to `getPaths`.
         std::span<const std::string> getBaked() const { return mBaked; }
+
+        /// How each slot is addressed past its edges, parallel to `getPaths`.
+        std::span<const TextureWrap> getWraps() const { return mWraps; }
 
         std::span<const Index> getArrived() const { return mChanges.getArrived(); }
         std::span<const Index> getFreed() const { return mChanges.getFreed(); }
@@ -83,6 +93,10 @@ namespace Rtx
 
         std::vector<VFS::Path::Normalized> mPaths;
         std::vector<std::string> mBaked;
+        std::vector<TextureWrap> mWraps;
+
+        /// The slot a file holds under each wrap, `sNoIndex` where it holds none.
+        using WrapSlots = std::array<Index, sTextureWrapCount>;
 
         /// Parallel to both, one row a slot, and the slots nothing stands in.
         SlotRows<Kind> mSlots;
@@ -99,8 +113,8 @@ namespace Rtx
 
         /// The two lookups, so that naming a texture again is the slot it already has, where a scan
         /// was O(materials x textures): a cell is a hundred of each and paid it on every material
-        /// it resolved.
-        std::unordered_map<VFS::Path::Normalized, Index, VFS::Path::Hash, std::equal_to<>> mPathIndex;
+        /// it resolved. A file's entry leaves the first map when its last wrap's slot is freed.
+        std::unordered_map<VFS::Path::Normalized, WrapSlots, VFS::Path::Hash, std::equal_to<>> mPathIndex;
         std::unordered_map<std::string, Index, BakedHash, std::equal_to<>> mBakedIndex;
 
         std::uint64_t mRevision = 0;

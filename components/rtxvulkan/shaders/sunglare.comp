@@ -1,0 +1,48 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+// How much of the sun's quad the eye can see, eased toward what this frame's rays found.
+//
+// One thread: the whole job is a division and a clamp, and it is apart from the curve so that the
+// curve's every workgroup reads one settled number rather than each easing it again. `glare.h`
+// says whose query this is.
+
+#include "glare.h"
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0, scalar) readonly buffer Count
+{
+    SunGlareCount count;
+};
+
+layout(set = 0, binding = 1, scalar) buffer Share
+{
+    float share;
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    SunGlareConstants frame;
+};
+
+void main()
+{
+    // Nought where no ray fell inside the disc, which is a sun off the screen or set — the query
+    // counts no pixel of a quad the camera did not draw.
+    const float found = count.mTotal > 0u ? float(count.mSeen) / float(count.mTotal) : 0.0;
+
+    // **A frame with no past takes what it found outright**, which is the first frame of a run and
+    // any frame the renderer was told has no past. The buffer holds whatever it held, and on the
+    // very first frame that is uninitialised device memory.
+    if (frame.mReset != 0u)
+    {
+        share = found;
+        return;
+    }
+
+    // `OcclusionCallback::getVisibleRatio`, verbatim: at most `dt * 10` a frame either way.
+    const float most = frame.mElapsed * SUN_GLARE_RATE;
+    share = clamp(found, share - most, share + most);
+}

@@ -516,7 +516,7 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
                 // every sprite behind this sphere is within `mReach` of the same air. The layer
                 // under the band is `fogColumn`'s and is taken exactly, per sprite. The shape
                 // wants it for a flame alone, whose glow the air thins.
-                if (lit || emitter.mAdditive != 0u)
+                if (lit || (emitter.mFlags & EMITTER_ADDITIVE) != 0u)
                     band = fogCoverageAt(origin + direction * (0.5 * along), max(along, 1.0));
 
                 // **A width of nothing is a sprite that faces the eye**, which is nearly every
@@ -573,7 +573,7 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
         const float alpha = paintedOver(painted, crossing.mFraction);
         const vec3 colour = texel.rgb * sprite.mColour;
 
-        if (emitter.mAdditive != 0u)
+        if ((emitter.mFlags & EMITTER_ADDITIVE) != 0u)
         {
             // **The layer taken exactly and the band taken once.** A sheet of sprites and the wall
             // behind it are one distance from the eye and were fading at two rates: the wall goes

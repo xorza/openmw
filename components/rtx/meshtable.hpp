@@ -60,6 +60,7 @@ namespace Rtx
         std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
+        std::span<const osg::Vec2f> getSecondTexCoords() const { return mSecondTexCoords.getAll(); }
         std::span<const osg::Vec3f> getColours() const { return mColours; }
         std::span<const std::uint32_t> getIndices() const { return mIndices.getAll(); }
 
@@ -98,6 +99,9 @@ namespace Rtx
         /// attribute arrays follow it (`writeAttributes`).
         RunBuffer<osg::Vec3f> mPositions{ sVertexBlock };
         RunBuffer<std::uint32_t> mIndices{ sIndexBlock };
+
+        /// The second texture coordinates, in runs of their own — `MeshRange::mSecondTexCoords`.
+        RunBuffer<osg::Vec2f> mSecondTexCoords{ sVertexBlock };
 
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;

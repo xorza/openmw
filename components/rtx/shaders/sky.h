@@ -276,6 +276,10 @@ namespace Rtx::Shaders
         /// in front, which is the dome, and the dome is added over the whole sky anyway.
         vec3 mThroughAir;
 
+        /// What a script painted the face, linear — `Rtx::MoonPlacement::mPaint`. White for a moon
+        /// nobody painted. Over the face here, and already over `mIrradiance`.
+        vec3 mPaint;
+
         /// The painted face, in the bindless array, or `NO_TEXTURE` where none was loaded — the disc
         /// is then its mean colour with the shading law over it.
         ///
@@ -296,7 +300,7 @@ namespace Rtx::Shaders
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #ifdef RTX_HOST
-    static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
+    static_assert(sizeof(MoonDisc) == 100, "MoonDisc must be scalar-packed on every side");
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");

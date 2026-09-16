@@ -1,7 +1,10 @@
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -16,6 +19,10 @@
 #include <osg/Node>
 #include <osg/NodeVisitor>
 #include <osg/StateAttribute>
+#include <osg/StateSet>
+#include <osg/Texture2D>
+#include <osg/Texture>
+#include <osg/Uniform>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
@@ -29,9 +36,11 @@
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/surface.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/texmat.hpp>
+#include <components/sceneutil/texturetype.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../allocations.hpp"
@@ -213,6 +222,227 @@ namespace Rtx::Testing
             const Rtx::Material plain = extractOne(false);
             EXPECT_EQ(plain.mAlphaMode, AlphaMode::Opaque);
             EXPECT_FALSE(plain.isCutout());
+        }
+
+        /// A surface that adds — `SRC_ALPHA, ONE` — is no cutout, no pane and no medium: it is
+        /// placed under `MASK_ADDITIVE` alone, built non-opaque so the one query that gathers it
+        /// walks every crossing, and met by nothing that shades. A `SRC_ALPHA, DST_ALPHA` reads
+        /// the same, because the frame's alpha is one; `ONE, ONE` adds whole.
+        TEST_F(RtxSceneExtractorTest, anAdditiveSurfaceIsPlacedOnItsOwnMaskAndMetByNothingThatShades)
+        {
+            const auto extractOne = [](GLenum source, GLenum destination, float opacity) {
+                osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                osg::StateSet& state = *quad->getOrCreateStateSet();
+                paint(state, "textures/vfx_alt_glow02.dds");
+                state.setAttributeAndModes(new osg::BlendFunc(source, destination), osg::StateAttribute::ON);
+
+                osg::ref_ptr<SceneUtil::Material> colours = new SceneUtil::Material;
+                colours->setDiffuse(osg::Vec4f(1.0f, 1.0f, 1.0f, opacity));
+                state.setAttribute(colours);
+
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                extractor.extract(*quad, osg::Matrixf::identity(), 0);
+
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
+                const Rtx::Material material = scene.materials().getRows().front();
+
+                std::vector<InstanceRecord> records;
+                makeInstanceRecords(scene, records);
+                EXPECT_EQ(records.size(), 1u);
+
+                return std::pair(material, records.front());
+            };
+
+            const auto [adds, addsRecord] = extractOne(GL_SRC_ALPHA, GL_ONE, 0.5f);
+            EXPECT_EQ(adds.mBlend, BlendKind::Add);
+            EXPECT_TRUE(adds.isAdditive());
+            EXPECT_FALSE(adds.isCutout());
+            EXPECT_FALSE(adds.isTranslucent()) << "an alpha of a half on an additive surface covers nothing";
+            EXPECT_FALSE(adds.isMedium());
+            EXPECT_EQ(addsRecord.mMask, Shaders::MASK_ADDITIVE);
+            EXPECT_TRUE(addsRecord.mAdditive);
+            EXPECT_FALSE(addsRecord.mCutout);
+            EXPECT_FALSE(addsRecord.mTranslucent);
+
+            const auto [frameAlpha, frameRecord] = extractOne(GL_SRC_ALPHA, GL_DST_ALPHA, 1.0f);
+            EXPECT_EQ(frameAlpha.mBlend, BlendKind::Add);
+            EXPECT_EQ(frameRecord.mMask, Shaders::MASK_ADDITIVE);
+
+            const auto [whole, wholeRecord] = extractOne(GL_ONE, GL_ONE, 1.0f);
+            EXPECT_EQ(whole.mBlend, BlendKind::AddWhole);
+            EXPECT_EQ(wholeRecord.mMask, Shaders::MASK_ADDITIVE);
+
+            // And the pane it is not: the same alpha over `ONE_MINUS_SRC_ALPHA` is glass.
+            const auto [over, overRecord] = extractOne(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 0.5f);
+            EXPECT_EQ(over.mBlend, BlendKind::Over);
+            EXPECT_FALSE(over.isAdditive());
+            EXPECT_TRUE(over.isTranslucent());
+            EXPECT_EQ(overRecord.mMask, Shaders::MASK_STATIC);
+            EXPECT_TRUE(overRecord.mTranslucent);
+        }
+
+        /// The white ambient the game gives a magic effect joins the material's glow, times the
+        /// material's own ambient colour, which is where `objects.frag` puts `ambientColor *
+        /// ambientLight`. An ambient of (0.5, 1, 0.25) under a white override adds its decode to the
+        /// glow; with no override nothing is added.
+        ///
+        /// The numbers: `decodeColour` undoes the sRGB curve, so 0.5 is 0.2140411, 1 is 1 and
+        /// 0.25 is 0.0508761; an emission of 0.25 with a multiplier of two is 0.1017522.
+        TEST_F(RtxSceneExtractorTest, theAmbientTheGameOverridesJoinsTheGlowByTheMaterialsAmbient)
+        {
+            const auto extractOne = [](bool overridden) {
+                osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                osg::StateSet& state = *quad->getOrCreateStateSet();
+
+                osg::ref_ptr<SceneUtil::Material> colours = new SceneUtil::Material;
+                colours->setAmbient(osg::Vec4f(0.5f, 1.0f, 0.25f, 1.0f));
+                colours->setEmission(osg::Vec4f(0.25f, 0.25f, 0.25f, 1.0f));
+                colours->setEmissiveMultiplier(2.0f);
+                state.setAttribute(colours);
+                if (overridden)
+                    state.addUniform(new osg::Uniform("sun.ambient", osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f)));
+
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                extractor.extract(*quad, osg::Matrixf::identity(), 0);
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
+                return scene.materials().getRows().front().mEmissiveColour;
+            };
+
+            const osg::Vec3f lit = extractOne(true);
+            EXPECT_NEAR(lit.x(), 0.1017522f + 0.2140411f, 1.0e-6f);
+            EXPECT_NEAR(lit.y(), 0.1017522f + 1.0f, 1.0e-6f);
+            EXPECT_NEAR(lit.z(), 0.1017522f + 0.0508761f, 1.0e-6f);
+
+            const osg::Vec3f unlit = extractOne(false);
+            EXPECT_NEAR(unlit.x(), 0.1017522f, 1.0e-6f);
+            EXPECT_NEAR(unlit.y(), 0.1017522f, 1.0e-6f);
+            EXPECT_NEAR(unlit.z(), 0.1017522f, 1.0e-6f);
+        }
+
+        /// The environment map, its tint and the dark map with its unit all reach the material,
+        /// each in its own slot, and a file bound clamped and bound repeating is two slots.
+        TEST_F(RtxSceneExtractorTest, theEnvironmentAndDarkMapsReachTheMaterialAndAWrapIsASlotOfItsOwn)
+        {
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            osg::StateSet& state = *quad->getOrCreateStateSet();
+            paint(state, "textures/a_glass.dds");
+            paint(state, "textures/tx_6th_dark.dds", TextureRole::Dark);
+            paint(state, "textures/vfx_alt_envir.dds", TextureRole::Environment);
+            state.addUniform(new osg::Uniform("envMapColor", osg::Vec4f(1.0f, 0.5f, 0.0f, 1.0f)));
+
+            // The dark map at unit one, and the same file as the diffuse bound again clamped at
+            // unit three — the loader binds one unit per texture and a wrap per texture.
+            osg::ref_ptr<osg::Image> sameFile = new osg::Image;
+            sameFile->setFileName("textures/a_glass.dds");
+            osg::ref_ptr<osg::Texture2D> clamped = new osg::Texture2D(sameFile);
+            clamped->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+            clamped->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+            state.setTextureAttributeAndModes(3, clamped, osg::StateAttribute::ON);
+            state.setTextureAttribute(3, new SceneUtil::TextureType("emissiveMap"), osg::StateAttribute::ON);
+
+            SurfaceDescription described;
+            describeStateSet(state, described);
+            EXPECT_EQ(described.getTextureUse(TextureRole::Emissive).mWrap, TextureWrap::Clamp);
+            EXPECT_EQ(described.getTexture(TextureRole::Emissive), sameFile.get());
+
+            walk(*quad);
+
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            const Rtx::Material& material = mScene.materials().getRows().front();
+            EXPECT_NE(material.mDark, sNoIndex);
+            EXPECT_EQ(material.mDarkUnit, 1);
+            EXPECT_NE(material.mEnvironment, sNoIndex);
+            EXPECT_NEAR(material.mEnvironmentColour.x(), 1.0f, 1.0e-6f);
+            EXPECT_NEAR(material.mEnvironmentColour.y(), 0.2140411f, 1.0e-6f);
+            EXPECT_NEAR(material.mEnvironmentColour.z(), 0.0f, 1.0e-6f);
+
+            EXPECT_NE(material.mDiffuse, material.mEmissive) << "one file under two wraps is two slots";
+            EXPECT_EQ(
+                mScene.textures().getPaths()[material.mDiffuse], mScene.textures().getPaths()[material.mEmissive]);
+            EXPECT_EQ(mScene.textures().getWraps()[material.mDiffuse], TextureWrap::Repeat);
+            EXPECT_EQ(mScene.textures().getWraps()[material.mEmissive], TextureWrap::Clamp);
+            EXPECT_EQ(mScene.textures().getPaths().size(), 4u);
+        }
+
+        /// An animated material keeps every texture it has worn, so a controller that cycles
+        /// thirty-two sheets at sixteen a second — `SceneUtil::GlowUpdater` — takes no slot and
+        /// gives none back on any frame after the first it showed each on. The material's death
+        /// lets them all go.
+        TEST_F(RtxSceneExtractorTest, anAnimatedMaterialKeepsEveryTextureItHasWorn)
+        {
+            /// A controller that shows a different sheet every frame, out of `mSheets`.
+            class FlipController : public SceneUtil::StateSetUpdater
+            {
+            public:
+                std::vector<osg::ref_ptr<osg::Image>> mSheets;
+                std::size_t mShown = 0;
+
+                /// Unit nought by number and not by `paint`, which appends: the walk hands the
+                /// controller a copy of the node's own state set, which already carries the unit.
+                void setDefaults(osg::StateSet* stateset) override
+                {
+                    stateset->setAttribute(new SceneUtil::Material, osg::StateAttribute::ON);
+                    stateset->setTextureAttributeAndModes(
+                        0, new osg::Texture2D(mSheets.front()), osg::StateAttribute::ON);
+                    stateset->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"), osg::StateAttribute::ON);
+                }
+
+                void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
+                {
+                    stateset->setTextureAttribute(0, new osg::Texture2D(mSheets[mShown]), osg::StateAttribute::ON);
+                }
+            };
+
+            osg::ref_ptr<FlipController> controller = new FlipController;
+            for (std::size_t sheet = 0; sheet < 32; ++sheet)
+            {
+                osg::ref_ptr<osg::Image> image = new osg::Image;
+                image->setFileName("textures/magicitem/caust" + std::to_string(sheet) + ".dds");
+                controller->mSheets.push_back(image);
+            }
+
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            osg::ref_ptr<osg::Group> node = new osg::Group;
+            node->addChild(quad);
+            node->addUpdateCallback(controller);
+
+            osgUtil::UpdateVisitor update;
+            for (unsigned int frame = 1; frame <= 40; ++frame)
+            {
+                controller->mShown = (frame - 1) % 32;
+                update.setTraversalNumber(frame);
+                node->accept(update);
+
+                mScene.clearPlacement();
+                walk(*node, 0, frame);
+
+                ASSERT_EQ(mScene.materials().getRows().size(), 1u) << "on frame " << frame;
+                EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, controller->mShown)
+                    << "the sheet shown on frame " << frame;
+
+                // A slot per distinct sheet as each is first shown, and none given back: on the
+                // second time round every slot is already there.
+                const std::size_t worn = std::min<std::size_t>(frame, 32);
+                EXPECT_EQ(mScene.textures().getPaths().size(), worn) << "on frame " << frame;
+                if (frame > 32)
+                {
+                    EXPECT_TRUE(mScene.textures().getArrived().empty()) << "a sheet arrived again on frame " << frame;
+                }
+
+                mExtractor.retire();
+                mScene.clearArrivals();
+            }
+
+            // The material goes, and every sheet with it.
+            node->removeChild(quad);
+            mScene.clearPlacement();
+            walk(*node, 0, 41);
+            mExtractor.retire();
+
+            for (std::size_t sheet = 0; sheet < 32; ++sheet)
+                EXPECT_TRUE(mScene.textures().isFree(sheet)) << "sheet " << sheet << " outlived the material";
         }
 
         /// An actor's fade rides its placement, and a model's own alpha does not ride it twice.

@@ -41,6 +41,19 @@ namespace Rtx
         Index mDiffuse = sNoIndex;
         Index mEmissive = sNoIndex;
 
+        /// A sphere-mapped sheet the surface adds past its albedo, indexed by where the eye is —
+        /// a `NiTextureEffect`, or the caustic sheet an enchanted item shimmers with — and what it
+        /// is tinted by, in linear light. `sNoIndex` for the surfaces that carry none, which is
+        /// nearly all of them.
+        Index mEnvironment = sNoIndex;
+        osg::Vec3f mEnvironmentColour{ 1.0f, 1.0f, 1.0f };
+
+        /// A map the albedo is multiplied by, read at the texture unit the content bound it at,
+        /// because half the vanilla dark maps read the geometry's second set of coordinates and
+        /// which set a unit reads is the mesh's to say — `GpuMesh::mUnitStreams`.
+        Index mDark = sNoIndex;
+        std::uint8_t mDarkUnit = 0;
+
         /// What the texture is tinted by, in linear light. Three channels and not the record's
         /// four: the alpha beside it is `mOpacity` and is not a colour.
         osg::Vec3f mDiffuseColour{ 1.0f, 1.0f, 1.0f };
@@ -56,6 +69,10 @@ namespace Rtx
         float mAlphaRef = 0.0f;
 
         AlphaMode mAlphaMode = AlphaMode::Opaque;
+
+        /// How a blended surface composites: over what is behind it, or added to it. Meaningful
+        /// under `AlphaMode::Blend`, and what tells a magic effect's sheet from a pane of glass.
+        BlendKind mBlend = BlendKind::Over;
 
         /// What this surface's per-vertex colour is for — the tint that replaces `mDiffuseColour`,
         /// the glow that replaces `mEmissiveColour`, or nothing. On the material and not on the
@@ -123,16 +140,23 @@ namespace Rtx
 
         /// Whether traversal has to stop and ask this material whether a hit is a hole — the one
         /// predicate the build marks an instance non-opaque by and the shader tests against. A
-        /// cutoff with no texture to sample is not one.
-        bool isCutout() const { return getAlphaCutoff() > 0.0f && mDiffuse != sNoIndex; }
+        /// cutoff with no texture to sample is not one, and neither is an additive surface, whose
+        /// alpha weights what it adds rather than deciding whether it is there.
+        bool isCutout() const { return getAlphaCutoff() > 0.0f && mDiffuse != sNoIndex && !isAdditive(); }
+
+        /// Whether this surface adds to what is behind it and covers nothing — `BlendKind::Add`
+        /// or `AddWhole` under a blend. Such a surface is no pane and no mask: it is gathered by
+        /// `additiveAlong` on a mask of its own and met by no other ray.
+        bool isAdditive() const { return mAlphaMode == AlphaMode::Blend && mBlend != BlendKind::Over; }
 
         /// Whether what is behind this surface is meant to show through it. `AlphaMode::Blend`
         /// alone does not say so: Morrowind keeps its foliage under `NiAlphaProperty`, so a leaf
         /// card and a pane of glass carry the same mode, and what tells them apart is the
         /// *material's* own alpha. The two want opposite answers from traversal — a mask averaged
         /// and tested is right for the leaf, light attenuated as it passes is right for the pane
-        /// and turns the leaf to gauze. Not the opposite of `isCutout`, and a pane is both.
-        bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mOpacity < 1.0f; }
+        /// and turns the leaf to gauze. Not the opposite of `isCutout`, and a pane is both. An
+        /// additive surface is neither: it covers nothing at any alpha.
+        bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mOpacity < 1.0f && !isAdditive(); }
 
         /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
         /// Two facts and neither alone — the material's own alpha, which a leaf's does not say, and
@@ -153,13 +177,21 @@ namespace Rtx
             /// `MASK_MEDIUM` as well, which is the one ray that gathers them.
             bool mMedium = false;
 
+            /// Whether they go in under `MASK_ADDITIVE` and nothing else: seen by the one query
+            /// that gathers what adds, and by no ray that shades, shadows or bounces.
+            bool mAdditive = false;
+
             bool operator==(const Traversed& other) const = default;
         };
 
         Traversed getTraversed() const
         {
             return Traversed{
-                .mKind = mKind, .mCutout = isCutout(), .mTranslucent = isTranslucent(), .mMedium = isMedium()
+                .mKind = mKind,
+                .mCutout = isCutout(),
+                .mTranslucent = isTranslucent(),
+                .mMedium = isMedium(),
+                .mAdditive = isAdditive(),
             };
         }
     };

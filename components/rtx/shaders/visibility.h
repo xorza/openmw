@@ -245,6 +245,12 @@ namespace Rtx::Shaders
         /// so this is the same statement one division further on.
         float mWaveTexel[WAVE_CASCADES];
 
+        /// Where the ripple field's window begins, in world units, and how wide it is: nought
+        /// wide where no field is stood, which is every picture inside the interface and every
+        /// frame before the first sea. `rippleSlope` reads nothing of a field nought wide.
+        vec2 mRippleOrigin;
+        float mRippleExtent;
+
         /// Root mean square slope of the whole sea, over every tile and every wavelength in them.
         ///
         /// **A property of the sea and not of a place in it**, which is why it is one number and not
@@ -394,10 +400,33 @@ namespace Rtx::Shaders
         /// from are most of the game.
         uint mMediumInFrame;
 
+        /// Non-zero where this scene holds a surface that adds to the frame — a magic effect's
+        /// sheet — for the same reason: `additiveAlong` casts with `MASK_ADDITIVE` at every shown
+        /// pixel, and a frame that holds none is nearly every frame.
+        uint mAdditiveInFrame;
+
         /// Which classes of instance this camera draws — the rasterizer's cull mask, in the bits
         /// `scene.h` names. The eye's rays cast with it whole and every other ray with
         /// `solidMask` of it; `MASK_PARTICLE` in it is whether the sprites are drawn at all.
         uint mRayMask;
+
+        /// How far over the eye a roof still keeps the rain off, in units, or nought for a frame
+        /// with nothing falling that a roof stops. `spriteshelter.rgen` traces every falling
+        /// sprite straight up to `mOrigin.z + mShelterHeight`: the top of the box the
+        /// rasterizer's `PrecipitationOccluder` draws its depth map from, which is the
+        /// precipitation's own range and a cell's height over it.
+        float mShelterHeight;
+
+        /// The sun glare fader, as the game states it — `glare.h`. The colour is
+        /// `Weather_Sun_Glare_Fader_Color` doubled and clamped, in the display's own values and not
+        /// in light, because that is the space the rasterizer adds it in; the angle is `_Angle_Max` in
+        /// radians, past which the wash is nothing; the strength is `_Max` times the time-of-day
+        /// fade times the weather's `Glare_View`, and nought where no sun is drawn. What is left to
+        /// multiply is the angle's own term and how much of the sun's quad the rays could see,
+        /// which `tone.comp` reads off `SunGlareCount`'s easing.
+        vec3 mGlareColour;
+        float mGlareAngleMax;
+        float mGlareStrength;
 
         /// How many columns and rows of froxels stand in front of the camera.
         ///
@@ -428,8 +457,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1016, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1136, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1080, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1208, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

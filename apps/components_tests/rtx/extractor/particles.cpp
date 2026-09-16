@@ -222,6 +222,27 @@ namespace Rtx::Testing
             EXPECT_FALSE(extractOne(false));
         }
 
+        /// Whether a sprite falls from the sky is the walk's word and not the system's: the same
+        /// plume is what a roof keeps off under `extractFalling` and a hearth's smoke under
+        /// `extract`, and a walk after a falling one is not left falling.
+        TEST_F(RtxSceneExtractorTest, theWalkSaysWhetherAnEmittersSpritesFall)
+        {
+            const Plume plume = makePlume(osg::Matrix::identity(), false);
+            emit(*plume.mParticles, osg::Vec3f(), 1.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f));
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+
+            extractor.extractFalling(*plume.mRoot, osg::Matrixf::identity(), 0);
+            ASSERT_EQ(scene.emitters().size(), 1u);
+            EXPECT_TRUE(scene.emitters().front().mFalls);
+
+            scene.clearPlacement();
+            extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
+            ASSERT_EQ(scene.emitters().size(), 1u);
+            EXPECT_FALSE(scene.emitters().front().mFalls) << "a walk after a falling one was left falling";
+        }
+
         /// A dead slot keeps the position its last particle expired at, and an emitter with nothing
         /// alive places nothing at all — not a sphere with an empty run behind it, which every ray
         /// crossing that part of the cell would then be rejected by one test later than it needs.

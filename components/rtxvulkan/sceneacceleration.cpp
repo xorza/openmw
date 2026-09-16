@@ -28,6 +28,7 @@ namespace Rtx
         constexpr std::uint8_t sRowCutout = 1;
         constexpr std::uint8_t sRowWater = 2;
         constexpr std::uint8_t sRowMedium = 4;
+        constexpr std::uint8_t sRowAdditive = 8;
     }
 
     VkTransformMatrixKHR toVulkanTransform(const Transform3x4& transform)
@@ -331,6 +332,8 @@ namespace Rtx
             --mCounts.mWater;
         if ((counted & sRowMedium) != 0)
             --mCounts.mMedium;
+        if ((counted & sRowAdditive) != 0)
+            --mCounts.mAdditive;
         counted = 0;
     }
 
@@ -364,6 +367,12 @@ namespace Rtx
             ++mCounts.mMedium;
         }
 
+        if ((record.mMask & Shaders::MASK_ADDITIVE) != 0)
+        {
+            counted |= sRowAdditive;
+            ++mCounts.mAdditive;
+        }
+
         // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
@@ -372,7 +381,9 @@ namespace Rtx
         // The geometry is built opaque, so forcing is the whole of how either candidate reaches
         // the shader at all — a cutout to be asked whether there is anything at the hit, a
         // translucent surface to be asked how much of it there is.
-        if (record.mCutout || record.mTranslucent)
+        // An additive surface is never confirmed by anything, so its every crossing has to reach
+        // the query that gathers it as a candidate, which is what non-opaque means.
+        if (record.mCutout || record.mTranslucent || record.mAdditive)
             flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
 
         // A translucent instance is never asked the cutout's question, so it is not counted against

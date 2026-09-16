@@ -21,6 +21,7 @@
 #include <components/rtx/shaders/wave.h>
 #include <components/rtx/wavecascade.hpp>
 
+#include "barriers.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "dispatch.hpp"
@@ -30,6 +31,7 @@
 #include "handles.hpp"
 #include "imageuse.hpp"
 #include "pipeline.hpp"
+#include "ripplepass.hpp"
 #include "scenebuffers.hpp"
 #include "spritebin.hpp"
 #include "validation.hpp"
@@ -83,9 +85,12 @@ namespace Rtx
             declared[Shaders::BIND_SCENE] = VkDescriptorSetLayoutBinding{ Shaders::BIND_SCENE,
                 VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sStages };
 
-            // The one storage buffer left: every table the shader reads travels as an address in the
-            // frame block, and the hit counter is a harness facility with no table to ride in.
+            // The two storage buffers left: every table the shader reads travels as an address in
+            // the frame block, and neither the hit counter — a harness facility — nor the glare
+            // fader's query has a table to ride in.
             declared[Shaders::BIND_HITS] = VkDescriptorSetLayoutBinding{ Shaders::BIND_HITS, sStorage, 1, sStages };
+            declared[Shaders::BIND_SUN_GLARE]
+                = VkDescriptorSetLayoutBinding{ Shaders::BIND_SUN_GLARE, sStorage, 1, sStages };
 
             declared[Shaders::BIND_FRAME]
                 = VkDescriptorSetLayoutBinding{ Shaders::BIND_FRAME, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sStages };
@@ -93,6 +98,10 @@ namespace Rtx
             for (const std::uint32_t binding : { Shaders::BIND_WAVE_SURFACE, Shaders::BIND_WAVE_CURVATURE })
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     Shaders::WAVE_CASCADES, sStages };
+
+            for (const std::uint32_t binding : { Shaders::BIND_RIPPLE_SURFACE, Shaders::BIND_RIPPLE_CURVATURE })
+                declared[binding]
+                    = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sStages };
 
             // One volume rather than a cascade of tiles: the air has no near band and no far one, it
             // has a field read at three scales.
@@ -192,6 +201,8 @@ namespace Rtx
             mDevice, sBindings, 0, laterSets(textureLayout), integrate, "fog integrate");
         mSpriteCompositePipeline = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
             TraceShaders{ .mRaygen = spriteComposite }, "sprite composite");
+        mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+            TraceShaders{ .mRaygen = shaders / "spriteshelter.rgen.spv" }, "sprite shelter");
 
         /// One kernel to make: which tuple, and which of the two modules.
         struct Wanted
@@ -302,15 +313,18 @@ namespace Rtx
 
         // Appended in binding order rather than indexed, so a channel added cannot silently move
         // two writes on top of each other; the count is checked below rather than maintained.
-        DescriptorWrites<sBindings.size(), 2 * Shaders::WAVE_CASCADES + 2> writes;
+        DescriptorWrites<sBindings.size(), 2 * Shaders::WAVE_CASCADES + 4> writes;
         writes.structure(Shaders::BIND_SCENE, sceneWrite);
 
         // The two buffers still bound: the hit counter, and the frame block every table is reached
         // through. Nothing bound here may be nothing: a null handle at the dispatch is undefined
         // and cost this renderer a device before the layers were asked.
         assert(!hitCount.isEmpty() && !mConstants.isEmpty() && "an input bound as nothing");
+        assert(
+            inputs.mSunGlare != nullptr && !inputs.mSunGlare->isEmpty() && "a trace with no glare query to count into");
         writes.buffer(Shaders::BIND_HITS, hitCount.describe());
         writes.buffer(Shaders::BIND_FRAME, mConstants.describe(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writes.buffer(Shaders::BIND_SUN_GLARE, inputs.mSunGlare->describe());
 
         writes.images(Shaders::BIND_WAVE_SURFACE, surfaces, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         writes.images(Shaders::BIND_WAVE_CURVATURE, curvatures, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
@@ -322,6 +336,14 @@ namespace Rtx
 
         assert(inputs.mShown != nullptr && !inputs.mShown->isEmpty() && "a trace with no frame to show");
         writes.image(Shaders::BIND_SHOWN, inputs.mShown->describeStorage());
+
+        assert(inputs.mRipples != nullptr && "a trace with no ripple field stood for it");
+        writes.image(Shaders::BIND_RIPPLE_SURFACE,
+            inputs.mRipples->getSurface().describeSampled(inputs.mRipples->getSampler()),
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writes.image(Shaders::BIND_RIPPLE_CURVATURE,
+            inputs.mRipples->getCurvature().describeSampled(inputs.mRipples->getSampler()),
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.
@@ -337,16 +359,11 @@ namespace Rtx
         bindSets(commands, pipeline, sets);
     }
 
-    void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, const bool historyLost,
-        GpuTimer* timer) const
+    void VisibilityPass::writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs,
+        const Shaders::VisibilityConstants& constants, const bool historyLost) const
     {
-        assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
-
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
-        assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
         assert(inputs.mFogVolume != nullptr && "a trace with no air integrated for it");
-        assert(inputs.mTextures != VK_NULL_HANDLE && "a trace whose texture array named no set");
 
         Shaders::VisibilityConstants described = constants;
 
@@ -407,6 +424,40 @@ namespace Rtx
         assert(everyTableAddressed(described.mTables) && "a table addressed as nothing, or not as its block declares");
 
         writeConstants(commands, described);
+    }
+
+    void VisibilityPass::recordSpriteShelter(const VkCommandBuffer commands, const VisibilityInputs& inputs,
+        const GBuffer& buffer, const Buffer& hitCount, const Shaders::VisibilityConstants& constants,
+        const std::uint32_t count, GpuTimer* const timer) const
+    {
+        // Nearly every frame: nothing falls, or what falls is the kind a roof does not stop. A
+        // frame with sprites and no shelter pays no launch for it.
+        if (constants.mShelterHeight <= 0.0f || count == 0)
+            return;
+
+        openZone(timer, commands, "shelter");
+
+        bind(commands, *mSpriteShelterPipeline);
+        pushInputs(commands, *mSpriteShelterPipeline, inputs, buffer, hitCount, constants.mFrame);
+
+        // One invocation a sprite, over the bin's own copy of the list.
+        mSpriteShelterPipeline->traceRays(commands, count, 1);
+
+        // The shade reads and writes what this zeroed, from a dispatch.
+        handOver(commands, Use::sBufferShaderReadWrite, Use::sBufferComputeReadWrite);
+
+        closeZone(timer, commands);
+    }
+
+    void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
+        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const
+    {
+        assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
+
+        assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
+        assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
+        assert(inputs.mFogVolume != nullptr && "a trace with no air integrated for it");
+        assert(inputs.mTextures != VK_NULL_HANDLE && "a trace whose texture array named no set");
 
         // Resolved from the constants this frame is about to be traced with, and from nothing
         // kept between frames: a dusk moves the tuple and a doorway moves it again.

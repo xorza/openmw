@@ -55,7 +55,7 @@ namespace Rtx
     }
 
     void SceneDesc::addEmitter(
-        std::span<const Sprite> sprites, Index texture, bool additive, float width, Index lighting)
+        std::span<const Sprite> sprites, Index texture, bool additive, float width, Index lighting, bool falls)
     {
         if (sprites.empty())
             return;
@@ -93,6 +93,7 @@ namespace Rtx
             .mTexture = texture,
             .mLighting = lighting,
             .mAdditive = additive,
+            .mFalls = falls,
             .mWidth = width,
         });
 
@@ -125,6 +126,7 @@ namespace Rtx
         mMeshes.clearDeformed();
         mSprites.clear();
         mEmitters.clear();
+        mRipples.clear();
     }
 
     bool SceneDesc::release(std::span<const Index> meshes, std::span<const Index> materials)

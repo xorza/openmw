@@ -60,6 +60,12 @@ namespace Rtx
         /// back to where no portrait is loaded. `Shaders::MOON_RADIANCE` takes either moon to
         /// radiance, so the two keep their relationship.
         osg::Vec3f mColour;
+
+        /// What a script painted the face, linear: `Moons_Script_Color` while the game says
+        /// Secunda is red, and white otherwise. Over the face and over what the moon delivers
+        /// alike, because a moon that is drawn red lights red — the rasterizer's `moonBlend` paints
+        /// the disc alone, and the disc is the only light it has.
+        osg::Vec3f mPaint{ 1.0f, 1.0f, 1.0f };
     };
 
     /// The two painted faces, in a scene's texture table, held rather than named by a material:

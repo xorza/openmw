@@ -46,6 +46,12 @@ layout(set = 0, binding = 3, scalar) readonly buffer Exposure
 /// The bloom pyramid's finest level, which holds the blur of every level under it.
 layout(set = 0, binding = 4) uniform sampler2D bloom;
 
+/// How much of the sun's quad the eye can see, eased — `sunglare.comp` — or nought for a picture.
+layout(set = 0, binding = 5, scalar) readonly buffer SunGlareShare
+{
+    float sunGlareShare;
+};
+
 layout(push_constant, scalar) uniform Push
 {
     ToneConstants frame;
@@ -98,5 +104,12 @@ void main()
 
     // The curve maps radiance to a display; coverage is not radiance and passes through it, and
     // where the alpha carried the puffs instead, the picture is whole.
-    imageStore(target, at, vec4(encodeSrgb(toneMap(lit.rgb * exposure)), frame.mCoverAlpha != 0u ? 1.0 : lit.a));
+    // **The glare fader over the encoded picture, added and clamped.** The rasterizer draws it as a
+    // full-screen quad blended `SRC_ALPHA, ONE` into the framebuffer after the world, which is a
+    // sum in the display's own values that the framebuffer then saturates — so it is added here,
+    // after the curve and the encode, and nowhere the light is still light.
+    const vec3 encoded = encodeSrgb(toneMap(lit.rgb * exposure));
+    const vec3 washed = min(encoded + frame.mGlareColour * (frame.mGlareAmount * sunGlareShare), vec3(1.0));
+
+    imageStore(target, at, vec4(washed, frame.mCoverAlpha != 0u ? 1.0 : lit.a));
 }

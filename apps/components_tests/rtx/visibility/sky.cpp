@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Math>
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
@@ -182,6 +183,7 @@ namespace Rtx::Testing
             facing.mLimb = std::sin(0.2f);
             facing.mAlpha = 1.0f;
             facing.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            facing.mPaint = osg::Vec3f(1.0f, 1.0f, 1.0f);
             facing.mFace = Shaders::NO_TEXTURE;
 
             const auto sky = [&](std::size_t at) {
@@ -400,6 +402,7 @@ namespace Rtx::Testing
             covering.mUp = osg::Vec3f(0.0f, -root, root);
             covering.mColour = osg::Vec3f();
             covering.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            covering.mPaint = osg::Vec3f(1.0f, 1.0f, 1.0f);
             covering.mLimb = std::sin(1.2f);
             covering.mAlpha = 1.0f;
             covering.mFace = Shaders::NO_TEXTURE;
@@ -411,6 +414,80 @@ namespace Rtx::Testing
             // says the covering was the cause, rather than the black the disc is painted.
             camera.mMoons[0].mAlpha = 0.0f;
             EXPECT_GT(brightest(true)[0], 128) << "the moon was not what put the field out";
+        }
+
+        /// The sun glare fader washes the whole picture by how much of the sun's quad the eye can
+        /// see, faded by how far the eye's axis stands from the sun.
+        ///
+        /// **`SunGlareCallback`, measured at a corner the sun is nowhere near.** The wash is a
+        /// full-screen quad added in the display's own values, so a corner of black sky under a
+        /// colour of pure red at a strength of 0.4 reads exactly `0.4 * 255 = 102` red and nothing
+        /// else; the same eye turned twenty degrees off a sun that fades out at ninety reads
+        /// `0.4 * (1 - 20 / 90) * 255 = 79.3`, so 79; a wall across the view hides the whole quad,
+        /// and the query then counts nothing seen and the wash is nothing; and a strength of nought
+        /// is a frame with no fader in it. A fresh history on every shot, so the share is what
+        /// this frame's rays found and not an easing from the shot before.
+        TEST_F(RtxVisibilityTest, theSunGlareFaderWashesByWhatTheEyeSeesOfTheSun)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t corner = 0;
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> sheet{ describeTexel(white) };
+
+            struct Read
+            {
+                std::uint8_t mRed;
+                std::uint8_t mGreen;
+            };
+
+            const auto washed = [&](float strength, float offAxisDegrees, bool walled) {
+                SceneDesc scene;
+                scene.textures().add(VFS::Path::NormalizedView("white.dds"));
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -400.0f), .mIndices = sQuadIndices }) });
+                if (walled)
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(500.0f), .mIndices = sQuadIndices }) });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -2000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+
+                const float off = osg::DegreesToRadians(offAxisDegrees);
+                camera.mSun
+                    = Shaders::sunSource(osg::Vec3f(std::sin(off), std::cos(off), 0.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
+
+                camera.mGlareColour = osg::Vec3f(1.0f, 0.0f, 0.0f);
+                camera.mGlareAngleMax = osg::DegreesToRadians(90.0f);
+                camera.mGlareStrength = strength;
+
+                renderShot(scene, sheet, camera, size, Shot{ .mResetHistory = true });
+
+                std::vector<std::uint8_t> pixels;
+                mRenderer->readPixels(pixels);
+                requireFrame(pixels, size);
+
+                return Read{ pixels[corner], pixels[corner + 1] };
+            };
+
+            const Read open = washed(0.4f, 0.0f, false);
+            EXPECT_EQ(open.mRed, 102);
+            EXPECT_EQ(open.mGreen, 0);
+
+            const Read turned = washed(0.4f, 20.0f, false);
+            EXPECT_EQ(turned.mRed, 79);
+            EXPECT_EQ(turned.mGreen, 0);
+
+            const Read hidden = washed(0.4f, 0.0f, true);
+            EXPECT_EQ(hidden.mRed, hidden.mGreen) << "a wall across the sun's quad left a wash";
+
+            const Read none = washed(0.0f, 0.0f, false);
+            EXPECT_EQ(none.mRed, 0);
+            EXPECT_EQ(none.mGreen, 0);
         }
 
         /// The world's edge is nothing over the ground the player stands on and total at the last

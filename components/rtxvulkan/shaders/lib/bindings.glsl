@@ -33,6 +33,7 @@
 #include "bindings.h"
 #include "fogvolume.h"
 #include "gbuffer.h"
+#include "glare.h"
 #include "scene.h"
 #include "visibility.h"
 #include "wave.h"
@@ -130,6 +131,13 @@ layout(set = 0, binding = BIND_HITS) buffer HitCount
     uint hits;
 };
 
+/// The sun glare fader's query, as `glare.h` states it: two atomics, added to by every primary
+/// ray inside the quad's disc. Few rays, for the reason the hit counter gives.
+layout(set = 0, binding = BIND_SUN_GLARE, scalar) buffer SunGlare
+{
+    SunGlareCount sunGlare;
+};
+
 // **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every
 // byte `maxPushConstantsSize` promises on this hardware; `VisibilityPass` writes it into a buffer of
 // its own instead. The name and the fields are the ones the push block had, so nothing that reads
@@ -210,6 +218,12 @@ NormalBlock normalBlockOf(uint vertex)
 TexCoordBlock texCoordBlockOf(uint vertex)
 {
     return TexCoordBlock(BlockTable(frame.mTables.mTexCoordBlocks).at[vertex / VERTEX_BLOCK]);
+}
+
+/// The block a mesh's second set lives in, by the global id in the second set's own blocks.
+TexCoordBlock secondTexCoordBlockOf(uint vertex)
+{
+    return TexCoordBlock(BlockTable(frame.mTables.mSecondTexCoordBlocks).at[vertex / VERTEX_BLOCK]);
 }
 
 ColourBlock colourBlockOf(uint vertex)
@@ -348,6 +362,12 @@ layout(set = 0, binding = BIND_WAVE_SURFACE) uniform sampler2D waveSurface[WAVE_
 
 /// The three curvatures.
 layout(set = 0, binding = BIND_WAVE_CURVATURE) uniform sampler2D waveCurvature[WAVE_CASCADES];
+
+/// The ripple field, in the wave tiles' own layout and read the same way, once: it is anchored to
+/// the world at `frame.mRippleOrigin` rather than repeating, and past its edge reads as still
+/// water through a sampler that clamps to nothing.
+layout(set = 0, binding = BIND_RIPPLE_SURFACE) uniform sampler2D rippleSurface;
+layout(set = 0, binding = BIND_RIPPLE_CURVATURE) uniform sampler2D rippleCurvature;
 
 /// The fog's fractal field, drawn once for the life of the device and read at three world scales.
 ///

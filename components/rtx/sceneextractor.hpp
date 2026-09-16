@@ -11,6 +11,7 @@
 #include <osg/Matrixf>
 #include <osg/Node>
 
+#include "camera.hpp"
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
 #include "materialresolver.hpp"
@@ -90,6 +91,18 @@ namespace Rtx
         /// walk at every node, which is why it is not the drawable's own question like water.
         std::optional<InstanceClass> classOf(osg::Node::NodeMask mask) const;
 
+        /// Where the walks that follow are looked at from, for a billboard to face: the camera's
+        /// own basis, `viewBasisOf` its inverse view. Nothing, which is what a fresh extractor
+        /// holds, leaves a billboard at its base rotation.
+        ///
+        /// **Told per walk and read per billboard, because a `NifOsg::AutoTransform` turns only
+        /// under a cull visitor** — `computeMatrix` asks the visitor for a `CullStack` and takes
+        /// its last rotation otherwise — and no walk in this renderer is one. What a cull hands it
+        /// is the eye, the look and the up in the node's own frame, and that is what the walk
+        /// hands `computeMatrixForFrame` instead.
+        void setEye(const std::optional<ViewBasis>& eye) { mEye = eye; }
+        const std::optional<ViewBasis>& getEye() const { return mEye; }
+
         /// The world's clock, in seconds, which everything the graph animates is driven by.
         /// `SceneUtil::FrameTimeSource` reads the simulation time off the visitor's frame stamp, so
         /// a mirror with a clock of its own would run the game's fires while the game is paused.
@@ -124,6 +137,12 @@ namespace Rtx
         /// forgets it and has the distant ground swept on every frame after the first.
         ExtractionStats extractWorld(
             const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
+
+        /// `extract`, for what falls from the sky: every emitter met under `node` is placed as one
+        /// whose sprites a roof keeps off — `MirrorPass::mFalls`. The precipitation's walk and
+        /// nothing else, because a hearth's smoke under a roof is where it belongs.
+        ExtractionStats extractFalling(
+            const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame = 0);
 
         /// What the graph does not parent, walked with every world walk from here on: the cell
         /// ring's ground, statics and lamps, which have no node anywhere. Null for a caller that
@@ -185,10 +204,10 @@ namespace Rtx
         /// Whether `mask` carries no bit outside `named`, which is what both questions above ask.
         static bool carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named);
 
-        /// What both `extract` and `extractWorld` are, differing only in whether the ring's
-        /// geometry is asked for.
+        /// What the three walks are, differing only in whether the ring's geometry is asked for
+        /// and whether what is placed falls.
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
-            std::size_t frame, CellRing* ring);
+            std::size_t frame, CellRing* ring, bool falls);
 
         SceneDesc& mScene;
 
@@ -225,6 +244,9 @@ namespace Rtx
 
         /// Geometry no node parents, asked of every world walk, or null.
         CellRing* mRing = nullptr;
+
+        /// See `setEye`.
+        std::optional<ViewBasis> mEye;
 
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;

@@ -258,6 +258,7 @@ namespace Rtx
             }
 
             described->mSlot = kept.mSlot;
+            described->mWrap = scene.textures().getWraps()[kept.mSlot];
             mDescriptions.push_back(*described);
         }
 

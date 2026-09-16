@@ -27,6 +27,7 @@ namespace Rtx
             &ExtractionStats::mSprites,
             &ExtractionStats::mSkippedUnknown,
             &ExtractionStats::mUndescribedSurfaces,
+            &ExtractionStats::mWornBeyondKept,
             &ExtractionStats::mSpritelessEmitters,
             &ExtractionStats::mSkippedEmpty,
             &ExtractionStats::mLights,

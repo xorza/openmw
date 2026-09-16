@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include <osg/AlphaFunc>
+#include <osg/BlendFunc>
 #include <osg/GL>
 #include <osg/Material>
 #include <osg/Matrixf>
@@ -14,6 +15,7 @@
 #include <osg/StateSet>
 #include <osg/Texture>
 #include <osg/Uniform>
+#include <osg/Vec4f>
 
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/util.hpp>
@@ -84,14 +86,36 @@ namespace Rtx
             return std::nullopt;
         }
 
-        /// A uniform by name, without building a `std::string` where the list is empty — which it
-        /// is on nearly every state set a walk meets.
-        const osg::Uniform* uniformNamed(const osg::StateSet& stateSet, const std::string& name)
+        /// A uniform by name and the flags it was set with, without building a `std::string` where
+        /// the list is empty — which it is on nearly every state set a walk meets.
+        const osg::StateSet::RefUniformPair* uniformNamed(const osg::StateSet& stateSet, const std::string& name)
         {
-            if (stateSet.getUniformList().empty())
+            const osg::StateSet::UniformList& list = stateSet.getUniformList();
+            if (list.empty())
                 return nullptr;
 
-            return stateSet.getUniform(name);
+            const auto found = list.find(name);
+            return found != list.end() ? &found->second : nullptr;
+        }
+
+        /// Whether a texture's wrap mode clamps. `CLAMP`, `CLAMP_TO_EDGE` and `CLAMP_TO_BORDER` are
+        /// three spellings of one edge; `MIRROR` does not occur in the content and repeats.
+        bool clamps(const osg::Texture::WrapMode mode)
+        {
+            return mode == osg::Texture::CLAMP || mode == osg::Texture::CLAMP_TO_EDGE
+                || mode == osg::Texture::CLAMP_TO_BORDER;
+        }
+
+        /// How a `BlendFunc` composites. A destination of `ONE` adds, and so does `DST_ALPHA`,
+        /// because the frame's alpha is one; a source of `ONE` adds the colour whole.
+        BlendKind blendKindOf(const osg::BlendFunc& blend)
+        {
+            const bool adds
+                = blend.getDestination() == osg::BlendFunc::ONE || blend.getDestination() == osg::BlendFunc::DST_ALPHA;
+            if (!adds)
+                return BlendKind::Over;
+
+            return blend.getSource() == osg::BlendFunc::ONE ? BlendKind::AddWhole : BlendKind::Add;
         }
 
         void readColours(const osg::StateAttribute& attribute, SurfaceDescription& material)
@@ -125,14 +149,15 @@ namespace Rtx
             }
         }
 
-        void readTransform(const osg::StateSet& stateSet, const unsigned int unit, SurfaceDescription& material)
+        void readTransform(
+            const osg::StateSet& stateSet, const unsigned int unit, SurfaceDescription& material, SurfaceLocks& locks)
         {
-            const osg::Uniform* uniform = uniformNamed(stateSet, "texMat" + std::to_string(unit));
-            if (uniform == nullptr)
+            const osg::StateSet::RefUniformPair* uniform = uniformNamed(stateSet, "texMat" + std::to_string(unit));
+            if (uniform == nullptr || !SurfaceLocks::takes(locks.mTextureMatrix, uniform->second))
                 return;
 
             osg::Matrixf transform;
-            if (!uniform->get(transform))
+            if (!uniform->first->get(transform))
                 return;
 
             // The matrix `NifOsg::UVController` builds: scaled about the middle of the texture and
@@ -146,9 +171,28 @@ namespace Rtx
         }
     }
 
+    bool SurfaceLocks::takesTexture(const TextureRole role, const osg::StateAttribute::OverrideValue flags)
+    {
+        const std::uint32_t bit = 1u << static_cast<std::uint32_t>(role);
+        bool lock = (mTextures & bit) != 0;
+        const bool taken = takes(lock, flags);
+        if (lock)
+            mTextures |= bit;
+        return taken;
+    }
+
     void SurfaceDescription::setTexture(TextureRole role, const osg::Texture* texture)
     {
-        mTextures[static_cast<std::size_t>(role)] = texture != nullptr ? texture->getImage(0) : nullptr;
+        TextureUse& use = mTextures[static_cast<std::size_t>(role)];
+        if (texture == nullptr)
+        {
+            use = TextureUse{};
+            return;
+        }
+
+        use.mImage = texture->getImage(0);
+        use.mWrap = textureWrapOf(
+            clamps(texture->getWrap(osg::Texture::WRAP_S)), clamps(texture->getWrap(osg::Texture::WRAP_T)));
     }
 
     std::string_view textureRoleName(TextureRole role)
@@ -167,11 +211,18 @@ namespace Rtx
 
     bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& material)
     {
+        SurfaceLocks locks;
+        return describeStateSet(stateSet, material, locks);
+    }
+
+    bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& material, SurfaceLocks& locks)
+    {
         bool said = false;
 
-        if (const osg::StateAttribute* colours = stateSet.getAttribute(osg::StateAttribute::MATERIAL))
+        if (const osg::StateSet::RefAttributePair* colours = stateSet.getAttributePair(osg::StateAttribute::MATERIAL))
         {
-            readColours(*colours, material);
+            if (SurfaceLocks::takes(locks.mMaterial, colours->second))
+                readColours(*colours->first, material);
             said = true;
         }
 
@@ -179,8 +230,9 @@ namespace Rtx
         const osg::StateSet::TextureAttributeList& units = stateSet.getTextureAttributeList();
         for (unsigned int unit = 0; unit < units.size(); ++unit)
         {
-            const osg::StateAttribute* attribute = stateSet.getTextureAttribute(unit, osg::StateAttribute::TEXTURE);
-            const osg::Texture* texture = attribute != nullptr ? attribute->asTexture() : nullptr;
+            const osg::StateSet::RefAttributePair* pair
+                = stateSet.getTextureAttributePair(unit, osg::StateAttribute::TEXTURE);
+            const osg::Texture* texture = pair != nullptr ? pair->first->asTexture() : nullptr;
             if (texture == nullptr)
                 continue;
 
@@ -195,22 +247,28 @@ namespace Rtx
             if (!role.has_value())
                 continue;
 
-            material.setTexture(*role, texture);
             said = true;
+            if (!locks.takesTexture(*role, pair->second))
+                continue;
+
+            material.setTexture(*role, texture);
             if (*role == TextureRole::Diffuse)
                 diffuseUnit = unit;
+            if (*role == TextureRole::Dark)
+                material.mDarkUnit = static_cast<std::uint8_t>(unit);
         }
 
         // **The alpha test's reference, from wherever the visitor left it.** `Shader::ShaderVisitor`
         // replaces the attribute with a `RemovedAlphaFunc` at a default threshold and carries the
         // real one in a uniform, so the uniform is asked first and the attribute answers where no
         // visitor has run. `ALWAYS` is no test at all, which is what the scene root wears.
-        if (const auto* alpha
-            = static_cast<const osg::AlphaFunc*>(stateSet.getAttribute(osg::StateAttribute::ALPHAFUNC)))
+        if (const osg::StateSet::RefAttributePair* tested = stateSet.getAttributePair(osg::StateAttribute::ALPHAFUNC);
+            tested != nullptr && SurfaceLocks::takes(locks.mAlphaFunc, tested->second))
         {
+            const auto* alpha = static_cast<const osg::AlphaFunc*>(tested->first.get());
             float reference = alpha->getReferenceValue();
-            if (const osg::Uniform* carried = uniformNamed(stateSet, "alphaRef"))
-                carried->get(reference);
+            if (const osg::StateSet::RefUniformPair* carried = uniformNamed(stateSet, "alphaRef"))
+                carried->first->get(reference);
 
             material.mAlphaRef = alpha->getFunction() != osg::AlphaFunc::ALWAYS ? reference : 0.0f;
             if (material.mAlphaMode != AlphaMode::Blend)
@@ -218,10 +276,17 @@ namespace Rtx
         }
 
         // Blending wins over testing, and the threshold survives for a renderer that would rather cut.
-        if (stateSet.getAttribute(osg::StateAttribute::BLENDFUNC) != nullptr)
-            material.mAlphaMode = AlphaMode::Blend;
+        // The function says how the blend composites; a mode alone says only that it does.
+        if (const osg::StateSet::RefAttributePair* blended = stateSet.getAttributePair(osg::StateAttribute::BLENDFUNC))
+        {
+            if (SurfaceLocks::takes(locks.mBlend, blended->second))
+            {
+                material.mAlphaMode = AlphaMode::Blend;
+                material.mBlend = blendKindOf(*static_cast<const osg::BlendFunc*>(blended->first.get()));
+            }
+        }
         else if (const osg::StateAttribute::GLModeValue blend = stateSet.getMode(GL_BLEND);
-                 blend != osg::StateAttribute::INHERIT)
+                 blend != osg::StateAttribute::INHERIT && SurfaceLocks::takes(locks.mBlend, blend))
             material.mAlphaMode = (blend & osg::StateAttribute::ON) ? AlphaMode::Blend
                 : material.mAlphaRef > 0.0f                         ? AlphaMode::Cutout
                                                                     : AlphaMode::Opaque;
@@ -229,17 +294,37 @@ namespace Rtx
         // Only ever off by the content: a stencil property drawing both faces, or a material file's
         // two-sided flag. The scene root turns it on for everything under it.
         if (const osg::StateAttribute::GLModeValue cull = stateSet.getMode(GL_CULL_FACE);
-            cull != osg::StateAttribute::INHERIT)
+            cull != osg::StateAttribute::INHERIT && SurfaceLocks::takes(locks.mCull, cull))
             material.mTwoSided = (cull & osg::StateAttribute::ON) == 0;
 
         // What `NifOsg::AlphaController` animates. `MWRender::TransparencyUpdater` writes the same
         // name beside `actorFade` to fade a whole actor, which is not the surface's own opacity and
         // is read by the walk as a fade instead.
-        if (const osg::Uniform* animated = uniformNamed(stateSet, "alpha"))
-            if (uniformNamed(stateSet, "actorFade") == nullptr)
-                animated->get(material.mOpacity);
+        if (const osg::StateSet::RefUniformPair* animated = uniformNamed(stateSet, "alpha"))
+            if (uniformNamed(stateSet, "actorFade") == nullptr && SurfaceLocks::takes(locks.mAlpha, animated->second))
+                animated->first->get(material.mOpacity);
 
-        readTransform(stateSet, diffuseUnit.value_or(0), material);
+        // What `NifOsg` sets white under a `NiTextureEffect` and `SceneUtil::GlowUpdater` sets to
+        // the enchantment's colour. Read on its own lock rather than the texture's, because the
+        // glow updater rewrites the texture every frame and the colour once.
+        if (const osg::StateSet::RefUniformPair* tint = uniformNamed(stateSet, "envMapColor"))
+            if (SurfaceLocks::takes(locks.mEnvironmentColour, tint->second))
+            {
+                osg::Vec4f colour;
+                if (tint->first->get(colour))
+                    material.mEnvironmentColour = stated(colour);
+            }
+
+        // The ambient the game overrides for a magic effect — `SceneUtil::configureSunAmbientOverride`.
+        if (const osg::StateSet::RefUniformPair* ambient = uniformNamed(stateSet, "sun.ambient"))
+            if (SurfaceLocks::takes(locks.mAmbientOverride, ambient->second))
+            {
+                osg::Vec4f colour;
+                if (ambient->first->get(colour))
+                    material.mAmbientOverride = stated(colour);
+            }
+
+        readTransform(stateSet, diffuseUnit.value_or(0), material, locks);
 
         return said;
     }

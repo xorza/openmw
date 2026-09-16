@@ -9,6 +9,7 @@
 
 #include "error.hpp"
 #include "runs.hpp"
+#include "texturewrap.hpp"
 
 namespace Rtx
 {
@@ -146,6 +147,10 @@ namespace Rtx
         /// Carried rather than implied by position, because a slot a departing cell freed is taken
         /// over wherever it sits.
         Index mSlot = 0;
+
+        /// How the slot is addressed past its edges, which is the sampler a backend binds it
+        /// through. The scene's table says, per slot.
+        TextureWrap mWrap = TextureWrap::Repeat;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
         std::uint32_t mWidth = 0;

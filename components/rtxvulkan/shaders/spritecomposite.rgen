@@ -36,6 +36,7 @@
 #include "lib/bindings.glsl"
 #include "lib/fog.glsl"
 #include "lib/frame.glsl"
+#include "lib/medium.glsl"
 #include "lib/sprites.glsl"
 
 /// The frame as it will be shown, read and written in place.
@@ -63,12 +64,19 @@ void main()
     // How far the eye committed on the traced grid, which is where a puff is hidden.
     const float distance = imageLoad(depth, ivec2(traced)).y;
 
-    const PuffLayer shape = spritesAlong(traced, coneAt(camera), origin, direction, distance, false);
+    const Cone cone = coneAt(camera);
+    const PuffLayer shape = spritesAlong(traced, cone, origin, direction, distance, false);
     const vec2 stood = imageLoad(puffsDepth, ivec2(traced)).xy;
 
     PuffLayer layer = shape;
     layer.mTransmittance = shape.mTransmittance * stood.y;
     layer.mCoveredAt = stood.x;
+
+    // **The additive meshes, gathered here beside the flames** for the reason this launch draws
+    // the flames at all: at the picture's own extent and past the denoiser. One query against a
+    // mask a handful of instances carry, and only on the frames that hold one.
+    if (frame.mAdditiveInFrame != 0u)
+        layer.mAdded += additiveAlong(traced, origin, direction, distance, cone);
 
     // The lit colour, off the traced layer around this pixel: each of the four nearest traced
     // pixels weighted by how near it is and by how much it covered, so a traced pixel the puff

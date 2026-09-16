@@ -41,9 +41,11 @@
 #include "instance.hpp"
 #include "placing.hpp"
 #include "presenttargets.hpp"
+#include "ripplepass.hpp"
 #include "skinpass.hpp"
 #include "spritepasses.hpp"
 #include "stresspass.hpp"
+#include "sunglarepass.hpp"
 #include "tonepass.hpp"
 #include "tracechain.hpp"
 #include "visibilitypass.hpp"
@@ -126,7 +128,11 @@ namespace Rtx
 
         std::string describeDevice() const override;
         bool isValidating() const override;
-        void resetHistory() override { mDenoiserStale = mAirStale = true; }
+        void resetHistory() override
+        {
+            mDenoiserStale = mAirStale = true;
+            mRipples.reset();
+        }
 
         void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) override;
         void extendScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived) override;
@@ -335,11 +341,20 @@ namespace Rtx
         /// property of a scene, so it is synthesised once a frame here rather than held per scene.
         WavePass mWaves;
 
+        /// What walked through the water, stepped once a frame the world stands in a sea and read
+        /// by every picture beside the waves.
+        RipplePass mRipples;
+
         /// One field for everything traced, drawn once for the life of the device. Nothing about
         /// it turns on the weather or the cell — those decide the extinction and the layer's height,
         /// which are numbers the shader already has.
         FogTile mFog;
         ExposurePass mExposure;
+
+        /// How much of the sun's quad the frame's rays could see, eased, which the frame's curve
+        /// lays the glare fader over the picture by. The frame's alone: a picture inside the
+        /// interface is mapped with no share at all.
+        SunGlarePass mSunGlare;
 
         /// One pass for everything posed, the doll included: what differs per scene is the
         /// tables, which each `ViewScene` holds.

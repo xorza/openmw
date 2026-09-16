@@ -2,17 +2,22 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 
 #include <osg/CopyOp>
 #include <osg/Image>
+#include <osg/StateAttribute>
 #include <osg/Vec2f>
 #include <osg/ref_ptr>
+
+#include "texturewrap.hpp"
 
 namespace osg
 {
     class StateSet;
+    class Texture;
 }
 
 namespace Rtx
@@ -90,6 +95,75 @@ namespace Rtx
     /// rather than an untextured surface.
     std::string_view textureRoleName(TextureRole role);
 
+    /// One texture as a surface uses it: the image, and how it is addressed past its edges.
+    ///
+    /// **The image and not an `osg::Texture2D`**, for the reason `SurfaceDescription::mTextures`
+    /// gives; **and the wrap beside it**, because that is the one piece of sampler state the
+    /// content decides per texture. A `NiSourceTexture` states a clamp, `NifOsg` puts it on the
+    /// texture, and a renderer that read the image alone repeated every banner's edge.
+    struct TextureUse
+    {
+        osg::ref_ptr<const osg::Image> mImage;
+        TextureWrap mWrap = TextureWrap::Repeat;
+
+        const osg::Image* get() const { return mImage.get(); }
+
+        bool operator==(const TextureUse& other) const = default;
+    };
+
+    /// How a blended surface composites over what is behind it, off its `BlendFunc`. Three and not
+    /// the eleven factors OpenGL offers, because the shipped content states exactly these three:
+    /// `SRC_ALPHA, ONE_MINUS_SRC_ALPHA` on 3,808 records, `SRC_ALPHA, ONE` on 785 and
+    /// `SRC_ALPHA, DST_ALPHA` on eight — which adds, since the frame's alpha is one — and
+    /// `ONE, ONE` on one.
+    enum class BlendKind : std::uint8_t
+    {
+        /// Covers what is behind it by its alpha.
+        Over,
+
+        /// Adds to what is behind it, weighted by its alpha, and covers nothing: a flame, a
+        /// magic effect's sheet.
+        Add,
+
+        /// Adds whole, its alpha unread.
+        AddWhole,
+    };
+
+    /// What a parent state set has claimed for the rest of a chain.
+    ///
+    /// **OpenGL resolves a chain root first, and a parent that set a value with `OVERRIDE` keeps
+    /// it against every child that did not set its own `PROTECTED`.** A fold that let the child
+    /// win every time lost the one texture the game overrides from above — `MWRender::overrideTexture`
+    /// puts the blood's texture on an effect's root that way. One lock per thing the fold reads,
+    /// carried across one fold and never further.
+    struct SurfaceLocks
+    {
+        /// One bit per `TextureRole`.
+        std::uint32_t mTextures = 0;
+
+        bool mMaterial = false;
+        bool mAlphaFunc = false;
+        bool mBlend = false;
+        bool mCull = false;
+        bool mAlpha = false;
+        bool mTextureMatrix = false;
+        bool mAmbientOverride = false;
+        bool mEnvironmentColour = false;
+
+        /// Whether a value carrying `flags` is taken under `lock`, and claims the lock for the rest
+        /// of the chain where it carries `OVERRIDE`. The whole of OpenGL's rule, in one place.
+        static bool takes(bool& lock, osg::StateAttribute::OverrideValue flags)
+        {
+            if (lock && (flags & osg::StateAttribute::PROTECTED) == 0)
+                return false;
+            if ((flags & osg::StateAttribute::OVERRIDE) != 0)
+                lock = true;
+            return true;
+        }
+
+        bool takesTexture(TextureRole role, osg::StateAttribute::OverrideValue flags);
+    };
+
     /// The role a texture unit's name means, or nothing for a name that is not a role: `blendMap`
     /// and the shadow maps are bound the same way and are not what a surface is made of.
     std::optional<TextureRole> textureRoleNamed(std::string_view name);
@@ -103,9 +177,26 @@ namespace Rtx
         /// One texture per role, null where the content has none. The image and not an
         /// `osg::Texture2D`: `osgDB::SharedStateManager` replaces the texture `NifOsg` bound by
         /// one it never saw, and the image is what `Resource::ImageManager` caches by path and what
-        /// carries the file name a renderer identifies a texture by. Sampler state stays on the
-        /// texture.
-        std::array<osg::ref_ptr<const osg::Image>, sTextureRoleCount> mTextures;
+        /// carries the file name a renderer identifies a texture by. The wrap comes across with it,
+        /// and the rest of the sampler state stays on the texture.
+        std::array<TextureUse, sTextureRoleCount> mTextures;
+
+        /// How a blended surface composites, meaningful under `AlphaMode::Blend`.
+        BlendKind mBlend = BlendKind::Over;
+
+        /// Which texture unit the dark map is bound at, meaningful where there is one. Carried
+        /// because half the vanilla dark maps read the geometry's second set of texture
+        /// coordinates, and which set a unit reads is the geometry's to say.
+        std::uint8_t mDarkUnit = 0;
+
+        /// What the environment map is tinted by: `envMapColor`, which `NifOsg` sets to white
+        /// under a `NiTextureEffect` and `SceneUtil::GlowUpdater` to the enchantment's colour.
+        EncodedColour mEnvironmentColour{ 1.0f, 1.0f, 1.0f };
+
+        /// The ambient light the game overrides for this surface, or nothing. `EffectManager` and
+        /// `Animation::addEffect` give a magic effect a white `sun.ambient`, which is what makes
+        /// it fully lit in a cave; the rasterizer sums it with the material's ambient colour.
+        std::optional<EncodedColour> mAmbientOverride;
 
         AlphaMode mAlphaMode = AlphaMode::Opaque;
 
@@ -152,13 +243,17 @@ namespace Rtx
 
         const osg::Image* getTexture(TextureRole role) const { return mTextures[static_cast<std::size_t>(role)].get(); }
 
-        void setTexture(TextureRole role, const osg::Image* image)
+        const TextureUse& getTextureUse(TextureRole role) const { return mTextures[static_cast<std::size_t>(role)]; }
+
+        /// Repeating, which is what a caller that has no texture to read a wrap off means.
+        void setTexture(TextureRole role, const osg::Image* image, TextureWrap wrap = TextureWrap::Repeat)
         {
-            mTextures[static_cast<std::size_t>(role)] = image;
+            mTextures[static_cast<std::size_t>(role)] = TextureUse{ .mImage = image, .mWrap = wrap };
         }
 
-        /// The same, taking whatever the texture was bound as. Null and imageless textures clear the
-        /// role, which is what a placeholder a flip controller has not filled in yet amounts to.
+        /// The same, taking whatever the texture was bound as, its wrap included. Null and
+        /// imageless textures clear the role, which is what a placeholder a flip controller has
+        /// not filled in yet amounts to.
         void setTexture(TextureRole role, const osg::Texture* texture);
 
         bool operator==(const SurfaceDescription& other) const = default;
@@ -171,10 +266,18 @@ namespace Rtx
     /// glossiness and the vertex-colour mode come off the `SceneUtil::Material`, the opacity again
     /// off an `alpha` uniform unless an `actorFade` stands beside it, the alpha test off the
     /// `osg::AlphaFunc` or the `alphaRef` uniform the visitor moved it into, blending off a
-    /// `BlendFunc` or `GL_BLEND`, two-sidedness off `GL_CULL_FACE`, and the texture transform off
-    /// the `texMat<unit>` uniform on the diffuse unit.
+    /// `BlendFunc` or `GL_BLEND` and how it composites off the `BlendFunc`'s factors, two-sidedness
+    /// off `GL_CULL_FACE`, the texture transform off the `texMat<unit>` uniform on the diffuse
+    /// unit, the environment map's tint off `envMapColor`, and the ambient the game overrides off
+    /// `sun.ambient`.
+    ///
+    /// A parent's `OVERRIDE` is honoured through `locks`, which a caller folding a chain carries
+    /// from the root down and a caller reading one state set leaves at its default.
     ///
     /// @return whether the state set carried a material or a texture: what tells a surface from a
     ///         node that only sets a mode or a uniform on the way down.
+    bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& into, SurfaceLocks& locks);
+
+    /// One state set on its own, under no lock.
     bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& into);
 }

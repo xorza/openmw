@@ -94,6 +94,7 @@ namespace Rtx::Testing
             stats.mGroundCells = from + 18;
             stats.mSpritelessEmitters = from + 19;
             stats.mWornOtherwise = from + 20;
+            stats.mWornBeyondKept = from + 21;
             return stats;
         }
 
@@ -125,6 +126,7 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mGroundCells, 136u);
             EXPECT_EQ(sum.mSpritelessEmitters, 138u);
             EXPECT_EQ(sum.mWornOtherwise, 140u);
+            EXPECT_EQ(sum.mWornBeyondKept, 142u);
 
             const FormatCount& blocks = sum.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc3Srgb)];
             EXPECT_EQ(blocks.mMet, 130u);

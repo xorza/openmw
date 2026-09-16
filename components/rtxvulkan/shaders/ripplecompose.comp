@@ -1,0 +1,54 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+// The ripple field unpacked into the textures the sea reads, in the wave tiles' own layout: the two
+// slopes with their second moment and the height squared, and the three curvatures the caustic
+// differentiates. Central differences, because the field is a grid of heights and not a spectrum;
+// `wavecompose.comp` has the derivatives analytically and this has to take them.
+
+#include "ripple.h"
+#include "wave.h"
+#include "lib/pixels.glsl"
+
+layout(local_size_x = RIPPLE_WORKGROUP, local_size_y = RIPPLE_WORKGROUP) in;
+
+layout(set = 0, binding = 0, rg32f) uniform readonly image2D field;
+layout(set = 0, binding = 1, WAVE_TILE_FORMAT) uniform writeonly image2D surface;
+layout(set = 0, binding = 2, WAVE_TILE_FORMAT) uniform writeonly image2D curvature;
+
+/// The height at `texel`, or nought past the field's edge, which is still water.
+float heightAt(ivec2 texel)
+{
+    if (any(lessThan(texel, ivec2(0))) || any(greaterThanEqual(texel, ivec2(RIPPLE_GRID))))
+        return 0.0;
+
+    return imageLoad(field, texel).x;
+}
+
+void main()
+{
+    const uvec2 cell = gl_GlobalInvocationID.xy;
+    if (outsideOf(cell, uvec2(RIPPLE_GRID)))
+        return;
+
+    const ivec2 texel = ivec2(cell);
+    const float texelWidth = RIPPLE_TEXEL;
+
+    const float here = heightAt(texel);
+    const float east = heightAt(texel + ivec2(1, 0));
+    const float west = heightAt(texel - ivec2(1, 0));
+    const float north = heightAt(texel + ivec2(0, 1));
+    const float south = heightAt(texel - ivec2(0, 1));
+
+    const vec2 slope = vec2(east - west, north - south) / (2.0 * texelWidth);
+
+    const float xx = (east - 2.0 * here + west) / (texelWidth * texelWidth);
+    const float yy = (north - 2.0 * here + south) / (texelWidth * texelWidth);
+    const float xy = (heightAt(texel + ivec2(1, 1)) - heightAt(texel + ivec2(1, -1)) - heightAt(texel + ivec2(-1, 1))
+                         + heightAt(texel + ivec2(-1, -1)))
+        / (4.0 * texelWidth * texelWidth);
+
+    imageStore(surface, texel, vec4(slope, dot(slope, slope), here * here));
+    imageStore(curvature, texel, vec4(xx, yy, xy, 0.0));
+}

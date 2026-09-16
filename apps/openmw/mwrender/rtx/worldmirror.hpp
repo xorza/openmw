@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <span>
 
 #include <osg/PositionAttitudeTransform>
 #include <osg/Vec2f>
@@ -16,6 +17,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/residency.hpp>
+#include <components/rtx/ripple.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
@@ -79,6 +81,10 @@ namespace MWRender
         /// this renderer stands it — the plane the rasterizer's `Water` stood was the sea a ray met,
         /// and that object is the rasterizer's now.
         Rtx::ExtractionStats mirror(const SceneFrame& frame, std::size_t frameNumber);
+
+        /// What disturbed the water this frame, into the scene the walk just cleared, so the
+        /// trace presses it and the digest sees it. After `mirror`, which clears the frame's lists.
+        void addRipples(std::span<const Rtx::RippleImpulse> impulses);
 
         /// A cell the scene added, which is what the sea is centred on: upstream's
         /// `Water::changeCell`, verbatim in effect — the middle of the cell outdoors, the origin
@@ -161,6 +167,17 @@ namespace MWRender
         /// The moons' portraits and the sky's own meshes, added once and never given back.
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;
+
+        /// What a script paints Secunda, `Moons_Script_Color` decoded, read once as the
+        /// rasterizer's `SkyManager` reads it. `SkySettled::mMoonRed` says when.
+        osg::Vec3f mMoonPaint;
+
+        /// The sun glare fader's three constants, read once as `SunGlareCallback` reads them:
+        /// `Weather_Sun_Glare_Fader_Color` doubled and clamped, `_Max`, and `_Angle_Max` in
+        /// radians. `Rtx::Shaders::glare.h` says what each is.
+        osg::Vec3f mGlareColour;
+        float mGlareMax;
+        float mGlareAngleMax;
 
         /// The sea: upstream's water geometry under `Mask_Water`, which is how the extractor
         /// knows a sea from a floor, stood at the frame's water height and hidden where the frame

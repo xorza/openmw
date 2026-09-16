@@ -11,6 +11,7 @@
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "sprite.hpp"
+#include "surface.hpp"
 #include "walk.hpp"
 
 namespace osg
@@ -65,7 +66,12 @@ namespace Rtx
             osg::Matrixf mPlace;
             Index mTexture;
             Index mLighting;
-            bool mLight;
+
+            /// How the system's sprites composite: one that adds is light and must not be lit.
+            BlendKind mBlend;
+
+            /// Whether its sprites fall from the sky, which is the walk's word and not the system's.
+            bool mFalls;
 
             /// Kept only to name the texture's format in the stats, which is read once per emitter.
             const osg::Image* mSprite;

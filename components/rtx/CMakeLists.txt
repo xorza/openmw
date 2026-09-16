@@ -28,6 +28,7 @@ set(RTX_FILES
     cellreader.cpp
     cellreader.hpp
     residency.hpp
+    ripple.hpp
     frameimage.hpp
     cloudshell.cpp
     cloudshell.hpp
@@ -160,10 +161,12 @@ set(RTX_SHADER_HEADERS
     shaders/stress.h
     shaders/fogvolume.h
     shaders/gbuffer.h
+    shaders/glare.h
     shaders/hosttypes.h
     shaders/look.h
     shaders/portable.h
     shaders/probe.h
+    shaders/ripple.h
     shaders/scene.h
     shaders/skinning.h
     shaders/sky.h

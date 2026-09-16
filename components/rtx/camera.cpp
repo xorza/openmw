@@ -5,6 +5,7 @@
 #include <limits>
 
 #include <osg/Math>
+#include <osg/Matrixd>
 
 #include "error.hpp"
 #include "shaders/camera.h"
@@ -30,16 +31,6 @@ namespace Rtx
 
             return result;
         }
-
-        /// A viewpoint's axes in world coordinates, which is what a view matrix holds the inverse
-        /// of.
-        struct ViewBasis
-        {
-            osg::Vec3f mOrigin;
-            osg::Vec3f mForward;
-            osg::Vec3f mRight;
-            osg::Vec3f mUp;
-        };
 
         /// The half-extents of the image plane at one unit ahead, and the angle one pixel covers.
         struct Spread
@@ -104,23 +95,25 @@ namespace Rtx
             if (!world.invert(view))
                 throw Error("the view matrix cannot be inverted, so it names no viewpoint");
 
-            // OpenSceneGraph's eye space is OpenGL's: +X right, +Y up and the view down -Z. The
-            // rows of the inverse are those axes written in world coordinates, and its translation
-            // is where the eye stands.
-            ViewBasis basis{
-                .mOrigin = osg::Vec3f(world(3, 0), world(3, 1), world(3, 2)),
-                .mForward = -osg::Vec3f(world(2, 0), world(2, 1), world(2, 2)),
-                .mRight = osg::Vec3f(world(0, 0), world(0, 1), world(0, 2)),
-                .mUp = osg::Vec3f(world(1, 0), world(1, 1), world(1, 2)),
-            };
-
-            // Normalised rather than assumed: a view matrix with a scale in it is a legal one, and
-            // the basis below is scaled again by the frame's own extents.
-            if (basis.mForward.normalize() <= 0.f || basis.mRight.normalize() <= 0.f || basis.mUp.normalize() <= 0.f)
-                throw Error("the view matrix has no basis to look along");
-
-            return basis;
+            return viewBasisOf(osg::Matrixd(world));
         }
+    }
+
+    ViewBasis viewBasisOf(const osg::Matrixd& world)
+    {
+        // The rows of the inverse are the eye's axes written in world coordinates, and its
+        // translation is where the eye stands.
+        ViewBasis basis{
+            .mOrigin = osg::Vec3f(world.getTrans()),
+            .mForward = -osg::Vec3f(world(2, 0), world(2, 1), world(2, 2)),
+            .mRight = osg::Vec3f(world(0, 0), world(0, 1), world(0, 2)),
+            .mUp = osg::Vec3f(world(1, 0), world(1, 1), world(1, 2)),
+        };
+
+        if (basis.mForward.normalize() <= 0.f || basis.mRight.normalize() <= 0.f || basis.mUp.normalize() <= 0.f)
+            throw Error("the view matrix has no basis to look along");
+
+        return basis;
     }
 
     Shaders::VisibilityConstants makeCameraFromView(const osg::Matrixf& view, float verticalFovDegrees,

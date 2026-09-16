@@ -5,6 +5,7 @@
 #include <osgParticle/ParticleSystem>
 #include <osgParticle/ParticleSystemUpdater>
 
+#include <components/nifosg/autotransform.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -32,6 +33,8 @@ namespace Rtx
                 return NodeKind::RigGeometry;
             if (dynamic_cast<const SceneUtil::MorphGeometry*>(&object) != nullptr)
                 return NodeKind::MorphGeometry;
+            if (dynamic_cast<const NifOsg::AutoTransform*>(&object) != nullptr)
+                return NodeKind::Billboard;
 
             return NodeKind::Other;
         }

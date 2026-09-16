@@ -703,8 +703,56 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     if (isSeenThrough(opacity))
         surface.mOpacity = sampledOpacity(opacity, material, point);
 
+    // **The dark map multiplies the whole of it**, colour and alpha, which is where `objects.frag`
+    // puts it. At the unit the content bound it at, on whichever set that unit reads: the Sixth
+    // House banners read their second set and the durzog its first.
+    if (material.mDark != NO_TEXTURE)
+    {
+        const uint unit = (material.mFlags >> MATERIAL_DARK_UNIT_SHIFT) & MATERIAL_DARK_UNIT_MASK;
+        TexturePoint darkPoint = point;
+        if (readsSecondUvs(mesh, unit))
+        {
+            vec2 second[3];
+            triangleSecondUvs(mesh, corner, second);
+            darkPoint = texturePoint(second, weight, vec4(1.0, 1.0, 0.0, 0.0), cone, surface.mFootprint);
+        }
+
+        const vec4 dark = sampleDiffuse(material.mDark, darkPoint);
+        surface.mAlbedo *= dark.rgb;
+
+        // The alpha only where an alpha is read at all: an opaque surface's is never written to
+        // the frame, and the peel reads `mOpacity` as whether there is a layer to peel.
+        if (isSeenThrough(opacity))
+            surface.mOpacity *= dark.a;
+    }
+
     if (material.mEmissive != NO_TEXTURE)
         surface.mEmitted = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point).rgb;
+
+    // **A sphere-mapped sheet, added past the albedo and indexed by where the eye is.** The
+    // original adds `envMap` after its lighting, so it is emission that depends on the view: the
+    // violet sheet a magic effect wears and the caustic sheet an enchanted item shimmers with are
+    // what the artist drew, and neither is a reflection of anything. The coordinates are the
+    // rasterizer's own — `objects.vert` reflects the eye-space view vector about the eye-space
+    // normal and folds it onto the sheet — in the frame camera's basis, so a bounce that lands on
+    // glass armour sees the sheet the way the reflection camera would.
+    if (material.mEnvironment != NO_TEXTURE)
+    {
+        // The camera's axes are scaled by the image plane's half extents and are taken unit here;
+        // the eye space is OpenGL's, looking down its own -Z.
+        const vec3 right = normalize(frame.mCamera.mRight);
+        const vec3 up = normalize(frame.mCamera.mUp);
+        const vec3 forward = frame.mCamera.mForward;
+        const vec3 viewEye = vec3(dot(direction, right), dot(direction, up), -dot(direction, forward));
+        const vec3 normalEye = vec3(dot(surface.mNormal, right), dot(surface.mNormal, up), -dot(surface.mNormal, forward));
+
+        const vec3 r = reflect(viewEye, normalEye);
+        const float m = 2.0 * sqrt(r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0));
+        const TexturePoint sheet = TexturePoint(r.xy / m + 0.5, point.mBase);
+
+        surface.mEmitted
+            += EMISSIVE_INTENSITY * sampleDiffuse(material.mEnvironment, sheet).rgb * material.mEnvironmentColour;
+    }
 
     return surface;
 }

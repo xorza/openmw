@@ -1,0 +1,84 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+// One step of the wave equation over the ripple field: the springs `lib/water/ripples.glsl`
+// states, which are what the rasterizer's `RipplesSurface` steps its own field by.
+//
+// **Read where the window stood and written where it stands.** The field follows the eye by whole
+// texels, and the old field is read at the offset the window moved by, so a ring the eye walks past
+// stays where it was stamped. A texel the old window did not hold reads as still water.
+//
+// **The two heights ride in one texel**: the height in `x` and the height a step before in `y`,
+// which is what a second-order step needs and all it needs.
+//
+// **And the impulses are stamped here, on the way out.** The rasterizer's blobber presses a ring
+// into the field before its simulate reads it; this presses the same ring into what the step just
+// wrote, which the next step then propagates — one step later, and no second pass over a
+// million texels. A texel loops over the frame's impulses, which is nought on nearly every frame
+// and a handful when somebody wades.
+
+#include "ripple.h"
+#include "lib/pixels.glsl"
+
+layout(local_size_x = RIPPLE_WORKGROUP, local_size_y = RIPPLE_WORKGROUP) in;
+
+layout(set = 0, binding = 0, rg32f) uniform readonly image2D before;
+layout(set = 0, binding = 1, rg32f) uniform writeonly image2D after;
+
+layout(set = 0, binding = 2, scalar) readonly buffer Impulses
+{
+    GpuRippleImpulse impulses[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    RippleStepConstants step;
+};
+
+/// What `ripples_blobber.frag` presses at `texel` for one impulse: a ring of the impulse's radius,
+/// pressing both heights a fifth of the way to `mStrength` on the ring and less either side of it.
+/// The ring and not a disc, because a footfall's rim is what a wake is made of.
+vec2 pressed(vec2 heights, GpuRippleImpulse impulse, vec2 texel)
+{
+    const float away = length(impulse.mAt - texel) / max(impulse.mRadius, 1.0e-3);
+    const float kept = clamp(0.2 * abs(away - 1.0) + 0.8, 0.0, 1.0);
+
+    return mix(vec2(impulse.mStrength), heights, kept);
+}
+
+/// The height a step before at `texel` of the new window, off the old one, or nought past it.
+vec2 was(ivec2 texel)
+{
+    const ivec2 old = texel + step.mShift;
+    if (any(lessThan(old, ivec2(0))) || any(greaterThanEqual(old, ivec2(RIPPLE_GRID))))
+        return vec2(0.0);
+
+    return imageLoad(before, old).xy;
+}
+
+void main()
+{
+    const uvec2 cell = gl_GlobalInvocationID.xy;
+    if (outsideOf(cell, uvec2(RIPPLE_GRID)))
+        return;
+
+    const ivec2 texel = ivec2(cell);
+    const vec2 held = was(texel);
+
+    const float neighbours = was(texel + ivec2(1, 0)).x + was(texel - ivec2(1, 0)).x + was(texel + ivec2(0, 1)).x
+        + was(texel - ivec2(0, 1)).x;
+
+    // `applySprings`, verbatim: the coupling to the four neighbours, the height held back by both
+    // dampings and the coupling it gave away, and the step before subtracted through the
+    // velocity's damping.
+    const float a = RIPPLE_STIFFNESS;
+    const float damping = RIPPLE_DAMPING;
+    const float next = a * neighbours + ((2.0 - 2.0 * damping) - 4.0 * a) * held.x - (1.0 - damping) * held.y;
+
+    vec2 heights = vec2(next, held.x);
+    for (uint at = 0u; at < step.mCount; ++at)
+        heights = pressed(heights, impulses[at], vec2(texel) + 0.5);
+
+    imageStore(after, texel, vec4(heights, 0.0, 0.0));
+}

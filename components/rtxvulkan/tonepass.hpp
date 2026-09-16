@@ -33,6 +33,8 @@ namespace Rtx
         /// @param colour the finished frame in linear radiance, in `VK_IMAGE_LAYOUT_GENERAL`.
         /// @param exposure one float, what to scale it by. `ExposurePass` writes it, measured off
         ///        this same image or fixed, and this pass never learns which.
+        /// @param sunGlare one float, how much of the sun's quad the eye could see — the frame's
+        ///        `SunGlarePass::getShare`, or its `getNoShare` for a picture inside the interface.
         /// @param starsShown what the star field has to be drawn through, in
         ///        `VK_IMAGE_LAYOUT_GENERAL`, at the extent the trace ran at. `GBuffer::getStarsShown`
         ///        says why this pass cannot work it out for itself.
@@ -44,8 +46,9 @@ namespace Rtx
         /// @param bloom the pyramid's finest level, in `VK_IMAGE_LAYOUT_GENERAL`, or null where
         ///        nothing built one — a doll, a map tile, a frame too small to halve.
         /// @param target the displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.
-        void record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure, const Image& starsShown,
-            const Image* bloom, VkDescriptorSet textures, const Image& target, Shaders::ToneConstants constants) const;
+        void record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure, const Buffer& sunGlare,
+            const Image& starsShown, const Image* bloom, VkDescriptorSet textures, const Image& target,
+            Shaders::ToneConstants constants) const;
 
     private:
         ComputePipeline mPipeline;

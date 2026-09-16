@@ -2,8 +2,6 @@
 
 #include <string>
 
-#include <osg/BlendFunc>
-#include <osg/StateAttribute>
 #include <osg/StateSet>
 #include <osg/Uniform>
 
@@ -13,29 +11,12 @@ namespace Rtx
 {
     bool describeSurface(std::span<const Shading> shading, SurfaceDescription& material)
     {
+        SurfaceLocks locks;
         bool said = false;
         for (const Shading& link : shading)
-            said = describeStateSet(*link.mStateSet, material) || said;
+            said = describeStateSet(*link.mStateSet, material, locks) || said;
 
         return said;
-    }
-
-    bool addsLight(std::span<const Shading> shading)
-    {
-        for (auto it = shading.rbegin(); it != shading.rend(); ++it)
-        {
-            // `static_cast`, because the attribute is keyed by type. A state set answers
-            // `BLENDFUNC` with a `BlendFunc` or with nothing, and this runs once per state set of
-            // every drawable's chain — which is the frame path.
-            const auto* blend
-                = static_cast<const osg::BlendFunc*>(it->mStateSet->getAttribute(osg::StateAttribute::BLENDFUNC));
-            if (blend == nullptr)
-                continue;
-
-            return blend->getSource() == osg::BlendFunc::SRC_ALPHA && blend->getDestination() == osg::BlendFunc::ONE;
-        }
-
-        return false;
     }
 
     float fadeThrough(const osg::StateSet& stateSet, float inherited)

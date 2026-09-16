@@ -192,7 +192,9 @@ namespace Rtx
         /// Drops every entry neither the epoch nor a hold keeps, says how many, and collects the
         /// slots the survivors name, unsorted, which is how `SceneDesc::release` takes them. Not
         /// skipped where the map is whole, because the list is read beside another table's.
-        std::uint32_t sweep(std::vector<Index>& live)
+        /// `drop` is handed what each dropped entry held on its way out.
+        template <class Drop>
+        std::uint32_t sweep(std::vector<Index>& live, Drop drop)
         {
             live.clear();
             live.reserve(mKnown.size());
@@ -207,12 +209,19 @@ namespace Rtx
                     continue;
                 }
 
+                drop(entry->second);
                 entry = mKnown.erase(entry);
                 ++dropped;
             }
 
             settle();
             return dropped;
+        }
+
+        /// The same where the entry holds nothing to give back.
+        std::uint32_t sweep(std::vector<Index>& live)
+        {
+            return sweep(live, [](const auto&) {});
         }
 
         /// Drops every entry neither the epoch nor a hold keeps, handing `drop` what each held on

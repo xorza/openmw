@@ -19,6 +19,7 @@
 #include "shaders/scene.h"
 #include "shaders/sky.h"
 #include "skylight.hpp"
+#include "texturewrap.hpp"
 
 namespace Rtx
 {
@@ -114,7 +115,10 @@ namespace Rtx
         constexpr VFS::Path::NormalizedView masser("textures/tx_masser_full.dds");
         constexpr VFS::Path::NormalizedView secunda("textures/tx_secunda_full.dds");
 
-        const MoonFaces faces{ .mMasser = scene.textures().add(masser), .mSecunda = scene.textures().add(secunda) };
+        // Clamped: a portrait is one image edge to edge, and a repeating tap at its limb would
+        // blend the far edge's paint into the disc's antialiasing.
+        const MoonFaces faces{ .mMasser = scene.textures().add(masser, TextureWrap::Clamp),
+            .mSecunda = scene.textures().add(secunda, TextureWrap::Clamp) };
         scene.textures().hold(faces.mMasser);
         scene.textures().hold(faces.mSecunda);
         return faces;
@@ -127,11 +131,12 @@ namespace Rtx
             .mRight = placement.mRight,
             .mUp = placement.mUp,
             .mColour = placement.mColour,
-            .mIrradiance = placement.mIrradiance,
+            .mIrradiance = osg::componentMultiply(placement.mIrradiance, placement.mPaint),
             .mLimb = std::sin(placement.mAngularRadius),
             .mPhaseAngle = placement.mPhaseAngle,
             .mAlpha = placement.mAlpha,
             .mThroughAir = placement.mThroughAir,
+            .mPaint = placement.mPaint,
             .mFace = placement.mFace == sNoIndex ? Shaders::NO_TEXTURE : static_cast<std::uint32_t>(placement.mFace),
         };
     }

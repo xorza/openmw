@@ -7,6 +7,7 @@
 #include <osg/Geode>
 #include <osg/Geometry>
 #include <osg/Group>
+#include <osg/Math>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
@@ -102,6 +103,10 @@ namespace Rtx
                 .mSeconds = 12.25f,
                 .mSkySeconds = 47.5,
                 .mRainOnWater = 0.35f,
+                .mShelterHeight = 8992.0f,
+                .mGlareColour = osg::Vec3f(1.0f, 0.745f, 0.306f),
+                .mGlareAngleMax = 0.5236f,
+                .mGlareStrength = 0.125f,
             };
         }
 
@@ -269,6 +274,10 @@ namespace Rtx
             EXPECT_EQ(constants.mTime, read.mSeconds) << "the game wrote this nowhere either";
             EXPECT_EQ(constants.mSkyTime, 47.5f) << "the sky's clock, and not the water's";
             EXPECT_EQ(constants.mRainOnWater, read.mRainOnWater);
+            EXPECT_EQ(constants.mShelterHeight, read.mShelterHeight);
+            EXPECT_EQ(constants.mGlareColour, read.mGlareColour);
+            EXPECT_EQ(constants.mGlareAngleMax, read.mGlareAngleMax);
+            EXPECT_EQ(constants.mGlareStrength, read.mGlareStrength);
 
             // The deck and the stars come out of the builders both hosts share, and this is the one
             // place that says the frame is handed what those built rather than a second reading.
@@ -309,6 +318,34 @@ namespace Rtx
             // pass under.
             EXPECT_NE(constants.mMoons[0].mAlpha, constants.mMoons[1].mAlpha);
             EXPECT_NE(constants.mMoons[0].mDirection, constants.mMoons[1].mDirection);
+        }
+
+        /// The glare fader's amount is `SunGlareCallback`'s own line: the strength, faded to nothing
+        /// linearly over `Angle_Max` off the eye's axis, and nothing at all for a frame with no
+        /// fader in it — whatever the eye is looking at.
+        TEST(RtxFrameWorldTest, theGlareFaderFadesLinearlyOffTheEyesAxis)
+        {
+            Shaders::VisibilityConstants frame{};
+            frame.mCamera.mForward = osg::Vec3f(0.0f, 1.0f, 0.0f);
+            frame.mGlareAngleMax = osg::DegreesToRadians(30.0f);
+            frame.mGlareStrength = 0.5f;
+
+            // Straight at it, ten degrees off, thirty off and past thirty: one, two thirds, nought
+            // and nought of the strength.
+            const auto amountAt = [&](float degrees) {
+                const float off = osg::DegreesToRadians(degrees);
+                frame.mSun
+                    = Shaders::sunSource(osg::Vec3f(std::sin(off), std::cos(off), 0.0f), osg::Vec3f(1.0f, 1.0f, 1.0f));
+                return sunGlareAmount(frame);
+            };
+
+            EXPECT_FLOAT_EQ(amountAt(0.0f), 0.5f);
+            EXPECT_NEAR(amountAt(10.0f), 0.5f * (1.0f - 10.0f / 30.0f), 1e-6f);
+            EXPECT_NEAR(amountAt(30.0f), 0.0f, 1e-6f);
+            EXPECT_EQ(amountAt(45.0f), 0.0f);
+
+            frame.mGlareStrength = 0.0f;
+            EXPECT_EQ(amountAt(0.0f), 0.0f);
         }
 
         /// The camera's half is left exactly as it was found.

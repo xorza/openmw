@@ -1,5 +1,7 @@
 #include "spritebin.hpp"
 
+#include <cassert>
+
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/spritebin.h>
 #include <components/rtx/shaders/spriteshade.h>
@@ -28,9 +30,7 @@ namespace Rtx
         mReport.writable<std::uint32_t>(0, 1).front() = 0;
     }
 
-    void SpriteBin::record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
-        const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
-        GpuTimer* const timer)
+    void SpriteBin::take(const SpriteSource& source, const Shaders::Camera& camera, const VkCommandBuffer commands)
     {
         const Timeline& timeline = mDevice.getTimeline();
         const std::uint32_t count = source.mSpriteCount;
@@ -42,14 +42,35 @@ namespace Rtx
         mGraveyard.bury(growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t),
             sTableUsage, "sprite rects"));
 
+        // Sized from what the last bin here said it needed, with room over it, because the need is
+        // only known once the tiles are counted and that happens on the device. Read where the
+        // timeline says the report has landed; a picture's bin behind another's on the queue keeps
+        // the capacity it has, which `SpriteListSize` never shrinks anyway. Here with the rest,
+        // because the frame block carries this table's address too.
+        const std::uint32_t reported
+            = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
+        mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
+
+        mGraveyard.bury(growTo(
+            mTileList, mDevice, BufferKind::HostWritten, mListSize.getBytes(), sTableFilledUsage, "sprite tile list"));
+
         // The placement's table, whole, because the shade writes over what it reads: the copy is
         // what lets a second trace against the same placement — a picture, or the frame after a
         // picture — start from sprites nothing has shaded. On the queue and not from the host,
         // so nothing a submit in flight reads is written under it. Whoever read this bin's tables
         // last is behind on the queue, and the barrier `CommandPool::begin` records at the head
-        // of these commands is what orders the copy after it.
+        // of these commands is what orders the copy after it. Handed to the launch and the
+        // dispatch both, because the shelter launch writes it before the shade does.
         source.mSprites->copyTo(commands, mSprites, bytes);
-        mSprites.transition(commands, Use::sBufferCopyWrite, Use::sBufferComputeReadWrite);
+        mSprites.transition(commands, Use::sBufferCopyWrite, Use::sBufferShaderReadWrite);
+    }
+
+    void SpriteBin::record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
+        const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
+        GpuTimer* const timer)
+    {
+        const std::uint32_t count = source.mSpriteCount;
+        assert(mSprites.getSize() >= source.mSprites->getSize() && "a bin recorded over sprites it never took");
 
         shading.record(commands,
             Shaders::SpriteShadeConstants{
@@ -61,17 +82,6 @@ namespace Rtx
                 .mCount = count,
             },
             timer);
-
-        // Sized from what the last bin here said it needed, with room over it, because the need is
-        // only known once the tiles are counted and that happens on the device. Read where the
-        // timeline says the report has landed; a picture's bin behind another's on the queue keeps
-        // the capacity it has, which `SpriteListSize` never shrinks anyway.
-        const std::uint32_t reported
-            = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
-        mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
-
-        mGraveyard.bury(growTo(
-            mTileList, mDevice, BufferKind::HostWritten, mListSize.getBytes(), sTableFilledUsage, "sprite tile list"));
 
         pass.record(commands,
             Shaders::SpriteBinConstants{

@@ -1,6 +1,8 @@
 #include "texturetable.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 
 namespace Rtx
 {
@@ -14,23 +16,34 @@ namespace Rtx
         const Index index = mSlots.take(Kind::Free, [this](const std::size_t slots) {
             mPaths.resize(slots);
             mBaked.resize(slots);
+            mWraps.resize(slots, TextureWrap::Repeat);
             mChanges.grow(slots);
         });
 
         return index;
     }
 
-    Index TextureTable::add(const VFS::Path::NormalizedView path)
+    Index TextureTable::add(const VFS::Path::NormalizedView path, const TextureWrap wrap)
     {
-        const auto known = mPathIndex.find(path);
-        if (known != mPathIndex.end())
-            return known->second;
+        const auto at = static_cast<std::size_t>(wrap);
+
+        auto known = mPathIndex.find(path);
+        if (known != mPathIndex.end() && known->second[at] != sNoIndex)
+            return known->second[at];
 
         const Index index = takeSlot();
         mPaths[index] = path;
+        mWraps[index] = wrap;
         mSlots.at(index) = Kind::File;
 
-        mPathIndex.emplace(path, index);
+        if (known == mPathIndex.end())
+        {
+            WrapSlots none;
+            none.fill(sNoIndex);
+            known = mPathIndex.emplace(path, none).first;
+        }
+        known->second[at] = index;
+
         mChanges.note(index, SlotNews::Arrived);
         return index;
     }
@@ -45,6 +58,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mBaked[index] = key;
+        mWraps[index] = TextureWrap::Clamp;
         mSlots.at(index) = Kind::Baked;
 
         mBakedIndex.emplace(key, index);
@@ -75,9 +89,16 @@ namespace Rtx
         switch (kind)
         {
             case Kind::File:
-                mPathIndex.erase(mPaths[texture]);
+            {
+                const auto known = mPathIndex.find(mPaths[texture]);
+                assert(known != mPathIndex.end() && "a file slot the path index does not know");
+                WrapSlots& held = known->second;
+                held[static_cast<std::size_t>(mWraps[texture])] = sNoIndex;
+                if (std::ranges::all_of(held, [](const Index slot) { return slot == sNoIndex; }))
+                    mPathIndex.erase(known);
                 mPaths[texture] = VFS::Path::Normalized();
                 break;
+            }
             case Kind::Baked:
                 mBakedIndex.erase(mBaked[texture]);
                 mBaked[texture].clear();

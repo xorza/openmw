@@ -27,6 +27,16 @@ namespace Rtx
 
         std::span<const osg::Vec2f> mTexCoords;
 
+        /// A second set of texture coordinates, empty for nearly every mesh. The vanilla dark maps
+        /// read one on fourteen of their thirty-six records, and a mesh that binds an array other
+        /// than unit nought's at any unit carries it here — `mUnitStreams` says which units.
+        std::span<const osg::Vec2f> mSecondTexCoords;
+
+        /// One bit per texture unit: set where that unit reads `mSecondTexCoords`, clear where it
+        /// reads `mTexCoords`. What the geometry bound at each unit, which a material sharing a
+        /// state set across geometries cannot know — `GpuMesh::mUnitStreams`.
+        std::uint32_t mUnitStreams = 0;
+
         /// The per-vertex colour, in linear light. Empty is white. Decoded where it is read and not
         /// where it is used, because a blend of display-encoded bytes is not the encoding of the
         /// blend and a hit interpolates across a triangle.
@@ -112,6 +122,15 @@ namespace Rtx
         /// `mVertices.mOffset` plus what the index says.
         Run mIndices;
 
+        /// Where its second set of texture coordinates sits, in a buffer of its own that only the
+        /// meshes carrying one take from — a count of nought for every other mesh, which is nearly
+        /// all of them. The shared attribute buffers hold every vertex of the world, and a fourth
+        /// one that mirrored them would hold megabytes of a cell for twenty-two models.
+        Run mSecondTexCoords;
+
+        /// Which units read the second set — `MeshArrays::mUnitStreams`.
+        std::uint32_t mUnitStreams = 0;
+
         /// What the fold found this mesh's triangles to be. `Rtx::FoldedShape` says what each half
         /// means; the scene keeps them and draws nothing from them.
         FoldedShape mShape;
@@ -175,5 +194,10 @@ namespace Rtx
         /// so whether `mediumAlong` has to walk the structure at all
         /// (`VisibilityConstants::mMediumInFrame`).
         std::uint32_t mMedium = 0;
+
+        /// How many add to the frame and cover nothing — `Rtx::Material::isAdditive` — and so
+        /// whether `additiveAlong` has to walk the structure at all
+        /// (`VisibilityConstants::mAdditiveInFrame`).
+        std::uint32_t mAdditive = 0;
     };
 }

@@ -41,6 +41,9 @@ namespace Rtx
         Sprites,
         Emitters,
 
+        /// What disturbed the water this frame, which the ripple field is stepped by.
+        Ripples,
+
         /// What poses a mesh that deforms: the rigs, their runs and their influences.
         Rigs,
 

@@ -20,6 +20,9 @@ namespace Rtx
         Sequence,
         RigGeometry,
         MorphGeometry,
+
+        /// A `NiBillboardNode` — `NifOsg::AutoTransform` — which turns to face whoever is looking.
+        Billboard,
     };
 
     /// Answers what kind a node is by its class, learning each class once. Keyed on the pair of

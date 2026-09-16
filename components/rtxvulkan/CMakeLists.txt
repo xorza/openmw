@@ -68,13 +68,17 @@ set(RTX_SHADERS
     shaders/gui.vert
     shaders/histogram.comp
     shaders/morph.comp
+    shaders/ripplecompose.comp
+    shaders/ripplestep.comp
     shaders/skin.comp
     shaders/spriterects.comp
     shaders/spritecomposite.rgen
     shaders/spriteruns.comp
     shaders/spriteshade.comp
+    shaders/spriteshelter.rgen
     shaders/spritestarts.comp
     shaders/stress.comp
+    shaders/sunglare.comp
     shaders/tone.comp
     shaders/visibility.rahit
     shaders/visibility.rgen
@@ -237,6 +241,8 @@ set(RTX_VULKAN_FILES
     readstamp.hpp
     requirements.cpp
     requirements.hpp
+    ripplepass.cpp
+    ripplepass.hpp
     result.cpp
     result.hpp
     sceneacceleration.cpp
@@ -258,6 +264,8 @@ set(RTX_VULKAN_FILES
     stresspass.hpp
     structurestorage.cpp
     structurestorage.hpp
+    sunglarepass.cpp
+    sunglarepass.hpp
     swapchain.cpp
     swapchain.hpp
     texture.cpp

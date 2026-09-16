@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include <osg/Matrixd>
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
@@ -14,6 +15,24 @@ namespace Rtx
     /// the sun's shadow-ray reach and what the depth buffer encodes against, so a harness that
     /// traced to a different one measured a different frame from the game.
     constexpr float sFarPlane = 200000.0f;
+
+    /// A viewpoint's axes in world coordinates, unit, which is what a view matrix holds the inverse
+    /// of. What a camera is built from, and what a walk hands the nodes that turn toward whoever
+    /// is looking — a `NiBillboardNode` — in place of the cull stack the rasterizer hands them.
+    /// A fresh one looks along +Y with +Z up, which is where OpenSceneGraph's identity view looks.
+    struct ViewBasis
+    {
+        osg::Vec3f mOrigin;
+        osg::Vec3f mForward{ 0.0f, 1.0f, 0.0f };
+        osg::Vec3f mRight{ 1.0f, 0.0f, 0.0f };
+        osg::Vec3f mUp{ 0.0f, 0.0f, 1.0f };
+    };
+
+    /// The basis the inverse of a view matrix stands: its translation, and its own +X, -Z and +Y
+    /// as OpenSceneGraph's eye space has them — +X right, +Y up and the view down -Z. Normalised
+    /// rather than assumed, because a view matrix with a scale in it is a legal one. Throws
+    /// `Error` where an axis collapsed.
+    ViewBasis viewBasisOf(const osg::Matrixd& world);
 
     /// Constants for a pinhole camera at `origin` looking `along`, which need not be a unit vector.
     /// The world's up is +Z. A zero direction, or one straight up or down, throws `Error`: these

@@ -1,10 +1,16 @@
 #include "fixture.hpp"
 
+#include <cstddef>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include <osg/Array>
 #include <osg/Math>
 #include <osg/Matrix>
+#include <osg/MatrixTransform>
+#include <osg/Matrixd>
+#include <osg/Matrixf>
 #include <osg/NodeVisitor>
 #include <osg/Sequence>
 #include <osg/Switch>
@@ -14,8 +20,12 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <components/nif/niftypes.hpp>
+#include <components/nifosg/autotransform.hpp>
+#include <components/rtx/camera.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/meshtable.hpp>
+#include <components/rtx/sceneextractor.hpp>
 
 namespace Rtx::Testing
 {
@@ -294,6 +304,88 @@ namespace Rtx::Testing
             // And it still placed what was under it, at the transform it asked for.
             ASSERT_EQ(mScene.placements().getPlacedCount(), 1u);
             EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 4.0f));
+        }
+
+        /// A billboard turns toward the eye the walk was told, and stays where it stands under a
+        /// walk told none.
+        ///
+        /// **`NifOsg::AutoTransform` turns only under a cull visitor**, and this walk is none: handed
+        /// itself it keeps the rotation a cull last left, which here is the one the file was
+        /// authored with. `RigidFaceCamera` maps the node's own +Z onto the look and its own +Y
+        /// onto the up, so what is asserted is the placed axes against the eye handed in, under two
+        /// eyes and under a parent that moves the node — the eye is taken into the node's own frame
+        /// first.
+        TEST_F(RtxSceneExtractorTest, aBillboardTurnsTowardTheEyeTheWalkWasTold)
+        {
+            // Built as the loader builds one, from a record: an `AutoTransform` made from nothing
+            // has a scale of nought and collapses whatever is under it.
+            Nif::NiTransform authored;
+            authored.mTranslation = osg::Vec3f();
+            authored.mScale = 1.0f;
+            osg::ref_ptr<NifOsg::AutoTransform> billboard
+                = new NifOsg::AutoTransform(authored, NifOsg::AutoTransform::Mode::RigidFaceCamera);
+            billboard->addChild(makeQuad());
+
+            // Under a parent turned a quarter about z, so the eye is not the node's own frame.
+            osg::ref_ptr<osg::MatrixTransform> parent
+                = new osg::MatrixTransform(osg::Matrix::rotate(osg::PI_2, osg::Vec3d(0.0, 0.0, 1.0)));
+            parent->addChild(billboard);
+
+            const auto axesUnder = [&](const std::optional<ViewBasis>& eye, std::size_t frame) {
+                mExtractor.setEye(eye);
+                mScene.clearPlacement();
+                walk(*parent, 0, frame);
+                EXPECT_EQ(mScene.placements().getPlacedCount(), 1u);
+                const osg::Matrixf& place = mScene.placements().getAll()[0].mTransform;
+                return std::pair(osg::Matrixf::transform3x3(osg::Vec3f(0.0f, 0.0f, 1.0f), place),
+                    osg::Matrixf::transform3x3(osg::Vec3f(0.0f, 1.0f, 0.0f), place));
+            };
+
+            const auto expectAxis = [](const osg::Vec3f& axis, const osg::Vec3f& wanted, const char* what) {
+                EXPECT_NEAR(axis.x(), wanted.x(), 1e-5f) << what;
+                EXPECT_NEAR(axis.y(), wanted.y(), 1e-5f) << what;
+                EXPECT_NEAR(axis.z(), wanted.z(), 1e-5f) << what;
+            };
+
+            // No eye: the parent's quarter turn and nothing else, so the node's z stays z and its y
+            // turns to -x.
+            const auto [stillZ, stillY] = axesUnder(std::nullopt, 1);
+            expectAxis(stillZ, osg::Vec3f(0.0f, 0.0f, 1.0f), "z under no eye");
+            expectAxis(stillY, osg::Vec3f(-1.0f, 0.0f, 0.0f), "y under no eye");
+
+            // An eye looking along +y with z up: the node's z lands on the look and its y on the up,
+            // whatever the parent did.
+            const auto [towardY, upZ] = axesUnder(
+                ViewBasis{ .mOrigin = osg::Vec3f(0.0f, -100.0f, 0.0f), .mForward = osg::Vec3f(0.0f, 1.0f, 0.0f) }, 2);
+            expectAxis(towardY, osg::Vec3f(0.0f, 1.0f, 0.0f), "z toward an eye looking along y");
+            expectAxis(upZ, osg::Vec3f(0.0f, 0.0f, 1.0f), "y up for an eye looking along y");
+
+            // And an eye looking along -x turns it the other way.
+            const auto [towardX, upStill] = axesUnder(
+                ViewBasis{ .mOrigin = osg::Vec3f(100.0f, 0.0f, 0.0f), .mForward = osg::Vec3f(-1.0f, 0.0f, 0.0f) }, 3);
+            expectAxis(towardX, osg::Vec3f(-1.0f, 0.0f, 0.0f), "z toward an eye looking along -x");
+            expectAxis(upStill, osg::Vec3f(0.0f, 0.0f, 1.0f), "y up for an eye looking along -x");
+        }
+
+        /// The basis a view matrix stands is its inverse's translation, its own +X, -Z and +Y.
+        TEST(RtxViewBasisTest, aBasisIsReadOffTheInverseOfAViewMatrix)
+        {
+            const osg::Matrixd view = osg::Matrixd::lookAt(
+                osg::Vec3d(10.0, -50.0, 5.0), osg::Vec3d(10.0, 50.0, 5.0), osg::Vec3d(0.0, 0.0, 1.0));
+            const ViewBasis eye = viewBasisOf(osg::Matrixd::inverse(view));
+
+            EXPECT_NEAR(eye.mOrigin.x(), 10.0f, 1e-4f);
+            EXPECT_NEAR(eye.mOrigin.y(), -50.0f, 1e-4f);
+            EXPECT_NEAR(eye.mOrigin.z(), 5.0f, 1e-4f);
+            EXPECT_NEAR(eye.mForward.x(), 0.0f, 1e-5f);
+            EXPECT_NEAR(eye.mForward.y(), 1.0f, 1e-5f);
+            EXPECT_NEAR(eye.mForward.z(), 0.0f, 1e-5f);
+            EXPECT_NEAR(eye.mRight.x(), 1.0f, 1e-5f);
+            EXPECT_NEAR(eye.mRight.y(), 0.0f, 1e-5f);
+            EXPECT_NEAR(eye.mRight.z(), 0.0f, 1e-5f);
+            EXPECT_NEAR(eye.mUp.x(), 0.0f, 1e-5f);
+            EXPECT_NEAR(eye.mUp.y(), 0.0f, 1e-5f);
+            EXPECT_NEAR(eye.mUp.z(), 1.0f, 1e-5f);
         }
 
         /// An absolute reference frame replaces what is above it rather than adding to it, which is

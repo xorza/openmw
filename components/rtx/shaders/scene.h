@@ -320,6 +320,13 @@ namespace Rtx::Shaders
     /// rasterizer's `Mask_ParticleSystem`, which a map tile's camera leaves out.
     const uint MASK_PARTICLE = 0x40u;
 
+    /// A surface that adds to the frame and covers nothing — `Rtx::Material::isAdditive`: a
+    /// magic effect's sheet, the Heart of Lorkhan's, the ice wall's. **The last bit, and alone on
+    /// its instance.** The eye's trace, the shadow rays, the bounces, the water's rays and the
+    /// medium walk never meet one, because none of them casts with this bit; `additiveAlong`
+    /// casts with it and nothing else, at the picture's own extent, where the flames are drawn.
+    const uint MASK_ADDITIVE = 0x80u;
+
     /// Every class the eye can ask for. A trace with no camera of its own — the harness's, the
     /// tests' — asks for all of them.
     const uint MASK_EVERY_CLASS
@@ -331,6 +338,15 @@ namespace Rtx::Shaders
     RTX_SHADER uint solidMask(uint rayMask)
     {
         return rayMask & ~(MASK_FIRST_PERSON | MASK_WATER | MASK_PARTICLE);
+    }
+
+    /// What shelters a falling sprite: the statics and the objects, and nothing that moves. The
+    /// rasterizer's `PrecipitationOccluder` draws its depth map with a cull mask of
+    /// `Mask_Object | Mask_Static`, so an actor's hat keeps no rain off and a rain-soaked NPC is
+    /// the game's own decision rather than this renderer's.
+    RTX_SHADER uint shelterMask(uint rayMask)
+    {
+        return rayMask & MASK_STATIC;
     }
 
     /// How many see-through surfaces the eye peels off before it draws what is under them.
@@ -384,6 +400,22 @@ namespace Rtx::Shaders
     /// surface is its glow and nothing else.
     const uint MATERIAL_VERTEX_GLOW = 0x04u;
 
+    /// The surface adds whole, `ONE, ONE`: its alpha unread. That it adds at all is said by the
+    /// mask its placements carry, `MASK_ADDITIVE` alone, which is what brings it to
+    /// `additiveAlong` and to nothing that shades a hit — so no bit here says so twice.
+    const uint MATERIAL_ADD_WHOLE = 0x08u;
+
+    /// Which texture unit the dark map is bound at, in these bits of `mFlags` —
+    /// `GpuMesh::mUnitStreams` says which stream that unit reads.
+    const uint MATERIAL_DARK_UNIT_SHIFT = 8u;
+    const uint MATERIAL_DARK_UNIT_MASK = 0x0Fu;
+
+    /// A sprite emitter that adds — `Rtx::BlendKind::Add`, or `AddWhole` with its sprites' alpha
+    /// settled at one by the resolver — and one whose sprites fall from the sky:
+    /// `spriteshelter.rgen` drops those that stand under cover.
+    const uint EMITTER_ADDITIVE = 0x01u;
+    const uint EMITTER_FALLS = 0x02u;
+
     /// The content doubled every triangle of this mesh for its back — `Rtx::FoldedShape::mSheet`.
     /// With a mask on its material that is a leaf, and `SHEET_TRANSMISSION` says what the light on
     /// its far side is worth to it.
@@ -404,9 +436,23 @@ namespace Rtx::Shaders
         /// What the fold found this mesh's triangles to be — `MESH_SHEET` and `MESH_CLOSED`.
         ///
         /// **Bits and not two words, because this row is read on every hit.** A mesh table entry is
-        /// three words and every ray that lands fetches one.
+        /// five words and every ray that lands fetches one.
         uint mShape;
+
+        /// Where this mesh's second set of texture coordinates begins in the blocks of their own,
+        /// or `NO_STREAM` for a mesh that brought none, which is nearly every mesh. Mesh-local, as
+        /// `mVertexOffset` is: the vertex's index within the mesh is added to it.
+        uint mSecondTexCoordOffset;
+
+        /// One bit per texture unit, set where that unit reads the second set —
+        /// `Rtx::MeshArrays::mUnitStreams`. A material names the unit its dark map is bound at and
+        /// this says which stream that unit reads, because the material is shared across geometries
+        /// and the binding is each geometry's own.
+        uint mUnitStreams;
     };
+
+    /// A mesh with no second set of texture coordinates.
+    const uint NO_STREAM = 0xFFFFFFFFu;
 
     struct GpuInstance
     {
@@ -499,6 +545,10 @@ namespace Rtx::Shaders
         uint64 mTexCoordBlocks;
         uint64 mColourBlocks;
         uint64 mIndexBlocks;
+
+        /// The second texture coordinates, in blocks of their own that only the meshes carrying a
+        /// second set take from — `GpuMesh::mSecondTexCoordOffset` is where a mesh's run begins.
+        uint64 mSecondTexCoordBlocks;
 
         uint64 mMeshes;
         uint64 mInstances;
@@ -648,8 +698,10 @@ namespace Rtx::Shaders
         /// since a particle's whole silhouette is that texture's alpha.
         uint mTexture;
 
-        /// Non-zero for `SRC_ALPHA, ONE`. A flame adds and hides nothing; smoke covers and is lit.
-        uint mAdditive;
+        /// `EMITTER_ADDITIVE` for a blend that adds — a flame adds and hides nothing; smoke covers
+        /// and is lit — and `EMITTER_FALLS` for what the weather drops, which `spriteshelter.rgen`
+        /// keeps out from under cover.
+        uint mFlags;
 
         /// How wide this emitter's quads are against their own axis, per unit of
         /// `GpuSprite::mRadius` — **or nought, which is a sprite that faces the eye and is nearly
@@ -716,7 +768,15 @@ namespace Rtx::Shaders
         /// everything that does not scroll, which is nearly everything.
         vec4 mTextureTransform;
 
-        /// What this material is that no number above says — `MATERIAL_MEDIUM` and nothing else yet.
+        /// A sphere-mapped sheet added past the albedo, indexed by where the eye is, or
+        /// `NO_TEXTURE`; and what it is tinted by. `Rtx::Material::mEnvironment` says what it is.
+        uint mEnvironment;
+        vec3 mEnvironmentColour;
+
+        /// A map the albedo is multiplied by, or `NO_TEXTURE`, read at the unit `mFlags` names.
+        uint mDark;
+
+        /// What this material is that no number above says — the `MATERIAL_*` bits.
         ///
         /// **Last.** A `vec4` is four-aligned in scalar layout like everything else here, so this
         /// costs the row four bytes and pads nothing.
@@ -728,15 +788,15 @@ namespace Rtx::Shaders
     // produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
     // `--scalar-block-layout` the build hands the validator.
 #ifdef RTX_HOST
-    static_assert(sizeof(GpuMesh) == 12, "GpuMesh must be scalar-packed on every side");
+    static_assert(sizeof(GpuMesh) == 20, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 40, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
-    static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
+    static_assert(sizeof(GpuMaterial) == 88, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
-    static_assert(sizeof(GpuTables) == 120, "GpuTables must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 128, "GpuTables must be scalar-packed on every side");
 
 #endif
 

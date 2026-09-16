@@ -29,6 +29,7 @@
 #include "../renderer.hpp"
 #include "../rendermode.hpp"
 #include "framereport.hpp"
+#include "rippleemitters.hpp"
 #include "rtxrun.hpp"
 #include "worldmirror.hpp"
 
@@ -102,6 +103,15 @@ namespace MWRender
 
         /// Where the sea stands: `WorldMirror::standSea` says why a cell decides it.
         void addCell(const MWWorld::CellStore* cell) override;
+
+        /// The cell's wading actors stop wading.
+        void removeCell(const MWWorld::CellStore* cell) override;
+
+        /// What disturbs the water, as `RippleEmitters` keeps it: an actor that may wade, and a
+        /// strike on the surface.
+        void addWaterRippleEmitter(const MWWorld::Ptr& ptr) override;
+        void removeWaterRippleEmitter(const MWWorld::Ptr& ptr) override;
+        void emitWaterRipple(const osg::Vec3f& position) override;
 
         /// A `TracedGround`: the storage, the worldspace and the active grid, and no chunks.
         Ground createGround(const GroundSpec& spec) override;
@@ -375,6 +385,10 @@ namespace MWRender
         /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
         /// puts it on the device.
         WorldMirror mMirror;
+
+        /// What disturbs the water this frame, decided game-side and pressed into the trace's
+        /// ripple field.
+        RippleEmitters mRipples;
 
         /// What the last walk found, and what a second walk added. Kept because a report is written
         /// at the end of a stop and the walks are over by then.

@@ -25,6 +25,7 @@
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/ripple.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/visibility.h>
@@ -301,6 +302,12 @@ namespace Rtx::Testing
         /// for itself, which is what a test about the exposure pass wants — and what every figure
         /// derived through `countHits` must not have, since those are about what the trace computed.
         std::optional<float> mExposure = 1.0f;
+
+        /// What disturbs the water on every frame of the run, and how far the sky's clock moves a
+        /// frame, which is what the ripple field steps by. A step of nought stands the field
+        /// still, which is what every test that is not about it wants.
+        std::span<const RippleImpulse> mRipples;
+        float mSkyStep = 0.0f;
     };
 
     class RtxVisibilityTest : public Testing::RendererTest
@@ -335,11 +342,13 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants sampled = camera;
                 if (shot.mFrames > 0)
                     sampled.mFrame = shot.mFirstFrame + frame;
+                sampled.mSkyTime = camera.mSkyTime + static_cast<float>(frame) * shot.mSkyStep;
 
                 mRenderer->renderFrame(sampled,
                     FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
                         .mReconstruction = { .mFilter = shot.mFilter, .mJitter = shot.mJitter },
-                        .mExposure = shot.mExposure });
+                        .mExposure = shot.mExposure,
+                        .mRipples = shot.mRipples });
 
                 // Every frame hits the same primary geometry, so the last one's count is the answer
                 // rather than a sum to be divided back down.

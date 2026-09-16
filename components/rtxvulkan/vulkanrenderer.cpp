@@ -15,6 +15,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
@@ -112,6 +113,8 @@ namespace Rtx
                 .mCoverAlpha = frame.mTransparentBackground == 0 ? 1u : 0u,
                 .mCamera = Shaders::cameraOnGrid(frame.mCamera, width, height),
                 .mStars = frame.mStars,
+                .mGlareColour = frame.mGlareColour,
+                .mGlareAmount = sunGlareAmount(frame),
             };
         }
     }
@@ -140,8 +143,10 @@ namespace Rtx
         , mComposite(mDevice, mPool, options.mShaderDirectory)
         , mBloom(mDevice, options.mShaderDirectory)
         , mWaves(mDevice, mPool, options.mShaderDirectory)
+        , mRipples(mDevice, mPool, options.mShaderDirectory)
         , mFog(mDevice, mPool)
         , mExposure(mDevice, options.mShaderDirectory)
+        , mSunGlare(mDevice, options.mShaderDirectory)
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
@@ -409,9 +414,11 @@ namespace Rtx
             .mIndexBlocks = held.mAcceleration->getIndexBlocks(),
             .mTextures = held.mTextures->getSet(held.mSlot),
             .mWaves = &mWaves,
+            .mRipples = &mRipples,
             .mFog = &mFog,
             .mFogVolume = volume,
             .mSpriteList = (rayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.addressFor(),
+            .mSunGlare = &mSunGlare.getCounts(),
             .mWater = held.mAcceleration->getInstanceCounts().mWater > 0,
         };
     }
@@ -430,6 +437,7 @@ namespace Rtx
         // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
         // at from.
         sampled.mMediumInFrame = mWorld.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
+        sampled.mAdditiveInFrame = mWorld.mAcceleration->getInstanceCounts().mAdditive > 0 ? 1 : 0;
 
         // The one subtraction of two world points, and it happens here. Two camera positions a
         // step apart subtract exactly in a float; the same difference taken on the device, between
@@ -941,7 +949,7 @@ namespace Rtx
         const Reconstruction reconstruction = Reconstruction::resolve(mUpscaling, options.mReconstruction);
         frame.mReconstruction = reconstruction;
 
-        const Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);
+        Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);
 
         VisibilityInputs inputs = describeInputs(mWorld, &mFrame.getFogVolume(), camera.mRayMask);
 
@@ -977,6 +985,20 @@ namespace Rtx
         if (upscaling())
             mUpscaled.transition(commands, Use::sUndefined, Use::sAnyGeneralWrite);
 #endif
+
+        // The glare fader's query starts the frame at nothing, ahead of the trace that counts.
+        mSunGlare.begin(commands);
+
+        // What walked through the water, stepped before the trace reads it and only where the
+        // world stands in a sea: one field under every picture of this frame, anchored where the
+        // step left it. A frame with no sea leaves the tiles as they were and stands no field.
+        if (inputs.mWater)
+        {
+            mRipples.record(commands, mRing.getRecordingSlot(), options.mRipples,
+                osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), static_cast<double>(camera.mSkyTime));
+            sampled.mRippleOrigin = mRipples.getOrigin();
+            sampled.mRippleExtent = RipplePass::getExtent();
+        }
 
         // The first write needs no contents and nothing to wait on; every one after reads what
         // the last left, which the queue orders and does not make visible.
@@ -1077,9 +1099,14 @@ namespace Rtx
         }
         timer.close(commands);
 
+        // What the eye saw of the sun's quad, eased at the query's own rate, which the curve
+        // lays the glare fader over the picture by. Read after the trace and before the curve,
+        // on the device: a frame's own count is a frame's own wash.
+        mSunGlare.record(commands, 0.001f * sinceLastMs, historyLost);
+
         timer.open(commands, "tone");
-        mTone->record(commands, *shown, mExposure.getExposure(), channels.get(Channel::StarsShown), mBloom.getPyramid(),
-            inputs.mTextures, mTargets.current(),
+        mTone->record(commands, *shown, mExposure.getExposure(), mSunGlare.getShare(),
+            channels.get(Channel::StarsShown), mBloom.getPyramid(), inputs.mTextures, mTargets.current(),
             toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
         timer.close(commands);
 
@@ -1180,6 +1207,15 @@ namespace Rtx
         // fields a picture wants. Copied because the caller's block is theirs.
         Shaders::VisibilityConstants sampled = camera;
         sampled.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
+        sampled.mAdditiveInFrame = traced.mAcceleration->getInstanceCounts().mAdditive > 0 ? 1 : 0;
+
+        // The world's ripple field where the picture is of the world, which is the one place it
+        // could have a wake in it; a subject of its own stands in no sea.
+        if (options.mScene.isWorld())
+        {
+            sampled.mRippleOrigin = mRipples.getOrigin();
+            sampled.mRippleExtent = RipplePass::getExtent();
+        }
 
         // Recorded into a batch that rides the next submit, and waited for by nobody here: the
         // next placement of this scene waits for what its tables say, and what it writes nothing
@@ -1217,7 +1253,7 @@ namespace Rtx
             // One, and measured off nothing, or the same armour would be a different brightness
             // in two windows; out of its own buffer, for what `ExposurePass::getPictureExposure`
             // says. And no lens, because a map tile is a diagram.
-            mTone->record(commands, mView.getColour(), mExposure.getPictureExposure(),
+            mTone->record(commands, mView.getColour(), mExposure.getPictureExposure(), mSunGlare.getNoShare(),
                 channels.get(Channel::StarsShown), nullptr, inputs.mTextures, mViewTarget,
                 toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
 

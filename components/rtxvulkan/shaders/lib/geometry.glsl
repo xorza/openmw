@@ -48,6 +48,25 @@ void triangleUvs(uvec3 corner, out vec2 uv[3])
     uv[2] = block.at[at.z];
 }
 
+/// The same off the mesh's second set, which sits in blocks of its own at the mesh's own offset —
+/// `GpuMesh::mSecondTexCoordOffset`. The caller has asked whether there is one.
+void triangleSecondUvs(GpuMesh mesh, uvec3 corner, out vec2 uv[3])
+{
+    const uvec3 second = corner - mesh.mVertexOffset + mesh.mSecondTexCoordOffset;
+    TexCoordBlock block = secondTexCoordBlockOf(second.x);
+    const uvec3 at = second % VERTEX_BLOCK;
+
+    uv[0] = block.at[at.x];
+    uv[1] = block.at[at.y];
+    uv[2] = block.at[at.z];
+}
+
+/// Whether `unit` reads the mesh's second set — `GpuMesh::mUnitStreams` — and there is one.
+bool readsSecondUvs(GpuMesh mesh, uint unit)
+{
+    return mesh.mSecondTexCoordOffset != NO_STREAM && ((mesh.mUnitStreams >> unit) & 1u) != 0u;
+}
+
 /// The vertex normal interpolated across the triangle a hit landed on, in the mesh's own space and
 /// not yet unit: a mesh with no normals holds zeros, which the caller reads as "use the plane".
 vec3 triangleNormal(uvec3 corner, vec3 weight)

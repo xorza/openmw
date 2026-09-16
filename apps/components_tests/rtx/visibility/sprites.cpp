@@ -612,5 +612,80 @@ namespace Rtx::Testing
             ASSERT_GT(alone, 0.1f) << "the sun did not reach the puff at all";
             EXPECT_NEAR(lit(true) / alone, 1.0f - sHalfAlpha, 0.01f) << "one layer of a half-alpha texture";
         }
+
+        /// A drop under a roof is not drawn, and a hearth's smoke under the same roof is.
+        ///
+        /// **The rasterizer's occluder, as a ray.** `PrecipitationOccluder` discards every drop
+        /// with a static over it inside its box; `spriteshelter.rgen` traces every falling sprite
+        /// straight up to the top of that box and zeroes the one that meets a surface. Two drops
+        /// of one falling emitter, a lid over the left one alone, and a sun from behind the eye so
+        /// the lid shadows neither — with shelter in the frame the left pixel shows nothing at all
+        /// and the right one is what it was, and with none in the frame both are drawn. The same
+        /// two under a lid, from an emitter that does not fall, stay where they are.
+        ///
+        /// **A frame with no shelter height in it and not a flag**: the game says nought where
+        /// what falls is ash, and a picture inside the interface says nought because it has no
+        /// world over it. Nought is what keeps the launch off nearly every frame.
+        TEST_F(RtxVisibilityTest, aRoofKeepsTheRainOffAndLeavesTheSmoke)
+        {
+            constexpr std::uint32_t size = 33;
+
+            // At thirty degrees a thousand units out the frame is 536 units wide, so a drop a
+            // hundred units off the axis lands six pixels from the middle, and its radius of forty
+            // covers two and a half. The middle row, since the drops stand at the eye's height.
+            constexpr std::size_t row = size / 2;
+            constexpr std::size_t left = (row * size + 10) * 4;
+            constexpr std::size_t right = (row * size + 22) * 4;
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> puff{ describeTexel(white) };
+
+            struct Read
+            {
+                float mLeft;
+                float mRight;
+            };
+
+            const auto shown = [&](bool falls, float shelter) {
+                SceneDesc scene;
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 2> drops{
+                    Sprite{ .mPosition = osg::Vec3f(-100.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f },
+                    Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f },
+                };
+                scene.addEmitter(drops, cut, false, 0.0f, sNoIndex, falls);
+
+                // A lid two hundred wide over the left drop alone, three hundred up.
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(-100.0f, 0.0f, 0.0f),
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(100.0f, 300.0f), .mIndices = sQuadIndices }) });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -1000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 30.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+                camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -1.0f, 0.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
+                camera.mShelterHeight = shelter;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, puff, camera, size, pixels);
+
+                return Read{ mRadiance[left], mRadiance[right] };
+            };
+
+            const Read open = shown(true, 0.0f);
+            ASSERT_GT(open.mLeft, 0.1f) << "the left drop was not drawn at all";
+            ASSERT_GT(open.mRight, 0.1f) << "the right drop was not drawn at all";
+
+            const Read sheltered = shown(true, 2000.0f);
+            EXPECT_EQ(sheltered.mLeft, 0.0f) << "the roof did not keep the rain off";
+            EXPECT_EQ(sheltered.mRight, open.mRight) << "the shelter reached a drop with nothing over it";
+
+            const Read smoke = shown(false, 2000.0f);
+            EXPECT_EQ(smoke.mLeft, open.mLeft) << "the roof took a hearth's smoke";
+            EXPECT_EQ(smoke.mRight, open.mRight);
+        }
     }
 }

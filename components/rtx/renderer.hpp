@@ -17,6 +17,7 @@
 #include "memoryreport.hpp"
 #include "mesh.hpp"
 #include "reconstruction.hpp"
+#include "ripple.hpp"
 #include "runs.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
@@ -254,6 +255,11 @@ namespace Rtx
         /// frame's histogram; a picture wants it measured, so a run's profile says so.
         std::optional<float> mExposure = 1.0f;
 
+        /// What disturbed the water this frame — every wading actor and every strike — pressed into
+        /// the ripple field before the trace reads it. Spans the caller's own list for the length
+        /// of the call.
+        std::span<const RippleImpulse> mRipples;
+
         /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,
         /// because a warm-up is not averaged in, and `sinceLast` and `exposureBias` are what a
         /// profile cannot know.
@@ -266,6 +272,7 @@ namespace Rtx
                 .mExposureBias = exposureBias,
                 .mReconstruction = profile.mReconstruction,
                 .mExposure = profile.mExposure,
+                .mRipples = {},
             };
         }
     };

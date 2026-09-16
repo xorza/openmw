@@ -13,6 +13,7 @@
 
 #include "look.h"
 #include "scene.h"
+#include "ripple.h"
 #include "wave.h"
 #include "bindings.glsl"
 #include "footprint.glsl"
@@ -153,6 +154,54 @@ float waveLevel(uint cascade, float footprint)
     return max(log2(footprint / frame.mWaveTexel[cascade]), 0.0);
 }
 
+/// Where `at` lands on the ripple field, in its texture's coordinates, or nothing where the field
+/// is nought wide: no sea stood one, or the picture is of a subject in no sea.
+///
+/// **World-anchored where the wave tiles repeat.** A wake stays where it was stamped as the eye
+/// walks past it, so the field's origin moves by whole texels and the coordinate is taken from
+/// it. Past its edge the sampler would answer still water too; saying so here spares the fetch,
+/// which is most of the sea.
+bool rippleCoordinate(vec2 at, out vec2 uv)
+{
+    if (!(frame.mRippleExtent > 0.0))
+        return false;
+
+    uv = (at - frame.mRippleOrigin) / frame.mRippleExtent;
+    return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThan(uv, vec2(1.0)));
+}
+
+/// Which level of the ripple field's chain a cone this wide can still tell apart.
+float rippleLevel(float footprint)
+{
+    return max(log2(footprint / RIPPLE_TEXEL), 0.0);
+}
+
+/// What walked through the water: the ripple field's slope at `at`, and what the cone averaged
+/// away of it — `WaterSurface::mLostSlope`'s share.
+vec2 rippleSlope(vec2 at, float footprint, out float lost)
+{
+    lost = 0.0;
+
+    vec2 uv;
+    if (!rippleCoordinate(at, uv))
+        return vec2(0.0);
+
+    const vec3 field = textureLod(rippleSurface, uv, rippleLevel(footprint)).xyz;
+    lost = max(field.z - dot(field.xy, field.xy), 0.0);
+
+    return field.xy;
+}
+
+/// The same field's curvature, which a wake focuses light on the bed with the way a swell does.
+vec3 rippleHessian(vec2 at, float footprint)
+{
+    vec2 uv;
+    if (!rippleCoordinate(at, uv))
+        return vec3(0.0);
+
+    return textureLod(rippleCurvature, uv, rippleLevel(footprint)).xyz;
+}
+
 /// The water's surface where a ray met it: one read of each tile, and everything taken from it.
 ///
 /// **The normal, the elevation and what the cone could not resolve of either, out of three fetches a
@@ -208,6 +257,12 @@ WaterSurface waterSurfaceAt(vec2 at, float footprint)
     slope += rainSlope(at, footprint, rainLost);
 
     surface.mLostSlope += rainLost;
+
+    // And what walked through it, for the same reason and in the same terms.
+    float rippleLost;
+    slope += rippleSlope(at, footprint, rippleLost);
+
+    surface.mLostSlope += rippleLost;
 
     surface.mNormal = normalize(vec3(-slope, 1.0));
     return surface;
@@ -267,6 +322,11 @@ float caustic(vec2 at, float depth, float footprint)
         hessian += textureLod(waveCurvature[cascade], uv, level).xyz;
         resolved += resolvedShare(cascade, level);
     }
+
+    // A wake's rings are a Hessian like any swell's, read at the same width. Its share of the
+    // fold is not added to `resolved`: that is the spectrum's own ensemble figure, which a
+    // deterministic ring standing on it perturbs rather than joins.
+    hessian += rippleHessian(at, widened);
 
     // One determinant and not a ratio of two, because this surface is not displaced: the quad stays
     // flat and only its normal moves, so the patch of surface the light left is the patch of

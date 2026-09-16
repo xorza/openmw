@@ -27,6 +27,7 @@ namespace Rtx
     class GBuffer;
     class GpuTimer;
     class Image;
+    class RipplePass;
     class SceneBuffers;
     class SpriteBin;
     class WavePass;
@@ -54,6 +55,10 @@ namespace Rtx
         /// sea runs under every cell and under the doll and the map beside them.
         const WavePass* mWaves = nullptr;
 
+        /// What walked through the water, as the tiles the ripple pass unpacked it into. One field
+        /// under every picture, world-anchored, so a map tile reads the same wake the frame does.
+        const RipplePass* mRipples = nullptr;
+
         /// The fog's fractal field, here for the same reason and drawn once for the life of the
         /// device rather than once a frame.
         const FogTile* mFog = nullptr;
@@ -75,6 +80,11 @@ namespace Rtx
         /// `recordSpriteComposite` composites the puffs over. Bound for every launch, because one
         /// set serves them all, and read by that one alone.
         const Image* mShown = nullptr;
+
+        /// The sun glare fader's two counts, `SunGlarePass::getCounts`, which the eye's launch
+        /// adds to. Always set: a picture inside the interface adds to the frame's, harmlessly,
+        /// because the frame zeroes them ahead of its own trace.
+        const Buffer* mSunGlare = nullptr;
 
         /// Whether the eye can meet water in this scene — the scene's answer and not the camera's,
         /// and what `HAS_SEA` takes the waves out of for a room.
@@ -122,20 +132,38 @@ namespace Rtx
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
             bool countHits);
 
-        /// Records the trace, in whichever kernel this frame calls for.
+        /// Writes the frame's block: `constants` with what only the passes know filled in — the
+        /// tiles' widths, the lamps' grid, the froxel grid and where every table is, the bin's
+        /// sprites among them. Before every launch of this frame, `recordSpriteShelter` first,
+        /// because that one runs before the bin and reads the block like the rest.
+        ///
+        /// @param historyLost whether the frame before this one is worth reprojecting into. Written
+        ///        into the block as a basis of nothing, which every shader here reads as "there is
+        ///        no previous frame". The fog volume's answer and not the denoisers'
+        ///        (`VulkanRenderer::mAirStale`).
+        void writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs,
+            const Shaders::VisibilityConstants& constants, bool historyLost) const;
+
+        /// Zeroes, in the bin's own table, every falling sprite that stands under a roof — one ray
+        /// straight up apiece, `spriteshelter.rgen`. After `writeFrame` and the bin's `take`, and
+        /// before its `record`, so the shade counts no sheltered drop as a layer and the bin lists
+        /// none. Nothing for a frame the block says has no shelter in it.
+        ///
+        /// @param count how many sprites the bin took, which is the launch's width.
+        void recordSpriteShelter(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, std::uint32_t count,
+            GpuTimer* timer) const;
+
+        /// Records the trace, in whichever kernel this frame calls for. After `writeFrame`, which
+        /// is what every launch here reads.
         ///
         /// @param buffer where the trace leaves its channels, all four in `VK_IMAGE_LAYOUT_GENERAL`
         ///        and at least as large as the frame. Channels and not a picture, because the
         ///        indirect term has to survive to the filter with the albedo still divided out.
         /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
-        /// @param historyLost whether the frame before this one is worth reprojecting into. Written
-        ///        into the block as a basis of nothing, which every shader here reads as "there is
-        ///        no previous frame". The fog volume's answer and not the denoisers'
-        ///        (`VulkanRenderer::mAirStale`).
         /// @param timer where the three zones this records go, or nothing where nobody is counting.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, bool historyLost,
-            GpuTimer* timer) const;
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const;
 
         /// Composites the puffs over `inputs.mShown`, in place, at the picture's own extent: the
         /// sprites' shape marched there against the bin the trace binned over its own grid, their
@@ -216,6 +244,10 @@ namespace Rtx
         /// tuple either: it reads the bin and the air and traces nothing. A launch and not a
         /// dispatch for the reason `spritecomposite.rgen` gives.
         std::unique_ptr<TracePipeline> mSpriteCompositePipeline;
+
+        /// The launch over the sprite list that keeps the rain from under the roofs. One, like the
+        /// composite's: it reads the structure and the tables and has no opinion about the sky.
+        std::unique_ptr<TracePipeline> mSpriteShelterPipeline;
 
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.

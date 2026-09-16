@@ -19,6 +19,7 @@ namespace MWRender
 
             const osg::Node::NodeMask playing = mirror.getTraversalMask();
             EXPECT_NE(playing & Mask_Player, 0u) << "a game somebody is playing draws them";
+            EXPECT_EQ(playing & Mask_Terrain, 0u) << "the intersector's ground is not the ring's";
 
             mirror.setShowsPlayer(false);
             const osg::Node::NodeMask watching = mirror.getTraversalMask();

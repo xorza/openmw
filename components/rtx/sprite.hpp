@@ -52,6 +52,10 @@ namespace Rtx
         /// over, which is smoke and needs its colour ramp to fade it.
         bool mAdditive = false;
 
+        /// Whether its sprites fall from the sky — the rain box, a driven storm — and so are kept
+        /// out from under a roof. `SceneExtractor::extractFalling` is the walk that says so.
+        bool mFalls = false;
+
         /// How wide this emitter's quads are against their own axis, per unit of `Sprite::mRadius`,
         /// or nought for sprites that face the eye: Morrowind's rain is an X axis squashed to a tenth
         /// against a Y axis pointing straight down. The length and not the direction, because the

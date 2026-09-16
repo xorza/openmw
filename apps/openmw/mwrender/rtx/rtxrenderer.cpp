@@ -400,6 +400,7 @@ namespace MWRender
     void RtxRenderer::detachWorld()
     {
         mMirror.detach();
+        mRipples.clear();
     }
 
     float RtxRenderer::getGroundReach() const
@@ -429,6 +430,26 @@ namespace MWRender
     void RtxRenderer::addCell(const MWWorld::CellStore* cell)
     {
         mMirror.standSea(*cell);
+    }
+
+    void RtxRenderer::removeCell(const MWWorld::CellStore* cell)
+    {
+        mRipples.removeCell(*cell);
+    }
+
+    void RtxRenderer::addWaterRippleEmitter(const MWWorld::Ptr& ptr)
+    {
+        mRipples.add(ptr);
+    }
+
+    void RtxRenderer::removeWaterRippleEmitter(const MWWorld::Ptr& ptr)
+    {
+        mRipples.remove(ptr);
+    }
+
+    void RtxRenderer::emitWaterRipple(const osg::Vec3f& position)
+    {
+        mRipples.splash(position);
     }
 
     void RtxRenderer::listAssetsToPreload(
@@ -864,6 +885,13 @@ namespace MWRender
         // is the player's, and a session is only the thing that usually makes it not.
         mMirror.setShowsPlayer(frame.mEye.mPlayersEye);
 
+        // What disturbs the water this frame, decided before the walk and handed to the scene
+        // beside the sprites, which is where the trace and the digest both read it. Not on a
+        // paused frame: the actors have not moved, and a wake pressed on a frame the simulation
+        // stood still on is a ring on a frame the game did not have.
+        if (!frame.mPaused)
+            mRipples.update(frame.mWorld.mWaterEnabled, frame.mWorld.mWaterHeight);
+
         // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror. The
         // harness times the same stretch, which is what lets the two rows be read against each
         // other.
@@ -877,6 +905,9 @@ namespace MWRender
         mWalked.mAgain.reset();
         if (mRun.wantsSecondWalk())
             mWalked.mAgain = mMirror.mirror(frame, mFrame);
+
+        // After the last walk, because a walk clears the frame's lists.
+        mMirror.addRipples(mRipples.getImpulses());
 
         traceWorld(frame, report, since);
 
@@ -1043,8 +1074,11 @@ namespace MWRender
         // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
 
-        report.mReconstruction = mRenderer->renderFrame(
-            constants, Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias));
+        Rtx::FrameOptions options
+            = Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias);
+        options.mRipples = mMirror.getScene().ripples();
+
+        report.mReconstruction = mRenderer->renderFrame(constants, options);
 
         report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, std::chrono::steady_clock::now());
         report.mSpend.at(Rtx::Timing::Present) = mSpan.takePresent();

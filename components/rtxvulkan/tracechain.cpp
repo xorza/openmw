@@ -125,16 +125,31 @@ namespace Rtx
         // The sprite tiles are screen space, so they belong to the camera and not to the scene.
         // Binned on the device into this trace's own bin, ahead of the trace that reads it. Not at
         // all for a camera handed a list of its own, which is the one that draws none.
+        //
+        // **Taken, then the block, then the shelter, then the bin.** The block carries the bin's
+        // table by address, which it has once the table is taken; the shelter launch reads the
+        // block and zeroes the drops under a roof in that table; and the shade and the bin read
+        // what is left. Every launch after reads the same block.
         SpriteBin& bin = mBins.at(what.mBinSlot);
         VisibilityInputs inputs = what.mInputs;
         inputs.mBin = &bin;
-        if (inputs.mSpriteList == 0)
-            bin.record(*what.mSpriteShade, *what.mSpriteBin, what.mBuffers->describeSprites(inputs.mSlot),
-                what.mAsked.mOrigin, what.mAsked.mCamera, what.mAsked.mSun.mDirection, commands, what.mTimer);
+        const bool bins = inputs.mSpriteList == 0;
+        const SpriteSource sprites = what.mBuffers->describeSprites(inputs.mSlot);
+        if (bins)
+            bin.take(sprites, what.mAsked.mCamera, commands);
+
+        what.mVisibility->writeFrame(commands, inputs, what.mSampled, what.mAirLost);
+
+        if (bins)
+        {
+            what.mVisibility->recordSpriteShelter(
+                commands, inputs, *mChannels, *what.mCounts, what.mSampled, sprites.mSpriteCount, what.mTimer);
+            bin.record(*what.mSpriteShade, *what.mSpriteBin, sprites, what.mAsked.mOrigin, what.mAsked.mCamera,
+                what.mAsked.mSun.mDirection, commands, what.mTimer);
+        }
 
         mChannels->begin(commands);
-        what.mVisibility->record(
-            commands, inputs, *mChannels, *what.mCounts, what.mSampled, what.mAirLost, what.mTimer);
+        what.mVisibility->record(commands, inputs, *mChannels, *what.mCounts, what.mSampled, what.mTimer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote where

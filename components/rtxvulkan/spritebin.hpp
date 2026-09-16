@@ -40,10 +40,19 @@ namespace Rtx
     public:
         SpriteBin(const Device& device, Graveyard& graveyard);
 
-        /// Copies `source`'s sprites into this bin's own table, shades them against `toSun` in
-        /// place, and records the bin of them into the screen tiles of `camera` — ahead of the
-        /// trace that reads the tiles, in the same commands. Grows the list first from what the
-        /// last bin here reported it needed, where the timeline says that report has landed.
+        /// Grows every table here to what `source` and the tiles of `camera` need — the list from
+        /// what the last bin here reported it needed, where the timeline says that report has
+        /// landed — and copies `source`'s sprites into this bin's own, on the queue, left where a
+        /// launch or a dispatch may read and write them. First, and apart from `record`, because
+        /// what stands between the two is the frame block: `getSpritesAddress` and
+        /// `getTileListAddress` are only the addresses once the tables are grown, the block carries
+        /// both, and the shelter launch that zeroes the sheltered sprites reads the block before
+        /// the shade reads the sprites.
+        void take(const SpriteSource& source, const Shaders::Camera& camera, VkCommandBuffer commands);
+
+        /// Shades the sprites `take` copied against `toSun` in place, and records the bin of them
+        /// into the screen tiles of `camera` — ahead of the trace that reads the tiles, in the
+        /// same commands.
         void record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
             const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
             GpuTimer* timer);

@@ -3,8 +3,10 @@
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/ripple.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/look.h>
+#include <components/rtx/shaders/ripple.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/wavespectrum.hpp>
@@ -186,6 +188,65 @@ namespace Rtx::Testing
             // both meets the bed at a cosine and crosses more water to get there, so less of it
             // comes back. Red, which the extra 36 units of water costs the most.
             EXPECT_LT(across[0], overhead[0]) << "a slanted sun reaches the bed with less left";
+        }
+
+        /// What walked through the water bends its surface where it walked and nowhere else.
+        ///
+        /// **Two frames of one flat sea, one with a footfall pressed into it.** The ring the
+        /// footfall spreads tilts the surface's normal, and a tilted normal refracts the eye's ray
+        /// to another point of the bed and reflects another patch of sky, so the picture moves
+        /// inside the ring's reach and nowhere beyond it. After thirty steps the springs have
+        /// carried the ring about sixteen texels — forty units — from where it was pressed, which
+        /// at four hundred units up under a sixty-degree frame is a handful of pixels about the
+        /// centre; the frame's corner looks at water a hundred and fifty units out, where nothing
+        /// has arrived.
+        TEST_F(RtxVisibilityTest, aFootfallBendsTheWaterWhereItWalkedAndNowhereElse)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreOf(size);
+            constexpr float depth = 100.0f;
+
+            const SceneDesc scene = makeFlooded(4000.0f, depth);
+
+            // A sun well off the vertical, so a tilted surface refracts and reflects visibly
+            // different light rather than the same overhead sun.
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            litThroughWater(camera, osg::DegreesToRadians(45.0f));
+
+            const std::array<RippleImpulse, 1> footfall{ RippleImpulse{
+                .mAt = osg::Vec2f(0.0f, 0.0f), .mSize = 12.0f } };
+
+            const auto look = [&](std::span<const RippleImpulse> impulses, std::vector<std::uint8_t>& pixels) {
+                mRenderer->resetHistory();
+                countHits(scene, {}, camera, size, pixels,
+                    Shot{ .mSea = SeaState{ .mSignificantHeight = 0.0f },
+                        .mFrames = 30,
+                        .mAverage = false,
+                        .mRipples = impulses,
+                        .mSkyStep = 1.0f / Shaders::RIPPLE_STEP_RATE });
+            };
+
+            std::vector<std::uint8_t> still;
+            std::vector<std::uint8_t> walked;
+            look({}, still);
+            look(footfall, walked);
+
+            EXPECT_NE(still, walked) << "the footfall moved nothing";
+
+            // Within four pixels of the centre something moved; at the corner nothing did.
+            bool movedNear = false;
+            for (std::size_t y = size / 2 - 4; y <= size / 2 + 4; ++y)
+                for (std::size_t x = size / 2 - 4; x <= size / 2 + 4; ++x)
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                        movedNear
+                            = movedNear || still[(y * size + x) * 4 + channel] != walked[(y * size + x) * 4 + channel];
+            EXPECT_TRUE(movedNear) << "the ring is not where the footfall was";
+
+            for (std::size_t at = 0; at < 4 * 4; ++at)
+                EXPECT_EQ(still[at], walked[at]) << "the corner moved, at value " << at;
+
+            EXPECT_EQ(still[centre * 4 + 3], walked[centre * 4 + 3]) << "coverage is not the surface's";
         }
 
         /// Deep water settles at what it scatters, and at half what only-the-return-leg would give.

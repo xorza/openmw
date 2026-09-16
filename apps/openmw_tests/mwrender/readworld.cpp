@@ -1,12 +1,17 @@
+#include <cstddef>
+
 #include <gtest/gtest.h>
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
 #include <components/esm3/loadcell.hpp>
+#include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
+#include <components/rtx/colour.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameworld.hpp>
+#include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
 #include <components/settings/values.hpp>
 
@@ -24,6 +29,7 @@ namespace MWRender
         {
             WorldState world;
             world.mLocation = where;
+            world.mSky.mSkyEnabled = where != Location::Interior;
             world.mGameHour = 12.0f;
             world.mSky.mFogDepth = 0.69f;
             world.mSky.mBaseWindSpeed = 0.3f;
@@ -128,6 +134,61 @@ namespace MWRender
             // system stopped writing the moment they stepped inside.
             EXPECT_EQ(room.mDaylight.mSkyZenith, room.mDaylight.mSkyHorizon);
             EXPECT_NE(room.mDaylight.mSkyZenith, readFrom(standingIn(Location::Exterior)).mDaylight.mSkyZenith);
+        }
+
+        /// `tsky` hides the sky and leaves the light: the rasterizer masks the sky node out and
+        /// clears to the fog colour, and the sun goes on lighting the ground. So the reading is
+        /// not outdoors — no deck, no stars, no moons, no dome fill — its zenith is its horizon,
+        /// and its sun is the noon sun with no disc to draw.
+        TEST(RtxReadWorldTest, theSkyToggleHidesTheSkyAndKeepsTheSun)
+        {
+            WorldState world = standingIn(Location::Exterior);
+            world.mSky.mSkyEnabled = false;
+
+            const Rtx::WorldReading hidden = readFrom(world);
+            const Rtx::WorldReading shown = readFrom(standingIn(Location::Exterior));
+
+            EXPECT_FALSE(hidden.mOutdoors);
+            EXPECT_EQ(hidden.mDaylight.mSkyZenith, hidden.mDaylight.mSkyHorizon);
+            EXPECT_EQ(hidden.mDaylight.mSkyHorizon, shown.mDaylight.mSkyHorizon);
+            EXPECT_EQ(hidden.mDaylight.mLight.mSun.mIrradiance, shown.mDaylight.mLight.mSun.mIrradiance);
+            EXPECT_EQ(hidden.mDaylight.mLight.mSun.mDiscColour, osg::Vec3f()) << "a disc drawn on a hidden sky";
+            EXPECT_NE(shown.mDaylight.mLight.mSun.mDiscColour, osg::Vec3f());
+        }
+
+        /// A script paints Secunda `Moons_Script_Color`, and Secunda alone, as
+        /// `SkyManager::setMoonColour` paints it — read off the fallback map the mirror read once,
+        /// which is what stands in for the game's own record here.
+        TEST(RtxReadWorldTest, theScriptColourPaintsSecundaAlone)
+        {
+            const osg::Vec3f white(1.0f, 1.0f, 1.0f);
+            const osg::Vec3f paint = Rtx::decodeColour(Fallback::Map::getColour("Moons_Script_Color"));
+            ASSERT_NE(paint, white);
+
+            WorldState world = standingIn(Location::Exterior);
+            world.mSky.mMoonRed = true;
+
+            const Rtx::WorldReading red = readFrom(world);
+            EXPECT_EQ(red.mMoons[static_cast<std::size_t>(Rtx::Moon::Masser)].mPaint, white);
+            EXPECT_EQ(red.mMoons[static_cast<std::size_t>(Rtx::Moon::Secunda)].mPaint, paint);
+
+            const Rtx::WorldReading plain = readFrom(standingIn(Location::Exterior));
+            EXPECT_EQ(plain.mMoons[static_cast<std::size_t>(Rtx::Moon::Secunda)].mPaint, white);
+        }
+
+        /// What falls is kept off by a roof up to the top of the game's own occluder box — the
+        /// precipitation's range and a cell over it — and by nothing where the game says what
+        /// falls is not that kind.
+        TEST(RtxReadWorldTest, theShelterIsTheOccludersBox)
+        {
+            WorldState world = standingIn(Location::Exterior);
+            world.mPrecipitating = true;
+            world.mPrecipitationRange = osg::Vec3f(1024.0f, 1024.0f, 800.0f);
+
+            EXPECT_EQ(readFrom(world).mShelterHeight, 800.0f + static_cast<float>(Constants::CellSizeInUnits));
+
+            world.mPrecipitating = false;
+            EXPECT_EQ(readFrom(world).mShelterHeight, 0.0f);
         }
     }
 }

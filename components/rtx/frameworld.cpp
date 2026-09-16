@@ -1,6 +1,8 @@
 #include "frameworld.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 
 #include <osg/Matrixf>
@@ -21,8 +23,25 @@ namespace Rtx
 
         // The same mask as everything else, because there is nothing here to select. The walk
         // starts at the precipitation node, so the subtree is already chosen; a mask is only ever
-        // excluding what a renderer draws for itself, and none of that is under here.
-        extractor.extract(*fall, osg::Matrixf::translate(eye), 0, frameNumber);
+        // excluding what a renderer draws for itself, and none of that is under here. As what
+        // falls, so that a roof keeps it off.
+        extractor.extractFalling(*fall, osg::Matrixf::translate(eye), 0, frameNumber);
+    }
+
+    float sunGlareAmount(const Shaders::VisibilityConstants& frame)
+    {
+        if (frame.mGlareStrength <= 0.0f || frame.mGlareAngleMax <= 0.0f)
+            return 0.0f;
+
+        // `getAngleToSunInRadians`: the eye's own forward against the sun's, both unit. Clamped
+        // before the arc cosine, which a dot a rounding past one would hand a NaN.
+        const osg::Vec3f forward = frame.mCamera.mForward;
+        const osg::Vec3f sun = frame.mSun.mDirection;
+        const float cosine
+            = std::clamp((forward * sun) / std::max(forward.length() * sun.length(), 1.0e-6f), -1.0f, 1.0f);
+        const float angle = std::acos(cosine);
+
+        return frame.mGlareStrength * (1.0f - std::min(1.0f, angle / frame.mGlareAngleMax));
     }
 
     Shaders::CloudDeck noDeck()
@@ -136,6 +155,11 @@ namespace Rtx
         constants.mTime = reading.mSeconds;
         constants.mSkyTime = static_cast<float>(reading.mSkySeconds);
         constants.mRainOnWater = reading.mRainOnWater;
+        constants.mShelterHeight = reading.mShelterHeight;
+
+        constants.mGlareColour = reading.mGlareColour;
+        constants.mGlareAngleMax = reading.mGlareAngleMax;
+        constants.mGlareStrength = reading.mGlareStrength;
 
         return light.mExposureBias;
     }

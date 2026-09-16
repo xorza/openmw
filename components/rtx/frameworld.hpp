@@ -81,7 +81,26 @@ namespace Rtx
         double mSkySeconds = 0.0;
 
         float mRainOnWater = 0.0f;
+
+        /// How far over the eye a roof keeps what is falling off, or nought where nothing falling
+        /// is kept off — `Shaders::VisibilityConstants::mShelterHeight`, which is the game's
+        /// occluder box and not a number decided here.
+        float mShelterHeight = 0.0f;
+
+        /// The sun glare fader as the game states it, `Shaders::VisibilityConstants::mGlare*`:
+        /// the colour in the display's own values, the angle off the axis it has faded out at, and
+        /// the most of the picture it washes on this frame — nought where no sun is drawn.
+        osg::Vec3f mGlareColour;
+        float mGlareAngleMax = 0.0f;
+        float mGlareStrength = 0.0f;
     };
+
+    /// How much of the glare fader's colour this frame lays over the picture before the share of
+    /// the sun the eye could see is multiplied in: the strength, faded by how far the eye's axis
+    /// stands from the sun — `SunGlareCallback`'s `1 - min(1, angle / angleMax)`, times `_Max`
+    /// and the two fades the reading already folded into the strength. Nought for a frame with no
+    /// fader in it, and nought past the angle.
+    float sunGlareAmount(const Shaders::VisibilityConstants& frame);
 
     /// How far the air has been carried downwind since a run began, in world units: the integral
     /// of the wind over the sky's clock, kept across frames by whoever traces them. What the

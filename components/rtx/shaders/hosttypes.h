@@ -20,6 +20,7 @@
 #include <cstdint>
 
 #include <osg/Vec2f>
+#include <osg/Vec2i>
 #include <osg/Vec2ui>
 #include <osg/Vec3f>
 #include <osg/Vec3ui>
@@ -30,6 +31,7 @@ namespace Rtx::Shaders
     using vec2 = osg::Vec2f;
     using vec3 = osg::Vec3f;
     using vec4 = osg::Vec4f;
+    using ivec2 = osg::Vec2i;
     using uvec2 = osg::Vec2ui;
     using uvec3 = osg::Vec3ui;
     using uint = std::uint32_t;

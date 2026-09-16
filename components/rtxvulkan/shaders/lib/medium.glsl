@@ -56,6 +56,38 @@ float mediumCrossing(float painted, float facing)
     return paintedOver(painted, 1.0 / max(facing, 1.0 / MEDIUM_GRAZE_LIMIT));
 }
 
+/// One crossing of a walk that confirms nothing, read down to what a walk weighs it by: the rows
+/// the candidate names, the corner the texel is read at, and the texel. The medium walk and the
+/// additive walk read a crossing alike and weigh it differently, so the reading is said once.
+///
+/// @param coneWidth how wide the ray's cone is at the crossing, which picks the texel's level.
+struct Crossing
+{
+    GpuInstance mInstance;
+    GpuMaterial mMaterial;
+    uvec3 mCorner;
+    vec3 mWeight;
+    vec4 mTexel;
+};
+
+Crossing crossingOf(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
+{
+    Crossing crossing;
+    crossing.mInstance = instanceAt(instanceIndex);
+    crossing.mMaterial = materialAt(crossing.mInstance.mMaterial);
+    crossing.mCorner = triangleCorners(meshAt(crossing.mInstance.mMesh), primitive);
+    crossing.mWeight = cornerWeights(bary);
+
+    vec2 uv[3];
+    triangleUvs(crossing.mCorner, uv);
+    const TexturePoint point = texturePoint(
+        uv, crossing.mWeight, crossing.mMaterial.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
+
+    crossing.mTexel = crossing.mMaterial.mDiffuse == NO_TEXTURE ? vec4(NO_TEXTURE_ALBEDO, 1.0)
+                                                                : sampleDiffuse(crossing.mMaterial.mDiffuse, point);
+    return crossing;
+}
+
 /// Every medium the eye crosses before `limit`, composited into one layer.
 ///
 /// **One light answer for the layer and not one per shell.** The crossings are gathered first and
@@ -104,21 +136,16 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
         rayQueryGetIntersectionTriangleVertexPositionsEXT(query, false, corners);
         const vec3 crossed = triangleCross(corners, rayQueryGetIntersectionObjectToWorldEXT(query, false));
 
-        const GpuInstance instance = instanceAt(instanceIndex);
-        const GpuMaterial material = materialAt(instance.mMaterial);
-
-        vec2 uv[3];
-        triangleUvs(triangleCorners(meshAt(instance.mMesh), primitive), uv);
-        const TexturePoint point = texturePoint(uv, cornerWeights(bary), material.mTextureTransform,
-            surfaceConeAt(crossed, direction), cone.mWidth + cone.mSpread * at);
-
-        const vec4 texel = sampleDiffuse(material.mDiffuse, point);
+        const Crossing shell
+            = crossingOf(instanceIndex, primitive, bary, crossed, direction, cone.mWidth + cone.mSpread * at);
+        const GpuMaterial material = shell.mMaterial;
+        const vec4 texel = shell.mTexel;
 
         // **`sampledOpacity` and not the same arithmetic written again**, so that one surface cannot
         // be hazed two ways: this is the number a shadow ray asks of the same shell. It is handed
         // the alpha rather than the point, because the colour beside it is wanted here and nowhere
         // else.
-        const float painted = sampledOpacity(surfaceOpacity(instance, material), texel.a);
+        const float painted = sampledOpacity(surfaceOpacity(shell.mInstance, material), texel.a);
         if (!(painted > 0.0))
             continue;
 
@@ -184,6 +211,107 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
     layer.mCoveredAt = seen;
 
     return layer;
+}
+
+/// What every additive surface the eye crosses before `limit` adds to the pixel, lit once where
+/// they stand — `PuffLayer::mAdded`'s share from the meshes.
+///
+/// **A magic effect's sheet is a flame with triangles.** The rasterizer draws it `SRC_ALPHA, ONE`
+/// over everything, unsorted and undenoised; here it carries `MASK_ADDITIVE` and nothing else, so
+/// no shading ray meets it and this one query gathers it — at the picture's own extent, where
+/// `spritecomposite.rgen` marches the flames, and never through the denoiser. Nothing is ever
+/// confirmed: what adds covers nothing, so the walk runs to `limit` and keeps every crossing.
+///
+/// **Each crossing is what its material states, times its alpha**: the texture's colour under the
+/// tint the vertex colour or the material gives it, and the material's glow — which is where the
+/// white ambient the game gives an effect landed, `Rtx::SurfaceDescription::mAmbientOverride` — in
+/// `EMISSIVE_INTENSITY`, the one statement of what a material's one is worth here. The unlit share
+/// is then lit once as a ball of smoke standing at the coverage-weighted depth, as a cloud is, so
+/// the ice wall's sheets take their cell's light and an effect's take their own glow.
+///
+/// @param pixel the traced pixel, which names the froxel column the light is read from.
+vec3 additiveAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Cone cone)
+{
+    // In `sharePart`'s units, for the reason `mediumAlong` gives: the crossings arrive in the
+    // card's order.
+    uvec3 unlit = uvec3(0u);
+    uvec3 glowed = uvec3(0u);
+    uint coverage = 0u;
+    uint coveredAt = 0u;
+
+    vec3 coveringNormal = vec3(0.0, 0.0, 1.0);
+    float coveringAlpha = 0.0;
+    float coveringAt = limit;
+    uint covering = 0u;
+
+    rayQueryEXT query;
+    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_ADDITIVE, origin, 0.0, direction, limit);
+
+    while (rayQueryProceedEXT(query))
+    {
+        if (rayQueryGetIntersectionTypeEXT(query, false) != gl_RayQueryCandidateIntersectionTriangleEXT)
+            continue;
+
+        const uint instanceIndex = rayQueryGetIntersectionInstanceCustomIndexEXT(query, false);
+        const uint primitive = rayQueryGetIntersectionPrimitiveIndexEXT(query, false);
+        const vec2 bary = rayQueryGetIntersectionBarycentricsEXT(query, false);
+        const float at = rayQueryGetIntersectionTEXT(query, false);
+
+        vec3 corners[3];
+        rayQueryGetIntersectionTriangleVertexPositionsEXT(query, false, corners);
+        const vec3 crossed = triangleCross(corners, rayQueryGetIntersectionObjectToWorldEXT(query, false));
+
+        const Crossing sheet
+            = crossingOf(instanceIndex, primitive, bary, crossed, direction, cone.mWidth + cone.mSpread * at);
+        const GpuMaterial material = sheet.mMaterial;
+        const vec4 texel = sheet.mTexel;
+
+        // `ONE, ONE` reads no alpha at all; the rest weight what they add by it, as a flame does.
+        const bool whole = (material.mFlags & MATERIAL_ADD_WHOLE) != 0u;
+        const float alpha = whole ? 1.0 : sampledOpacity(surfaceOpacity(sheet.mInstance, material), texel.a);
+        if (!(alpha > 0.0))
+            continue;
+
+        // The vertex colour replaces the tint or the glow where the content asked, as `resolveFor`
+        // reads it, and the same two weights select without a branch.
+        const vec3 vertexColour = triangleColour(sheet.mCorner, sheet.mWeight);
+        const float tinted = float((material.mFlags & MATERIAL_VERTEX_TINT) != 0u);
+        const float glowing = float((material.mFlags & MATERIAL_VERTEX_GLOW) != 0u);
+
+        unlit = addShare(unlit, sharePart(texel.rgb * mix(material.mDiffuseColour, vertexColour, tinted) * alpha));
+        glowed = addShare(glowed, sharePart(mix(material.mEmissiveColour, vertexColour, glowing) * alpha));
+        coverage = addShare(coverage, sharePart(alpha));
+        coveredAt = addShare(coveredAt, sharePart(at / limit * alpha));
+
+        const float area = length(crossed);
+        const bool tied
+            = alpha == coveringAlpha && alpha > 0.0 && (at < coveringAt || (at == coveringAt && instanceIndex < covering));
+        if (alpha > coveringAlpha || tied)
+        {
+            coveringAlpha = alpha;
+            coveringNormal = area > 0.0 ? crossed / area : -direction;
+            coveringAt = at;
+            covering = instanceIndex;
+        }
+    }
+
+    if (coverage == 0u)
+        return vec3(0.0);
+
+    const float seen = float(coveredAt) / float(coverage) * limit;
+
+    // The air in front of the layer, taken once at the layer's own depth, as `mediumAlong` takes
+    // it: what a sheet adds is thinned by the fog short of it like anything else that stands there.
+    const float reaching
+        = exp(-fogColumn(origin, direction, seen) * fogCoverageAt(origin + direction * (0.5 * seen), max(seen, 1.0)));
+
+    const vec3 normal = faceforward(coveringNormal, direction, coveringNormal);
+    const vec3 light = puffLight(pixel, direction, seen, ballPuff(normal, smokeThrow(direction)));
+
+    // `unlit` already carries every crossing's alpha, so the glow is taken per unit of coverage —
+    // a mean over the crossings — and the light likewise: `texel * tint * alpha * (light + glow)`
+    // summed over the crossings, which is the rasterizer's own sum.
+    return vec3(unlit) / SHARE_UNIT * (light + vec3(glowed) / float(coverage) * EMISSIVE_INTENSITY) * reaching;
 }
 
 #endif

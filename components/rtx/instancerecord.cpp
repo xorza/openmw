@@ -86,11 +86,18 @@ namespace Rtx
                 // meets it exactly as it did and one more ray can ask for it alone. Everything that
                 // reads a row's mask tests the bit it wants rather than the whole word, which is
                 // what makes a second bit free to ride here.
-                .mMask = (water ? Shaders::MASK_WATER : classBit(instance.mClass))
-                    | (worn.mMedium ? Shaders::MASK_MEDIUM : 0u),
+                //
+                // **An additive surface carries its own bit and no other.** Nothing that shades,
+                // shadows or bounces casts with it, so such a surface is met by the one query that
+                // gathers what adds and by nothing else — which is what the rasterizer's
+                // shadow-casting masks say of a magic effect too.
+                .mMask = worn.mAdditive ? Shaders::MASK_ADDITIVE
+                                        : (water ? Shaders::MASK_WATER : classBit(instance.mClass))
+                        | (worn.mMedium ? Shaders::MASK_MEDIUM : 0u),
 
                 .mCutout = worn.mCutout,
-                .mTranslucent = instance.mOpacity < 1.0f || worn.mTranslucent,
+                .mTranslucent = !worn.mAdditive && (instance.mOpacity < 1.0f || worn.mTranslucent),
+                .mAdditive = worn.mAdditive,
                 .mPlaced = true,
             };
         }

@@ -8,6 +8,7 @@
 #include <osg/CullSettings>
 #include <osg/FrameStamp>
 #include <osg/Matrix>
+#include <osg/Matrixd>
 #include <osg/NodeVisitor>
 #include <osg/Transform>
 #include <osg/Viewport>
@@ -208,6 +209,9 @@ namespace Rtx
         // walk refills wholesale goes, and the meshes and materials stay because they are what the
         // walk is trying not to read again.
         subject.mScene->clearPlacement();
+
+        // The picture's own eye, for whatever in the subject turns to face one.
+        subject.mExtractor->setEye(viewBasisOf(osg::Matrixd::inverse(osg::Matrixd(mView))));
 
         // The world's frame and not a redraw count. The number handed to `extract` picks which
         // of a `SceneUtil::LightSource`'s two buffers to read, which is a property of the frame the

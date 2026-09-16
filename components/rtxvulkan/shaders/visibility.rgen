@@ -301,6 +301,19 @@ void main()
     if (COUNT_HITS && hit)
         atomicAdd(hits, 1);
 
+    // **The sun glare fader's query, one ray at a time.** The rasterizer draws the sun's quad
+    // against the world's depth and counts the pixels that survived; here every primary ray inside
+    // the quad's disc counts itself, and again where nothing that writes depth stood in front of
+    // the sky — the water writes none, and a pane peeled off the ray does. `glare.h` says whose
+    // disc this is and `tone.comp` reads the pair back. The chord and not the angle, as the sun's
+    // own disc is tested.
+    if (sunUp() && length(direction - frame.mSun.mDirection) < 2.0 * sin(0.5 * SUN_GLARE_QUERY_RADIUS))
+    {
+        atomicAdd(sunGlare.mTotal, 1u);
+        if (!(hit && !answer.mWater) && paneThrough >= 1.0)
+            atomicAdd(sunGlare.mSeen, 1u);
+    }
+
     const ivec2 at = ivec2(pixel);
 
     // **Coverage rides in the direct channel's alpha**, which every pass after this carries

@@ -76,8 +76,14 @@ namespace Rtx::Testing
     /// names its role.
     inline void paint(osg::StateSet& state, osg::Image& image, TextureRole role = TextureRole::Diffuse)
     {
+        // Repeating, as `NifOsg` binds a texture whose file said nothing else — `osg::Texture`'s
+        // own default is to clamp, which no loader in the game leaves standing.
+        osg::ref_ptr<osg::Texture2D> texture = new osg::Texture2D(&image);
+        texture->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
+        texture->setWrap(osg::Texture::WRAP_T, osg::Texture::REPEAT);
+
         const unsigned int unit = static_cast<unsigned int>(state.getTextureAttributeList().size());
-        state.setTextureAttributeAndModes(unit, new osg::Texture2D(&image), osg::StateAttribute::ON);
+        state.setTextureAttributeAndModes(unit, texture, osg::StateAttribute::ON);
         state.setTextureAttribute(
             unit, new SceneUtil::TextureType(std::string(textureRoleName(role))), osg::StateAttribute::ON);
     }

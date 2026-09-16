@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -108,7 +109,7 @@ namespace Rtx
         bool whole() const { return mMaterials.whole(); }
 
         /// Drops every material neither this epoch nor a hold keeps, and collects the survivors
-        /// into `live`.
+        /// into `live`. A material that dies lets go of every texture it wore.
         void retire(std::vector<Index>& live);
 
         /// Lets go of the images and the animated state sets this epoch did not meet. Asked
@@ -126,36 +127,37 @@ namespace Rtx
         }
 
     private:
-        /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
-        Material readMaterial(std::span<const Shading> shading);
-
-        /// The material a description comes to, with its images taken into the scene.
-        ///
-        /// @param diffuseSolid whether the diffuse map reaches solid, where a reader already
-        ///        answered; asked of the image here otherwise, and only where it matters.
-        Material describe(const SurfaceDescription* described, bool animated, std::optional<bool> diffuseSolid);
-
-        /// The slot `key` already holds, stamped and counted as a reuse, or `sNoIndex`.
-        Index reuse(const osg::StateSet* key);
-
-        /// Adds `material` under `key`, counted as an arrival.
-        using Entry = Identity<const osg::StateSet>::Entry;
-        Entry adopt(const osg::StateSet* key, const Material& material);
-
-        /// The scene's slot for one image, held for as long as this names it.
-        Index takeTexture(const osg::Image* image);
-
-        /// Whether `image`'s alpha ever reaches solid — `reachesSolid`, read at the first material
-        /// that asks and kept. Asked only for a translucent material's own diffuse map, because it
-        /// walks every texel of the finest level.
-        bool diffuseReachesSolid(const osg::Image* image);
-
-        /// What the scene knows one image as, and whether its alpha ever reaches solid — unset
-        /// until something asks, because the walk over its texels is only worth doing for a
-        /// material that has to tell a wisp from a mask.
+        /// What the scene knows one image as under each wrap, and whether its alpha ever reaches
+        /// solid, unset until something asks, because the walk over its texels is only worth doing
+        /// for a material that has to tell a wisp from a mask. `Known::mIndex` stays unset: the
+        /// slots are four, and the sweep reads the epoch and the holds alone.
         struct HeldTexture : Known
         {
+            std::array<Index, sTextureWrapCount> mSlots{ sNoIndex, sNoIndex, sNoIndex, sNoIndex };
             std::optional<bool> mSolid;
+        };
+
+        /// Every image an animated material has worn, each held in `mTextureOf` for as long as the
+        /// material stands.
+        ///
+        /// **`SceneUtil::GlowUpdater` cycles thirty-two caustic sheets at sixteen a second**, one
+        /// `setTextureAttribute` a frame, and a resolver that kept only the sheet of the frame gave
+        /// one back and took one up on every frame: an `extendScene` a frame with a decode and an
+        /// upload in it. Thirty-two, because that is the largest cycle the game ships; a
+        /// thirty-third distinct image drops the oldest and counts it.
+        struct Worn
+        {
+            static constexpr std::size_t sMost = 32;
+
+            std::array<const osg::Image*, sMost> mImages{};
+            std::uint8_t mCount = 0;
+            std::uint8_t mNext = 0;
+        };
+
+        /// A material and, where a controller rewrites it, what it has worn.
+        struct HeldMaterial : Known
+        {
+            std::optional<Worn> mWorn;
         };
 
         /// The state set a node's controllers write into, kept so that the address a material is
@@ -171,13 +173,46 @@ namespace Rtx
             std::uintptr_t mChains = 0;
         };
 
+        /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
+        Material readMaterial(std::span<const Shading> shading, Worn* worn);
+
+        /// The material a description comes to, with its images taken into the scene.
+        ///
+        /// @param diffuseSolid whether the diffuse map reaches solid, where a reader already
+        ///        answered; asked of the image here otherwise, and only where it matters.
+        /// @param worn what an animated material keeps of every image it has worn, or null for
+        ///        one nothing rewrites.
+        Material describe(
+            const SurfaceDescription* described, bool animated, std::optional<bool> diffuseSolid, Worn* worn);
+
+        /// The slot `key` already holds, stamped and counted as a reuse, or `sNoIndex`.
+        Index reuse(const osg::StateSet* key);
+
+        /// Adds `material` under `key`, counted as an arrival.
+        using Entry = Identity<const osg::StateSet, HeldMaterial>::Entry;
+        Entry adopt(const osg::StateSet* key, const Material& material);
+
+        /// Gives back every hold `worn` took on the images it names.
+        void releaseWorn(const Worn& worn);
+
+        /// The scene's slot for one image under one wrap, held for as long as this names it.
+        ///
+        /// @param worn the material wearing it, where that material is rewritten by a controller,
+        ///        which keeps the texture through the frames the controller shows another one.
+        Index takeTexture(const TextureUse& use, Worn* worn);
+
+        /// Whether `image`'s alpha ever reaches solid — `reachesSolid`, read at the first material
+        /// that asks and kept. Asked only for a translucent material's own diffuse map, because it
+        /// walks every texel of the finest level.
+        bool diffuseReachesSolid(const osg::Image* image);
+
         SceneDesc& mScene;
         const MirrorPass& mPass;
 
         /// Which state set each material came from, and the sea under the one it has not got —
         /// `resolveWater`. Owning, so that a state set cannot go while the entry stands: see
         /// `ByAddress`.
-        Identity<const osg::StateSet> mMaterials{ mPass };
+        Identity<const osg::StateSet, HeldMaterial> mMaterials{ mPass };
 
         /// Which slot each image the walk has met stands in, so an animated material re-read every
         /// frame does not build four `VFS::Path::Normalized` strings a frame. The entry is a

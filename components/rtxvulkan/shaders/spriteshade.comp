@@ -65,7 +65,7 @@ shared float radii[SPRITE_SHADE_WORKGROUP];
 /// through it, and one sprite has nothing in front of it.
 bool spriteShadeWants(GpuEmitter emitter)
 {
-    return emitter.mAdditive == 0u && emitter.mWidth <= 0.0 && emitter.mCount >= 2u;
+    return (emitter.mFlags & EMITTER_ADDITIVE) == 0u && emitter.mWidth <= 0.0 && emitter.mCount >= 2u;
 }
 
 /// A float's bits, reordered so that unsigned comparison is the float's own descending order.

@@ -29,6 +29,9 @@ namespace Rtx
         assert(!positions.empty());
         assert(arrays.mNormals.empty() || arrays.mNormals.size() == positions.size());
         assert(arrays.mTexCoords.empty() || arrays.mTexCoords.size() == positions.size());
+        assert(arrays.mSecondTexCoords.empty() || arrays.mSecondTexCoords.size() == positions.size());
+        assert((arrays.mUnitStreams == 0 || !arrays.mSecondTexCoords.empty())
+            && "a unit reads a second set the mesh did not bring");
         assert(arrays.mColours.empty() || arrays.mColours.size() == positions.size());
         assert(indices.size() % 3 == 0);
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
@@ -51,10 +54,13 @@ namespace Rtx
 
         const Run vertices = mPositions.allocate(positions);
         const Run elements = mIndices.allocate(indices);
+        const Run second = arrays.mSecondTexCoords.empty() ? Run{} : mSecondTexCoords.allocate(arrays.mSecondTexCoords);
 
         MeshRange range{
             .mVertices = vertices,
             .mIndices = elements,
+            .mSecondTexCoords = second,
+            .mUnitStreams = arrays.mSecondTexCoords.empty() ? 0u : arrays.mUnitStreams,
             .mShape = shape,
             .mDeform = deform,
             .mDeformer = deformer,
@@ -148,10 +154,14 @@ namespace Rtx
             // the one hole it came as.
             mPositions.release(range.mVertices);
             mIndices.release(range.mIndices);
+            if (range.mSecondTexCoords.mCount > 0)
+                mSecondTexCoords.release(range.mSecondTexCoords);
             mDeformers.release(range);
 
             range.mVertices.mCount = 0;
             range.mIndices.mCount = 0;
+            range.mSecondTexCoords.mCount = 0;
+            range.mUnitStreams = 0;
             range.mMaterial = sNoIndex;
             range.mBounds = osg::BoundingBoxf();
 
@@ -173,8 +183,8 @@ namespace Rtx
     std::size_t MeshTable::getGeometryBytes() const
     {
         return getPositions().size() * sizeof(osg::Vec3f) + mNormals.size() * sizeof(osg::Vec3f)
-            + mTexCoords.size() * sizeof(osg::Vec2f) + mColours.size() * sizeof(osg::Vec3f)
-            + getIndices().size() * sizeof(std::uint32_t);
+            + mTexCoords.size() * sizeof(osg::Vec2f) + getSecondTexCoords().size() * sizeof(osg::Vec2f)
+            + mColours.size() * sizeof(osg::Vec3f) + getIndices().size() * sizeof(std::uint32_t);
     }
 
     void MeshTable::clearArrivals()

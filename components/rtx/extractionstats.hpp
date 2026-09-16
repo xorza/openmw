@@ -87,6 +87,11 @@ namespace Rtx
         /// everything it builds.
         std::uint32_t mUndescribedSurfaces = 0;
 
+        /// How many images an animated material dropped from what it keeps worn, because it had
+        /// worn more distinct ones than `MaterialResolver::Worn` holds. Nought on the shipped
+        /// content, whose longest cycle is exactly what is held.
+        std::uint32_t mWornBeyondKept = 0;
+
         /// Particle systems the walk met and could not draw, because nothing described them or what
         /// did named no diffuse map. A canary that should be zero now that the rasterizer's
         /// `MWRender::RippleSimulation`, built by hand under `Mask_Water`, is the rasterizer's own

@@ -230,9 +230,30 @@ namespace Rtx
         into.mArrays.mIndices = mIndexScratch;
 
         into.mArrays.mTexCoords = {};
+        into.mArrays.mSecondTexCoords = {};
+        into.mArrays.mUnitStreams = 0;
         const osg::Vec2Array* texCoords = asVec2Array(geometry.getTexCoordArray(0));
         if (texCoords != nullptr && texCoords->size() == arrays.mPositions.size())
             into.mArrays.mTexCoords = std::span(texCoords->asVector());
+
+        // **A second set is the first array bound at any unit that is not unit nought's**, and
+        // the units that bind it are noted for the material to look up its dark map's stream by.
+        // `NifOsg` binds a shape's UV sets one per texture unit, in the order the texturing
+        // property names them, so a unit that reads another array than unit nought's is reading
+        // the shape's second set. No vanilla shape carries a third.
+        const osg::Vec2Array* second = nullptr;
+        for (unsigned int unit = 1; unit < geometry.getNumTexCoordArrays() && unit < 32; ++unit)
+        {
+            const osg::Vec2Array* bound = asVec2Array(geometry.getTexCoordArray(unit));
+            if (bound == nullptr || bound == texCoords || bound->size() != arrays.mPositions.size())
+                continue;
+            if (second == nullptr)
+                second = bound;
+            if (bound == second)
+                into.mArrays.mUnitStreams |= 1u << unit;
+        }
+        if (second != nullptr)
+            into.mArrays.mSecondTexCoords = std::span(second->asVector());
 
         // The source geometry's colours even for a morph, whose positions came from its base
         // target: a morph moves vertices and does not repaint them.

@@ -13,6 +13,7 @@
 #include "mesh.hpp"
 #include "meshtable.hpp"
 #include "placementtable.hpp"
+#include "ripple.hpp"
 #include "runs.hpp"
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
@@ -80,8 +81,9 @@ namespace Rtx
         ///        `Sprite::mRadius`, or nought for sprites that face the eye. Every sprite carries
         ///        an axis where this is set and none where it is not — `SpriteEmitter::mWidth`.
         /// @param lighting the bake of `texture`'s alpha, or `sNoIndex`. `SpriteEmitter::mLighting`.
+        /// @param falls whether the sprites fall from the sky. `SpriteEmitter::mFalls`.
         void addEmitter(std::span<const Sprite> sprites, Index texture, bool additive, float width = 0.0f,
-            Index lighting = sNoIndex);
+            Index lighting = sNoIndex, bool falls = false);
 
         /// Drops every mesh and material the caller did not name, each named once in any order —
         /// the only way a scene loses geometry, and nothing is renumbered by it: every bottom-level
@@ -120,6 +122,12 @@ namespace Rtx
         std::span<const Light> lights() const { return mLights; }
         std::span<const Sprite> sprites() const { return mSprites; }
         std::span<const SpriteEmitter> emitters() const { return mEmitters; }
+
+        /// What disturbed the water this frame, for the ripple field to press. A frame's list like
+        /// the sprites', cleared with the placement: a wake is a fact about a frame and not about
+        /// a cell.
+        std::span<const RippleImpulse> ripples() const { return mRipples; }
+        void addRipple(const RippleImpulse& impulse) { mRipples.push_back(impulse); }
 
         /// What a backend compares against to know whether the geometry or the textures it built
         /// from are still the ones the scene holds.
@@ -167,5 +175,6 @@ namespace Rtx
         std::vector<Light> mLights;
         std::vector<Sprite> mSprites;
         std::vector<SpriteEmitter> mEmitters;
+        std::vector<RippleImpulse> mRipples;
     };
 }

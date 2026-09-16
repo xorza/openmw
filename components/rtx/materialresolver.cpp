@@ -1,6 +1,8 @@
 #include "materialresolver.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -117,7 +119,17 @@ namespace Rtx
         const Index index = mScene.materials().add(material);
         ++mPass.getStats().mMaterialsAdded;
 
-        return mMaterials.add(key, Known{ .mIndex = index });
+        return mMaterials.add(key, HeldMaterial{ { .mIndex = index } });
+    }
+
+    void MaterialResolver::releaseWorn(const Worn& worn)
+    {
+        for (std::size_t at = 0; at < worn.mCount; ++at)
+        {
+            const auto held = mTextureOf.find(worn.mImages[at]);
+            assert(held != mTextureOf.end() && "a worn image the mirror does not hold");
+            mTextureOf.drop(held);
+        }
     }
 
     MaterialResolver::Resolved MaterialResolver::resolveWater()
@@ -147,7 +159,8 @@ namespace Rtx
         // The same two facts `Material::isTranslucent` reads, off the description they are
         // copied from, so the reader walks the texels of exactly the images `describe` would.
         const SurfaceDescription& described = *reading.mDescribed;
-        const bool translucent = described.mAlphaMode == AlphaMode::Blend && described.mOpacity < 1.0f;
+        const bool translucent = described.mAlphaMode == AlphaMode::Blend && described.mOpacity < 1.0f
+            && described.mBlend == BlendKind::Over;
         const osg::Image* const diffuse = described.getTexture(TextureRole::Diffuse);
 
         if (translucent && diffuse != nullptr && !diffuse->getFileName().empty())
@@ -169,8 +182,8 @@ namespace Rtx
         }
         else
             known = adopt(reading.mKey,
-                describe(
-                    reading.mDescribed.has_value() ? &*reading.mDescribed : nullptr, false, reading.mDiffuseSolid));
+                describe(reading.mDescribed.has_value() ? &*reading.mDescribed : nullptr, false, reading.mDiffuseSolid,
+                    nullptr));
 
         mMaterials.hold(known);
         return known->second.mIndex;
@@ -197,24 +210,44 @@ namespace Rtx
         // contribute in this graph is light and render-bin state rather than material.
         const Shading& own = shading.back();
 
-        if (const Index held = reuse(own.mStateSet); held != sNoIndex)
+        if (const auto known = mMaterials.find(own.mStateSet); known != mMaterials.end())
         {
+            ++mPass.getStats().mMaterialsReused;
+            mMaterials.stamp(known);
+
             // Read again, because a controller rewrote it since the last frame. The state set
             // is the same object — that is what lets the material keep its slot and every placement
-            // standing on it stay where it is — and everything inside it is this frame's.
+            // standing on it stay where it is — and everything inside it is this frame's. What it
+            // wears is kept across the frames, for the reason `Worn` gives.
             if (own.mAnimated)
-                mScene.setMaterial(held, readMaterial(shading));
+            {
+                HeldMaterial& held = known->second;
+                if (!held.mWorn.has_value())
+                    held.mWorn.emplace();
+                mScene.setMaterial(held.mIndex, readMaterial(shading, &*held.mWorn));
+            }
 
-            return Resolved{ .mIndex = held, .mKey = own.mStateSet };
+            return Resolved{ .mIndex = known->second.mIndex, .mKey = own.mStateSet };
         }
 
-        return Resolved{ .mIndex = adopt(own.mStateSet, readMaterial(shading))->second.mIndex, .mKey = own.mStateSet };
+        // An arrival under a controller starts wearing what it wears from its first frame.
+        if (!own.mAnimated)
+            return Resolved{ .mIndex = adopt(own.mStateSet, readMaterial(shading, nullptr))->second.mIndex,
+                .mKey = own.mStateSet };
+
+        Worn worn;
+        const Material material = readMaterial(shading, &worn);
+        const Entry added = adopt(own.mStateSet, material);
+        added->second.mWorn = worn;
+
+        return Resolved{ .mIndex = added->second.mIndex, .mKey = own.mStateSet };
     }
 
-    Index MaterialResolver::takeTexture(const osg::Image* image)
+    Index MaterialResolver::takeTexture(const TextureUse& use, Worn* const worn)
     {
         ExtractionStats& stats = mPass.getStats();
 
+        const osg::Image* const image = use.get();
         if (image == nullptr || image->getFileName().empty())
             return sNoIndex;
 
@@ -223,20 +256,48 @@ namespace Rtx
         // count that only rose on an arrival would report nothing there.
         stats.mFormats.count(*image);
 
-        if (const auto known = mTextureOf.find(image); known != mTextureOf.end())
-        {
+        const auto wrap = static_cast<std::size_t>(use.mWrap);
+
+        auto known = mTextureOf.find(image);
+        if (known != mTextureOf.end())
             mTextureOf.stamp(known);
-            return known->second.mIndex;
+        else
+            known = mTextureOf.add(image, HeldTexture{});
+
+        Index& slot = known->second.mSlots[wrap];
+        if (slot == sNoIndex)
+        {
+            slot = mScene.textures().add(VFS::Path::Normalized(image->getFileName()), use.mWrap);
+
+            // Held, because this entry is the reference. `mTextureOf` says why a slot the map names
+            // has to be one nothing else can hand out.
+            mScene.textures().hold(slot);
         }
 
-        const Index index = mScene.textures().add(VFS::Path::Normalized(image->getFileName()));
+        if (worn != nullptr)
+        {
+            const auto first = worn->mImages.begin();
+            const auto last = first + worn->mCount;
+            if (std::find(first, last, image) == last)
+            {
+                if (worn->mCount == Worn::sMost)
+                {
+                    // The oldest goes, which is the one `mNext` stands on once the ring is full.
+                    const auto oldest = mTextureOf.find(worn->mImages[worn->mNext]);
+                    assert(oldest != mTextureOf.end() && "a worn image the mirror does not hold");
+                    mTextureOf.drop(oldest);
+                    ++stats.mWornBeyondKept;
+                }
+                else
+                    ++worn->mCount;
 
-        // Held, because this entry is the reference. `mTextureOf` says why a slot the map names
-        // has to be one nothing else can hand out.
-        mScene.textures().hold(index);
-        mTextureOf.add(image, HeldTexture{ { .mIndex = index }, std::nullopt });
+                worn->mImages[worn->mNext] = image;
+                worn->mNext = static_cast<std::uint8_t>((worn->mNext + 1) % Worn::sMost);
+                mTextureOf.hold(known);
+            }
+        }
 
-        return index;
+        return slot;
     }
 
     bool MaterialResolver::diffuseReachesSolid(const osg::Image* const image)
@@ -258,19 +319,19 @@ namespace Rtx
         return *solid;
     }
 
-    Material MaterialResolver::readMaterial(std::span<const Shading> shading)
+    Material MaterialResolver::readMaterial(std::span<const Shading> shading, Worn* const worn)
     {
         const bool animated = !shading.empty() && shading.back().mAnimated;
 
         SurfaceDescription described;
         if (!describeSurface(shading, described))
-            return describe(nullptr, animated, std::nullopt);
+            return describe(nullptr, animated, std::nullopt, worn);
 
-        return describe(&described, animated, std::nullopt);
+        return describe(&described, animated, std::nullopt, worn);
     }
 
-    Material MaterialResolver::describe(
-        const SurfaceDescription* const described, const bool animated, const std::optional<bool> diffuseSolid)
+    Material MaterialResolver::describe(const SurfaceDescription* const described, const bool animated,
+        const std::optional<bool> diffuseSolid, Worn* const worn)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -290,11 +351,16 @@ namespace Rtx
         // twice for it is asking twice.
         const osg::Image* const diffuse = described->getTexture(TextureRole::Diffuse);
 
-        material.mDiffuse = takeTexture(diffuse);
-        material.mEmissive = takeTexture(described->getTexture(TextureRole::Emissive));
+        material.mDiffuse = takeTexture(described->getTextureUse(TextureRole::Diffuse), worn);
+        material.mEmissive = takeTexture(described->getTextureUse(TextureRole::Emissive), worn);
+        material.mEnvironment = takeTexture(described->getTextureUse(TextureRole::Environment), worn);
+        material.mEnvironmentColour = decodeColour(described->mEnvironmentColour);
+        material.mDark = takeTexture(described->getTextureUse(TextureRole::Dark), worn);
+        material.mDarkUnit = described->mDarkUnit;
 
         material.mAlphaRef = described->mAlphaRef;
         material.mAlphaMode = described->mAlphaMode;
+        material.mBlend = described->mBlend;
         material.mVertexColour = described->mVertexColour;
 
         material.mTwoSided = described->mTwoSided;
@@ -307,6 +373,18 @@ namespace Rtx
         // The multiplier is applied past the decode: it is a gain on the light and not a colour of
         // its own. Folded in because the game's own shader only ever uses their product.
         material.mEmissiveColour = decodeColour(described->mEmissiveColour) * described->mEmissiveMult;
+
+        // The ambient the game overrides joins the glow, which is where the rasterizer's own sum
+        // puts it: `objects.frag` adds `ambientColor * ambientLight` beside the emission and
+        // multiplies the whole by the texture, and a white override makes that the material's
+        // ambient colour whole. A lighting term and not a colour, so it takes the glow's scale.
+        if (described->mAmbientOverride.has_value())
+        {
+            const osg::Vec3f overridden = decodeColour(*described->mAmbientOverride);
+            const osg::Vec3f ambient = decodeColour(described->mAmbientColour);
+            material.mEmissiveColour
+                += osg::Vec3f(overridden.x() * ambient.x(), overridden.y() * ambient.y(), overridden.z() * ambient.z());
+        }
 
         // Scaled about the middle of the texture, then offset, which is what `NifOsg` builds its
         // texture matrix from — so `(uv - 0.5) * scale + 0.5 + offset`, resolved here into the
@@ -330,7 +408,10 @@ namespace Rtx
 
     void MaterialResolver::retire(std::vector<Index>& live)
     {
-        mMaterials.sweep(live);
+        mMaterials.sweep(live, [this](const HeldMaterial& held) {
+            if (held.mWorn.has_value())
+                releaseWorn(*held.mWorn);
+        });
     }
 
     void MaterialResolver::retireHolds()
@@ -338,7 +419,10 @@ namespace Rtx
         // The walk's own hold on every image a material is read from, given back the same way.
         // Most are met once and go stale on the frame after they arrived; what settles here is the
         // animated materials.
-        mTextureOf.retire([this](const HeldTexture& held) { mScene.textures().drop(held.mIndex); });
+        mTextureOf.retire([this](const HeldTexture& held) {
+            for (const Index slot : held.mSlots)
+                mScene.textures().drop(slot);
+        });
 
         // What `animate` keeps. Swept beside everything else because it is keyed on a node the graph
         // can drop, and because a state set held past its node holds the textures in it alive too.

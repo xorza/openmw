@@ -18,6 +18,12 @@ namespace Rtx
         /// per walk — so there is one of these at a time, and `getStats` is what says so.
         ExtractionStats* mStats = nullptr;
 
+        /// Whether what this walk places falls from the sky — the precipitation's walk, and no
+        /// other. Read by the emitter resolver, which stamps every system it meets under it, so
+        /// that `spriteshelter.rgen` keeps those out from under a roof and leaves a hearth's smoke
+        /// where it is.
+        bool mFalls = false;
+
         ExtractionStats& getStats() const
         {
             assert(mStats != nullptr && "a resolver reached outside a walk");

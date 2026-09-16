@@ -134,6 +134,9 @@ namespace Rtx
         // the normals are one per frame in flight: a skin recomputes a body's normals and never
         // repaints it.
         BlockedBuffer mTexCoords{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec2f) };
+
+        /// The second set, in runs of their own: `Rtx::MeshRange::mSecondTexCoords`.
+        BlockedBuffer mSecondTexCoords{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec2f) };
         BlockedBuffer mColours{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
 
         /// A material's layers and the weights a layer places, one copy each for the same reason.

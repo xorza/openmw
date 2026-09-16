@@ -117,10 +117,14 @@ namespace Rtx
         inline constexpr BufferUse sBufferComputeReadWrite{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT };
 
-        /// Read by the trace and by a dispatch alike.
+        /// Read by the trace and by a dispatch alike, and written by both: the sprite table a
+        /// launch shelters before a dispatch shades.
         inline constexpr BufferUse sBufferShaderRead{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
                 | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             VK_ACCESS_2_SHADER_STORAGE_READ_BIT };
+        inline constexpr BufferUse sBufferShaderReadWrite{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT };
         inline constexpr BufferUse sBufferUniformRead{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
                 | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             VK_ACCESS_2_UNIFORM_READ_BIT };

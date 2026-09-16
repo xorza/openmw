@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -10,6 +12,7 @@
 
 #include <components/rtx/slots.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/texturewrap.hpp>
 
 #include "descriptorsets.hpp"
 #include "frameslots.hpp"
@@ -58,6 +61,10 @@ namespace Rtx
         // Read by the tests and by nothing else: the interface's pass draws with one.
         VkImageView getView() const { return mImage.getView(); }
 
+        /// How the file said this is addressed past its edges, which picks the sampler the array
+        /// binds it through.
+        TextureWrap getWrap() const { return mWrap; }
+
         /// The size of the data uploaded, the map's included, which for a block-compressed image is
         /// what it occupies.
         VkDeviceSize getBytes() const { return mBytes; }
@@ -66,6 +73,7 @@ namespace Rtx
         Image mImage;
         Image mShading;
 
+        TextureWrap mWrap = TextureWrap::Repeat;
         VkDeviceSize mBytes = 0;
     };
 
@@ -162,7 +170,9 @@ namespace Rtx
         /// reason `drop` gives.
         std::vector<Texture> mTextures;
 
-        Sampler mSampler;
+        /// One per `TextureWrap`, indexed by it: the sampler a slot is bound through is the one its
+        /// file's wrap names, for the texture and for its shading map alike.
+        std::array<Sampler, sTextureWrapCount> mSamplers;
         SetLayout mLayout;
 
         /// One set per frame in flight, both bindings at the maximum the layout declares.

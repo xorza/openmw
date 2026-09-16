@@ -7,15 +7,18 @@
 #include <gtest/gtest.h>
 
 #include <osg/Matrixf>
+#include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
 #include <components/rtx/camera.hpp>
+#include <components/rtx/frameimage.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/shadingmap.hpp>
@@ -613,6 +616,247 @@ namespace Rtx::Testing
 
             EXPECT_EQ(perVertex, stated) << "the vertex colour stands in for the material's own";
             EXPECT_NE(perVertex, unlit) << "and a surface that glows is not the surface that does not";
+        }
+
+        /// A four-texel sheet with a different colour in each quadrant, for the two tests that
+        /// ask which part of a map a hit read: red at (0, 0), green at (1, 0), blue at (0, 1) and
+        /// white at (1, 1), in texel rows, row nought first.
+        constexpr std::array<std::uint8_t, 16> sQuadrants{
+            255, 0, 0, 255, // (0, 0)
+            0, 255, 0, 255, // (1, 0)
+            0, 0, 255, 255, // (0, 1)
+            255, 255, 255, 255, // (1, 1)
+        };
+
+        /// The environment sheet is added past the albedo, indexed by the eye's own reflection
+        /// off the surface: `objects.vert`'s sphere map, in the frame camera's basis.
+        ///
+        /// **The centre pixel is exact and the corners say which way the sheet is turned.** A ray
+        /// straight down the axis reflects straight back, which lands on the middle of the sheet —
+        /// the bilinear mean of all four quadrants, `(0.5, 0.5, 0.5)` — so what the sheet adds
+        /// there is `EMISSIVE_INTENSITY * 0.5 * tint`, which under a tint of `(1, 0.5, 0.25)` is
+        /// `(4, 2, 1)`. A ray up and to the right of the axis reflects up and to the right, which
+        /// lands past the middle in `u` and in `v`: more of the second column than a ray up and to
+        /// the left reads, which is more green, and more of the second row than a ray down and to
+        /// the left reads, which is more blue. Under the tint every channel keeps its sign.
+        TEST_F(RtxVisibilityTest, anEnvironmentSheetIsAddedPastTheAlbedoWhereTheEyesReflectionLands)
+        {
+            // Odd, so the centre pixel's own centre is on the axis and the reflection lands on the
+            // middle of the sheet exactly; at an even size it is half a pixel off and reads a
+            // sixtieth more of one quadrant than the others.
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            const TextureData grey = describeTexel(sGreyTexel, 0);
+            TestTexture sheet;
+            paintFlat(sheet, 2, sQuadrants, "sheet");
+            sheet.mData.mSlot = 1;
+            const std::array<TextureData, 2> textures{ grey, sheet.mData };
+
+            const osg::Vec3f tint(1.0f, 0.5f, 0.25f);
+            const Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const auto render = [&](bool sheeted, std::vector<float>& radiance) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(
+                    MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
+                const Index environment = scene.textures().add(VFS::Path::NormalizedView("sheet.dds"));
+                const Index material = scene.materials().add(Material{
+                    .mDiffuse = diffuse,
+                    .mEnvironment = sheeted ? environment : sNoIndex,
+                    .mEnvironmentColour = tint,
+                });
+                scene.addInstance(
+                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
+                radiance = mRadiance;
+            };
+
+            std::vector<float> with;
+            std::vector<float> without;
+            render(true, with);
+            render(false, without);
+
+            const auto addedAt = [&](std::size_t pixel) {
+                return osg::Vec3f(with[pixel * 4] - without[pixel * 4], with[pixel * 4 + 1] - without[pixel * 4 + 1],
+                    with[pixel * 4 + 2] - without[pixel * 4 + 2]);
+            };
+
+            const osg::Vec3f middle = addedAt(centre / 4);
+            EXPECT_NEAR(middle.x(), Shaders::EMISSIVE_INTENSITY * 0.5f, 1.0e-3f);
+            EXPECT_NEAR(middle.y(), Shaders::EMISSIVE_INTENSITY * 0.25f, 1.0e-3f);
+            EXPECT_NEAR(middle.z(), Shaders::EMISSIVE_INTENSITY * 0.125f, 1.0e-3f);
+
+            const osg::Vec3f upRight = addedAt(std::size_t{ 3 } * size + 29);
+            const osg::Vec3f upLeft = addedAt(std::size_t{ 3 } * size + 3);
+            const osg::Vec3f downLeft = addedAt(std::size_t{ 29 } * size + 3);
+            EXPECT_GT(upRight.y(), upLeft.y()) << "a reflection to the right reads the sheet's second column";
+            EXPECT_GT(upLeft.z(), downLeft.z()) << "a reflection upward reads the sheet's second row";
+        }
+
+        /// The dark map multiplies the albedo, read at the unit the content bound it at and on the
+        /// set of texture coordinates that unit reads.
+        ///
+        /// **The same numbers as the tint test, arrived at by a texture.** A dark texel of
+        /// `(128, 255, 64)` over the linear-128 grey is `(0.25, 0.5, 0.125)` in linear light, which
+        /// the display curve encodes to `(137, 188, 99)` — the tint test's own bytes, since a tint
+        /// of `(0.5, 1, 0.25)` is the same multiply. On the second set every vertex sits on the
+        /// sheet's red quadrant, so a dark map bound at a unit that reads the second set darkens
+        /// the wall to red; bound at unit nought it reads the first set, which spans the sheet,
+        /// and the centre pixel reads the bilinear middle of all four quadrants.
+        TEST_F(RtxVisibilityTest, theDarkMapMultipliesTheAlbedoOnTheSetItsUnitReads)
+        {
+            // Odd for the reason the sheet test gives: the centre pixel reads the sheet's exact
+            // middle.
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            const TextureData grey = describeTexel(sGreyTexel, 0);
+            constexpr std::array<std::uint8_t, 4> sDarkTexel{ 128, 255, 64, 255 };
+            const TextureData dark = describeTexel(sDarkTexel, 1);
+            TestTexture sheet;
+            paintFlat(sheet, 2, sQuadrants, "sheet");
+            sheet.mData.mSlot = 2;
+            const std::array<TextureData, 3> textures{ grey, dark, sheet.mData };
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mShowAlbedo = 1u;
+            camera.mDelight = 0.0f;
+
+            const std::array<osg::Vec2f, 4> onRed{ osg::Vec2f(0.25f, 0.25f), osg::Vec2f(0.25f, 0.25f),
+                osg::Vec2f(0.25f, 0.25f), osg::Vec2f(0.25f, 0.25f) };
+
+            const auto albedoUnder = [&](std::uint32_t darkSlot, std::uint8_t unit, std::uint32_t unitStreams) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{
+                    .mPositions = sWallQuad,
+                    .mTexCoords = sQuadUv,
+                    .mSecondTexCoords = onRed,
+                    .mUnitStreams = unitStreams,
+                    .mIndices = sQuadIndices,
+                });
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
+                const Index darkFlat = scene.textures().add(VFS::Path::NormalizedView("dark.dds"));
+                const Index darkSheet = scene.textures().add(VFS::Path::NormalizedView("sheet.dds"));
+                EXPECT_EQ(darkFlat, 1u);
+                EXPECT_EQ(darkSheet, 2u);
+                const Index material = scene.materials().add(Material{
+                    .mDiffuse = diffuse,
+                    .mDark = darkSlot,
+                    .mDarkUnit = unit,
+                });
+                scene.addInstance(
+                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
+                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            };
+
+            EXPECT_EQ(albedoUnder(sNoIndex, 0, 0), (std::array<int, 3>{ 188, 188, 188 }));
+            EXPECT_EQ(albedoUnder(1, 1, 0), (std::array<int, 3>{ 137, 188, 99 }));
+
+            // The sheet on the first set: the centre pixel reads the middle of it, a half in every
+            // channel, which halves the grey to the tint test's 137.
+            EXPECT_EQ(albedoUnder(2, 0, 0), (std::array<int, 3>{ 137, 137, 137 }));
+
+            // The sheet on the second set, at a unit that reads it: red everywhere.
+            EXPECT_EQ(albedoUnder(2, 1, 1u << 1), (std::array<int, 3>{ 188, 0, 0 }));
+
+            // And at a unit the mesh says reads the first set, the second set is not read.
+            EXPECT_EQ(albedoUnder(2, 1, 0), (std::array<int, 3>{ 137, 137, 137 }));
+        }
+
+        /// A surface that adds is met by no ray that shades and adds at the picture's own extent.
+        ///
+        /// **Two questions of one scene.** The trace's own frame must not change when an additive
+        /// quad is held in front of the wall — no shading ray meets it, so the wall behind is lit
+        /// and hit exactly as before — and the shown picture must be brighter where the quad is and
+        /// unchanged where it is not, because the composite gathered it there and nowhere else.
+        TEST_F(RtxVisibilityTest, anAdditiveSurfaceAddsToThePictureAndIsMetByNothingThatShades)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            const TextureData grey = describeTexel(sGreyTexel, 0);
+            constexpr std::array<std::uint8_t, 4> sRedTexel{ 255, 0, 0, 255 };
+            const TextureData red = describeTexel(sRedTexel, 1);
+            const std::array<TextureData, 2> textures{ grey, red };
+
+            const Shaders::VisibilityConstants camera = wallCamera(
+                size, osg::Vec3f(2.0f, 2.0f, 2.0f), osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f));
+
+            // A quad forty units across held halfway to the wall, which the centre pixel looks
+            // through and a corner pixel does not.
+            const std::array<osg::Vec3f, 4> held = uprightQuadAt(20.0f, -50.0f);
+
+            const auto build = [&](bool withQuad) {
+                SceneDesc scene;
+                const Index wall = scene.addMesh(
+                    MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
+                const Index glow = scene.textures().add(VFS::Path::NormalizedView("red.dds"));
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = wall,
+                    .mMaterial = scene.materials().add(Material{ .mDiffuse = diffuse }) });
+
+                if (withQuad)
+                {
+                    const Index sheet = scene.addMesh(
+                        MeshArrays{ .mPositions = held, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                    const Index additive = scene.materials().add(Material{
+                        .mDiffuse = glow,
+                        .mOpacity = 0.5f,
+                        .mAlphaMode = AlphaMode::Blend,
+                        .mBlend = BlendKind::Add,
+                    });
+                    scene.addInstance(
+                        MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = sheet, .mMaterial = additive });
+                }
+
+                return scene;
+            };
+
+            // The trace's own depth and bounce, read before the composite that gathers what adds:
+            // a quad the eye met would stand at fifty where the wall stands at a hundred.
+            std::vector<float> withDepth;
+            std::vector<float> withoutDepth;
+            std::vector<float> withBounce;
+            std::vector<float> withoutBounce;
+            std::vector<std::uint8_t> withShown;
+            std::vector<std::uint8_t> withoutShown;
+
+            EXPECT_EQ(renderShot(build(true), textures, camera, size), size * size);
+            mRenderer->readChannel(Channel::Depth, withDepth);
+            mRenderer->readChannel(Channel::Indirect, withBounce);
+            mRenderer->readPixels(withShown);
+
+            EXPECT_EQ(renderShot(build(false), textures, camera, size), size * size);
+            mRenderer->readChannel(Channel::Depth, withoutDepth);
+            mRenderer->readChannel(Channel::Indirect, withoutBounce);
+            mRenderer->readPixels(withoutShown);
+
+            requireFrame(withShown, size);
+            requireFrame(withoutShown, size);
+
+            // The depth channel is two values a pixel: the clip depth, and the distance the ray
+            // travelled.
+            ASSERT_EQ(withDepth.size(), std::size_t{ size } * size * 2);
+            EXPECT_NEAR(withDepth[centreOf(size) * 2 + 1], 100.0f, 0.1f) << "the eye met the additive quad";
+            EXPECT_EQ(withDepth, withoutDepth);
+            EXPECT_EQ(withBounce, withoutBounce) << "a bounce met the additive quad";
+
+            EXPECT_GT(int{ withShown[centre] }, int{ withoutShown[centre] }) << "the quad added nothing red";
+            EXPECT_EQ(int{ withShown[centre + 1] }, int{ withoutShown[centre + 1] }) << "and nothing green";
+
+            const std::size_t corner = 4;
+            EXPECT_EQ(withShown[corner], withoutShown[corner]) << "the quad reached a pixel it does not cover";
+            EXPECT_EQ(withShown[corner + 1], withoutShown[corner + 1]);
         }
 
         /// The mip chain a ray cone selects from, at a distance chosen so the answer is a whole

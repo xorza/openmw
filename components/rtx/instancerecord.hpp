@@ -51,8 +51,9 @@ namespace Rtx
 
         /// Which rays are interested: the class bit `InstanceClass` gives it, or `MASK_WATER` for a
         /// surface a shadow ray must pass straight through, or every shallow in the game goes
-        /// black; `MASK_MEDIUM` beside either. Said in the mask, because a candidate loop waving
-        /// shadow rays past costs half the frame rate.
+        /// black; `MASK_MEDIUM` beside either; or `MASK_ADDITIVE` alone, for a surface no shading
+        /// ray meets. Said in the mask, because a candidate loop waving shadow rays past costs half
+        /// the frame rate.
         std::uint32_t mMask = 0;
 
         /// Whether traversal must stop and ask the shader whether a hit is a hole. Without it the
@@ -64,6 +65,11 @@ namespace Rtx
         /// from `mCutout`, which asks whether there is anything at the hit at all. Earned by the
         /// material, for a pane of glass, or by the placement, for an actor the game is fading.
         bool mTranslucent = false;
+
+        /// Whether this adds to the frame and covers nothing, which is built non-opaque so the
+        /// one query that casts for it walks every crossing, and counted for that query to know
+        /// whether to run.
+        bool mAdditive = false;
 
         /// Whether the slot this record sits in holds a placement. Records are addressed by slot
         /// and slots have gaps, because a slot index is what a hit reads back.

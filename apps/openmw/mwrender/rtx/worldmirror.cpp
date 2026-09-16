@@ -1,14 +1,18 @@
 #include "worldmirror.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 
 #include <osg/Geometry>
 #include <osg/Image>
+#include <osg/Math>
+#include <osg/Matrixd>
 #include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/PositionAttitudeTransform>
@@ -16,10 +20,12 @@
 #include <osg/ref_ptr>
 
 #include <components/debug/debuglog.hpp>
+#include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/camera.hpp>
 #include <components/rtx/cellgrid.hpp>
 #include <components/rtx/colour.hpp>
 #include <components/rtx/extractionstats.hpp>
@@ -48,6 +54,18 @@ namespace MWRender
 {
     namespace
     {
+        /// `Weather_Sun_Glare_Fader_Color` as `SunGlareCallback` takes it: doubled and clamped,
+        /// replicating the original's flaw of setting one colour on two material terms, which the
+        /// fixed-function pipeline then saturated — only the red does, at the shipped values, so
+        /// the wash is orange. In the display's own values and not decoded, because that is the
+        /// space the rasterizer adds it in and `tone.comp` adds it in the same.
+        osg::Vec3f glareFaderColour()
+        {
+            const osg::Vec4f read = Fallback::Map::getColour("Weather_Sun_Glare_Fader_Color");
+            return osg::Vec3f(
+                std::min(1.0f, 2.0f * read.r()), std::min(1.0f, 2.0f * read.g()), std::min(1.0f, 2.0f * read.b()));
+        }
+
         /// The game's own models and images, as `Rtx::CellReader` asks for them.
         class SceneContent final : public Rtx::ContentSource
         {
@@ -78,8 +96,10 @@ namespace MWRender
         /// every node, so naming `Mask_WeatherParticles` to mean "the weather subtree" extracted
         /// every storm with its particles missing, because a blizzard's own particles are marked
         /// `Mask_ParticleSystem`. Which subtree is walked is answered by where the walk starts.
+        /// The ground is the ring's: what `TracedGround` stands under `Mask_Terrain` is the
+        /// intersector's, and walked it would place every loaded cell's ground a second time.
         constexpr osg::Node::NodeMask sWorldTraversal
-            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater);
+            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater | Mask_Terrain);
 
         /// What a walk of a loaded model may see: the world's mask without the player bit, which is
         /// stamped on nothing a content file holds. The cell ring is given this and never the
@@ -102,6 +122,10 @@ namespace MWRender
 
     WorldMirror::WorldMirror()
         : mExtractor(mScene, &mTraversals)
+        , mMoonPaint(Rtx::decodeColour(Fallback::Map::getColour("Moons_Script_Color")))
+        , mGlareColour(glareFaderColour())
+        , mGlareMax(Fallback::Map::getFloat("Weather_Sun_Glare_Fader_Max"))
+        , mGlareAngleMax(osg::DegreesToRadians(Fallback::Map::getFloat("Weather_Sun_Glare_Fader_Angle_Max")))
         , mReach(Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance))
     {
         mRing.setStaticsEnabled(Settings::terrain().mObjectPaging);
@@ -198,8 +222,13 @@ namespace MWRender
 
         // What the weather drops, walked as a second root, because the sky's mask keeps the world
         // walk out of that subtree: the same systems the rasterizer draws, stood at the eye.
-        const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
+        const osg::Matrixd inverseView = frame.mCamera.getInverseViewMatrix();
+        const osg::Vec3f eye = inverseView.getTrans();
         mEye = eye;
+
+        // And the eye every billboard in the world turns to, which the rasterizer's cull hands its
+        // `AutoTransform`s and this walk has to be told.
+        mExtractor.setEye(Rtx::viewBasisOf(inverseView));
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mRain, eye, frame.mWorld.mUnderwater, frameNumber);
         Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mWeatherEffect, eye, frame.mWorld.mUnderwater, frameNumber);
 
@@ -236,6 +265,12 @@ namespace MWRender
 
         // One walk over the whole graph, where every path is already distinct.
         return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber);
+    }
+
+    void WorldMirror::addRipples(std::span<const Rtx::RippleImpulse> impulses)
+    {
+        for (const Rtx::RippleImpulse& impulse : impulses)
+            mScene.addRipple(impulse);
     }
 
     Rtx::SceneUpload WorldMirror::hand(Rtx::Renderer& renderer, Resource::ImageManager& images, Rtx::FrameSpend& spend)
@@ -282,9 +317,17 @@ namespace MWRender
         // records. Decoded here, because the world does not know what a transport is.
         const osg::Vec3f haze = room.has_value() ? room->mSkyHorizon : Rtx::decodeColour(world.mAir.mColour);
 
+        // Whether there is a sky to draw: outdoors, and `tsky` has not turned it off. Off, the
+        // rasterizer hides the sky node whole — the dome, the decks, the stars, the sun's disc and
+        // the moons — and clears to the fog colour, while the sun and the weather go on lighting.
+        const bool skyShown = world.isOutdoors() && world.mSky.mSkyEnabled;
+
         // An interior has no sky colour: the weather system stops writing it indoors, so the air's
-        // own colour stands in. A quasi-exterior has weather and so has one.
-        const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSky.mSkyColour);
+        // own colour stands in. A quasi-exterior has weather and so has one. A sky turned off is
+        // the fog colour to the top, which is what the rasterizer's clear shows there.
+        const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith
+            : skyShown                             ? Rtx::decodeColour(world.mSky.mSkyColour)
+                                                   : haze;
 
         // The sun is not assembled here: everything the world says about it goes to the one builder
         // that decides what a sun may be, and the light is taken whole from whichever built it.
@@ -298,7 +341,7 @@ namespace MWRender
             .mSunShareAloft = Rtx::sunShareAloft(world.mGameHour, times),
             .mSunColour = Rtx::decodeColour(world.mSunColour),
             .mAmbient = Rtx::decodeColour(world.mAmbientColour),
-            .mDiscColour = Rtx::decodeColour(world.mSky.mSunDiscColour),
+            .mDiscColour = skyShown ? Rtx::decodeColour(world.mSky.mSunDiscColour) : osg::Vec3f(),
             .mGlare = world.mSky.mSunGlare,
         };
         const Rtx::Skylight light = room.has_value() ? room->mLight : Rtx::makeSkylight(reading);
@@ -324,6 +367,10 @@ namespace MWRender
             moons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
         }
 
+        // Secunda alone, as `SkyManager::setMoonColour` paints it.
+        if (world.mSky.mMoonRed)
+            moons[static_cast<std::size_t>(Rtx::Moon::Secunda)].mPaint = mMoonPaint;
+
         const auto weatherId = static_cast<std::uint32_t>(world.mWeatherId);
 
         return Rtx::WorldReading{
@@ -334,7 +381,7 @@ namespace MWRender
                 .mStarFade = world.mSky.mNightFade,
                 .mFog = air,
             },
-            .mOutdoors = world.isOutdoors(),
+            .mOutdoors = skyShown,
             .mGlare = world.mSky.mSunGlare,
             .mStarRoll = world.mSky.mStarRoll,
             .mSky = mSkyContent,
@@ -360,6 +407,23 @@ namespace MWRender
             .mSeconds = seconds,
             .mSkySeconds = world.mSky.mSkySeconds,
             .mRainOnWater = world.mRainOnWater,
+
+            // The top of the box the rasterizer's `PrecipitationOccluder::update` draws its depth
+            // map from: the precipitation's own range and a cell over it, above the eye. Nought
+            // where the game says what is falling is not the kind a roof stops — ash and blight
+            // blow under one, and rain and snow do not.
+            .mShelterHeight
+            = world.mPrecipitating ? world.mPrecipitationRange.z() + Constants::CellSizeInUnits : 0.0f,
+
+            // The fader's strength as `SunGlareCallback` multiplies it up: `_Max` by the
+            // time-of-day fade by the weather's `Glare_View`. The glare node hangs under the sun's
+            // own transform, so a sun the weather manager has hidden for the night or a sky `tsky`
+            // turned off draws none.
+            .mGlareColour = mGlareColour,
+            .mGlareAngleMax = mGlareAngleMax,
+            .mGlareStrength = skyShown && world.mSky.mSunEnabled
+                ? mGlareMax * world.mSky.mGlareFade * world.mSky.mSunGlare
+                : 0.0f,
         };
     }
 }

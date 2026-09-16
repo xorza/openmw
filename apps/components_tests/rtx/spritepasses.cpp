@@ -885,7 +885,7 @@ namespace Rtx
             Column flame;
             flame.add(osg::Vec3f(6.0f, 0.0f, 0.0f), 8.0f, 1.0f);
             flame.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
-            flame.mEmitter.mAdditive = 1u;
+            flame.mEmitter.mFlags = Shaders::EMITTER_ADDITIVE;
             flame.shade(shading(), sEast);
             EXPECT_FLOAT_EQ(flame.mSprites[1].mSunLayers, 0.0f) << "a flame emits and shadows nothing";
 

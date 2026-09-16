@@ -47,8 +47,16 @@ namespace Rtx::Shaders
     /// by that one launch.
     const uint BIND_SHOWN = 6;
 
+    /// What walked through the water, as one more tile of the sea: its slopes and its curvatures,
+    /// world-anchored where the wave tiles repeat. `ripple.h` says whose field it is.
+    const uint BIND_RIPPLE_SURFACE = 7;
+    const uint BIND_RIPPLE_CURVATURE = 8;
+
+    /// The two counts the eye's rays take of the sun's quad, for the glare fader — `glare.h`.
+    const uint BIND_SUN_GLARE = 9;
+
     /// How many the set declares, which is the last of them and one more.
-    const uint BIND_COUNT = 7;
+    const uint BIND_COUNT = 10;
 
 #ifdef RTX_HOST
 }

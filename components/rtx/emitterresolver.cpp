@@ -53,8 +53,8 @@ namespace Rtx
         // One question and one count, because a particle's whole silhouette is its texture's alpha
         // and an emitter this cannot name a sprite for draws nothing.
         SurfaceDescription described;
-        const osg::Image* sprite
-            = describeSurface(shading, described) ? described.getTexture(TextureRole::Diffuse) : nullptr;
+        const TextureUse& use = described.getTextureUse(TextureRole::Diffuse);
+        const osg::Image* sprite = describeSurface(shading, described) ? use.get() : nullptr;
 
         if (sprite == nullptr || sprite->getFileName().empty())
         {
@@ -69,7 +69,7 @@ namespace Rtx
         if (arrived)
         {
             const VFS::Path::Normalized path(sprite->getFileName());
-            known->second.mIndex = mScene.textures().add(path);
+            known->second.mIndex = mScene.textures().add(path, use.mWrap);
 
             // The bake is keyed on the file, so two emitters drawing with one texture share one
             // bake, and it is made when the texture is opened for upload — `SceneTextures`.
@@ -91,7 +91,8 @@ namespace Rtx
             .mPlace = place,
             .mTexture = known->second.mIndex,
             .mLighting = known->second.mLighting,
-            .mLight = addsLight(shading),
+            .mBlend = described.mBlend,
+            .mFalls = mPass.mFalls,
             .mSprite = sprite,
         });
     }
@@ -158,8 +159,10 @@ namespace Rtx
             // `getCurrentColor`'s alpha and `getCurrentAlpha` are two separate ramps and the
             // rasterizer multiplies them; `ParticleColorAffector` forces the first to one, and
             // multiplying both keeps that a fact about the data.
+            // A blend that adds whole reads no alpha at all, so its sprite is all there whatever
+            // its ramps say — one file in the game, and its silhouette is still its texture's.
             const osg::Vec4f colour = particle->getCurrentColor();
-            const float alpha = colour.a() * particle->getCurrentAlpha();
+            const float alpha = pending.mBlend == BlendKind::AddWhole ? 1.0f : colour.a() * particle->getCurrentAlpha();
             if (!(alpha > 0.0f))
                 continue;
 
@@ -185,7 +188,8 @@ namespace Rtx
 
         stats.mFormats.count(*pending.mSprite);
 
-        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mLight, width, pending.mLighting);
+        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mBlend != BlendKind::Over, width, pending.mLighting,
+            pending.mFalls);
 
         ++stats.mEmitters;
         stats.mSprites += static_cast<std::uint32_t>(mSpriteScratch.size());

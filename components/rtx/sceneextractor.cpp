@@ -18,6 +18,7 @@
 #include <osgParticle/ParticleSystem>
 #include <osgParticle/ParticleSystemUpdater>
 
+#include <components/nifosg/autotransform.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/skeleton.hpp>
@@ -358,7 +359,25 @@ namespace Rtx
         }
 
         const osg::Matrix above = mHere;
-        node.computeLocalToWorldMatrix(mHere, this);
+
+        // **A billboard is turned here, toward the eye this walk was told**, because the node
+        // turns only under a cull visitor and this walk is none: handed itself, `computeMatrix`
+        // keeps whatever rotation a cull last left, which in this renderer is the one the file was
+        // authored with. The three vectors go in the node's own frame, which is what a cull stack
+        // hands it too. A walk told no eye leaves the billboard where it stands.
+        const std::optional<ViewBasis>& eye = mExtractor.getEye();
+        if (auto* billboard = as<NifOsg::AutoTransform>(mKinds.of(node), NodeKind::Billboard, node);
+            billboard != nullptr && eye.has_value())
+        {
+            const osg::Matrixd toLocal = osg::Matrixd::inverse(osg::Matrixd(above) * osg::Matrixd(mRoot));
+            const osg::Vec3d eyeLocal = osg::Vec3d(eye->mOrigin) * toLocal;
+            const osg::Vec3d lookLocal = osg::Matrixd::transform3x3(osg::Vec3d(eye->mForward), toLocal);
+            const osg::Vec3d upLocal = osg::Matrixd::transform3x3(osg::Vec3d(eye->mUp), toLocal);
+
+            mHere.preMult(billboard->computeMatrixForFrame(eyeLocal, lookLocal, upLocal));
+        }
+        else
+            node.computeLocalToWorldMatrix(mHere, this);
 
         enter(node, identity);
 
@@ -435,21 +454,28 @@ namespace Rtx
     ExtractionStats SceneExtractor::extract(
         const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame)
     {
-        return walk(node, transform, anchor, frame, nullptr);
+        return walk(node, transform, anchor, frame, nullptr, false);
     }
 
     ExtractionStats SceneExtractor::extractWorld(
         const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame)
     {
-        return walk(root, transform, anchor, frame, mRing);
+        return walk(root, transform, anchor, frame, mRing, false);
+    }
+
+    ExtractionStats SceneExtractor::extractFalling(
+        const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame)
+    {
+        return walk(node, transform, anchor, frame, nullptr, true);
     }
 
     ExtractionStats SceneExtractor::walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
-        std::size_t frame, CellRing* const ring)
+        std::size_t frame, CellRing* const ring, const bool falls)
     {
         ExtractionStats stats;
         mAnchor = anchor;
         mPass.mStats = &stats;
+        mPass.mFalls = falls;
 
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
@@ -473,6 +499,7 @@ namespace Rtx
         // So that a resolver reached outside a walk fails where it is, rather than counting into a
         // report that has gone.
         mPass.mStats = nullptr;
+        mPass.mFalls = false;
 
         return stats;
     }

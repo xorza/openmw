@@ -64,8 +64,14 @@ namespace Rtx
                 .mDiffuseColour = material.mDiffuseColour,
                 .mEmissiveColour = material.mEmissiveColour,
                 .mTextureTransform = material.mTextureTransform,
-                .mFlags
-                = (material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u) | vertexColourFlag(material.mVertexColour),
+                .mEnvironment = material.mEnvironment,
+                .mEnvironmentColour = material.mEnvironmentColour,
+                .mDark = material.mDark,
+                .mFlags = (material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u)
+                    | vertexColourFlag(material.mVertexColour)
+                    | (material.isAdditive() && material.mBlend == BlendKind::AddWhole ? Shaders::MATERIAL_ADD_WHOLE
+                                                                                       : 0u)
+                    | ((material.mDarkUnit & Shaders::MATERIAL_DARK_UNIT_MASK) << Shaders::MATERIAL_DARK_UNIT_SHIFT),
             };
         }
 
@@ -100,7 +106,8 @@ namespace Rtx
                 .mFirst = emitter.mSprites.mOffset,
                 .mCount = emitter.mSprites.mCount,
                 .mTexture = emitter.mTexture,
-                .mAdditive = emitter.mAdditive ? 1u : 0u,
+                .mFlags
+                = (emitter.mAdditive ? Shaders::EMITTER_ADDITIVE : 0u) | (emitter.mFalls ? Shaders::EMITTER_FALLS : 0u),
                 .mWidth = emitter.mWidth,
                 .mLighting = emitter.mLighting,
             };
@@ -134,6 +141,9 @@ namespace Rtx
                 .mDiffuseColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                 .mEmissiveColour = osg::Vec3f(0.0f, 0.0f, 0.0f),
                 .mTextureTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
+                .mEnvironment = Shaders::NO_TEXTURE,
+                .mEnvironmentColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mDark = Shaders::NO_TEXTURE,
             };
         }
     }
@@ -145,6 +155,7 @@ namespace Rtx
     {
         mTables.open(slots);
         mTexCoords.open(device, sTableUsage, "uvs");
+        mSecondTexCoords.open(device, sTableUsage, "second uvs");
         mColours.open(device, sTableUsage, "vertex colours");
         mInstanceTable.open(device, graveyard, slots, sTableUsage, "instance rows");
         mMaterialTable.open(device, graveyard, slots, sTableUsage, "materials");
@@ -187,6 +198,7 @@ namespace Rtx
         // so filling these when the mesh arrives is a load's cost and every frame after it pays for
         // what actually moved.
         mTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getTexCoords().size()));
+        mSecondTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getSecondTexCoords().size()));
         mColours.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getColours().size()));
         mNormalTable.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getNormals().size()));
 
@@ -202,6 +214,10 @@ namespace Rtx
 
             mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.meshes().getTexCoords()));
             mColours.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.meshes().getColours()));
+
+            if (!range.mSecondTexCoords.empty())
+                mSecondTexCoords.writeAt(batch, range.mSecondTexCoords.mOffset,
+                    range.mSecondTexCoords.in(scene.meshes().getSecondTexCoords()));
         }
 
         // Whole, and it is twelve bytes a slot. A mesh arriving moves nothing already in this,
@@ -215,6 +231,9 @@ namespace Rtx
                 .mIndexOffset = mesh.mIndices.mOffset,
                 .mShape
                 = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u) | (mesh.mShape.mClosed ? Shaders::MESH_CLOSED : 0u),
+                .mSecondTexCoordOffset
+                = mesh.mSecondTexCoords.empty() ? Shaders::NO_STREAM : mesh.mSecondTexCoords.mOffset,
+                .mUnitStreams = mesh.mUnitStreams,
             });
 
         // **A new table on every arrival, and the old one buried**, because the frame behind is
@@ -453,6 +472,7 @@ namespace Rtx
         into.mNormalBlocks = mNormalTable.at(slot).getTableAddress();
         into.mTexCoordBlocks = mTexCoords.getTableAddress();
         into.mColourBlocks = mColours.getTableAddress();
+        into.mSecondTexCoordBlocks = mSecondTexCoords.getTableAddress();
         into.mMeshes = mMeshes.addressFor();
         into.mInstances = mInstanceTable.addressFor(slot);
         into.mMaterials = mMaterialTable.addressFor(slot);
@@ -472,8 +492,9 @@ namespace Rtx
     {
         // The indices are not counted here: they belong to the acceleration structure, which reports
         // its own size.
-        VkDeviceSize total = mTexCoords.getBytes() + mColours.getBytes() + mMeshes.getSize() + mLayers.getSize()
-            + mMasks.getSize() + mInstanceTable.getBytes() + mMaterialTable.getBytes() + mNormalTable.getBytes();
+        VkDeviceSize total = mTexCoords.getBytes() + mSecondTexCoords.getBytes() + mColours.getBytes()
+            + mMeshes.getSize() + mLayers.getSize() + mMasks.getSize() + mInstanceTable.getBytes()
+            + mMaterialTable.getBytes() + mNormalTable.getBytes();
         for (const Tables& tables : mTables.live())
             total += tables.getBytes();
 

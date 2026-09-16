@@ -1,0 +1,66 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+
+// Which of the falling sprites stand under a roof, and the roof keeps them off.
+//
+// **A ray where the rasterizer had a depth map.** `PrecipitationOccluder` draws the statics and
+// the objects from above the eye's rain box into a depth map and discards every drop with a depth
+// behind it. One ray straight up from each falling sprite to the top of that same box asks the
+// same question of the geometry itself: whatever the map would have held above the drop, the ray
+// meets. A drop under cover is zeroed in place — no radius, no alpha — and the bin that follows
+// lists nothing for it.
+//
+// **The map's mask and the trace's cutout.** The rasterizer's map is drawn with `Mask_Object |
+// Mask_Static`, which `shelterMask` states, so an actor keeps no rain off here either. Its depth
+// pass discards a fragment whose alpha falls under a half; here a candidate is asked the question
+// the eye asks — a hole in a mask is a hole, and a translucent surface is a surface — which is the
+// content's own threshold rather than the map's one number.
+//
+// **One launch over the sprite list, before the shade and the bin.** A launch and not a dispatch,
+// for the reason `RtxSourceTreeTest` gives; and before the shade, so a sheltered drop neither
+// counts as a layer over another nor is listed for a tile. Nothing here reads a pixel.
+
+#include "scene.h"
+
+#include "lib/bindings.glsl"
+#include "lib/traversal.glsl"
+
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) buffer ShelteredSprites
+{
+    GpuSprite at[];
+};
+
+const vec3 UP = vec3(0.0, 0.0, 1.0);
+
+void main()
+{
+    const uint index = gl_LaunchIDEXT.x;
+    ShelteredSprites sprites = ShelteredSprites(frame.mTables.mSprites);
+    const GpuSprite sprite = sprites.at[index];
+
+    if ((emitterAt(sprite.mEmitter).mFlags & EMITTER_FALLS) == 0u)
+        return;
+
+    // To the top of the box the map was drawn from, and nothing for a drop already above it: a
+    // ray whose end is behind its beginning is undefined, as `lightThrough` says.
+    const float limit = frame.mOrigin.z + frame.mShelterHeight - sprite.mPosition.z;
+    if (limit <= 0.0)
+        return;
+
+    rayQueryEXT query;
+    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, shelterMask(frame.mRayMask),
+        sprite.mPosition, 0.0, UP, limit);
+
+    // An lvalue the macro needs and nothing here reads: the ray stops at the first surface and
+    // sees through none.
+    uint blocked = 0u;
+    RTX_RESOLVE(query, UP, 0.0, blocked, false)
+
+    if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
+        return;
+
+    sprites.at[index].mRadius = 0.0;
+    sprites.at[index].mAlpha = 0.0;
+}

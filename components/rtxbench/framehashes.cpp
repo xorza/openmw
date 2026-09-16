@@ -27,6 +27,7 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/ripple.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
@@ -62,6 +63,7 @@ namespace Rtx
 
             const std::string_view path = scene.textures().getPaths()[texture].value();
             digest.add(std::span<const char>(path.data(), path.size()));
+            digest.add(scene.textures().getWraps()[texture]);
         }
 
         /// Hands every field of `material` to one of three callables.
@@ -80,21 +82,27 @@ namespace Rtx
         template <class Texture, class Layers, class Value>
         void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
         {
-            const auto& [kind, diffuse, emissive, diffuseColour, emissiveColour, opacity, alphaRef, alphaMode,
-                vertexColour, twoSided, textureTransform, run, flatten, animated, neverSolid]
+            const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, diffuseColour,
+                emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided, textureTransform, run,
+                flatten, animated, neverSolid]
                 = material;
 
             texture(diffuse);
             texture(emissive);
+            texture(environment);
+            texture(dark);
 
             layers(run);
 
             value(kind);
+            value(environmentColour);
+            value(darkUnit);
             value(diffuseColour);
             value(emissiveColour);
             value(opacity);
             value(alphaRef);
             value(alphaMode);
+            value(blend);
             value(vertexColour);
             value(twoSided);
             value(textureTransform);
@@ -130,10 +138,11 @@ namespace Rtx
         /// the one report every determinism argument in this fork rests on.
         auto fieldsOf(const MeshRange& mesh)
         {
-            const auto& [vertices, indices, shape, deform, deformer, material, bindOffset, poseOffset, posed, bounds]
+            const auto& [vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, material, bindOffset,
+                poseOffset, posed, bounds]
                 = mesh;
-            return std::tie(
-                vertices, indices, shape, deform, deformer, material, bindOffset, poseOffset, posed, bounds);
+            return std::tie(vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, material,
+                bindOffset, poseOffset, posed, bounds);
         }
 
         auto fieldsOf(const MeshInstance& instance)
@@ -144,8 +153,8 @@ namespace Rtx
 
         auto fieldsOf(const SpriteEmitter& emitter)
         {
-            const auto& [centre, reach, sprites, texture, lighting, additive, width] = emitter;
-            return std::tie(centre, reach, sprites, texture, lighting, additive, width);
+            const auto& [centre, reach, sprites, texture, lighting, additive, falls, width] = emitter;
+            return std::tie(centre, reach, sprites, texture, lighting, additive, falls, width);
         }
 
         void addFields(Digest& digest, const auto& fields)
@@ -307,6 +316,8 @@ namespace Rtx
                 return "textures";
             case ScenePart::Lights:
                 return "lights";
+            case ScenePart::Ripples:
+                return "ripples";
             case ScenePart::Sprites:
                 return "sprites";
             case ScenePart::Emitters:
@@ -341,6 +352,7 @@ namespace Rtx
         take(ScenePart::Normals);
 
         one.add(scene.meshes().getTexCoords());
+        one.add(scene.meshes().getSecondTexCoords());
         take(ScenePart::TexCoords);
 
         one.add(scene.meshes().getIndices());
@@ -403,6 +415,13 @@ namespace Rtx
         for (const SpriteEmitter& emitter : scene.emitters())
             addFields(one, fieldsOf(emitter));
         take(ScenePart::Emitters);
+
+        for (const RippleImpulse& impulse : scene.ripples())
+        {
+            one.add(impulse.mAt);
+            one.add(impulse.mSize);
+        }
+        take(ScenePart::Ripples);
 
         // What poses a mesh that deforms, and the pose itself. The trace reads the posed vertices,
         // which live on the device and nowhere here, so these are what stands for them.
