@@ -95,10 +95,28 @@ namespace Rtx
 
     Index SceneDesc::addInstance(const MeshInstance& instance)
     {
-        assert(instance.mMesh < mMeshes.size());
-        assert(instance.mMaterial == sNoIndex || instance.mMaterial < mMaterials.size());
+        assert(
+            instance.mMesh < mMeshes.size() && mMeshes.isLive(instance.mMesh) && "a placement of a mesh nothing holds");
+        assert((instance.mMaterial == sNoIndex || mMaterials.isLive(instance.mMaterial))
+            && "a placement wearing a material nothing holds");
 
         return mPlacements.add(instance);
+    }
+
+    bool SceneDesc::placementsStandOnLiveRows() const
+    {
+        for (const MeshInstance& placed : mPlacements.getAll())
+        {
+            if (!placed.isPlaced())
+                continue;
+
+            if (!mMeshes.isLive(placed.mMesh))
+                return false;
+            if (placed.mMaterial != sNoIndex && !mMaterials.isLive(placed.mMaterial))
+                return false;
+        }
+
+        return true;
     }
 
     void SceneDesc::orderLights()
@@ -136,6 +154,10 @@ namespace Rtx
 
         const std::size_t freedMeshes = mMeshes.sweep();
         const std::size_t freedMaterials = mMaterials.sweep();
+
+        // A sweep frees a row nothing holds and nothing named this walk; a placement still standing
+        // on it would be traced against whatever the slot is next given to.
+        assert(placementsStandOnLiveRows() && "a sweep freed a row a placement stands on");
 
         // The per-frame lists are left as the walk left them: the walk that would refill them is
         // the next frame's, and nothing in them can be stale after a walk of the whole world.

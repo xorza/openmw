@@ -238,21 +238,24 @@ namespace MWRender
     {
         assert(mResources != nullptr && "a hand-over before the world was attached");
 
-        return mUploader.hand(renderer,
+        const Rtx::SceneUpload handed = mUploader.hand(renderer,
             Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(),
                 .mScene = mScene,
                 .mImages = *mResources->getImageManager(),
                 .mComposites = &mComposites,
                 .mReadings = &mRing.getHolds(),
                 .mSpend = &spend });
+
+        // Here and not at the frame's end, because a frame that walked and handed nothing over —
+        // a world with nothing placed — must keep its change lists for the hand-over that will:
+        // `Rtx::PlacementTable::advance` says what a list emptied unread costs.
+        mExtractor.advance();
+
+        return handed;
     }
 
     void WorldMirror::settle()
     {
-        // After the frame and not before the walk, so this frame does not measure its motion
-        // against itself; on the frames the trace refused as well, because the walk still ran.
-        mExtractor.advance();
-
         // What the walk did not find has gone. The graph is the whole world every frame, which is
         // what makes mark and sweep sound; the identity maps hold their keys alive until it runs.
         // Last, because it bumps the epoch the next walk is measured against.

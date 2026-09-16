@@ -562,8 +562,8 @@ namespace Rtx
             scene.textures().drop(textures[2]);
             scene.textures().drop(textures[0]);
 
-            scene.placements().drop(placed[2]);
-            scene.placements().drop(placed[0]);
+            scene.placements().drop(placed[2], Stander::Walk);
+            scene.placements().drop(placed[0], Stander::Walk);
 
             const std::array keepTwo{ meshes[0], meshes[1] };
             const std::array keepTwoMaterials{ materials[0], materials[1] };
@@ -682,7 +682,7 @@ namespace Rtx
 
             // A dropped slot leaves the list, and the placement that takes the slot over under
             // another material joins that one's.
-            scene.placements().drop(two);
+            scene.placements().drop(two, Stander::Walk);
             scene.placements().advance();
             EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = stone }), two);
             scene.placements().advance();
@@ -696,7 +696,7 @@ namespace Rtx
             scene.placements().advance();
 
             // And a placement wearing nothing is on no list, so it is never reported for one.
-            scene.placements().drop(bare);
+            scene.placements().drop(bare, Stander::Walk);
             scene.placements().advance();
             reclass(glass, 1.0f);
             EXPECT_EQ(sorted(scene.placements().getMoved()), (std::vector<Index>{ one }));
@@ -760,7 +760,7 @@ namespace Rtx
 
             // A dropped slot is a row to write inactive, and the slot it frees is the next
             // placement's — both reported, on the frames they happen.
-            scene.placements().drop(two);
+            scene.placements().drop(two, Stander::Walk);
             EXPECT_EQ(sorted(scene.placements().getMoved()), (std::vector<Index>{ two }));
             scene.placements().advance();
             EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), two);
@@ -800,8 +800,8 @@ namespace Rtx
                 for (Index at = 0; at < 5; ++at)
                     EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), at) << "a fresh table appends";
 
-                scene.placements().drop(first);
-                scene.placements().drop(second);
+                scene.placements().drop(first, Stander::Walk);
+                scene.placements().drop(second, Stander::Walk);
 
                 std::array<Index, 3> taken{};
                 for (Index& slot : taken)
@@ -1753,7 +1753,7 @@ namespace Rtx
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     Deform::Rig, Testing::addOneBoneRig(scene, 4));
             const Index material = scene.materials().add(Material{});
-            scene.addInstance(
+            const Index placed = scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });
 
             // The unit square in the xy plane that the fixture is.
@@ -1768,8 +1768,11 @@ namespace Rtx
             EXPECT_FLOAT_EQ(scene.getBounds().xMin(), 3.0f) << "the extent stayed where the first pose put it";
             EXPECT_FLOAT_EQ(scene.getBounds().xMax(), 4.0f);
 
-            // And a slot handed back reaches nowhere, however the instance standing on it is left:
-            // an empty answer is what a camera is not placed from.
+            // And a slot handed back reaches nowhere: an empty answer is what a camera is not
+            // placed from. The placement goes first, as the walk drops its placements before the
+            // sweep, because a placement left standing on a freed row is what the sweep asserts
+            // against.
+            scene.placements().drop(placed, Stander::Walk);
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_FALSE(scene.getBounds().valid());
         }

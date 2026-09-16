@@ -520,7 +520,7 @@ namespace Rtx
         // Placements first, because dropping one is what makes its mesh droppable. Freed rather
         // than compacted, because a slot index is the custom index a hit reads back. Not run at all
         // where every placement was reached (`Kept::whole`), which is a world that stands still.
-        mPlacements.retire([this](const Known& gone) { mScene.placements().drop(gone.mIndex); });
+        mPlacements.retire([this](const Known& gone) { mScene.placements().drop(gone.mIndex, Stander::Walk); });
 
         // Both tables or neither, because `SceneDesc::release` frees them against one pair of
         // survivor lists and a list an earlier epoch filled names slots since handed out. Nothing at
@@ -624,26 +624,43 @@ namespace Rtx
         // the game is showing, and the world's own answer to that is one.
         const float fade = shading.empty() ? 1.0f : shading.back().mFade;
 
-        if (held == mPlacements.end())
-        {
-            const Index slot = mScene.addInstance(MeshInstance{
-                .mTransform = place,
-                .mMesh = mesh,
-                .mMaterial = material.mIndex,
-                .mOpacity = fade,
-                .mClass = what,
-            });
-
-            mPlacements.add(who, Known{ .mIndex = slot });
-        }
-        else
-        {
-            mPlacements.stamp(held);
-            mScene.placements().move(held->second.mIndex, place);
-            mScene.placements().fade(held->second.mIndex, fade);
-        }
+        const MeshInstance resolved{
+            .mTransform = place,
+            .mMesh = mesh,
+            .mMaterial = material.mIndex,
+            .mOpacity = fade,
+            .mClass = what,
+        };
 
         ++stats.mInstances;
+
+        if (held == mPlacements.end())
+        {
+            mPlacements.add(who, Known{ .mIndex = mScene.addInstance(resolved) });
+            return;
+        }
+
+        mPlacements.stamp(held);
+
+        // A slot stands what the walk resolved this frame, or it is stood again. The key is a hash
+        // of addresses nothing keeps alive, so a path whose nodes the game freed and allotted again
+        // between two walks — a cell unloaded and another loaded in one step of the world — finds
+        // the entry of what stood there before; and a deforming drawable whose source geometry was
+        // replaced is mirrored afresh under the path it kept. Moved, the slot would carry the old
+        // surface at the new place until the next sweep, standing on a row the sweep may free.
+        Index& slot = held->second.mIndex;
+        const MeshInstance& standing = mScene.placements().getAll()[slot];
+        if (standing.mMesh != resolved.mMesh || standing.mMaterial != resolved.mMaterial
+            || standing.mClass != resolved.mClass)
+        {
+            mScene.placements().drop(slot, Stander::Walk);
+            slot = mScene.addInstance(resolved);
+            ++stats.mRestood;
+            return;
+        }
+
+        mScene.placements().move(slot, place);
+        mScene.placements().fade(slot, fade);
     }
 
     bool SceneExtractor::isWater(osg::Node::NodeMask mask) const

@@ -716,6 +716,7 @@ namespace RtxTool
                 case Rtx::Check::GroundReaches:
                 case Rtx::Check::GroundStands:
                 case Rtx::Check::LightsNotDoubled:
+                case Rtx::Check::StaticsNotDoubled:
                 case Rtx::Check::TexturesReadable:
                     return true;
             }

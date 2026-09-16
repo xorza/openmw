@@ -114,7 +114,7 @@ namespace Rtx::Testing
 
             void letGo()
             {
-                mScene.placements().drop(mSlot);
+                mScene.placements().drop(mSlot, Stander::Walk);
                 mSlot = sNoIndex;
                 mScene.meshes().drop(mMesh);
                 mScene.materials().drop(mMaterial);
@@ -327,14 +327,17 @@ namespace Rtx::Testing
                 << "the rig of the one that left went with it and the survivor's stayed";
         }
 
-        /// A slot the walk stopped naming is freed on the frame it stopped, however whole the map is.
+        /// A slot the walk stopped naming is freed on the frame it stopped, however whole the map is,
+        /// and the placement that stood on it is stood again on the mesh that replaced it.
         ///
         /// **What the sweep's own guard cannot see.** A frame where every entry was reached has
         /// nothing stale in it, so the sweep and the release are both skipped — but a deforming
         /// drawable whose source geometry was replaced is not stale, it is wrong: `MeshResolver`
         /// lets go of that entry in the middle of the walk and mirrors the drawable afresh. The map
         /// ends the frame the size it started, every entry in it stamped, and the slot the abandoned
-        /// entry named is named by nothing at all.
+        /// entry named is named by nothing at all — the placement found under the drawable's path
+        /// included, which would otherwise stand on the freed row and trace whatever is put there
+        /// next.
         TEST_F(RtxSceneExtractorTest, aSlotAbandonedInsideAWalkIsFreedByTheSameFrameThatAbandonedIt)
         {
             RiggedQuad actor;
@@ -381,6 +384,7 @@ namespace Rtx::Testing
             // the release reports.
             EXPECT_EQ(again.mMeshesAdded, 1u) << "the longer mesh was posed into the slot it does not fit";
             EXPECT_EQ(again.mMeshesReused, 1u) << "the crate was mirrored again rather than recognised";
+            EXPECT_EQ(again.mRestood, 1u) << "the actor's placement, found under its path on another mesh";
             EXPECT_EQ(went.mMeshes, 1u) << "the abandoned slot, and nothing the walk reached";
             EXPECT_EQ(went.mMaterials, 0u);
 
@@ -388,6 +392,14 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.meshes().getRows()[0].mVertices.mCount, 0u) << "the abandoned slot was left standing";
             EXPECT_EQ(mScene.meshes().getRows()[1].mVertices.mCount, 4u) << "the crate lost its slot";
             EXPECT_EQ(mScene.meshes().getRows()[2].mVertices.mCount, 6u);
+
+            // Two placements stand, and the actor's is on the longer mesh: a walk that met every
+            // drawable dropped none, and what it stood again stands where the resolver answered.
+            EXPECT_EQ(mScene.placements().getPlacedCount(), 2u);
+            bool actorStands = false;
+            for (const MeshInstance& placed : mScene.placements().getAll())
+                actorStands = actorStands || (placed.isPlaced() && placed.mMesh == 2);
+            EXPECT_TRUE(actorStands) << "the actor's placement kept standing on the abandoned slot";
         }
 
         /// Everything under a root the caller names a class is placed as that class, and the
@@ -485,6 +497,52 @@ namespace Rtx::Testing
             // was in it: the material that named it was the last thing naming it.
             EXPECT_EQ(mScene.textures().getPaths().size(), 1u);
             EXPECT_TRUE(mScene.textures().getPaths()[0].value().empty()) << "a texture nothing names was kept";
+        }
+
+        /// A placement found under its path wears what the walk resolved this frame, or it is
+        /// dropped and stood again — and then the sweep frees what it wore before, since nothing
+        /// stands on it any more.
+        ///
+        /// The key is a hash of node addresses nothing keeps alive, so a path whose nodes were freed
+        /// and allotted again between two walks finds the entry of what stood there before; a
+        /// state set the game swaps under a drawable is the same case in one node. Either way a
+        /// placement that was only moved would carry the old material at the new place — and, once
+        /// the sweep freed that material's row, whatever material takes the row next.
+        TEST_F(RtxSceneExtractorTest, aPlacementFoundUnderItsPathIsStoodAgainWhereItResolvesToAnotherSurface)
+        {
+            osg::ref_ptr<osg::Geometry> stone = makeQuad();
+            paint(*stone->getOrCreateStateSet(), "textures/tx_stone_01.dds");
+
+            const ExtractionStats first = walk(*stone);
+            EXPECT_EQ(first.mRestood, 0u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+            ASSERT_EQ(mScene.placements().getPlacedCount(), 1u);
+            ASSERT_TRUE(mExtractor.retire().empty());
+
+            // The same drawable on the same path, wearing another state set: the material resolver
+            // answers a second row, and the placement it stood under the first has to follow.
+            osg::ref_ptr<osg::StateSet> wood = new osg::StateSet;
+            paint(*wood, "textures/tx_wood_01.dds");
+            stone->setStateSet(wood);
+
+            mScene.clearPlacement();
+            const ExtractionStats second = walk(*stone, 0, 1);
+            EXPECT_EQ(second.mRestood, 1u) << "the placement kept the material it no longer resolves to";
+            EXPECT_EQ(second.mInstances, 1u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 2u);
+
+            const Retirement went = mExtractor.retire();
+            EXPECT_EQ(went.mMeshes, 0u) << "the quad is the quad";
+            EXPECT_EQ(went.mMaterials, 1u) << "the stone, which nothing wears";
+
+            ASSERT_EQ(mScene.placements().getPlacedCount(), 1u);
+            for (const MeshInstance& placed : mScene.placements().getAll())
+            {
+                if (!placed.isPlaced())
+                    continue;
+                EXPECT_EQ(placed.mMaterial, 1u) << "the placement stands on a material the sweep freed";
+            }
+            EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, Rtx::sNoIndex) << "the stone's row was kept";
         }
     }
 }

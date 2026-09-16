@@ -127,7 +127,7 @@ namespace Rtx
             scene.placements().advance();
 
             // A drop empties the row; the slot taken over is a new row, and the table grows past it.
-            scene.placements().drop(pane);
+            scene.placements().drop(pane, Stander::Walk);
             updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "dropped");
             EXPECT_FALSE(kept[pane].mPlaced);

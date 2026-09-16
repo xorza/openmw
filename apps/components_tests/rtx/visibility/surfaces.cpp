@@ -182,7 +182,7 @@ namespace Rtx::Testing
 
             // And the first texture is still where it was: move the near wall out of the way and the
             // one behind it has to be red again, sampled from a descriptor nothing rewrote.
-            scene.placements().drop(1);
+            scene.placements().drop(1, Stander::Walk);
             mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
@@ -228,7 +228,7 @@ namespace Rtx::Testing
                 Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("blue.dds")) });
             ASSERT_EQ(scene.materials().getRows()[again].mDiffuse, blueTexture) << "the freed slot was not taken over";
 
-            scene.placements().drop(0);
+            scene.placements().drop(0, Stander::Walk);
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = again });
 

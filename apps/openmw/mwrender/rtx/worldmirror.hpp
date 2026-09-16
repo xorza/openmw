@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <memory>
 #include <span>
+#include <vector>
 
 #include <osg/PositionAttitudeTransform>
 #include <osg/Vec2f>
@@ -99,8 +100,10 @@ namespace MWRender
         /// where its middle is does not show; kept the rasterizer's so the two pictures agree.
         void standSea(const MWWorld::CellStore& cell);
 
-        /// Hands the scene to `renderer`, building only what has to be built. After `attach`,
-        /// because a texture the mirror has not seen before is read through the world's images.
+        /// Hands the scene to `renderer`, building only what has to be built, and then ends the
+        /// placement: where everything stands is what the next frame measures its motion against,
+        /// and the change lists the backend just took start again. After `attach`, because a
+        /// texture the mirror has not seen before is read through the world's images.
         Rtx::SceneUpload hand(Rtx::Renderer& renderer, Rtx::FrameSpend& spend);
 
         /// Whether each hand-over waits for the composites it collects, and each walk for the one
@@ -138,11 +141,8 @@ namespace MWRender
         /// was a boot and a trouser leg thirteen units from the eye, filling a third of the frame.
         void setShowsPlayer(bool shows);
 
-        /// Catches the walk up and drops what it did not find.
-        ///
-        /// **After the trace and not before the walk.** Where everything stood this frame is what
-        /// the next one measures its motion against, and the sweep bumps the epoch that measurement
-        /// is made against.
+        /// Drops what the walk did not find. After the trace and not before the walk, because the
+        /// sweep bumps the epoch the next walk is measured against.
         void settle();
 
         const Rtx::SceneDesc& getScene() const { return mScene; }
@@ -153,6 +153,10 @@ namespace MWRender
 
         // Read by the tests and by nothing else.
         osg::Node::NodeMask getTraversalMask() const { return mExtractor.getTraversalMask(); }
+
+        /// `Rtx::CellRing::collectStanding`: every reference the ring stands, for the harness's
+        /// check that the game stands none of them.
+        void collectStanding(std::vector<ESM::RefNum>& into) const { mRing.collectStanding(into); }
 
     private:
         /// Shared by everything that can reach one graph — the world's walk and every traced view.

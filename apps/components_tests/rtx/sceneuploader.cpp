@@ -109,7 +109,7 @@ namespace Rtx
             // The first model goes, in the order a sweep goes in: its placement first, then the
             // tables. **Nothing is renumbered by that any more**, so it is not a rebuild — the frame
             // after a cell leaves costs the top level and nothing else.
-            scene.placements().drop(first.mSlot);
+            scene.placements().drop(first.mSlot, Stander::Walk);
 
             const Rtx::Index keptMeshes[2] = { second.mMesh, third.mMesh };
             const Rtx::Index keptMaterials[2] = { second.mMaterial, third.mMaterial };
@@ -160,7 +160,7 @@ namespace Rtx
             // **A crossing, which is the two at once**: one ring arrives as another goes, on one
             // frame. Both lists are applied and neither costs a rebuild.
             const Model fifth = addModel(scene, VFS::Path::NormalizedView("textures/five.dds"));
-            scene.placements().drop(fourth.mSlot);
+            scene.placements().drop(fourth.mSlot, Stander::Walk);
 
             const Rtx::Index stillHere[3] = { second.mMesh, third.mMesh, fifth.mMesh };
             const Rtx::Index stillWorn[3] = { second.mMaterial, third.mMaterial, fifth.mMaterial };

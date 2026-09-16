@@ -93,6 +93,11 @@ namespace Rtx
 
         /// The models and images lent, for the frame's describe to find a reading by its image.
         const CellHolds& getHolds() const { return mHolds; }
+
+        /// Appends the reference number of every static standing in the top level, for a check
+        /// that asks the game whether it stands the same one.
+        void collectStanding(std::vector<ESM::RefNum>& into) const;
+
         // Read by the tests and by nothing else.
         /// How many cells the prepared ring holds.
         std::size_t getHeldCellCount() const { return mCells.size(); }
@@ -145,6 +150,12 @@ namespace Rtx
 
         /// The whole of what a walk does to the rings: what `collect` wraps in the walk it is inside.
         void walkRings(SceneAdopter& into, ExtractionStats& stats);
+
+        /// Whether the top level holds exactly what the held cells say it should, cell by cell and
+        /// in total — `CellPlacer::standsAsHeld` and `standsNoMore`. Asserted after every walk, so
+        /// a placement that outlived its cell, or a cell whose placement went missing, is found on
+        /// the frame it happened rather than seen at the horizon.
+        bool standsAsHeld() const;
 
         /// Lets go of every cell, every model and every image the frame holds. What the supply lent
         /// dies with its reader, so this runs before the supply is pointed anywhere else.

@@ -74,6 +74,7 @@ namespace Rtx
     {
         MeshInstance& placed = mInstances.at(slot);
         assert(placed.isPlaced() && "a slot nothing stands in");
+        assert(placed.mStander == Stander::Walk && "a fade of a placement the ring stood");
 
         if (placed.mOpacity == opacity)
             return;
@@ -86,6 +87,7 @@ namespace Rtx
     {
         MeshInstance& placed = mInstances.at(slot);
         assert(placed.isPlaced() && "a slot nothing stands in");
+        assert(placed.mStander == Stander::Walk && "a move of a placement the ring stood");
 
         if (placed.mTransform == transform)
             return false;
@@ -95,9 +97,10 @@ namespace Rtx
         return true;
     }
 
-    void PlacementTable::drop(const Index slot)
+    void PlacementTable::drop(const Index slot, const Stander by)
     {
         assert(mInstances.at(slot).isPlaced() && "a slot dropped twice, or one nothing stood in");
+        assert(mInstances.at(slot).mStander == by && "a slot dropped by a stander that did not stand it");
 
         unlink(slot, mInstances.at(slot).mMaterial);
         mInstances.at(slot) = MeshInstance{};

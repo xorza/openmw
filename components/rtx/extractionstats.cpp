@@ -21,6 +21,7 @@ namespace Rtx
             &ExtractionStats::mMeshesReused,
             &ExtractionStats::mMaterialsReused,
             &ExtractionStats::mInstances,
+            &ExtractionStats::mRestood,
             &ExtractionStats::mDeformed,
             &ExtractionStats::mUnskinned,
             &ExtractionStats::mEmitters,

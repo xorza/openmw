@@ -198,6 +198,15 @@ namespace Rtx
 
         std::span<const Row> getRows() const { return mRows; }
 
+        /// Whether `slot` holds a row: what an index into this table has to name to mean anything,
+        /// and what a placement's mesh or material is checked against. A byte per row, kept so the
+        /// question is one read and not a walk of the free list.
+        bool isLive(Index slot) const
+        {
+            assert(slot < mRows.size());
+            return mLive[slot] != 0;
+        }
+
         const Row& at(Index slot) const
         {
             assert(slot < mRows.size());
@@ -223,6 +232,7 @@ namespace Rtx
             {
                 mRows.push_back(row);
                 mHolds.push_back(0);
+                mLive.push_back(1);
                 grew(mRows.size());
 
                 return static_cast<Index>(mRows.size() - 1);
@@ -230,6 +240,7 @@ namespace Rtx
 
             assert(mHolds[index] == 0 && "a free slot something still holds");
             mRows[index] = row;
+            mLive[index] = 1;
 
             return index;
         }
@@ -244,6 +255,8 @@ namespace Rtx
         {
             assert(slot < mRows.size());
             assert(mHolds[slot] == 0 && "a slot freed while something holds it");
+            assert(mLive[slot] != 0 && "a slot freed twice");
+            mLive[slot] = 0;
             mFree.free(slot);
         }
 
@@ -330,6 +343,7 @@ namespace Rtx
                     continue;
 
                 release(index, mRows[index]);
+                mLive[index] = 0;
                 mFree.free(index);
                 ++freed;
             }
@@ -342,6 +356,9 @@ namespace Rtx
 
         /// How many things hold each row, parallel to the rows.
         std::vector<std::uint32_t> mHolds;
+
+        /// Whether each slot holds a row, parallel to the rows — `isLive`.
+        std::vector<std::uint8_t> mLive;
 
         SlotPool mFree;
 
@@ -447,6 +464,8 @@ namespace Rtx
 
         iterator begin() { return mRows.begin(); }
         iterator end() { return mRows.end(); }
+        const_iterator begin() const { return mRows.begin(); }
+        const_iterator end() const { return mRows.end(); }
 
     private:
         /// The first row whose key is not below `key` — the one comparator this type has.

@@ -37,6 +37,7 @@ namespace Rtx
         /// through `sweep`, so `take`, `at` and the sweep stay this table's own.
         std::size_t size() const { return mRows.size(); }
         std::size_t getLiveCount() const { return mRows.getLiveCount(); }
+        bool isLive(Index slot) const { return mRows.isLive(slot); }
         std::span<const Material> getRows() const { return mRows.getRows(); }
         void hold(Index slot) { mRows.hold(slot); }
         bool drop(Index slot) { return mRows.drop(slot); }

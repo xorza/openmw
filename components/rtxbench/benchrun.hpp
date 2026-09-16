@@ -22,8 +22,9 @@ namespace Rtx
     /// its own.
     enum class Check
     {
-        /// A second walk over the same graph adds no mesh and no material: the property the
-        /// incremental mirror rests on, and the only way to ask it is to ask twice.
+        /// A second walk over the same graph adds no mesh and no material, and stands no placement
+        /// again: the property the incremental mirror rests on, and the only way to ask it is to
+        /// ask twice.
         WalkTwice,
 
         /// Every placement wears a material something described. A placement wearing nothing is a
@@ -51,6 +52,13 @@ namespace Rtx
         /// No two lights stand at the same point. The lamps of unloaded cells are read out of the
         /// content files, and a cell that then loads brings its own copy of each.
         LightsNotDoubled,
+
+        /// No static stands twice: nothing the cell ring stands off the content files is a
+        /// reference the game has stood in its graph. The ring drops a cell's statics the frame
+        /// the cell enters the active grid, and the walk finds the game's own copies there; one
+        /// the ring kept would stand beside the game's, at the record's place — a building where
+        /// the game put none, until the ring let go of it.
+        StaticsNotDoubled,
 
         /// Every texture the scene named could be read; an unreadable one is drawn grey.
         TexturesReadable,

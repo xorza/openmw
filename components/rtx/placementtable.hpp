@@ -27,17 +27,21 @@ namespace Rtx
 
         /// Fades the placement in `slot`. Separate from `move`, because an actor fading on the spot
         /// has not moved; a fade that changed the number joins `getMoved` all the same, as a row to
-        /// rewrite that carries no motion.
+        /// rewrite that carries no motion. The walk's alone: the ring stands and drops, and never
+        /// fades.
         void fade(Index slot, float opacity);
 
         /// Moves the placement in `slot`, and says whether that changed anything. A transform equal
-        /// to the one already there writes nothing, which is the ordinary case.
+        /// to the one already there writes nothing, which is the ordinary case. The walk's alone,
+        /// as `fade` is.
         bool move(Index slot, const osg::Matrixf& transform);
 
         /// Empties `slot`. Its index is not reused until the next `add` asks for one. The slot
         /// joins `getMoved`: a backend has to write its row inactive, or the structure goes on
         /// tracing what stood there.
-        void drop(Index slot);
+        ///
+        /// @param by who is dropping it, which must be who stood it — `Stander`.
+        void drop(Index slot, Stander by);
 
         /// Says every row wearing `material` has to be written again for a reason this table did
         /// not make — the material changed what traversal is told about the surfaces standing on
@@ -46,8 +50,10 @@ namespace Rtx
         /// world's.
         void rewriteWearing(Index material);
 
-        /// Ends a frame's placement: what moved becomes where things were. Costs what moved and not
-        /// what stands. What was moved becomes `getSettled`, and `getMoved` starts empty.
+        /// Ends a placement a backend took: what moved becomes where things were. Costs what moved
+        /// and not what stands. What was moved becomes `getSettled`, and `getMoved` starts empty —
+        /// so only after a backend has read both, because a slot that leaves the lists unread is a
+        /// row no copy of the tables is ever told about.
         void advance();
 
         /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.

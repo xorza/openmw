@@ -152,10 +152,13 @@ namespace Rtx
         /// Where this walk's traversal numbers come from — the one handed in, or its own.
         Traversals& getTraversals() { return mTraversals; }
 
-        /// Ends a frame: what was placed becomes what was placed before. Once per frame by whoever
-        /// is mirroring a live graph, and never by anything that walks a world once, for which every
-        /// placement's previous transform is rightly its current one. Freeing what has gone is
-        /// `retire`'s job.
+        /// Ends a hand-over: what was placed becomes what was placed before, and the change lists
+        /// a backend has taken start again. Once per hand-over and after it, by whoever is
+        /// mirroring a live graph — never after a walk nothing handed over, or a slot that moved
+        /// or emptied on that walk would leave the lists before any copy of the tables was told,
+        /// and stand on the device as it stood before — and never by anything that walks a world
+        /// once, for which every placement's previous transform is rightly its current one.
+        /// Freeing what has gone is `retire`'s job.
         void advance();
 
         /// Drops everything the walks since the last call did not find — placements included — and

@@ -1,6 +1,7 @@
 #include "cellring.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <span>
 #include <utility>
@@ -276,12 +277,31 @@ namespace Rtx
             mPlacer.dropSlots(cell);
     }
 
+    void CellRing::collectStanding(std::vector<ESM::RefNum>& into) const
+    {
+        for (const HeldCell& cell : mCells)
+            for (std::size_t at = 0; at < cell.mShown; ++at)
+                if (cell.mPlacements[at].mSlot != sNoIndex)
+                    into.push_back(cell.mPlacements[at].mRefNum);
+    }
+
+    bool CellRing::standsAsHeld() const
+    {
+        for (const HeldCell& cell : mCells)
+            if (!mPlacer.standsAsHeld(cell, mAround))
+                return false;
+
+        return mPlacer.standsNoMore();
+    }
+
     void CellRing::collect(SceneAdopter& into, ExtractionStats& stats)
     {
         // What `forget` let go of since the last walk, and then what this walk lets go of.
         mHolds.releaseParts(into);
         walkRings(into, stats);
         mHolds.releaseParts(into);
+
+        assert(standsAsHeld() && "the ring stands something its cells do not hold, or holds what it does not stand");
 
         // What stands, counted off the slots and not off a tally: a world with no reader and an
         // interior have both dropped every slot by now, and stand nothing.

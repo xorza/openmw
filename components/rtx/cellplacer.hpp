@@ -69,6 +69,18 @@ namespace Rtx
         std::uint32_t getPlaced() const { return mPlaced; }
         std::uint32_t getGroundPlaced() const { return mGroundPlaced; }
 
+        /// Whether `cell` stands exactly what its holding says, by the rings and the size rule as
+        /// `around` stands now: every placement the rule admits and no script disabled has a slot,
+        /// and that slot holds its mesh and material under the ring's own name; every other
+        /// placement has none; and the ground stands in the reach and nowhere else. What `place`
+        /// keeps, asked after it, for an assert.
+        bool standsAsHeld(const HeldCell& cell, const WorldAround& around) const;
+
+        /// Whether the top level holds exactly `getPlaced() + getGroundPlaced()` slots under the
+        /// ring's name: a slot the ring stood and lost track of would stand for ever, and only a
+        /// count of the table can see one.
+        bool standsNoMore() const;
+
     private:
         bool isDisabled(ESM::RefNum refnum) const;
 

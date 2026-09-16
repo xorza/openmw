@@ -61,6 +61,12 @@ namespace Rtx
         std::uint32_t mMaterialsReused = 0;
         std::uint32_t mInstances = 0;
 
+        /// Of the instances, the placements found under their path and standing another mesh,
+        /// material or class than the walk resolved, so dropped and stood again. A path is a hash
+        /// of node addresses, and the game reuses an address the frame it frees it; the count says
+        /// how often a walk met one, and a walk over a world standing still owes nought.
+        std::uint32_t mRestood = 0;
+
         /// Drawables whose vertices are recomputed every frame and so were posed rather than read
         /// from the cache: skinned bodies and morphed faces. Each one already met is a dispatch and
         /// a bottom-level structure a backend has to refit, which is what makes this the cost of an

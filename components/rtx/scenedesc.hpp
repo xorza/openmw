@@ -70,8 +70,14 @@ namespace Rtx
 
         /// Places `instance` in a slot and returns it. The slot is the placement's name for as long
         /// as it stands: the custom index a hit reads back, and what lets a mirror move a placement
-        /// instead of rebuilding the list it was in.
+        /// instead of rebuilding the list it was in. The mesh and the material it names must be
+        /// live rows, which is asserted.
         Index addInstance(const MeshInstance& instance);
+
+        /// Whether every placement names a live mesh and a live material: what `release` asserts
+        /// after a sweep, because a placement standing on a freed row would be traced against
+        /// whatever the slot is given next, and nothing else would say so.
+        bool placementsStandOnLiveRows() const;
 
         /// Appends one particle system's live sprites, and the emitter that names them. The sphere
         /// is derived here rather than passed in, so the rejection test a ray makes and the sprites

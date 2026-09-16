@@ -33,7 +33,9 @@
 #include <apps/openmw/mwworld/cellstore.hpp>
 #include <apps/openmw/mwworld/manualref.hpp>
 #include <apps/openmw/mwworld/ptr.hpp>
+#include <apps/openmw/mwworld/worldmodel.hpp>
 #include <components/esm/refid.hpp>
+#include <components/esm3/refnum.hpp>
 #include <components/files/conversion.hpp>
 #include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
@@ -223,8 +225,9 @@ namespace RtxTool
                 std::format("\nsecond pass over the same graph\n"
                             "  new meshes:           {} (should be 0)\n"
                             "  new materials:        {} (should be 0)\n"
-                            "  drawables resolved:   {} to a known mesh\n",
-                    again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused));
+                            "  drawables resolved:   {} to a known mesh\n"
+                            "  stood again:          {} (should be 0)\n",
+                    again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused, again.mRestood));
         }
     }
 
@@ -413,9 +416,11 @@ namespace RtxTool
                 }
 
                 const Rtx::ExtractionStats& again = *report.mWalked.mAgain;
-                found = std::format("{} meshes and {} materials added by the second walk, {} drawables resolved",
-                    again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused);
-                return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0;
+                found = std::format(
+                    "{} meshes and {} materials added by the second walk, {} drawables resolved, {} stood again",
+                    again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused, again.mRestood);
+                return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0
+                    && again.mRestood == 0;
             }
 
             case Rtx::Check::SurfacesDescribed:
@@ -491,6 +496,34 @@ namespace RtxTool
                     "{} lights, {}", where.size(), doubled == where.end() ? "no two at one point" : "two at one point");
 
                 return doubled == where.end();
+            }
+
+            case Rtx::Check::StaticsNotDoubled:
+            {
+                // **Asked of the game's registry and not of the walk**, because the walk knows a
+                // placement by its node and the ring knows one by its reference: what the two share
+                // is the game's own `Ptr`, and a base node on it is the game standing the reference
+                // in the graph the walk mirrors.
+                const MWWorld::WorldModel& model = *MWBase::Environment::get().getWorldModel();
+                std::vector<ESM::RefNum> standing;
+                context.mRenderer.collectStanding(standing);
+
+                std::size_t doubled = 0;
+                std::string first;
+                for (const ESM::RefNum refnum : standing)
+                {
+                    const MWWorld::Ptr stood = model.getPtr(refnum);
+                    if (stood.isEmpty() || stood.getRefData().getBaseNode() == nullptr)
+                        continue;
+
+                    if (doubled++ == 0)
+                        first = std::format(", the first {} at {}", stood.getCellRef().getRefId().toDebugString(),
+                            stood.getCell()->getCell()->getDescription());
+                }
+
+                found = std::format(
+                    "{} statics the ring stands, {} of them stood by the game too{}", standing.size(), doubled, first);
+                return doubled == 0;
             }
 
             case Rtx::Check::TexturesReadable:

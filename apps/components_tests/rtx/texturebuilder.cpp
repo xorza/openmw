@@ -42,6 +42,7 @@ namespace Rtx
             Rtx::Index mMesh = 0;
             Rtx::Index mMaterial = 0;
             Rtx::Index mTexture = 0;
+            Rtx::Index mPlacement = 0;
         };
 
         /// One triangle and one material naming `texture`, so all three arrive together.
@@ -60,7 +61,7 @@ namespace Rtx
             Rtx::Material material;
             material.mDiffuse = made.mTexture;
             made.mMaterial = scene.materials().add(material);
-            scene.addInstance(Rtx::MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
+            made.mPlacement = scene.addInstance(Rtx::MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
 
             return made;
         }
@@ -239,6 +240,9 @@ namespace Rtx
             const std::array<Rtx::Index, 1> keptMeshes{ staying.mMesh };
             const std::array<Rtx::Index, 1> keptMaterials{ staying.mMaterial };
 
+            // Dropped before the sweep, as the walk drops a placement before it lets go of the rows
+            // it stood on: the sweep asserts that nothing stands on what it frees.
+            scene.placements().drop(going.mPlacement, Rtx::Stander::Walk);
             ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
             ASSERT_EQ(going.mTexture, 0u) << "the gap has to be below something to be a gap";
             ASSERT_TRUE(scene.textures().isFree(going.mTexture));

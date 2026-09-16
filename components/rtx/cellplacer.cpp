@@ -162,6 +162,7 @@ namespace Rtx
             .mTransform = placement.mTransform,
             .mMesh = placement.mMesh,
             .mMaterial = placement.mMaterial,
+            .mStander = Stander::Ring,
         });
         ++mPlaced;
     }
@@ -171,7 +172,7 @@ namespace Rtx
         if (placement.mSlot == sNoIndex)
             return;
 
-        mScene.placements().drop(placement.mSlot);
+        mScene.placements().drop(placement.mSlot, Stander::Ring);
         placement.mSlot = sNoIndex;
         --mPlaced;
     }
@@ -181,7 +182,7 @@ namespace Rtx
         if (ground.mSlot == sNoIndex)
             return;
 
-        mScene.placements().drop(ground.mSlot);
+        mScene.placements().drop(ground.mSlot, Stander::Ring);
         ground.mSlot = sNoIndex;
         --mGroundPlaced;
     }
@@ -213,6 +214,51 @@ namespace Rtx
             dropSlot(*cell.mGround);
     }
 
+    bool CellPlacer::standsAsHeld(const HeldCell& cell, const WorldAround& around) const
+    {
+        const std::span<const MeshInstance> placed = mScene.placements().getAll();
+        const auto stands = [&](const Index slot, const Index mesh, const Index material) {
+            return slot < placed.size() && placed[slot].isPlaced() && placed[slot].mStander == Stander::Ring
+                && placed[slot].mMesh == mesh && placed[slot].mMaterial == material;
+        };
+
+        const bool inReach = around.mExterior && withinReach(cell.mCell, around.mEye, around.mReach);
+        const bool shown = inReach && !inActiveGrid(cell.mCell, around.mActiveGrid);
+        if (!shown && cell.mShown != 0)
+            return false;
+
+        for (std::size_t at = 0; at < cell.mPlacements.size(); ++at)
+        {
+            const Placement& placement = cell.mPlacements[at];
+            const bool wanted = at < cell.mShown && !placement.mDisabled;
+            if (wanted != (placement.mSlot != sNoIndex))
+                return false;
+            if (wanted && !stands(placement.mSlot, placement.mMesh, placement.mMaterial))
+                return false;
+        }
+
+        if (cell.mGround.has_value())
+        {
+            const HeldGround& ground = *cell.mGround;
+            if (inReach != (ground.mSlot != sNoIndex))
+                return false;
+            if (inReach && !stands(ground.mSlot, ground.mMesh, ground.mMaterial))
+                return false;
+        }
+
+        return true;
+    }
+
+    bool CellPlacer::standsNoMore() const
+    {
+        std::uint32_t standing = 0;
+        for (const MeshInstance& placed : mScene.placements().getAll())
+            if (placed.isPlaced() && placed.mStander == Stander::Ring)
+                ++standing;
+
+        return standing == mPlaced + mGroundPlaced;
+    }
+
     std::uint32_t CellPlacer::place(HeldCell& cell, const WorldAround& around)
     {
         const bool inReach = withinReach(cell.mCell, around.mEye, around.mReach);
@@ -229,6 +275,7 @@ namespace Rtx
                     .mTransform = osg::Matrixf::translate(ground.mOrigin),
                     .mMesh = ground.mMesh,
                     .mMaterial = ground.mMaterial,
+                    .mStander = Stander::Ring,
                 });
                 ++mGroundPlaced;
             }

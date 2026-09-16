@@ -147,8 +147,8 @@ namespace Rtx
 
         auto fieldsOf(const MeshInstance& instance)
         {
-            const auto& [transform, mesh, material, opacity, firstPerson] = instance;
-            return std::tie(transform, mesh, material, opacity, firstPerson);
+            const auto& [transform, mesh, material, opacity, instanceClass, stander] = instance;
+            return std::tie(transform, mesh, material, opacity, instanceClass, stander);
         }
 
         auto fieldsOf(const SpriteEmitter& emitter)

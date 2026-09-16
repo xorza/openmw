@@ -917,7 +917,7 @@ namespace MWRender
 
         // **After the frame and not before the walk**, and on the frames the trace refused as well:
         // the walk still ran, so its epoch is still the one the next walk has to be measured
-        // against. `WorldMirror::settle` says what each half of it is for.
+        // against.
         mMirror.settle();
 
         // After the sweep, because the sweep is this renderer's and not the game's.

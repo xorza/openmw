@@ -178,6 +178,9 @@ namespace MWRender
         /// on a later frame than the one that asked, needs back from the renderer that made it.
         Rtx::Renderer& getBackend() { return *mRenderer; }
 
+        /// `WorldMirror::collectStanding`, for the harness's check that no static stands twice.
+        void collectStanding(std::vector<ESM::RefNum>& into) const { mMirror.collectStanding(into); }
+
         /// The knobs this run was made with, for a stop that writes a picture by the same rules.
         const Rtx::RenderProfile& getProfile() const { return mSetup.mProfile; }
 

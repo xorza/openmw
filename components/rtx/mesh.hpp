@@ -76,6 +76,17 @@ namespace Rtx
         return Shaders::MASK_STATIC;
     }
 
+    /// Who put a placement in its slot, and so who alone may move it or take it out: the frame's
+    /// walk of the graph, or the cell ring standing the distance. Two owners write one table, and
+    /// each keeps the slots it took in a bookkeeping of its own; a slot one of them lost track of
+    /// and the other took over would be a placement drawn where the wrong owner put it, and nothing
+    /// would say so. So every write names its owner, and the table asserts it.
+    enum class Stander : std::uint8_t
+    {
+        Walk,
+        Ring,
+    };
+
     /// One mesh placed in the world: a row of the top-level acceleration structure. Not `Instance`,
     /// which in this namespace is the `VkInstance` a device comes from.
     struct MeshInstance
@@ -95,6 +106,9 @@ namespace Rtx
         /// Which class of thing this is, for a camera's cull mask to keep or leave out. The
         /// innermost node on its path that stated a class; `Static` where none did.
         InstanceClass mClass = InstanceClass::Static;
+
+        /// Who stood it, which is who may move it or drop it. The walk's unless the ring says so.
+        Stander mStander = Stander::Walk;
 
         /// Whether this slot holds anything. A dropped placement leaves its slot behind rather than
         /// closing the gap, because the slot index is what a hit reads back.
