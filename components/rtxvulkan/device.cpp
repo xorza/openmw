@@ -12,13 +12,13 @@
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
-#include "dlss.hpp"
 #include "instance.hpp"
 #include "memory.hpp"
 #include "pipelinecache.hpp"
 #include "requirements.hpp"
 #include "result.hpp"
 #include "timeline.hpp"
+#include "upscaler.hpp"
 
 namespace Rtx
 {
@@ -99,11 +99,10 @@ namespace Rtx
 
             extensions.push_back(name);
         }
-#ifdef OPENMW_RTX_DLSS
-        // What NGX asks for, which it will not start without. Appended rather than added to the
-        // required list because that list is what this renderer needs to trace at all, and a build
-        // without DLSS must not fail on a device that lacks them.
-        for (const char* const name : Dlss::getDeviceExtensions())
+        // What the upscaler's runtime asks for, which it will not start without. Appended rather
+        // than added to the required list because that list is what this renderer needs to trace
+        // at all, and a build without an upscaler must not fail on a device that lacks them.
+        for (const char* const name : upscalerDeviceExtensions())
         {
             // `VK_EXT_buffer_device_address` cannot come along, and not because it is missing:
             // the feature it provides is Vulkan 1.2 core here, enabled through
@@ -116,7 +115,6 @@ namespace Rtx
             if (std::none_of(extensions.begin(), extensions.end(), already))
                 extensions.push_back(name);
         }
-#endif
 
         for (const char* const name : extraExtensions)
             extensions.push_back(name);

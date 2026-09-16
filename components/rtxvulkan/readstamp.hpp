@@ -29,7 +29,7 @@ namespace Rtx
         /// The last value a submit naming the resource signals, or nought where nothing has.
         std::uint64_t getNamedUntil() const { return mNamedUntil; }
 
-        /// Whether every submit that names the resource has run.
+        /// Whether the host has waited past every submit that names the resource.
         ///
         /// A stamp for the next submit is not a hazard: that submit has not been made, and a host
         /// write made before it is what it sees — which is how a placement writes a mesh's rows,

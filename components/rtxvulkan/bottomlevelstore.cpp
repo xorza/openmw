@@ -335,7 +335,8 @@ namespace Rtx
         {
             const Ask& oldest = mAsked.at(0);
 
-            // Read once the submit that carried the question has run, which the timeline says. The
+            // Read once the host has waited past the submit that carried the question, so which
+            // frame compacts a structure is a function of the frames and not of the clock. The
             // questions are in the order they were asked, so what is ready is a prefix.
             if (!mDevice.getTimeline().hasFinished(oldest.mAt))
                 break;

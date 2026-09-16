@@ -44,9 +44,11 @@ namespace Rtx
 
         // Sized from what the last bin here said it needed, with room over it, because the need is
         // only known once the tiles are counted and that happens on the device. Read where the
-        // timeline says the report has landed; a picture's bin behind another's on the queue keeps
-        // the capacity it has, which `SpriteListSize` never shrinks anyway. Here with the rest,
-        // because the frame block carries this table's address too.
+        // host has waited past the submit the report rode — the frame ring's wait, a frame or two
+        // on, and never a question to the device, so which frame first reads a report is a
+        // function of the frames and not of the clock; a bin whose report is not yet waited for
+        // keeps the capacity it has, which `SpriteListSize` never shrinks anyway. Here with the
+        // rest, because the frame block carries this table's address too.
         const std::uint32_t reported
             = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
         mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);

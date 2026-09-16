@@ -44,13 +44,9 @@
 #include "texture.hpp"
 #include "timeline.hpp"
 #include "tracerecording.hpp"
+#include "upscaler.hpp"
 #include "validation.hpp"
 #include "visibilitypass.hpp"
-
-#ifdef OPENMW_RTX_DLSS
-#include "dlss.hpp"
-#include "dlsspass.hpp"
-#endif
 
 namespace Rtx
 {
@@ -184,37 +180,18 @@ namespace Rtx
 
     void VulkanRenderer::startUpscaler()
     {
-#ifdef OPENMW_RTX_DLSS
-        if (mNgx != nullptr)
+        if (mUpscaler != nullptr)
             return;
 
         // A quarter of a second, which is why it waits to be wanted. Bringing the runtime up
         // loads the feature libraries; a player who never upscales should not spend that at every
         // start, and one who turns it on in the menu spends it once.
-        mNgx = std::make_unique<Dlss>(mDevice, mInstance.getHandle());
-        if (!mNgx->isAvailable())
-        {
-            const std::string obstacle = mNgx->getObstacle();
-
-            // Let go of it, so that a machine that gains a driver need not be restarted twice and a
-            // second attempt is not refused by the one-runtime-per-process rule.
-            mNgx.reset();
-            throw Unsupported("DLSS Ray Reconstruction was asked for and " + obstacle);
-        }
-#else
-        // Named rather than quietly ignored. A build that cannot upscale and renders at the
-        // output size anyway is one whose frame times mean something else entirely.
-        throw Unsupported("upscaling was asked for and this build has no DLSS; configure with -DOPENMW_RTX_DLSS=ON");
-#endif
+        mUpscaler = makeUpscaler(mDevice, mInstance.getHandle());
     }
 
     bool VulkanRenderer::upscaling() const
     {
-#ifdef OPENMW_RTX_DLSS
-        return mNgx != nullptr && mProfile.mUpscaling.mMode != Upscale::Off;
-#else
-        return false;
-#endif
+        return mUpscaler != nullptr && mProfile.mUpscaling.mMode != Upscale::Off;
     }
 
     void VulkanRenderer::drain()
@@ -285,42 +262,20 @@ namespace Rtx
         // Whatever upscales picks the render size. Asked of the mode and not of the runtime: a
         // runtime that is up because somebody upscaled and then turned it off is kept for the next
         // time, and asking it what to trace at for no upscaling is a question it refuses.
-        VkExtent2D render{ width, height };
-#ifdef OPENMW_RTX_DLSS
-        if (upscaling())
-            render = mNgx->getRenderSize(VkExtent2D{ width, height }, mProfile.mUpscaling.mMode);
-#endif
+        const VkExtent2D output{ width, height };
+        const VkExtent2D render = upscaling() ? mUpscaler->renderSizeFor(output, mProfile.mUpscaling.mMode) : output;
         mFrame.resize(render.width, render.height, mProfile.mRadianceWidth);
 
         // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
         mTargets.resize(mDevice, mPool, mOutputWidth, mOutputHeight);
 
-#ifdef OPENMW_RTX_DLSS
-        // Released before the next is built: the feature holds the network's weights for one pair
-        // of resolutions, and the image it writes is sixteen bytes a pixel of the output, so neither
-        // is left behind for a mode that may not come back.
-        mUpscaler.reset();
-        mUpscaled = Image();
-
+        // A runtime that is up because somebody upscaled and then turned it off keeps nothing
+        // but itself: the feature and its image go with the mode.
         if (upscaling())
-        {
-            // Half floats whatever width the run gave the trace's own composite: this one is shown
-            // and never summed. The peak linear radiance a frame of this game reaches is under nine,
-            // measured over the view suite and a camera pointed at the noon sun, so a half carries
-            // it with four orders of magnitude to spare at a step finer than the display's — which
-            // is also `RadianceWidth::Shown`'s argument.
-            mUpscaled = Image(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R16G16B16A16_SFLOAT,
-                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");
-
-            // Building uploads the network's weights, which is once per resolution rather than
-            // once per frame.
-            mPool.submitAndWait([&](VkCommandBuffer commands) {
-                mUpscaler = std::make_unique<DlssPass>(*mNgx, commands, render,
-                    VkExtent2D{ mOutputWidth, mOutputHeight }, mProfile.mUpscaling.mMode, mProfile.mUpscaling.mPreset);
-            });
-        }
-#endif
+            mUpscaler->resize(mPool, render, output, mProfile.mUpscaling);
+        else if (mUpscaler != nullptr)
+            mUpscaler->release();
 
         // Over whatever the frame is by the time the curve maps it, which is the upscaler's
         // output where one runs and the trace's own extent where none does. The same test the frame
@@ -345,23 +300,7 @@ namespace Rtx
 
         report += mDevice.getPhysicalDevice().describe();
 
-#ifdef OPENMW_RTX_DLSS
-        report += "\nDLSS Ray Reconstruction: ";
-        try
-        {
-            // An answer rather than a runtime, which is why reporting on a device cannot disturb
-            // one: NGX keeps one runtime per process and its shutdown is unconditional, so a `Dlss`
-            // built to ask with and let go would end this renderer's the moment it left scope.
-            const DlssSupport support = Dlss::probe(mDevice, mInstance.getHandle());
-            report += support.mAvailable ? "available\n" : "unavailable, " + support.mObstacle + "\n";
-        }
-        catch (const Error& error)
-        {
-            report += std::string("unavailable, ") + error.what() + '\n';
-        }
-#else
-        report += "\nDLSS Ray Reconstruction: not built in; configure with -DOPENMW_RTX_DLSS=ON\n";
-#endif
+        report += "\nDLSS Ray Reconstruction: " + describeUpscaling(mDevice, mInstance.getHandle()) + '\n';
 
         // Reaching here is the part that proves the rest: the device resolved every entry point the
         // required extensions promise, and a driver advertising one it cannot dispatch fails before
@@ -824,8 +763,8 @@ namespace Rtx
         // The puffs are composited over the reconstruction where something upscales, and over the
         // trace's own composite where nothing does. Named before the trace, because the set that
         // carries it is pushed for every launch.
-        const VisibilityInputs inputs
-            = describeInputs(*mWorld, mFrame, camera.mRayMask, upscaling() ? mUpscaled : mFrame.getColour());
+        const VisibilityInputs inputs = describeInputs(
+            *mWorld, mFrame, camera.mRayMask, upscaling() ? mUpscaler->getOutput() : mFrame.getColour());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
@@ -845,15 +784,6 @@ namespace Rtx
         GpuTimer& timer = frame.mTimer;
         const VkCommandBuffer commands = frame.mWorld.mCommands;
         mPool.begin(commands);
-
-#ifdef OPENMW_RTX_DLSS
-        // `createTargets` makes the pass and its image together and releases them together, so
-        // nothing below asks whether they are there.
-        assert(!upscaling() || (mUpscaler != nullptr && !mUpscaled.isEmpty()));
-
-        if (upscaling())
-            mUpscaled.transition(commands, Use::sUndefined, Use::sAnyGeneralWrite);
-#endif
 
         // The glare fader's query starts the frame at nothing, ahead of the trace that counts.
         mDisplay.beginGlare(commands);
@@ -904,13 +834,12 @@ namespace Rtx
                 .mTimer = &timer,
             });
 
-#ifdef OPENMW_RTX_DLSS
         if (upscaling())
         {
             historyRead = true;
             timer.open(commands, "upscale");
-            mUpscaler->record(commands,
-                DlssInputs{
+            shown = &mUpscaler->record(commands,
+                UpscaleInputs{
                     .mColour = mFrame.getColour(),
                     .mDiffuseAlbedo = channels.get(Channel::Albedo),
                     .mSpecularAlbedo = channels.get(Channel::Specular),
@@ -918,19 +847,12 @@ namespace Rtx
                     .mDepth = channels.get(Channel::Depth),
                     .mMotion = channels.get(Channel::Motion),
                     .mReflectionMotion = channels.get(Channel::ReflectionMotion),
-                    .mOutput = mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
                     .mReset = historyLost,
                 });
-
-            // What NGX recorded is its own; nothing here knows which stages it used.
-            mUpscaled.transition(commands, Use::sAnyGeneralWrite, Use::sTraceReadWrite);
-
             timer.close(commands);
-            shown = &mUpscaled;
         }
-#endif
 
         // The rest of the frame, over the reconstruction where something upscales — which the
         // upscaler left where the puffs want it — and over the trace's own composite where nothing

@@ -1,7 +1,6 @@
 #include "materialresolver.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -19,6 +18,7 @@
 
 #include "alphaimage.hpp"
 #include "colour.hpp"
+#include "contract.hpp"
 #include "extractionstats.hpp"
 #include "material.hpp"
 #include "scenedesc.hpp"
@@ -127,7 +127,7 @@ namespace Rtx
         for (std::size_t at = 0; at < worn.mCount; ++at)
         {
             const auto held = mTextureOf.find(worn.mImages[at]);
-            assert(held != mTextureOf.end() && "a worn image the mirror does not hold");
+            contract(held != mTextureOf.end(), "a worn image the mirror does not hold");
             mTextureOf.drop(held);
         }
     }
@@ -194,7 +194,7 @@ namespace Rtx
             return;
 
         const auto known = mMaterials.find(key);
-        assert(known != mMaterials.end() && "a material released that the mirror does not hold");
+        contract(known != mMaterials.end(), "a material released that the mirror does not hold");
         mMaterials.drop(known);
     }
 
@@ -283,7 +283,7 @@ namespace Rtx
                 {
                     // The oldest goes, which is the one `mNext` stands on once the ring is full.
                     const auto oldest = mTextureOf.find(worn->mImages[worn->mNext]);
-                    assert(oldest != mTextureOf.end() && "a worn image the mirror does not hold");
+                    contract(oldest != mTextureOf.end(), "a worn image the mirror does not hold");
                     mTextureOf.drop(oldest);
                     ++stats.mWornBeyondKept;
                 }

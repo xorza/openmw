@@ -218,6 +218,7 @@ namespace RtxTool
             request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();
             request.mProfile.mReconstruction.mJitter = variables["jitter"].as<bool>();
             request.mProfile.mExposure = parseExposure(variables["exposure"].as<std::string>());
+            request.mProfile.mStressOverlapMs = variables["hold"].as<double>();
 
             return request;
         }
@@ -722,7 +723,8 @@ namespace RtxTool
             return true;
         }
 
-        /// How long `check` holds the queue after every frame's trace, in milliseconds.
+        /// How long `check` holds the queue after every frame's trace, in milliseconds, where the
+        /// line names no `--hold` of its own.
         ///
         /// **Always, so a hazard that needs two frames in flight shows on the first frame of every
         /// run rather than on one run in four.** A held queue keeps the device that far behind the
@@ -742,7 +744,8 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
             FrameRequest frame = frameFrom(command);
-            frame.mProfile.mStressOverlapMs = sCheckHoldMs;
+            if (variables["hold"].defaulted())
+                frame.mProfile.mStressOverlapMs = sCheckHoldMs;
 
             applyHostedSettings(frame);
 

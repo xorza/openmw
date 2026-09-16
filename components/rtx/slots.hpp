@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "contract.hpp"
 #include "runs.hpp"
 
 namespace Rtx
@@ -383,7 +384,7 @@ namespace Rtx
         const Row& at(const Key& key) const
         {
             const const_iterator found = lowerBound(key);
-            assert(found != mRows.end() && !(key < KeyOf{}(*found)) && "a key read that nothing holds");
+            contract(found != mRows.end() && !(key < KeyOf{}(*found)), "a key read that nothing holds");
 
             return *found;
         }
@@ -415,7 +416,7 @@ namespace Rtx
         Row take(const Key& key)
         {
             const iterator at = lowerBound(key);
-            assert(at != mRows.end() && !(key < KeyOf{}(*at)) && "a key taken that nothing holds");
+            contract(at != mRows.end() && !(key < KeyOf{}(*at)), "a key taken that nothing holds");
 
             Row taken = std::move(*at);
             mRows.erase(at);
@@ -426,7 +427,7 @@ namespace Rtx
         void erase(const Key& key)
         {
             const iterator at = lowerBound(key);
-            assert(at != mRows.end() && !(key < KeyOf{}(*at)) && "a key dropped that nothing holds");
+            contract(at != mRows.end() && !(key < KeyOf{}(*at)), "a key dropped that nothing holds");
 
             mRows.erase(at);
         }

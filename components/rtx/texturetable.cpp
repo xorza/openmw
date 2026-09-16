@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstddef>
 
+#include "contract.hpp"
+
 namespace Rtx
 {
     Index TextureTable::takeSlot()
@@ -91,7 +93,7 @@ namespace Rtx
             case Kind::File:
             {
                 const auto known = mPathIndex.find(mPaths[texture]);
-                assert(known != mPathIndex.end() && "a file slot the path index does not know");
+                contract(known != mPathIndex.end(), "a file slot the path index does not know");
                 WrapSlots& held = known->second;
                 held[static_cast<std::size_t>(mWraps[texture])] = sNoIndex;
                 if (std::ranges::all_of(held, [](const Index slot) { return slot == sNoIndex; }))

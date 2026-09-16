@@ -42,87 +42,97 @@ shift 2
 # **A sanitizer build compiles out nothing and links no Qt.** The launcher and the content tools are
 # Qt and ESM code this fork does not touch, and building them under ASan doubles the wait for
 # nothing; a release build builds no tests, because nothing measured is measured through one.
-case "$flavour" in
-    debug)
-        build="$root/build-debug"
-        validation=sync
-        configure=(
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo
-            -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g"
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-            -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
-        )
-        targets=(openmw-rtxtool openmw components-tests openmw-tests)
-        ;;
-    release)
-        # **Light debug data and frame pointers, in the build the numbers are quoted from.** `-g1`
-        # is line tables and nothing else, so it costs nothing at runtime and a profile can name a
-        # line rather than an offset; the frame pointers cost less than the run-to-run spread and
-        # are what let perf walk a stack for the price of reading it. Both on the measured build
-        # rather than on a profiling build beside it, because two binaries means the profile
-        # explains a frame the benchmark did not time.
-        build="$root/build-release"
-        validation=off
-        profiling="-g1 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer"
-        configure=(
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_C_FLAGS="$profiling" -DCMAKE_CXX_FLAGS="$profiling"
-            -DBUILD_COMPONENTS_TESTS=OFF -DBUILD_OPENMW_TESTS=OFF
-            -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
-            -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
-        )
-        targets=(openmw-rtxtool openmw)
-        ;;
-    asan)
-        build="$root/build-debug-asan"
-        validation=sync
-        sanitize="-fsanitize=address -fno-omit-frame-pointer"
-        configure=(
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo
-            -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g"
-            -DCMAKE_C_FLAGS="$sanitize" -DCMAKE_CXX_FLAGS="$sanitize"
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-            -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
-            -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
-            -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
-        )
-        targets=(openmw-rtxtool openmw components-tests openmw-tests)
+#
+# A function, because the gate reaches for a second flavour: what a build without asserts compiles
+# is a question the debug build cannot answer.
+describeFlavour() {
+    case "$1" in
+        debug)
+            build="$root/build-debug"
+            validation=sync
+            configure=(
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+                -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g"
+                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+                -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
+            )
+            targets=(openmw-rtxtool openmw components-tests openmw-tests)
+            ;;
+        release)
+            # **Light debug data and frame pointers, in the build the numbers are quoted from.** `-g1`
+            # is line tables and nothing else, so it costs nothing at runtime and a profile can name a
+            # line rather than an offset; the frame pointers cost less than the run-to-run spread and
+            # are what let perf walk a stack for the price of reading it. Both on the measured build
+            # rather than on a profiling build beside it, because two binaries means the profile
+            # explains a frame the benchmark did not time.
+            build="$root/build-release"
+            validation=off
+            profiling="-g1 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer"
+            configure=(
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_C_FLAGS="$profiling" -DCMAKE_CXX_FLAGS="$profiling"
+                -DBUILD_COMPONENTS_TESTS=OFF -DBUILD_OPENMW_TESTS=OFF
+                -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
+                -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
+            )
+            targets=(openmw-rtxtool openmw)
+            ;;
+        asan)
+            build="$root/build-debug-asan"
+            validation=sync
+            sanitize="-fsanitize=address -fno-omit-frame-pointer"
+            configure=(
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+                -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g"
+                -DCMAKE_C_FLAGS="$sanitize" -DCMAKE_CXX_FLAGS="$sanitize"
+                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+                -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
+                -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
+                -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
+            )
+            targets=(openmw-rtxtool openmw components-tests openmw-tests)
 
-        # **`protect_shadow_gap=0` is not a preference — without it there is no device at all.**
-        # The NVIDIA driver maps its own enormous address ranges, ASan's shadow gap is mapped
-        # `PROT_NONE` across part of what it wants, and `vkCreateDevice` comes back
-        # `VK_ERROR_INITIALIZATION_FAILED`. Every RTX test then *skips*, which reads exactly like a
-        # clean run. What it costs is the guard page that catches a wild pointer landing in the
-        # gap; every other check ASan makes is untouched.
-        #
-        # **The driver's own allocations are not this fork's to answer for.** LeakSanitizer walks a
-        # heap that the driver, the loader, the validation layers and dbus keep for the life of the
-        # process, and reports each with a stack the fork does not appear in.
-        options="protect_shadow_gap=0"
-        if [ "${LSAN-0}" != 1 ]; then
-            options="$options:detect_leaks=0"
-        fi
-        export ASAN_OPTIONS="$options${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
-        ;;
-    *)
-        echo "rtx.sh: no flavour is called '$flavour' — debug, release or asan" >&2
-        exit 2
-        ;;
-esac
+            # **`protect_shadow_gap=0` is not a preference — without it there is no device at all.**
+            # The NVIDIA driver maps its own enormous address ranges, ASan's shadow gap is mapped
+            # `PROT_NONE` across part of what it wants, and `vkCreateDevice` comes back
+            # `VK_ERROR_INITIALIZATION_FAILED`. Every RTX test then *skips*, which reads exactly like a
+            # clean run. What it costs is the guard page that catches a wild pointer landing in the
+            # gap; every other check ASan makes is untouched.
+            #
+            # **The driver's own allocations are not this fork's to answer for.** LeakSanitizer walks a
+            # heap that the driver, the loader, the validation layers and dbus keep for the life of the
+            # process, and reports each with a stack the fork does not appear in.
+            options="protect_shadow_gap=0"
+            if [ "${LSAN-0}" != 1 ]; then
+                options="$options:detect_leaks=0"
+            fi
+            export ASAN_OPTIONS="$options${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
+            ;;
+        *)
+            echo "rtx.sh: no flavour is called '$1' — debug, release or asan" >&2
+            exit 2
+            ;;
+    esac
+}
 
 # Configured once, which is the one moment the SDK has to be named. `--clean-first` is never used
 # here: it deletes files/lang/*.ts, which are source.
-if [ ! -f "$build/CMakeCache.txt" ]; then
-    cmake -S "$root" -B "$build" -G Ninja \
-        -DOPENMW_RTX=ON \
-        -DOPENMW_DLSS_SDK="${OPENMW_DLSS_SDK:?point OPENMW_DLSS_SDK at an unpacked DLSS SDK}" \
-        -DBUILD_OPENCS=OFF -DBUILD_WIZARD=OFF -DBUILD_ESSIMPORTER=OFF \
-        -DBUILD_MWINIIMPORTER=OFF -DBUILD_OPENCS_TESTS=OFF \
-        -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=ON -DOPENMW_USE_SYSTEM_GOOGLETEST=ON \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
-        "${configure[@]}"
-fi
+configureIfNeeded() {
+    if [ ! -f "$build/CMakeCache.txt" ]; then
+        cmake -S "$root" -B "$build" -G Ninja \
+            -DOPENMW_RTX=ON \
+            -DOPENMW_DLSS_SDK="${OPENMW_DLSS_SDK:?point OPENMW_DLSS_SDK at an unpacked DLSS SDK}" \
+            -DBUILD_OPENCS=OFF -DBUILD_WIZARD=OFF -DBUILD_ESSIMPORTER=OFF \
+            -DBUILD_MWINIIMPORTER=OFF -DBUILD_OPENCS_TESTS=OFF \
+            -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=ON -DOPENMW_USE_SYSTEM_GOOGLETEST=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold \
+            "${configure[@]}"
+    fi
+}
+
+describeFlavour "$flavour"
+configureIfNeeded
 
 # **Run from the build directory**, because `--resources` defaults to `./resources`, and the tests
 # that read game data resolve it the way the tool does.
@@ -150,6 +160,18 @@ checkFormat() {
         | xargs -P "$(nproc)" clang-format-14 --dry-run -Werror)
 }
 
+# **The fork's two libraries, compiled the way a number is taken.** `-DNDEBUG` compiles every
+# assert out, and a diagnostic that fires only once the assert is gone — a lookup the optimizer
+# can now prove reaches a null — is one the debug build never sees. A minute with the cache warm,
+# in a subshell so the gate's own flavour stays what it was.
+compileWithoutAsserts() {
+    (
+        describeFlavour release
+        configureIfNeeded
+        buildTargets openmw-rtx openmw-rtx-vulkan
+    )
+}
+
 runTests() {
     if [ ! -x "$build/components-tests" ]; then
         echo "the $flavour build has no tests: \`rtx.sh debug test\` runs them" >&2
@@ -174,6 +196,13 @@ runTests() {
 # **Every column is the gate.** The second run is compared by `bench --against`, which names the
 # frames whose picture moved and the parts of the scene that did, and fails on either. One pair
 # gates and ten read: `.notes/repeatable.txt` holds the readings.
+#
+# **The second leg runs with the queue held behind the host.** Two runs of one binary keep the
+# same phase between the host and the device, so a frame that read the device's clock — a report
+# that had or had not landed, a structure compacted a frame earlier — could repeat exactly and
+# still be a function of the wall; `Rtx::Timeline` says why no frame reads it now. Held, the
+# device trails by half a frame, which is the other phase a run can have: a picture that is a
+# function of the frames alone does not move between the two.
 runRepeat() {
     local pairs=1 place=() length=() extra=()
     for arg in "$@"; do
@@ -199,7 +228,7 @@ runRepeat() {
             tail -20 "$out/$pair-1.log" >&2
             return 1
         }
-        if (cd "$build" && "${bench[@]}" --against="$out/$pair.csv" > "$out/$pair-2.log" 2>&1); then
+        if (cd "$build" && "${bench[@]}" --hold=8 --against="$out/$pair.csv" > "$out/$pair-2.log" 2>&1); then
             echo "pair $pair of $pairs: identical"
         elif grep -q '^against ' "$out/$pair-2.log"; then
             status=1
@@ -244,6 +273,7 @@ case "$what" in
         # walk. `check` writes its pictures where it always does, under `check/`.
         checkFormat
         buildTargets "${targets[@]}"
+        compileWithoutAsserts
         if [ -x "$build/components-tests" ]; then
             runTests
         fi

@@ -111,7 +111,7 @@ namespace Rtx
             NVSDK_NGX_VULKAN_DestroyParameters(mParameters);
     }
 
-    void DlssPass::record(VkCommandBuffer commands, const DlssInputs& inputs) const
+    void DlssPass::record(VkCommandBuffer commands, const UpscaleInputs& inputs, const Image& output) const
     {
         // Held by value across the call: the parameter map keeps the pointers rather than what they
         // point at, so every one of these has to outlive the evaluation. Each is checked against the
@@ -122,7 +122,7 @@ namespace Rtx
         NVSDK_NGX_Resource_VK normals = resourceOf(inputs.mNormalRoughness, mRenderExtent);
         NVSDK_NGX_Resource_VK depth = resourceOf(inputs.mDepth, mRenderExtent);
         NVSDK_NGX_Resource_VK motion = resourceOf(inputs.mMotion, mRenderExtent);
-        NVSDK_NGX_Resource_VK target = resourceOf(inputs.mOutput, mOutputExtent);
+        NVSDK_NGX_Resource_VK target = resourceOf(output, mOutputExtent);
         NVSDK_NGX_Resource_VK reflections = resourceOf(inputs.mReflectionMotion, mRenderExtent);
 
         NVSDK_NGX_VK_DLSSD_Eval_Params evaluate{};

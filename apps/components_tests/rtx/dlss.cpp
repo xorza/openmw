@@ -44,6 +44,7 @@
 #include <components/rtxvulkan/dlsspass.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
+#include <components/rtxvulkan/upscaler.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 #include <components/settings/categories/rtx.hpp>
 
@@ -242,7 +243,7 @@ namespace Rtx
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 pass->record(commands,
-                    DlssInputs{
+                    UpscaleInputs{
                         .mColour = colour,
                         .mDiffuseAlbedo = diffuse,
                         .mSpecularAlbedo = specular,
@@ -250,11 +251,11 @@ namespace Rtx
                         .mDepth = depth,
                         .mMotion = motion,
                         .mReflectionMotion = reflections,
-                        .mOutput = output,
                         .mJitter = osg::Vec2f(0.0f, 0.0f),
                         // The first frame has no history, which is what a reset means.
                         .mReset = true,
-                    });
+                    },
+                    output);
             });
 
             std::vector<std::uint8_t> bytes;

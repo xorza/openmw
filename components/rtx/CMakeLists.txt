@@ -37,6 +37,7 @@ set(RTX_FILES
     colour.hpp
     compositequeue.cpp
     compositequeue.hpp
+    contract.hpp
     deformertable.cpp
     deformertable.hpp
     fogbuilder.cpp

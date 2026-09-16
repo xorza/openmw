@@ -287,6 +287,7 @@ set(RTX_VULKAN_FILES
     tracerecording.hpp
     tracepipeline.cpp
     tracepipeline.hpp
+    upscaler.hpp
     validation.cpp
     validation.hpp
     visibilitypass.cpp
@@ -298,9 +299,12 @@ set(RTX_VULKAN_FILES
 )
 
 # Only where the SDK is there to compile against: these are nothing but NGX, so a build without
-# DLSS leaves them out rather than hollowing them with a guard.
+# DLSS leaves them out rather than hollowing them with a guard. `upscaler.hpp` is the one seam the
+# renderer reaches them through, and the build picks which of its two definitions links.
 if (OPENMW_RTX_DLSS)
-    list(APPEND RTX_VULKAN_FILES dlss.cpp dlss.hpp dlsspass.cpp dlsspass.hpp ngx.hpp)
+    list(APPEND RTX_VULKAN_FILES dlss.cpp dlss.hpp dlsspass.cpp dlsspass.hpp dlssupscaler.cpp dlssupscaler.hpp ngx.hpp)
+else()
+    list(APPEND RTX_VULKAN_FILES noupscaler.cpp)
 endif()
 
 source_group(components\\rtxvulkan FILES ${RTX_VULKAN_FILES})

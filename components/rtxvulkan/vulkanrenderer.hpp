@@ -47,12 +47,9 @@
 
 namespace Rtx
 {
-#ifdef OPENMW_RTX_DLSS
-    class Dlss;
-    class DlssPass;
-#endif
     class DeviceScene;
     class Presenter;
+    class Upscaler;
 
     /// `Renderer` over Vulkan.
     class VulkanRenderer final : public Renderer
@@ -186,8 +183,7 @@ namespace Rtx
 
         /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
-        /// second. The one answer the build decides, so that no reader of the three members below
-        /// has to be conditionally compiled.
+        /// second.
         bool upscaling() const;
 
         /// Makes the picture-inside-the-interface chain at least this big, and the byte image the
@@ -365,19 +361,11 @@ namespace Rtx
         /// that image while a recording names it is `VUID-vkDestroyImage-image-01000`.
         std::unique_ptr<Presenter> mPresenter;
 
-#ifdef OPENMW_RTX_DLSS
-        /// NGX, raised by `startUpscaler` the first time a mode wants one and null otherwise. It
+        /// Raised by `startUpscaler` the first time a mode wants one and null otherwise. It
         /// outlives a mode being turned off, so `upscaling` and not this says whether a frame is
-        /// upscaled; `describeDevice` reports from `Dlss::probe`, which asks the device without
-        /// standing a runtime up.
-        std::unique_ptr<Dlss> mNgx;
-
-        /// Ray Reconstruction, built for one pair of resolutions and so rebuilt by every resize.
-        std::unique_ptr<DlssPass> mUpscaler;
-
-        /// What it writes: the frame at the output extent, still in linear radiance.
-        Image mUpscaled;
-
-#endif
+        /// upscaled; `describeDevice` reports from `describeUpscaling`, which asks the device
+        /// without standing a runtime up. Which library is behind it, and whether this build has
+        /// one, is `makeUpscaler`'s to say.
+        std::unique_ptr<Upscaler> mUpscaler;
     };
 }

@@ -104,8 +104,8 @@ namespace Rtx
         void readBackWith(GuiSlot slot, VkCommandBuffer commands);
 
         /// Copies what `readBackWith` left for `slot` into `into`, and answers whether it did:
-        /// false until the queue has passed the submit the copy rode, and never a wait, because the
-        /// caller asks again next frame. False too where nothing was ever asked of the slot.
+        /// false until the host has waited past the submit the copy rode, and never a wait, because
+        /// the caller asks again next frame. False too where nothing was ever asked of the slot.
         bool takeCopy(GuiSlot slot, std::span<std::uint8_t> into);
 
         /// Submits what has been recorded, and what was already handed over, and waits for both —

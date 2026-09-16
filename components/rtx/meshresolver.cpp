@@ -17,6 +17,7 @@
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
 
+#include "contract.hpp"
 #include "deformertable.hpp"
 #include "error.hpp"
 #include "extractionstats.hpp"
@@ -158,7 +159,7 @@ namespace Rtx
     void MeshResolver::release(const osg::Drawable& drawable)
     {
         const auto known = mMeshes.find(&drawable);
-        assert(known != mMeshes.end() && "a mesh released that the mirror does not hold");
+        contract(known != mMeshes.end(), "a mesh released that the mirror does not hold");
         mMeshes.drop(known);
     }
 
@@ -213,12 +214,12 @@ namespace Rtx
         // so a deformer the sweep had taken would have failed that test rather than reach here.
         if (read.mDeform == Deform::Rig)
         {
-            assert(held.mRig != mRigs.end() && "a rigged mesh reused on a skin the mirror has lost");
+            contract(held.mRig != mRigs.end(), "a rigged mesh reused on a skin the mirror has lost");
             mRigs.stamp(held.mRig);
         }
         else if (read.mDeform == Deform::Morph)
         {
-            assert(held.mMorph != mMorphs.end() && "a morphed mesh reused on targets the mirror has lost");
+            contract(held.mMorph != mMorphs.end(), "a morphed mesh reused on targets the mirror has lost");
             mMorphs.stamp(held.mMorph);
         }
     }

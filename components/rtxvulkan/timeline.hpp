@@ -19,6 +19,15 @@ namespace Rtx
     /// **A count of frames, placements or calls never stands in for it.** The store counted
     /// placements and called that a fence; two placements in one frame made the count run ahead of
     /// the queue.
+    ///
+    /// **And the clock is never read off the device on the frame path.** What the host knows the
+    /// queue has passed is what a wait left behind, and the frame ring waits once a frame: so
+    /// what a frame reads of the clock is a function of how many frames were drawn, and never of
+    /// how fast the device drew them. Asked of the device, the answer moved with the wall — a
+    /// sprite list was sized from a report that had or had not landed, a structure was compacted a
+    /// frame earlier or later, a buried buffer was freed and its room reused a frame sooner — and
+    /// two builds of one tree drew three pixels apart. `repeat` could not see it, because two runs
+    /// of one binary keep the same phase.
     class Timeline
     {
     public:
@@ -33,16 +42,12 @@ namespace Rtx
         /// because the pool puts every deferred batch ahead of its next submit.
         std::uint64_t getNext() const { return mSubmitted + 1; }
 
-        /// The counter as the queue has advanced it, asked of the device only where the cached
-        /// reading is not enough: a value once passed stays passed.
-        bool hasFinished(std::uint64_t value) const;
+        /// Whether the host has waited past `value`: a comparison against what a wait left behind,
+        /// and never a question to the device. A value once passed stays passed.
+        bool hasFinished(const std::uint64_t value) const { return value <= mFinished; }
 
-        /// The counter as the queue has advanced it, asked of the device now.
-        std::uint64_t getFinished() const;
-
-        /// The highest value the device has been seen to pass, asked of nothing: what a wait or a
-        /// question left behind. What is retired against, once per wait rather than once per
-        /// object.
+        /// The highest value a wait has left behind. What is retired against, once per wait rather
+        /// than once per object.
         std::uint64_t getKnownFinished() const { return mFinished; }
 
         /// Blocks until the queue has signalled `value`. `what` names the wait in the error a
@@ -57,8 +62,8 @@ namespace Rtx
         Semaphore mHandle;
         std::uint64_t mSubmitted = 0;
 
-        /// The highest value the device has been seen to pass. Mutable because asking is not a
-        /// change to the clock, only to what is known of it.
+        /// The highest value a wait has left behind. Mutable because waiting is not a change to
+        /// the clock, only to what is known of it.
         mutable std::uint64_t mFinished = 0;
     };
 }

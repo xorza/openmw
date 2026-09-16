@@ -13,20 +13,6 @@ namespace Rtx
     {
     }
 
-    bool Timeline::hasFinished(const std::uint64_t value) const
-    {
-        return value <= mFinished || value <= getFinished();
-    }
-
-    std::uint64_t Timeline::getFinished() const
-    {
-        std::uint64_t value = 0;
-        checkVk(mDevice, vkGetSemaphoreCounterValue(mDevice.getHandle(), mHandle.get(), &value),
-            "vkGetSemaphoreCounterValue");
-        mFinished = value;
-        return value;
-    }
-
     void Timeline::waitFor(const std::uint64_t value, const char* const what) const
     {
         if (value <= mFinished)

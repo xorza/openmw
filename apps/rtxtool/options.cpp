@@ -1,7 +1,6 @@
 #include "options.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -18,6 +17,7 @@
 
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
+#include <components/rtx/contract.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
@@ -274,6 +274,13 @@ namespace RtxTool
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
 
+        option(sFramed, "hold", bpo::value<double>()->default_value(0.0),
+            "hold the queue this many milliseconds behind the host after every frame's trace; "
+            "`check` holds eight unless told otherwise. The other leg of `repeat` runs under it, "
+            "and a `shot --against` its own unheld pictures is the same question of a still: a "
+            "picture that is a function of the frames alone comes out the same however far the "
+            "device trails, and one that read the clock does not");
+
         option(Verbs::Bench, "json", bpo::value<std::string>()->default_value(""),
             "also write the run to this file as one record, for comparing against the "
             "same run on another commit");
@@ -471,7 +478,7 @@ namespace RtxTool
         // because `store` writes a defaulted value for every option of its description that the line
         // left out — so a map without it was parsed against the wrong description.
         const auto found = variables.find("config");
-        assert(found != variables.end() && "the variables were not parsed against the engine's common options");
+        Rtx::contract(found != variables.end(), "the variables were not parsed against the engine's common options");
 
         found->second.as<Files::MaybeQuotedPathContainer>().push_back(Files::MaybeQuotedPath{ directory });
     }
