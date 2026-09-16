@@ -171,11 +171,6 @@ namespace Rtx
         /// submits the ring does not count; and the graveyard last, once nothing can be reading.
         void drain();
 
-        /// The part of `drain` a picture inside the interface owes and no more: a picture recorded
-        /// and not yet carried, or carried and not yet finished, names what a resize of the
-        /// picture chain replaces — and the frame's own chain is left alone.
-        void finishTraces();
-
         /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
         /// second.

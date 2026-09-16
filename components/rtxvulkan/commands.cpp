@@ -97,29 +97,75 @@ namespace Rtx
     void CommandPool::discard(VkCommandBuffer commands)
     {
         // Neither ended nor submitted: a buffer still being recorded is not pending, so this is
-        // where a recording nobody wants goes back.
-        free(std::span<const VkCommandBuffer>(&commands, 1));
+        // where a recording nobody wants goes back. Reset first, because a begin resets a buffer
+        // that was ended and not one still recording.
+        checkVk(vkResetCommandBuffer(commands, 0), "vkResetCommandBuffer");
+        recycle(std::span<const VkCommandBuffer>(&commands, 1));
     }
 
-    void CommandPool::free(std::span<const VkCommandBuffer> commands)
+    void CommandPool::recycle(std::span<const VkCommandBuffer> commands)
     {
-        if (!commands.empty())
-            vkFreeCommandBuffers(
-                mDevice.getHandle(), mHandle.get(), static_cast<std::uint32_t>(commands.size()), commands.data());
+        mSpare.insert(mSpare.end(), commands.begin(), commands.end());
     }
 
-    std::vector<VkCommandBuffer> CommandPool::allocate(std::uint32_t count)
+    VkCommandBuffer CommandPool::take()
     {
+        if (!mSpare.empty())
+        {
+            const VkCommandBuffer spare = mSpare.back();
+            mSpare.pop_back();
+            return spare;
+        }
+
         const VkCommandBufferAllocateInfo allocate{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool = mHandle.get(),
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = count,
+            .commandBufferCount = 1,
         };
 
-        std::vector<VkCommandBuffer> buffers(count);
-        checkVk(vkAllocateCommandBuffers(mDevice.getHandle(), &allocate, buffers.data()), "vkAllocateCommandBuffers");
+        VkCommandBuffer commands = VK_NULL_HANDLE;
+        checkVk(vkAllocateCommandBuffers(mDevice.getHandle(), &allocate, &commands), "vkAllocateCommandBuffers");
+        return commands;
+    }
+
+    std::vector<VkCommandBuffer> CommandPool::allocate(std::uint32_t count)
+    {
+        std::vector<VkCommandBuffer> buffers;
+        buffers.reserve(count);
+        for (std::uint32_t at = 0; at < count; ++at)
+            buffers.push_back(take());
+
         return buffers;
+    }
+
+    std::size_t CommandPool::takeStaging(const VkDeviceSize bytes)
+    {
+        const Timeline& timeline = mDevice.getTimeline();
+        for (std::size_t at = 0; at < mStaging.size(); ++at)
+        {
+            StagingBlock& block = mStaging[at];
+            if (block.mTaken || !timeline.hasFinished(block.mReadUntil) || block.mBuffer.getSize() < bytes)
+                continue;
+
+            block.mTaken = true;
+            return at;
+        }
+
+        mStaging.push_back(StagingBlock{
+            .mBuffer = Buffer::staging(
+                mDevice, std::max(bytes, sStagingBlock), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "staging block"),
+            .mTaken = true,
+        });
+        return mStaging.size() - 1;
+    }
+
+    void CommandPool::giveStaging(const std::size_t block, const std::uint64_t readUntil)
+    {
+        assert(mStaging[block].mTaken && "a staging block given back twice");
+
+        mStaging[block].mReadUntil = readUntil;
+        mStaging[block].mTaken = false;
     }
 
     void CommandPool::begin(VkCommandBuffer commands)
@@ -149,15 +195,7 @@ namespace Rtx
 
     VkCommandBuffer CommandPool::begin()
     {
-        const VkCommandBufferAllocateInfo allocate{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = mHandle.get(),
-            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
-        };
-
-        VkCommandBuffer commands = VK_NULL_HANDLE;
-        checkVk(vkAllocateCommandBuffers(mDevice.getHandle(), &allocate, &commands), "vkAllocateCommandBuffers");
+        const VkCommandBuffer commands = take();
         begin(commands);
         return commands;
     }
@@ -171,8 +209,8 @@ namespace Rtx
         // The copies have run, so every buffer that carried a deferred batch can go back to the
         // pool; what the batches read was buried when they were handed over, and the wait above
         // collected it.
-        free(mDeferred);
-        free(std::span<const VkCommandBuffer>(&commands, 1));
+        recycle(mDeferred);
+        recycle(std::span<const VkCommandBuffer>(&commands, 1));
         mDeferred.clear();
     }
 
@@ -211,14 +249,13 @@ namespace Rtx
     {
         VkDeviceSize at = alignUp(mFilled, sStagingAlignment);
 
-        if (mBlocks.empty() || at + bytes.size() > mBlocks.back().getSize())
+        if (mBlocks.empty() || at + bytes.size() > mPool.stagingAt(mBlocks.back()).getSize())
         {
-            mBlocks.push_back(Buffer::staging(getDevice(), std::max<VkDeviceSize>(bytes.size(), sStagingBlock),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "staging block"));
+            mBlocks.push_back(mPool.takeStaging(bytes.size()));
             at = 0;
         }
 
-        const Buffer& block = mBlocks.back();
+        const Buffer& block = mPool.stagingAt(mBlocks.back());
         block.writeAt(at, bytes);
         mFilled = at + bytes.size();
 
@@ -232,8 +269,11 @@ namespace Rtx
             graveyard.bury(std::move(buffer));
         for (Image& image : mKeptImages)
             graveyard.bury(std::move(image));
-        for (Buffer& block : mBlocks)
-            graveyard.bury(std::move(block));
+
+        // Under the same value a burial would be, for the same reason.
+        const std::uint64_t readUntil = getDevice().getTimeline().getNext();
+        for (const std::size_t block : mBlocks)
+            mPool.giveStaging(block, readUntil);
 
         mKeptBuffers.clear();
         mKeptImages.clear();
@@ -274,32 +314,21 @@ namespace Rtx
 
         // A copy takes a handle and names nothing on its own, and a host write over the destination
         // while the copy is still on the queue is a race between two writers: named, so `isIdle`
-        // says so. The source needs no stamp: a staging block is the batch's, held until the
-        // submit that carries it has been waited on.
+        // says so. The source needs no stamp: a staging block is the ring's, and the batch gives it
+        // back stamped with the submit that carries it.
         into.nameFor(batch.getDevice().getTimeline().getNext());
     }
 
     Buffer uploadBuffer(Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage, std::string_view name)
     {
-        const Device& device = batch.getDevice();
-
-        // Host memory and not the aperture. These bytes are written once and read once by the
-        // copy below, so putting them in the video memory the host writes into spends the scarcest
-        // heap on a card without resizable BAR for a buffer that is gone by the next submit.
-        Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "upload staging");
-        staging.write(bytes);
-
-        Buffer result = Buffer::deviceLocal(device, bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, name);
-
-        const VkCommandBuffer commands = batch.getCommands();
-        staging.copyTo(commands, result, bytes.size());
+        Buffer result
+            = Buffer::deviceLocal(batch.getDevice(), bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, name);
+        stageInto(batch, result, 0, bytes);
 
         // What makes an upload self-contained. Batched, the next thing recorded may be an
         // acceleration structure built out of exactly these bytes, and without this it would read
         // them before the copy had run.
-        result.transition(commands, Use::sBufferCopyWrite, Use::sBufferAnyRead);
-
-        batch.keep(std::move(staging));
+        result.transition(batch.getCommands(), Use::sBufferCopyWrite, Use::sBufferAnyRead);
 
         return result;
     }

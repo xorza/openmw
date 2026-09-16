@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <utility>
 
 #include <components/rtx/error.hpp>
 
@@ -116,6 +117,39 @@ namespace Rtx
 
         device.setName(mHandle.get(), name);
         device.setName(mView.get(), name);
+    }
+
+    Image::~Image()
+    {
+        assert(mayDestroy() && "an image destroyed while a submit may still read it; bury it");
+    }
+
+    Image& Image::operator=(Image&& other) noexcept
+    {
+        if (this != &other)
+        {
+            assert(mayDestroy() && "an image written over while a submit may still read it; replace it");
+
+            mDevice = other.mDevice;
+            mHandle = std::move(other.mHandle);
+            mView = std::move(other.mView);
+            mStorageView = std::move(other.mStorageView);
+            mMemory = std::move(other.mMemory);
+            mWidth = other.mWidth;
+            mHeight = other.mHeight;
+            mDepth = other.mDepth;
+            mFormat = other.mFormat;
+            mUsage = other.mUsage;
+            mMipLevels = other.mMipLevels;
+            mTexelBytes = other.mTexelBytes;
+        }
+
+        return *this;
+    }
+
+    bool Image::mayDestroy() const
+    {
+        return isEmpty() || mDevice->mayDestroy();
     }
 
     void Image::transition(VkCommandBuffer commands, const ImageUse& from, const ImageUse& to) const

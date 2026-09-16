@@ -64,6 +64,35 @@ namespace Rtx
         }
     }
 
+    Buffer::~Buffer()
+    {
+        assert(mayDestroy() && "a buffer destroyed while a submit still reads it; bury it");
+    }
+
+    Buffer& Buffer::operator=(Buffer&& other) noexcept
+    {
+        if (this != &other)
+        {
+            assert(mayDestroy() && "a buffer written over while a submit still reads it; replace it");
+
+            mDevice = other.mDevice;
+            mHandle = std::move(other.mHandle);
+            mMemory = std::move(other.mMemory);
+            mSize = other.mSize;
+            mKind = other.mKind;
+            mAddressable = other.mAddressable;
+            mAddress = other.mAddress;
+            mRead = other.mRead;
+        }
+
+        return *this;
+    }
+
+    bool Buffer::mayDestroy() const
+    {
+        return isEmpty() || isIdle() || mDevice->mayDestroy();
+    }
+
     Buffer Buffer::make(const Device& device, const BufferKind kind, const VkDeviceSize size,
         const VkBufferUsageFlags usage, const std::string_view name)
     {

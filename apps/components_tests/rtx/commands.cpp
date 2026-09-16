@@ -126,5 +126,54 @@ namespace Rtx
             EXPECT_TRUE(target.isIdle()) << "the batch was waited for";
             EXPECT_EQ(*static_cast<const std::uint32_t*>(target.map()), staged);
         }
+
+        /// A block a batch gave back is the next batch's, once the submit that read it has run —
+        /// and not before: a batch handed over and not yet carried is still going to be read.
+        ///
+        /// **What a block per batch cost.** An arrival made its staging and the graveyard destroyed
+        /// it a frame later, a `vkCreateBuffer` and a bind per cell crossing for bytes that were
+        /// alive as long either way. The ring settles at the busiest stretch — here, two batches
+        /// in flight at once — and a batch after that allocates nothing.
+        TEST_F(RtxBatchTest, aBlockGivenBackIsTakenAgainOnceTheSubmitThatReadItHasRun)
+        {
+            CommandPool& pool = getPool();
+            const Buffer target = Buffer::staging(getDevice(), 64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const std::vector<std::byte> some(64, std::byte{ 1 });
+            const auto blocks = [&] { return pool.getStagingBlockCount(); };
+
+            // A copy out of a block, so the batch has something to carry: a block is read by the
+            // submit the batch rides, and a batch that recorded nothing rides none.
+            const auto copyOut = [&](Batch& batch) { stageInto(batch, target, 0, some); };
+
+            // The pool is the device's and every test before this one left blocks in it, so every
+            // free one is taken first, by batches handed over and not carried, until one is made:
+            // from here on every block is still to be read.
+            const std::size_t had = blocks();
+            while (blocks() == had)
+            {
+                Batch taking(pool);
+                copyOut(taking);
+                taking.defer();
+            }
+            const std::size_t full = blocks();
+
+            {
+                Batch beside(pool);
+                copyOut(beside);
+                beside.defer();
+            }
+            EXPECT_EQ(blocks(), full + 1) << "a block still to be read was taken again";
+
+            // Carried and waited for, so every block is free again, and a batch after the busiest
+            // stretch makes none however many times it comes.
+            pool.finishDeferred();
+            for (int round = 0; round < 3; ++round)
+            {
+                Batch again(pool);
+                copyOut(again);
+                again.flush();
+            }
+            EXPECT_EQ(blocks(), full + 1) << "a batch after the busiest stretch allocated";
+        }
     }
 }

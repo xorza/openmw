@@ -35,10 +35,16 @@ namespace Rtx
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
             std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1);
 
+        /// Asserts `Device::mayDestroy`: an image carries no stamp of its last reader, so the one
+        /// thing a safe destruction can be checked against is that the queue is idle or the
+        /// graveyard is the one destroying.
+        ~Image();
+
         /// Movable, because the channels of a g-buffer are built by a loop over a table rather
-        /// than by a member list. `Owned` is what makes the moves defaultable.
+        /// than by a member list. `Owned` is what makes the move defaultable; the assignment is
+        /// written out for the assert the destructor makes.
         Image(Image&&) noexcept = default;
-        Image& operator=(Image&&) noexcept = default;
+        Image& operator=(Image&& other) noexcept;
 
         VkImage getHandle() const { return mHandle.get(); }
 
@@ -124,6 +130,9 @@ namespace Rtx
         std::uint32_t getMipLevels() const { return mMipLevels; }
 
     private:
+        /// What the destructor and a move over this assert: empty, or the device says so.
+        bool mayDestroy() const;
+
         /// The same barrier `transition` records, over `count` levels from `base`.
         void transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, const ImageUse& from,
             const ImageUse& to) const;

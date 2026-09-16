@@ -200,12 +200,6 @@ namespace Rtx
         mDevice.getGraveyard().collectIdle();
     }
 
-    void VulkanRenderer::finishTraces()
-    {
-        mDevice.getPool().finishDeferred();
-        mRing.finishAll();
-    }
-
     void VulkanRenderer::setUpscale(Upscale upscale)
     {
         if (upscale == mProfile.mUpscaling.mMode)
@@ -929,8 +923,10 @@ namespace Rtx
         if (mView.holds(width, height))
             return;
 
-        // The one drain a picture still pays, and only the first picture of a new size pays it.
-        finishTraces();
+        // The one drain a picture still pays, and only the first picture of a new size pays it:
+        // the whole device, because what `grow` replaces is destroyed and not buried, and a
+        // destruction asserts the queue idle.
+        drain();
 
         mView.grow(width, height, mProfile.mRadianceWidth);
 
@@ -1048,7 +1044,10 @@ namespace Rtx
 
     void VulkanRenderer::finishGuiTraces()
     {
-        finishTraces();
+        // The pictures recorded and not yet carried, and then the frames carrying the rest; the
+        // frame's own chain is left standing.
+        mDevice.getPool().finishDeferred();
+        mRing.finishAll();
     }
 
     void VulkanRenderer::readGuiTexture(const GuiSlot texture, std::vector<std::uint8_t>& pixels)

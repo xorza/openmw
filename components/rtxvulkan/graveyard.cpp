@@ -103,14 +103,20 @@ namespace Rtx
 
     void Graveyard::freeThrough(const std::uint64_t finished)
     {
+        // Set for the whole sweep and not per object, because a scene freed last destroys every
+        // structure and texture it still holds on its way out.
+        mReaping = true;
+
         free(mStructures, finished);
         free(mQueryPools, finished);
         free(mBuffers, finished);
         free(mTextures, finished);
         free(mImages, finished);
         free(mCommands, finished, [&](const VkCommandBuffer commands) {
-            mDevice.getPool().free(std::span<const VkCommandBuffer>(&commands, 1));
+            mDevice.getPool().recycle(std::span<const VkCommandBuffer>(&commands, 1));
         });
         free(mOthers, finished);
+
+        mReaping = false;
     }
 }

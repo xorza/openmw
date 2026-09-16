@@ -197,6 +197,14 @@ namespace Rtx
         /// One row per mesh slot, grown with the mesh table.
         std::vector<Row> mRows;
 
+        /// What a build reads: the arrivals' positions, copied in ahead of it, and the scratch the
+        /// build works in. Kept across builds rather than made per arrival, settling at the
+        /// high-water mark, and grown through the graveyard: a build in flight still reads them,
+        /// and the next build's copies and work are ordered after it by the barrier every command
+        /// buffer opens with.
+        Buffer mArrived;
+        Buffer mScratch;
+
         /// What one run of `build` describes.
         StructureBuildBatch mBuild;
 

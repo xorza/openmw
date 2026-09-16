@@ -240,7 +240,8 @@ namespace Rtx
                 mPhysicalDevice.getProperties().mMemory,
                 mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
             mTimeline = std::make_unique<Timeline>(*this);
-            mPool = std::make_unique<CommandPool>(*this);
+            // `new` and not `make_unique`, which the pool's private constructor does not admit.
+            mPool.reset(new CommandPool(*this));
             mGraveyard = std::make_unique<Graveyard>(*this);
         }
         catch (...)
@@ -373,6 +374,11 @@ namespace Rtx
     {
         checkVk(*this, vkDeviceWaitIdle(mHandle), "vkDeviceWaitIdle");
         mTimeline->markIdle();
+    }
+
+    bool Device::mayDestroy() const
+    {
+        return mTimeline->isIdle() || mGraveyard->isReaping();
     }
 
     std::string Device::describeCheckpoints() const

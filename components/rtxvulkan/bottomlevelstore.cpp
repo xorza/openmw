@@ -107,12 +107,10 @@ namespace Rtx
             arrivedBytes += VkDeviceSize{ mesh.mVertices.mCount } * sizeof(osg::Vec3f);
         }
 
-        // A byte where nothing static arrived, because a buffer of nothing cannot be created. The
-        // address outlives the move: it belongs to the handle, which the batch now holds until its
-        // submit has run — the same keeping the build's own scratch gets below.
-        Buffer arrived = Buffer::deviceLocal(
-            mDevice, arrivedBytes, sBuildInputUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "arrived positions");
-        const VkDeviceAddress arrivedAddress = arrived.addressFor();
+        // A byte where nothing static arrived, because a buffer of nothing cannot be created.
+        growTo(mArrived, mDevice, BufferKind::DeviceLocal, arrivedBytes,
+            sBuildInputUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "arrived positions");
+        const VkDeviceAddress arrivedAddress = mArrived.addressFor();
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -121,10 +119,8 @@ namespace Rtx
             if (range.mDeform != Deform::None || range.mVertices.empty())
                 continue;
 
-            stageInto(batch, arrived, mBuilding[at].mArrivedAt, std::as_bytes(scene.meshes().getMeshPositions(mesh)));
+            stageInto(batch, mArrived, mBuilding[at].mArrivedAt, std::as_bytes(scene.meshes().getMeshPositions(mesh)));
         }
-
-        batch.keep(std::move(arrived));
 
         if (arrivedBytes > 0)
             orderStagedWrites(batch);
@@ -218,11 +214,8 @@ namespace Rtx
         if (scratchTotal == 0)
             return;
 
-        // Scratch is transient: it is read and written by the build and never again. It is handed to
-        // the batch below rather than left to this scope, because the build it feeds has only been
-        // recorded when this function returns — and the batch frees it the moment the flush does.
-        Buffer scratch = Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage, "build scratch");
-        const VkDeviceAddress scratchAddress = scratch.addressFor();
+        growTo(mScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "build scratch");
+        const VkDeviceAddress scratchAddress = mScratch.addressFor();
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -255,8 +248,6 @@ namespace Rtx
         barrierAfterBuild(commands);
 
         askWhatCompactionWouldSave(commands);
-
-        batch.keep(std::move(scratch));
     }
 
     void BottomLevelStore::askWhatCompactionWouldSave(const VkCommandBuffer commands)

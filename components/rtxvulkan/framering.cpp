@@ -67,7 +67,7 @@ namespace Rtx
     VkCommandBuffer FrameRing::takePlaceCommands(FrameRecord& frame)
     {
         if (frame.mPlacements == frame.mPlaceCommands.size())
-            frame.mPlaceCommands.push_back(mDevice.getPool().allocate(1).front());
+            frame.mPlaceCommands.push_back(mDevice.getPool().take());
 
         return frame.mPlaceCommands[frame.mPlacements++];
     }

@@ -16,7 +16,9 @@ namespace Rtx
     /// and not a function the header declares. Made once with its address asked once — a handle
     /// lasts until the mesh it belongs to is released, and the alternative was the same question
     /// per instance per frame. Destroying one gives its room back after the handle has gone, so
-    /// two structures never stand in one place.
+    /// two structures never stand in one place — and asserts `Device::mayDestroy`, because a
+    /// structure is read by every top-level build without being named again, so the queue idle or
+    /// the graveyard reaping is the whole of what says nothing reads it.
     class AccelerationStructure
     {
     public:

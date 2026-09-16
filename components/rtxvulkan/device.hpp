@@ -228,6 +228,15 @@ namespace Rtx
         /// down and for resizing, not for pacing a frame.
         void waitIdle() const;
 
+        /// Whether a device object a submit may have read can be destroyed now: the queue is idle,
+        /// or the graveyard is freeing what the timeline has passed. Every other destruction of
+        /// such an object is one under a submit still reading it, which is what the destructors of
+        /// `Buffer`, `Image` and `AccelerationStructure` assert against, and so a `Texture`'s
+        /// through its images. A buffer knows its last reader and asks a narrower question first;
+        /// the rest carry no stamp, because a bottom level is read by every top-level build
+        /// without being named again.
+        bool mayDestroy() const;
+
         // Read by the tests and by nothing else.
         /// Whether the driver offers `VK_EXT_device_fault` with its feature, and so whether
         /// `describeFault` has anything to ask.

@@ -61,8 +61,15 @@ namespace Rtx
             const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
         static Buffer staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
 
+        /// Asserts that no submit still reads the buffer — `isIdle`, or `Device::mayDestroy` —
+        /// because a buffer destroyed under one is the use after free the graveyard exists to
+        /// prevent, and nothing else would say so before the device did.
+        ~Buffer();
+
         Buffer(Buffer&&) noexcept = default;
-        Buffer& operator=(Buffer&&) noexcept = default;
+
+        /// The same assert over what this held, then `other`'s members one by one.
+        Buffer& operator=(Buffer&& other) noexcept;
 
         VkBuffer getHandle() const { return mHandle.get(); }
         VkDeviceSize getSize() const { return mSize; }
@@ -175,6 +182,9 @@ namespace Rtx
     private:
         Buffer(
             const Device& device, BufferKind kind, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
+
+        /// What the destructor and a move over this assert: empty, or nothing on the queue reads it.
+        bool mayDestroy() const;
 
         /// `count` elements at `offset`, with nothing said about who is reading.
         template <class T>

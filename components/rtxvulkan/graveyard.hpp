@@ -43,7 +43,7 @@ namespace Rtx
         /// A query pool a batch in flight may still be writing answers into.
         void bury(QueryPool&& pool);
 
-        /// A one-shot command buffer the pool handed out, freed once it has run.
+        /// A one-shot command buffer the pool handed out, given back to it once it has run.
         void bury(VkCommandBuffer commands);
 
         /// Anything else a submit may still read, held by ownership and let go of last — after
@@ -69,6 +69,11 @@ namespace Rtx
         /// Asserted rather than trusted — the timeline idle and the pool holding nothing deferred
         /// — because the same call one wait too early is a destroyed object under a submit.
         void collectIdle();
+
+        /// Whether this is in the middle of freeing what the timeline has passed — the one moment a
+        /// device object a submit has read is destroyed with the queue still running, and so the
+        /// one `Device::mayDestroy` allows.
+        bool isReaping() const { return mReaping; }
 
         // Read by the tests and by nothing else.
         std::size_t getHeldCount() const
@@ -101,6 +106,8 @@ namespace Rtx
         static void free(std::vector<Held<T>>& held, std::uint64_t finished);
 
         const Device& mDevice;
+
+        bool mReaping = false;
 
         // Cleared and refilled, never freed: a frame path does not allocate, and what a frame
         // buries settles at the busiest frame so far.

@@ -1,5 +1,6 @@
 #include "accelerationstructure.hpp"
 
+#include <cassert>
 #include <utility>
 
 #include "buffer.hpp"
@@ -83,6 +84,9 @@ namespace Rtx
 
     void AccelerationStructure::reset()
     {
+        assert((mHandle == VK_NULL_HANDLE || mDevice->mayDestroy())
+            && "a structure destroyed while a submit may still trace it; bury it");
+
         // The handle before the room: a room given back is the next structure's, and one given
         // back under a structure still standing is two of them in one place.
         if (mHandle != VK_NULL_HANDLE)

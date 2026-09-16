@@ -101,15 +101,13 @@ namespace Rtx
             for (const SwapImage& image : mImages)
                 awaitVk(mDevice, image.mPresented.get(), "the presentation engine letting go of an image");
 
-        // Freed and not merely reset: a recording that blitted from the renderer's target still
-        // names it, and a rebuild that allocated a fresh set would leave the old one in the pool
-        // for the presenter's life — a window resized or a vsync changed a few dozen times is a
-        // few dozen sets.
+        // Given back to the pool, which is what lets the rebuild take a fresh set: one kept here
+        // per resize or vsync change would be a few dozen sets over a window's life.
         std::vector<VkCommandBuffer> commands;
         commands.reserve(mImages.size());
         for (const SwapImage& image : mImages)
             commands.push_back(image.mCommands);
-        mDevice.getPool().free(commands);
+        mDevice.getPool().recycle(commands);
 
         mAcquiring.clear();
         mImages.clear();
