@@ -163,12 +163,7 @@ namespace Rtx
             if (!(alpha > 0.0f))
                 continue;
 
-            // Both ends through the same matrix, so what comes out is the particle's own travel and
-            // not its emitter's too. For rain, snow and ash the two are the same thing, and those
-            // are the populations that cross a frame fast enough for the difference to be the
-            // picture.
             const osg::Vec3f stood = particle->getPosition() * place;
-            const osg::Vec3f came = particle->getPreviousPosition() * place;
 
             if (particle->getAngle() != angle)
             {
@@ -182,7 +177,6 @@ namespace Rtx
                 .mAxis = axis,
                 .mColour = decodeColour(colour),
                 .mAlpha = alpha,
-                .mMoved = stood - came,
             });
         }
 

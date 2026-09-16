@@ -105,6 +105,7 @@ set(RTX_TEST_FILES
     rtx/wavemoments.hpp
     rtx/wavepass.cpp
     rtx/wavespectrum.cpp
+    rtxbench/benchrun.cpp
     rtxbench/benchspec.cpp
     rtxbench/runrecord.cpp
     rtxbench/framehashes.cpp

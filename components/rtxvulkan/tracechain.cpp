@@ -49,8 +49,7 @@ namespace Rtx
     {
     }
 
-    void TraceChain::resize(
-        const std::uint32_t width, const std::uint32_t height, const bool layers, const RadianceWidth radiance)
+    void TraceChain::resize(const std::uint32_t width, const std::uint32_t height, const RadianceWidth radiance)
     {
         assert(width > 0 && height > 0);
 
@@ -61,19 +60,18 @@ namespace Rtx
         // and what is shown is shown from it.
         mColour = Image(mDevice, mWidth, mHeight, radianceFormat(radiance), mColourUsage, mColourName);
 
-        mChannels = std::make_unique<GBuffer>(mDevice, mPool, mChannelLayout, mWidth, mHeight, layers, radiance);
+        mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mWidth, mHeight, radiance);
         mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mWidth, mHeight);
         mAccumulate.resize(mWidth, mHeight);
         mFilter.resize(mWidth, mHeight);
     }
 
-    void TraceChain::grow(
-        const std::uint32_t width, const std::uint32_t height, const bool layers, const RadianceWidth radiance)
+    void TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const RadianceWidth radiance)
     {
         if (holds(width, height))
             return;
 
-        resize(std::max(mWidth, width), std::max(mHeight, height), layers, radiance);
+        resize(std::max(mWidth, width), std::max(mHeight, height), radiance);
     }
 
     const Image& TraceChain::recordDenoise(const VkCommandBuffer commands, const Shaders::Camera& camera,

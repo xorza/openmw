@@ -99,6 +99,12 @@ namespace Rtx
             declared[Shaders::BIND_FOG_FIELD] = VkDescriptorSetLayoutBinding{ Shaders::BIND_FOG_FIELD,
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sStages };
 
+            // The frame as shown, for the one launch that composites the puffs over it. In this
+            // set because that launch reads everything else in it — the block, the bin through
+            // it, the air — and one layout serves every pipeline the set is pushed for.
+            declared[Shaders::BIND_SHOWN]
+                = VkDescriptorSetLayoutBinding{ Shaders::BIND_SHOWN, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, sStages };
+
             return declared;
         }();
     }
@@ -169,6 +175,7 @@ namespace Rtx
         const std::filesystem::path depth = shaders / "fogdepth.rgen.spv";
         const std::filesystem::path scatter = shaders / "fogscatter.rgen.spv";
         const std::filesystem::path integrate = shaders / "fogintegrate.comp.spv";
+        const std::filesystem::path spriteComposite = shaders / "spritecomposite.rgen.spv";
         const std::filesystem::path raygen = shaders / "visibility.rgen.spv";
         const std::filesystem::path anyHit = shaders / "visibility.rahit.spv";
         const std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> miss{ shaders / "visibility.rmiss.spv" };
@@ -183,6 +190,8 @@ namespace Rtx
             mDevice, sBindings, laterSets(textureLayout), TraceShaders{ .mRaygen = depth }, "fog depth");
         mIntegratePipeline = std::make_unique<ComputePipeline>(
             mDevice, sBindings, 0, laterSets(textureLayout), integrate, "fog integrate");
+        mSpriteCompositePipeline = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+            TraceShaders{ .mRaygen = spriteComposite }, "sprite composite");
 
         /// One kernel to make: which tuple, and which of the two modules.
         struct Wanted
@@ -293,7 +302,7 @@ namespace Rtx
 
         // Appended in binding order rather than indexed, so a channel added cannot silently move
         // two writes on top of each other; the count is checked below rather than maintained.
-        DescriptorWrites<sBindings.size(), 2 * Shaders::WAVE_CASCADES + 1> writes;
+        DescriptorWrites<sBindings.size(), 2 * Shaders::WAVE_CASCADES + 2> writes;
         writes.structure(Shaders::BIND_SCENE, sceneWrite);
 
         // The two buffers still bound: the hit counter, and the frame block every table is reached
@@ -310,6 +319,9 @@ namespace Rtx
             inputs.mFog->getField().describeSampled(
                 inputs.mFog->getSampler(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+        assert(inputs.mShown != nullptr && !inputs.mShown->isEmpty() && "a trace with no frame to show");
+        writes.image(Shaders::BIND_SHOWN, inputs.mShown->describeStorage());
 
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.
@@ -462,5 +474,26 @@ namespace Rtx
         // The host's read of the count is ordered by whoever reads it: `renderFrame` records
         // `Buffer::orderForHostRead` after every pass that could add to it, and a picture's count
         // is read by nobody.
+    }
+
+    void VisibilityPass::recordSpriteComposite(const VkCommandBuffer commands, const VisibilityInputs& inputs,
+        const GBuffer& buffer, const Buffer& hitCount, const std::uint64_t frame, const VkExtent2D shown,
+        GpuTimer* const timer) const
+    {
+        assert(inputs.mShown != nullptr && "a composite over no frame");
+        assert(shown.width <= inputs.mShown->getWidth() && shown.height <= inputs.mShown->getHeight()
+            && "a picture larger than the image it is drawn into");
+
+        // Its own zone and not the bin's `sprites`, so a report says what the march at the shown
+        // extent costs apart from what binning the sprites over the traced one does.
+        openZone(timer, commands, "puffs");
+
+        bind(commands, *mSpriteCompositePipeline);
+        pushInputs(commands, *mSpriteCompositePipeline, inputs, buffer, hitCount, frame);
+
+        // One invocation a pixel of the picture, whose extent the shader reads off the launch.
+        mSpriteCompositePipeline->traceRays(commands, shown.width, shown.height);
+
+        closeZone(timer, commands);
     }
 }

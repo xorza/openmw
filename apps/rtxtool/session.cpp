@@ -1,7 +1,6 @@
 #include "session.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <format>
 #include <span>
@@ -151,23 +150,17 @@ namespace RtxTool
     {
         MWRender::Camera* camera = MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
 
-        osg::Vec3f along = look - eye;
-        if (along.length2() <= 0.0f)
-            along = osg::Vec3f(0.0f, 1.0f, 0.0f);
-        along.normalize();
-
         // **A static camera and not the player's own.** Nothing tracks the body, nothing rotates
         // to its facing and nothing casts a ray to keep the eye out of a wall, which is what a view
         // file's coordinates mean. It does not hold on its own, for the reason `Session::aim` gives.
         camera->setMode(MWRender::Camera::Mode::Static);
         camera->setStaticPosition(osg::Vec3d(eye));
 
-        // **The engine's own basis, recovered rather than restated.** `Camera::getOrient` builds
-        // the eye from a pitch about X and a yaw about Z and looks down +Y, so a camera facing the
-        // actor's own heading is `setYaw(-rot[2])` — which makes the forward vector
-        // `(-sin(yaw), cos(yaw), 0)` at level pitch, and this the inverse of it.
-        camera->setPitch(std::asin(along.z()), true);
-        camera->setYaw(std::atan2(-along.x(), along.y()), true);
+        // The body's rotation, negated into the camera's own angles the way
+        // `Camera::rotateCameraToTrackingPtr` negates a tracked body's.
+        const osg::Vec3f rotation = Rtx::Stand{ .mCell = {}, .mEye = eye, .mLook = look }.getRotation();
+        camera->setPitch(-rotation.x(), true);
+        camera->setYaw(-rotation.z(), true);
     }
 
     void Session::boostPlayer()
@@ -203,7 +196,7 @@ namespace RtxTool
         const ESM::Position& stood = player.getRefData().getPosition();
 
         const osg::Vec3f eye(stood.pos[0], stood.pos[1], stood.pos[2]);
-        mProgress.standAt(eye, eye + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f));
+        mProgress.standAt(eye, eye + Rtx::Stand::forwardOf(osg::Vec3f(stood.rot[0], stood.rot[1], stood.rot[2])));
     }
 
     void Session::forgetHistory()
@@ -241,18 +234,28 @@ namespace RtxTool
 
             // **Where the eye goes and not where the cell centres, where the stop says.** The
             // position the world found is what stands a player in the cell; a view names the spot
-            // its picture is of, and the ring is the same ring either way.
+            // its picture is of, and the ring is the same ring either way. The body faces the look
+            // as well, because a window is the player's own camera and that camera faces what the
+            // body does.
             if (stop.mStand.mEye.has_value())
             {
                 where.pos[0] = stop.mStand.mEye->x();
                 where.pos[1] = stop.mStand.mEye->y();
                 where.pos[2] = stop.mStand.mEye->z();
+
+                const osg::Vec3f rotation = stop.mStand.getRotation();
+                where.rot[0] = rotation.x();
+                where.rot[1] = rotation.y();
+                where.rot[2] = rotation.z();
             }
 
             world.changeToCell(found, where, true);
         }
         else if (stop.mStand.mEye.has_value())
+        {
             world.moveObject(world.getPlayerPtr(), *stop.mStand.mEye, true, true);
+            world.rotateObject(world.getPlayerPtr(), stop.mStand.getRotation());
+        }
 
         // **Through the globals the console writes and not through the clock's own setters**, which
         // are `MWWorld::World`'s alone. `set gamehour to` and `set day to` are the same two calls,
@@ -395,7 +398,7 @@ namespace RtxTool
         //
         // **Measured from `mProgress.mFlown` and never from the player**, which says why.
         osg::Vec3f along = route.mTo.has_value() ? *route.mTo - mProgress.mFlown
-                                                 : osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
+                                                 : Rtx::Stand::forwardOf(osg::Vec3f(0.0f, 0.0f, stood.rot[2]));
 
         const float left = along.length();
         if (route.mTo.has_value() && left <= 0.0f)

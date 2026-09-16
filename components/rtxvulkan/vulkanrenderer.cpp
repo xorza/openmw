@@ -100,22 +100,17 @@ namespace Rtx
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
 
-        /// The display pass's own description of the frame: the trace's basis on the picture's
-        /// grid, because `rayAt` divides by the camera's own extent. The jitter goes, because this
-        /// pass draws once, and the spread angle comes down with the pixel.
+        /// The display pass's own description of the frame, on the picture's grid. The alpha
+        /// carries the puffs' transmittance wherever it is not the picture's coverage, which is
+        /// the same test `spritecomposite.rgen` makes.
         Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, std::uint32_t width,
             std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
         {
-            Shaders::Camera shown = frame.mCamera;
-            shown.mJitter = osg::Vec2f();
-            shown.mSpreadAngle = frame.mCamera.mSpreadAngle * float(tracedHeight) / float(height);
-            shown.mWidth = width;
-            shown.mHeight = height;
-
             return Shaders::ToneConstants{
                 .mTracedWidth = tracedWidth,
                 .mTracedHeight = tracedHeight,
-                .mCamera = shown,
+                .mCoverAlpha = frame.mTransparentBackground == 0 ? 1u : 0u,
+                .mCamera = Shaders::cameraOnGrid(frame.mCamera, width, height),
                 .mStars = frame.mStars,
             };
         }
@@ -302,10 +297,7 @@ namespace Rtx
         if (upscaling())
             render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscaling.mMode);
 #endif
-        // The layer channels only where something upscales, which is the same test
-        // `mLayerCompositedAfter` makes of the shader: Ray Reconstruction is the one reader the
-        // trace hands a separate layer to, and a frame nothing upscales composites its own.
-        mFrame.resize(render.width, render.height, upscaling(), mProfile.mRadianceWidth);
+        mFrame.resize(render.width, render.height, mProfile.mRadianceWidth);
 
         // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
@@ -433,10 +425,6 @@ namespace Rtx
         // sequence belongs to the frame index, which is the renderer's to walk.
         if (reconstruction.mJitter)
             sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
-
-        // Only Ray Reconstruction reads the transparency layer, so only a frame it is about to
-        // upscale hands its sprites over. Every other trace in this renderer composites them itself.
-        sampled.mLayerCompositedAfter = upscaling() ? 1 : 0;
 
         // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
         // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
@@ -955,7 +943,12 @@ namespace Rtx
 
         const Shaders::VisibilityConstants sampled = sampleCamera(camera, reconstruction);
 
-        const VisibilityInputs inputs = describeInputs(mWorld, &mFrame.getFogVolume(), camera.mRayMask);
+        VisibilityInputs inputs = describeInputs(mWorld, &mFrame.getFogVolume(), camera.mRayMask);
+
+        // Where the puffs are composited: over the reconstruction where something upscales, and
+        // over the trace's own composite where nothing does. Named before the trace, because the
+        // set that carries it is pushed for every launch.
+        inputs.mShown = upscaling() ? &mUpscaled : &mFrame.getColour();
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
@@ -1037,27 +1030,30 @@ namespace Rtx
                     .mDepth = channels.get(Channel::Depth),
                     .mMotion = channels.get(Channel::Motion),
                     .mReflectionMotion = channels.get(Channel::ReflectionMotion),
-                    .mParticleMask = channels.get(Channel::ParticleMask),
-                    .mTransparency = channels.get(Channel::Transparency),
-                    .mTransparencyOpacity = channels.get(Channel::TransparencyOpacity),
-                    .mTransparencyMotion = channels.get(Channel::TransparencyMotion),
-                    .mBiasMask = channels.get(Channel::BiasMask),
                     .mOutput = mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
                     .mReset = historyLost,
                 });
 
-            // What NGX recorded is its own; nothing here knows which stages it used. And the
-            // bloom samples what it left, rather than loading it — `BloomPass` binds the frame as
-            // a combined image sampler — so a visibility scope of storage reads alone would leave
-            // that read uncovered.
-            mUpscaled.transition(commands, Use::sAnyGeneralWrite, Use::sComputeReadOrSample);
+            // What NGX recorded is its own; nothing here knows which stages it used.
+            mUpscaled.transition(commands, Use::sAnyGeneralWrite, Use::sTraceReadWrite);
 
             timer.close(commands);
             shown = &mUpscaled;
         }
 #endif
+
+        // The puffs over the reconstructed frame, at its own extent, and then the frame is what
+        // the lens spreads and the curve maps. The bloom samples what this leaves, rather than
+        // loading it — `BloomPass` binds the frame as a combined image sampler — so the scope
+        // after it names both reads.
+        assert(shown == inputs.mShown && "the puffs composited over a frame the set does not name");
+        if (!upscaling())
+            shown->transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
+        mPass->recordSpriteComposite(commands, inputs, channels, frame.mHitCount, sampled.mFrame,
+            VkExtent2D{ shown->getWidth(), shown->getHeight() }, &timer);
+        shown->transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
 
         // What the lens will spread, built here and applied by the curve. Nothing is
         // written back over the frame — `BloomPass` says why the trace's own answer has to
@@ -1153,7 +1149,7 @@ namespace Rtx
         // The one drain a picture still pays, and only the first picture of a new size pays it.
         finishTraces();
 
-        mView.grow(width, height, false, mProfile.mRadianceWidth);
+        mView.grow(width, height, mProfile.mRadianceWidth);
 
         mViewTarget = Image(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
@@ -1174,13 +1170,10 @@ namespace Rtx
 
         growViewTargets(options.mWidth, options.mHeight);
 
-        // A picture composites its own transparency, for the reason `mLayerCompositedAfter` gives:
-        // nothing upscales one, so nothing would read the layer it handed over.
-        assert(camera.mLayerCompositedAfter == 0 && "a picture inside the interface hands its layer to nobody");
-
         ViewScene& traced = sceneAt(options.mScene);
 
-        const VisibilityInputs inputs = describeInputs(traced, &mView.getFogVolume(), camera.mRayMask);
+        VisibilityInputs inputs = describeInputs(traced, &mView.getFogVolume(), camera.mRayMask);
+        inputs.mShown = &mView.getColour();
 
         // The scene's own, filled here rather than by the caller, because whether the scene behind
         // a camera holds a cloud is this renderer's to answer. The only one of `sampleCamera`'s
@@ -1213,6 +1206,13 @@ namespace Rtx
                     .mCounts = &mViewCounts,
                     .mTarget = &mViewTarget,
                 });
+
+            // The puffs over the picture, at its own extent: a torch's flame in a doll's hand is a
+            // sprite.
+            mView.getColour().transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
+            mPass->recordSpriteComposite(commands, inputs, channels, mViewCounts, sampled.mFrame,
+                VkExtent2D{ options.mWidth, options.mHeight }, nullptr);
+            mView.getColour().transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
 
             // One, and measured off nothing, or the same armour would be a different brightness
             // in two windows; out of its own buffer, for what `ExposurePass::getPictureExposure`
@@ -1286,9 +1286,8 @@ namespace Rtx
     void VulkanRenderer::readChannel(const Channel channel, std::vector<float>& values)
     {
         assert(mFrame.isBuilt());
-        assert(mFrame.getChannels().carries(channel) && "a channel this frame stands in for, read back as its own");
 
-        // One lookup and not a switch of fourteen arms. A channel is its binding, and the buffer
+        // One lookup and not a switch of eleven arms. A channel is its binding, and the buffer
         // is indexed by it.
         readImage(mFrame.getChannels().get(channel), values);
     }
@@ -1310,15 +1309,6 @@ namespace Rtx
         // each of these.
         switch (image.getFormat())
         {
-            // A mask holds a yes or a no in a byte, so what comes back is widened rather than
-            // reinterpreted.
-            case GBUFFER_MASK:
-                values.resize(bytes.size());
-                for (std::size_t at = 0; at < bytes.size(); ++at)
-                    values[at] = static_cast<float>(bytes[at]) / 255.0f;
-
-                return;
-
             case VK_FORMAT_R16G16_SFLOAT:
             case VK_FORMAT_R16G16B16A16_SFLOAT:
                 values.resize(bytes.size() / sizeof(std::uint16_t));

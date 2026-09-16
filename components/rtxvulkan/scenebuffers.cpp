@@ -88,7 +88,6 @@ namespace Rtx
                 .mAxis = sprite.mAxis,
                 .mColour = sprite.mColour,
                 .mAlpha = sprite.mAlpha,
-                .mMoved = sprite.mMoved,
             };
         }
 

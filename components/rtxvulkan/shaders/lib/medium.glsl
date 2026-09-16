@@ -62,20 +62,12 @@ float mediumCrossing(float painted, float facing)
 /// the one point they came to is lit once, out of the froxel the air's own volume already filled for
 /// it — `puffLight` says what that reads and why it is not three rays of the walk's own.
 ///
-/// **The claim it fills is the covering one**, judged by what a crossing hid, exactly as a puff of
-/// smoke's is: an unlit shell sends back no light at all and still decides everything the pixel
-/// shows. Its travel is the placement's, which the caller fills in — this walk has no reprojection
-/// in it and `movedBy` is the frame's to ask.
-///
 /// @param limit how far the eye committed. Everything past it is behind a surface and hidden.
 /// @param cone the pixel's own cone, so a distant shell reads its texture at the level that resolves
 ///        it rather than at the finest one.
-/// @param covering filled with the instance whose crossing hid the most of this pixel, or left alone
-///        where nothing did.
-PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Cone cone, out uint covering)
+PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Cone cone)
 {
     PuffLayer layer = noPuffs();
-    covering = 0u;
 
     // **In `sharePart`'s units, because the shells arrive in the card's order** — `SHARE_UNIT` says
     // what a float sum taken in that order did to the frame hash. The distance is summed as a share
@@ -86,10 +78,12 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
     uint coveredAt = 0u;
     uint blocked = 0u;
 
-    // The plane of the crossing that hid the most, which is the one side the layer is given, and
-    // how far off it was.
+    // The plane of the crossing that hid the most, which is the one side the layer is given, how
+    // much it hid, how far off it was and which instance it was.
     vec3 coveringNormal = vec3(0.0, 0.0, 1.0);
+    float coveringAlpha = 0.0;
     float coveringAt = limit;
+    uint covering = 0u;
 
     rayQueryEXT query;
     rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_MEDIUM, origin, 0.0, direction, limit);
@@ -146,15 +140,15 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
         coveredAt = addShare(coveredAt, sharePart(at / limit * alpha));
         blocked = addShare(blocked, blockedBy(alpha));
 
-        // **By what it hid and not by what it was lit by**, which is `PuffLayer::mCovering`'s own
-        // rule: an unlit shell decides the whole of what the pixel shows. **A tie goes to the nearer
-        // shell and then to the lower instance**, because two shells hiding the same share arrive
-        // in the card's order, and the first of them would be the scheduler's choice.
-        const bool tied = alpha == layer.mCovering.mWeight && alpha > 0.0
-            && (at < coveringAt || (at == coveringAt && instanceIndex < covering));
-        if (alpha > layer.mCovering.mWeight || tied)
+        // **By what it hid and not by what it was lit by**: an unlit shell decides the whole of
+        // what the pixel shows. **A tie goes to the nearer shell and then to the lower instance**,
+        // because two shells hiding the same share arrive in the card's order, and the first of
+        // them would be the scheduler's choice.
+        const bool tied
+            = alpha == coveringAlpha && alpha > 0.0 && (at < coveringAt || (at == coveringAt && instanceIndex < covering));
+        if (alpha > coveringAlpha || tied)
         {
-            layer.mCovering = PuffClaim(direction * at, vec3(0.0), alpha);
+            coveringAlpha = alpha;
             coveringNormal = plane;
             coveringAt = at;
             covering = instanceIndex;

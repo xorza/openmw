@@ -70,6 +70,7 @@ set(RTX_SHADERS
     shaders/morph.comp
     shaders/skin.comp
     shaders/spriterects.comp
+    shaders/spritecomposite.rgen
     shaders/spriteruns.comp
     shaders/spriteshade.comp
     shaders/spritestarts.comp

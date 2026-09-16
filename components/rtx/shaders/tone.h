@@ -36,6 +36,11 @@ namespace Rtx::Shaders
         uint mTracedWidth;
         uint mTracedHeight;
 
+        /// Whether the frame's alpha carries the puffs' transmittance, which `spritecomposite.rgen`
+        /// leaves there for the star field to be drawn through — the frame's; a picture's alpha
+        /// is its coverage, and its stars are not drawn through anything.
+        uint mCoverAlpha;
+
         /// The frame's camera at *this* pass's extent, with no jitter — and so the extent the pass
         /// covers.
         ///

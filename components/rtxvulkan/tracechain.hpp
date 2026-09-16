@@ -50,16 +50,14 @@ namespace Rtx
         /// Builds the chain at exactly this extent, whatever it was before. The caller has waited
         /// for anything still reading what this replaces.
         ///
-        /// @param layers whether anything reads the layer the eye sees through, which `GBuffer`
-        ///        answers with three channels or with three stand-ins.
         /// @param radiance how wide the two radiance channels and the frame composed from them are
         ///        stored — the run's choice, which `Rtx::RadianceWidth` argues.
-        void resize(std::uint32_t width, std::uint32_t height, bool layers, RadianceWidth radiance);
+        void resize(std::uint32_t width, std::uint32_t height, RadianceWidth radiance);
 
         /// Makes the chain at least this big, keeping whatever extent it already reached on either
         /// axis. Nothing where it already `holds` the size. Grown and never shrunk, because a
         /// smaller picture uses a corner of a larger one's images rather than rebuilding them.
-        void grow(std::uint32_t width, std::uint32_t height, bool layers, RadianceWidth radiance);
+        void grow(std::uint32_t width, std::uint32_t height, RadianceWidth radiance);
 
         /// The extent the images are at, which is what a dispatch over the whole of one covers.
         /// Nought until the first `resize` or `grow`.

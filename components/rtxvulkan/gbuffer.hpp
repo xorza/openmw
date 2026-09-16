@@ -39,14 +39,10 @@ namespace Rtx
     class GBuffer
     {
     public:
-        /// @param layers whether anything after this chain reads the layer the eye sees through.
-        ///        Only an upscaled frame does — `VisibilityConstants::mLayerCompositedAfter` is the
-        ///        same question asked of the shader — and where nothing does, the three channels
-        ///        are one texel each instead of the frame's own extent.
         /// @param radiance how wide the two radiance channels are stored, which is the run's choice
         ///        and `Rtx::RadianceWidth`'s argument.
-        GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
-            std::uint32_t height, bool layers, RadianceWidth radiance);
+        GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height,
+            RadianceWidth radiance);
 
         /// The set every `GBuffer` is addressed through, made once and outliving all of them,
         /// because a pipeline layout names every set it will ever be handed, and the trace's
@@ -55,9 +51,6 @@ namespace Rtx
 
         /// One channel's image, which is the image bound at that channel's number.
         const Image& get(Channel channel) const { return mChannels[bindingOf(channel)]; }
-
-        /// Whether a channel is the frame's own extent rather than a stand-in nothing reads.
-        bool carries(Channel channel) const { return bindingOf(channel) < mCarried; }
 
         VkDescriptorSet getSet() const { return mSet.get(0); }
 
@@ -78,10 +71,6 @@ namespace Rtx
         /// and a hand-written table mapping the binding back — a channel added to `Rtx::Channel`
         /// without the third reaches its pass as a null.
         std::vector<Image> mChannels;
-
-        /// How many of them are the frame's own extent, which is all of them or all but the three
-        /// layer channels. They are last, so one count says which.
-        std::uint32_t mCarried;
 
         /// One set, in a pool of its own that goes with it.
         DescriptorSets mSet;

@@ -26,6 +26,7 @@ namespace Rtx
     class FogVolume;
     class GBuffer;
     class GpuTimer;
+    class Image;
     class SceneBuffers;
     class SpriteBin;
     class WavePass;
@@ -69,6 +70,11 @@ namespace Rtx
         /// The bin the trace reads its sprites and its tiles from, which the chain that records the
         /// trace owns and filled ahead of it. Always set by the time the pass records.
         const SpriteBin* mBin = nullptr;
+
+        /// The frame as it will be shown, at the output's extent and in `GENERAL`, which
+        /// `recordSpriteComposite` composites the puffs over. Bound for every launch, because one
+        /// set serves them all, and read by that one alone.
+        const Image* mShown = nullptr;
 
         /// Whether the eye can meet water in this scene — the scene's answer and not the camera's,
         /// and what `HAS_SEA` takes the waves out of for a room.
@@ -131,6 +137,19 @@ namespace Rtx
             const Buffer& hitCount, const Shaders::VisibilityConstants& constants, bool historyLost,
             GpuTimer* timer) const;
 
+        /// Composites the puffs over `inputs.mShown`, in place, at the picture's own extent: the
+        /// sprites' shape marched there against the bin the trace binned over its own grid, their
+        /// light and the cloud shells read off the layer the trace left in `Channel::Puffs`. After
+        /// whatever denoised and upscaled the frame, because neither should touch a particle —
+        /// `spritecomposite.rgen` says what an upscaler's overlay costs.
+        ///
+        /// @param frame which frame's air volume, as `record` was handed it. The block is the one
+        ///        the trace wrote, so the traced camera and the bin are read from there.
+        /// @param shown how much of `inputs.mShown` the picture is, from its corner: the whole of
+        ///        a frame's, and a picture's own size inside an image that may be larger.
+        void recordSpriteComposite(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
+            const Buffer& hitCount, std::uint64_t frame, VkExtent2D shown, GpuTimer* timer) const;
+
     private:
         /// Makes every kernel this pass can ever need, before it returns, because the frame path
         /// must not be able to compile: the trace took 2.8 seconds on a cold cache, and a frame
@@ -192,6 +211,11 @@ namespace Rtx
         /// And one for the launch that finds where each column's ray stops, which no tuple
         /// changes: it traces and shades nothing.
         std::unique_ptr<TracePipeline> mDepthPipeline;
+
+        /// And one for the launch that composites the puffs over the shown frame, which takes no
+        /// tuple either: it reads the bin and the air and traces nothing. A launch and not a
+        /// dispatch for the reason `spritecomposite.rgen` gives.
+        std::unique_ptr<TracePipeline> mSpriteCompositePipeline;
 
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.

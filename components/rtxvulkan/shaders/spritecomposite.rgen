@@ -1,0 +1,126 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_shader_image_load_formatted : require
+
+// The puffs over the reconstructed frame, at the resolution it is shown at.
+//
+// **After the denoiser and the upscaler, because neither should touch a particle.** A sprite is
+// not noise in a ray-traced estimate, so a denoiser given one reconstructs it as an error; and
+// Ray Reconstruction's own overlay is "upscaled only", at the traced extent, so every particle
+// handed to it was drawn at half the picture's resolution and stretched. So the trace leaves the
+// puffs in a layer of their own and this launch composites them over the frame the way the trace
+// used to — `airBefore + colour * opacity + added + T * (frame - airBefore)`, which is exact for a
+// layer in front of the haze behind it.
+//
+// **The shape at the shown extent and the light at the traced one.** What a picture needs at
+// its own resolution is a puff's edge: which pixels it covers and how much. What it does not need
+// there is the light, which is read out of froxels that are a hundred pixels across and costs
+// three fetches a sprite and a band of forty hashes an emitter — marched at every shown pixel, a
+// storm's frame paid five times what it did. So the sprites are marched here for their shape
+// alone (`spritesAlong` with `lit` off), the colour comes off the trace's own lit layer, read
+// bilinearly and weighted by its coverage so a rim the traced grid missed borrows from the pixel
+// beside it, and the shells' transmittance comes with it, because a shell is geometry the trace
+// crossed and this launch cannot.
+//
+// **One pass for both denoisers.** Under the wavelet the shown extent is the traced one and this
+// runs at it; nothing else composites a puff anywhere in this renderer.
+//
+// **A launch and not a dispatch**, for the reason `RtxSourceTreeTest` gives: the sprite march
+// reaches the fog, and the fog reaches the traversal, and a dispatch that can trace answers
+// differently under another process's preemption. Nothing here traces.
+
+#include "scene.h"
+
+#include "lib/bindings.glsl"
+#include "lib/fog.glsl"
+#include "lib/frame.glsl"
+#include "lib/sprites.glsl"
+
+/// The frame as it will be shown, read and written in place.
+layout(set = 0, binding = BIND_SHOWN) uniform image2D shown;
+
+void main()
+{
+    // The launch is the picture's extent and not the image's, which a picture inside the
+    // interface uses a corner of.
+    const uvec2 pixel = gl_LaunchIDEXT.xy;
+    const uvec2 extent = gl_LaunchSizeEXT.xy;
+    const uvec2 tracedExtent = uvec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
+
+    // The traced camera on this grid — `cameraOnGrid` says why it is the same basis — and where
+    // this pixel's centre lands on the traced one. Nearest and not filtered: a depth is not a
+    // quantity that averages, and the bin is a list.
+    const Camera camera = cameraOnGrid(frame.mCamera, extent.x, extent.y);
+    const vec2 across = vec2(tracedExtent) / vec2(extent);
+    const uvec2 traced = min(uvec2((vec2(pixel) + 0.5) * across), tracedExtent - 1u);
+
+    const Ray ray = rayAt(camera, vec2(pixel));
+    const vec3 origin = frame.mOrigin + ray.mOffset;
+    const vec3 direction = ray.mDirection;
+
+    // How far the eye committed on the traced grid, which is where a puff is hidden.
+    const float distance = imageLoad(depth, ivec2(traced)).y;
+
+    const PuffLayer shape = spritesAlong(traced, coneAt(camera), origin, direction, distance, false);
+    const vec2 stood = imageLoad(puffsDepth, ivec2(traced)).xy;
+
+    PuffLayer layer = shape;
+    layer.mTransmittance = shape.mTransmittance * stood.y;
+    layer.mCoveredAt = stood.x;
+
+    // The lit colour, off the traced layer around this pixel: each of the four nearest traced
+    // pixels weighted by how near it is and by how much it covered, so a traced pixel the puff
+    // missed says nothing and one it covered speaks for the rim beside it.
+    const float opacity = 1.0 - layer.mTransmittance;
+    if (opacity > 0.0)
+    {
+        const vec2 at = (vec2(pixel) + 0.5) * across - 0.5;
+        const vec2 corner = floor(at);
+        const vec2 share = at - corner;
+
+        vec3 lit = vec3(0.0);
+        float weight = 0.0;
+        for (int i = 0; i < 4; ++i)
+        {
+            const ivec2 quad = ivec2(i & 1, i >> 1);
+            const ivec2 tap = clamp(ivec2(corner) + quad, ivec2(0), ivec2(tracedExtent) - 1);
+            const vec4 read = imageLoad(puffs, tap);
+            const vec2 near = mix(vec2(1.0) - share, share, vec2(quad));
+            const float covered = (1.0 - read.a) * near.x * near.y;
+
+            lit += read.rgb * covered;
+            weight += covered;
+        }
+
+        // A puff smaller than a traced pixel, standing between four centres that all missed it:
+        // its own unlit colour, lit as the air around it is. Rare, and one read.
+        layer.mColour = weight > 0.0 ? lit / weight : shape.mColour * frame.mAmbient;
+    }
+
+    // **The puffs' transmittance rides in the frame's alpha**, for the display pass to draw the
+    // star field through — where the alpha is not already spoken for: a picture with a transparent
+    // background keeps its coverage there, and its stars are not drawn through anything.
+    const bool coverAlpha = frame.mTransparentBackground == 0u;
+    const vec4 before = imageLoad(shown, ivec2(pixel));
+
+    if (!(opacity > 0.0) && !any(greaterThan(layer.mAdded, vec3(0.0))))
+    {
+        if (coverAlpha)
+            imageStore(shown, ivec2(pixel), vec4(before.rgb, 1.0));
+        return;
+    }
+
+    // **The air in front of the layer, so that it covers only what is behind it.** `visibility.rgen`
+    // states the identity this is: the frame holds the whole path's haze over the surface, and a
+    // puff a few units out must not take two hundred units of haze away with it. The near half is
+    // read again as the whole one's own prefix, and the clamp is what a pair quantised apart by a
+    // froxel slice can need.
+    const vec3 airBefore = opacity > 0.0 ? fogAlong(traced, origin, direction, layer.mCoveredAt).xyz : vec3(0.0);
+
+    const vec3 composited
+        = airBefore + layer.mColour * opacity + layer.mAdded + layer.mTransmittance * max(before.rgb - airBefore, vec3(0.0));
+
+    imageStore(shown, ivec2(pixel), vec4(composited, coverAlpha ? layer.mTransmittance : before.a));
+}

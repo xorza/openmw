@@ -26,12 +26,9 @@ namespace Rtx
         Motion = Shaders::CHANNEL_MOTION,
         Depth = Shaders::CHANNEL_DEPTH,
         ReflectionMotion = Shaders::CHANNEL_REFLECTION_MOTION,
-        ParticleMask = Shaders::CHANNEL_PARTICLE_MASK,
-        BiasMask = Shaders::CHANNEL_BIAS_MASK,
         StarsShown = Shaders::CHANNEL_STARS_SHOWN,
-        Transparency = Shaders::CHANNEL_TRANSPARENCY,
-        TransparencyOpacity = Shaders::CHANNEL_TRANSPARENCY_OPACITY,
-        TransparencyMotion = Shaders::CHANNEL_TRANSPARENCY_MOTION,
+        Puffs = Shaders::CHANNEL_PUFFS,
+        PuffsDepth = Shaders::CHANNEL_PUFFS_DEPTH,
     };
 
     inline constexpr std::uint32_t sChannelCount = Shaders::CHANNEL_COUNT;
@@ -52,12 +49,9 @@ namespace Rtx
         { Channel::Motion, "g-motion" },
         { Channel::Depth, "g-depth" },
         { Channel::ReflectionMotion, "g-reflection-motion" },
-        { Channel::ParticleMask, "g-particle-mask" },
-        { Channel::BiasMask, "g-bias-mask" },
         { Channel::StarsShown, "g-stars-shown" },
-        { Channel::Transparency, "g-transparency" },
-        { Channel::TransparencyOpacity, "g-transparency-opacity" },
-        { Channel::TransparencyMotion, "g-transparency-motion" },
+        { Channel::Puffs, "g-puffs" },
+        { Channel::PuffsDepth, "g-puffs-depth" },
     } } };
 
     /// Every channel in binding order, for a walk that wants them all.

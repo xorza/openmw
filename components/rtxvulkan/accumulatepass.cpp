@@ -19,11 +19,11 @@ namespace Rtx
 {
     namespace
     {
-        /// The channel being blended, the four the frame describes it with, the three a history
+        /// The channel being blended, the three the frame describes it with, the three a history
         /// arrives in, the two of those this pass writes back, and the blend the cascade reads.
-        /// Eleven and not twelve, because the first wavelet level writes the history this reads
-        /// next frame — SVGF's feedback.
-        constexpr std::size_t sBindingCount = 11;
+        /// Ten and not eleven, because the first wavelet level writes the history this reads next
+        /// frame — SVGF's feedback.
+        constexpr std::size_t sBindingCount = 10;
 
         constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings
             = computeBindings<sBindingCount>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
@@ -106,13 +106,12 @@ namespace Rtx
         writes.image(1, buffer.get(Channel::Motion).describeStorage());
         writes.image(2, buffer.get(Channel::Guide).describeStorage());
         writes.image(3, buffer.get(Channel::Depth).describeStorage());
-        writes.image(4, buffer.get(Channel::BiasMask).describeStorage());
-        writes.image(5, mColour[previous].describeStorage());
-        writes.image(6, mSurface[previous].describeStorage());
-        writes.image(7, mMoments[previous].describeStorage());
-        writes.image(8, mSurface[mCurrent].describeStorage());
-        writes.image(9, mMoments[mCurrent].describeStorage());
-        writes.image(10, mBlended.describeStorage());
+        writes.image(4, mColour[previous].describeStorage());
+        writes.image(5, mSurface[previous].describeStorage());
+        writes.image(6, mMoments[previous].describeStorage());
+        writes.image(7, mSurface[mCurrent].describeStorage());
+        writes.image(8, mMoments[mCurrent].describeStorage());
+        writes.image(9, mBlended.describeStorage());
         assert(writes.size() == sBindingCount && "a binding the layout declares was left unwritten");
 
         const Shaders::AccumulateConstants constants{

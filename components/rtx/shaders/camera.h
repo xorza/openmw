@@ -80,6 +80,22 @@ namespace Rtx::Shaders
     static_assert(sizeof(Camera) == 60, "Camera must be scalar-packed on every side");
 #endif
 
+    /// The traced camera on the grid a pass draws at once: the same basis, `width` by `height`
+    /// pixels, no jitter, and the spread angle brought down with the pixel. `rayAt` divides by
+    /// the camera's own extent, so this is what turns a pixel of the shown picture into the ray it
+    /// shows. The display pass takes it from the host and the sprite composite works it out in
+    /// the shader, both from here, so the two cannot draw different rays.
+    RTX_SHADER Camera cameraOnGrid(Camera traced, uint width, uint height)
+    {
+        Camera shown = traced;
+        shown.mJitter = vec2(0.0, 0.0);
+        shown.mSpreadAngle = traced.mSpreadAngle * float(traced.mHeight) / float(height);
+        shown.mWidth = width;
+        shown.mHeight = height;
+
+        return shown;
+    }
+
 #ifdef RTX_HOST
 }
 #endif

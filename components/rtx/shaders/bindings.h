@@ -42,8 +42,13 @@ namespace Rtx::Shaders
     const uint BIND_WAVE_CURVATURE = 4;
     const uint BIND_FOG_FIELD = 5;
 
+    /// The frame as it will be shown, at the output's own extent: what `spritecomposite.rgen`
+    /// composites the puffs over, in place. Bound for every pipeline in the set's layout and read
+    /// by that one launch.
+    const uint BIND_SHOWN = 6;
+
     /// How many the set declares, which is the last of them and one more.
-    const uint BIND_COUNT = 6;
+    const uint BIND_COUNT = 7;
 
 #ifdef RTX_HOST
 }

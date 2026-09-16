@@ -92,6 +92,17 @@ namespace Rtx
         /// aims at it and `Check::CameraStands` asserts the camera reached it. Only for a stand that
         /// names an eye.
         osg::Vec3f getLook() const;
+
+        /// The same facing as the game's own rotation of a body, in radians: `(pitch, 0, yaw)` in
+        /// the order `ESM::Position::rot` keeps them, yaw clockwise from north and pitch negative
+        /// looking up, which is what `MWRender::Camera` negates into its own angles. The one
+        /// derivation of a facing, so a body stood by a stand and the bearing a stand prints cannot
+        /// disagree.
+        osg::Vec3f getRotation() const;
+
+        /// The unit vector a body with `rotation` faces, which is `getRotation`'s inverse: a stand
+        /// read back off a body the harness rotated by a stand is that stand.
+        static osg::Vec3f forwardOf(const osg::Vec3f& rotation);
     };
 
     /// What the sky does at a stop, asked of the game's own weather system rather than derived.

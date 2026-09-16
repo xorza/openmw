@@ -48,21 +48,6 @@ namespace Rtx
         /// `GBuffer::getReflectionMotion`.
         const Image& mReflectionMotion;
 
-        /// Where a sprite reached, as one or nought — the pixels that are not the base pass and so
-        /// carry no motion of their own.
-        const Image& mParticleMask;
-
-        /// The layer the eye sees the frame through, its coverage and its own motion — the one
-        /// part of the frame with a second motion vector, so a raindrop and the wall behind it are
-        /// reprojected each by its own.
-        const Image& mTransparency;
-        const Image& mTransparencyOpacity;
-        const Image& mTransparencyMotion;
-
-        /// Where the past must not be carried forward: those sprites, and the water whose
-        /// reflections move with the surface rather than with what is reflected.
-        const Image& mBiasMask;
-
         /// The upscaled frame, at output resolution.
         const Image& mOutput;
 

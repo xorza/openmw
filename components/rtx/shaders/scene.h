@@ -547,10 +547,11 @@ namespace Rtx::Shaders
 
     /// One live particle, as a disc facing the eye.
     ///
-    /// **The layer is composited rather than denoised**, for the reason a rain streak is: an
-    /// upscaler carries a transparency layer through its own path, coverage arrives as a fraction so
-    /// a sprite finer than a pixel dims instead of flickering in and out, and none of it costs a
-    /// bottom-level structure. `Rtx::Sprite` says what each field is.
+    /// **The layer is composited rather than denoised**, for the reason a rain streak is: a
+    /// particle is not noise in an estimate, coverage arrives as a fraction so a sprite finer than a
+    /// pixel dims instead of flickering in and out, and none of it costs a bottom-level structure.
+    /// `spritecomposite.rgen` composites it at the picture's own resolution, after whatever
+    /// denoises. `Rtx::Sprite` says what each field is.
     struct GpuSprite
     {
         vec3 mPosition;
@@ -562,17 +563,6 @@ namespace Rtx::Shaders
 
         vec3 mColour;
         float mAlpha;
-
-        /// How far this particle travelled since the last frame, in world units.
-        ///
-        /// **A displacement and not the position it came from.** The two carry the same fact and not
-        /// the same precision: a raindrop's step is a fraction of a unit where its position is six
-        /// figures, so subtracting two positions on the device throws away most of the answer before
-        /// the reprojection has it. Taken as a difference where both numbers are known exactly and
-        /// carried small.
-        ///
-        /// Zero for a particle born this frame, which is the truth: it has no past to reproject to.
-        vec3 mMoved;
 
         /// Which emitter placed it, which is what a tile's list has to carry.
         ///
@@ -740,7 +730,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
     static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
-    static_assert(sizeof(GpuSprite) == 68, "GpuSprite must be scalar-packed on every side");
+    static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
     static_assert(sizeof(GpuTables) == 120, "GpuTables must be scalar-packed on every side");
 

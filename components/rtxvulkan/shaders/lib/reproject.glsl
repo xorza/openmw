@@ -3,9 +3,10 @@
 
 // Where everything in the frame stood on the previous frame's screen.
 //
-// **Four answers, because four things move differently.** A surface moves with the eye and
-// with itself; a sprite moves with its own travel; what water reflects moves as its image
-// in the plane; and the sky, being infinitely far, moves only when the eye turns.
+// **Three answers, because three things move differently.** A surface moves with the eye and
+// with itself; what water reflects moves as its image in the plane; and the sky, being
+// infinitely far, moves only when the eye turns. A puff has no answer here: none is in the
+// frame, so nothing in it moves with one.
 
 #include "bindings.glsl"
 #include "records.glsl"
@@ -115,16 +116,6 @@ vec2 motionOf(uvec2 pixel, vec3 origin, vec3 direction, float distance, uint ins
     const vec3 point = origin + direction * distance;
 
     return reprojected(pixel, direction * distance + frame.mCameraMotion + movedBy(instance, point));
-}
-
-/// Where the puff that owns a pixel stood on the previous frame's screen, in pixels.
-///
-/// The same reprojection a surface gets: the eye's own walk, and the puff's travel against it. A
-/// particle born this frame carries no travel, and neither does a cloud that stands still — which is
-/// the truth in both cases, one having no past to point at and the other no motion.
-vec2 puffMotionOf(uvec2 pixel, PuffClaim claim)
-{
-    return reprojected(pixel, claim.mToward + frame.mCameraMotion - claim.mMoved);
 }
 
 /// Where what a water surface reflects stood on the previous frame's screen, in pixels.

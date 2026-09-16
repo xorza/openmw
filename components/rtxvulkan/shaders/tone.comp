@@ -87,11 +87,16 @@ void main()
         const vec2 across = vec2(frame.mTracedWidth, frame.mTracedHeight) / vec2(extent);
         const vec3 shown = imageLoad(starsShown, ivec2(vec2(pixel) * across)).rgb;
 
-        if (any(greaterThan(shown, vec3(0.0))))
-            lit.rgb += shown
+        // And through the puffs, whose transmittance the composite left in the frame's alpha at
+        // this pass's own resolution — `ToneConstants::mCoverAlpha`.
+        const float puffs = frame.mCoverAlpha != 0u ? lit.a : 1.0;
+
+        if (any(greaterThan(shown, vec3(0.0))) && puffs > 0.0)
+            lit.rgb += shown * puffs
                 * starField(frame.mStars, rayAt(frame.mCamera, vec2(pixel)).mDirection, pixelBlur(frame.mCamera));
     }
 
-    // The curve maps radiance to a display; coverage is not radiance and passes through it.
-    imageStore(target, at, vec4(encodeSrgb(toneMap(lit.rgb * exposure)), lit.a));
+    // The curve maps radiance to a display; coverage is not radiance and passes through it, and
+    // where the alpha carried the puffs instead, the picture is whole.
+    imageStore(target, at, vec4(encodeSrgb(toneMap(lit.rgb * exposure)), frame.mCoverAlpha != 0u ? 1.0 : lit.a));
 }

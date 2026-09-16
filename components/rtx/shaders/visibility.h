@@ -386,15 +386,6 @@ namespace Rtx::Shaders
         /// frame, which is what a test wants; a window passes its own count.
         uint mFrame;
 
-        /// Non-zero where something after the trace composites the transparency layer.
-        ///
-        /// **Which is Ray Reconstruction and nothing else.** The sprites reach `CHANNEL_TRANSPARENCY`
-        /// either way, and this says whether anybody will read it: the upscaler is handed it as
-        /// `pInTransparencyLayer` and composites it with a motion vector of its own, and every other
-        /// path — the upscaler off, a doll, a map tile, a test that reads the frame — has nothing
-        /// that would. Those composite it in the trace instead.
-        uint mLayerCompositedAfter;
-
         /// Non-zero where this scene holds a surface the eye passes through — a cloud's shells.
         ///
         /// **What keeps `mediumAlong` out of every frame that has none.** The walk traverses on
@@ -420,9 +411,9 @@ namespace Rtx::Shaders
         ///
         /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
         /// pad the middle of a struct two languages have to agree on, and the offset asserted below
-        /// pins where it landed. Everything above it is four-aligned and sums to four short of a
-        /// multiple of eight, so four bytes are padded in front of it, on both sides alike; the next
-        /// four-byte field added above takes them back.
+        /// pins where it landed. Everything above it is four-aligned; where it sums to four short
+        /// of a multiple of eight, four bytes are padded in front of it, on both sides alike, and
+        /// the next four-byte field added above takes them back.
         GpuTables mTables;
     };
 
@@ -437,8 +428,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1024, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1144, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1016, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1136, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

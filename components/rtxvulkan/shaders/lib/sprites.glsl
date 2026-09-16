@@ -2,14 +2,13 @@
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SPRITES_GLSL
 
 // The particle layer, marched against the primary ray rather than built into an
-// acceleration structure — and which sprite over a pixel owns its motion.
+// acceleration structure.
 
 #include "colour.h"
 #include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "fog.glsl"
-#include "records.glsl"
 #include "frame.glsl"
 #include "underwater.glsl"
 
@@ -249,20 +248,6 @@ struct PuffLayer
     /// is the right colour: the walk has no order to composite by, so it reports what the coverage
     /// came to and where it came from. Nought for a frame that covered nothing.
     float mCoveredAt;
-
-    /// The covering puff that hid the most of this pixel, and the additive sprite that put the most
-    /// light into it.
-    ///
-    /// **Two, because the two kinds of blending are two different ways to own a pixel** and there is
-    /// no single number that ranks them against each other. Smoke owns by covering: an unlit puff
-    /// contributes no light at all and still decides everything the pixel shows, because what it
-    /// shows is the puff. A flame owns by outshining: it hides nothing by definition, so no measure
-    /// of coverage will ever find it. `puffClaim` is where the two are told apart.
-    ///
-    /// One of them wins in the end, because a pixel gets one motion vector and blending two
-    /// velocities gives a third that describes neither.
-    PuffClaim mCovering;
-    PuffClaim mAdding;
 };
 
 /// A layer with nothing in it, which is what both walks start from and what either answers with
@@ -274,8 +259,6 @@ PuffLayer noPuffs()
     layer.mAdded = vec3(0.0);
     layer.mTransmittance = 1.0;
     layer.mCoveredAt = 0.0;
-    layer.mCovering = PuffClaim(vec3(0.0), vec3(0.0), 0.0);
-    layer.mAdding = PuffClaim(vec3(0.0), vec3(0.0), 0.0);
 
     return layer;
 }
@@ -445,7 +428,14 @@ SpriteCrossing ballCrossing(
 /// What it does not model is a covering sprite in front of an adding one — a plume across a flame
 /// would dim it, and here it does not. The two are separate emitters in Morrowind's content and
 /// they are stacked rather than crossed.
-PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
+/// @param lit whether each covering puff is lit where it stands, out of the froxel it stands in.
+///        The trace says yes and gets the layer's colour; the composite at the shown extent says
+///        no and gets the layer's shape — what covers, how much, how far away — with the colour
+///        left unlit, because it reads the lit one off the trace's layer. What the shape costs is a
+///        bounds test and a texel per sprite, where the light is three fetches and a band of forty
+///        hashes per emitter; asked at three or four times the pixels, that difference is the
+///        difference between a storm's frame and its own.
+PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, float limit, bool lit)
 {
     PuffLayer layer = noPuffs();
 
@@ -454,11 +444,10 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     float coveredAt = 0.0;
     vec3 addedThrough = vec3(1.0);
 
-    // The screen's own axes, for reading a sprite's texture the way the quad would have been cut,
-    // and the cone a pixel of it covers. Hoisted because they are the camera's and not the sprite's.
+    // The screen's own axes, for reading a sprite's texture the way the quad would have been cut.
+    // Hoisted because they are the camera's and not the sprite's.
     const vec3 across = normalize(frame.mCamera.mRight);
     const vec3 upward = normalize(frame.mCamera.mUp);
-    const Cone cone = coneAt(frame.mCamera);
 
     // The air along this one ray, built before the walk: every sprite below asks the same column
     // for a different distance, and what does not depend on the distance is an exponential.
@@ -525,8 +514,10 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 // **One evaluation of the coverage band for the whole emitter**, taken halfway to
                 // it: that is the mean-value point of the path, the band costs forty hashes, and
                 // every sprite behind this sphere is within `mReach` of the same air. The layer
-                // under the band is `fogColumn`'s and is taken exactly, per sprite.
-                band = fogCoverageAt(origin + direction * (0.5 * along), max(along, 1.0));
+                // under the band is `fogColumn`'s and is taken exactly, per sprite. The shape
+                // wants it for a flame alone, whose glow the air thins.
+                if (lit || emitter.mAdditive != 0u)
+                    band = fogCoverageAt(origin + direction * (0.5 * along), max(along, 1.0));
 
                 // **A width of nothing is a sprite that faces the eye**, which is nearly every
                 // emitter in the game; asked once for the emitter rather than once for each of its
@@ -581,15 +572,16 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // what was painted for a whole chord, and less for part of one.
         const float alpha = paintedOver(painted, crossing.mFraction);
         const vec3 colour = texel.rgb * sprite.mColour;
-        // **The layer taken exactly and the band taken once.** A sheet of sprites and the wall
-        // behind it are one distance from the eye and were fading at two rates: the wall goes
-        // through the volume, which integrates the height falloff, and these charged one density
-        // over the whole path — so a puff seen down a slope kept a third more of itself than the
-        // air left it.
-        const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
 
         if (emitter.mAdditive != 0u)
         {
+            // **The layer taken exactly and the band taken once.** A sheet of sprites and the wall
+            // behind it are one distance from the eye and were fading at two rates: the wall goes
+            // through the volume, which integrates the height falloff, and these charged one
+            // density over the whole path — so a puff seen down a slope kept a third more of
+            // itself than the air left it.
+            const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
+
             // **No gain, deliberately.** The blend the file asks for says exactly how much light
             // the sprite adds; `FLAME_INTENSITY` is only what carries the original's scale, where
             // a fully lit surface reached one, onto this renderer's. A flame then comes out tens of
@@ -606,13 +598,20 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             const vec3 glow = paintedOver(colour * painted, crossing.mFraction) * reaching;
             addedThrough *= 1.0 - glow;
 
-            const float lit = dot(glow, LUMINANCE_WEIGHTS) * FLAME_INTENSITY;
-
-            if (lit > layer.mAdding.mWeight)
-                layer.mAdding = PuffClaim(direction * crossing.mSeen, sprite.mMoved, lit);
-
             continue;
         }
+
+        coverage += alpha;
+        coveredAt += crossing.mSeen * alpha;
+        layer.mTransmittance *= 1.0 - alpha;
+
+        if (!lit)
+        {
+            covered += colour * alpha;
+            continue;
+        }
+
+        const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
 
         // What this puff's own shape leaves of what the air around it is lit by: the ball's own
         // side and what its texture lets through to this texel, or the cylinder a streak is drawn
@@ -671,14 +670,6 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         }
 
         covered += colour * puffLight(pixel, direction, crossing.mSeen, wrapped) * (alpha * reaching);
-        coverage += alpha;
-        coveredAt += crossing.mSeen * alpha;
-        layer.mTransmittance *= 1.0 - alpha;
-
-        // **By what it hid and not by what it was lit by.** An unlit puff of smoke sends back no
-        // light at all and still decides the whole of what the pixel shows.
-        if (alpha > layer.mCovering.mWeight)
-            layer.mCovering = PuffClaim(direction * crossing.mSeen, sprite.mMoved, alpha);
     }
 
     if (coverage > 0.0)
@@ -691,61 +682,6 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
 
     return layer;
-}
-
-/// Which sprite over a pixel owns its motion vector, if any of them does.
-///
-/// **Two ways to own a pixel, because there are two ways to blend into one.** A covering sprite owns
-/// it by hiding most of what was behind: `1 - mTransmittance` is exactly the share of the pixel that
-/// is the sprite rather than the surface, whatever either of them is lit by, and past a half the
-/// majority of what the pixel shows is the sprite. An additive one hides nothing by definition — no
-/// measure of coverage will ever find a flame — and owns the pixel instead when what it added
-/// outshines what the layer left of the surface behind it.
-///
-/// Neither clause subsumes the other. An unlit puff of smoke contributes no light and still decides
-/// everything the pixel shows; a flame over a dark wall contributes all of it and covers nothing.
-///
-/// @param behind the frame as it stood before the sprites were composited over it.
-/// @return a claim whose `mWeight` is nought where the surface keeps its own pixel.
-PuffClaim puffClaim(vec3 behind, PuffLayer layer)
-{
-    if (layer.mTransmittance < 0.5)
-        return layer.mCovering;
-
-    const float left = dot(behind, LUMINANCE_WEIGHTS) * layer.mTransmittance;
-    if (layer.mAdding.mWeight > left)
-        return layer.mAdding;
-
-    return PuffClaim(vec3(0.0), vec3(0.0), 0.0);
-}
-
-/// Which sprite the transparency layer over a pixel is, if any is.
-///
-/// **A different question from `puffClaim`'s, and the layer asks this one.** That one decides
-/// whether a sprite or the surface behind it owns the *frame's* one vector, so it answers no for
-/// anything covering less than half a pixel — the surface is what such a pixel mostly is. The layer
-/// holds the sprites and nothing else: wherever a drop reached a pixel at all, the layer at that
-/// pixel is the drop, and its travel is what describes it however little of the pixel it took.
-///
-/// **A raindrop almost never wins a majority.** It is authored as a streak on a mostly empty quad
-/// and read at the mip the eye sees it at, so a drop more than a few units off covers a fraction of
-/// a pixel — and the layer was then handed the vector of the wall behind it. Ray Reconstruction is
-/// told that layer may be accumulated, so it held the rain against whatever the player was walking
-/// past: the storm stood still looking one way and smeared looking another.
-///
-/// @return a claim whose `mWeight` is nought where no sprite reached the pixel.
-PuffClaim layerClaim(PuffLayer layer)
-{
-    // **Weighed as light, because the two kinds cannot be compared any other way.** A covering
-    // claim is ranked by the share it hid and an additive one by what it put in; what each *is*
-    // in the layer is a colour, and that is one scale for both.
-    const float covering = dot(layer.mColour, LUMINANCE_WEIGHTS) * (1.0 - layer.mTransmittance);
-    const float adding = dot(layer.mAdded, LUMINANCE_WEIGHTS);
-
-    if (layer.mCovering.mWeight > 0.0 && covering >= adding)
-        return layer.mCovering;
-
-    return layer.mAdding;
 }
 
 /// Two layers of puffs as one.
@@ -773,12 +709,6 @@ PuffLayer mergedPuffs(PuffLayer first, PuffLayer second)
         : vec3(0.0);
     layer.mCoveredAt
         = coverage > 0.0 ? (first.mCoveredAt * firstCoverage + second.mCoveredAt * secondCoverage) / coverage : 0.0;
-
-    // **The stronger case wins outright rather than being blended into the other.** A pixel gets one
-    // motion vector, and a velocity halfway between a raindrop's and a still cloud's describes
-    // neither.
-    layer.mCovering = first.mCovering.mWeight >= second.mCovering.mWeight ? first.mCovering : second.mCovering;
-    layer.mAdding = first.mAdding.mWeight >= second.mAdding.mWeight ? first.mAdding : second.mAdding;
 
     return layer;
 }

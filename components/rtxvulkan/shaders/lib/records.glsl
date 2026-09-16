@@ -2,12 +2,12 @@
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_RECORDS_GLSL
 
 // The records that cross the frame and belong to no walk: what a surface is in the upscaler's
-// terms, what a water surface reflects, and a puff's case for a pixel's motion.
+// terms, and what a water surface reflects.
 //
 // **Their own file because the payload and the reprojection read them and nothing else of the
 // walks that fill them.** Declared where they were filled, the miss shader compiled the whole of
 // the water and the shading to hold a `VisibilityPayload`, and the reprojection pulled in the
-// sprite walk and the water for two structs.
+// water for one struct.
 
 /// What a shading model made of a surface, in the terms a temporal upscaler demodulates by.
 ///
@@ -54,20 +54,4 @@ struct WaterMirror
     /// not a reflection of nothing: `mAlong` is the whole of the answer there.
     bool mFound;
 };
-
-/// One puff's case for owning a pixel's motion vector.
-struct PuffClaim
-{
-    /// Where the puff stands relative to the eye: the ray's direction times how far along it the
-    /// puff was seen. What `puffMotionOf` carries to the previous eye.
-    vec3 mToward;
-
-    /// How far it travelled since the last frame, in world units.
-    vec3 mMoved;
-
-    /// How strong the case is, in whatever its kind is judged by — the share it hid, or the light
-    /// it added. Nought for a claim nothing filled.
-    float mWeight;
-};
-
 #endif

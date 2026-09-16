@@ -92,25 +92,13 @@ layout(set = 2, binding = CHANNEL_GUIDE, GBUFFER_GUIDE) uniform writeonly image2
 layout(set = 2, binding = CHANNEL_MOTION, GBUFFER_MOTION) uniform writeonly image2D motion;
 
 /// Clip depth in `r`, for whatever upscales the frame, and the distance from the eye in `g`, for
-/// whatever filters it. Two questions, and one number cannot answer both.
-layout(set = 2, binding = CHANNEL_DEPTH, GBUFFER_DEPTH) uniform writeonly image2D depth;
+/// whatever filters it. Two questions, and one number cannot answer both. Read back by
+/// `spritecomposite.rgen` for where a sprite is hidden, which is why it is not `writeonly`.
+layout(set = 2, binding = CHANNEL_DEPTH, GBUFFER_DEPTH) uniform image2D depth;
 
 /// Where what the water reflects stood on the previous frame's screen, in pixels. Nought everywhere
 /// that is not water reflecting a surface.
 layout(set = 2, binding = CHANNEL_REFLECTION_MOTION, GBUFFER_MOTION) uniform writeonly image2D reflectionMotion;
-
-/// Where a sprite reached, as one or nought.
-///
-/// **The one thing in the frame that carries no motion of its own.** One motion vector is written
-/// per pixel, from the surface a primary ray hit, so every emitter — rain, snow, ash, smoke — is
-/// reprojected with whatever geometry stands behind it. This is what tells the upscaler which pixels
-/// those are, and it is free: the composite below already knows what the sprites left.
-layout(set = 2, binding = CHANNEL_PARTICLE_MASK, GBUFFER_MASK) uniform writeonly image2D particleMask;
-
-/// Where the past is not worth carrying forward, from nought to one.
-///
-/// The sprites above, and the water with them, for the reason `GBuffer::getBiasMask` gives.
-layout(set = 2, binding = CHANNEL_BIAS_MASK, GBUFFER_MASK) uniform writeonly image2D biasMask;
 
 /// How much of the star field this pixel still shows, per channel — everything the trace put between
 /// the field and the eye, multiplied together.
@@ -119,26 +107,19 @@ layout(set = 2, binding = CHANNEL_BIAS_MASK, GBUFFER_MASK) uniform writeonly ima
 /// is drawn there and not here; what it costs is that the pass has no moons, no cloud deck, no
 /// window pane, no water and no fog in front of the sky it is adding stars to. So the trace hands it
 /// the one number that carries all of them: `skyRadiance`'s `shown` times the path's own
-/// transmittance. Nought on every pixel that hit something, which is also how that pass knows.
+/// transmittance — the puffs' apart, which `spritecomposite.rgen` leaves in the frame's alpha
+/// for the same pass. Nought on every pixel that hit something, which is also how that pass knows.
 layout(set = 2, binding = CHANNEL_STARS_SHOWN, GBUFFER_STARS) uniform writeonly image2D starsShown;
 
-/// What the eye sees the frame through: the sprites, and the haze they stand in front of.
-///
-/// **Premultiplied, so the composite is `layer + (1 - opacity) * behind`.** `visibility.rgen` says
-/// what a straight colour draws instead.
-layout(set = 2, binding = CHANNEL_TRANSPARENCY, GBUFFER_LAYER) uniform writeonly image2D transparency;
+/// The puffs in front of the surface, sprites and cloud shells as one layer: their straight colour
+/// lit where they stand and already fog-attenuated, and what the layer lets through in `a`. Read
+/// back by `spritecomposite.rgen`, which is why it is not `writeonly`.
+layout(set = 2, binding = CHANNEL_PUFFS, GBUFFER_LAYER) uniform image2D puffs;
 
-/// How much of the pixel that layer covers. A flame covers nothing and still writes a radiance.
-///
-/// **Three channels for one number, and it is not waste.** Written to a one-channel image the
-/// upscaler read it as a colour — coverage in red and nought in green and blue — so it dimmed the
-/// frame's red where a puff stood and let its green and blue through whole. A chimney's grey smoke
-/// came out cyan, and so did a splash and a plume. The two masks beside this one are single-channel
-/// and are read as scalars; this one is not, and the only way to find that out was to look.
-layout(set = 2, binding = CHANNEL_TRANSPARENCY_OPACITY, GBUFFER_LAYER_OPACITY) uniform writeonly image2D transparencyOpacity;
-
-/// Where the layer stood on the last frame's screen, which is not where the surface behind it stood.
-layout(set = 2, binding = CHANNEL_TRANSPARENCY_MOTION, GBUFFER_MOTION) uniform writeonly image2D transparencyMotion;
+/// How far along the ray that layer stood, coverage-weighted, in `r` — where the air is split
+/// when it is composited — and what the shells alone let through in `g`, because the composite
+/// marches the sprites' own shape again at the shown extent and the shells' it cannot.
+layout(set = 2, binding = CHANNEL_PUFFS_DEPTH, GBUFFER_PUFF_DEPTH) uniform image2D puffsDepth;
 
 // One atomic per hit on a single address, which looks like contention and costs nothing a subgroup
 // reduction in its place gives back: few rays hit, and the reduction would cost the device a

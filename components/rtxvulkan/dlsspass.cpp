@@ -124,11 +124,6 @@ namespace Rtx
         NVSDK_NGX_Resource_VK motion = resourceOf(inputs.mMotion, mRenderExtent);
         NVSDK_NGX_Resource_VK target = resourceOf(inputs.mOutput, mOutputExtent);
         NVSDK_NGX_Resource_VK reflections = resourceOf(inputs.mReflectionMotion, mRenderExtent);
-        NVSDK_NGX_Resource_VK particles = resourceOf(inputs.mParticleMask, mRenderExtent);
-        NVSDK_NGX_Resource_VK bias = resourceOf(inputs.mBiasMask, mRenderExtent);
-        NVSDK_NGX_Resource_VK layer = resourceOf(inputs.mTransparency, mRenderExtent);
-        NVSDK_NGX_Resource_VK layerOpacity = resourceOf(inputs.mTransparencyOpacity, mRenderExtent);
-        NVSDK_NGX_Resource_VK layerMotion = resourceOf(inputs.mTransparencyMotion, mRenderExtent);
 
         NVSDK_NGX_VK_DLSSD_Eval_Params evaluate{};
         evaluate.pInColor = &colour;
@@ -139,18 +134,14 @@ namespace Rtx
         evaluate.pInSpecularAlbedo = &specular;
         evaluate.pInNormals = &normals;
 
-        // What one motion vector per pixel cannot describe: where a reflection went, which pixels
-        // are "not drawn as part of base pass", and which must not be accumulated across frames.
-        // All three measured neutral or better on a lamp's convergence.
+        // What one motion vector per pixel cannot describe: where a reflection went. Measured
+        // neutral or better on a lamp's convergence.
+        //
+        // **No particle mask, no bias mask and no transparency layer**, because nothing that any
+        // of them describes is in the frame: the puffs are composited over the reconstructed frame
+        // by `spritecomposite.rgen`, at the output's own resolution, where the overlay is
+        // "upscaled only" at the traced one.
         evaluate.pInMotionVectorsReflections = &reflections;
-        evaluate.pInIsParticleMask = &particles;
-        evaluate.pInBiasCurrentColorMask = &bias;
-
-        // The layer itself, and not the colour pair below it, which selects a path through the
-        // network and measured worse.
-        evaluate.pInTransparencyLayer = &layer;
-        evaluate.pInTransparencyLayerOpacity = &layerOpacity;
-        evaluate.pInTransparencyLayerMvecs = &layerMotion;
 
         // The four colour-pair guides, marked research in the header, are deliberately unset: both
         // pairs select a different path through the network rather than answer a question about the

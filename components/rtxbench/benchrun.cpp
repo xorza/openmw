@@ -1,7 +1,9 @@
 #include "benchrun.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <string_view>
 #include <utility>
 
@@ -50,5 +52,21 @@ namespace Rtx
             return *mEye + osg::Vec3f(0.0f, 1.0f, 0.0f);
 
         return *mLook;
+    }
+
+    osg::Vec3f Stand::getRotation() const
+    {
+        osg::Vec3f forward = getLook() - *mEye;
+        forward.normalize();
+
+        // Clamped because a normalised vector's z can land a bit past one, and `asin` answers a NaN
+        // rather than a right angle when it does.
+        return osg::Vec3f(-std::asin(std::clamp(forward.z(), -1.0f, 1.0f)), 0.0f, std::atan2(forward.x(), forward.y()));
+    }
+
+    osg::Vec3f Stand::forwardOf(const osg::Vec3f& rotation)
+    {
+        const float level = std::cos(rotation.x());
+        return osg::Vec3f(std::sin(rotation.z()) * level, std::cos(rotation.z()) * level, -std::sin(rotation.x()));
     }
 }

@@ -1,6 +1,5 @@
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -12,7 +11,6 @@
 #include <osg/Vec3f>
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/frameimage.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
@@ -30,9 +28,11 @@
 #ifdef OPENMW_RTX_DLSS
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
+#include <osg/Math>
 #include <osg/Vec2f>
 
 #include <components/rtx/camera.hpp>
@@ -212,9 +212,9 @@ namespace Rtx
             // **Every input in the format `GBuffer` gives it, and named rather than spelled.** What
             // this test proves is that NGX takes the parameter map the renderer builds, and it
             // proves nothing about a map built out of images the renderer never hands over — the
-            // masks were four bytes here and one byte there, and the two albedos and the guide were
-            // full floats here and halves there. Naming them is also what makes a format changed in
-            // `gbuffer.h` reach this test rather than drift away from it.
+            // two albedos and the guide were full floats here and halves there. Naming them is also
+            // what makes a format changed in `gbuffer.h` reach this test rather than drift away
+            // from it.
             //
             // The colour and the output are not the g-buffer's: `VulkanRenderer` makes both at full
             // float directly, and these follow that.
@@ -225,11 +225,6 @@ namespace Rtx
             const Image depth = makeImage(device, render, GBUFFER_DEPTH, "test-depth");
             const Image motion = makeImage(device, render, GBUFFER_MOTION, "test-motion");
             const Image reflections = makeImage(device, render, GBUFFER_MOTION, "test-reflections");
-            const Image particles = makeImage(device, render, GBUFFER_MASK, "test-particles");
-            const Image bias = makeImage(device, render, GBUFFER_MASK, "test-bias");
-            const Image layer = makeImage(device, render, GBUFFER_LAYER, "test-transparency");
-            const Image layerOpacity = makeImage(device, render, GBUFFER_LAYER_OPACITY, "test-transparency-opacity");
-            const Image layerMotion = makeImage(device, render, GBUFFER_MOTION, "test-transparency-motion");
             const Image output = makeImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
 
             // A frame with nothing in it to resolve: uniform radiance over a flat wall halfway down
@@ -240,11 +235,7 @@ namespace Rtx
             fill(pool, normals, { 0.0f, 0.0f, 1.0f, 1.0f });
             fill(pool, depth, { 0.5f, 0.0f, 0.0f, 0.0f });
             fill(pool, motion, { 0.0f, 0.0f, 0.0f, 0.0f });
-            // No sprite reached this frame and nothing about it is untrustworthy, which is the
-            // state that has to leave the picture alone.
             fill(pool, reflections, { 0.0f, 0.0f, 0.0f, 0.0f });
-            fill(pool, particles, { 0.0f, 0.0f, 0.0f, 0.0f });
-            fill(pool, bias, { 0.0f, 0.0f, 0.0f, 0.0f });
             fill(pool, output, { 0.0f, 0.0f, 0.0f, 0.0f });
 
             mHarness->mInstance->getValidationLog()->clear();
@@ -259,11 +250,6 @@ namespace Rtx
                         .mDepth = depth,
                         .mMotion = motion,
                         .mReflectionMotion = reflections,
-                        .mParticleMask = particles,
-                        .mTransparency = layer,
-                        .mTransparencyOpacity = layerOpacity,
-                        .mTransparencyMotion = layerMotion,
-                        .mBiasMask = bias,
                         .mOutput = output,
                         .mJitter = osg::Vec2f(0.0f, 0.0f),
                         // The first frame has no history, which is what a reset means.
@@ -470,6 +456,103 @@ namespace Rtx
             }
         }
 
+        /// A sprite is composited on the picture's own grid, whatever extent the frame was traced
+        /// at.
+        ///
+        /// **The same disc lands on the same output pixels whether or not the frame is upscaled.**
+        /// The trace leaves the sprites out and `spritecomposite.rgen` marches them at the shown
+        /// extent, so a renderer tracing half the pixels draws the disc's edge where a renderer
+        /// tracing every one does. A layer handed to the upscaler as its overlay is drawn at the
+        /// traced extent and stretched, and the edge becomes a rim two pixels wide of neither
+        /// colour — which is what this counts: the pixels the two pictures disagree about, held
+        /// to a fraction of the disc's perimeter.
+        ///
+        /// A white ball sixty units across, two hundred units ahead of a sixty-degree camera and
+        /// four hundred in front of a wall the sun stands behind: the wall is black and the ball
+        /// is lit, so a pixel is one or the other.
+        TEST_F(RtxUpscaledFrameTest, aSpriteIsCompositedOnThePicturesOwnGridWhateverWasTraced)
+        {
+            std::string reason;
+            Renderer* const upscaling = upscalingAt(721, 721, reason);
+            if (upscaling == nullptr)
+                GTEST_SKIP() << reason;
+
+            const FrameExtents extents = upscaling->getExtents();
+            ASSERT_LT(extents.mRenderWidth, extents.mOutputWidth) << "nothing is being upscaled";
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> puff{ Testing::describeTexel(white) };
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 200.0f, 0.0f),
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
+            const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
+            const std::array<Sprite, 1> sprites{ Sprite{
+                .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+            scene.addEmitter(sprites, cut, false);
+
+            const auto cameraAt = [](const std::uint32_t width, const std::uint32_t height) {
+                Shaders::VisibilityConstants camera
+                    = makeCamera(osg::Vec3f(0.0f, -200.0f, 0.0f), osg::Vec3f(), 60.0f, width, height, 10000.0f);
+                // The sun behind the wall, so the wall is black and the puff — lit whole from any
+                // side, as `ballPuff` says a puff is — is the one bright thing in the picture.
+                camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                return camera;
+            };
+
+            // Eight frames of each, because the air a puff is lit through is accumulated over
+            // frames and a temporal upscaler has nothing on the first.
+            constexpr std::uint32_t sFrames = 8;
+
+            std::vector<std::uint8_t> reference;
+            Shaders::VisibilityConstants whole = cameraAt(extents.mOutputWidth, extents.mOutputHeight);
+            mRenderer->resize(extents.mOutputWidth, extents.mOutputHeight);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, puff);
+            for (std::uint32_t frame = 0; frame < sFrames; ++frame)
+            {
+                whole.mFrame = frame;
+                mRenderer->renderFrame(whole, FrameOptions{ .mReconstruction = { .mFilter = false } });
+            }
+            mRenderer->readPixels(reference);
+
+            Shaders::VisibilityConstants camera = cameraAt(extents.mRenderWidth, extents.mRenderHeight);
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, puff);
+            for (std::uint32_t frame = 0; frame < sFrames; ++frame)
+            {
+                camera.mFrame = frame;
+                upscaling->renderFrame(camera, FrameOptions{});
+            }
+
+            std::vector<std::uint8_t> upscaled;
+            upscaling->readPixels(upscaled);
+            ASSERT_EQ(reference.size(), upscaled.size());
+
+            const auto bright
+                = [](const std::vector<std::uint8_t>& pixels, const std::size_t at) { return pixels[at * 4] > 64; };
+
+            std::size_t disc = 0;
+            std::size_t differing = 0;
+            for (std::size_t at = 0; at < reference.size() / 4; ++at)
+            {
+                disc += bright(reference, at) ? 1 : 0;
+                differing += bright(reference, at) != bright(upscaled, at) ? 1 : 0;
+            }
+
+            // The disc the reference holds, as the radius its area comes to. A ball's outline is
+            // its tangent and not its radius: sixty at two hundred subtends asin(0.3) = 17.46°, a
+            // tangent of 0.3145, and half of 721 pixels stands at tan(30°) = 0.5774, so the outline
+            // is 0.3145 / 0.5774 * 360.5 = 196.4 pixels across. The rim fades with the chord, and
+            // fast, so nearly all of it is over the threshold.
+            const double radius = std::sqrt(static_cast<double>(disc) / osg::PI);
+            const double perimeter = 2.0 * osg::PI * radius;
+            EXPECT_NEAR(radius, 196.4, 4.0) << "the reference holds no disc to measure";
+            EXPECT_LT(static_cast<double>(differing), perimeter / 4.0)
+                << differing << " pixels: the disc's edge lands elsewhere when the frame is upscaled";
+        }
+
         /// A frame after a resize is upscaled at the extent the resize asked for.
         ///
         /// **What a window does, without a window.** Ray Reconstruction holds the network's weights
@@ -590,88 +673,6 @@ namespace Rtx
             EXPECT_EQ(sUpscaleNames.named(Settings::RTXCategory::sUpscaleMenu.back()), Upscale::Dlaa);
             EXPECT_EQ(upscaling->getExtents().mRenderWidth, upscaling->getExtents().mOutputWidth)
                 << "the last mode a menu offers traces every pixel it shows";
-        }
-
-        /// A sprite carries its own travel into the layer whatever share of a pixel it took.
-        ///
-        /// **The rain, which never owns a pixel and is the whole layer of the ones it reaches.**
-        /// `puffClaim` decides which of the sprite and the surface owns the *frame's* one vector,
-        /// and a fifth of a pixel of sprite rightly loses that: the pixel is mostly the wall. The
-        /// layer is not the pixel — it holds the sprites and nothing else — so the same test applied
-        /// there handed the drops the wall's vector, and Ray Reconstruction, told that layer may be
-        /// accumulated, held the storm against whatever the player was walking past.
-        ///
-        /// A fifth of a pixel of sprite, a hundred units ahead of the eye, travelling ten units
-        /// across: `height * 10 / (2 * 100 * tan 30°)` pixels of screen motion, and a wall two
-        /// hundred units out that did not move at all.
-        ///
-        /// An upscaling renderer because nothing else writes the layer.
-        TEST_F(RtxUpscaledFrameTest, aSpriteCarriesItsOwnMotionIntoTheLayerItIsTheWholeOf)
-        {
-            std::string reason;
-            Renderer* const upscaling = upscalingAt(721, 721, reason);
-            if (upscaling == nullptr)
-                GTEST_SKIP() << reason;
-
-            const FrameExtents extents = upscaling->getExtents();
-            const std::uint32_t width = extents.mRenderWidth;
-            const std::uint32_t height = extents.mRenderHeight;
-            const std::size_t centre = (std::size_t{ height / 2 } * width + width / 2) * 2;
-
-            constexpr float travel = 10.0f;
-            constexpr float ahead = 100.0f;
-            const float expected = static_cast<float>(height) * travel / (2.0f * ahead * 0.5773503f);
-
-            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
-            const std::array<TextureData, 1> puff{ Testing::describeTexel(white) };
-
-            Shaders::VisibilityConstants camera
-                = makeCamera(osg::Vec3f(0.0f, -200.0f, 0.0f), osg::Vec3f(), 60.0f, width, height, 10000.0f);
-            camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
-
-            // **The layer's vector for a sprite that travelled `moved`, at the middle of the
-            // frame.** Two frames, because the first has no past to reproject against.
-            const auto layerMotionAtCentre = [&](const osg::Vec3f& moved, std::vector<float>& frameMotion) {
-                SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(
-                        MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
-
-                const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-
-                // A fifth, which is under the half `puffClaim` asks for and over nothing at all.
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, -ahead, 0.0f), .mRadius = 20.0f, .mAlpha = 0.2f, .mMoved = moved } };
-                scene.addEmitter(sprites, cut, false);
-
-                upscaling->setScene(Rtx::SceneSlot::world(), scene, puff);
-                upscaling->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
-                upscaling->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
-
-                std::vector<float> layer;
-                upscaling->readChannel(Channel::TransparencyMotion, layer);
-                upscaling->readChannel(Channel::Motion, frameMotion);
-                return layer;
-            };
-
-            std::vector<float> frameMotion;
-            const std::vector<float> travelled = layerMotionAtCentre(osg::Vec3f(travel, 0.0f, 0.0f), frameMotion);
-            ASSERT_EQ(travelled.size(), std::size_t{ width } * height * 2);
-
-            std::vector<float> particles;
-            upscaling->readChannel(Channel::ParticleMask, particles);
-            ASSERT_EQ(particles[centre / 2], 1.0f) << "the sprite reached the middle of the frame";
-
-            EXPECT_NEAR(std::abs(travelled[centre]), expected, 1.0f)
-                << "the sprite's own travel, projected at the depth it hangs at";
-            EXPECT_NEAR(travelled[centre + 1], 0.0f, 1.0f) << "and it travelled across rather than along";
-
-            EXPECT_NEAR(frameMotion[centre], 0.0f, 0.01f) << "the pixel is mostly the wall, and the wall stood still";
-
-            // **The parameter has to matter**, or this measures a coincidence: the same frame with a
-            // sprite that did not move writes the wall's nought into the layer as well.
-            const std::vector<float> stood = layerMotionAtCentre(osg::Vec3f(), frameMotion);
-            EXPECT_NEAR(stood[centre], 0.0f, 0.01f) << "a sprite that stood still moved nothing";
         }
     }
 }

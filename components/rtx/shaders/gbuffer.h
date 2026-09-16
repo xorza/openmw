@@ -13,16 +13,7 @@
 // image, not just the texel being accessed". A whole channel of the frame, silently, on a
 // developer's machine only, because a release build has no layers to say anything at all.
 //
-// **A mask is a byte, because a yes or a no is.** `R8_UNORM` is not among the formats Vulkan
-// *requires* a device to support as a storage image, and a full float for its sake would be a
-// portability argument in a renderer whose whole posture is that it targets two machines and fails
-// loudly on anything either of them cannot do. The NVIDIA parts this is written against support
-// it as storage and sampled, both; a device without it fails at image creation naming the format,
-// which is the answer this project gives to a missing feature everywhere else.
-//
-// The two masks between them go from eight megabytes of render-resolution image at 1080p to two.
-//
-// **And what the star field is drawn through is three bytes, because every term of it is a
+// **What the star field is drawn through is three bytes, because every term of it is a
 // fraction.** What is left of the field at a pixel is a product of coverages and transmittances,
 // each of them from nought to one by construction, so `R8G8B8A8_UNORM` holds the whole range at
 // 1/255 steps. Fog thick enough for that step to show is fog no star is visible through. Four
@@ -36,7 +27,7 @@
 // is read, that step is a sixtieth of a pixel at sixteen and a thousandth at one. NVIDIA's Ray
 // Reconstruction guide takes the format.
 //
-// Twelve bytes a pixel across the three motion channels, and 24 MiB of that at 1080p.
+// Eight bytes a pixel across the two motion channels, and 16 MiB of that at 1080p.
 //
 // **A normal is eleven bits a component, because everything that reads one compares directions.**
 // The guide's `xyz` is a unit vector and its `w` a fraction, and the sharpest test made of either is
@@ -68,8 +59,7 @@
 #define GBUFFER_MOTION VK_FORMAT_R16G16_SFLOAT
 #define GBUFFER_DEPTH VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_LAYER VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_LAYER_OPACITY VK_FORMAT_R8G8B8A8_UNORM
-#define GBUFFER_MASK VK_FORMAT_R8_UNORM
+#define GBUFFER_PUFF_DEPTH VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_STARS VK_FORMAT_R8G8B8A8_UNORM
 
 #else
@@ -79,8 +69,7 @@
 #define GBUFFER_MOTION rg16f
 #define GBUFFER_DEPTH rg32f
 #define GBUFFER_LAYER rgba16f
-#define GBUFFER_LAYER_OPACITY rgba8
-#define GBUFFER_MASK r8
+#define GBUFFER_PUFF_DEPTH rg32f
 #define GBUFFER_STARS rgba8
 
 #endif
@@ -117,26 +106,20 @@ namespace Rtx::Shaders
     const uint CHANNEL_DEPTH = 6;
     const uint CHANNEL_REFLECTION_MOTION = 7;
 
-    /// Where a sprite reached, and where the past is not worth carrying forward.
-    const uint CHANNEL_PARTICLE_MASK = 8;
-    const uint CHANNEL_BIAS_MASK = 9;
-
     /// How much of the star field a pixel still shows, for the pass that draws it.
-    const uint CHANNEL_STARS_SHOWN = 10;
+    const uint CHANNEL_STARS_SHOWN = 8;
 
-    /// The layer the eye sees through, kept apart from the surface behind it.
-    ///
-    /// **Three channels because Ray Reconstruction takes three.** `pInTransparencyLayer`, its
-    /// opacity and its own motion vectors are separate inputs, and handing them over is what lets
-    /// the upscaler reproject a raindrop as a raindrop and the wall behind it as the wall. Composited
-    /// into the colour instead, the two share one vector and one depth and the frame apologises for
-    /// it with `CHANNEL_BIAS_MASK`.
-    const uint CHANNEL_TRANSPARENCY = 11;
-    const uint CHANNEL_TRANSPARENCY_OPACITY = 12;
-    const uint CHANNEL_TRANSPARENCY_MOTION = 13;
+    /// The puffs the trace found in front of the surface, kept apart from it: the sprites and the
+    /// cloud shells as one layer, lit where they stand — its colour and what it lets through, then
+    /// how far along the ray it stood and what the shells alone let through. What the frame is
+    /// composited with comes from here at the traced extent and the sprites' *shape* from a
+    /// second march at the shown extent, which `spritecomposite.rgen` puts together — so no puff
+    /// goes through a denoiser or an upscaler's overlay.
+    const uint CHANNEL_PUFFS = 9;
+    const uint CHANNEL_PUFFS_DEPTH = 10;
 
     /// How many the set declares, which is the last of them and one more.
-    const uint CHANNEL_COUNT = 14;
+    const uint CHANNEL_COUNT = 11;
 
 #ifdef RTX_HOST
 }

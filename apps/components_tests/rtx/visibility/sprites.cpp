@@ -1,5 +1,4 @@
 #include <components/rtx/camera.hpp>
-#include <components/rtx/frameimage.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
@@ -14,7 +13,6 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
-#include "../testtexture.hpp"
 #include "fixture.hpp"
 
 #include <algorithm>
@@ -613,161 +611,6 @@ namespace Rtx::Testing
             const float alone = lit(false);
             ASSERT_GT(alone, 0.1f) << "the sun did not reach the puff at all";
             EXPECT_NEAR(lit(true) / alone, 1.0f - sHalfAlpha, 0.01f) << "one layer of a half-alpha texture";
-        }
-
-        /// What each mask names, and what neither of them does.
-        ///
-        /// **A mask that says stop accumulating is a mask that says keep the noise**, so what it
-        /// names has to be only what no motion vector describes. It once named all water as well, on
-        /// the reasoning that a reflection moves with the surface carrying it — which was true, and
-        /// stopped being the answer the moment water got a reflection vector of its own. A third of
-        /// a Balmora frame was being held at one sample for a question that had been answered.
-        ///
-        /// What is left is the pixel a sprite reached and did not win: some share of what it shows
-        /// went somewhere the vector written for it does not point.
-        TEST_F(RtxVisibilityTest, theBiasMaskNamesOnlyWhatNoMotionVectorDescribes)
-        {
-            constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = centreOf(size);
-
-            // The ladder's first level is 40 of 255, so a sprite cut from it covers a sixth of what
-            // is behind it — it reaches the pixel and comes nowhere near owning it.
-            TestTexture ladder;
-            paintMipLadder(ladder);
-            const std::span<const TextureData> textures(&ladder.mData, 1);
-
-            SceneDesc scene = makeFlooded(4000.0f, 40.0f);
-            const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-            const std::array<Sprite, 1> sprites{ Sprite{
-                .mPosition = osg::Vec3f(-80.0f, 0.0f, 200.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
-            scene.addEmitter(sprites, cut, false);
-
-            Shaders::VisibilityConstants camera = makeCamera(
-                osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
-            camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            camera.mWaterLevel = 0.0f;
-
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, textures, camera, size, pixels);
-
-            std::vector<float> particles;
-            std::vector<float> bias;
-            mRenderer->readChannel(Channel::ParticleMask, particles);
-            mRenderer->readChannel(Channel::BiasMask, bias);
-            ASSERT_EQ(particles.size(), std::size_t{ size } * size);
-
-            const auto sprited = std::find(particles.begin(), particles.end(), 1.0f);
-            ASSERT_NE(sprited, particles.end()) << "the emitter reached no pixel at all";
-            const std::size_t covered = static_cast<std::size_t>(sprited - particles.begin());
-
-            EXPECT_EQ(bias[covered], 1.0f) << "a sixth of a pixel of sprite wins no vector and is described by none";
-
-            // **The centre is water and nothing else**, which is the whole of the fix: it reflects,
-            // it has a vector for what it reflects, and it is not on either mask.
-            EXPECT_EQ(particles[centre], 0.0f) << "no sprite over the middle of the frame";
-            EXPECT_EQ(bias[centre], 0.0f) << "and water is described rather than given up on";
-
-            // The two are still different populations, and both are a small part of the frame.
-            const std::ptrdiff_t marked = std::count(bias.begin(), bias.end(), 1.0f);
-            EXPECT_GT(marked, 0);
-            EXPECT_LT(marked, static_cast<std::ptrdiff_t>(bias.size()) / 4)
-                << "a bias mask over a quarter of a frame is a quarter of a frame held at one sample";
-        }
-
-        /// A pixel a sprite mostly is moves the way that sprite did, and not the way the wall
-        /// behind it did.
-        ///
-        /// **The half of the problem the masks only apologise for.** One motion vector is written
-        /// per pixel, and it used to be the surface's whatever stood in front of it — so a raindrop
-        /// crossing a wall was reprojected as though it were the wall, every frame. The particle
-        /// carries its own travel now, off `osgParticle`'s own previous position.
-        TEST_F(RtxVisibilityTest, aPixelASpriteOwnsCarriesTheSpritesOwnMotion)
-        {
-            constexpr std::uint32_t size = 33;
-
-            // Two hundred units under the eye, so a unit across is `size / (2 * 200 * tan(30 deg))`
-            // of a pixel: 33 / 230.94 = 0.14289. A sprite that travelled sixty units across is
-            // 8.573 pixels of screen motion, and nothing else in the frame moves at all.
-            constexpr float travel = 60.0f;
-            constexpr float expected = 33.0f * travel / (2.0f * 200.0f * 0.5773503f);
-
-            TestTexture sheet;
-            paintOpaqueSheet(sheet);
-            const std::span<const TextureData> textures(&sheet.mData, 1);
-
-            SceneDesc scene = makeFlooded(4000.0f, 40.0f);
-            const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-            const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f),
-                .mRadius = 40.0f,
-                .mAlpha = 1.0f,
-                .mMoved = osg::Vec3f(travel, 0.0f, 0.0f) } };
-            scene.addEmitter(sprites, cut, false);
-
-            const Shaders::VisibilityConstants camera = makeCamera(
-                osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
-
-            // **Twice, with the camera held still.** The first frame has no past to reproject
-            // against, so what the second one writes is the sprite's travel and nothing else.
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, textures, camera, size, pixels);
-            mRenderer->renderFrame(camera, FrameOptions{});
-
-            std::vector<float> covered;
-            std::vector<float> moved;
-            mRenderer->readChannel(Channel::ParticleMask, covered);
-            mRenderer->readChannel(Channel::Motion, moved);
-
-            const auto sprited = std::find(covered.begin(), covered.end(), 1.0f);
-            ASSERT_NE(sprited, covered.end()) << "the emitter reached no pixel at all";
-            const std::size_t at = static_cast<std::size_t>(sprited - covered.begin());
-
-            // A corner, which the sprite is nowhere near: still water under a still camera.
-            EXPECT_NEAR(moved[0], 0.0f, 0.01f) << "nothing else in the frame moved";
-            EXPECT_NEAR(moved[1], 0.0f, 0.01f);
-
-            EXPECT_NEAR(std::abs(moved[at * 2]), expected, 0.5f)
-                << "the sprite's own travel, projected at the depth it hangs at";
-            EXPECT_NEAR(moved[at * 2 + 1], 0.0f, 0.5f) << "and it travelled across rather than along";
-
-            // **The parameter has to matter**, or this measures a coincidence: the same frame with a
-            // particle that did not move writes the surface's nought instead.
-            SceneDesc still = makeFlooded(4000.0f, 40.0f);
-            const Index cutAgain = still.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-            const std::array<Sprite, 1> stopped{ Sprite{
-                .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
-            still.addEmitter(stopped, cutAgain, false);
-
-            countHits(still, textures, camera, size, pixels);
-            mRenderer->renderFrame(camera, FrameOptions{});
-            mRenderer->readChannel(Channel::Motion, moved);
-
-            EXPECT_NEAR(moved[at * 2], 0.0f, 0.01f) << "a particle that stood still moved nothing";
-
-            // **And the kind that hides nothing.** A flame blends additively, so it leaves the
-            // transmittance at one however bright it is: no measure of coverage will ever find it,
-            // and the rule that only asked about coverage left its glow reprojected as the water
-            // under it. It owns the pixel by outshining what the layer left instead.
-            SceneDesc flame = makeFlooded(4000.0f, 40.0f);
-            const Index cutFlame = flame.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-            const std::array<Sprite, 1> burning{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f),
-                .mRadius = 40.0f,
-                .mAlpha = 1.0f,
-                .mMoved = osg::Vec3f(travel, 0.0f, 0.0f) } };
-            flame.addEmitter(burning, cutFlame, true);
-
-            countHits(flame, textures, camera, size, pixels);
-            mRenderer->renderFrame(camera, FrameOptions{});
-
-            std::vector<float> lit;
-            mRenderer->readChannel(Channel::ParticleMask, lit);
-            mRenderer->readChannel(Channel::Motion, moved);
-
-            const auto glowing = std::find(lit.begin(), lit.end(), 1.0f);
-            ASSERT_NE(glowing, lit.end()) << "an additive sprite is still a sprite the mask names";
-            const std::size_t over = static_cast<std::size_t>(glowing - lit.begin());
-
-            EXPECT_NEAR(std::abs(moved[over * 2]), expected, 0.5f)
-                << "the flame's own travel, though it covered nothing at all";
         }
     }
 }

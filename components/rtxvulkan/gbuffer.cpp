@@ -36,14 +36,10 @@ namespace Rtx
         /// built with the upscaler off.
         constexpr VkFormat sLayer = GBUFFER_LAYER;
 
-        /// Three channels for one number, because a single-channel image handed to
-        /// `pInTransparencyLayerOpacity` is read as a colour: a coverage in red alone turned grey
-        /// smoke over a blue sky cyan. A byte apiece because a coverage is a fraction.
-        constexpr VkFormat sLayerOpacity = GBUFFER_LAYER_OPACITY;
-
-        /// One byte for a yes or a no, and for a value between nought and one. `gbuffer.h` argues
-        /// why a byte is enough for both and what a float cost.
-        constexpr VkFormat sMask = GBUFFER_MASK;
+        /// A full float for how far along the ray the layer stood: a distance past thirty thousand
+        /// units, where a half's steps are thirty-two units wide, and it orders the layer against
+        /// the sprites.
+        constexpr VkFormat sPuffDepth = GBUFFER_PUFF_DEPTH;
 
         /// Three bytes for three fractions, which is what `gbuffer.h` argues a modulation is.
         constexpr VkFormat sStars = GBUFFER_STARS;
@@ -54,8 +50,8 @@ namespace Rtx
         /// costs no memory, so every channel carries it rather than only the five DLSS reads today.
         constexpr VkImageUsageFlags sUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-        /// The channels a caller can ask to read back: the bounce, the three motion fields, the
-        /// depth and the two masks. See `Rtx::Channel`.
+        /// The channels a caller can ask to read back: the bounce, the two motion fields and the
+        /// depth. See `Rtx::Channel`.
         constexpr VkImageUsageFlags sReadable = sUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
         struct ChannelFormat
@@ -79,12 +75,9 @@ namespace Rtx
                 every[bindingOf(Channel::Motion)] = { sMotion, sReadable };
                 every[bindingOf(Channel::Depth)] = { sDepth, sReadable };
                 every[bindingOf(Channel::ReflectionMotion)] = { sMotion, sReadable };
-                every[bindingOf(Channel::ParticleMask)] = { sMask, sReadable };
-                every[bindingOf(Channel::BiasMask)] = { sMask, sReadable };
                 every[bindingOf(Channel::StarsShown)] = { sStars, sUsage };
-                every[bindingOf(Channel::Transparency)] = { sLayer, sUsage };
-                every[bindingOf(Channel::TransparencyOpacity)] = { sLayerOpacity, sUsage };
-                every[bindingOf(Channel::TransparencyMotion)] = { sMotion, sReadable };
+                every[bindingOf(Channel::Puffs)] = { sLayer, sUsage };
+                every[bindingOf(Channel::PuffsDepth)] = { sPuffDepth, sUsage };
 
                 return every;
             }();
@@ -113,30 +106,15 @@ namespace Rtx
         }();
     }
 
-    GBuffer::GBuffer(const Device& device, CommandPool& pool, const SetLayout& layout, const std::uint32_t width,
-        const std::uint32_t height, const bool layers, const RadianceWidth radiance)
-        : mCarried(layers ? sChannelCount : bindingOf(Channel::Transparency))
-        , mSet(device, sBindings, layout.get(), 1)
+    GBuffer::GBuffer(const Device& device, const SetLayout& layout, const std::uint32_t width,
+        const std::uint32_t height, const RadianceWidth radiance)
+        : mSet(device, sBindings, layout.get(), 1)
     {
-        // The three the eye sees through are last, so one count says which are the frame's.
-        // `sEveryChannel` is in binding order and `gbuffer.h` puts them at the end.
-        static_assert(
-            bindingOf(Channel::Transparency) + 3 == sChannelCount, "the layer channels are no longer the last three");
-
         mChannels.reserve(sChannelCount);
         for (const Channel channel : sEveryChannel)
         {
             const ChannelFormat described = formatOf(channel, radiance);
-
-            // One texel where nothing will read the channel, which is sixteen bytes a pixel of the
-            // frame; a store outside an image is discarded by the specification, and
-            // `visibility.rgen` writes these three only under `mLayerCompositedAfter` anyway.
-            if (carries(channel))
-                mChannels.emplace_back(
-                    device, width, height, described.mFormat, described.mUsage, channelName(channel));
-            else
-                mChannels.push_back(
-                    makeStandIn(device, pool, described.mFormat, VK_IMAGE_USAGE_STORAGE_BIT, channelName(channel)));
+            mChannels.emplace_back(device, width, height, described.mFormat, described.mUsage, channelName(channel));
         }
 
         DescriptorWrites<sChannelCount> writes(mSet.get(0));

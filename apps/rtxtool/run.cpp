@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <cstddef>
 #include <format>
 #include <stdexcept>
@@ -51,21 +50,13 @@ namespace RtxTool
 
     float bearingOf(const Rtx::Stand& stand)
     {
-        osg::Vec3f forward = stand.getLook() - *stand.mEye;
-        forward.normalize();
-
-        const float degrees = osg::RadiansToDegrees(std::atan2(forward.x(), forward.y()));
+        const float degrees = osg::RadiansToDegrees(stand.getRotation().z());
         return degrees < 0.0f ? degrees + 360.0f : degrees;
     }
 
     float climbOf(const Rtx::Stand& stand)
     {
-        osg::Vec3f forward = stand.getLook() - *stand.mEye;
-        forward.normalize();
-
-        // Clamped because a normalised vector's z can land a bit past one, and `asin` answers a NaN
-        // rather than ninety degrees when it does.
-        return osg::RadiansToDegrees(std::asin(std::clamp(forward.z(), -1.0f, 1.0f)));
+        return osg::RadiansToDegrees(-stand.getRotation().x());
     }
 
     std::string describeSpot(const Rtx::Stop& stop)
