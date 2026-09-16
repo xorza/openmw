@@ -13,6 +13,7 @@
 #include <components/rtx/texturedata.hpp>
 
 #include "allocations.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
@@ -22,38 +23,25 @@ namespace Rtx
         ///
         /// Uncompressed on purpose: a block cannot state an arbitrary colour, and every expectation
         /// below is an exact one.
-        struct Flat
+        /// One `0xRRGGBB` a texel, row by row from the top left, at `side` square.
+        Testing::TestTexture flat(const std::uint32_t side, const std::vector<std::uint32_t>& texels)
         {
-            std::vector<std::byte> mBytes;
-            MipLevel mLevel;
+            EXPECT_EQ(texels.size(), std::size_t{ side } * side) << "a texture that is not as big as it says";
 
-            /// One `0xRRGGBB` a texel, row by row from the top left.
-            Flat(std::uint32_t side, const std::vector<std::uint32_t>& texels)
-                : mLevel{ 0, side, side }
+            Testing::TestTexture texture;
+            texture.mBytes.reserve(texels.size() * 4);
+            for (const std::uint32_t colour : texels)
             {
-                EXPECT_EQ(texels.size(), std::size_t{ side } * side) << "a texture that is not as big as it says";
-
-                mBytes.reserve(texels.size() * 4);
-                for (const std::uint32_t colour : texels)
-                {
-                    mBytes.push_back(std::byte{ static_cast<std::uint8_t>(colour >> 16) });
-                    mBytes.push_back(std::byte{ static_cast<std::uint8_t>(colour >> 8) });
-                    mBytes.push_back(std::byte{ static_cast<std::uint8_t>(colour) });
-                    mBytes.push_back(std::byte{ 255 });
-                }
+                texture.mBytes.push_back(static_cast<std::uint8_t>(colour >> 16));
+                texture.mBytes.push_back(static_cast<std::uint8_t>(colour >> 8));
+                texture.mBytes.push_back(static_cast<std::uint8_t>(colour));
+                texture.mBytes.push_back(255);
             }
 
-            TextureData describe() const
-            {
-                return TextureData{
-                    .mFormat = TextureFormat::Rgba8Srgb,
-                    .mWidth = mLevel.mWidth,
-                    .mHeight = mLevel.mHeight,
-                    .mBytes = mBytes,
-                    .mLevels = std::span(&mLevel, 1),
-                };
-            }
-        };
+            texture.mLevels.assign(1, MipLevel{ 0, side, side });
+            texture.describe(side, side, "flat", TextureFormat::Rgba8Srgb);
+            return texture;
+        }
 
         std::vector<std::uint32_t> filled(std::uint32_t side, std::uint32_t colour)
         {
@@ -82,15 +70,15 @@ namespace Rtx
         /// are the composite's own and leave with it.
         TEST(RtxTerrainCompositeTest, aScratchTheCallerKeepsLeavesABakeNothingButItsAnswerToAllocate)
         {
-            const Flat red(2, filled(2, 0xFF0000));
-            const Flat green(2, filled(2, 0x00FF00));
+            const Testing::TestTexture red = flat(2, filled(2, 0xFF0000));
+            const Testing::TestTexture green = flat(2, filled(2, 0x00FF00));
             const std::array<float, 4> half{ 0.5f, 0.5f, 0.5f, 0.5f };
 
             const std::array layers{
                 CompositeLayer{
-                    .mDiffuse = red.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
+                    .mDiffuse = red.mData, .mMask = half, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
                 CompositeLayer{
-                    .mDiffuse = green.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
+                    .mDiffuse = green.mData, .mMask = half, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
             };
 
             // **A chain of two reductions and one of one**, because the sum and the buffer it is
@@ -125,8 +113,8 @@ namespace Rtx
         /// that buffer first would sum the texels of a chunk somewhere else entirely.
         TEST(RtxTerrainCompositeTest, aGroundThatWillNotDecodeIsWeighedAsNothingAndNotAsWhatItInherits)
         {
-            const Flat red(2, filled(2, 0xFF0000));
-            const std::array ground{ CompositeLayer{ .mDiffuse = red.describe() } };
+            const Testing::TestTexture red = flat(2, filled(2, 0xFF0000));
+            const std::array ground{ CompositeLayer{ .mDiffuse = red.mData } };
 
             CompositeScratch scratch;
             const TerrainComposite before(ground, 4, 0.0f, scratch);
@@ -146,15 +134,15 @@ namespace Rtx
         /// types meet and ground that goes muddy there.
         TEST(RtxTerrainCompositeTest, aStackIsSummedInLightAndNotInStoredBytes)
         {
-            const Flat red(1, filled(1, 0xFF0000));
-            const Flat green(1, filled(1, 0x00FF00));
+            const Testing::TestTexture red = flat(1, filled(1, 0xFF0000));
+            const Testing::TestTexture green = flat(1, filled(1, 0x00FF00));
             const std::array<float, 1> half{ 0.5f };
 
             const std::array layers{
                 CompositeLayer{
-                    .mDiffuse = red.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 } },
+                    .mDiffuse = red.mData, .mMask = half, .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 } },
                 CompositeLayer{
-                    .mDiffuse = green.describe(), .mMask = half, .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 } },
+                    .mDiffuse = green.mData, .mMask = half, .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 } },
             };
 
             CompositeScratch scratch;
@@ -189,16 +177,16 @@ namespace Rtx
         /// nothing but an exact expectation says so.
         TEST(RtxTerrainCompositeTest, theMaskPlacesEachGroundTypeAndTheChainAveragesThemInLight)
         {
-            const Flat red(1, filled(1, 0xFF0000));
-            const Flat green(1, filled(1, 0x00FF00));
+            const Testing::TestTexture red = flat(1, filled(1, 0xFF0000));
+            const Testing::TestTexture green = flat(1, filled(1, 0x00FF00));
             const std::array<float, 2> west{ 1.0f, 0.0f };
             const std::array<float, 2> east{ 0.0f, 1.0f };
 
             const std::array layers{
                 CompositeLayer{
-                    .mDiffuse = red.describe(), .mMask = west, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } },
+                    .mDiffuse = red.mData, .mMask = west, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } },
                 CompositeLayer{
-                    .mDiffuse = green.describe(), .mMask = east, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } },
+                    .mDiffuse = green.mData, .mMask = east, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } },
             };
 
             CompositeScratch scratch;
@@ -239,11 +227,11 @@ namespace Rtx
                 for (std::uint32_t x = 0; x < 4; ++x)
                     texels.push_back(columns[x]);
 
-            const Flat ground(4, texels);
+            const Testing::TestTexture ground = flat(4, texels);
 
-            const std::array straight{ CompositeLayer{ .mDiffuse = ground.describe() } };
-            const std::array rolled{ CompositeLayer{ .mDiffuse = ground.describe(),
-                .mPlacing = { .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f) } } };
+            const std::array straight{ CompositeLayer{ .mDiffuse = ground.mData } };
+            const std::array rolled{ CompositeLayer{
+                .mDiffuse = ground.mData, .mPlacing = { .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f) } } };
 
             // One scratch for both, which is what a queue does with every chunk it bakes.
             CompositeScratch scratch;
@@ -268,9 +256,9 @@ namespace Rtx
         /// not say whether the strength is read at all or merely switched on.
         TEST(RtxTerrainCompositeTest, theLightPaintedIntoALayerIsDividedOutAsFarAsTheStrengthSays)
         {
-            const Flat white(1, filled(1, 0xFFFFFF));
+            const Testing::TestTexture white = flat(1, filled(1, 0xFFFFFF));
             const std::vector<float> twice(std::size_t{ ShadingMap::sExtent } * ShadingMap::sExtent, 2.0f);
-            const std::array layers{ CompositeLayer{ .mDiffuse = white.describe(), .mShading = twice } };
+            const std::array layers{ CompositeLayer{ .mDiffuse = white.mData, .mShading = twice } };
 
             CompositeScratch scratch;
             const TerrainComposite untouched(layers, 2, 0.0f, scratch);

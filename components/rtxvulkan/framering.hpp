@@ -87,6 +87,12 @@ namespace Rtx
         /// The debug lines' vertices, the same way, in the frame's own commands: the slot is the
         /// frame's, so a write lands under no submit in flight.
         Buffer mDebugVertices;
+
+        /// Where the frame's picture lands where `FrameOptions::mReadBack` asks, grown to the
+        /// picture on the first frame that asks and kept. `mReadBackBytes` is how much of it this
+        /// frame wrote, nought for a frame that did not ask.
+        Buffer mReadBack;
+        VkDeviceSize mReadBackBytes = 0;
     };
 
     /// The frames in flight, and the discipline that keeps them apart: two slots, and the CPU
@@ -114,8 +120,7 @@ namespace Rtx
             return mSlots.at(FrameSlot{ static_cast<std::uint32_t>(frame % sFrameSlots) });
         }
 
-        /// How many frames have been submitted, which is the number the next one will carry. Read
-        /// by the tests and by nothing else.
+        /// How many frames have been submitted, which is the number the next one will carry.
         std::uint64_t getRecording() const { return mFrame; }
 
         /// The slot the frame being recorded uses, for whatever else keeps one of a thing per

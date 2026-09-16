@@ -31,9 +31,10 @@ namespace Rtx::Testing
 
     /// A texture a test paints by hand, and the storage its description spans.
     ///
-    /// **Painted in place and never copied**, which the deleted copy holds it to: `mData` carries
-    /// spans into the two vectors beside it, and a copy would hand back a description reading the
-    /// original's buffers.
+    /// **Moved and never copied**, which the deleted copy holds it to: `mData` carries spans into
+    /// the two vectors beside it, and a copy would hand back a description reading the original's
+    /// buffers. A move keeps the vectors' buffers where they are, so the spans stay right and a
+    /// painter can hand one back by value.
     struct TestTexture
     {
         std::vector<std::uint8_t> mBytes;
@@ -41,6 +42,8 @@ namespace Rtx::Testing
         TextureData mData;
 
         TestTexture() = default;
+        TestTexture(TestTexture&&) noexcept = default;
+        TestTexture& operator=(TestTexture&&) noexcept = default;
         TestTexture(const TestTexture&) = delete;
         TestTexture& operator=(const TestTexture&) = delete;
 

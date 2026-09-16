@@ -15,36 +15,21 @@
 #include <components/rtx/texturedata.hpp>
 
 #include "allocations.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// A texture of one block, described the way `TextureBuilder` hands one over.
-        struct OneBlock
+        /// One block of `format`, described the way `TextureBuilder` hands one over.
+        Testing::TestTexture oneBlock(const TextureFormat format, std::initializer_list<std::uint8_t> bytes)
         {
-            std::vector<std::byte> mBytes;
-            MipLevel mLevel{ 0, 4, 4 };
-            TextureFormat mFormat;
-
-            OneBlock(TextureFormat format, std::initializer_list<std::uint8_t> bytes)
-                : mFormat(format)
-            {
-                for (const std::uint8_t byte : bytes)
-                    mBytes.push_back(std::byte{ byte });
-            }
-
-            TextureData describe() const
-            {
-                return TextureData{
-                    .mFormat = mFormat,
-                    .mWidth = 4,
-                    .mHeight = 4,
-                    .mBytes = mBytes,
-                    .mLevels = std::span(&mLevel, 1),
-                };
-            }
-        };
+            Testing::TestTexture texture;
+            texture.mBytes.assign(bytes);
+            texture.mLevels.assign(1, MipLevel{ 0, 4, 4 });
+            texture.describe(4, 4, "one block", format);
+            return texture;
+        }
 
         /// BC2 states alpha outright: four bits a texel, widened so that fifteen is opaque.
         ///
@@ -54,10 +39,10 @@ namespace Rtx
         TEST(RtxAlphaImageTest, bc2StatesFourBitsATexelWidenedSoFifteenIsOpaque)
         {
             // Texel 0 in the low nibble of the first byte, texel 1 in its high nibble.
-            const OneBlock block(
+            const Testing::TestTexture block = oneBlock(
                 TextureFormat::Bc2Srgb, { 0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-            const AlphaImage alpha(block.describe());
+            const AlphaImage alpha(block.mData);
             ASSERT_EQ(alpha.getWidth(), 4u);
 
             for (std::uint32_t texel = 0; texel < 16; ++texel)
@@ -80,15 +65,15 @@ namespace Rtx
         {
             // Indices are three bits each, little-endian over six bytes. All zero picks endpoint one,
             // so the first texel is the first endpoint in both spellings below.
-            const OneBlock descending(
+            const Testing::TestTexture descending = oneBlock(
                 TextureFormat::Bc3Srgb, { 255, 0, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0, 0, 0, 0, 0, 0, 0, 0 });
-            const OneBlock ascending(
+            const Testing::TestTexture ascending = oneBlock(
                 TextureFormat::Bc3Srgb, { 0, 255, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0, 0, 0, 0, 0, 0, 0, 0 });
 
             // 0x888888888888 taken three bits at a time from the bottom gives indices 0, 1, 2, 4
             // repeating, which reaches four of the eight entries without hand-packing all sixteen.
-            const AlphaImage high(descending.describe());
-            const AlphaImage low(ascending.describe());
+            const AlphaImage high(descending.mData);
+            const AlphaImage low(ascending.mData);
 
             EXPECT_EQ(high.at(0, 0, 0), 255) << "index nought is the first endpoint";
             EXPECT_EQ(low.at(0, 0, 0), 0);
@@ -110,16 +95,18 @@ namespace Rtx
             // texture is compressed into: they are nought and full outright rather than interpolated,
             // so a hard edge survives the block. Indices six and seven, packed into the first two
             // texels: 0b111'110 is 0x3E.
-            const OneBlock ends(TextureFormat::Bc3Srgb, { 0, 255, 0x3E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-            const OneBlock ramp(TextureFormat::Bc3Srgb, { 255, 0, 0x3E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            const Testing::TestTexture ends
+                = oneBlock(TextureFormat::Bc3Srgb, { 0, 255, 0x3E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            const Testing::TestTexture ramp
+                = oneBlock(TextureFormat::Bc3Srgb, { 255, 0, 0x3E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
 
-            const AlphaImage terminal(ends.describe());
+            const AlphaImage terminal(ends.mData);
             EXPECT_EQ(terminal.at(0, 0, 0), 0) << "entry six is nothing at all, not an interpolated step";
             EXPECT_EQ(terminal.at(0, 1, 0), 255) << "and entry seven is fully opaque";
 
             // The same indices under the descending spelling are ordinary steps of the ramp, which is
             // what says the two palettes really are different tables and not one with a flag on it.
-            const AlphaImage stepped(ramp.describe());
+            const AlphaImage stepped(ramp.mData);
             EXPECT_EQ(stepped.at(0, 0, 0), 72);
             EXPECT_EQ(stepped.at(0, 1, 0), 36);
         }
@@ -129,14 +116,16 @@ namespace Rtx
         TEST(RtxAlphaImageTest, bc1IsCutoutOrNothingAndOnlyWhenItsEndpointsAscend)
         {
             // Endpoints 0x0000 then 0xFFFF: ascending, so index three is the transparent entry.
-            const OneBlock cutout(TextureFormat::Bc1RgbaSrgb, { 0x00, 0x00, 0xFF, 0xFF, 0xE4, 0, 0, 0 });
+            const Testing::TestTexture cutout
+                = oneBlock(TextureFormat::Bc1RgbaSrgb, { 0x00, 0x00, 0xFF, 0xFF, 0xE4, 0, 0, 0 });
 
             // The same block with the endpoints the other way round is opaque throughout, index three
             // included — the bits did not move, only what they mean.
-            const OneBlock opaque(TextureFormat::Bc1RgbaSrgb, { 0xFF, 0xFF, 0x00, 0x00, 0xE4, 0, 0, 0 });
+            const Testing::TestTexture opaque
+                = oneBlock(TextureFormat::Bc1RgbaSrgb, { 0xFF, 0xFF, 0x00, 0x00, 0xE4, 0, 0, 0 });
 
-            const AlphaImage cut(cutout.describe());
-            const AlphaImage solid(opaque.describe());
+            const AlphaImage cut(cutout.mData);
+            const AlphaImage solid(opaque.mData);
 
             // 0xE4 is 11 10 01 00: texels 0..3 take indices 0, 1, 2, 3.
             EXPECT_EQ(cut.at(0, 0, 0), 255);

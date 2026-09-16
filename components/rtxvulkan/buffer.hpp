@@ -18,7 +18,7 @@ namespace Rtx
 {
     class Device;
 
-    /// Which memory a buffer is made in — the three kinds this renderer uses, named rather than
+    /// Which memory a buffer is made in — the four kinds this renderer uses, named rather than
     /// spelled as a property bitmask at every call site.
     enum class BufferKind
     {
@@ -34,8 +34,18 @@ namespace Rtx
         /// before a submit is visible to it without a barrier.
         HostWritten,
 
-        /// Host memory a copy is staged through, and the one kind the host may also read back.
+        /// Host memory a copy is staged through: written by the host once, read by the device
+        /// across the bus, and never read back. Write-combined, because a stream of writes fills
+        /// it faster than cached memory, which reads each line in before it is written over and
+        /// keeps what it wrote: sixteen megabytes in 0.39 ms against 0.94, on the frame a cell
+        /// arrives.
         Staging,
+
+        /// Host memory the device writes and the host reads back — a count, a report, a picture.
+        /// Cached, which a read of runs at the memory's speed: a frame's picture copied out of the
+        /// write-combined kind ran at 290 MB/s, 28 ms for one picture, against 0.12. The device
+        /// reads and writes either kind across the bus alike.
+        ReadBack,
     };
 
     /// A `VkBuffer` and the allocation behind it.
@@ -60,6 +70,8 @@ namespace Rtx
         static Buffer hostWritten(
             const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
         static Buffer staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
+        static Buffer readBack(
+            const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
 
         /// Asserts that no submit still reads the buffer — `isIdle` — because a buffer destroyed
         /// under one is the use after free the graveyard exists to prevent, and nothing else
@@ -144,11 +156,11 @@ namespace Rtx
         /// write of it and before their next. One buffer then serves every frame.
         void updateInline(VkCommandBuffer commands, const BufferUse& readers, std::span<const std::byte> bytes) const;
 
-        /// The whole buffer in main memory, for a caller that reads it back. Only a staging
-        /// buffer's, which is asserted: `HostWritten` memory is write-combined.
+        /// The whole buffer in main memory, for a caller that reads it back. Only a read-back
+        /// buffer's, which is asserted: the other two host-visible kinds are write-combined.
         void* map() const
         {
-            assert(mKind == BufferKind::Staging && "a read of memory that is written and never read back");
+            assert(mKind == BufferKind::ReadBack && "a read of memory that is written and never read back");
 
             return mMemory.map();
         }

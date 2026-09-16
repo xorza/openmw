@@ -231,14 +231,14 @@ namespace Rtx
 
                 const Buffer sprites = upload(device, std::span<const Shaders::GpuSprite>(layer.mSprites));
                 const Buffer emitters = upload(device, std::span<const Shaders::GpuEmitter>(layer.mEmitters));
-                // Staging, because the test reads them back: the renderer's own list and rectangles
+                // Read-back memory, because the test reads them: the renderer's own list and rectangles
                 // are never read by the host and live in memory the host cannot read.
-                const Buffer rects = Buffer::staging(device, std::max<VkDeviceSize>(count, 1) * sizeof(std::uint64_t),
+                const Buffer rects = Buffer::readBack(device, std::max<VkDeviceSize>(count, 1) * sizeof(std::uint64_t),
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
-                const Buffer list = Buffer::staging(device, words * sizeof(std::uint32_t),
+                const Buffer list = Buffer::readBack(device, words * sizeof(std::uint32_t),
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
-                const Buffer report
-                    = Buffer::staging(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
+                const Buffer report = Buffer::readBack(
+                    device, sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
 
                 getPool().submitAndWait([&](VkCommandBuffer commands) {
                     pass.record(commands,
@@ -673,7 +673,7 @@ namespace Rtx
                 constexpr VkBufferUsageFlags usage
                     = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-                const Buffer spriteTable = Buffer::staging(mDevice, sprites.size_bytes(), usage, "test");
+                const Buffer spriteTable = Buffer::readBack(mDevice, sprites.size_bytes(), usage, "test");
                 const Buffer emitterTable = Buffer::hostWritten(mDevice, emitters.size_bytes(), usage, "test");
                 const Buffer order = Buffer::deviceLocal(
                     mDevice, sprites.size() * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), usage, "test");
@@ -1085,7 +1085,7 @@ namespace Rtx
             Shading shading(getDevice());
 
             const std::span<const Shaders::GpuSprite> sprites(column.mSprites);
-            const Buffer spriteTable = Buffer::staging(getDevice(), sprites.size_bytes(), usage, "test");
+            const Buffer spriteTable = Buffer::readBack(getDevice(), sprites.size_bytes(), usage, "test");
             const Buffer emitterTable = Buffer::hostWritten(getDevice(), sizeof(Shaders::GpuEmitter), usage, "test");
             const Buffer order = Buffer::deviceLocal(
                 getDevice(), sprites.size() * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), usage, "test");

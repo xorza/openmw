@@ -27,17 +27,6 @@ namespace Rtx
         constexpr std::uint32_t sWidth = 320;
         constexpr std::uint32_t sHeight = 256;
 
-        /// What the pass is handed, made the way the renderer makes its own frame: storage because
-        /// the composite writes it, sampled because the first halving reads it, and both transfer
-        /// bits so a test can fill it.
-        Image makeFrame(const Device& device, std::uint32_t width, std::uint32_t height)
-        {
-            return Image(device, width, height, VK_FORMAT_R32G32B32A32_SFLOAT,
-                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                    | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                "test-bloom-frame");
-        }
-
         /// Puts `pixels` in the image and leaves it in `VK_IMAGE_LAYOUT_GENERAL`, where the frame
         /// path leaves it.
         void paint(CommandPool& pool, const Device& device, const Image& image, std::span<const float> pixels)
@@ -78,7 +67,8 @@ namespace Rtx
 
             Bloomed(const Device& device, std::uint32_t width, std::uint32_t height)
                 : mBloom(device, Testing::getShaderDirectory())
-                , mFrame(makeFrame(device, width, height))
+                , mFrame(Testing::makeTestImage(
+                      device, VkExtent2D{ width, height }, VK_FORMAT_R32G32B32A32_SFLOAT, "test-bloom-frame"))
             {
                 mBloom.resize(width, height);
             }

@@ -25,6 +25,9 @@ namespace Rtx
                     return sHostWritten;
                 case BufferKind::Staging:
                     return VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                case BufferKind::ReadBack:
+                    return VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                        | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
             }
 
             return 0;
@@ -115,6 +118,12 @@ namespace Rtx
         const Device& device, const VkDeviceSize size, const VkBufferUsageFlags usage, const std::string_view name)
     {
         return make(device, BufferKind::Staging, size, usage, name);
+    }
+
+    Buffer Buffer::readBack(
+        const Device& device, const VkDeviceSize size, const VkBufferUsageFlags usage, const std::string_view name)
+    {
+        return make(device, BufferKind::ReadBack, size, usage, name);
     }
 
     bool Buffer::isIdle() const
@@ -215,7 +224,7 @@ namespace Rtx
     {
         assert(!isEmpty() && "a host read of a buffer nobody made");
 
-        assert(mKind == BufferKind::Staging && "a host-read dependency on memory nothing reads back");
+        assert(mKind == BufferKind::ReadBack && "a host-read dependency on memory nothing reads back");
 
         // Every way this renderer fills one: a copy out of an image, and a shader writing through
         // the buffer's own address. Naming both here rather than at each of the callers is what

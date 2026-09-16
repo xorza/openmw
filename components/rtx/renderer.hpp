@@ -210,6 +210,13 @@ namespace Rtx
         /// not the picture: nothing traces it, and a frame with none pays nothing for it.
         DebugLines mDebug;
 
+        /// Whether the frame leaves its picture in host memory for `FrameResult::mPixels`,
+        /// copied by the frame's own commands after the display curve and before the interface.
+        /// For a run that hashes every frame: a copy the frame records rides the queue behind the
+        /// trace and comes back with the frame's report, where a readback of the frame just drawn
+        /// is a submit of its own and a wait the ring would otherwise overlap.
+        bool mReadBack = false;
+
         /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,
         /// because a warm-up is not averaged in, and `sinceLast` and `exposureBias` are what a
         /// profile cannot know.
@@ -280,6 +287,16 @@ namespace Rtx
 
         /// What put this frame back together, as the renderer resolved it.
         Reconstruction mReconstruction;
+
+        /// Which frame this is, counted by the renderer from its first — the number
+        /// `Renderer::getFrameCount` was about to hand the frame when it was drawn, so a caller
+        /// that noted something about the frame then can find it now.
+        std::uint64_t mFrame = 0;
+
+        /// The picture, where `FrameOptions::mReadBack` asked for it, as `readPixels` lays it
+        /// out; empty otherwise. The renderer's own memory, kept until the frame after next is
+        /// drawn into the same slot: read it before the next `renderFrame`.
+        std::span<const std::uint8_t> mPixels;
     };
 
     /// One traced image, whichever API produced it: what a scene is handed to, what the interface
@@ -344,6 +361,10 @@ namespace Rtx
         /// drawn it, so the caller can place the next one meanwhile, and `finishFrame` reads back
         /// what it came to. At most two frames are in flight.
         virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
+
+        /// How many frames `renderFrame` has drawn, which is the number the next one carries in
+        /// `FrameResult::mFrame`.
+        virtual std::uint64_t getFrameCount() const = 0;
 
         /// What the oldest unreported frame came to, waiting for it where it is still in flight, or
         /// nothing where every frame drawn was reported. After `renderFrame` that is the frame just

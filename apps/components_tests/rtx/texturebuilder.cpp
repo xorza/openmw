@@ -30,42 +30,13 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "allocations.hpp"
+#include "geometry.hpp"
 #include "heldimages.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// A mesh, a material and the texture it names, which is how a model arrives.
-        struct Model
-        {
-            Rtx::Index mMesh = 0;
-            Rtx::Index mMaterial = 0;
-            Rtx::Index mTexture = 0;
-            Rtx::Index mPlacement = 0;
-        };
-
-        /// One triangle and one material naming `texture`, so all three arrive together.
-        Model addModel(Rtx::SceneDesc& scene, VFS::Path::NormalizedView texture)
-        {
-            const osg::Vec3f positions[3] = { { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 } };
-            const osg::Vec3f normals[3] = { { 0, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 } };
-            const osg::Vec2f uvs[3] = { { 0, 0 }, { 1, 0 }, { 0, 1 } };
-            const std::uint32_t indices[3] = { 0, 1, 2 };
-
-            Model made;
-            made.mMesh = scene.addMesh(
-                MeshArrays{ .mPositions = positions, .mNormals = normals, .mTexCoords = uvs, .mIndices = indices });
-            made.mTexture = scene.textures().add(texture);
-
-            Rtx::Material material;
-            material.mDiffuse = made.mTexture;
-            made.mMaterial = scene.materials().add(material);
-            made.mPlacement = scene.addInstance(Rtx::MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
-
-            return made;
-        }
-
         /// One block's worth of image in `format`, which is all the description reads beyond it.
         osg::ref_ptr<osg::Image> makeBlock(GLenum format)
         {
@@ -192,7 +163,7 @@ namespace Rtx
             images.hold(path, image);
 
             Rtx::SceneDesc scene;
-            addModel(scene, path);
+            Testing::addModel(scene, path);
 
             SceneTextures described;
             described.describeAll(scene, images);
@@ -234,8 +205,8 @@ namespace Rtx
             // `release` answers the ordinary frame by comparing the mesh and material counts and
             // returning before it frees anything at all.
             Rtx::SceneDesc scene;
-            const Model going = addModel(scene, VFS::Path::NormalizedView("textures/freed.dds"));
-            const Model staying = addModel(scene, VFS::Path::NormalizedView("textures/named.dds"));
+            const Testing::Model going = Testing::addModel(scene, VFS::Path::NormalizedView("textures/freed.dds"));
+            const Testing::Model staying = Testing::addModel(scene, VFS::Path::NormalizedView("textures/named.dds"));
 
             const std::array<Rtx::Index, 1> keptMeshes{ staying.mMesh };
             const std::array<Rtx::Index, 1> keptMaterials{ staying.mMaterial };
@@ -307,7 +278,7 @@ namespace Rtx
             images.hold(path, image);
 
             Rtx::SceneDesc scene;
-            addModel(scene, path);
+            Testing::addModel(scene, path);
 
             // What the static ring answers: one image, read ahead of the frame and held.
             PreparedTexture texture;

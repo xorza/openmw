@@ -38,6 +38,10 @@ namespace MWRender
         /// Whether the stop wants the graph walked a second time, so it can report what that added.
         virtual bool wantsSecondWalk() const = 0;
 
+        /// Whether the frame should leave its picture for its report — `FrameOptions::mReadBack`,
+        /// which a run that hashes every frame asks for and nothing a player does ever does.
+        virtual bool wantsFrameCopy() const = 0;
+
         /// Before the world is walked, because a teleport has to happen before the walk that would
         /// mirror the cell it left.
         virtual void beforeFrame() = 0;

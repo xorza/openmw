@@ -404,7 +404,10 @@ namespace RtxTool
 
         const float left = along.length();
         if (route.mTo.has_value() && left <= 0.0f)
+        {
+            mProgress.mArrived = true;
             return;
+        }
 
         along.normalize();
 
@@ -547,6 +550,11 @@ namespace RtxTool
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mWalkTwice;
     }
 
+    bool Session::wantsFrameCopy() const
+    {
+        return !mDone && mStarted && mRequest.mStops[mAt].mActions.mHash;
+    }
+
     void Session::frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
     {
         Rtx::Renderer& renderer = context.mRenderer.getBackend();
@@ -601,14 +609,18 @@ namespace RtxTool
 
         const std::uint32_t drawn = mProgress.mSeen - warmup;
 
+        // The scene now, which is this frame's, and the picture that came back with the report,
+        // which is the frame before's: the two halves of a row meet through the number the
+        // backend gave the frame. A frame the warm-up drew has no row and its picture is dropped.
         if (stop.mActions.mHash)
         {
-            renderer.readPixels(mPixels);
-
-            mRecord.getHashes().add(stop.mName, drawn, mPixels, Rtx::digestParts(context.mScene));
+            Rtx::FrameHashes& hashes = mRecord.getHashes();
+            hashes.note(stop.mName, drawn, report.mFrame, mDigester.digest(context.mScene));
+            if (!report.mResult->mPixels.empty())
+                hashes.picture(report.mResult->mFrame, report.mResult->mPixels);
         }
 
-        if (drawn < measured)
+        if (drawn < measured && !mProgress.mArrived)
             return;
 
         endStop(context, report);
@@ -624,6 +636,13 @@ namespace RtxTool
         // After the frames and not before them, so the last spawn it costs is outside the run it
         // describes.
         mProgress.mClock = mClockWatch.stop();
+
+        // The last frame's picture is still on the queue; a stop that hashes waits it out here,
+        // where a drain is a stop's to pay and never a frame's.
+        if (stop.mActions.mHash)
+            while (const std::optional<Rtx::FrameResult> finished = renderer.finishFrame())
+                if (!finished->mPixels.empty())
+                    mRecord.getHashes().picture(finished->mFrame, finished->mPixels);
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 

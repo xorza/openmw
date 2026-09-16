@@ -37,6 +37,7 @@ namespace MWRender
             std::optional<std::uint32_t> getSampleFrame() const override { return std::nullopt; }
             std::uint32_t getAccumulated() const override { return 0; }
             bool wantsSecondWalk() const override { return false; }
+            bool wantsFrameCopy() const override { return false; }
             void beforeFrame() override {}
             void frame(const FrameContext&, const FrameReport&) override {}
         };

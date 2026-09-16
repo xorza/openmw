@@ -360,6 +360,18 @@ namespace Rtx::Testing
         checkVk(mDevice, vkSignalSemaphore(mDevice.getHandle(), &signal), "vkSignalSemaphore");
     }
 
+    Image makeTestImage(
+        const Device& device, const VkExtent2D extent, const VkFormat format, const std::string_view name)
+    {
+        // `SAMPLED` because an upscaler samples its inputs and an image it cannot sample reads as
+        // zero — no error, no validation message, a black frame. Both transfer bits so a clear can
+        // fill it and the result can be read back.
+        return Image(device, extent.width, extent.height, format,
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+                | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            name);
+    }
+
     std::vector<float> readHalves(const Image& image, std::uint32_t level)
     {
         std::vector<std::uint8_t> bytes;

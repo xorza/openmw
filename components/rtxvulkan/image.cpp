@@ -318,7 +318,7 @@ namespace Rtx
     void Image::read(VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
     {
         const VkDeviceSize bytes = getReadBytes(level);
-        const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "read back");
+        const Buffer landing = Buffer::readBack(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "read back");
 
         // Back where it was found. Reading an image is not a change to it, and a caller that
         // has to know a read moved it is one that will forget: the GUI's own table is sampled
@@ -327,11 +327,11 @@ namespace Rtx
             recordRead(commands, ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT },
                 ImageUse{ layout, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT },
-                staging, level);
+                landing, level);
         });
 
         pixels.resize(bytes);
-        std::memcpy(pixels.data(), staging.map(), bytes);
+        std::memcpy(pixels.data(), landing.map(), bytes);
     }
 
     Image makeStandIn(

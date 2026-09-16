@@ -42,18 +42,12 @@ namespace Rtx
             return (first << Shaders::RUN_COUNT_BITS) | count;
         }
 
-        /// A translation `z` up, as the kernel reads it.
-        Shaders::GpuBone boneUp(float z)
-        {
-            return toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, z));
-        }
-
         /// The vector at `vertex` of a block copied back whole.
-        osg::Vec3f readVector(const Buffer& staging, std::uint32_t vertex)
+        osg::Vec3f readVector(const Buffer& copied, std::uint32_t vertex)
         {
             osg::Vec3f value;
             std::memcpy(
-                &value, static_cast<const std::byte*>(staging.map()) + vertex * sizeof(osg::Vec3f), sizeof(value));
+                &value, static_cast<const std::byte*>(copied.map()) + vertex * sizeof(osg::Vec3f), sizeof(value));
             return value;
         }
 
@@ -127,10 +121,10 @@ namespace Rtx
 
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 
-            const std::array atFive{ boneUp(5.0f) };
+            const std::array atFive{ Testing::boneUp(5.0f) };
             Testing::poseRig(scene, raised, atFive, anywhere);
 
-            const std::array fourAndEight{ boneUp(4.0f), boneUp(8.0f) };
+            const std::array fourAndEight{ Testing::boneUp(4.0f), Testing::boneUp(8.0f) };
             Testing::poseRig(scene, blended, fourAndEight, anywhere);
 
             // A quarter turn about z, in OpenSceneGraph's row-vector convention: `(x, y)` goes to
@@ -183,8 +177,8 @@ namespace Rtx
 
             const VkDeviceSize poseBytes = VkDeviceSize{ posedVertices } * sizeof(osg::Vec3f);
             const VkDeviceSize normalBytes = VkDeviceSize{ vertices } * sizeof(osg::Vec3f);
-            const Buffer readPositions = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
-            const Buffer readNormals = Buffer::staging(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const Buffer readPositions = Buffer::readBack(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const Buffer readNormals = Buffer::readBack(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
 
             /// Poses what `slot` owes and copies its whole first block back.
             const auto poseAndRead = [&](FrameSlot slot) {
@@ -292,7 +286,7 @@ namespace Rtx
             ASSERT_EQ(scene.deformers().getDeformers()[twoMore].mInfluences, wentRig.mInfluences)
                 << "the influences were not";
 
-            const std::array oneAndThree{ boneUp(1.0f), boneUp(3.0f) };
+            const std::array oneAndThree{ Testing::boneUp(1.0f), Testing::boneUp(3.0f) };
             Testing::poseRig(scene, arrived, oneAndThree, anywhere);
 
             {
@@ -352,7 +346,7 @@ namespace Rtx
             const Index first = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
                 {}, Deform::Rig, oneBone);
-            const std::array atFive{ boneUp(5.0f) };
+            const std::array atFive{ Testing::boneUp(5.0f) };
             Testing::poseRig(scene, first, atFive, anywhere);
 
             constexpr VkBufferUsageFlags readable
@@ -384,7 +378,7 @@ namespace Rtx
             const Index second = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
                 {}, Deform::Rig, oneBone);
-            const std::array atTwo{ boneUp(2.0f) };
+            const std::array atTwo{ Testing::boneUp(2.0f) };
             Testing::poseRig(scene, second, atTwo, anywhere);
             ASSERT_EQ(scene.meshes().getArrived().size(), 1u);
 
@@ -417,13 +411,13 @@ namespace Rtx
             // both quads, moved since the load — and reads the whole block back. A wait that
             // returned early records this over a submit the hold still keeps on the queue, which
             // is the write the assert fires on.
-            const std::array atOne{ boneUp(1.0f) };
+            const std::array atOne{ Testing::boneUp(1.0f) };
             Testing::poseRig(scene, first, atOne, anywhere);
-            const std::array atThree{ boneUp(3.0f) };
+            const std::array atThree{ Testing::boneUp(3.0f) };
             Testing::poseRig(scene, second, atThree, anywhere);
 
             const VkDeviceSize poseBytes = 8 * sizeof(osg::Vec3f);
-            const Buffer read = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const Buffer read = Buffer::readBack(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 EXPECT_TRUE(pass.record(commands, scene, FrameSlot{ 0 }, tables, poses, normals, nullptr));
 

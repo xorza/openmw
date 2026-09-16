@@ -359,7 +359,9 @@ namespace Rtx
             EXPECT_NE(mTable.addressFor(FrameSlot{ 0 }), 0u);
             hold.submit(reader);
 
-            constexpr std::chrono::milliseconds held{ 20 };
+            // Long enough that a wait which returned at once is told from one that waited, under three
+            // shards of this binary sharing the device.
+            constexpr std::chrono::milliseconds held{ 200 };
             const auto asked = std::chrono::steady_clock::now();
             hold.releaseAfter(held);
 

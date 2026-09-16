@@ -33,7 +33,7 @@ namespace Rtx
         {
             const Device& device = *mHarness->mDevice;
 
-            const Buffer buffer = Buffer::staging(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
+            const Buffer buffer = Buffer::readBack(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
 
             void* const mapped = buffer.map();
             ASSERT_NE(mapped, nullptr);
@@ -57,7 +57,7 @@ namespace Rtx
         {
             const Device& device = *mHarness->mDevice;
 
-            Buffer first = Buffer::staging(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
+            Buffer first = Buffer::readBack(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
 
             void* const mapped = first.map();
             const Buffer second = std::move(first);
@@ -80,7 +80,7 @@ namespace Rtx
 
             constexpr VkBufferUsageFlags copyable = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             const Buffer source = Buffer::staging(device, 64, copyable, "test");
-            const Buffer target = Buffer::staging(device, 64, copyable, "test");
+            const Buffer target = Buffer::readBack(device, 64, copyable, "test");
 
             std::array<std::uint32_t, 16> counted{};
             for (std::size_t at = 0; at < counted.size(); ++at)

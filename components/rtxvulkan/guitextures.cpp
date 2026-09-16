@@ -182,7 +182,7 @@ namespace Rtx
         // Buried and not destroyed where it has to grow: a batch recorded against it may not have
         // run.
         Copy& copy = mCopies[slot.get()];
-        growTo(copy.mBuffer, mDevice, BufferKind::Staging, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "gui read back");
+        growTo(copy.mBuffer, mDevice, BufferKind::ReadBack, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "gui read back");
 
         image.recordRead(commands, Use::sFragmentSample, Use::sFragmentSample, copy.mBuffer);
 

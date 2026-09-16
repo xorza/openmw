@@ -289,4 +289,8 @@ namespace Rtx::Testing
     /// a change to it. Several passes keep their output in halves, so this is the read-back beside
     /// the decoder rather than one copy of it per suite.
     std::vector<float> readHalves(const Image& image, std::uint32_t level = 0);
+
+    /// An image a pass can be handed as its frame: written as storage, sampled, and copied both
+    /// ways, so a test can fill it and read it back. One level.
+    Image makeTestImage(const Device& device, VkExtent2D extent, VkFormat format, std::string_view name);
 }

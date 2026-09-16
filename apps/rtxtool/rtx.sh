@@ -172,12 +172,41 @@ compileWithoutAsserts() {
     )
 }
 
+# **Three processes for the components tests**, through gtest's own sharding, because the pixel
+# tests are one process waiting on the device: a frame, a readback, a wait. Each shard pays the
+# device and the shared renderer again, in parallel, and the three together take about half the
+# wall time of one. The pipeline cache writes through a uniquely named temporary, so three
+# closing at once is a rename each. Each shard's output goes to a file of its own and is printed
+# whole where it failed, so a failure reads as one process's.
 runTests() {
     if [ ! -x "$build/components-tests" ]; then
         echo "the $flavour build has no tests: \`rtx.sh debug test\` runs them" >&2
         return 1
     fi
-    (cd "$build" && ./components-tests --gtest_filter='Rtx*:Sky*' "$@")
+
+    local shards=3 out status=0 shard
+    out="$(mktemp -d)"
+    for shard in $(seq 0 $((shards - 1))); do
+        (cd "$build" && GTEST_TOTAL_SHARDS="$shards" GTEST_SHARD_INDEX="$shard" \
+            ./components-tests --gtest_filter='Rtx*:Sky*' "$@" > "$out/$shard.log" 2>&1) &
+    done
+    for shard in $(seq 0 $((shards - 1))); do
+        if ! wait -n; then
+            status=1
+        fi
+    done
+    for shard in $(seq 0 $((shards - 1))); do
+        if grep -q '^\[  PASSED  \]' "$out/$shard.log" && ! grep -q '^\[  FAILED  \]' "$out/$shard.log"; then
+            grep -E '^\[==========\] .* ran|^\[  PASSED  \]' "$out/$shard.log" | sed "s/^/shard $shard: /"
+        else
+            status=1
+            echo "shard $shard failed:" >&2
+            cat "$out/$shard.log" >&2
+        fi
+    done
+    rm -rf "$out"
+    [ "$status" -eq 0 ] || return 1
+
     (cd "$build" && ./openmw-tests --gtest_filter='Rtx*' "$@")
 }
 

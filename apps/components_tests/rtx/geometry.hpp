@@ -14,9 +14,12 @@
 
 #include <components/rtx/deformertable.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
+#include <components/vfs/pathutil.hpp>
 
 namespace Rtx::Testing
 {
@@ -101,6 +104,49 @@ namespace Rtx::Testing
     inline std::array<osg::Vec3f, 4> cardAt(float away)
     {
         return uprightQuadAt(sCardHalfExtent, away);
+    }
+
+    /// A mesh, a material and the texture it names, which is how a model arrives, and where it
+    /// was placed.
+    struct Model
+    {
+        Index mMesh = 0;
+        Index mMaterial = 0;
+        Index mTexture = 0;
+        Index mPlacement = 0;
+    };
+
+    /// One triangle and one material naming `texture`, placed, so a mesh, a material and a texture
+    /// all arrive together the way a model does.
+    ///
+    /// The path is made up: `SceneTextures` answers a path that names nothing with the stand-in
+    /// and counts it unreadable, which is exactly the description a decision needs and costs no
+    /// content files to produce.
+    inline Model addModel(SceneDesc& scene, const VFS::Path::NormalizedView texture)
+    {
+        const osg::Vec3f positions[3] = { { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 } };
+        const osg::Vec3f normals[3] = { { 0, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 } };
+        const osg::Vec2f uvs[3] = { { 0, 0 }, { 1, 0 }, { 0, 1 } };
+        const std::uint32_t indices[3] = { 0, 1, 2 };
+
+        Model made;
+        made.mMesh = scene.addMesh(
+            MeshArrays{ .mPositions = positions, .mNormals = normals, .mTexCoords = uvs, .mIndices = indices });
+
+        made.mTexture = scene.textures().add(texture);
+
+        Material material;
+        material.mDiffuse = made.mTexture;
+        made.mMaterial = scene.materials().add(material);
+        made.mPlacement = scene.addInstance(MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
+
+        return made;
+    }
+
+    /// A bone standing `z` up.
+    inline Shaders::GpuBone boneUp(const float z)
+    {
+        return toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, z));
     }
 
     /// A skin of one bone over `vertices` vertices, every weight one, so a pose is the bone's own

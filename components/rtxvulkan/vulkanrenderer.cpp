@@ -546,6 +546,11 @@ namespace Rtx
         mPresenter->setVerticalSync(mode);
     }
 
+    std::uint64_t VulkanRenderer::getFrameCount() const
+    {
+        return mRing.getRecording();
+    }
+
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
         return mRing.collect();
@@ -857,6 +862,18 @@ namespace Rtx
                 .mDebugVertices = &frame.mDebugVertices,
                 .mTimer = &timer,
             });
+
+        // The picture as the curve left it and before the interface, into the slot's own host
+        // memory, for the report that comes back with the frame. Grown here and not at the resize,
+        // because most frames never ask.
+        if (options.mReadBack)
+        {
+            const VkDeviceSize bytes = target.getReadBytes();
+            growTo(frame.mReadBack, mDevice, BufferKind::ReadBack, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                "frame readback");
+            target.recordRead(commands, Use::sComputeWrite, Use::sComputeWrite, frame.mReadBack);
+            frame.mReadBackBytes = bytes;
+        }
 
         // After the picture and inside the frame's trace, so the frame is finished when its value
         // has passed and the hold is the last thing it did.

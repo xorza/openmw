@@ -16,6 +16,7 @@
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/runrecord.hpp>
+#include <components/rtxbench/scenedigest.hpp>
 
 #include "stopwriter.hpp"
 
@@ -44,6 +45,7 @@ namespace RtxTool
         std::optional<std::uint32_t> getSampleFrame() const override;
         std::uint32_t getAccumulated() const override;
         bool wantsSecondWalk() const override;
+        bool wantsFrameCopy() const override;
 
         /// Starts the stop that is due, flies a route on, and turns a sky. Does nothing until the
         /// game has a world to stand in.
@@ -136,6 +138,11 @@ namespace RtxTool
             /// Compared as an address and never read, which is all an identity needs.
             const void* mCell = nullptr;
 
+            /// Whether the route has reached the destination it named. What ends a routed stop:
+            /// the frames past arrival stand where the route ended and measure nothing the route
+            /// was flown for, so `--seconds` is the ceiling a route that never arrives runs to.
+            bool mArrived = false;
+
             /// Which weather the turn is on, and how far into the transition to the next.
             std::size_t mTurnedTo = 0;
             float mTurned = 0.0f;
@@ -162,6 +169,7 @@ namespace RtxTool
                 mHitPercent = 0.0;
                 mWallMs = 0.0;
                 mCell = nullptr;
+                mArrived = false;
                 mTurnedTo = 0;
                 mTurned = 0.0f;
 
@@ -200,11 +208,10 @@ namespace RtxTool
 
         StopWriter mWriter;
 
-        /// What a hashed frame lands in, refilled per measured frame and never freed. Not the
-        /// writer's, which reads at a doll's or a tile's extent.
-        std::vector<std::uint8_t> mPixels;
-
         /// Reserved once for the longest stop of the run, so the run itself does not allocate.
         StopProgress mProgress;
+
+        /// What a hashed frame's scene columns come from, kept so a frame pays for what moved.
+        Rtx::SceneDigester mDigester;
     };
 }

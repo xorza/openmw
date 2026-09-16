@@ -55,6 +55,11 @@ namespace MWRender
         /// which have no frame behind them to answer for.
         std::optional<Rtx::FrameResult> mResult;
 
+        /// What the backend numbered this frame — `Renderer::getFrameCount` as it stood before the
+        /// frame was drawn — which is the number `mResult->mFrame` carries when this frame's own
+        /// answer comes back, a frame or two from now.
+        std::uint64_t mFrame = 0;
+
         /// What put this frame back together.
         Rtx::Reconstruction mReconstruction;
 

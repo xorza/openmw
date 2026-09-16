@@ -325,14 +325,6 @@ namespace Rtx
             EXPECT_FALSE(glass.isMedium()) << "no map to have measured";
         }
 
-        /// The row a bone standing `z` up carries: the identity's three rows with the translation
-        /// in the last column of the third.
-        Shaders::GpuBone boneUp(float z)
-        {
-            return Shaders::GpuBone{ .mRows = { osg::Vec4f(1.0f, 0.0f, 0.0f, 0.0f), osg::Vec4f(0.0f, 1.0f, 0.0f, 0.0f),
-                                         osg::Vec4f(0.0f, 0.0f, 1.0f, z) } };
-        }
-
         /// One rig with a still mesh beside two skinned ones, which is the shape all three tests
         /// below are about.
         ///
@@ -361,8 +353,8 @@ namespace Rtx
             Index mMoving = addSkin();
             Index mOther = addSkin();
 
-            const std::array<Shaders::GpuBone, 1> mAtFive{ boneUp(5.0f) };
-            const std::array<Shaders::GpuBone, 1> mAtSeven{ boneUp(7.0f) };
+            const std::array<Shaders::GpuBone, 1> mAtFive{ Testing::boneUp(5.0f) };
+            const std::array<Shaders::GpuBone, 1> mAtSeven{ Testing::boneUp(7.0f) };
             const osg::BoundingBoxf mReach{ osg::Vec3f(0.0f, 0.0f, 5.0f), osg::Vec3f(1.0f, 1.0f, 5.0f) };
 
         private:
@@ -673,7 +665,7 @@ namespace Rtx
             EXPECT_EQ(weightAt(scene.getMeshPose(face), 4), 0.75f);
 
             // And a bone is three words, laid row by row, so the same words read back as the bone.
-            const std::array bones{ boneUp(5.0f), boneUp(7.0f) };
+            const std::array bones{ Testing::boneUp(5.0f), Testing::boneUp(7.0f) };
             std::vector<PoseWord> words;
             packBones(bones, words);
             ASSERT_EQ(words.size(), 6u);

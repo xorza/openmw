@@ -121,6 +121,7 @@ namespace MWRender
             std::optional<std::uint32_t> getSampleFrame() const override { return std::nullopt; }
             std::uint32_t getAccumulated() const override { return 0; }
             bool wantsSecondWalk() const override { return false; }
+            bool wantsFrameCopy() const override { return false; }
             void beforeFrame() override {}
             void frame(const FrameContext& context, const FrameReport& report) override {}
         };
@@ -1001,8 +1002,16 @@ namespace MWRender
         // **Timed as well as waited for**, because the wait is not the whole of it: the ring then
         // reads the device's counters and its timestamps and destroys what that frame was the last
         // to read, and none of that is in the figure the device reports.
+        //
+        // **A frame whose picture the run takes is waited out, and not only collected.** Two
+        // frames in flight draw pictures that differ from run to run — `.notes/ISSUES.md` holds
+        // the reading — and what a run hashes a picture for is that it be a function of the
+        // frames alone, which a trace that ran with nothing beside it on the device answers for.
+        // The wait is the frame's own trace: the copy rode the frame's commands, so no submit of
+        // its own is paid for, and the report that comes back is the frame before's, with its
+        // picture.
         const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
-        report.mResult = mRenderer->collectFrame();
+        report.mResult = mInstalled.mRun.wantsFrameCopy() ? mRenderer->finishFrame() : mRenderer->collectFrame();
         report.mSpend.at(Rtx::Timing::Finish) = Rtx::since(finishing, std::chrono::steady_clock::now());
     }
 
@@ -1118,12 +1127,14 @@ namespace MWRender
         Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
             mInstalled.mSetup.mProfile, accumulated, mClock.getStatedStep(), exposureBias);
         options.mRipples = mMirror.getScene().ripples();
+        options.mReadBack = mInstalled.mRun.wantsFrameCopy();
 
         // What the debug modes drew, read off the world root here, after the game's own update
         // has rebuilt them for this frame and before the frame is recorded.
         if (mWorldRoot != nullptr)
             options.mDebug = mDebugWalk.walk(*mWorldRoot);
 
+        report.mFrame = mRenderer->getFrameCount();
         report.mReconstruction = mRenderer->renderFrame(constants, options);
 
         report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, std::chrono::steady_clock::now());

@@ -73,11 +73,11 @@ namespace Rtx
         /// handle that has gone. The recording goes back to the pool instead.
         TEST_F(RtxBatchTest, aBatchAbandonedByAnExceptionSubmitsNothing)
         {
-            const Buffer source = Buffer::staging(getDevice(), sizeof(std::uint32_t),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
-            *static_cast<std::uint32_t*>(source.map()) = 0x5eaf00d;
+            const std::uint32_t value = 0x5eaf00d;
+            const Buffer source = Buffer::staging(getDevice(), sizeof(value), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
+            source.write(std::span(&value, 1));
 
-            const Buffer target = Buffer::staging(getDevice(), sizeof(std::uint32_t),
+            const Buffer target = Buffer::readBack(getDevice(), sizeof(std::uint32_t),
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             *static_cast<std::uint32_t*>(target.map()) = 0;
 
@@ -111,7 +111,7 @@ namespace Rtx
         /// and unnamed, the staged copy and the host write were two writers nobody had ordered.
         TEST_F(RtxBatchTest, aStagedWriteNamesItsDestination)
         {
-            const Buffer target = Buffer::staging(getDevice(), sizeof(std::uint32_t),
+            const Buffer target = Buffer::readBack(getDevice(), sizeof(std::uint32_t),
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             *static_cast<std::uint32_t*>(target.map()) = 0;
 
@@ -137,7 +137,7 @@ namespace Rtx
         TEST_F(RtxBatchTest, aBlockGivenBackIsTakenAgainOnceTheSubmitThatReadItHasRun)
         {
             CommandPool& pool = getPool();
-            const Buffer target = Buffer::staging(getDevice(), 64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const Buffer target = Buffer::readBack(getDevice(), 64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             const std::vector<std::byte> some(64, std::byte{ 1 });
             const auto blocks = [&] { return pool.getStagingBlockCount(); };
 

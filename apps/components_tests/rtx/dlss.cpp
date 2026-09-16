@@ -54,19 +54,6 @@ namespace Rtx
 {
     namespace
     {
-        /// Everything DLSS reads and the one image it writes are made alike.
-        ///
-        /// `SAMPLED` because DLSS samples its inputs and an image it cannot sample reads as zero —
-        /// no error, no validation message, a black frame. `TRANSFER_DST` so a clear can fill it and
-        /// `TRANSFER_SRC` so the result can be read back.
-        Image makeImage(const Device& device, VkExtent2D extent, VkFormat format, std::string_view name)
-        {
-            return Image(device, extent.width, extent.height, format,
-                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                    | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                name);
-        }
-
         /// Fills `image` with one value and leaves it in `VK_IMAGE_LAYOUT_GENERAL`, which is where
         /// the renderer's own frame leaves the G-buffer.
         void fill(CommandPool& pool, const Image& image, const std::array<float, 4>& value)
@@ -219,14 +206,14 @@ namespace Rtx
             //
             // The colour and the output are not the g-buffer's: `VulkanRenderer` makes both at full
             // float directly, and these follow that.
-            const Image colour = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-colour");
-            const Image diffuse = makeImage(device, render, GBUFFER_ALBEDO, "test-diffuse");
-            const Image specular = makeImage(device, render, GBUFFER_ALBEDO, "test-specular");
-            const Image normals = makeImage(device, render, GBUFFER_GUIDE, "test-normals");
-            const Image depth = makeImage(device, render, GBUFFER_DEPTH, "test-depth");
-            const Image motion = makeImage(device, render, GBUFFER_MOTION, "test-motion");
-            const Image reflections = makeImage(device, render, GBUFFER_MOTION, "test-reflections");
-            const Image output = makeImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
+            const Image colour = Testing::makeTestImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-colour");
+            const Image diffuse = Testing::makeTestImage(device, render, GBUFFER_ALBEDO, "test-diffuse");
+            const Image specular = Testing::makeTestImage(device, render, GBUFFER_ALBEDO, "test-specular");
+            const Image normals = Testing::makeTestImage(device, render, GBUFFER_GUIDE, "test-normals");
+            const Image depth = Testing::makeTestImage(device, render, GBUFFER_DEPTH, "test-depth");
+            const Image motion = Testing::makeTestImage(device, render, GBUFFER_MOTION, "test-motion");
+            const Image reflections = Testing::makeTestImage(device, render, GBUFFER_MOTION, "test-reflections");
+            const Image output = Testing::makeTestImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
 
             // A frame with nothing in it to resolve: uniform radiance over a flat wall halfway down
             // the depth range, facing the camera, stationary and fully rough.

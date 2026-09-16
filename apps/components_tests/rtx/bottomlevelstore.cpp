@@ -117,9 +117,6 @@ namespace Rtx
         /// that submit has run.
         TEST_F(RtxBottomLevelStoreTest, anAnswerIsReadOnceItsOwnSubmitHasRunAndNotBefore)
         {
-            if (mHarness == nullptr)
-                GTEST_SKIP() << "no device";
-
             const std::array<Index, 3> grids{ addGrid(mScene, 64, 0.0f), addGrid(mScene, 64, 1.0f),
                 addGrid(mScene, 64, 2.0f) };
             stage();
@@ -156,9 +153,6 @@ namespace Rtx
         /// report says is left to save does not count it.
         TEST_F(RtxBottomLevelStoreTest, aStructureReleasedBeforeItsAnswerIsReadIsForgotten)
         {
-            if (mHarness == nullptr)
-                GTEST_SKIP() << "no device";
-
             const std::array<Index, 2> grids{ addGrid(mScene, 64, 0.0f), addGrid(mScene, 64, 1.0f) };
             stage();
 

@@ -1,4 +1,8 @@
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <optional>
+#include <span>
 
 #include <gtest/gtest.h>
 
@@ -6,6 +10,7 @@
 
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
+#include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/framering.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
@@ -41,9 +46,6 @@ namespace Rtx
         /// the queue.
         TEST_F(RtxFrameRingTest, theSlotHandedOutForRecordingIsNotOneAFrameInFlightHolds)
         {
-            if (mHarness == nullptr)
-                GTEST_SKIP() << "no device";
-
             const bool countHits = false;
             FrameRing ring(getDevice(), countHits);
 
@@ -78,9 +80,6 @@ namespace Rtx
         /// so nothing is freed before every submit that could name it has finished.
         TEST_F(RtxFrameRingTest, aBurialOutlivesEverySubmitMadeBeforeIt)
         {
-            if (mHarness == nullptr)
-                GTEST_SKIP() << "no device";
-
             // The device's graveyard is shared with every test before this one, so it is emptied
             // first: the counts below are of this test's burial alone.
             Graveyard& graveyard = getDevice().getGraveyard();
@@ -103,6 +102,47 @@ namespace Rtx
             submitEmpty(ring);
             ring.finishAll();
             EXPECT_EQ(graveyard.getHeldCount(), 0u) << "held past the submit that retired it";
+        }
+
+        /// A frame that left its picture in its slot comes back with it, and one that did not
+        /// comes back with none. The picture is the slot's own memory: it stands until the ring
+        /// comes round to the slot, which is what lets a caller read it off the report.
+        TEST_F(RtxFrameRingTest, aFrameThatLeftItsPictureComesBackWithIt)
+        {
+            const Device& device = getDevice();
+            FrameRing ring(device, false);
+
+            // A frame that "copied" four bytes into its slot: the copy is the renderer's; what
+            // the ring owes is the span over what the slot holds.
+            constexpr std::array<std::uint8_t, 4> picture{ 1, 2, 3, 4 };
+            FrameRecord& first = ring.begin();
+            growTo(first.mReadBack, device, BufferKind::ReadBack, picture.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                "test picture");
+            first.mReadBack.write(std::span<const std::uint8_t>(picture));
+            first.mReadBackBytes = picture.size();
+            getPool().begin(first.mWorld.mCommands);
+            ring.submit(first);
+
+            const std::optional<FrameResult> came = ring.collect();
+            ASSERT_TRUE(came.has_value());
+            EXPECT_EQ(came->mFrame, 0u);
+            ASSERT_EQ(came->mPixels.size(), picture.size());
+            EXPECT_TRUE(std::equal(came->mPixels.begin(), came->mPixels.end(), picture.begin()));
+
+            // The next frame asked for nothing, and says so; the number counts on.
+            submitEmpty(ring);
+            const std::optional<FrameResult> next = ring.collect();
+            ASSERT_TRUE(next.has_value());
+            EXPECT_EQ(next->mFrame, 1u);
+            EXPECT_TRUE(next->mPixels.empty()) << "a frame that asked for no picture came back with one";
+
+            // And a slot begun again forgets what its last frame left, so a stale picture cannot
+            // be read off a frame that did not ask.
+            FrameRecord& third = ring.begin();
+            EXPECT_EQ(third.mReadBackBytes, 0u);
+            getPool().begin(third.mWorld.mCommands);
+            ring.submit(third);
+            ring.finishAll();
         }
     }
 }

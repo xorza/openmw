@@ -45,11 +45,10 @@ namespace Rtx
         std::vector<osg::Vec2f> transform(
             const Device& device, const ComputePipeline& pipeline, CommandPool& pool, std::span<const osg::Vec2f> grid)
         {
-            const Buffer field = Buffer::staging(device, grid.size_bytes(),
+            const Buffer field = Buffer::readBack(device, grid.size_bytes(),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
 
-            void* mapped = field.map();
-            std::memcpy(mapped, grid.data(), grid.size_bytes());
+            field.write(grid);
 
             const VkDescriptorBufferInfo info{ field.getHandle(), 0, VK_WHOLE_SIZE };
             const VkWriteDescriptorSet write{

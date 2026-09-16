@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdint>
+#include <span>
 
 #include <components/rtx/frameclock.hpp>
 
@@ -13,7 +15,7 @@ namespace Rtx
 {
     FrameRecord::FrameRecord(const Device& device)
         : mTimer(device)
-        , mHitCount(Buffer::staging(device, sizeof(FrameCounts),
+        , mHitCount(Buffer::readBack(device, sizeof(FrameCounts),
               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "hit count"))
     {
     }
@@ -61,6 +63,7 @@ namespace Rtx
         frame.mTimer.beginFrame(mFrame);
         frame.mPlacements = 0;
         frame.mReconstruction = Reconstruction{};
+        frame.mReadBackBytes = 0;
         return frame;
     }
 
@@ -99,17 +102,24 @@ namespace Rtx
         if (mCountHits)
             counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
 
-        ++mFinished;
-
         if (mReports.size() >= sFrameSlots)
             mReports.erase(mReports.begin());
+
+        // The picture is the slot's own memory, handed out as a span: the slot is not begun again
+        // until the ring comes round to it, which is what the result promises.
+        const std::span<const std::uint8_t> pixels = frame.mReadBackBytes > 0
+            ? std::span(static_cast<const std::uint8_t*>(frame.mReadBack.map()), frame.mReadBackBytes)
+            : std::span<const std::uint8_t>();
 
         FrameResult& report = mReports.emplace_back(FrameResult{
             .mHits = counted.mHits,
             .mWaitMs = waited,
             .mInFlight = frame.mInFlight,
             .mReconstruction = frame.mReconstruction,
+            .mFrame = mFinished,
+            .mPixels = pixels,
         });
+        ++mFinished;
         frame.mTimer.resolve(report.mGpu);
     }
 

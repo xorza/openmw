@@ -65,7 +65,7 @@ namespace Rtx
 
             constexpr std::uint32_t sCount = sWidth * sHeight;
             const Buffer written
-                = Buffer::staging(device, sCount * sizeof(Launched), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
+                = Buffer::readBack(device, sCount * sizeof(Launched), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
             constexpr std::uint32_t sUnwritten = 0xFFFFFFFFu;
             std::memset(written.map(), 0xFF, sCount * sizeof(Launched));

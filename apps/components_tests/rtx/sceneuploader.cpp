@@ -21,47 +21,12 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "countingrenderer.hpp"
+#include "geometry.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// What one call to `addModel` put in the scene, so a sweep can name it again.
-        struct Model
-        {
-            Rtx::Index mMesh = 0;
-            Rtx::Index mMaterial = 0;
-            Rtx::Index mTexture = 0;
-            Rtx::Index mSlot = 0;
-        };
-
-        /// One triangle and one material naming one texture, so a mesh, a material and a texture all
-        /// arrive together the way a model does.
-        ///
-        /// The paths are made up: `SceneTextures` answers a path that names nothing with the
-        /// stand-in and counts it unreadable, which is exactly the description a decision needs and
-        /// costs no content files to produce.
-        Model addModel(Rtx::SceneDesc& scene, VFS::Path::NormalizedView texture)
-        {
-            const osg::Vec3f positions[3] = { { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 } };
-            const osg::Vec3f normals[3] = { { 0, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 } };
-            const osg::Vec2f uvs[3] = { { 0, 0 }, { 1, 0 }, { 0, 1 } };
-            const std::uint32_t indices[3] = { 0, 1, 2 };
-
-            Model made;
-            made.mMesh = scene.addMesh(
-                MeshArrays{ .mPositions = positions, .mNormals = normals, .mTexCoords = uvs, .mIndices = indices });
-
-            made.mTexture = scene.textures().add(texture);
-
-            Rtx::Material material;
-            material.mDiffuse = made.mTexture;
-            made.mMaterial = scene.materials().add(material);
-            made.mSlot = scene.addInstance(Rtx::MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
-
-            return made;
-        }
-
         /// The three branches in the order a session takes them, each proved by what the renderer
         /// was asked to do and by how much describing it cost.
         TEST(RtxSceneUploaderTest, aSessionTakesEachBranchInTheOrderItReachesThem)
@@ -73,8 +38,8 @@ namespace Rtx
             SceneUploader uploader;
             Testing::CountingRenderer renderer;
 
-            const Model first = addModel(scene, VFS::Path::NormalizedView("textures/one.dds"));
-            const Model second = addModel(scene, VFS::Path::NormalizedView("textures/two.dds"));
+            const Testing::Model first = Testing::addModel(scene, VFS::Path::NormalizedView("textures/one.dds"));
+            const Testing::Model second = Testing::addModel(scene, VFS::Path::NormalizedView("textures/two.dds"));
 
             // **First time through there is nothing to append to**, so two textures arriving is a
             // build of everything even though nothing was renumbered.
@@ -96,7 +61,7 @@ namespace Rtx
             EXPECT_EQ(renderer.mRebuilt, 1u) << "an unchanged scene must not cost a rebuild";
 
             // A ring arrives: a third model, so the tables grew and nothing moved.
-            const Model third = addModel(scene, VFS::Path::NormalizedView("textures/three.dds"));
+            const Testing::Model third = Testing::addModel(scene, VFS::Path::NormalizedView("textures/three.dds"));
 
             const SceneUpload grown = uploader.hand(renderer,
                 Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(), .mScene = scene, .mImages = images });
@@ -110,7 +75,7 @@ namespace Rtx
             // The first model goes, in the order a sweep goes in: its placement first, then the
             // tables. **Nothing is renumbered by that any more**, so it is not a rebuild — the frame
             // after a cell leaves costs the top level and nothing else.
-            scene.placements().drop(first.mSlot, Stander::Walk);
+            scene.placements().drop(first.mPlacement, Stander::Walk);
 
             const Rtx::Index keptMeshes[2] = { second.mMesh, third.mMesh };
             const Rtx::Index keptMaterials[2] = { second.mMaterial, third.mMaterial };
@@ -144,7 +109,7 @@ namespace Rtx
             // **A ring arriving into the slot one left is still an append.** Nothing renumbered, so
             // the rebuild that opened this test stays the only one — which is the whole of what an
             // incremental mirror is worth.
-            const Model fourth = addModel(scene, VFS::Path::NormalizedView("textures/four.dds"));
+            const Testing::Model fourth = Testing::addModel(scene, VFS::Path::NormalizedView("textures/four.dds"));
 
             const SceneUpload grew = uploader.hand(renderer,
                 Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(), .mScene = scene, .mImages = images });
@@ -160,8 +125,8 @@ namespace Rtx
 
             // **A crossing, which is the two at once**: one ring arrives as another goes, on one
             // frame. Both lists are applied and neither costs a rebuild.
-            const Model fifth = addModel(scene, VFS::Path::NormalizedView("textures/five.dds"));
-            scene.placements().drop(fourth.mSlot, Stander::Walk);
+            const Testing::Model fifth = Testing::addModel(scene, VFS::Path::NormalizedView("textures/five.dds"));
+            scene.placements().drop(fourth.mPlacement, Stander::Walk);
 
             const Rtx::Index stillHere[3] = { second.mMesh, third.mMesh, fifth.mMesh };
             const Rtx::Index stillWorn[3] = { second.mMaterial, third.mMaterial, fifth.mMaterial };
@@ -184,7 +149,7 @@ namespace Rtx
             Resource::ImageManager images(&vfs, 0);
 
             Rtx::SceneDesc scene;
-            addModel(scene, VFS::Path::NormalizedView("textures/one.dds"));
+            Testing::addModel(scene, VFS::Path::NormalizedView("textures/one.dds"));
 
             SceneUploader built;
             Testing::CountingRenderer first;
@@ -227,9 +192,9 @@ namespace Rtx
             // The longer scene first, so appending onto its count would run off the end of the
             // shorter one — which is the failure, rather than merely describing the wrong images.
             Rtx::SceneDesc crowded;
-            addModel(crowded, VFS::Path::NormalizedView("textures/one.dds"));
-            addModel(crowded, VFS::Path::NormalizedView("textures/two.dds"));
-            addModel(crowded, VFS::Path::NormalizedView("textures/three.dds"));
+            Testing::addModel(crowded, VFS::Path::NormalizedView("textures/one.dds"));
+            Testing::addModel(crowded, VFS::Path::NormalizedView("textures/two.dds"));
+            Testing::addModel(crowded, VFS::Path::NormalizedView("textures/three.dds"));
 
             SceneUploader place;
             ASSERT_EQ(place
@@ -241,7 +206,7 @@ namespace Rtx
             ASSERT_EQ(renderer.mTextures, 3u);
 
             Rtx::SceneDesc sparse;
-            addModel(sparse, VFS::Path::NormalizedView("textures/four.dds"));
+            Testing::addModel(sparse, VFS::Path::NormalizedView("textures/four.dds"));
 
             SceneUploader next;
             const SceneUpload second = next.hand(renderer,
@@ -289,11 +254,11 @@ namespace Rtx
             Testing::CountingRenderer renderer;
 
             Rtx::SceneDesc world;
-            addModel(world, VFS::Path::NormalizedView("textures/ground.dds"));
-            addModel(world, VFS::Path::NormalizedView("textures/wall.dds"));
+            Testing::addModel(world, VFS::Path::NormalizedView("textures/ground.dds"));
+            Testing::addModel(world, VFS::Path::NormalizedView("textures/wall.dds"));
 
             Rtx::SceneDesc doll;
-            const Model body = addModel(doll, VFS::Path::NormalizedView("textures/skin.dds"));
+            const Testing::Model body = Testing::addModel(doll, VFS::Path::NormalizedView("textures/skin.dds"));
 
             const Rtx::SceneSlot slot = renderer.addViewScene();
 

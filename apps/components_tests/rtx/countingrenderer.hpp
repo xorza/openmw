@@ -103,8 +103,10 @@ namespace Rtx::Testing
         Rtx::FrameExtents getExtents() const override { return {}; }
         Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
         {
+            ++mFrames;
             return {};
         }
+        std::uint64_t getFrameCount() const override { return mFrames; }
         std::optional<Rtx::FrameResult> finishFrame() override { return std::nullopt; }
         std::optional<Rtx::FrameResult> collectFrame() override { return std::nullopt; }
         bool presentFrame() override { return true; }
@@ -192,6 +194,7 @@ namespace Rtx::Testing
 
         /// Every texture slot given back, across every call, in the order it was named.
         std::vector<std::uint32_t> mDropped;
+        std::uint64_t mFrames = 0;
         std::uint32_t mDropCalls = 0;
 
     private:

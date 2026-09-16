@@ -2,7 +2,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <span>
 #include <string>
 #include <utility>
@@ -99,11 +98,11 @@ namespace Rtx
                 = Buffer::staging(device, amplitudes.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             const Buffer turning
                 = Buffer::staging(device, frequencies.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
-            const Buffer field
-                = Buffer::staging(device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
+            const Buffer field = Buffer::deviceLocal(
+                device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
-            std::memcpy(table.map(), amplitudes.data(), amplitudes.size_bytes());
-            std::memcpy(turning.map(), frequencies.data(), frequencies.size_bytes());
+            table.write(amplitudes);
+            turning.write(frequencies);
 
             constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             const Image surface(device, sCount, sCount, WAVE_TILE_FORMAT, usage, "test-wave-surface");

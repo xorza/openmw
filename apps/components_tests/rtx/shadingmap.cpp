@@ -14,6 +14,7 @@
 #include <components/rtx/texturedata.hpp>
 
 #include "statistics.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
@@ -26,38 +27,25 @@ namespace Rtx
         /// `Rgba8Unorm` is the format that exists for this: it is the one the renderer treats as
         /// linear, so what goes in is what the luminance is computed from and no transfer function
         /// stands between the expectation and the answer.
-        struct Painted
+        template <class Paint>
+        Testing::TestTexture painted(const std::uint32_t width, const std::uint32_t height, Paint&& paint)
         {
-            std::vector<std::byte> mBytes;
-            MipLevel mLevel;
+            Testing::TestTexture texture;
+            texture.mBytes.resize(std::size_t{ width } * height * 4);
+            for (std::uint32_t y = 0; y < height; ++y)
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    const std::uint8_t grey = paint(x, y);
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                        texture.mBytes[(std::size_t{ y } * width + x) * 4 + channel] = grey;
 
-            template <class Paint>
-            Painted(std::uint32_t width, std::uint32_t height, Paint&& paint)
-                : mBytes(std::size_t{ width } * height * 4)
-                , mLevel{ 0, width, height }
-            {
-                for (std::uint32_t y = 0; y < height; ++y)
-                    for (std::uint32_t x = 0; x < width; ++x)
-                    {
-                        const std::uint8_t grey = paint(x, y);
-                        for (std::size_t channel = 0; channel < 3; ++channel)
-                            mBytes[(std::size_t{ y } * width + x) * 4 + channel] = std::byte{ grey };
+                    texture.mBytes[(std::size_t{ y } * width + x) * 4 + 3] = 255;
+                }
 
-                        mBytes[(std::size_t{ y } * width + x) * 4 + 3] = std::byte{ 255 };
-                    }
-            }
-
-            TextureData describe() const
-            {
-                return TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = mLevel.mWidth,
-                    .mHeight = mLevel.mHeight,
-                    .mBytes = mBytes,
-                    .mLevels = std::span(&mLevel, 1),
-                };
-            }
-        };
+            texture.mLevels.assign(1, MipLevel{ 0, width, height });
+            texture.describe(width, height, "painted");
+            return texture;
+        }
 
         /// The two 5-6-5 endpoints the block tests spell their palettes out of.
         ///
@@ -71,42 +59,30 @@ namespace Rtx
         ///
         /// @param spell the index byte for a block's column and line — two bits a texel, lowest
         ///        first, so one byte spells a line of four.
-        struct Blocked
+        template <class Spell>
+        Testing::TestTexture blocked(
+            const std::uint32_t side, const std::uint16_t first, const std::uint16_t second, Spell&& spell)
         {
-            std::vector<std::byte> mBytes;
-            MipLevel mLevel;
+            Testing::TestTexture texture;
+            texture.mBytes.resize(std::size_t{ side / 4 } * (side / 4) * 8);
+            const std::uint32_t blocks = side / 4;
+            for (std::uint32_t row = 0; row < blocks; ++row)
+                for (std::uint32_t column = 0; column < blocks; ++column)
+                {
+                    const std::size_t at = (std::size_t{ row } * blocks + column) * 8;
+                    texture.mBytes[at + 0] = static_cast<std::uint8_t>(first);
+                    texture.mBytes[at + 1] = static_cast<std::uint8_t>(first >> 8);
+                    texture.mBytes[at + 2] = static_cast<std::uint8_t>(second);
+                    texture.mBytes[at + 3] = static_cast<std::uint8_t>(second >> 8);
 
-            template <class Spell>
-            Blocked(std::uint32_t side, std::uint16_t first, std::uint16_t second, Spell&& spell)
-                : mBytes(std::size_t{ side / 4 } * (side / 4) * 8)
-                , mLevel{ 0, side, side }
-            {
-                const std::uint32_t blocks = side / 4;
-                for (std::uint32_t row = 0; row < blocks; ++row)
-                    for (std::uint32_t column = 0; column < blocks; ++column)
-                    {
-                        const std::size_t at = (std::size_t{ row } * blocks + column) * 8;
-                        mBytes[at + 0] = std::byte{ static_cast<std::uint8_t>(first) };
-                        mBytes[at + 1] = std::byte{ static_cast<std::uint8_t>(first >> 8) };
-                        mBytes[at + 2] = std::byte{ static_cast<std::uint8_t>(second) };
-                        mBytes[at + 3] = std::byte{ static_cast<std::uint8_t>(second >> 8) };
+                    for (std::uint32_t line = 0; line < 4; ++line)
+                        texture.mBytes[at + 4 + line] = spell(column, line);
+                }
 
-                        for (std::uint32_t line = 0; line < 4; ++line)
-                            mBytes[at + 4 + line] = std::byte{ spell(column, line) };
-                    }
-            }
-
-            TextureData describe() const
-            {
-                return TextureData{
-                    .mFormat = TextureFormat::Bc1RgbaSrgb,
-                    .mWidth = mLevel.mWidth,
-                    .mHeight = mLevel.mHeight,
-                    .mBytes = mBytes,
-                    .mLevels = std::span(&mLevel, 1),
-                };
-            }
-        };
+            texture.mLevels.assign(1, MipLevel{ 0, side, side });
+            texture.describe(side, side, "blocked", TextureFormat::Bc1RgbaSrgb);
+            return texture;
+        }
 
         /// The largest distance any cell is from one, which is how far a map is from neutral.
         float furthestFromNeutral(const ShadingMap& map)
@@ -121,9 +97,10 @@ namespace Rtx
         /// A texture with nothing painted into it has nothing to take out of it.
         TEST(RtxShadingMapTest, anEvenTextureComesBackNeutral)
         {
-            const Painted flat(256, 256, [](std::uint32_t, std::uint32_t) { return std::uint8_t{ 137 }; });
+            const Testing::TestTexture flat
+                = painted(256, 256, [](std::uint32_t, std::uint32_t) { return std::uint8_t{ 137 }; });
 
-            EXPECT_LT(furthestFromNeutral(ShadingMap(flat.describe())), 0.01f);
+            EXPECT_LT(furthestFromNeutral(ShadingMap(flat.mData)), 0.01f);
         }
 
         /// Detail alternating every texel is not lighting, and a map that followed it would flatten
@@ -134,10 +111,10 @@ namespace Rtx
         /// estimate that answers anything but neutral here is reading paint as light.
         TEST(RtxShadingMapTest, aCheckerboardIsLeftAlone)
         {
-            const Painted checks(256, 256,
+            const Testing::TestTexture checks = painted(256, 256,
                 [](std::uint32_t x, std::uint32_t y) { return static_cast<std::uint8_t>((x + y) % 2 ? 20 : 220); });
 
-            EXPECT_LT(furthestFromNeutral(ShadingMap(checks.describe())), 0.01f);
+            EXPECT_LT(furthestFromNeutral(ShadingMap(checks.mData)), 0.01f);
         }
 
         /// A painted gradient is what lighting looks like, and the map has to find it.
@@ -155,12 +132,12 @@ namespace Rtx
         /// three-to-one gradient survives as and comfortably inside the clamps.
         TEST(RtxShadingMapTest, aPaintedGradientIsRecoveredAtTheStrengthItWasPainted)
         {
-            const Painted lit(256, 256, [](std::uint32_t x, std::uint32_t) {
+            const Testing::TestTexture lit = painted(256, 256, [](std::uint32_t x, std::uint32_t) {
                 const double angle = 2.0 * std::numbers::pi * x / 256.0;
                 return static_cast<std::uint8_t>(std::lround(120.0 + 60.0 * std::cos(angle)));
             });
 
-            const ShadingMap map(lit.describe());
+            const ShadingMap map(lit.mData);
             const std::span<const float> values = map.getValues();
 
             EXPECT_NEAR(Testing::meanOf(values), 1.0f, 0.01f) << "the estimate moves light rather than adding it";
@@ -186,10 +163,10 @@ namespace Rtx
         {
             // Black for the left half and white for the right: a hundred to one, which is paint and
             // not shadow, and exactly what the clamps are there to survive.
-            const Painted halves(
+            const Testing::TestTexture halves = painted(
                 256, 256, [](std::uint32_t x, std::uint32_t) { return static_cast<std::uint8_t>(x < 128 ? 3 : 250); });
 
-            const ShadingMap map(halves.describe());
+            const ShadingMap map(halves.mData);
             for (const float value : map.getValues())
             {
                 EXPECT_GE(value, ShadingMap::sFloor);
@@ -220,12 +197,13 @@ namespace Rtx
             constexpr std::uint32_t side = 256;
 
             // 0x00 is four of the first endpoint, 0x55 four of the second, and 0x50 two of each.
-            const Blocked step(side, sWhite, sMidGrey, [](std::uint32_t column, std::uint32_t line) -> std::uint8_t {
-                const bool left = column < side / 8;
-                return left ? (line < 2 ? 0x00 : 0x55) : (line == 0 ? 0x50 : 0x55);
-            });
+            const Testing::TestTexture step
+                = blocked(side, sWhite, sMidGrey, [](std::uint32_t column, std::uint32_t line) -> std::uint8_t {
+                      const bool left = column < side / 8;
+                      return left ? (line < 2 ? 0x00 : 0x55) : (line == 0 ? 0x50 : 0x55);
+                  });
 
-            const ShadingMap map(step.describe());
+            const ShadingMap map(step.mData);
             const std::span<const float> values = map.getValues();
             const std::size_t row = std::size_t{ sSide / 2 } * sSide;
 
@@ -245,10 +223,10 @@ namespace Rtx
         {
             // 0xFF is four texels of the fourth entry, which the ascending endpoints make
             // transparency.
-            const Blocked blank(
-                64, sMidGrey, sWhite, [](std::uint32_t, std::uint32_t) -> std::uint8_t { return 0xFF; });
+            const Testing::TestTexture blank
+                = blocked(64, sMidGrey, sWhite, [](std::uint32_t, std::uint32_t) -> std::uint8_t { return 0xFF; });
 
-            EXPECT_EQ(furthestFromNeutral(ShadingMap(blank.describe())), 0.0f);
+            EXPECT_EQ(furthestFromNeutral(ShadingMap(blank.mData)), 0.0f);
         }
 
         /// A texture too small to fill the grid, which most of Morrowind's smaller ones are.
@@ -260,9 +238,10 @@ namespace Rtx
         /// texels to resolve shading has to mean the same as having no shading.
         TEST(RtxShadingMapTest, aTextureSmallerThanTheGridStillComesBackNeutral)
         {
-            const Painted small(8, 8, [](std::uint32_t, std::uint32_t) { return std::uint8_t{ 90 }; });
+            const Testing::TestTexture small
+                = painted(8, 8, [](std::uint32_t, std::uint32_t) { return std::uint8_t{ 90 }; });
 
-            EXPECT_LT(furthestFromNeutral(ShadingMap(small.describe())), 0.01f);
+            EXPECT_LT(furthestFromNeutral(ShadingMap(small.mData)), 0.01f);
         }
 
         /// A map for a texture that would not load, which is the one every missing material gets.

@@ -32,9 +32,6 @@ namespace Rtx
         /// pending one is no hazard and the made ones still are.
         TEST_F(RtxReadStampTest, aStampNamedByTwoSubmitsInFlightReadsIdleOnlyOnceBothHaveRun)
         {
-            if (mHarness == nullptr)
-                GTEST_SKIP() << "no device";
-
             const Device& device = getDevice();
             const Timeline& timeline = device.getTimeline();
 

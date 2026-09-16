@@ -21,7 +21,7 @@ namespace Rtx
         , mOrder(Buffer::hostWritten(device, 0, sTableUsage, "sprite order"))
         , mRects(Buffer::hostWritten(device, 0, sTableUsage, "sprite rects"))
         , mTileList(Buffer::hostWritten(device, 0, sTableFilledUsage, "sprite tile list"))
-        , mReport(Buffer::staging(device, sizeof(std::uint32_t), sTableUsage, "sprite report"))
+        , mReport(Buffer::readBack(device, sizeof(std::uint32_t), sTableUsage, "sprite report"))
     {
         // Every table exists from here, whether or not anything is binned: a frame carries the
         // address of the sprites and the list, and a scene with no sprites bins none.

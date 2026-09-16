@@ -15,44 +15,35 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "allocations.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// An uncompressed texture whose levels' alphas a test states outright, with colour it ignores.
-        struct AlphaSheet
+        /// Adds one level of `width` by `height` to an uncompressed texture whose levels' alphas a
+        /// test states outright, with colour it ignores, and describes it over every level so far.
+        void addAlphaLevel(Testing::TestTexture& texture, const std::uint32_t width, const std::uint32_t height,
+            std::initializer_list<std::uint8_t> alphas)
         {
-            std::vector<std::byte> mBytes;
-            std::vector<MipLevel> mLevels;
-
-            /// One level of `width` by `height`, with `alphas` in row order.
-            AlphaSheet(std::uint32_t width, std::uint32_t height, std::initializer_list<std::uint8_t> alphas)
+            texture.mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), width, height });
+            for (const std::uint8_t alpha : alphas)
             {
-                addLevel(width, height, alphas);
+                texture.mBytes.insert(texture.mBytes.end(), 3, std::uint8_t{ 255 });
+                texture.mBytes.push_back(alpha);
             }
 
-            void addLevel(std::uint32_t width, std::uint32_t height, std::initializer_list<std::uint8_t> alphas)
-            {
-                mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(mBytes.size()), width, height });
-                for (const std::uint8_t alpha : alphas)
-                {
-                    mBytes.insert(mBytes.end(), 3, std::byte{ 255 });
-                    mBytes.push_back(std::byte{ alpha });
-                }
-            }
+            texture.describe(texture.mLevels.front().mWidth, texture.mLevels.front().mHeight, "alpha sheet");
+        }
 
-            TextureData describe() const
-            {
-                return TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = mLevels.front().mWidth,
-                    .mHeight = mLevels.front().mHeight,
-                    .mBytes = mBytes,
-                    .mLevels = mLevels,
-                };
-            }
-        };
+        /// One level of `width` by `height`, with `alphas` in row order.
+        Testing::TestTexture alphaSheet(
+            const std::uint32_t width, const std::uint32_t height, std::initializer_list<std::uint8_t> alphas)
+        {
+            Testing::TestTexture texture;
+            addAlphaLevel(texture, width, height, alphas);
+            return texture;
+        }
 
         /// Light crossing a row is thinned by every texel beyond the one it reaches, and by none before.
         ///
@@ -70,8 +61,8 @@ namespace Rtx
             constexpr std::array<std::uint8_t, 4> fromHigh{ 180, 214, 255, 255 };
             constexpr std::array<std::uint8_t, 4> fromLow{ 255, 255, 214, 180 };
 
-            const AlphaSheet row(4, 1, { 0, 128, 128, 0 });
-            const AlphaImage rowAlpha(row.describe());
+            const Testing::TestTexture row = alphaSheet(4, 1, { 0, 128, 128, 0 });
+            const AlphaImage rowAlpha(row.mData);
             const SpriteLightMap acrossRow(rowAlpha);
             ASSERT_FALSE(acrossRow.isEmpty());
 
@@ -83,8 +74,8 @@ namespace Rtx
                 EXPECT_EQ(acrossRow.at(0, x, 0, 3), 255) << "-v at " << x;
             }
 
-            const AlphaSheet column(1, 4, { 0, 128, 128, 0 });
-            const AlphaImage columnAlpha(column.describe());
+            const Testing::TestTexture column = alphaSheet(1, 4, { 0, 128, 128, 0 });
+            const AlphaImage columnAlpha(column.mData);
             const SpriteLightMap downColumn(columnAlpha);
 
             for (std::uint32_t y = 0; y < 4; ++y)
@@ -102,8 +93,8 @@ namespace Rtx
         /// light's side is dark, and the texel itself and everything before it are untouched.
         TEST(RtxSpriteLightMapTest, anOpaqueTexelStopsTheLightForEverythingBeyondIt)
         {
-            const AlphaSheet row(4, 1, { 0, 255, 0, 0 });
-            const AlphaImage alpha(row.describe());
+            const Testing::TestTexture row = alphaSheet(4, 1, { 0, 255, 0, 0 });
+            const AlphaImage alpha(row.mData);
             const SpriteLightMap map(alpha);
 
             constexpr std::array<std::uint8_t, 4> fromHigh{ 0, 255, 255, 255 };
@@ -124,10 +115,10 @@ namespace Rtx
         /// in any direction. The second level starts sixteen bytes in, after the first's four texels.
         TEST(RtxSpriteLightMapTest, levelsAreBakedApartAndDescribedBackToBack)
         {
-            AlphaSheet sheet(2, 2, { 0, 128, 0, 0 });
-            sheet.addLevel(1, 1, { 32 });
+            Testing::TestTexture sheet = alphaSheet(2, 2, { 0, 128, 0, 0 });
+            addAlphaLevel(sheet, 1, 1, { 32 });
 
-            const AlphaImage alpha(sheet.describe());
+            const AlphaImage alpha(sheet.mData);
             ASSERT_EQ(alpha.getLevelCount(), 2u);
             const SpriteLightMap map(alpha);
 
@@ -164,8 +155,8 @@ namespace Rtx
         /// sprite on the frame the cell lands.
         TEST(RtxSpriteLightMapTest, aMapBakedAgainIsTheNewSpriteAndKeepsTheRoomOfTheLast)
         {
-            const AlphaSheet sheet(2, 2, { 0, 128, 128, 0 });
-            const AlphaImage alpha(sheet.describe());
+            const Testing::TestTexture sheet = alphaSheet(2, 2, { 0, 128, 128, 0 });
+            const AlphaImage alpha(sheet.mData);
 
             SpriteLightMap map;
             map.build(alpha);

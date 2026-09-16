@@ -113,6 +113,7 @@ set(RTX_TEST_FILES
     rtxbench/benchspec.cpp
     rtxbench/runrecord.cpp
     rtxbench/framehashes.cpp
+    rtxbench/scenedigest.cpp
     rtxbench/frametimes.cpp
     rtxbench/gpuclock.cpp
     rtxtool/options.cpp

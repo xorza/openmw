@@ -21,6 +21,8 @@ set(RTXBENCH_FILES
     runrecord.hpp
     framehashes.cpp
     framehashes.hpp
+    scenedigest.cpp
+    scenedigest.hpp
     frametimes.cpp
     frametimes.hpp
     gpuclock.cpp

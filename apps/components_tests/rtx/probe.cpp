@@ -121,9 +121,9 @@ namespace Rtx
         Readings runProbe(const Device& device, const ComputePipeline& pipeline, CommandPool& pool, VkBuffer source,
             VkDeviceAddress address, const Buffer& blocks, const Buffer& addresses)
         {
-            const Buffer readings = Buffer::staging(device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS,
+            const Buffer readings = Buffer::readBack(device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
-            const Buffer rowReadings = Buffer::staging(
+            const Buffer rowReadings = Buffer::readBack(
                 device, sizeof(Shaders::ProbeRow) * sCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
             const VkDescriptorBufferInfo from{ source, 0, VK_WHOLE_SIZE };

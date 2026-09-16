@@ -58,7 +58,9 @@ namespace Rtx
             EXPECT_NE(textures.getSet(FrameSlot{ 0 }), VK_NULL_HANDLE);
             hold.submit(binder);
 
-            constexpr std::chrono::milliseconds held{ 20 };
+            // Long enough that a wait which returned at once is told from one that waited, under three
+            // shards of this binary sharing the device.
+            constexpr std::chrono::milliseconds held{ 200 };
             const auto asked = std::chrono::steady_clock::now();
             hold.releaseAfter(held);
 
