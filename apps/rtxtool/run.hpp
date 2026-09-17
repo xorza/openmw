@@ -38,6 +38,15 @@ namespace RtxTool
     /// shortest-round-trip numbers, because these are read back into the same floats.
     std::string describeBlock(const Rtx::Stop& stop);
 
+    /// The same place as one `view` command line, as a `#` comment: the cell, the camera, the hour,
+    /// the day and the weather, every one of them named, so a frame somebody saw is a frame the
+    /// next run draws again. The day too, which the block has no key for and the moons hang on.
+    std::string describeCommand(const Rtx::Stop& stop);
+
+    /// Where a window stands, whole: the line for a person, the block for the view file and the
+    /// command for the next run. What a window prints on the key and again where it was left.
+    std::string describeStanding(const Rtx::Stop& stop);
+
     /// What a frame is upscaled by when nobody names a mode. It follows the build, because
     /// `-DOPENMW_RTX_DLSS=OFF` is a deliberate opt-out; Quality rather than Performance, so a plain
     /// run is the renderer with everything on and not one that quietly quartered its pixels.

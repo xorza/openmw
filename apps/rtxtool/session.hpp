@@ -92,6 +92,11 @@ namespace RtxTool
         /// destructor can ask the world nothing.
         void noteStanding();
 
+        /// Prints that note, whole, on the frame Home goes down: what a window prints where it
+        /// was left, printed now, so a frame somebody is looking at can be drawn again without
+        /// closing the window on it.
+        void printStandingIfAsked();
+
         /// Flies the player along the current stop's route by one frame's worth.
         void fly();
 
@@ -192,6 +197,9 @@ namespace RtxTool
         /// because it answers where the run was left. The weather is assigned per frame into room
         /// the string already has.
         std::optional<Rtx::Stop> mStood;
+
+        /// Whether Home was down on the last frame, so a press prints once.
+        bool mPrintKeyHeld = false;
 
         /// What the run has come to so far: the places, the report and the verdict. Its own type,
         /// because everything with something to say writes into all of it.

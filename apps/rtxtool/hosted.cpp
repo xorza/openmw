@@ -85,8 +85,9 @@ namespace RtxTool
 
             // **The keys exist where there is a window.** A watched run answers F6 to F8 and the
             // page keys with the weather and the clock, through the Lua scripts under the
-            // harness's own data directory; a headless run has nobody to press them, and the
-            // played game names neither the directory nor the file.
+            // harness's own data directory, and Home with where it stands, through the session;
+            // a headless run has nobody to press them, and the played game names neither the
+            // directory nor the file.
             if (!setup.mHeadless)
                 dataDirs.push_back(resources / "rtx" / "vfs");
 
@@ -144,7 +145,7 @@ namespace RtxTool
 
         // **Where it was left, so a session that ended somewhere worth keeping did not lose it.**
         if (printLeft && result.mLeft.has_value())
-            out << describeSpot(*result.mLeft) << describeBlock(*result.mLeft);
+            out << describeStanding(*result.mLeft);
 
         // **A run that reached no stop is a failure and not an empty report.** A cell that could
         // not be loaded and a save that would not open both end here, and each of them is a command

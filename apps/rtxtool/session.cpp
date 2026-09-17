@@ -4,11 +4,15 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <ostream>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <SDL_keyboard.h>
+#include <SDL_scancode.h>
 
 #include <osg/Vec3d>
 #include <osg/Vec3f>
@@ -33,6 +37,7 @@
 #include <apps/openmw/mwworld/globals.hpp>
 #include <apps/openmw/mwworld/ptr.hpp>
 #include <apps/openmw/mwworld/timestamp.hpp>
+#include <components/debug/debugging.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/esm/attr.hpp>
 #include <components/esm/position.hpp>
@@ -47,6 +52,8 @@
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
+
+#include "run.hpp"
 
 namespace RtxTool
 {
@@ -549,6 +556,19 @@ namespace RtxTool
         // trace — so a note taken before them describes a camera under a sky that no frame ever
         // used. The last one taken is what `RunRecord::describe` publishes.
         noteStanding();
+        printStandingIfAsked();
+    }
+
+    void Session::printStandingIfAsked()
+    {
+        // **SDL's own key state, and not a script.** The other keys a window answers are named in
+        // `keys.lua`, because what they do is turn the world, which only a script may; what this
+        // one does is print the session's own note of the frame, which no script can reach. The
+        // state array is the engine's, pumped once a frame on this thread.
+        const bool down = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_HOME] != 0;
+        if (down && !mPrintKeyHeld)
+            Debug::getRawStdout() << describeStanding(*mStood) << std::flush;
+        mPrintKeyHeld = down;
     }
 
     bool Session::wantsSecondWalk() const

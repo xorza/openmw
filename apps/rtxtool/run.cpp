@@ -94,6 +94,25 @@ namespace RtxTool
         return block;
     }
 
+    std::string describeCommand(const Rtx::Stop& stop)
+    {
+        const osg::Vec3f& eye = *stop.mStand.mEye;
+        const osg::Vec3f look = stop.mStand.getLook();
+
+        // Quoted, because an interior's name has spaces and commas in it; `=` on every switch,
+        // because a leading minus reads as an option otherwise, as `--pos`'s help says.
+        return std::format(
+            "# openmw-rtxtool view --cell=\"{}\" --pos={},{},{} --look={},{},{} --hour={} --day={} --weather={}\n",
+            stop.mStand.mCell, eye.x(), eye.y(), eye.z(), look.x(), look.y(), look.z(),
+            stop.mSky.mHour.value_or(sDefaultHour), stop.mSky.mDay.value_or(0),
+            stop.mSky.mWeather.value_or(std::string(sDefaultWeather)));
+    }
+
+    std::string describeStanding(const Rtx::Stop& stop)
+    {
+        return describeSpot(stop) + describeBlock(stop) + describeCommand(stop);
+    }
+
     std::vector<BenchSuite> loadSuites(const std::filesystem::path& path)
     {
         Settings::CategorySettingValueMap entries;

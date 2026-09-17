@@ -5,8 +5,10 @@ local input = require('openmw.input')
 local self = require('openmw.self')
 local ui = require('openmw.ui')
 
--- The one place a key is named. Each is unbound in the game's defaults: F3, F4 and F10 are the
--- rasterizer's overlays, Minus, Equals and the brackets cycle spells and weapons.
+-- Every key that turns the world, named once. Each is unbound in the game's defaults: F3, F4 and
+-- F10 are the rasterizer's overlays, Minus, Equals and the brackets cycle spells and weapons. Home
+-- is the one key a window answers that is not here: it prints where the window stands, which is
+-- the session's own note, and `RtxTool::Session` reads it off SDL for that reason.
 local keys = {
     [input.KEY.F6] = { event = 'RtxNextWeather' },
     [input.KEY.F7] = { event = 'RtxPauseClock' },

@@ -69,6 +69,23 @@ namespace RtxTool
             EXPECT_NE(describeSpot(evening).find("17:15, Ashstorm"), std::string::npos) << describeSpot(evening);
         }
 
+        /// The command names every condition, the defaults included, and the numbers the block
+        /// writes: what it starts is the frame that was looked at, and not one an option was left
+        /// to decide.
+        TEST(RtxViewpointTest, theCommandLineNamesEveryCondition)
+        {
+            EXPECT_EQ(describeCommand(makeSpot()),
+                "# openmw-rtxtool view --cell=\"Balmora, Guild of Mages\" --pos=-283.29843,-671.29584,-580.77014 "
+                "--look=503.60007,-1265.436,-747.46844 --hour=12 --day=0 --weather=Clear\n");
+
+            Rtx::Stop dawn = makeSpot();
+            dawn.mSky.mHour = 6.5f;
+            dawn.mSky.mDay = 17;
+            dawn.mSky.mWeather = "Thunderstorm";
+            EXPECT_NE(describeCommand(dawn).find("--hour=6.5 --day=17 --weather=Thunderstorm"), std::string::npos)
+                << describeCommand(dawn);
+        }
+
         /// **The symmetry, asserted rather than assumed**: what the window prints, the view file
         /// reads, and what comes back is the camera that was standing there.
         ///
@@ -83,10 +100,12 @@ namespace RtxTool
         {
             const Rtx::Stop spot = makeSpot();
 
+            // The whole of what a window prints, because the command line is pasted with the rest
+            // and has to read as a comment.
             const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-test.cfg";
             {
                 std::ofstream out(file);
-                out << describeSpot(spot) << describeBlock(spot);
+                out << describeStanding(spot);
             }
 
             const std::vector<Rtx::Stop> read = loadViews(file);
