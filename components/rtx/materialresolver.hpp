@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <osg/Node>
+#include <osg/Vec3f>
 #include <osg/ref_ptr>
 
 #include "alphaimage.hpp"
@@ -16,6 +17,7 @@
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "surface.hpp"
+#include "texels.hpp"
 #include "walk.hpp"
 
 namespace osg
@@ -51,6 +53,10 @@ namespace Rtx
         /// kind of surface the answer changes, a translucent one, and left unset for every other.
         /// The reader answers it because the walk over the texels is the reading's whole cost.
         std::optional<bool> mDiffuseSolid;
+
+        /// What a texel of the diffuse map adds on average, `Material::mDiffuseMean` — decided by
+        /// the reader for an additive surface, for the same reason, and left unset for every other.
+        std::optional<osg::Vec3f> mDiffuseMean;
     };
 
     /// Turns what the content says a surface is into the scene's materials, and keeps the textures
@@ -135,6 +141,9 @@ namespace Rtx
         {
             std::array<Index, sTextureWrapCount> mSlots{ sNoIndex, sNoIndex, sNoIndex, sNoIndex };
             std::optional<bool> mSolid;
+
+            /// Its mean texel, likewise unset until an additive material asks.
+            std::optional<MeanTexel> mMean;
         };
 
         /// Every image an animated material has worn, each held in `mTextureOf` for as long as the
@@ -176,14 +185,13 @@ namespace Rtx
         /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
         Material readMaterial(std::span<const Shading> shading, Worn* worn);
 
-        /// The material a description comes to, with its images taken into the scene.
+        /// The material a reading comes to, with its images taken into the scene. What the reader
+        /// answered about the diffuse map is taken as read, and what it left unset is asked of the
+        /// image here, only where it matters.
         ///
-        /// @param diffuseSolid whether the diffuse map reaches solid, where a reader already
-        ///        answered; asked of the image here otherwise, and only where it matters.
         /// @param worn what an animated material keeps of every image it has worn, or null for
         ///        one nothing rewrites.
-        Material describe(
-            const SurfaceDescription* described, bool animated, std::optional<bool> diffuseSolid, Worn* worn);
+        Material describe(const MaterialReading& reading, bool animated, Worn* worn);
 
         using Entry = Identity<const osg::StateSet, HeldMaterial>::Entry;
 
@@ -208,6 +216,11 @@ namespace Rtx
         /// walks every texel of the finest level.
         bool diffuseReachesSolid(const osg::Image* image);
 
+        /// What a texel of `image` adds on average under `blend` — `meanTexel`, read at the first
+        /// material that asks and kept for as long as the image is held. Asked only for an additive
+        /// material's own diffuse map, for the same reason. The untextured grey for no image.
+        osg::Vec3f diffuseMeanOf(const osg::Image* image, BlendKind blend);
+
         SceneDesc& mScene;
         const MirrorPass& mPass;
 
@@ -226,8 +239,9 @@ namespace Rtx
         /// address would otherwise be handed the state set the first one's controllers were writing.
         Identity<const osg::Node, Animated> mAnimated{ mPass };
 
-        /// What `diffuseReachesSolid` reads a texture's alpha in, refilled per image it is asked
-        /// about — which is once per translucent diffuse map a cell arrives with.
+        /// What `diffuseReachesSolid` and `diffuseMeanOf` read a texture in, refilled per image
+        /// they are asked about — which is once per translucent or additive diffuse map a cell
+        /// arrives with.
         AlphaScratch mAlphaScratch;
     };
 }

@@ -14,6 +14,7 @@
 #include "camera.hpp"
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
+#include "lightbuilder.hpp"
 #include "materialresolver.hpp"
 #include "mesh.hpp"
 #include "meshreader.hpp"
@@ -169,6 +170,12 @@ namespace Rtx
         /// record, and neither is a lamp something picked up and put down.
         void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime);
 
+        /// Opens the glow of a magic effect the walk has entered, and closes it into the scene's
+        /// lights where the walk leaves it — `Rtx::Glow`. One at a time, because the walk is inside
+        /// one effect at a time: an effect stated under an effect is the outer one's.
+        void openGlow();
+        void closeGlow();
+
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         /// `place` is handed over rather than worked out from `path`, because
         /// `osg::computeLocalToWorld` rebuilds the whole chain from the root for every drawable. A
@@ -276,6 +283,9 @@ namespace Rtx
 
         /// See `setEye`.
         std::optional<ViewBasis> mEye;
+
+        /// The effect the walk is inside, where it is inside one: what its sheets add up to.
+        std::optional<Glow> mGlow;
 
         /// Which sweep is current, and where the walk in progress puts its counts. Declared before
         /// the walk and every resolver below, which borrow it rather than keep a copy that could

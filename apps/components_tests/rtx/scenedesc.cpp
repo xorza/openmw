@@ -124,6 +124,11 @@ namespace Rtx
             EXPECT_EQ(scene.meshes().getMeshPositions(second)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(scene.meshes().getMeshIndices(second)[5], 3u);
 
+            // The box, read off the vertices as they arrive: a unit quad's runs from the origin
+            // to (1, 1, 0).
+            EXPECT_EQ(
+                scene.meshes().getRows()[first].mBounds, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 0.0f)));
+
             // And whether the caller found it doubled for its back, which the scene keeps and
             // never works out for itself.
             EXPECT_FALSE(scene.meshes().getRows()[first].mShape.mSheet);

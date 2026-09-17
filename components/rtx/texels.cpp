@@ -64,7 +64,14 @@ namespace Rtx
 
     MeanTexel meanTexel(const osg::Image& image)
     {
-        std::vector<MipLevel> levels;
+        AlphaScratch scratch;
+        return meanTexel(image, scratch);
+    }
+
+    MeanTexel meanTexel(const osg::Image& image, AlphaScratch& scratch)
+    {
+        std::vector<MipLevel>& levels = scratch.mLevels;
+        levels.clear();
 
         TextureData described;
         try
@@ -90,26 +97,33 @@ namespace Rtx
 
         // Never empty here, because it is empty only for a description carrying no texels — so
         // the alpha is read rather than defaulted, which is the difference between a star sheet
-        // worth nearly nothing and one worth the black it is painted on.
-        const AlphaImage alpha(described);
+        // worth nearly nothing and one worth the black it is painted on. The one level, as
+        // `reachesSolid` reads it, because the coarser ones are never asked.
+        described.mLevels = described.mLevels.subspan(0, 1);
+        AlphaImage& alpha = scratch.mAlpha;
+        alpha.build(described);
 
         osg::Vec3d total;
+        osg::Vec3d whole;
         double covered = 0.0;
         for (std::uint32_t y = 0; y < level.mHeight; ++y)
             for (std::uint32_t x = 0; x < level.mWidth; ++x)
             {
-                const osg::Vec3f stored = texelAt(described, level, x, y);
+                const osg::Vec3d light(toLinear(texelAt(described, level, x, y)));
                 const double opacity = alpha.at(0, x, y) / 255.0;
 
-                total += osg::Vec3d(toLinear(stored)) * opacity;
+                total += light * opacity;
+                whole += light;
                 covered += opacity;
             }
 
         const double texels = double(level.mWidth) * level.mHeight;
         total /= texels;
+        whole /= texels;
 
         return MeanTexel{
             .mColour = osg::Vec3f(float(total.x()), float(total.y()), float(total.z())),
+            .mWhole = osg::Vec3f(float(whole.x()), float(whole.y()), float(whole.z())),
             .mAlpha = float(covered / texels),
         };
     }

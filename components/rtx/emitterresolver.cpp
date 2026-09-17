@@ -23,14 +23,6 @@ namespace Rtx
 {
     namespace
     {
-        /// The uniform scale a placement carries, as the length of its first basis row: a sprite's
-        /// size is in the particle system's own coordinates, and Morrowind scales references
-        /// uniformly.
-        float scaleOf(const osg::Matrixf& place)
-        {
-            return osg::Vec3f(place(0, 0), place(0, 1), place(0, 2)).length();
-        }
-
         /// `axis` turned by the rotation one particle carries, composed the way `osgParticle`
         /// composes it — `Matrix::makeRotate(angle.x, X, angle.y, Y, angle.z, Z)` — so a raindrop
         /// leans into the wind exactly as the rasterizer leans it.
@@ -146,7 +138,7 @@ namespace Rtx
         const osg::Matrixf& place = pending.mPlace;
         const HeldSprite& held = *pending.mHeld;
 
-        const float scale = scaleOf(place);
+        const float scale = placedScale(place);
 
         // Which way the quad faces: a `BILLBOARD` system's is a disc facing the eye, and a `FIXED`
         // one's hangs in the world as authored, which is how Morrowind's rain is a falling streak.

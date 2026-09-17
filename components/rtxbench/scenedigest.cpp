@@ -81,7 +81,7 @@ namespace Rtx
         {
             const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, diffuseColour,
                 emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided, textureTransform, run,
-                flatten, animated, neverSolid]
+                flatten, animated, neverSolid, diffuseMean]
                 = material;
 
             texture(diffuse);
@@ -106,6 +106,7 @@ namespace Rtx
             value(flatten);
             value(animated);
             value(neverSolid);
+            value(diffuseMean);
         }
 
         void addMaterial(Digest& digest, const SceneDesc& scene, const Index index)

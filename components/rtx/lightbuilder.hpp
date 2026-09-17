@@ -2,7 +2,11 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
+#include <osg/BoundingBox>
+#include <osg/BoundingSphere>
+#include <osg/Matrixf>
 #include <osg/Vec3f>
 
 #include <components/sceneutil/lightcontroller.hpp>
@@ -15,6 +19,8 @@ namespace SceneUtil
 
 namespace Rtx
 {
+    struct Material;
+
     /// One light, placed in the world: a lamp, or the fill a Light spell casts. Everything here is
     /// derived: a `LIGH` record carries a colour and a radius and no intensity at all.
     struct Light
@@ -92,6 +98,22 @@ namespace Rtx
     /// a fill is that lamp. Nothing where `colour` has a negative channel or `radius` is no size.
     std::optional<Light> makeFill(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
+    /// The name a magic bolt's light carries its spell's largest area under, in feet, as an
+    /// `osg::Object` user value: what `MWWorld::ProjectileManager` states beside the light it hangs
+    /// on a bolt, and the one thing about a spell the graph says that the rasterizer's light does
+    /// not read.
+    inline constexpr std::string_view sSpellAreaValue = "spellArea";
+
+    /// How far a light in the game's scene graph reaches, as this renderer sizes it: the radius
+    /// the game gave it, or the spell's area where the light is a bolt's and the area is the
+    /// larger.
+    ///
+    /// **A bolt's light is sixty-six units whatever the spell**, because the rasterizer lights a
+    /// fireball of fifty feet and a spark alike, and a lamp that size is a candle's. The area the
+    /// spell states is what a light of it should reach — a fireball of fifty feet lights fifty
+    /// feet, in flight as at its burst — and a spell with no area stays the bolt it was.
+    float lightRadius(const SceneUtil::LightSource& source);
+
     /// What a light in the game's scene graph radiates this frame, in the renderer's units: the
     /// diffuse and the ambient summed, because the content uses both, and decoded, from the
     /// recorded colours and this frame's scalars rather than the colours the frame was written
@@ -104,4 +126,57 @@ namespace Rtx
     /// `1 +- depth`, averaging one over time, the same at a given instant however many times a
     /// frame asks.
     float lightBrightness(SceneUtil::LightController::LightType type, int id, double simulationTime);
+
+    /// What a magic effect's glowing sheets add up to while a walk is inside the effect: the one
+    /// lamp they make together. Opened where the walk enters an effect, handed every additive
+    /// sheet it meets under it, and closed into a `Light` where the walk leaves.
+    ///
+    /// **One lamp for the effect and not one for each sheet**, because a burst is twenty sheets
+    /// stood at one place, and twenty lamps of a fireball's reach are twenty times the entries
+    /// in the light grid, which coarsens every cell in the room for the length of the burst.
+    struct Glow
+    {
+        /// What the sheets radiate, summed, per unit of area — `addSheet` says the arithmetic.
+        osg::Vec3f mRadiance;
+
+        /// The ball every sheet stands in, in the world. Invalid until a sheet is added.
+        osg::BoundingSpheref mBall;
+    };
+
+    /// Adds one sheet of an effect to `glow`: a mesh of `box` wearing `worn`, stood by `place`
+    /// and shown at `fade`. Nothing where `worn` does not add.
+    ///
+    /// **What a sheet radiates is what `additiveAlong` adds for it**, per unit of area on average:
+    /// its map's mean texel under the material's tint and opacity, times the glow the material
+    /// states at `EMISSIVE_INTENSITY` — the white ambient the game gives an effect is in that glow
+    /// already, `MaterialResolver::describe` says where. The light the sheet reflects is not in
+    /// it, because that light is some lamp's and a lamp of it would count that lamp twice. The
+    /// material's own colours and never the vertex's: no effect in the game tints its sheets by
+    /// vertex, and a sheet that did would light as its material says.
+    ///
+    /// **The ball is the mesh's own box, half its widest side about its centre, scaled and
+    /// stood by the placement** — the box the table kept as the vertices arrived,
+    /// `MeshRange::mBounds`, so no sheet is measured here and no triangle walked. Half the widest
+    /// side and not the box's diagonal, which is a sphere's radius by root three; and the box in
+    /// the mesh's own frame and never its corners carried into the world, because a burst's
+    /// sheets are billboards the walk turns to the eye, and a world box of a turning square grows
+    /// and shrinks by root two as the camera moves — a lamp that moves every frame, which the
+    /// light grid rebuilds for. The size the spell states is the size the game drew the burst at:
+    /// `CastSpell::explodeSpell` stands the area effect at twice its area, and the ball is what
+    /// that came to.
+    void addSheet(
+        Glow& glow, const Material& worn, const osg::BoundingBoxf& box, const osg::Matrixf& place, float fade);
+
+    /// The lamp `glow` is, or nothing where no sheet glowed: a fill whose ball is the effect's
+    /// own, so a burst of fifty feet lights whatever stands inside it from every side and shadows
+    /// it with nothing, and everything outside it by a source fifty feet wide.
+    ///
+    /// **Its intensity is a closed shell's of that radius glowing at the sheets' radiance,
+    /// `2 * pi * L * R^2`**: each face of a shell leaves `pi * L` per unit of area, a Lambertian
+    /// exitance, both faces of `4 * pi * R^2` are crossed by every ray that reaches it, and a
+    /// point of intensity `I` sheds `4 * pi * I`. Exact for the fire burst, which is a sphere,
+    /// and twice the truth for a lone flat sheet, whose two faces are half a shell's area. The
+    /// reach is a fill's, `sFillReachScale` radii: the intensity is derived and not read off a
+    /// record, and a burst is the one lamp in the game whose whole purpose is the room around it.
+    std::optional<Light> makeGlow(const Glow& glow);
 }

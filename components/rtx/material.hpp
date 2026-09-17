@@ -6,6 +6,7 @@
 #include <osg/Vec4f>
 
 #include "runs.hpp"
+#include "shaders/look.h"
 #include "surface.hpp"
 
 namespace Rtx
@@ -33,6 +34,13 @@ namespace Rtx
     inline bool translucentSurface(const AlphaMode mode, const float opacity, const BlendKind blend)
     {
         return mode == AlphaMode::Blend && opacity < 1.0f && blend == BlendKind::Over;
+    }
+
+    /// Whether a surface adds to what is behind it and covers nothing — `BlendKind::Add` or
+    /// `AddWhole` under a blend. The same rule over the same two facts, for the same reason.
+    inline bool additiveSurface(const AlphaMode mode, const BlendKind blend)
+    {
+        return mode == AlphaMode::Blend && blend != BlendKind::Over;
     }
 
     /// How a surface is shaded, as the file says it. Vanilla textures are pre-lit, so `mDiffuse` is
@@ -123,6 +131,13 @@ namespace Rtx
         /// False for a material with no diffuse map at all, which is an untextured pane.
         bool mDiffuseNeverSolid = false;
 
+        /// What one texel of the diffuse map adds on average under this material's blend, in
+        /// linear light: weighted by its own alpha where the blend reads one and whole where it
+        /// does not — `meanTexel`. Read for an additive material and nothing else, because what
+        /// asks is a magic effect's glow, and left at the untextured grey for one with no map,
+        /// which is what its sheets are drawn with. Nought for a map nothing here can decode.
+        osg::Vec3f mDiffuseMean = Shaders::NO_TEXTURE_ALBEDO;
+
         /// For telling a rewrite from a no-op: a state set with a controller on it is re-read every
         /// frame and usually says exactly what it said last time.
         bool operator==(const Material& other) const = default;
@@ -158,7 +173,7 @@ namespace Rtx
         /// Whether this surface adds to what is behind it and covers nothing — `BlendKind::Add`
         /// or `AddWhole` under a blend. Such a surface is no pane and no mask: it is gathered by
         /// `additiveAlong` on a mask of its own and met by no other ray.
-        bool isAdditive() const { return mAlphaMode == AlphaMode::Blend && mBlend != BlendKind::Over; }
+        bool isAdditive() const { return additiveSurface(mAlphaMode, mBlend); }
 
         /// `translucentSurface` of this material. The two answers want opposite things from
         /// traversal — a mask averaged and tested is right for the leaf, light attenuated as it

@@ -3,13 +3,21 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
 
+#include <osg/BoundingBox>
+#include <osg/BoundingSphere>
+#include <osg/Matrixf>
 #include <osg/Vec4f>
 
+#include <components/misc/constants.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 
 #include "colour.hpp"
+#include "material.hpp"
+#include "mesh.hpp"
+#include "shaders/look.h"
 #include "shaders/scene.h"
 
 namespace Rtx
@@ -134,6 +142,24 @@ namespace Rtx
             // their count so that the sum cannot leave `-1 .. 1`, which is what bounds the brightness.
             return sum / static_cast<float>(sFlameBands);
         }
+
+        /// A fill: a lamp whose flame is a ball `ball` wide at `position`, radiating `intensity` to
+        /// `reach`. The ball is the source, so the shadow ray opens to the whole of it, and the
+        /// ball is the clearance too, so the ray stops at the ball: nothing inside it casts a
+        /// shadow, and what is inside it is lit from every side — `weighLamps` reads `mFill` for
+        /// that. Stated once, because a fill made by hand with its clearance short of its ball
+        /// would shadow what stands inside it by its own bearer.
+        Light fillOf(const osg::Vec3f& position, const osg::Vec3f& intensity, const float ball, const float reach)
+        {
+            return Light{
+                .mPosition = position,
+                .mIntensity = intensity,
+                .mReach = reach,
+                .mSourceRadius = ball,
+                .mClearance = ball,
+                .mFill = 1,
+            };
+        }
     }
 
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position)
@@ -166,20 +192,11 @@ namespace Rtx
     {
         // Lifted by its own radius, so the ball stands on the ground the game hung the glow at and
         // the bearer stands inside it rather than on top of it.
-        std::optional<Light> fill = makeLight(colour, radius, position + osg::Vec3f(0.0f, 0.0f, sFillBallRadius));
-        if (!fill.has_value())
+        const std::optional<Light> lamp = makeLight(colour, radius, position + osg::Vec3f(0.0f, 0.0f, sFillBallRadius));
+        if (!lamp.has_value())
             return std::nullopt;
 
-        fill->mReach = radius * sFillReachScale;
-
-        // The ball is the source, so the shadow ray opens to the whole of it, and the ball is the
-        // clearance too, so the ray stops at the ball: nothing inside it casts a shadow, and what
-        // is inside it is the bearer.
-        fill->mSourceRadius = sFillBallRadius;
-        fill->mClearance = sFillBallRadius;
-        fill->mFill = 1;
-
-        return fill;
+        return fillOf(lamp->mPosition, lamp->mIntensity, sFillBallRadius, radius * sFillReachScale);
     }
 
     bool isFill(const SceneUtil::LightSource& source)
@@ -215,6 +232,49 @@ namespace Rtx
         }
 
         return 1.0f;
+    }
+
+    float lightRadius(const SceneUtil::LightSource& source)
+    {
+        // A `std::string` because that is what `getUserValue` takes, and static because the graph
+        // holds a few hundred lamps a frame and every one is asked.
+        static const std::string spellArea(sSpellAreaValue);
+
+        float areaFeet = 0.0f;
+        if (!source.getUserValue(spellArea, areaFeet))
+            return source.getSourceRadius();
+
+        return std::max(source.getSourceRadius(), areaFeet * Constants::UnitsPerFoot);
+    }
+
+    void addSheet(
+        Glow& glow, const Material& worn, const osg::BoundingBoxf& box, const osg::Matrixf& place, const float fade)
+    {
+        if (!worn.isAdditive() || !box.valid())
+            return;
+
+        // What the crossing's alpha weighs, as `additiveAlong` weighs it: nothing under a blend
+        // that adds whole, and the material's opacity under the instance's fade otherwise. The
+        // texel's own alpha is already in the mean.
+        const float opacity = worn.mBlend == BlendKind::AddWhole ? 1.0f : worn.mOpacity * fade;
+
+        const osg::Vec3f tinted = osg::componentMultiply(worn.mDiffuseMean, worn.mDiffuseColour) * opacity;
+        glow.mRadiance += osg::componentMultiply(tinted, worn.mEmissiveColour) * Shaders::EMISSIVE_INTENSITY;
+
+        const osg::Vec3f half = (box._max - box._min) * 0.5f;
+        const float radius = std::max({ half.x(), half.y(), half.z() }) * placedScale(place);
+        glow.mBall.expandBy(osg::BoundingSpheref(box.center() * place, radius));
+    }
+
+    std::optional<Light> makeGlow(const Glow& glow)
+    {
+        if (!glow.mBall.valid() || !(glow.mBall.radius() > 0.0f) || glow.mRadiance == osg::Vec3f())
+            return std::nullopt;
+
+        const float radius = glow.mBall.radius();
+
+        return fillOf(glow.mBall.center(), glow.mRadiance * (2.0f * Shaders::PI * radius * radius), radius,
+            radius * sFillReachScale);
     }
 
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime)

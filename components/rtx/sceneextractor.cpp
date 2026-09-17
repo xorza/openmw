@@ -268,7 +268,16 @@ namespace Rtx
         if (const std::optional<InstanceClass> stated = mExtractor.classOf(node.getNodeMask()))
             mClass = *stated;
 
+        // The root of a magic effect, whose sheets light the world as one lamp: opened here and
+        // closed on the way back up, once everything under it has been placed.
+        const bool glows = mClass == InstanceClass::Effect && outer != InstanceClass::Effect;
+        if (glows)
+            mExtractor.openGlow();
+
         descend(node, kind);
+
+        if (glows)
+            mExtractor.closeGlow();
 
         mClass = outer;
         mPathHash = above;
@@ -497,6 +506,9 @@ namespace Rtx
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
+        // An effect a walk that threw was inside is not one this walk is inside.
+        mGlow.reset();
+
         // Non-const because the walk writes. It poses every actor it reaches and it runs every
         // state-set controller it finds, which is what makes an actor behind the camera posed and a
         // fire lit; OSG's visitor API is non-const regardless, so the cast happens once, here.
@@ -600,7 +612,7 @@ namespace Rtx
         // hangs on has no geometry, which is a rasterizer's reason to skip a light, and a `LIGH`
         // whose mesh is empty still burns.
         const osg::Vec3f colour = lightColour(source, simulationTime);
-        const float radius = source.getSourceRadius();
+        const float radius = lightRadius(source);
         const std::optional<Light> made
             = isFill(source) ? makeFill(colour, radius, place.getTrans()) : makeLight(colour, radius, place.getTrans());
         if (!made.has_value())
@@ -608,6 +620,25 @@ namespace Rtx
 
         mScene.addLight(*made);
         ++mPass.getStats().mLights;
+    }
+
+    void SceneExtractor::openGlow()
+    {
+        assert(!mGlow.has_value() && "a walk entered an effect while inside one");
+        mGlow.emplace();
+    }
+
+    void SceneExtractor::closeGlow()
+    {
+        assert(mGlow.has_value() && "a walk left an effect it never entered");
+
+        if (const std::optional<Light> made = makeGlow(*mGlow); made.has_value())
+        {
+            mScene.addLight(*made);
+            ++mPass.getStats().mLights;
+        }
+
+        mGlow.reset();
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, const std::size_t who,
@@ -661,6 +692,13 @@ namespace Rtx
         };
 
         ++stats.mInstances;
+
+        // What the sheet adds to the effect's lamp, read off the rows the placement stands on
+        // this frame: a controller may have rewritten the material on the way here, and
+        // `resolve` rewrote the row before this read.
+        if (mGlow.has_value() && material.mIndex != sNoIndex)
+            addSheet(*mGlow, mScene.materials().getRows()[material.mIndex], mScene.meshes().getRows()[mesh].mBounds,
+                place, fade);
 
         if (held == mPlacements.end())
         {

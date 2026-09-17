@@ -135,7 +135,8 @@ namespace MWWorld
         void moveMagicBolts(float dt);
 
         void createModel(State& state, VFS::Path::NormalizedView model, const osg::Vec3f& pos, const osg::Quat& orient,
-            bool rotate, bool createLight, osg::Vec4 lightDiffuseColor, VFS::Path::NormalizedView texture = {});
+            bool rotate, bool createLight, osg::Vec4 lightDiffuseColor, VFS::Path::NormalizedView texture = {},
+            float lightArea = 0.f);
         void update(State& state, float duration);
 
         void operator=(const ProjectileManager&);

@@ -40,7 +40,8 @@ namespace Rtx
         ///
         /// Four texels: red at full, green at half cover, blue at none, and white. Full is 1.0 in light
         /// and nought is nought, so the mean is `(1 + 0 + 0 + 1) / 4` in red, `(0 + 128/255 + 0 + 1) / 4`
-        /// in green, and `(0 + 0 + 0 + 1) / 4` in blue.
+        /// in green, and `(0 + 0 + 0 + 1) / 4` in blue. With the alpha unread every channel is
+        /// `(1 + 1) / 4`, which is what a sheet that adds whole is worth.
         TEST(RtxMeanTexelTest, aTexelIsWorthItsColourInLightTimesHowMuchOfItIsThere)
         {
             const MeanTexel mean
@@ -49,6 +50,10 @@ namespace Rtx
             EXPECT_NEAR(mean.mColour.x(), 0.5f, 1e-5f);
             EXPECT_NEAR(mean.mColour.y(), 0.37549f, 1e-5f);
             EXPECT_NEAR(mean.mColour.z(), 0.25f, 1e-5f);
+
+            EXPECT_NEAR(mean.mWhole.x(), 0.5f, 1e-5f);
+            EXPECT_NEAR(mean.mWhole.y(), 0.5f, 1e-5f);
+            EXPECT_NEAR(mean.mWhole.z(), 0.5f, 1e-5f);
 
             // And the cover beside it, out of the same four: `(1 + 128/255 + 0 + 1) / 4`.
             EXPECT_NEAR(mean.mAlpha, 0.62549f, 1e-5f);

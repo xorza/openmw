@@ -17,6 +17,8 @@ namespace osg
 
 namespace Rtx
 {
+    struct AlphaScratch;
+
     /// The colour of one texel of one level, as it is stored — display-encoded; `Rtx::toLinear`
     /// turns it into light. A texel at a time rather than a level decoded first, because both
     /// callers ask for a scattered few. `x` and `y` must lie inside `level`.
@@ -28,6 +30,10 @@ namespace Rtx
         /// The mean colour, linear and premultiplied by its own alpha — what a sheet is worth as a
         /// light, since it is drawn as `rgb * a` over a known piece of sky.
         osg::Vec3f mColour;
+
+        /// The mean colour with the alpha unread — what a sheet is worth where it adds whole,
+        /// `BlendKind::AddWhole`, which reads none.
+        osg::Vec3f mWhole;
 
         /// The mean of its own alpha — what tells a wisp from a lid, since a few bright clouds over
         /// an empty sky average to the same colour as a solid grey one.
@@ -42,7 +48,12 @@ namespace Rtx
     /// Averages `image`, every texel and not a sample, because a mean of a sheet that is mostly
     /// empty cannot be sampled. Nothing where the image is in a format `describeImage` does not
     /// read.
+    ///
+    /// @param scratch what the reading is done in, which is the caller's, for one that averages
+    ///        many images: cleared and refilled here, and read by nothing afterwards. The
+    ///        overload without one makes its own.
     MeanTexel meanTexel(const osg::Image& image);
+    MeanTexel meanTexel(const osg::Image& image, AlphaScratch& scratch);
 
     /// Which format `image` arrived in — the one place a `GLenum` decides anything, so the
     /// uploader and the report cannot disagree.

@@ -115,6 +115,15 @@ namespace Rtx
         bool isPlaced() const { return mMesh != sNoIndex; }
     };
 
+    /// The uniform scale a placement carries, as the length of its first basis row. Morrowind
+    /// scales references uniformly, and so does every effect the game stands, so one row says
+    /// what a sprite's size in its system's own units, or a mesh's box in its own, is worth in
+    /// the world.
+    inline float placedScale(const osg::Matrixf& place)
+    {
+        return osg::Vec3f(place(0, 0), place(0, 1), place(0, 2)).length();
+    }
+
     /// How a mesh's vertices are re-posed every frame, where they are: by bone rows through a rig,
     /// by target weights through a morph, or not at all. `NifOsg` never makes a geometry both.
     enum class Deform : std::uint8_t

@@ -2,15 +2,27 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <span>
+#include <string>
 
+#include <osg/BlendFunc>
+#include <osg/GL>
+#include <osg/Geometry>
+#include <osg/Group>
+#include <osg/Image>
 #include <osg/Matrix>
+#include <osg/MatrixTransform>
+#include <osg/StateAttribute>
+#include <osg/StateSet>
+#include <osg/Uniform>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
 #include <components/esm3/loadligh.hpp>
 #include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/material.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
@@ -31,6 +43,126 @@ namespace Rtx::Testing
         /// the phase is the light's id, which is the count of lights the process made before it, so
         /// which tests ran first decided whether this one passed.
         const float sWhiteLampAtHundred = 100.0f * 100.0f * (0.25f * Shaders::PI);
+
+        /// A magic bolt's light is sized by the area its spell states, in feet, and a spell with no
+        /// area stays the bolt the game made.
+        ///
+        /// Sixty-six units is what `ProjectileManager` gives every bolt. Fifty feet is 50 by
+        /// 21.333 = 1066.7 units, which is the larger, so the light is a lamp of that radius: its
+        /// reach `1066.7 * 2 + 128 = 2261.3` and its intensity `1066.7^2 * 0.25 * pi = 893,657`
+        /// on a white colour. A spark of no area keeps the bolt's own sixty-six, reaching
+        /// `66 * 2 + 128 = 260`; and an area smaller than the bolt, one foot, is not a shrinking.
+        TEST_F(RtxSceneExtractorTest, aBoltsLightReachesTheAreaItsSpellStates)
+        {
+            osg::ref_ptr<SceneUtil::LightSource> fireball = makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1));
+            fireball->setUserValue(std::string(Rtx::sSpellAreaValue), 50.0f);
+
+            osg::ref_ptr<SceneUtil::LightSource> spark = makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1));
+
+            osg::ref_ptr<SceneUtil::LightSource> touch = makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1));
+            touch->setUserValue(std::string(Rtx::sSpellAreaValue), 1.0f);
+
+            osg::ref_ptr<osg::Group> flying = new osg::Group;
+            flying->addChild(fireball);
+            flying->addChild(spark);
+            flying->addChild(touch);
+            walk(*flying);
+
+            ASSERT_EQ(mScene.lights().size(), 3u);
+            const std::span<const Rtx::Light> lights = mScene.lights();
+            EXPECT_NEAR(lights[0].mReach, 2261.33f, 0.01f);
+            EXPECT_NEAR(lights[0].mIntensity.x(), 893657.0f, 100.0f);
+            EXPECT_NEAR(lights[1].mReach, 260.0f, 0.01f) << "no area, the bolt's own sixty-six";
+            EXPECT_EQ(lights[2].mReach, lights[1].mReach) << "an area under the bolt's own radius is not a shrinking";
+        }
+
+        /// A magic effect's glowing sheets light the world as one fill lamp of their own size and
+        /// colour, and nothing outside an effect does.
+        ///
+        /// The sheet: a unit quad under `SRC_ALPHA, ONE`, its map every texel (255, 128, 0) at full
+        /// alpha — (1, 0.21586, 0) in light — a white tint at half opacity, and the white ambient
+        /// the game gives an effect over a white material ambient, which is a glow of one. So it
+        /// radiates `1 * 0.5 * 8 = 4` red and `0.21586 * 0.5 * 8 = 0.86342` green per unit of
+        /// area. Stood at (1000, 0, 0) a hundred times its size, its box runs from (1000, 0, 0)
+        /// to (1100, 100, 0): a ball at (1050, 50, 0) fifty wide, and a lamp of `2 * pi * 2500 =
+        /// 15,708` times the radiance — 62,832 red and 13,563 green — reaching four radii.
+        ///
+        /// Beside it, under the same root, a sheet that blends over — blood — adds nothing; and
+        /// the same glowing quad stood outside any effect is a glow the walk does not read.
+        TEST_F(RtxSceneExtractorTest, anEffectsGlowingSheetsLightTheWorldAsOneLamp)
+        {
+            constexpr osg::Node::NodeMask sEffect = 1u << 1;
+
+            osg::ref_ptr<osg::Image> map = new osg::Image;
+            map->setFileName("textures/vfx_fireball01.tga");
+            map->allocateImage(2, 2, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+            for (std::size_t texel = 0; texel < 4; ++texel)
+            {
+                map->data()[texel * 4] = 255;
+                map->data()[texel * 4 + 1] = 128;
+                map->data()[texel * 4 + 2] = 0;
+                map->data()[texel * 4 + 3] = 255;
+            }
+
+            const auto makeSheet = [&](GLenum destination) {
+                osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                osg::StateSet& state = *quad->getOrCreateStateSet();
+                paint(state, *map);
+                state.setAttributeAndModes(new osg::BlendFunc(GL_SRC_ALPHA, destination), osg::StateAttribute::ON);
+                state.addUniform(new osg::Uniform("sun.ambient", osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f)));
+
+                SceneUtil::Material& material = colours(state);
+                material.setDiffuse(osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f));
+                material.setAmbient(osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f));
+                return quad;
+            };
+
+            osg::ref_ptr<osg::Group> effect = new osg::Group;
+            effect->setNodeMask(sEffect);
+            effect->addChild(makeSheet(GL_ONE));
+            effect->addChild(makeSheet(GL_ONE_MINUS_SRC_ALPHA));
+
+            osg::ref_ptr<osg::MatrixTransform> stood = new osg::MatrixTransform(
+                osg::Matrix::scale(100.0, 100.0, 100.0) * osg::Matrix::translate(1000.0, 0.0, 0.0));
+            stood->addChild(effect);
+            stood->addChild(makeSheet(GL_ONE));
+
+            mExtractor.setClassMask(Rtx::InstanceClass::Effect, sEffect);
+            const ExtractionStats stats = walk(*stood);
+
+            EXPECT_EQ(stats.mLights, 1u);
+            ASSERT_EQ(mScene.lights().size(), 1u);
+            const Rtx::Light& lamp = mScene.lights().front();
+            EXPECT_NEAR(lamp.mIntensity.x(), 62832.0f, 1.0f);
+            EXPECT_NEAR(lamp.mIntensity.y(), 13563.0f, 1.0f);
+            EXPECT_FLOAT_EQ(lamp.mIntensity.z(), 0.0f);
+            EXPECT_EQ(lamp.mPosition, osg::Vec3f(1050.0f, 50.0f, 0.0f));
+            EXPECT_FLOAT_EQ(lamp.mSourceRadius, 50.0f);
+            EXPECT_EQ(lamp.mClearance, lamp.mSourceRadius);
+            EXPECT_FLOAT_EQ(lamp.mReach, 200.0f);
+            EXPECT_EQ(lamp.mFill, 1u);
+
+            // The map was averaged once and every sheet that adds reads that mean, the one
+            // outside the effect included, which lights nothing with it.
+            ASSERT_EQ(mScene.materials().getRows().size(), 3u);
+            for (const Rtx::Material& worn : mScene.materials().getRows())
+            {
+                if (worn.isAdditive())
+                {
+                    EXPECT_NEAR(worn.mDiffuseMean.y(), 0.21586f, 1e-5f);
+                }
+            }
+
+            // The next frame reads the same lamp, and a walk that meets no effect reads none.
+            mScene.clearPlacement();
+            walk(*stood);
+            ASSERT_EQ(mScene.lights().size(), 1u);
+            EXPECT_NEAR(mScene.lights().front().mIntensity.x(), 62832.0f, 1.0f);
+
+            mScene.clearPlacement();
+            walk(*makeSheet(GL_ONE));
+            EXPECT_TRUE(mScene.lights().empty());
+        }
 
         /// **What the walk asks a `LightSource` is what it radiates, and nothing else.**
         ///

@@ -8,12 +8,16 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/BoundingBox>
+#include <osg/Matrixf>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
 #include <components/esm3/loadligh.hpp>
 #include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/material.hpp>
+#include <components/rtx/surface.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -491,6 +495,84 @@ namespace Rtx
 
             EXPECT_TRUE(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(unlit, osg::Vec3f(), 0.0, 1).has_value());
+        }
+
+        /// An effect's glowing sheets are one fill lamp: what they radiate, summed, off a shell the
+        /// size of the box they all stand in.
+        ///
+        /// A unit quad whose map averages (0.5, 0.25, 0) under a white tint at half opacity and a
+        /// white glow radiates `0.5 * 0.5 * 8 = 2` in red and `0.25 * 0.5 * 8 = 1` in green, per
+        /// unit of area. Stood at (100, 0, 0) by ten its box runs from (100, 0, 0) to (110, 10, 0),
+        /// so the ball is centred at (105, 5, 0) and 5 wide, half the widest side; the lamp is
+        /// `2 * pi * 25 = 157.08` times the radiance, the reach four radii, the ray kept clear of
+        /// the whole ball.
+        ///
+        /// A second sheet twenty units up doubles the radiance, and the ball is the one both balls
+        /// fit: centred ten up and `(20 + 5 + 5) / 2 = 15` wide, so the lamp is `2 * pi * 225 =
+        /// 1413.7` times `(4, 2, 0)`. The same sheet turned about its centre, as a billboard is,
+        /// moves the ball by nothing. A sheet that adds whole reads no opacity, so it radiates
+        /// twice the first. A sheet that blends over is no glow at all, and an effect of none is
+        /// no lamp.
+        TEST(RtxLightBuilderTest, anEffectsSheetsAreOneFillLampOfTheirRadianceOverTheirBall)
+        {
+            const osg::BoundingBoxf quad(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 0.0f));
+            const osg::Matrixf stood
+                = osg::Matrixf::scale(10.0f, 10.0f, 10.0f) * osg::Matrixf::translate(100.0f, 0.0f, 0.0f);
+
+            Material sheet;
+            sheet.mAlphaMode = AlphaMode::Blend;
+            sheet.mBlend = BlendKind::Add;
+            sheet.mDiffuseMean = osg::Vec3f(0.5f, 0.25f, 0.0f);
+            sheet.mOpacity = 0.5f;
+            sheet.mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+
+            Glow glow;
+            addSheet(glow, sheet, quad, stood, 1.0f);
+
+            std::optional<Light> lamp = makeGlow(glow);
+            ASSERT_TRUE(lamp.has_value());
+            EXPECT_NEAR(lamp->mIntensity.x(), 2.0f * 157.08f, 1e-2f);
+            EXPECT_NEAR(lamp->mIntensity.y(), 157.08f, 1e-2f);
+            EXPECT_FLOAT_EQ(lamp->mIntensity.z(), 0.0f);
+            EXPECT_EQ(lamp->mPosition, osg::Vec3f(105.0f, 5.0f, 0.0f));
+            EXPECT_FLOAT_EQ(lamp->mSourceRadius, 5.0f);
+            EXPECT_EQ(lamp->mClearance, lamp->mSourceRadius);
+            EXPECT_FLOAT_EQ(lamp->mReach, 20.0f);
+            EXPECT_EQ(lamp->mFill, 1u);
+
+            // The instance's fade weighs the sheet as the material's opacity does.
+            Glow faded;
+            addSheet(faded, sheet, quad, stood, 0.5f);
+            EXPECT_NEAR(makeGlow(faded)->mIntensity.x(), 157.08f, 1e-2f);
+
+            addSheet(glow, sheet, quad, stood * osg::Matrixf::translate(0.0f, 0.0f, 20.0f), 1.0f);
+            lamp = makeGlow(glow);
+            ASSERT_TRUE(lamp.has_value());
+            EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * 1413.7f, 1.0f);
+            EXPECT_NEAR(lamp->mIntensity.y(), 2.0f * 1413.7f, 1.0f);
+            EXPECT_EQ(lamp->mPosition, osg::Vec3f(105.0f, 5.0f, 10.0f));
+            EXPECT_FLOAT_EQ(lamp->mSourceRadius, 15.0f);
+
+            Glow turned;
+            addSheet(turned, sheet, quad, stood, 1.0f);
+            addSheet(turned, sheet, quad,
+                osg::Matrixf::translate(-0.5f, -0.5f, 0.0f) * osg::Matrixf::rotate(1.0, osg::Vec3f(0.0f, 0.0f, 1.0f))
+                    * osg::Matrixf::translate(0.5f, 0.5f, 0.0f) * stood,
+                1.0f);
+            EXPECT_NEAR(makeGlow(turned)->mSourceRadius, 5.0f, 1e-4f) << "a billboard turning grew the ball";
+
+            Material whole = sheet;
+            whole.mBlend = BlendKind::AddWhole;
+            Glow unread;
+            addSheet(unread, whole, quad, stood, 0.5f);
+            EXPECT_NEAR(makeGlow(unread)->mIntensity.x(), 4.0f * 157.08f, 1e-2f) << "neither the opacity nor the fade";
+
+            Material pane = sheet;
+            pane.mBlend = BlendKind::Over;
+            Glow none;
+            addSheet(none, pane, quad, stood, 1.0f);
+            EXPECT_FALSE(makeGlow(none).has_value()) << "a pane is no glow";
+            EXPECT_FALSE(makeGlow(Glow{}).has_value()) << "an effect of no sheets";
         }
     }
 }
