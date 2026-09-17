@@ -268,7 +268,7 @@ namespace MWRender
         };
 
         /// What this renderer says about its own speed: the window's title once a second, because this
-        /// renderer has no overlay, and the wait it averaged over the last few hundred frames.
+        /// renderer has no overlay.
         class SpeedReport
         {
         public:
@@ -276,34 +276,11 @@ namespace MWRender
             /// out. Never allocates: the text is written into this object's own bytes.
             std::string_view addFrame(double frameMs);
 
-            /// Adds what the CPU stood still for the device on one frame. Counted only where a frame
-            /// answered, or the average divides by frames that contributed nothing. @return whether a
-            /// line is due, which starts the sum again.
-            bool addWait(double waitMs);
-
-            /// What the frames of the line just due came to. Read after `addWait` answers true.
-            double getWaitMs() const { return mReportedMs / static_cast<double>(mReported); }
-            std::uint32_t getFrames() const { return mReported; }
-
         private:
-            /// How many answered frames one line covers.
-            static constexpr std::uint32_t sReportEvery = 300;
-
             Rtx::FrameRate mRate;
 
             /// What the window's title is written from, once a second and never allocated.
             std::array<char, 96> mTitle{};
-
-            /// The sum and the count of the line being gathered.
-            double mSpentMs = 0.0;
-            std::uint32_t mTimed = 0;
-
-            /// What the line that has just come due covers, held so the caller may read it after the
-            /// sum has started again. Both halves, or a sum left running reports every line so far
-            /// over one line's frames — a wait that read as climbing a tenth of a millisecond a
-            /// line for the life of the session.
-            double mReportedMs = 0.0;
-            std::uint32_t mReported = 0;
         };
 
         /// Makes the SDL window the backend builds its surface on; `hidden` is a headless run, the

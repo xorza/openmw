@@ -220,19 +220,6 @@ namespace MWRender
         return std::string_view(mTitle.data(), static_cast<std::size_t>(written.out - mTitle.data()));
     }
 
-    bool RtxRenderer::SpeedReport::addWait(const double waitMs)
-    {
-        mSpentMs += waitMs;
-        ++mTimed;
-
-        if (mTimed < sReportEvery)
-            return false;
-
-        mReportedMs = std::exchange(mSpentMs, 0.0);
-        mReported = std::exchange(mTimed, 0);
-        return true;
-    }
-
     RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* run)
         : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
@@ -1150,26 +1137,6 @@ namespace MWRender
             if (const std::string_view title = mSpeed.addFrame(*since);
                 !title.empty() && (SDL_GetWindowFlags(mWindow.get()) & SDL_WINDOW_HIDDEN) == 0)
                 SDL_SetWindowTitle(mWindow.get(), title.data());
-        }
-
-        // **Counted where it is summed**, because `finishFrame` answers nothing until a frame it
-        // put in flight comes back. Counting every frame instead divided the total by frames that
-        // had contributed nothing to it, so the average read low by a factor nobody could see.
-        if (report.mResult.has_value() && mSpeed.addWait(report.mResult->mWaitMs))
-        {
-            const Rtx::FrameExtents extents = mRenderer->getExtents();
-            const Rtx::SceneDesc& scene = mMirror.getScene();
-
-            // **The emitters among it, because they are the half a placement count does not carry.**
-            // Sprites are not instances and never enter that number, so a cell whose every flame,
-            // brazier and raindrop had stopped read exactly like one whose emitters were running.
-            Log(Debug::Info) << "Ray tracing: waited " << mSpeed.getWaitMs()
-                             << " ms a frame for the device over the last " << mSpeed.getFrames() << ", tracing "
-                             << scene.placements().getCounts().mPlaced << " instances and " << scene.emitters().size()
-                             << " emitters holding " << scene.sprites().size() << " sprites at " << extents.mRenderWidth
-                             << "x" << extents.mRenderHeight << ", reconstructed by "
-                             << Rtx::sDenoiserNames.name(report.mReconstruction.mDenoiser) << " to "
-                             << extents.mOutputWidth << "x" << extents.mOutputHeight;
         }
     }
 }

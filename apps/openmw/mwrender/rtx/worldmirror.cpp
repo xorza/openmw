@@ -15,7 +15,6 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
-#include <components/debug/debuglog.hpp>
 #include <components/misc/constants.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
@@ -264,8 +263,6 @@ namespace MWRender
         // What the walk did not find has gone. The graph is the whole world every frame, which is
         // what makes mark and sweep sound; the identity maps hold their keys alive until it runs.
         // Last, because it bumps the epoch the next walk is measured against.
-        if (const Rtx::Retirement went = mExtractor.retire(); !went.empty())
-            Log(Debug::Info) << "Ray tracing dropped " << went.mMeshes << " meshes and " << went.mMaterials
-                             << " materials the world no longer has";
+        mExtractor.retire();
     }
 }
