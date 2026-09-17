@@ -25,6 +25,7 @@
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturetable.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -32,13 +33,14 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// A particle system under a transform that carries its texture and its blend, the way
-        /// `NifOsg` builds one.
+        /// A particle system under a transform that carries its texture, its blend and its
+        /// material, the way `NifOsg` builds one: the material reads the vertex for its colour,
+        /// which is what the loader gives every particle system a file does not say otherwise for.
         ///
-        /// The emitter's own state set sets neither, which is what makes this a test of the walk up
-        /// the path rather than of the drawable: a `ParticleSystem` really does carry an empty state
-        /// set of its own in the shipped content, and asking it for the blend answers "covers" for
-        /// every flame in the game.
+        /// The emitter's own state set sets none of them, which is what makes this a test of the
+        /// walk up the path rather than of the drawable: a `ParticleSystem` really does carry an
+        /// empty state set of its own in the shipped content, and asking it for the blend answers
+        /// "covers" for every flame in the game.
         struct Plume
         {
             osg::ref_ptr<osg::MatrixTransform> mRoot;
@@ -55,6 +57,7 @@ namespace Rtx::Testing
             state.setAttributeAndModes(new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA,
                                            additive ? osg::BlendFunc::ONE : osg::BlendFunc::ONE_MINUS_SRC_ALPHA),
                 osg::StateAttribute::ON);
+            colours(state).setVertexColorMode(SceneUtil::VertexColorModes::AmbientAndDiffuse);
 
             plume.mParticles = new osgParticle::ParticleSystem;
             plume.mParticles->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
@@ -142,6 +145,37 @@ namespace Rtx::Testing
                 SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
             EXPECT_EQ(mScene.emitters().front().mTexture, 0u);
             EXPECT_EQ(mScene.emitters().front().mLighting, 1u);
+        }
+
+        /// A material that ignores the vertex is read for the colour and the alpha instead, and
+        /// the particle's own are not.
+        ///
+        /// **The mist in every ancestral tomb.** `furn_mist256.nif` puts a `NiVertexColorProperty`
+        /// at its root that says the vertex is ignored, and a material at half opacity under it,
+        /// over a particle whose colour says one — so the rasterizer's `getDiffuseColor` reads the
+        /// material, and each puff hides half of what its texture says. Read off the particle, the
+        /// puffs hid twice that, and a room of them was a stack of discs rather than a haze.
+        TEST_F(RtxSceneExtractorTest, aMaterialThatIgnoresTheVertexIsReadInsteadOfTheParticle)
+        {
+            const Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/false);
+
+            SceneUtil::Material& material = colours(*plume.mRoot->getStateSet());
+            material.setVertexColorMode(SceneUtil::VertexColorModes::None);
+            material.setDiffuse(osg::Vec4f(1.0f, 0.5f, 0.25f, 0.5f));
+
+            // A particle that says the opposite of the material in every channel, at a quarter.
+            emit(*plume.mParticles, osg::Vec3f(0.0f, 0.0f, 5.0f), 3.0f, osg::Vec4f(0.0f, 1.0f, 1.0f, 0.5f));
+
+            walk(*plume.mRoot);
+            ASSERT_EQ(mScene.sprites().size(), 1u);
+
+            // The material's diffuse, decoded as the particle's ramp is decoded above, and its
+            // opacity as it stands: nothing of the particle's quarter.
+            const Rtx::Sprite& sprite = mScene.sprites()[0];
+            EXPECT_FLOAT_EQ(sprite.mColour.x(), 1.0f);
+            EXPECT_NEAR(sprite.mColour.y(), 0.2140411f, 1e-6f);
+            EXPECT_NEAR(sprite.mColour.z(), 0.0508761f, 1e-6f);
+            EXPECT_FLOAT_EQ(sprite.mAlpha, 0.5f);
         }
 
         /// A quad that hangs in the world hangs on the axis its own particle carries.

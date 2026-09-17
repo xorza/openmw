@@ -190,7 +190,7 @@ PuffShape ballPuff(vec3 normal, float thrownForward)
 /// @param toward unit, from the sprite toward the light — or zero, for a light that is not there,
 ///        which is lit in full because nothing is being asked.
 /// @param planeAcross,planeUp the sprite's own `u` and `v` in the world, which for a disc are the
-///        screen's.
+///        ray's own, square to it.
 /// @param facing where the eye is, unit, from the sprite.
 /// @param shade the bake at this texel, already thinned by the sprite's own fade.
 float sixWayThrough(vec3 toward, vec3 planeAcross, vec3 planeUp, vec3 facing, vec4 shade, float back)
@@ -383,7 +383,8 @@ SpriteCrossing quadCrossing(GpuSprite sprite, vec3 toSprite, vec3 direction, flo
 /// Perpendicular to the ray rather than to the camera's axis, so a sprite at the corner of the
 /// frame faces the eye and not the screen.
 ///
-/// @param across,upward the screen's own axes, unit, which the disc's texture is read along.
+/// @param across,upward the disc's own axes, unit and square to the ray, which the disc's texture
+///        is read along: `spritesAlong` says why they are not the screen's.
 SpriteCrossing ballCrossing(
     GpuSprite sprite, vec3 toSprite, vec3 direction, float limit, vec3 across, vec3 upward, vec2 texels)
 {
@@ -444,10 +445,20 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
     float coveredAt = 0.0;
     vec3 addedThrough = vec3(1.0);
 
-    // The screen's own axes, for reading a sprite's texture the way the quad would have been cut.
-    // Hoisted because they are the camera's and not the sprite's.
-    const vec3 across = normalize(frame.mCamera.mRight);
-    const vec3 upward = normalize(frame.mCamera.mUp);
+    // The disc's own axes, square to the ray and turned by the screen's up, for reading a sprite's
+    // texture across the disc the ray sees. Hoisted because they are the ray's and not the sprite's.
+    //
+    // **Square to the ray and not the screen's own axes, because the disc is.** `ballCrossing` cuts
+    // the disc square to the ray, and the offset it reads the texture by is measured along these —
+    // so read along the screen's axes, the offset lost its share along the ray's slant: at the edge
+    // of a frame ninety degrees wide a ray stands forty-five degrees off the axis, the silhouette
+    // reached only seven tenths of the way across the texture, and the blob's own alpha there was
+    // drawn as a hard rim on every puff away from the centre. The cross is unit as long as the ray
+    // is not the screen's up, which no pinhole's ray inside its own field of view is. Not
+    // `tangentTo`, whose tangent is whichever world axis the ray lies least along: that flips
+    // between two rays a pixel apart and would turn every puff's texture with it.
+    const vec3 across = normalize(cross(direction, frame.mCamera.mUp));
+    const vec3 upward = cross(across, direction);
 
     // The air along this one ray, built before the walk: every sprite below asks the same column
     // for a different distance, and what does not depend on the distance is an exponential.

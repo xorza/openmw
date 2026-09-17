@@ -58,6 +58,9 @@ namespace Rtx
             sprite = nullptr;
 
         held.mBlend = described.mBlend;
+        held.mVertexColour = described.mVertexColour;
+        held.mDiffuseColour = decodeColour(described.mDiffuseColour);
+        held.mOpacity = described.mOpacity;
         if (sprite == held.mSprite)
             return;
 
@@ -189,11 +192,15 @@ namespace Rtx
 
             // `getCurrentColor`'s alpha and `getCurrentAlpha` are two separate ramps and the
             // rasterizer multiplies them; `ParticleColorAffector` forces the first to one, and
-            // multiplying both keeps that a fact about the data.
+            // multiplying both keeps that a fact about the data. Both are the vertex's, and the
+            // material's mode says whether the vertex is read at all — `HeldSprite::mVertexColour`.
             // A blend that adds whole reads no alpha at all, so its sprite is all there whatever
             // its ramps say — one file in the game, and its silhouette is still its texture's.
-            const osg::Vec4f colour = particle->getCurrentColor();
-            const float alpha = held.mBlend == BlendKind::AddWhole ? 1.0f : colour.a() * particle->getCurrentAlpha();
+            const bool tinted = held.mVertexColour == VertexColour::Tint;
+            const osg::Vec4f vertex = particle->getCurrentColor();
+            const osg::Vec3f colour = tinted ? decodeColour(vertex) : held.mDiffuseColour;
+            const float opacity = tinted ? vertex.a() * particle->getCurrentAlpha() : held.mOpacity;
+            const float alpha = held.mBlend == BlendKind::AddWhole ? 1.0f : opacity;
             if (!(alpha > 0.0f))
                 continue;
 
@@ -209,7 +216,7 @@ namespace Rtx
                 .mPosition = stood,
                 .mRadius = radius,
                 .mAxis = axis,
-                .mColour = decodeColour(colour),
+                .mColour = colour,
                 .mAlpha = alpha,
             });
         }

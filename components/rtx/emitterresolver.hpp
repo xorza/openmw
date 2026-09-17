@@ -6,6 +6,7 @@
 
 #include <osg/Drawable>
 #include <osg/Matrixf>
+#include <osg/Vec3f>
 
 #include "mirroridentity.hpp"
 #include "runs.hpp"
@@ -71,6 +72,16 @@ namespace Rtx
 
             /// How the system's sprites composite: one that adds is light and must not be lit.
             BlendKind mBlend = BlendKind::Over;
+
+            /// What the sprites' colour and alpha are read off, which is the material's vertex
+            /// mode: under `Tint` the particle's own colour and its two alpha ramps, as
+            /// `osgParticle` hands them to the vertex; under anything else the material's diffuse
+            /// and its opacity, with the particle's ignored — which is what the rasterizer's
+            /// `getDiffuseColor` reads under `None`, and what the mist in every ancestral tomb is
+            /// authored as: a material at half opacity over a particle that says one.
+            VertexColour mVertexColour = VertexColour::None;
+            osg::Vec3f mDiffuseColour{ 1.0f, 1.0f, 1.0f };
+            float mOpacity = 1.0f;
 
             /// The image the sprites are drawn with, or null for a system nothing described a
             /// sprite for, which draws nothing and is counted. What a rewrite is told apart by,

@@ -10,9 +10,11 @@
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
+#include "../testtexture.hpp"
 #include "fixture.hpp"
 
 #include <algorithm>
@@ -25,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Math>
 #include <osg/Matrixf>
 #include <osg/Vec3f>
 
@@ -32,6 +35,86 @@ namespace Rtx::Testing
 {
     namespace
     {
+        /// A puff's texture is read across the disc the ray sees, so its cover ends where the
+        /// texture's does and not at the disc's rim.
+        ///
+        /// **The disc is cut square to the ray and the texture was read along the screen's axes.**
+        /// Those agree only on the frame's axis: a ray standing forty degrees off it saw the offset
+        /// across the disc shortened to `cos 40° = 0.77` of itself, so the blob's edge at `13 / 16 =
+        /// 0.81` of the texture lay beyond the silhouette, and the silhouette cut the blob's own
+        /// alpha as a hard rim. Every puff in an ancestral tomb that stood away from the frame's
+        /// centre wore a circle.
+        ///
+        /// A blob transparent beyond thirteen of its sixteen texels, on a puff thirty degrees off
+        /// the axis of a frame ninety degrees wide, against the same puff wearing an opaque texel:
+        /// walking out from the puff's centre toward the frame's edge, the opaque one covers the
+        /// wall to the rim and the blob to `13 / 16` of the way there. Read along the screen's
+        /// axes, the blob reached the rim too.
+        TEST_F(RtxVisibilityTest, aPuffOffTheAxisIsReadAcrossTheDiscTheRaySees)
+        {
+            constexpr std::uint32_t size = 129;
+            constexpr std::size_t row = size / 2;
+
+            std::vector<std::uint8_t> texels(32 * 32 * 4);
+            for (int y = 0; y < 32; ++y)
+                for (int x = 0; x < 32; ++x)
+                {
+                    const float r = std::sqrt((x - 15.5f) * (x - 15.5f) + (y - 15.5f) * (y - 15.5f));
+                    std::uint8_t* texel = &texels[(static_cast<std::size_t>(y) * 32 + static_cast<std::size_t>(x)) * 4];
+                    texel[0] = texel[1] = texel[2] = 255;
+                    texel[3] = r > 13.0f ? 0 : 255;
+                }
+            TestTexture blob;
+            paintFlat(blob, 32, texels, "blob.dds");
+
+            constexpr std::array<std::uint8_t, 4> opaque{ 255, 255, 255, 255 };
+
+            // Thirty degrees off the axis, three hundred units out, at the height of the eye:
+            // `300 sin 30° = 150` across and `300 cos 30° = 259.8` along. On a frame ninety degrees
+            // wide the centre lands `tan 30° / tan 45°` of the half-frame from the middle.
+            const float centre = static_cast<float>(row) * (1.0f + std::tan(osg::DegreesToRadians(30.0f)));
+
+            // How far the puff's cover reaches from its centre toward the frame's edge, in pixels:
+            // the last pixel of the row darker than the open wall.
+            const auto coverReaches = [&](const TextureData& texture) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh
+                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+                const Index cut = scene.textures().add(VFS::Path::NormalizedView("blob.dds"), TextureWrap::Clamp);
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(150.0f, 259.81f, 200.0f), .mRadius = 50.0f, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, false);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 300.0f, 200.0f), 90.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f(0.6f, 0.6f, 0.6f);
+                camera.mSkyZenith = camera.mSkyHorizon;
+                camera.mAmbientFromSky = 1.0f;
+                camera.mAmbient = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
+
+                const std::array<TextureData, 1> worn{ texture };
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, std::span<const TextureData>(worn), camera, size, pixels);
+
+                const float open = mRadiance[(row * size + 0) * 4];
+                std::size_t last = 0;
+                for (std::size_t x = static_cast<std::size_t>(centre); x < size; ++x)
+                    if (mRadiance[(row * size + x) * 4] < open - 0.01f)
+                        last = x;
+                return static_cast<float>(last) + 0.5f - centre;
+            };
+
+            const float disc = coverReaches(describeTexel(opaque));
+            const float painted = coverReaches(blob.mData);
+            ASSERT_GT(disc, 10.0f) << "a disc wide enough to resolve the difference";
+
+            // To the pixel the rim's own radius resolves, and the binary blob's edge is within one.
+            EXPECT_NEAR(painted / disc, 13.0f / 16.0f, 1.5f / disc)
+                << "the blob covers " << painted << " of a disc of " << disc;
+        }
+
         /// A sprite is shadowed like anything else, by whatever stands over it.
         ///
         /// **A particle has no normal and it still has an up**, which is what the layer was missing:

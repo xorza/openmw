@@ -25,7 +25,7 @@ namespace osgViewer
 
 namespace Debug
 {
-    class DebugDrawer;
+    struct DebugDrawer;
 }
 
 namespace Resource
