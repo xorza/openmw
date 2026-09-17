@@ -90,7 +90,8 @@ player turns the renderer on there, and the two live knobs are turned there. `Rt
 is the one list both menus offer.
 
 **Upstream's workflows stay byte for byte, switched off in the repository and not in the file.**
-`.github/workflows/rtx.yml` is the fork's CI; `push.yml` and `release.yml` are upstream's and are
+`.github/workflows/rtx.yml` is the fork's CI, one job with an Ubuntu leg and a Windows leg through
+the same three lines of `rtx`; `push.yml` and `release.yml` are upstream's and are
 disabled with `gh workflow disable push.yml` and `gh workflow disable release.yml`, a state the
 repository keeps (`disabled_manually`) that a push does not undo. A fresh fork runs the two
 commands again. `windows.yml` and `macos.yml` have no trigger of their own and need nothing.
@@ -168,6 +169,11 @@ backend ever arrives.
 - **Upstream's prebuilt SDL2 for Windows has no Vulkan.** It links, and refuses the window at
   runtime. `rtx` fetches SDL's own package of the same version beside the set and points CMake at
   it, and copies every DLL itself, since vcpkg's own copy would put its SDL2 back on every link.
+- **ccache drives MSVC too, on two conditions `rtx` meets**: debug data goes into the object
+  (`-Z7`) and not into a PDB the cache cannot hold, and upstream's precompiled headers are off,
+  since ccache cannot see through them and cached nothing with them on. Measured on the Windows
+  laptop: a cold debug build of every target 11 min through the cache, a warm one 35 s at a
+  hundred per cent hits; a release build 6 min; the gate 3 min.
 
 ## Verification, after changing code and before saying it works
 

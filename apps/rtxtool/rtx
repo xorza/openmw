@@ -70,17 +70,19 @@ shift 2
 # is a question the debug build cannot answer.
 describeFlavour() {
     # **The flags are the compiler's, chosen once.** MSVC's `RelWithDebInfo` carries `/DNDEBUG`
-    # exactly as GCC's carries `-DNDEBUG`, and `-O2 -Zi` is its `-O2 -g`. For the measured build,
-    # `-Zi` with `-DEBUG` at link is the line table a profiler names a line from, and `-Oy-` keeps
-    # the frame pointers a stack walk reads. Spelt with a dash, which every Microsoft tool takes,
+    # exactly as GCC's carries `-DNDEBUG`, and `-O2 -Z7` is its `-O2 -g`. For the measured build,
+    # `-Z7` with `-DEBUG` at link is the line table a profiler names a line from, and `-Oy-` keeps
+    # the frame pointers a stack walk reads. `-Z7` and not `-Zi`: it writes the debug data into
+    # the object instead of a PDB beside it, which is the one form ccache can cache, and the
+    # linker's PDB is the same either way. Spelt with a dash, which every Microsoft tool takes,
     # because Git Bash turns `/O2` into `C:/Program Files/Git/O2` on its way to cmake. The
     # flags for every configuration go through `CMAKE_<LANG>_FLAGS_INIT`, which CMake appends its
     # platform's own to — `/EHsc` and `/machine:x64` among them, which `CMAKE_<LANG>_FLAGS` set
     # outright would drop.
     local asserts profiling profilingLink
     if onWindows; then
-        asserts="-O2 -Zi"
-        profiling="-Zi -Oy-"
+        asserts="-O2 -Z7"
+        profiling="-Z7 -Oy-"
         profilingLink=(-DCMAKE_EXE_LINKER_FLAGS_INIT=-DEBUG)
     else
         asserts="-O2 -g"
@@ -340,8 +342,14 @@ fetchWindowsSdl() {
 # names the checkout, as CMake's own `find_package` reads it, and a build directory remembers what
 # it found. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
 #
-# **What the platform supplies.** Linux has recastnavigation and Google Test as packages, and
-# ccache and mold to build with. Windows has upstream's vcpkg set, which carries neither of those
+# **What the platform supplies.** Both have ccache, which drives MSVC as well as GCC. Linux has
+# recastnavigation and Google Test as packages, and mold to link with.
+#
+# **Upstream's precompiled headers are off under MSVC, because ccache cannot see through them**:
+# with them on, 593 of 623 compiles of the backend were "could not use precompiled header" and
+# the cache held nothing. Measured on the backend alone: with the headers, 2 min 54 s cold and
+# the same again every time; without them, 3 min 16 s cold and 10 s from a warm cache. The
+# fork's own libraries never had them, so what is edited every day compiles the same either way. Windows has upstream's vcpkg set, which carries neither of those
 # nor SQLite, yaml-cpp or Qt: the first four CMake fetches, and the launcher stays unbuilt. Its
 # SDL2 has no Vulkan, so SDL's own stands in, and vcpkg's copying of DLLs beside a binary is
 # off, since it would put its SDL2 back over SDL's on every link: `placeWindowsRuntime` is the
@@ -358,6 +366,7 @@ configureIfNeeded() {
         platform=(
             -DCMAKE_TOOLCHAIN_FILE="$deps/scripts/buildsystems/vcpkg.cmake"
             -DVCPKG_APPLOCAL_DEPS=OFF
+            -DPRECOMPILE_HEADERS_WITH_MSVC=OFF
             -DSDL2_DIR="$sdl/cmake"
             -DLuaJit_INCLUDE_DIR="$deps/installed/x64-windows/include/luajit"
             -DLuaJit_LIBRARY="$deps/installed/x64-windows/lib/lua51.lib"
@@ -368,13 +377,13 @@ configureIfNeeded() {
     else
         platform=(
             -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=ON -DOPENMW_USE_SYSTEM_GOOGLETEST=ON
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
             -DCMAKE_EXE_LINKER_FLAGS_INIT=-fuse-ld=mold
         )
     fi
 
     cmake -S "$root" -B "$build" -G Ninja \
         -DOPENMW_RTX=ON \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DBUILD_OPENCS=OFF -DBUILD_WIZARD=OFF -DBUILD_ESSIMPORTER=OFF \
         -DBUILD_MWINIIMPORTER=OFF -DBUILD_OPENCS_TESTS=OFF \
         "${platform[@]}" \
