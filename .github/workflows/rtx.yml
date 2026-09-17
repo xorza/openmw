@@ -71,12 +71,16 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vulkan-sdk
-          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}-${{ env.VULKAN_SDK_SHA256 }}
+          # The workflow's own hash beside the version, because what is cached is what the step
+          # below extracts, and a change to that list must not find the old subset.
+          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}-${{ hashFiles('.github/workflows/rtx.yml') }}
 
       - name: Vulkan SDK download
         if: steps.vulkan.outputs.cache-hit != 'true'
         # Only the four things the build needs out of 330 MB: the headers, the loader the tests
-        # start against, glslc and spirv-val. No device, so no layers.
+        # start against, glslc and spirv-val (both statically linked). No device, so no layers.
+        # The loader sits in its own prefix, `lib/VulkanLoader`, which is where the SDK's
+        # `setup-env.sh` points too.
         run: |
           tarball="vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz"
           curl --fail --retry 3 -L -o "$tarball" \
@@ -84,14 +88,20 @@ jobs:
           echo "${VULKAN_SDK_SHA256}  ${tarball}" | sha256sum -c -
           mkdir -p "${RUNNER_TEMP}/vulkan-sdk"
           tar -xJf "$tarball" -C "${RUNNER_TEMP}/vulkan-sdk" --strip-components=1 --wildcards \
-            '*/x86_64/include/*' '*/x86_64/lib/libvulkan.so*' '*/x86_64/bin/glslc' '*/x86_64/bin/spirv-val'
+            '*/x86_64/include/*' '*/x86_64/lib/VulkanLoader/lib/libvulkan.so*' \
+            '*/x86_64/bin/glslc' '*/x86_64/bin/spirv-val'
 
       - name: Vulkan SDK environment
-        # What FindVulkan reads, what the test binaries load, and where glslc is found.
+        # What `setup-env.sh` would export: FindVulkan reads VULKAN_SDK for the headers and
+        # CMAKE_PREFIX_PATH for the loader's prefix, the test binaries load the loader from
+        # LD_LIBRARY_PATH, and glslc is on PATH. Verified on a desk configure against the same
+        # subset.
         run: |
-          echo "VULKAN_SDK=${RUNNER_TEMP}/vulkan-sdk/x86_64" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=${RUNNER_TEMP}/vulkan-sdk/x86_64/lib" >> "$GITHUB_ENV"
-          echo "${RUNNER_TEMP}/vulkan-sdk/x86_64/bin" >> "$GITHUB_PATH"
+          sdk="${RUNNER_TEMP}/vulkan-sdk/x86_64"
+          echo "VULKAN_SDK=${sdk}" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=${sdk}/lib/VulkanLoader" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${sdk}/lib/VulkanLoader/lib" >> "$GITHUB_ENV"
+          echo "${sdk}/bin" >> "$GITHUB_PATH"
 
       - name: NGX SDK
         # A sparse checkout of NVIDIA's public repository at the pinned tag: the headers, the
