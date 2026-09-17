@@ -84,89 +84,25 @@ endif()
 find_path(NGX_INCLUDE_DIR NAMES nvsdk_ngx.h PATH_SUFFIXES include)
 
 ### Find the feature libraries and their version ##############################
-# A little-endian integer of `bytes` bytes at byte `offset` of `hex`, the way `file(READ ... HEX)`
-# spells a file.
-function(_ngx_read_little_endian hex offset bytes out)
-    set(_value "")
-    math(EXPR _last "${bytes} - 1")
-    foreach(_i RANGE ${_last} 0 -1)
-        math(EXPR _at "(${offset} + ${_i}) * 2")
-        string(SUBSTRING "${hex}" ${_at} 2 _byte)
-        string(APPEND _value "${_byte}")
-    endforeach()
-    math(EXPR _value "0x${_value}" OUTPUT_FORMAT DECIMAL)
-    set(${out} "${_value}" PARENT_SCOPE)
-endfunction()
-
 # The `major.minor.build` a Windows DLL states in its version resource, or empty where it has
-# none. The resource is `VS_FIXEDFILEINFO`: its signature `0xFEEF04BD` and structure version
-# `0x00010000`, then the file version as two little-endian doublewords. Only the `.rsrc` section
-# is read — the DOS header names the PE header, whose section table says where that section sits
-# in the file — because the signature's bytes also occur in the code that checks for it, and the
-# DLL is sixty megabytes. Each header is checked by its own signature before anything is read
-# through it, and a file whose headers lie beyond the first four kilobytes is not one this reads.
+# none. Read by the system's own reader, because CMake has no command for the format and the
+# feature DLLs carry no version in their names the way the Linux libraries do: one start of
+# PowerShell per configure, which is the price of not parsing a PE file by hand. `FileVersionInfo`
+# is .NET's, so Windows PowerShell and PowerShell 7 answer alike.
 function(_ngx_read_dll_version dll out)
-    set(${out} "" PARENT_SCOPE)
-
-    set(_limit 4096)
-    file(READ "${dll}" _head LIMIT ${_limit} HEX)
-    string(SUBSTRING "${_head}" 0 4 _mz)
-    if(NOT _mz STREQUAL "4d5a") # "MZ"
-        return()
+    string(REPLACE "'" "''" _quoted "${dll}")
+    execute_process(
+        COMMAND powershell -NoProfile -NonInteractive -Command
+            "$v = [System.Diagnostics.FileVersionInfo]::GetVersionInfo('${_quoted}'); '{0}.{1}.{2}' -f $v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart"
+        RESULT_VARIABLE _status
+        OUTPUT_VARIABLE _version
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(_status EQUAL 0)
+        set(${out} "${_version}" PARENT_SCOPE)
+    else()
+        set(${out} "" PARENT_SCOPE)
     endif()
-
-    _ngx_read_little_endian("${_head}" 60 4 _pe)
-    math(EXPR _end "${_pe} + 24")
-    if(_end GREATER _limit)
-        return()
-    endif()
-    math(EXPR _at "${_pe} * 2")
-    string(SUBSTRING "${_head}" ${_at} 8 _signature)
-    if(NOT _signature STREQUAL "50450000") # "PE\0\0"
-        return()
-    endif()
-
-    math(EXPR _at "${_pe} + 6")
-    _ngx_read_little_endian("${_head}" ${_at} 2 _sections)
-    math(EXPR _at "${_pe} + 20")
-    _ngx_read_little_endian("${_head}" ${_at} 2 _optional)
-    math(EXPR _table "${_pe} + 24 + ${_optional}")
-    math(EXPR _end "${_table} + ${_sections} * 40")
-    if(_sections EQUAL 0 OR _end GREATER _limit)
-        return()
-    endif()
-
-    math(EXPR _last "${_sections} - 1")
-    foreach(_i RANGE 0 ${_last})
-        math(EXPR _header "${_table} + ${_i} * 40")
-        math(EXPR _at "${_header} * 2")
-        string(SUBSTRING "${_head}" ${_at} 16 _name)
-        if(NOT _name STREQUAL "2e72737263000000") # ".rsrc", padded to eight
-            continue()
-        endif()
-
-        math(EXPR _at "${_header} + 16")
-        _ngx_read_little_endian("${_head}" ${_at} 4 _size)
-        math(EXPR _at "${_header} + 20")
-        _ngx_read_little_endian("${_head}" ${_at} 4 _offset)
-        file(READ "${dll}" _rsrc OFFSET ${_offset} LIMIT ${_size} HEX)
-
-        string(FIND "${_rsrc}" "bd04effe00000100" _fixed)
-        math(EXPR _odd "${_fixed} % 2") # a hit between two bytes is not the structure
-        if(_fixed LESS 0 OR _odd)
-            return()
-        endif()
-
-        math(EXPR _at "${_fixed} / 2 + 8")
-        _ngx_read_little_endian("${_rsrc}" ${_at} 4 _high)
-        math(EXPR _at "${_fixed} / 2 + 12")
-        _ngx_read_little_endian("${_rsrc}" ${_at} 4 _low)
-        math(EXPR _major "${_high} >> 16")
-        math(EXPR _minor "${_high} & 0xFFFF")
-        math(EXPR _build "${_low} >> 16")
-        set(${out} "${_major}.${_minor}.${_build}" PARENT_SCOPE)
-        return()
-    endforeach()
 endfunction()
 
 # The release features sit beside the static library — one directory up on Windows, where the
@@ -214,16 +150,23 @@ set(NGX_LIBRARY ${NGX_LIBRARY} CACHE FILEPATH "NGX library path hint")
 mark_as_advanced(NGX_INCLUDE_DIR NGX_LIBRARY NGX_LIBRARY_DEBUG)
 
 ### Import targets ############################################################
+# Two configurations and a map from the other two, the way NVIDIA's own module (nvpro_core2's
+# `FindNGX.cmake`) imports it: `RelWithDebInfo` and `MinSizeRel` link the release runtime's
+# library, and only `Debug` links the debug runtime's. Linux has one library for both.
 if(NGX_FOUND)
     if(NOT TARGET NGX::NGX)
         add_library(NGX::NGX STATIC IMPORTED)
         set_target_properties(NGX::NGX PROPERTIES
-                IMPORTED_LOCATION "${NGX_LIBRARY}"
+                IMPORTED_CONFIGURATIONS "RELEASE;DEBUG"
+                IMPORTED_LOCATION_RELEASE "${NGX_LIBRARY}"
+                MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+                MAP_IMPORTED_CONFIG_MINSIZEREL Release
                 INTERFACE_INCLUDE_DIRECTORIES "${NGX_INCLUDE_DIR}"
                 INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS}")
         if(NGX_LIBRARY_DEBUG)
-            set_target_properties(NGX::NGX PROPERTIES
-                    IMPORTED_LOCATION_DEBUG "${NGX_LIBRARY_DEBUG}")
+            set_target_properties(NGX::NGX PROPERTIES IMPORTED_LOCATION_DEBUG "${NGX_LIBRARY_DEBUG}")
+        else()
+            set_target_properties(NGX::NGX PROPERTIES IMPORTED_LOCATION_DEBUG "${NGX_LIBRARY}")
         endif()
     endif()
 endif()
