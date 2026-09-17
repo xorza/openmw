@@ -118,9 +118,12 @@ namespace Rtx
             EXPECT_TRUE(against.front().mSceneDiffering.empty());
 
             // The header names every column, so a reader and an `awk` line both know what they hold.
-            std::ifstream in(file);
+            // Read in a scope of its own: Windows will not remove a file a stream still holds.
             std::string header;
-            std::getline(in, header);
+            {
+                std::ifstream in(file);
+                std::getline(in, header);
+            }
             EXPECT_EQ(header.substr(0, 29), "hashes 2: view,frame,picture,");
             EXPECT_NE(header.find(",textures,"), std::string::npos) << header;
 

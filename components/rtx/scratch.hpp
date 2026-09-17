@@ -162,6 +162,12 @@ namespace Rtx
         std::size_t mKept = 0;
     };
 
+    /// A buffer that empties itself while keeping its room, the way the objects here do. Named,
+    /// because MSVC reads a `requires` expression written inline in a generic lambda as false for
+    /// every one of them and compiles the `clear` branch against a type that has none.
+    template <class Buffer>
+    concept Reusable = requires(Buffer& buffer) { buffer.reuse(); };
+
     /// Puts `object` back to its default while keeping the room its buffers grew. Every field not
     /// named is reset, so a new scalar is reset for free and a buffer forgotten reallocates, which
     /// the allocation test sees. A `Lent`'s count and flag are kept: they are the pool's and not
@@ -170,8 +176,8 @@ namespace Rtx
     template <class T, class... Buffers>
     void reuseKeeping(T& object, Buffers T::*... buffers)
     {
-        [[maybe_unused]] const auto empty = [](auto& buffer) {
-            if constexpr (requires { buffer.reuse(); })
+        [[maybe_unused]] const auto empty = []<class Buffer>(Buffer& buffer) {
+            if constexpr (Reusable<Buffer>)
                 buffer.reuse();
             else
                 buffer.clear();

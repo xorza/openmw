@@ -25,6 +25,7 @@
 #include <components/debug/debugging.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/platform/platform.hpp>
+#include <components/platform/process.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
@@ -951,7 +952,7 @@ int main(int argc, char* argv[])
     // its own exceptions, so the one box left is the crash catcher's, and upstream's own switch
     // turns that off — at the price of its crash log on a signal, which a debugger gives back.
     // Not overwritten, so that a shell can still ask for the catcher.
-    setenv("OPENMW_DISABLE_CRASH_CATCHER", "1", 0);
+    Platform::Process::setEnvironmentDefault("OPENMW_DISABLE_CRASH_CATCHER", "1");
 
     return Debug::wrapApplication(RtxTool::run, argc, argv, RtxTool::applicationName);
 }

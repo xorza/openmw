@@ -45,7 +45,9 @@ target_compile_options(openmw-rtxtool-lib PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
 # `<vector>`, from an instantiation this file triggers, so a system-header exemption does not
 # reach it. Boost's code, on the same footing as `extern/`; the flag comes off for this one file
 # rather than for the target.
-set_source_files_properties(options.cpp PROPERTIES COMPILE_OPTIONS -Wno-null-dereference)
+if (CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+    set_source_files_properties(options.cpp PROPERTIES COMPILE_OPTIONS -Wno-null-dereference)
+endif()
 
 # Named viewpoints. Copied here because this is the only thing that reads them, and beside the
 # backend's shaders under resources/rtx so one --resources finds both.

@@ -523,6 +523,26 @@ else ()
         )
 endif()
 
+# The ray tracer's own answers, in the same shape: what its process, its heap and its perf fifo
+# do that the systems spell differently. Two systems, because those are the two it runs on.
+if (OPENMW_RTX)
+    add_component_dir(platform
+        process memory fifo
+        )
+
+    if (WIN32)
+        add_component_dir(platform
+            processwin32 memorywin32 fifowin32
+            )
+    elseif (UNIX)
+        add_component_dir(platform
+            processposix memoryposix fifoposix
+            )
+    else ()
+        message(FATAL_ERROR "The ray tracer has no platform layer for ${CMAKE_SYSTEM_NAME}")
+    endif()
+endif()
+
 add_component_dir(testing
     expecterror
     util

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <iterator>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -67,11 +68,11 @@ namespace Rtx
     /// Where the mode `name` spells sits in that menu, or nothing for one it does not offer.
     inline std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
     {
-        const auto* found = std::find(sUpscaleMenu.begin(), sUpscaleMenu.end(), name);
+        const auto found = std::find(sUpscaleMenu.begin(), sUpscaleMenu.end(), name);
         if (found == sUpscaleMenu.end())
             return std::nullopt;
 
-        return static_cast<std::size_t>(found - sUpscaleMenu.begin());
+        return static_cast<std::size_t>(std::distance(sUpscaleMenu.begin(), found));
     }
 
     /// The mode at `index` of that menu, or nothing where the menu is shorter than that — asked

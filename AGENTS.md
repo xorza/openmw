@@ -74,6 +74,13 @@ allowed — `components/sky/`, `components/weather/` and `components/sceneutil/v
 with the rasterizer still reading what it read before. Git shows a lift as a delete and a create
 unless it is asked for `-M20%`.
 
+**What differs between operating systems is answered in `components/platform/`, in upstream's
+shape and nowhere else.** Upstream keeps `Platform::File` there as `file.hpp` over `fileposix.cpp`
+and `filewin32.cpp`, chosen in `components/CMakeLists.txt`; the ray tracer's `process`, `memory`
+and `fifo` sit beside it the same way, under `if (OPENMW_RTX)`, and that block is the one place
+the fork writes in that file. No `#ifdef _WIN32` anywhere the ray tracer asks such a question.
+Linux and Windows are the two systems, and a third is a hard failure naming it.
+
 **The `[RTX]` settings pages stay, and so do their translations**: the config tool's graphics page
 (`apps/launcher/graphicspage.{cpp,ui}`, `files/lang/launcher_*.ts`) and the in-game settings
 window (`mwgui/settingswindow.*`, `files/data/mygui/openmw_settings_window.layout`,

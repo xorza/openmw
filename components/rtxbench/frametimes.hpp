@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include <components/platform/file.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/renderer.hpp>
 
@@ -56,31 +57,23 @@ namespace Rtx
     {
     public:
         explicit PerfControl(std::filesystem::path fifo);
-        ~PerfControl();
-
-        PerfControl(const PerfControl&) = delete;
-        PerfControl& operator=(const PerfControl&) = delete;
 
         /// Starts counting. The first call opens the fifo.
+        ///
+        /// **Not on construction, because the reader has to be there first.** Opening a fifo for
+        /// writing with nobody reading it fails outright without blocking, and perf attaches to an
+        /// already-running process seconds after it started. Deferring to the first `enable` puts
+        /// the open after a cell has been read, by which time perf has long since opened its end.
         void enable();
 
         /// Stops counting. Silent before the first `enable`, so a run stopped early is not an error.
         void disable();
 
     private:
-        /// Opens the fifo for writing, once.
-        ///
-        /// **Not on construction, because the reader has to be there first.** Opening a fifo for
-        /// writing with nobody reading it fails outright under `O_NONBLOCK` and blocks forever
-        /// without it, and perf attaches to an already-running process seconds after it started.
-        /// Deferring to the first `enable` puts the open after a cell has been read, by which time
-        /// perf has long since opened its end.
-        void connect();
-
         void send(std::string_view command);
 
         std::filesystem::path mFifo;
-        int mHandle = -1;
+        Platform::File::ScopedHandle mHandle;
     };
 
     /// What a run of frame times came to, in milliseconds.

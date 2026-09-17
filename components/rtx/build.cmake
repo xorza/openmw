@@ -13,7 +13,17 @@
 # `-Wno-missing-field-initializers` is the one subtraction. Vulkan's create-info structs are
 # filled with designated initializers, which value-initialise every field not named — that is the
 # point of using them, and GCC does not distinguish it from an accidentally short aggregate.
-if (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clang)
+#
+# Told apart by the command line a compiler takes, which is what the flags are about: clang-cl
+# reports itself as Clang and takes MSVC's, and `MSVC` is set for it as well.
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL MSVC OR MSVC)
+    # The same posture under the other command line: upstream's `/W4` and its four exclusions
+    # apply to the whole tree, and here they are errors. Two more come off, C4244 and C4267 —
+    # `/W4`'s implicit narrowing between arithmetic types, which is `-Wconversion`, a check GCC's
+    # `-Wall -Wextra` does not make and this tree never adopted; forty test lines narrow a
+    # `size_t` to the `int` an API takes, and the bar is the one the code was written to.
+    set(OPENMW_RTX_COMPILE_OPTIONS /WX /wd4244 /wd4267)
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clang)
     set(OPENMW_RTX_COMPILE_OPTIONS
         -Werror
         -Wno-missing-field-initializers

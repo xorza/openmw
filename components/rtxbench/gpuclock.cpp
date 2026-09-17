@@ -4,7 +4,6 @@
 #include <array>
 #include <charconv>
 #include <chrono>
-#include <cstdio>
 #include <format>
 #include <string>
 #include <string_view>
@@ -12,39 +11,14 @@
 #include <utility>
 #include <vector>
 
+#include <components/platform/process.hpp>
+
 #include "benchspec.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// Everything `nvidia-smi` wrote, or empty where it could not be run.
-        ///
-        /// stderr is discarded: a machine without the tool, or with a driver that refuses the query,
-        /// is a machine this reports no clock for rather than one that prints a shell error into the
-        /// middle of a report.
-        std::string ask()
-        {
-            std::FILE* pipe = popen(
-                "nvidia-smi --query-gpu=clocks.gr,clocks.mem,temperature.gpu,"
-                "clocks_event_reasons.active --format=csv,noheader,nounits 2>/dev/null",
-                "r");
-            if (pipe == nullptr)
-                return {};
-
-            std::string answer;
-            std::array<char, 256> buffer{};
-            while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
-                answer += buffer.data();
-
-            // **The status is not read, only what was written.** A tool that could not answer
-            // prints nothing here — its complaint goes to the stderr discarded above — so the
-            // reading itself is the test, and a status this cannot always get (a host that reaps
-            // its own children answers -1) cannot throw a good one away.
-            pclose(pipe);
-            return answer;
-        }
-
         /// `text` as a number in `base`, or nothing where it is not one — which is what `[N/A]` is,
         /// and what a laptop's card answers for a field its driver does not expose.
         template <class T>
@@ -187,7 +161,13 @@ namespace Rtx
 
     GpuClock readGpuClock()
     {
-        const std::string answer = ask();
+        // Empty where it could not be run: a machine without the tool, or with a driver that
+        // refuses the query, is a machine this reports no clock for.
+        std::string answer;
+        Platform::Process::readCommandOutput(
+            "nvidia-smi --query-gpu=clocks.gr,clocks.mem,temperature.gpu,"
+            "clocks_event_reasons.active --format=csv,noheader,nounits",
+            answer);
 
         // **The list splitter the view file and `--views` are read by**, over the one line of csv
         // this asked for. It drops an empty entry, which a positional read would normally mind: here

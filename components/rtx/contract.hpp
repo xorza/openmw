@@ -3,11 +3,13 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <components/platform/process.hpp>
+
 namespace Rtx
 {
     /// A contract the code keeps, said once for both builds: checked and reported where asserts
-    /// are on, and a trap where they are off — one compare and a cold `ud2`, so a lookup the
-    /// contract guarantees is not a warning about the path the contract rules out. Not
+    /// are on, and a trap where they are off — one compare and a cold call that never returns, so
+    /// a lookup the contract guarantees is not a warning about the path the contract rules out. Not
     /// `__builtin_unreachable`: GCC's `-Wnull-dereference` still names the path an unreachable
     /// rules out, and a violated contract would then run on into whatever it dereferenced. Never
     /// for what the world might supply: a contract is the code's, and untrusted input is a throw.
@@ -15,7 +17,7 @@ namespace Rtx
     {
 #ifdef NDEBUG
         if (!held)
-            __builtin_trap();
+            Platform::Process::trap();
 #else
         if (!held)
         {

@@ -124,6 +124,11 @@ set(RTX_TEST_FILES
     sky/timeofday.cpp
 )
 
+# What is read off a fifo, where the platform has one.
+if (NOT WIN32)
+    list(APPEND RTX_TEST_FILES rtxbench/perffifo.cpp)
+endif()
+
 # Reads a NIF through upstream's loader, whose headers are not warning-free under
 # `OPENMW_RTX_COMPILE_OPTIONS`, so it is compiled with upstream's flags.
 set(RTX_TEST_FILES_UPSTREAM
