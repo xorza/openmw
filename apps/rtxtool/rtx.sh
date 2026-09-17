@@ -6,7 +6,8 @@
 #   rtx.sh <flavour> game [args]            openmw on the quicksave
 #   rtx.sh <flavour> repeat [--pairs=N] [bench args]
 #                                           two runs of one binary walk one place and must agree
-#   rtx.sh <flavour> gate                   clang-format 14, build, test, check, repeat — stops at the first failure
+#   rtx.sh <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
+#                                           check, repeat — stops at the first failure
 #   rtx.sh <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
 #
 #   flavour   directory          what it is
@@ -15,8 +16,10 @@
 #   release   build-release      -O3 -DNDEBUG, no layers, line tables and frame pointers so perf can
 #                                name a line: the build a number is quoted from
 #   asan      build-debug-asan   debug under AddressSanitizer; `LSAN=1` turns the leak check back on
+#   nodlss    build-nodlss       debug with -DOPENMW_RTX_DLSS=OFF: the other binary, whose upscaler
+#                                refuses every mode by name and whose DLSS test skips
 #
-# **One grammar for three builds**, because three scripts carried three: one had verbs only, one
+# **One grammar for four builds**, because three scripts carried three: one had verbs only, one
 # had tests by default and `tool` in front of a verb, and none built the game. What differed
 # between them is the table below, and everything else is the same eight lines.
 #
@@ -108,8 +111,26 @@ describeFlavour() {
             fi
             export ASAN_OPTIONS="$options${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
             ;;
+        nodlss)
+            # **The build the SDK is absent from, which is a different binary and not the same one
+            # with a feature skipped**: `noupscaler.cpp` links where `dlss*.cpp` did, and every file
+            # that reaches NGX has to be behind the `#ifdef`. The gate compiles it so that a symbol
+            # reached from the wrong side is found here and not by whoever next configures without
+            # the SDK.
+            build="$root/build-nodlss"
+            validation=sync
+            configure=(
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+                -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g"
+                -DOPENMW_RTX_DLSS=OFF
+                -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
+                -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
+                -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
+            )
+            targets=(openmw-rtxtool openmw components-tests openmw-tests)
+            ;;
         *)
-            echo "rtx.sh: no flavour is called '$1' — debug, release or asan" >&2
+            echo "rtx.sh: no flavour is called '$1' — debug, release, asan or nodlss" >&2
             exit 2
             ;;
     esac
@@ -169,6 +190,17 @@ compileWithoutAsserts() {
         describeFlavour release
         configureIfNeeded
         buildTargets openmw-rtx openmw-rtx-vulkan
+    )
+}
+
+# **The backend without the SDK, compiled the way a machine without one compiles it.** The backend
+# alone, because that is the one library the `#ifdef` divides; the harness and the game link it
+# either way. About a minute warm, in a subshell for the reason above.
+compileWithoutDlss() {
+    (
+        describeFlavour nodlss
+        configureIfNeeded
+        buildTargets openmw-rtx-vulkan
     )
 }
 
@@ -303,6 +335,7 @@ case "$what" in
         checkFormat
         buildTargets "${targets[@]}"
         compileWithoutAsserts
+        compileWithoutDlss
         if [ -x "$build/components-tests" ]; then
             runTests
         fi

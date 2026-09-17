@@ -116,11 +116,13 @@ backend ever arrives.
 - **CMake's own `RelWithDebInfo` carries `-DNDEBUG`** and compiles out every `assert` in the tree.
   Both debug directories override `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to `-O2 -g` for that one
   reason, and `grep -c NDEBUG build-*/build.ninja` says which kind a directory is.
-- **Three build directories, one script: `apps/rtxtool/rtx.sh <flavour> <what>`.** The flavour
+- **Four build directories, one script: `apps/rtxtool/rtx.sh <flavour> <what>`.** The flavour
   is `debug` (`build-debug/`), `asan` (`build-debug-asan/`, with the `ASAN_OPTIONS` without which
-  there is no device) or `release` (`build-release/`, `-O3 -DNDEBUG`, where a number is taken).
-  The `what` is the same for every flavour: `build`, `test`, `game`, `repeat`, `gate`, or a verb
-  of the harness, run under the flavour's validation level unless the line names one.
+  there is no device), `release` (`build-release/`, `-O3 -DNDEBUG`, where a number is taken) or
+  `nodlss` (`build-nodlss/`, `-DOPENMW_RTX_DLSS=OFF`: the other binary, with `noupscaler.cpp`
+  linked where `dlss*.cpp` was). The `what` is the same for every flavour: `build`, `test`, `game`,
+  `repeat`, `gate`, or a verb of the harness, run under the flavour's validation level unless the
+  line names one.
 - **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
   750 MB of prebuilt binaries under NVIDIA's own licence, so it is found rather than vendored:
   `cmake/FindNGX.cmake`, pointed at a checkout by `NGX_ROOT` — in the environment or as
@@ -166,7 +168,8 @@ process, of which 9 is the visibility suite's frames; the same filtered to `Rtx*
 **The build is not the slow part.** `ccache` and `mold` are configured and the cache runs about
 seventy per cent hits. Filter the tests to what the change touched and run the whole `Rtx*` once,
 before saying it works — not after every edit. `rtx.sh debug gate` once at the end: it runs the
-format check, the tests, `check` under synchronization validation and one repeat pair, in that
+format check, the build, the two libraries compiled without asserts and the backend compiled
+without DLSS, the tests, `check` under synchronization validation and one repeat pair, in that
 order, and stops at the first failure. `repeat --pairs=10` is what a determinism reading takes.
 
 **Never run a gate beside a build, or beside another gate.** The reading is then about the machine.
