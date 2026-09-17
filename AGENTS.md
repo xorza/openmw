@@ -10,12 +10,6 @@ Read `apps/openmw/mwrender/renderer.hpp` and its callers before changing the ren
 follow scene or resource data back to its owner before changing how the RT path consumes it. What
 the tree, `--help` or a commit already answers does not belong here.
 
-**`/home/xxorza/Projects/rtxmw/`** is the reference implementation: a Rust Morrowind ray tracer with
-working water, caustics and volumetric fog. Its `docs/design.md` collects findings about
-*Morrowind's content* — ray offsets on sheet geometry, Z-first Euler angles, the pre-lit albedo
-problem — so read it before debugging something that looks already solved. Its shaders are more
-current than its prose. Same author, MIT OR Apache-2.0; this fork is GPLv3.
-
 ## Posture
 
 A 2002 game made to look astonishing on current hardware — ray-traced visibility, path-traced
@@ -128,11 +122,13 @@ backend ever arrives.
   The `what` is the same for every flavour: `build`, `test`, `game`, `repeat`, `gate`, or a verb
   of the harness, run under the flavour's validation level unless the line names one.
 - **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
-  750 MB of prebuilt binaries under NVIDIA's own licence, so it is named rather than vendored. The
-  build scripts want `OPENMW_DLSS_SDK` in the environment and refuse without it; CMake on its own
-  falls back to `DLSS_SDK_DIR`, then to `.refs/dlss`. This box points at `rtxmw`'s checkout, so this
-  tree has no `.refs/` of its own. `components/rtxvulkan/CMakeLists.txt` states the clone command
-  and the pinned tag.
+  750 MB of prebuilt binaries under NVIDIA's own licence, so it is found rather than vendored:
+  `cmake/FindNGX.cmake`, pointed at a checkout by `NGX_ROOT` — in the environment or as
+  `-DNGX_ROOT=` — the one way CMake points at any package. A build directory remembers what it
+  found, so the variable matters at its first configure and never after. This box keeps the
+  checkout at `~/Projects/dlss`, so this tree has no `.refs/` of its own.
+  `components/rtxvulkan/CMakeLists.txt` pins the tag, and the module reads the tag off the feature
+  libraries' file names.
 - **`bullet-dp`, not `bullet`** — OpenMW needs a double-precision Bullet, the two Arch packages
   conflict, and the single-precision one has to come out first.
 - **A pacman upgrade leaves stale objects that ninja cannot see.** An upgraded header under

@@ -63,8 +63,7 @@ direct diffuse (HF) with gradient-based history rejection; a cheap 1/3-resolutio
 harmonic filter for indirect diffuse (LF); temporal-only filtering for specular, because spatial
 filters failed on normal-mapped surfaces; then TAA + upscale (`asvgf_taau`).
 
-The reference project's own note (`rtxmw/docs/design.md` §5.2): a hand-rolled SVGF is "roughly
-700 lines of shader to work, 2,000 to be good".
+A hand-rolled SVGF is "roughly 700 lines of shader to work, 2,000 to be good".
 
 ## What it takes here
 

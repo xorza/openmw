@@ -115,13 +115,13 @@ describeFlavour() {
     esac
 }
 
-# Configured once, which is the one moment the SDK has to be named. `--clean-first` is never used
-# here: it deletes files/lang/*.ts, which are source.
+# Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
+# names the checkout, as CMake's own `find_package` reads it, and a build directory remembers what
+# it found. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
 configureIfNeeded() {
     if [ ! -f "$build/CMakeCache.txt" ]; then
         cmake -S "$root" -B "$build" -G Ninja \
             -DOPENMW_RTX=ON \
-            -DOPENMW_DLSS_SDK="${OPENMW_DLSS_SDK:?point OPENMW_DLSS_SDK at an unpacked DLSS SDK}" \
             -DBUILD_OPENCS=OFF -DBUILD_WIZARD=OFF -DBUILD_ESSIMPORTER=OFF \
             -DBUILD_MWINIIMPORTER=OFF -DBUILD_OPENCS_TESTS=OFF \
             -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=ON -DOPENMW_USE_SYSTEM_GOOGLETEST=ON \
