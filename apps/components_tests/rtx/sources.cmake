@@ -11,56 +11,13 @@ set(RTX_TEST_FILES
     rtx/cellgrid.cpp
     rtx/cellring.cpp
     rtx/cloudshell.cpp
+    rtx/colour.cpp
     rtx/commands.cpp
     rtx/compositequeue.cpp
     rtx/computepipeline.cpp
-    rtx/colour.cpp
     rtx/device.cpp
     rtx/dispatch.cpp
     rtx/dlss.cpp
-    rtx/fallbackseed.cpp
-    rtx/fogbuilder.cpp
-    rtx/frameclock.cpp
-    rtx/frameimage.cpp
-    rtx/framering.cpp
-    rtx/frames.cpp
-    rtx/frameoptions.cpp
-    rtx/frameworld.cpp
-    rtx/geometry.hpp
-    rtx/graphlight.hpp
-    rtx/groundreader.cpp
-    rtx/gputimer.cpp
-    rtx/guipass.cpp
-    rtx/guiquad.hpp
-    rtx/guitextures.cpp
-    rtx/harness.cpp
-    rtx/harness.hpp
-    rtx/texels.cpp
-    rtx/instancerecord.cpp
-    rtx/lightbuilder.cpp
-    rtx/lightgrid.cpp
-    rtx/meshreader.cpp
-    rtx/memory.cpp
-    rtx/mipchain.cpp
-    rtx/monitor.cpp
-    rtx/readstamp.cpp
-    rtx/stepped.cpp
-    rtx/moonbuilder.cpp
-    rtx/nodekind.cpp
-    rtx/offscreentrace.cpp
-    rtx/worker.cpp
-    rtx/parallel.cpp
-    rtx/physicaldevice.cpp
-    rtx/pipelinecache.cpp
-    rtx/probe.cpp
-    rtx/mirroridentity.cpp
-    rtx/reconstruction.cpp
-    rtx/requirements.cpp
-    rtx/result.cpp
-    rtx/ripplepass.cpp
-    rtx/runs.cpp
-    rtx/scenedesc.cpp
-    rtx/slots.cpp
     rtx/extractor/fixture.hpp
     rtx/extractor/lights.cpp
     rtx/extractor/materials.cpp
@@ -69,6 +26,45 @@ set(RTX_TEST_FILES
     rtx/extractor/skinning.cpp
     rtx/extractor/stats.cpp
     rtx/extractor/walk.cpp
+    rtx/fallbackseed.cpp
+    rtx/fogbuilder.cpp
+    rtx/frameclock.cpp
+    rtx/frameimage.cpp
+    rtx/frameoptions.cpp
+    rtx/framering.cpp
+    rtx/frames.cpp
+    rtx/frameworld.cpp
+    rtx/geometry.hpp
+    rtx/gputimer.cpp
+    rtx/graphlight.hpp
+    rtx/groundreader.cpp
+    rtx/guipass.cpp
+    rtx/guiquad.hpp
+    rtx/guitextures.cpp
+    rtx/harness.cpp
+    rtx/harness.hpp
+    rtx/instancerecord.cpp
+    rtx/lightbuilder.cpp
+    rtx/lightgrid.cpp
+    rtx/memory.cpp
+    rtx/meshreader.cpp
+    rtx/mipchain.cpp
+    rtx/mirroridentity.cpp
+    rtx/monitor.cpp
+    rtx/moonbuilder.cpp
+    rtx/nodekind.cpp
+    rtx/offscreentrace.cpp
+    rtx/parallel.cpp
+    rtx/physicaldevice.cpp
+    rtx/pipelinecache.cpp
+    rtx/probe.cpp
+    rtx/readstamp.cpp
+    rtx/reconstruction.cpp
+    rtx/requirements.cpp
+    rtx/result.cpp
+    rtx/ripplepass.cpp
+    rtx/runs.cpp
+    rtx/scenedesc.cpp
     rtx/sceneuploader.cpp
     rtx/shading.cpp
     rtx/shadingmap.cpp
@@ -76,18 +72,21 @@ set(RTX_TEST_FILES
     rtx/skinpass.cpp
     rtx/skybuilder.cpp
     rtx/skylight.cpp
+    rtx/slots.cpp
     rtx/slottable.cpp
     rtx/sourcetree.cpp
-    rtx/spritepasses.cpp
     rtx/spritelight.cpp
     rtx/spritelistsize.cpp
+    rtx/spritepasses.cpp
     rtx/statistics.hpp
+    rtx/stepped.cpp
     rtx/structurestorage.cpp
     rtx/sun.cpp
     rtx/surface.cpp
-    rtx/terraincomposite.cpp
     rtx/templatewalk.cpp
+    rtx/terraincomposite.cpp
     rtx/testtexture.hpp
+    rtx/texels.cpp
     rtx/texturearray.cpp
     rtx/texturebuilder.cpp
     rtx/tracepipeline.cpp
@@ -108,17 +107,18 @@ set(RTX_TEST_FILES
     rtx/wavemoments.hpp
     rtx/wavepass.cpp
     rtx/wavespectrum.cpp
+    rtx/worker.cpp
     rtxbench/benchrecord.cpp
     rtxbench/benchrun.cpp
     rtxbench/benchspec.cpp
-    rtxbench/runrecord.cpp
     rtxbench/framehashes.cpp
-    rtxbench/scenedigest.cpp
     rtxbench/frametimes.cpp
     rtxbench/gpuclock.cpp
+    rtxbench/runrecord.cpp
+    rtxbench/scenedigest.cpp
+    rtxtool/compare.cpp
     rtxtool/options.cpp
     rtxtool/run.cpp
-    rtxtool/compare.cpp
     sky/skyclock.cpp
     sky/sundisc.cpp
     sky/timeofday.cpp
@@ -129,8 +129,8 @@ if (NOT WIN32)
     list(APPEND RTX_TEST_FILES rtxbench/perffifo.cpp)
 endif()
 
-# Reads a NIF through upstream's loader, whose headers are not warning-free under
-# `OPENMW_RTX_COMPILE_OPTIONS`, so it is compiled with upstream's flags.
+# Reads a NIF through upstream's loader, whose headers are not warning-free under the extra
+# checks, so it takes the errors alone.
 set(RTX_TEST_FILES_UPSTREAM
     rtx/nifsurface.cpp
 )

@@ -45,6 +45,7 @@ if (OPENMW_RTX)
     set(RTX_TEST_FILES
         ${CMAKE_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
         mwrender/debugwalk.cpp
+        mwrender/precipitation.cpp
         mwrender/readworld.cpp
         mwrender/renderer.cpp
         mwrender/rtxrenderer.cpp
@@ -52,7 +53,7 @@ if (OPENMW_RTX)
         mwrender/worldmirror.cpp
     )
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})
-    set_source_files_properties(${RTX_TEST_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
+    openmw_rtx_sources(${RTX_TEST_FILES})
 endif()
 
 source_group(apps\\openmw-tests FILES ${UNITTEST_SRC_FILES})

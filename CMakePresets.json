@@ -1,0 +1,214 @@
+{
+    "version": 10,
+    "$comment": [
+        "How a build of the ray tracer is configured, in the form CMake and every IDE read. `apps/rtxtool/rtx` is",
+        "the one way in on the desk and in CI: it configures through these, fetches what a system lacks first,",
+        "and knows what each flavour is for once it is built. A visible preset is a flavour on a system, named",
+        "`<flavour>-<system>`, and inherits the flavour, the system and the common ground, in that order: the",
+        "earlier preset wins a variable both name. The hidden presets are the parts and build nothing alone.",
+        "Version 10, because it is the first that can carry a `$comment` beside each decision."
+    ],
+    "configurePresets": [
+        {
+            "name": "rtx",
+            "hidden": true,
+            "generator": "Ninja",
+            "$comment": [
+                "Common to every flavour. The content tools upstream builds by default stay off where no flavour",
+                "reads them: the CS, the wizard and the two importers are Qt and ESM code this fork does not touch.",
+                "`rtx setup` turns the ini importer on for the one build that writes an openmw.cfg. ccache drives",
+                "GCC and MSVC alike, and the compile database is what an editor reads."
+            ],
+            "cacheVariables": {
+                "OPENMW_RTX": "ON",
+                "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+                "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "BUILD_OPENCS": "OFF",
+                "BUILD_OPENCS_TESTS": "OFF",
+                "BUILD_WIZARD": "OFF",
+                "BUILD_ESSIMPORTER": "OFF",
+                "BUILD_MWINIIMPORTER": "OFF"
+            }
+        },
+        {
+            "name": "linux",
+            "hidden": true,
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+            "$comment": [
+                "What Linux supplies: recastnavigation and Google Test as packages, and mold to link with.",
+                "`RelWithDebInfo` is `-O2 -g` here and not CMake's own, which carries `-DNDEBUG` and compiles",
+                "out every assert in the tree — the debug flavours are the one build anybody develops in."
+            ],
+            "cacheVariables": {
+                "OPENMW_USE_SYSTEM_RECASTNAVIGATION": "ON",
+                "OPENMW_USE_SYSTEM_GOOGLETEST": "ON",
+                "CMAKE_EXE_LINKER_FLAGS_INIT": "-fuse-ld=mold",
+                "CMAKE_C_FLAGS_RELWITHDEBINFO": "-O2 -g",
+                "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -g"
+            }
+        },
+        {
+            "name": "windows",
+            "hidden": true,
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "$comment": [
+                "What Windows supplies: upstream's prebuilt vcpkg set, which `rtx` fetches into deps/ at the tag",
+                "CI/deps_versions.msvc.sh pins and names here through VCPKG_TAG. The set carries neither",
+                "recastnavigation, Google Test, SQLite nor yaml-cpp, so CMake fetches those, and no Qt, so the",
+                "launcher stays unbuilt. Its SDL2 is built without Vulkan and refuses the renderer's window at",
+                "runtime, so SDL's own package of the same version stands in, fetched beside the set and named",
+                "through RTX_SDL2_VERSION; vcpkg's copying of DLLs beside a binary is off, since it would put its",
+                "SDL2 back over SDL's on every link, and `rtx` copies the runtime once. Upstream's precompiled",
+                "headers are off because ccache cannot see through them: with them on, 593 of 623 compiles of the",
+                "backend were 'could not use precompiled header' and the cache held nothing. `RelWithDebInfo` is",
+                "`-O2 -Z7`, MSVC's `-O2 -g`: MSVC's own carries `/DNDEBUG` exactly as GCC's carries `-DNDEBUG`,",
+                "and `-Z7` writes the debug data into the object, which is the one form ccache can cache.",
+                "Alone, without `rtx` exporting the two versions, the paths below name nothing."
+            ],
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/deps/vcpkg-x64-windows-2022-$env{VCPKG_TAG}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_APPLOCAL_DEPS": "OFF",
+                "PRECOMPILE_HEADERS_WITH_MSVC": "OFF",
+                "SDL2_DIR": "${sourceDir}/deps/SDL2-$env{RTX_SDL2_VERSION}/cmake",
+                "LuaJit_INCLUDE_DIR": "${sourceDir}/deps/vcpkg-x64-windows-2022-$env{VCPKG_TAG}/installed/x64-windows/include/luajit",
+                "LuaJit_LIBRARY": "${sourceDir}/deps/vcpkg-x64-windows-2022-$env{VCPKG_TAG}/installed/x64-windows/lib/lua51.lib",
+                "OPENMW_USE_SYSTEM_RECASTNAVIGATION": "OFF",
+                "OPENMW_USE_SYSTEM_GOOGLETEST": "OFF",
+                "OPENMW_USE_SYSTEM_SQLITE3": "OFF",
+                "OPENMW_USE_SYSTEM_YAML_CPP": "OFF",
+                "BUILD_LAUNCHER": "OFF",
+                "CMAKE_C_FLAGS_RELWITHDEBINFO": "-O2 -Z7",
+                "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -Z7"
+            }
+        },
+        {
+            "name": "no-tools",
+            "hidden": true,
+            "$comment": [
+                "The content tools and the launcher, off. A flavour that never runs them leaves them out: a",
+                "sanitizer build of Qt code this fork does not touch doubles the wait for nothing, and the",
+                "measured build builds what is measured. The debug flavour keeps them, so that the launcher's",
+                "own [RTX] page can be compiled on request."
+            ],
+            "cacheVariables": {
+                "BUILD_BSATOOL": "OFF",
+                "BUILD_ESMTOOL": "OFF",
+                "BUILD_LAUNCHER": "OFF",
+                "BUILD_NAVMESHTOOL": "OFF",
+                "BUILD_NIFTEST": "OFF",
+                "BUILD_BULLETOBJECTTOOL": "OFF"
+            }
+        },
+        {
+            "name": "debug",
+            "hidden": true,
+            "$comment": "Every assert, with the tests: the everyday build.",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "BUILD_COMPONENTS_TESTS": "ON",
+                "BUILD_OPENMW_TESTS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "hidden": true,
+            "inherits": [ "no-tools" ],
+            "$comment": [
+                "`-O3 -DNDEBUG`, no tests: the build a number is quoted from. Nothing measured is measured",
+                "through a test. Each system adds the light debug data and the frame pointers a profiler",
+                "needs, in its own spelling, on the visible preset."
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_COMPONENTS_TESTS": "OFF",
+                "BUILD_OPENMW_TESTS": "OFF"
+            }
+        },
+        {
+            "name": "asan",
+            "hidden": true,
+            "inherits": [ "debug", "no-tools" ],
+            "$comment": [
+                "The debug flavour under AddressSanitizer. Linux only: MSVC has a sanitizer, and nobody has",
+                "measured this tree under it. The ASAN_OPTIONS without which there is no device are `rtx`'s."
+            ],
+            "cacheVariables": {
+                "CMAKE_C_FLAGS_INIT": "-fsanitize=address -fno-omit-frame-pointer",
+                "CMAKE_CXX_FLAGS_INIT": "-fsanitize=address -fno-omit-frame-pointer"
+            }
+        },
+        {
+            "name": "nodlss",
+            "hidden": true,
+            "inherits": [ "debug", "no-tools" ],
+            "$comment": [
+                "The debug flavour without the SDK, which is a different binary and not the same one with a",
+                "feature skipped: `noupscaler.cpp` links where `dlss*.cpp` did, and every file that reaches NGX",
+                "has to be behind the `#ifdef`. The gate compiles it so that a symbol reached from the wrong side",
+                "is found here and not by whoever next configures without the SDK."
+            ],
+            "cacheVariables": {
+                "OPENMW_RTX_DLSS": "OFF"
+            }
+        },
+        {
+            "name": "debug-linux",
+            "inherits": [ "debug", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-debug"
+        },
+        {
+            "name": "debug-windows",
+            "inherits": [ "debug", "windows", "rtx" ],
+            "binaryDir": "${sourceDir}/build-debug"
+        },
+        {
+            "name": "release-linux",
+            "inherits": [ "release", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-release",
+            "$comment": [
+                "`-g1` is line tables and nothing else, so it costs nothing at runtime and a profile can name a",
+                "line rather than an offset; the frame pointers cost less than the run-to-run spread and are",
+                "what let perf walk a stack for the price of reading it. Both on the measured build rather",
+                "than on a profiling build beside it, because two binaries means the profile explains a frame",
+                "the benchmark did not time."
+            ],
+            "cacheVariables": {
+                "CMAKE_C_FLAGS_INIT": "-g1 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer",
+                "CMAKE_CXX_FLAGS_INIT": "-g1 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer"
+            }
+        },
+        {
+            "name": "release-windows",
+            "inherits": [ "release", "windows", "rtx" ],
+            "binaryDir": "${sourceDir}/build-release",
+            "$comment": [
+                "`-Z7` with `-DEBUG` at link is the line table a profiler names a line from, and `-Oy-` keeps the",
+                "frame pointers a stack walk reads. Spelt with a dash, which every Microsoft tool takes, because",
+                "Git Bash turns `/O2` into `C:/Program Files/Git/O2` on its way to cmake. Through",
+                "`CMAKE_<LANG>_FLAGS_INIT`, which CMake appends its platform's own to — `/EHsc` and `/machine:x64`",
+                "among them — where `CMAKE_<LANG>_FLAGS` set outright would drop them."
+            ],
+            "cacheVariables": {
+                "CMAKE_C_FLAGS_INIT": "-Z7 -Oy-",
+                "CMAKE_CXX_FLAGS_INIT": "-Z7 -Oy-",
+                "CMAKE_EXE_LINKER_FLAGS_INIT": "-DEBUG"
+            }
+        },
+        {
+            "name": "asan-linux",
+            "inherits": [ "asan", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-asan"
+        },
+        {
+            "name": "nodlss-linux",
+            "inherits": [ "nodlss", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-nodlss"
+        },
+        {
+            "name": "nodlss-windows",
+            "inherits": [ "nodlss", "windows", "rtx" ],
+            "binaryDir": "${sourceDir}/build-nodlss"
+        }
+    ]
+}

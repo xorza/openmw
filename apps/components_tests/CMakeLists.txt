@@ -123,7 +123,7 @@ if (OPENMW_RTX)
 
     # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
     # only the latter are ours to keep warning-free.
-    set_source_files_properties(${RTX_TEST_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
+    openmw_rtx_sources(${RTX_TEST_FILES} ERRORS_ONLY ${RTX_TEST_FILES_UPSTREAM})
 endif()
 
 if (USE_QT)

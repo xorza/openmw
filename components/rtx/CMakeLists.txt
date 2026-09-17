@@ -13,24 +13,21 @@
 
 set(RTX_FILES
     alphaimage.cpp
-    scratch.hpp
     alphaimage.hpp
     bluenoise.cpp
     bluenoise.hpp
     camera.cpp
     camera.hpp
-    held.cpp
-    held.hpp
-    cellplacer.cpp
-    cellplacer.hpp
     cellgrid.cpp
     cellgrid.hpp
+    cellplacer.cpp
+    cellplacer.hpp
     cellreader.cpp
     cellreader.hpp
-    residency.hpp
-    debuglines.hpp
-    ripple.hpp
-    frameimage.hpp
+    cellring.cpp
+    cellring.hpp
+    cellsupply.cpp
+    cellsupply.hpp
     cloudshell.cpp
     cloudshell.hpp
     colour.cpp
@@ -38,30 +35,30 @@ set(RTX_FILES
     compositequeue.cpp
     compositequeue.hpp
     contract.hpp
+    debuglines.hpp
     deformertable.cpp
     deformertable.hpp
-    fogbuilder.cpp
-    fogbuilder.hpp
     emitterresolver.cpp
     emitterresolver.hpp
     error.hpp
     extractionstats.cpp
     extractionstats.hpp
+    fogbuilder.cpp
+    fogbuilder.hpp
     frameclock.hpp
     frameimage.cpp
+    frameimage.hpp
     framespend.hpp
     frameworld.cpp
     frameworld.hpp
     groundreader.cpp
     groundreader.hpp
-    texels.cpp
-    texels.hpp
-    runs.hpp
-    mesh.hpp
+    held.cpp
+    held.hpp
     instancerecord.cpp
     instancerecord.hpp
-    lightbuilder.hpp
     lightbuilder.cpp
+    lightbuilder.hpp
     lightgrid.cpp
     lightgrid.hpp
     material.hpp
@@ -71,45 +68,46 @@ set(RTX_FILES
     materialtable.hpp
     memoryreport.cpp
     memoryreport.hpp
+    mesh.hpp
     meshreader.cpp
     meshreader.hpp
-    meshtable.cpp
-    meshtable.hpp
     meshresolver.cpp
     meshresolver.hpp
+    meshtable.cpp
+    meshtable.hpp
     mipchain.cpp
     mipchain.hpp
     mirroridentity.hpp
-    walk.hpp
     monitor.hpp
     moonbuilder.cpp
     moonbuilder.hpp
     namedenum.hpp
-    nodekind.cpp
-    nodekind.hpp
     nightsky.cpp
     nightsky.hpp
+    nodekind.cpp
+    nodekind.hpp
     offscreentrace.cpp
     offscreentrace.hpp
-    viewscene.cpp
-    viewscene.hpp
-    worker.hpp
     ownedtexture.cpp
     ownedtexture.hpp
     parallel.hpp
     placementtable.cpp
     placementtable.hpp
-    prepared.hpp
     poseupdate.hpp
+    prepared.hpp
     reconstruction.hpp
     renderer.hpp
+    residency.hpp
+    ripple.hpp
     runs.cpp
+    runs.hpp
     scenedesc.cpp
     scenedesc.hpp
     sceneextractor.cpp
     sceneextractor.hpp
     sceneuploader.cpp
     sceneuploader.hpp
+    scratch.hpp
     shading.cpp
     shading.hpp
     shadingmap.cpp
@@ -120,36 +118,38 @@ set(RTX_FILES
     skybuilder.hpp
     skylight.cpp
     skylight.hpp
+    slot.hpp
     slots.cpp
     slots.hpp
+    sprite.hpp
     spritelight.cpp
     spritelight.hpp
     spritelistsize.cpp
     spritelistsize.hpp
+    stepped.hpp
     surface.cpp
     surface.hpp
-    sprite.hpp
-    stepped.hpp
-    cellring.cpp
-    cellsupply.cpp
-    cellring.hpp
-    cellsupply.hpp
     templatewalk.cpp
     templatewalk.hpp
     terraincomposite.cpp
     terraincomposite.hpp
-    slot.hpp
+    texels.cpp
+    texels.hpp
     texturebuilder.cpp
     texturebuilder.hpp
     texturedata.cpp
     texturedata.hpp
     texturetable.cpp
     texturetable.hpp
+    viewscene.cpp
+    viewscene.hpp
+    walk.hpp
     wavecascade.cpp
     wavecascade.hpp
-    worlddescent.hpp
     wavespectrum.cpp
     wavespectrum.hpp
+    worker.hpp
+    worlddescent.hpp
 )
 
 # Structures and constants shared verbatim with the shader language, through `#ifdef __cplusplus`.
@@ -163,7 +163,6 @@ set(RTX_SHADER_HEADERS
     shaders/colour.h
     shaders/composite.h
     shaders/exposure.h
-    shaders/stress.h
     shaders/fogvolume.h
     shaders/gbuffer.h
     shaders/glare.h
@@ -178,6 +177,7 @@ set(RTX_SHADER_HEADERS
     shaders/sky.h
     shaders/spritebin.h
     shaders/spriteshade.h
+    shaders/stress.h
     shaders/tone.h
     shaders/visibility.h
     shaders/wave.h
@@ -199,9 +199,4 @@ target_link_libraries(openmw-rtx PUBLIC components)
 target_compile_definitions(openmw-rtx PUBLIC
                            $<$<NOT:$<CONFIG:Release>>:OPENMW_RTX_VALIDATION_BY_DEFAULT>)
 
-target_compile_options(openmw-rtx PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
-
-if (BUILD_WITH_CODE_COVERAGE)
-    target_compile_options(openmw-rtx PRIVATE --coverage)
-    target_link_libraries(openmw-rtx gcov)
-endif()
+openmw_rtx_target(openmw-rtx)

@@ -4,10 +4,8 @@
 # passes. What is true of the content rather than of the API lives in `openmw-rtx`, which this links
 # and which links no graphics API at all.
 
-# Ninja needs the NEW behaviour to consume glslc's depfile; the root project's minimum predates it.
-if (POLICY CMP0116)
-    cmake_policy(SET CMP0116 NEW)
-endif()
+# Ninja needs the NEW behaviour to consume glslc's depfile; upstream's policy version predates it.
+cmake_policy(SET CMP0116 NEW)
 
 find_package(Vulkan REQUIRED)
 
@@ -52,8 +50,8 @@ set(RTX_SHADERS
     shaders/ripplecompose.comp
     shaders/ripplestep.comp
     shaders/skin.comp
-    shaders/spriterects.comp
     shaders/spritecomposite.rgen
+    shaders/spriterects.comp
     shaders/spriteruns.comp
     shaders/spriteshade.comp
     shaders/spriteshelter.rgen
@@ -149,10 +147,10 @@ add_custom_target(openmw-rtx-vulkan-shaders ALL DEPENDS ${RTX_SHADER_OUTPUTS}
                   SOURCES ${RTX_SHADERS} ${RTX_SHADER_LIB})
 
 set(RTX_VULKAN_FILES
-    accumulatepass.cpp
-    accumulatepass.hpp
     accelerationstructure.cpp
     accelerationstructure.hpp
+    accumulatepass.cpp
+    accumulatepass.hpp
     atrouspass.cpp
     atrouspass.hpp
     barriers.cpp
@@ -201,55 +199,55 @@ set(RTX_VULKAN_FILES
     graveyard.hpp
     guipass.cpp
     guipass.hpp
-    linepass.cpp
-    linepass.hpp
     guitextures.cpp
     guitextures.hpp
+    handles.cpp
+    handles.hpp
     image.cpp
     image.hpp
     imageuse.hpp
     instance.cpp
     instance.hpp
+    linepass.cpp
+    linepass.hpp
     memory.cpp
     memory.hpp
-    handles.cpp
-    handles.hpp
     owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
     pipeline.hpp
-    placing.hpp
     pipelinecache.cpp
     pipelinecache.hpp
+    placing.hpp
     presenter.cpp
+    presenter.hpp
     presenttargets.cpp
     presenttargets.hpp
-    presenter.hpp
     readstamp.hpp
-    retiring.hpp
     requirements.cpp
     requirements.hpp
-    ripplepass.cpp
-    ripplepass.hpp
     result.cpp
     result.hpp
+    retiring.hpp
+    ripplepass.cpp
+    ripplepass.hpp
     sceneacceleration.cpp
     sceneacceleration.hpp
     scenebuffers.cpp
     scenebuffers.hpp
     skinpass.cpp
     skinpass.hpp
+    skintables.cpp
+    skintables.hpp
+    slottable.hpp
     spritebin.cpp
     spritebin.hpp
     spritepasses.cpp
     spritepasses.hpp
-    skintables.cpp
-    skintables.hpp
-    slottable.hpp
-    structurebuild.cpp
-    structurebuild.hpp
     stresspass.cpp
     stresspass.hpp
+    structurebuild.cpp
+    structurebuild.hpp
     structurestorage.cpp
     structurestorage.hpp
     sunglarepass.cpp
@@ -264,9 +262,9 @@ set(RTX_VULKAN_FILES
     tonepass.hpp
     tracechain.cpp
     tracechain.hpp
-    tracerecording.hpp
     tracepipeline.cpp
     tracepipeline.hpp
+    tracerecording.hpp
     upscaler.hpp
     validation.cpp
     validation.hpp
@@ -296,7 +294,7 @@ add_library(openmw-rtx-vulkan STATIC ${RTX_VULKAN_FILES})
 # link Vulkan themselves.
 target_link_libraries(openmw-rtx-vulkan PUBLIC openmw-rtx PRIVATE Vulkan::Vulkan SDL2::SDL2 components)
 
-target_compile_options(openmw-rtx-vulkan PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
+openmw_rtx_target(openmw-rtx-vulkan)
 
 add_dependencies(openmw-rtx-vulkan openmw-rtx-vulkan-shaders)
 
@@ -312,9 +310,4 @@ if (OPENMW_RTX_DLSS)
     target_link_libraries(openmw-rtx-vulkan PRIVATE NGX::NGX)
     target_compile_definitions(openmw-rtx-vulkan PUBLIC OPENMW_RTX_DLSS
                                PRIVATE OPENMW_RTX_NGX_FEATURES="${NGX_FEATURE_DIR}")
-endif()
-
-if (BUILD_WITH_CODE_COVERAGE)
-    target_compile_options(openmw-rtx-vulkan PRIVATE --coverage)
-    target_link_libraries(openmw-rtx-vulkan gcov)
 endif()

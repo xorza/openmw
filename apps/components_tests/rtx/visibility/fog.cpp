@@ -19,6 +19,7 @@
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -50,6 +51,14 @@ namespace Rtx::Testing
         /// sets this and one that does not sets one. The banks have their own tests, and those run
         /// at nought.
         constexpr float sVolumeOverEvenAir = 0.999f;
+
+        /// The distance between the two half floats either side of `value`: what one reading kept
+        /// in halves can be wrong by, at most half of it each way. The subnormal spacing under
+        /// 2^-14, where the exponent stops falling.
+        float halfStepAt(float value)
+        {
+            return std::ldexp(1.0f, std::max(std::ilogb(value), -14) - 10);
+        }
 
         /// What one unit of a lamp's intensity delivers `span` units away, from the same windowed
         /// inverse square the shader uses: an inverse square that reaches exactly zero at the
@@ -1160,6 +1169,23 @@ namespace Rtx::Testing
                 << "three thousand units of it, behind a second pane";
         }
 
+        /// The step the tolerance below is derived from, at the magnitudes a half float has: ten
+        /// mantissa bits under the value's own power of two, and 2^-24 flat under 2^-14, where the
+        /// exponent stops falling. One is 2^-10; 0.19 sits in [2^-3, 2^-2), so 2^-13; 0.001 in
+        /// [2^-10, 2^-9), so 2^-20; and 65504, the largest half, in [2^15, 2^16), so 2^5.
+        TEST(RtxHalfStepTest, theStepIsTheValuesOwnBinadeOverTenBits)
+        {
+            EXPECT_EQ(halfStepAt(1.0f), 0.0009765625f);
+            EXPECT_EQ(halfStepAt(0.19f), 0.0001220703125f);
+            EXPECT_EQ(halfStepAt(0.001f), 9.5367431640625e-07f);
+            EXPECT_EQ(halfStepAt(65504.0f), 32.0f);
+
+            // The smallest normal half, one under it, and nothing at all: the subnormal spacing.
+            EXPECT_EQ(halfStepAt(6.103515625e-05f), 5.9604644775390625e-08f);
+            EXPECT_EQ(halfStepAt(1.0e-6f), 5.9604644775390625e-08f);
+            EXPECT_EQ(halfStepAt(0.0f), 5.9604644775390625e-08f);
+        }
+
         /// A moon too faint for a shadow ray still lights the air.
         ///
         /// **`FOG_SHAFT_FLOOR` is a threshold on the ray and not on the light.** It asks whether a
@@ -1186,6 +1212,14 @@ namespace Rtx::Testing
         /// so it delivers *more* per unit than one that pays for its own shadow, and the fog's own
         /// beam is what stands between the two. Nothing may deliver less than the shadowed leg, and
         /// nothing may deliver more than twice it. The step this is about reads nought.
+        ///
+        /// **Less than the shadowed leg by what the volume can hold, and no more.** A froxel keeps
+        /// the air's colour and the moons' light summed in one half float a channel
+        /// (`FOG_VOLUME_FORMAT`), so every reading here is off by up to half a step at its own
+        /// magnitude and a difference of two by a whole one, which a leg's figure then divides by
+        /// its irradiance. The faintest leg puts two hundred steps into the channel, so its figure
+        /// is good to half a per cent — and held to the shadowed leg's exactly, it came back a
+        /// third of a per cent under it.
         TEST_F(RtxVisibilityTest, aMoonTooFaintForItsOwnShadowStillLightsTheAir)
         {
             constexpr std::uint32_t size = 33;
@@ -1240,16 +1274,31 @@ namespace Rtx::Testing
 
             const float dark = lit(0.0f);
 
+            // What a figure taken as the difference of two readings and divided by an irradiance can
+            // be wrong by. The composite reads the froxel's half through the ray's own weights, which
+            // sum to under one and, thirty depths deep in fog, to not much under — so the froxel's
+            // value is the reading's or a little over, and where the two straddle a power of two its
+            // half step is the reading's whole one. A whole step at each reading covers both.
+            const auto rounding = [](float reading, float baseline, float irradiance) {
+                return (halfStepAt(reading) + halfStepAt(baseline)) / irradiance;
+            };
+
             // The brightest leg is far above the threshold and pays for its own shadow, so it is the
             // floor every fainter leg is measured against.
-            const float shadowed = (lit(irradiances.back()) - dark) / irradiances.back();
-            EXPECT_GT(shadowed, 0.0f) << "a moon well above the threshold lit the air";
+            const float bright = lit(irradiances.back());
+            const float shadowed = (bright - dark) / irradiances.back();
+            const float shadowedRounding = rounding(bright, dark, irradiances.back());
+            EXPECT_GT(shadowed, shadowedRounding) << "a moon well above the threshold lit the air";
 
             for (const float irradiance : irradiances)
             {
-                const float delivered = (lit(irradiance) - dark) / irradiance;
+                const float reading = lit(irradiance);
+                const float delivered = (reading - dark) / irradiance;
+                const float tolerance = rounding(reading, dark, irradiance) + shadowedRounding;
 
-                EXPECT_GE(delivered, shadowed) << "the air went dark at an irradiance of " << irradiance;
+                EXPECT_GE(delivered, shadowed - tolerance)
+                    << "the air went dark at an irradiance of " << irradiance << ": " << delivered << " a unit against "
+                    << shadowed << ", with " << tolerance << " of rounding";
                 EXPECT_LE(delivered, 2.0f * shadowed)
                     << "more than the moon's own shadow was worth, at an irradiance of " << irradiance;
             }

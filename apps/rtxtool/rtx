@@ -17,30 +17,30 @@
 #                                validation: the everyday build
 #   release   build-release      -O3 -DNDEBUG, no layers, line tables and frame pointers so perf can
 #                                name a line: the build a number is quoted from
-#   asan      build-debug-asan   debug under AddressSanitizer; `LSAN=1` turns the leak check back on
+#   asan      build-asan         debug under AddressSanitizer; `LSAN=1` turns the leak check back on
 #   nodlss    build-nodlss       debug with -DOPENMW_RTX_DLSS=OFF: the other binary, whose upscaler
 #                                refuses every mode by name and whose DLSS test skips
 #
 # **One grammar for four builds**, because three scripts carried three: one had verbs only, one
 # had tests by default and `tool` in front of a verb, and none built the game. What differed
-# between them is the table below, and everything else is the same eight lines.
+# between them is the table above, and everything else is the same eight lines.
 #
-# **The flags are overridden because CMake's own `RelWithDebInfo` carries `-DNDEBUG`**, and that
-# compiles out every `assert` in the fork — the contracts this code states are then checked by
-# nothing at all, in the one build anybody develops in. `release` is where `NDEBUG` belongs.
+# **How each flavour is configured is `CMakePresets.json`'s**, at the root, in the form CMake and
+# every IDE read: a flavour on a system is the preset `<flavour>-<system>`, and the reasons stand
+# beside each variable there. What this script adds is what a preset cannot say — which system it
+# is on and what that system lacks, what each flavour is for once built, and what a run is.
 #
 # **The verb stays first.** `dispatch` reads it off argv[1] and takes a leading dash to mean nobody
 # named one, so a switch put before it silently ran `view` instead — a `bench` typed after them once opened
 # a window and profiled nothing.
 #
 # **The same grammar under Git Bash on Windows, with MSVC.** Upstream's prebuilt dependency set is
-# fetched into `deps/` the way `windows.yml` fetches it, the compiler is found through vswhere and
-# its environment captured into this shell, and the flags below are MSVC's where GCC's are named.
-# `rtx.cmd` beside this is what a Windows shell resolves `apps/rtxtool/rtx` to, and it starts this
-# script in Git's bash — so an editor task names one command on both systems.
-# The Vulkan SDK, CMake and Ninja are the installers' and stay on the PATH they put themselves on;
-# `NGX_ROOT` names the checkout as it does anywhere. `asan` is refused: MSVC has a sanitizer, and
-# nobody has measured this tree under it.
+# fetched into `deps/` the way `windows.yml` fetches it, and the compiler is found through vswhere
+# and its environment captured into this shell. `rtx.cmd` beside this is what a Windows shell
+# resolves `apps/rtxtool/rtx` to, and it starts this script in Git's bash — so an editor task
+# names one command on both systems. The Vulkan SDK, CMake and Ninja are the installers' and stay
+# on the PATH they put themselves on; `NGX_ROOT` names the checkout as it does anywhere. `asan` is
+# refused: MSVC has a sanitizer, and nobody has measured this tree under it.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -54,6 +54,13 @@ onWindows() {
     esac
 }
 
+# The system's half of a preset's name.
+if onWindows; then
+    system=windows
+else
+    system=linux
+fi
+
 flavour="${1-}"
 what="${2-}"
 if [ -z "$flavour" ] || [ -z "$what" ]; then
@@ -62,63 +69,22 @@ if [ -z "$flavour" ] || [ -z "$what" ]; then
 fi
 shift 2
 
-# **A sanitizer build compiles out nothing and links no Qt.** The launcher and the content tools are
-# Qt and ESM code this fork does not touch, and building them under ASan doubles the wait for
-# nothing; a release build builds no tests, because nothing measured is measured through one.
+# What a flavour is for once it is built: where it is, which layers a run of it takes, and which
+# targets `build` builds by default. How it is configured is `CMakePresets.json`'s, under the
+# same name.
 #
 # A function, because the gate reaches for a second flavour: what a build without asserts compiles
 # is a question the debug build cannot answer.
 describeFlavour() {
-    # **The flags are the compiler's, chosen once.** MSVC's `RelWithDebInfo` carries `/DNDEBUG`
-    # exactly as GCC's carries `-DNDEBUG`, and `-O2 -Z7` is its `-O2 -g`. For the measured build,
-    # `-Z7` with `-DEBUG` at link is the line table a profiler names a line from, and `-Oy-` keeps
-    # the frame pointers a stack walk reads. `-Z7` and not `-Zi`: it writes the debug data into
-    # the object instead of a PDB beside it, which is the one form ccache can cache, and the
-    # linker's PDB is the same either way. Spelt with a dash, which every Microsoft tool takes,
-    # because Git Bash turns `/O2` into `C:/Program Files/Git/O2` on its way to cmake. The
-    # flags for every configuration go through `CMAKE_<LANG>_FLAGS_INIT`, which CMake appends its
-    # platform's own to — `/EHsc` and `/machine:x64` among them, which `CMAKE_<LANG>_FLAGS` set
-    # outright would drop.
-    local asserts profiling profilingLink
-    if onWindows; then
-        asserts="-O2 -Z7"
-        profiling="-Z7 -Oy-"
-        profilingLink=(-DCMAKE_EXE_LINKER_FLAGS_INIT=-DEBUG)
-    else
-        asserts="-O2 -g"
-        profiling="-g1 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer"
-        profilingLink=()
-    fi
-
-    case "$1" in
+    flavour="$1"
+    build="$root/build-$flavour"
+    case "$flavour" in
         debug)
-            build="$root/build-debug"
             validation=sync
-            configure=(
-                -DCMAKE_BUILD_TYPE=RelWithDebInfo
-                -DCMAKE_C_FLAGS_RELWITHDEBINFO="$asserts" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="$asserts"
-                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-                -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
-            )
             targets=(openmw-rtxtool openmw components-tests openmw-tests)
             ;;
         release)
-            # **Light debug data and frame pointers, in the build the numbers are quoted from.** `-g1`
-            # is line tables and nothing else, so it costs nothing at runtime and a profile can name a
-            # line rather than an offset; the frame pointers cost less than the run-to-run spread and
-            # are what let perf walk a stack for the price of reading it. Both on the measured build
-            # rather than on a profiling build beside it, because two binaries means the profile
-            # explains a frame the benchmark did not time.
-            build="$root/build-release"
             validation=off
-            configure=(
-                -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_C_FLAGS_INIT="$profiling" -DCMAKE_CXX_FLAGS_INIT="$profiling"
-                "${profilingLink[@]}"
-                -DBUILD_COMPONENTS_TESTS=OFF -DBUILD_OPENMW_TESTS=OFF
-                -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
-                -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
-            )
             targets=(openmw-rtxtool openmw)
             ;;
         asan)
@@ -126,18 +92,7 @@ describeFlavour() {
                 echo "rtx: asan is Linux's here — MSVC's sanitizer has not been measured on this tree" >&2
                 exit 2
             fi
-            build="$root/build-debug-asan"
             validation=sync
-            sanitize="-fsanitize=address -fno-omit-frame-pointer"
-            configure=(
-                -DCMAKE_BUILD_TYPE=RelWithDebInfo
-                -DCMAKE_C_FLAGS_RELWITHDEBINFO="$asserts" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="$asserts"
-                -DCMAKE_C_FLAGS_INIT="$sanitize" -DCMAKE_CXX_FLAGS_INIT="$sanitize"
-                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-                -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
-                -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
-                -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
-            )
             targets=(openmw-rtxtool openmw components-tests openmw-tests)
 
             # **`protect_shadow_gap=0` is not a preference — without it there is no device at all.**
@@ -157,25 +112,11 @@ describeFlavour() {
             export ASAN_OPTIONS="$options${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
             ;;
         nodlss)
-            # **The build the SDK is absent from, which is a different binary and not the same one
-            # with a feature skipped**: `noupscaler.cpp` links where `dlss*.cpp` did, and every file
-            # that reaches NGX has to be behind the `#ifdef`. The gate compiles it so that a symbol
-            # reached from the wrong side is found here and not by whoever next configures without
-            # the SDK.
-            build="$root/build-nodlss"
             validation=sync
-            configure=(
-                -DCMAKE_BUILD_TYPE=RelWithDebInfo
-                -DCMAKE_C_FLAGS_RELWITHDEBINFO="$asserts" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="$asserts"
-                -DOPENMW_RTX_DLSS=OFF
-                -DBUILD_COMPONENTS_TESTS=ON -DBUILD_OPENMW_TESTS=ON
-                -DBUILD_BSATOOL=OFF -DBUILD_ESMTOOL=OFF -DBUILD_LAUNCHER=OFF
-                -DBUILD_NAVMESHTOOL=OFF -DBUILD_NIFTEST=OFF -DBUILD_BULLETOBJECTTOOL=OFF
-            )
             targets=(openmw-rtxtool openmw components-tests openmw-tests)
             ;;
         *)
-            echo "rtx: no flavour is called '$1' — debug, release, asan or nodlss" >&2
+            echo "rtx: no flavour is called '$flavour' — debug, release, asan or nodlss" >&2
             exit 2
             ;;
     esac
@@ -309,9 +250,11 @@ fetchClangFormat() {
 # window is one: the symbols link and refuse at runtime. SDL's own Windows package of the same
 # version carries it — the same version, because vcpkg's SDL2_image loads `SDL2.dll` by name and
 # was built against that one. The version is read off the set and has to be the one pinned here
-# beside the package's checksum, which SDL does not publish: a bump upstream is a bump here.
+# beside the package's checksum, which SDL does not publish: a bump upstream is a bump here. The
+# preset reads the version through the environment, to name the package's directory.
+export RTX_SDL2_VERSION="2.32.10"
 fetchWindowsSdl() {
-    local version="2.32.10" sum="af347939395a58b365846aaea27391e69f9ec9d4dd650d6ac40802159b418a6e"
+    local version="$RTX_SDL2_VERSION" sum="af347939395a58b365846aaea27391e69f9ec9d4dd650d6ac40802159b418a6e"
     sdl="$root/deps/SDL2-$version"
 
     local stamp
@@ -345,52 +288,20 @@ fetchWindowsSdl() {
 # leaves a cache behind and no build file, and a directory in that state is configured again
 # rather than handed to ninja to find nothing in.
 #
-# **What the platform supplies.** Both have ccache, which drives MSVC as well as GCC. Linux has
-# recastnavigation and Google Test as packages, and mold to link with. Windows has upstream's
-# vcpkg set, which carries neither of those nor SQLite, yaml-cpp or Qt: the first four CMake
-# fetches, and the launcher stays unbuilt. Its SDL2 has no Vulkan, so SDL's own stands in, and
-# vcpkg's copying of DLLs beside a binary is off, since it would put its SDL2 back over SDL's on
-# every link: `placeWindowsRuntime` is the one copy.
-#
-# **Upstream's precompiled headers are off under MSVC, because ccache cannot see through them**:
-# with them on, 593 of 623 compiles of the backend were "could not use precompiled header" and
-# the cache held nothing. Measured on the backend alone: with the headers, 2 min 54 s cold and
-# the same again every time; without them, 3 min 16 s cold and 10 s from a warm cache. The
-# fork's own libraries never had them, so what is edited every day compiles the same either way.
+# What the platform supplies, and what each flavour asks, is the preset's to say. Windows's names
+# the dependency set and SDL's package by version, through `VCPKG_TAG` and `RTX_SDL2_VERSION` in
+# the environment, and both are fetched first.
 configureIfNeeded() {
     if [ -f "$build/build.ninja" ]; then
         return
     fi
 
-    local platform=()
     if onWindows; then
         fetchWindowsDeps
         fetchWindowsSdl
-        platform=(
-            -DCMAKE_TOOLCHAIN_FILE="$deps/scripts/buildsystems/vcpkg.cmake"
-            -DVCPKG_APPLOCAL_DEPS=OFF
-            -DPRECOMPILE_HEADERS_WITH_MSVC=OFF
-            -DSDL2_DIR="$sdl/cmake"
-            -DLuaJit_INCLUDE_DIR="$deps/installed/x64-windows/include/luajit"
-            -DLuaJit_LIBRARY="$deps/installed/x64-windows/lib/lua51.lib"
-            -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=OFF -DOPENMW_USE_SYSTEM_GOOGLETEST=OFF
-            -DOPENMW_USE_SYSTEM_SQLITE3=OFF -DOPENMW_USE_SYSTEM_YAML_CPP=OFF
-            -DBUILD_LAUNCHER=OFF
-        )
-    else
-        platform=(
-            -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=ON -DOPENMW_USE_SYSTEM_GOOGLETEST=ON
-            -DCMAKE_EXE_LINKER_FLAGS_INIT=-fuse-ld=mold
-        )
     fi
 
-    cmake -S "$root" -B "$build" -G Ninja \
-        -DOPENMW_RTX=ON \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DBUILD_OPENCS=OFF -DBUILD_WIZARD=OFF -DBUILD_ESSIMPORTER=OFF \
-        -DBUILD_MWINIIMPORTER=OFF -DBUILD_OPENCS_TESTS=OFF \
-        "${platform[@]}" \
-        "${configure[@]}"
+    cmake -S "$root" --preset "$flavour-$system"
 
     if onWindows; then
         placeWindowsRuntime
@@ -413,10 +324,12 @@ placeWindowsRuntime() {
 describeFlavour "$flavour"
 if onWindows; then
     activateMsvc
-    # The tag upstream's own MSVC script reads the same way, and the set it names.
+    # The tag upstream's own MSVC script reads the same way, and the set it names. Exported,
+    # because the preset names the set by it too.
     # shellcheck disable=SC1091
     source "$root/CI/deps_versions.msvc.sh"
-    deps="$root/deps/vcpkg-x64-windows-2022-${VCPKG_TAG:?}"
+    export VCPKG_TAG="${VCPKG_TAG:?}"
+    deps="$root/deps/vcpkg-x64-windows-2022-$VCPKG_TAG"
 fi
 configureIfNeeded
 

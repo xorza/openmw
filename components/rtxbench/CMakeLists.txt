@@ -17,16 +17,16 @@ set(RTXBENCH_FILES
     benchrun.hpp
     benchspec.cpp
     benchspec.hpp
-    runrecord.cpp
-    runrecord.hpp
     framehashes.cpp
     framehashes.hpp
-    scenedigest.cpp
-    scenedigest.hpp
     frametimes.cpp
     frametimes.hpp
     gpuclock.cpp
     gpuclock.hpp
+    runrecord.cpp
+    runrecord.hpp
+    scenedigest.cpp
+    scenedigest.hpp
 )
 
 source_group(components\\rtxbench FILES ${RTXBENCH_FILES})
@@ -37,9 +37,4 @@ add_library(openmw-rtx-bench STATIC ${RTXBENCH_FILES})
 # and `frametimes.hpp` names `Rtx::GpuSpan`: every consumer needs the core's include paths.
 target_link_libraries(openmw-rtx-bench PUBLIC openmw-rtx)
 
-target_compile_options(openmw-rtx-bench PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
-
-if (BUILD_WITH_CODE_COVERAGE)
-    target_compile_options(openmw-rtx-bench PRIVATE --coverage)
-    target_link_libraries(openmw-rtx-bench gcov)
-endif()
+openmw_rtx_target(openmw-rtx-bench)

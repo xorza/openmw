@@ -1,12 +1,15 @@
+# The harness: what drives a real game to a place and measures, writes or checks what the
+# renderer drew there. A library the tests reach into, and one executable that links the game.
+
 set(RTXTOOL_FILES
-    run.cpp
-    run.hpp
-    options.cpp
-    options.hpp
-    verbs.cpp
-    verbs.hpp
     compare.cpp
     compare.hpp
+    options.cpp
+    options.hpp
+    run.cpp
+    run.hpp
+    verbs.cpp
+    verbs.hpp
 )
 
 # What drives the game once one is hosted: built into the executable alone, for the reason below.
@@ -18,18 +21,14 @@ set(RTXTOOL_HOSTED_FILES
     stopwriter.hpp
 )
 
-# The run reads the clock through `mwworld/datetimemanager.hpp`, which is not warning-free under
-# `OPENMW_RTX_COMPILE_OPTIONS`, so this one is compiled with upstream's flags.
-set(RTXTOOL_HOSTED_FILES_UPSTREAM
-    session.cpp
-)
-
 source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} ${RTXTOOL_HOSTED_FILES} main.cpp)
 
 # A library so the tests can reach into it, the way apps/openmw builds openmw-lib.
 add_library(openmw-rtxtool-lib STATIC ${RTXTOOL_FILES})
 
-target_link_libraries(openmw-rtxtool-lib
+# `PUBLIC`, because the interface names all of them: `options.hpp` takes Boost's option maps,
+# `run.hpp` an `SDLUtil` mode, and the fork's own types throughout.
+target_link_libraries(openmw-rtxtool-lib PUBLIC
     Boost::program_options
     SDL2::SDL2
     openmw-rtx
@@ -38,7 +37,7 @@ target_link_libraries(openmw-rtxtool-lib
     components
 )
 
-target_compile_options(openmw-rtxtool-lib PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
+openmw_rtx_target(openmw-rtxtool-lib)
 
 # Boost's `typed_value::notify` assigns through a notifier pointer that is null unless one was
 # asked for, and GCC 16 reports the assignment as a potential null dereference — inside
@@ -80,13 +79,8 @@ if (BUILD_OPENMW)
 
     target_link_libraries(openmw-rtxtool openmw-rtxtool-lib openmw-lib)
 
-    set(RTXTOOL_STRICT_FILES main.cpp ${RTXTOOL_HOSTED_FILES})
-    list(REMOVE_ITEM RTXTOOL_STRICT_FILES ${RTXTOOL_HOSTED_FILES_UPSTREAM})
-    set_source_files_properties(${RTXTOOL_STRICT_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
-endif()
-
-if (BUILD_WITH_CODE_COVERAGE)
-    target_compile_options(openmw-rtxtool-lib PRIVATE --coverage)
-    target_link_libraries(openmw-rtxtool-lib gcov)
+    # The run reads the clock through `mwworld/datetimemanager.hpp`, which is not warning-free
+    # under the extra checks, so that one takes the errors alone.
+    openmw_rtx_sources(main.cpp ${RTXTOOL_HOSTED_FILES} ERRORS_ONLY session.cpp)
 endif()
 

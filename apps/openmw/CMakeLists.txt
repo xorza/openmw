@@ -17,6 +17,12 @@ set(OPENMW_HEADERS
 
 source_group(apps/openmw FILES main.cpp androidmain.cpp ${OPENMW_SOURCES} ${OPENMW_HEADERS} ${OPENMW_RESOURCES})
 
+# The renderer seam: `MWRender::Renderer`, what a frame is described as, and the rasterizer behind
+# the seam. Built whichever renderer is, and named once so the block below can find them.
+set(OPENMW_RENDERER_SEAM
+    renderer sceneframe objectstorage precipitation ground glrenderer glworld gloffscreenview pixels
+    )
+
 add_openmw_dir (mwrender
     actors objects renderingmanager animation rotatecontroller sky skyutil npcanimation esm4npcanimation vismask
     creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation screenshotmanager
@@ -24,7 +30,7 @@ add_openmw_dir (mwrender
     renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectpaging groundcover
     postprocessor pingpongcull luminancecalculator pingpongcanvas transparentpass opaqueblit waterawaretransparentbin precipitationocclusion ripples
     actorutil distortion animationpriority bonegroup blendmask animblendcontroller
-    renderer sceneframe objectstorage precipitation ground glrenderer glworld gloffscreenview pixels
+    ${OPENMW_RENDERER_SEAM}
     )
 
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
@@ -33,6 +39,15 @@ if (OPENMW_RTX)
         classmasks debugwalk framereport rippleemitters rtxrenderer rtxrun skyreader tracedground tracedview
         worldmirror
         )
+
+    # The seam and the ray tracer's own directory are this fork's files in upstream's target, and
+    # every one of them reads the game's headers: the errors alone, for the reason `build.cmake`
+    # gives.
+    file(GLOB OPENMW_RTX_SOURCES mwrender/rtx/*.cpp)
+    foreach (seam ${OPENMW_RENDERER_SEAM})
+        list(APPEND OPENMW_RTX_SOURCES mwrender/${seam}.cpp)
+    endforeach()
+    openmw_rtx_sources(ERRORS_ONLY ${OPENMW_RTX_SOURCES})
 endif()
 
 add_openmw_dir (mwinput

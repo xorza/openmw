@@ -62,9 +62,12 @@ namespace MWRender
         /// Set height of water plane (used to remove underwater weather particles)
         void setWaterHeight(float height);
 
-        /// The rain box and the driven effect, or null where there is none. Both are camera-relative.
-        osg::Group* getRainNode() { return mRainNode; }
-        osg::PositionAttitudeTransform* getParticleNode() { return mParticleNode; }
+        /// The rain box and the driven effect, or null where there is none — and nothing falls
+        /// while the sky is off: the root's mask hides both nodes from the rasterizer's cull the
+        /// moment the player steps indoors, and a walk that starts at the node never meets that
+        /// mask. Both are camera-relative.
+        osg::Group* getRainNode() { return mEnabled ? mRainNode.get() : nullptr; }
+        osg::PositionAttitudeTransform* getParticleNode() { return mEnabled ? mParticleNode.get() : nullptr; }
 
         /// The root everything here hangs under, for a renderer that wants state on it.
         osg::Group& getRoot() { return *mRoot; }

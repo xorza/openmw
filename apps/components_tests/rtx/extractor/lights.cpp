@@ -11,6 +11,7 @@
 
 #include <components/esm3/loadligh.hpp>
 #include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/shaders/scene.h>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -21,11 +22,15 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// What a white lamp of radius 100 radiates, once `makeLight` has derived it.
+        /// What a white lamp of radius 100 radiates, once `makeLight` has derived it: the square of
+        /// the recorded radius by a quarter of pi, 7853.98, and white decodes to one.
         ///
-        /// Intensity is scaled by the square of the recorded radius, so `100 * 100 * 0.25 * pi` is
-        /// 7853.98, and white decodes to one.
-        constexpr float sWhiteLampAtHundred = 7853.98f;
+        /// **Formed as `makeLight` forms it and not written down**, because the pulse's peak is held
+        /// against it exactly. Six digits of it sat two thousandths under the float the walk
+        /// produces, and a lamp whose phase put a sample on the peak read over the bound by that —
+        /// the phase is the light's id, which is the count of lights the process made before it, so
+        /// which tests ran first decided whether this one passed.
+        const float sWhiteLampAtHundred = 100.0f * 100.0f * (0.25f * Shaders::PI);
 
         /// **What the walk asks a `LightSource` is what it radiates, and nothing else.**
         ///
@@ -117,9 +122,11 @@ namespace Rtx::Testing
             {
                 const float lit = litAt(static_cast<double>(i) * 0.375);
 
-                // A pulse swings 0.35 either way about what the lamp radiates at rest.
-                EXPECT_GE(lit, sWhiteLampAtHundred * 0.65f);
-                EXPECT_LE(lit, sWhiteLampAtHundred * 1.35f);
+                // A pulse swings 0.35 either way about what the lamp radiates at rest. The bounds
+                // are formed the way `lightBrightness` forms them, so the trough and the peak sit
+                // on them to the bit.
+                EXPECT_GE(lit, sWhiteLampAtHundred * (1.0f - 0.35f));
+                EXPECT_LE(lit, sWhiteLampAtHundred * (1.0f + 0.35f));
 
                 deepest = std::max(deepest, std::abs(lit - sWhiteLampAtHundred));
             }

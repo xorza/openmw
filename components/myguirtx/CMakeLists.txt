@@ -23,9 +23,4 @@ add_library(openmw-myguirtx STATIC ${MYGUIRTX_FILES})
 
 target_link_libraries(openmw-myguirtx PUBLIC openmw-rtx components)
 
-target_compile_options(openmw-myguirtx PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
-
-if (BUILD_WITH_CODE_COVERAGE)
-    target_compile_options(openmw-myguirtx PRIVATE --coverage)
-    target_link_libraries(openmw-myguirtx gcov)
-endif()
+openmw_rtx_target(openmw-myguirtx)

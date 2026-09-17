@@ -128,15 +128,22 @@ backend ever arrives.
 `apps/rtxtool/rtx debug gate` is the gate. What those do not tell you:
 
 - **CMake's own `RelWithDebInfo` carries `-DNDEBUG`** and compiles out every `assert` in the tree.
-  Both debug directories override `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to `-O2 -g` for that one
-  reason, and `grep -c NDEBUG build-*/build.ninja` says which kind a directory is.
+  The debug presets set `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to `-O2 -g` for that one reason, and
+  `grep -c NDEBUG build-*/build.ninja` says which kind a directory is.
 - **Four build directories, one script: `apps/rtxtool/rtx <flavour> <what>`.** The flavour
-  is `debug` (`build-debug/`), `asan` (`build-debug-asan/`, with the `ASAN_OPTIONS` without which
-  there is no device), `release` (`build-release/`, `-O3 -DNDEBUG`, where a number is taken) or
+  is `debug` (`build-debug/`), `asan` (`build-asan/`, with the `ASAN_OPTIONS` without which there
+  is no device), `release` (`build-release/`, `-O3 -DNDEBUG`, where a number is taken) or
   `nodlss` (`build-nodlss/`, `-DOPENMW_RTX_DLSS=OFF`: the other binary, with `noupscaler.cpp`
-  linked where `dlss*.cpp` was). The `what` is the same for every flavour: `build`, `test`, `game`,
-  `repeat`, `gate`, or a verb of the harness, run under the flavour's validation level unless the
-  line names one.
+  linked where `dlss*.cpp` was). How each is configured is `CMakePresets.json`'s, as the preset
+  `<flavour>-<system>`, with the reason beside every variable; the script configures through it
+  and adds what a preset cannot say. The `what` is the same for every flavour: `build`, `test`,
+  `game`, `repeat`, `gate`, or a verb of the harness, run under the flavour's validation level
+  unless the line names one.
+- **The fork's own build files are `components/rtx/build.cmake` and the five directories it adds.**
+  One posture, stated there once: `OPENMW_RTX_ERRORS` and `OPENMW_RTX_CHECKS`, taken by a target
+  through `openmw_rtx_target` and by a file inside upstream's target through `openmw_rtx_sources`,
+  where a file that reads the game's headers takes the errors alone. A ray-tracing build needs
+  CMake 3.31, for the presets file's comments.
 - **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
   750 MB of prebuilt binaries under NVIDIA's own licence, so it is found rather than vendored:
   `cmake/FindNGX.cmake`, pointed at a checkout by `NGX_ROOT` — in the environment or as
