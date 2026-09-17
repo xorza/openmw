@@ -158,8 +158,11 @@ configureIfNeeded
 
 # **Run from the build directory**, because `--resources` defaults to `./resources`, and the tests
 # that read game data resolve it the way the tool does.
+# `-k 0` keeps ninja going past a failed object, so one run of a build that breaks names every
+# object that broke — on a compiler this box does not have, that is the difference between one
+# round trip through CI and five.
 buildTargets() {
-    cmake --build "$build" -j"$(nproc)" --target "$@"
+    cmake --build "$build" -j"$(nproc)" --target "$@" -- -k 0
 }
 
 # The flavour's layers, unless the line names a level of its own: a typed level wins.

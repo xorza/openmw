@@ -23,6 +23,14 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clang)
         -Wcast-qual
     )
 
+    # GCC 13 reports the payload of a `std::optional` "may be used uninitialized" on every copy of
+    # a struct that holds one (GCC bug 80635), which under `-Werror` stops `materialresolver.cpp`
+    # on Ubuntu 24.04's compiler. GCC 15 compiles the same four libraries clean, so the check is
+    # kept where it is right and taken off where it is not.
+    if (CMAKE_CXX_COMPILER_ID STREQUAL GNU AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
+        list(APPEND OPENMW_RTX_COMPILE_OPTIONS -Wno-maybe-uninitialized)
+    endif()
+
     # `-Wdouble-promotion` is GCC's only. Clang applies it to implicit argument conversions as
     # well as to arithmetic, which fires nine times inside `components/misc/convert.hpp` — an
     # upstream header whose whole job is handing `osg`'s floats to a double-precision Bullet.
