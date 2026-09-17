@@ -156,8 +156,8 @@ verified because it compiled.
 are known: `ninja` with nothing to do 0 s; a rebuild after touching a header 84 objects read 1 s;
 `rtx.sh debug test` 8 s over three shards, or `components-tests --gtest_filter='Rtx*'` 22 s in one
 process, of which 9 is the visibility suite's frames; the same filtered to `Rtx*Cell*` 2 s; one
-`bench` place 20 s; `check` 16 s under the layers; `rtx.sh debug repeat` 13 s a pair; the gate
-52 s. `.notes/test-suite-review.md` says where each went.
+`bench` place 20 s; `check` 16 s under the layers; `rtx.sh debug repeat` 12 s a pair; the gate
+52 s.
 
 **The build is not the slow part.** `ccache` and `mold` are configured and the cache runs about
 seventy per cent hits. Filter the tests to what the change touched and run the whole `Rtx*` once,

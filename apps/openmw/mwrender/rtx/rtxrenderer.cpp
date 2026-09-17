@@ -1002,16 +1002,8 @@ namespace MWRender
         // **Timed as well as waited for**, because the wait is not the whole of it: the ring then
         // reads the device's counters and its timestamps and destroys what that frame was the last
         // to read, and none of that is in the figure the device reports.
-        //
-        // **A frame whose picture the run takes is waited out, and not only collected.** Two
-        // frames in flight draw pictures that differ from run to run — `.notes/ISSUES.md` holds
-        // the reading — and what a run hashes a picture for is that it be a function of the
-        // frames alone, which a trace that ran with nothing beside it on the device answers for.
-        // The wait is the frame's own trace: the copy rode the frame's commands, so no submit of
-        // its own is paid for, and the report that comes back is the frame before's, with its
-        // picture.
         const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
-        report.mResult = mInstalled.mRun.wantsFrameCopy() ? mRenderer->finishFrame() : mRenderer->collectFrame();
+        report.mResult = mRenderer->collectFrame();
         report.mSpend.at(Rtx::Timing::Finish) = Rtx::since(finishing, std::chrono::steady_clock::now());
     }
 

@@ -610,7 +610,7 @@ namespace RtxTool
         const std::uint32_t drawn = mProgress.mSeen - warmup;
 
         // The scene now, which is this frame's, and the picture that came back with the report,
-        // which is the frame before's: the two halves of a row meet through the number the
+        // which is an earlier frame's: the two halves of a row meet through the number the
         // backend gave the frame. A frame the warm-up drew has no row and its picture is dropped.
         if (stop.mActions.mHash)
         {

@@ -13,14 +13,22 @@
   ten identical to none of four. The scene columns repeat on every pair, which is why this is a
   report and not a gate.
 
+2026-09-17  66194d138f+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
+  measured, two frames in flight at every submit, the picture read off the ring's own memory
+  (`FrameRing::pictureOf`, one buffer more than there are slots). Identical over every pair,
+  scene columns and picture both, 12 s a pair. Nine further legs at `--exposure=1` against one
+  reference, the same. What the reading below called two frames in flight not repeating was the
+  harness reading a picture out of the slot the frame just submitted was copying into — hashed
+  twice back to back, the buffer changed under the hash on 879 of 1440 frames, and the recorded
+  hash was torn on one frame in a hundred. The renderer repeats with two in flight.
+
 2026-09-17  8aa967d8a8+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
   measured, with the picture riding the frame's own commands into cached staging memory and
   coming back with the frame's report (`FrameOptions::mReadBack`), the scene columns from
   `SceneDigester`, and a run that takes pictures waiting each frame out before the next is placed.
   Identical over every pair, scene columns and picture both, 13 s a pair. The same walk with two
-  frames in flight differs on 187 to 219 pictures of 360 while every scene column agrees, run
-  after run: `.notes/ISSUES.md` holds the reading, and it is the first reproduction of the line
-  above that holds still.
+  frames in flight differed on 187 to 219 pictures of 360 while every scene column agreed, run
+  after run — see the reading above for what it was.
 
 2026-09-15  31ff6c4d97+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
   measured, taken over the diff-reduction pass (`.notes/plan-upstream-diff.md` steps 1 to 9): the

@@ -67,8 +67,12 @@ namespace Rtx
         /// the bytes: a table emptied is exactly when the next is about to be filled.
         void grow(std::size_t count)
         {
+            // Value-initialised and not filled with a nought: the same bytes, but GCC 16 at `-O3`
+            // misreads the fill's move of the old bytes as an overrun of the new allocation
+            // (`-Wstringop-overflow`) wherever this is inlined into an unrolled loop, and `-Werror`
+            // then refuses the release build of the tests.
             if (count > mFlags.size())
-                mFlags.resize(count, 0);
+                mFlags.resize(count);
         }
 
         /// Puts `slot` in the set, once however many times it is named.

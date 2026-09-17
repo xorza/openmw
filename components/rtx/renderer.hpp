@@ -294,8 +294,8 @@ namespace Rtx
         std::uint64_t mFrame = 0;
 
         /// The picture, where `FrameOptions::mReadBack` asked for it, as `readPixels` lays it
-        /// out; empty otherwise. The renderer's own memory, kept until the frame after next is
-        /// drawn into the same slot: read it before the next `renderFrame`.
+        /// out; empty otherwise. The renderer's own memory: a report collected before a
+        /// `renderFrame` reads until the `renderFrame` after that one.
         std::span<const std::uint8_t> mPixels;
     };
 

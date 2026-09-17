@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -88,10 +89,8 @@ namespace Rtx
         /// frame's, so a write lands under no submit in flight.
         Buffer mDebugVertices;
 
-        /// Where the frame's picture lands where `FrameOptions::mReadBack` asks, grown to the
-        /// picture on the first frame that asks and kept. `mReadBackBytes` is how much of it this
-        /// frame wrote, nought for a frame that did not ask.
-        Buffer mReadBack;
+        /// How much of `FrameRing::pictureOf` this frame wrote where `FrameOptions::mReadBack`
+        /// asked, nought for a frame that did not.
         VkDeviceSize mReadBackBytes = 0;
     };
 
@@ -151,6 +150,18 @@ namespace Rtx
         /// Drops what nothing has collected, for a caller whose world has gone.
         void dropReports() { mReports.clear(); }
 
+        /// Where frame `frame`'s picture lands where `FrameOptions::mReadBack` asks, grown to the
+        /// picture on the first frame that asks and kept.
+        ///
+        /// **One more than the slots, and not the slot's own.** A report is collected before the
+        /// frame that reuses its slot is drawn and read after it — `RtxRenderer` collects, traces,
+        /// then hands the report on — so a picture in the slot's memory was under that frame's
+        /// copy by the time it was read: torn on one frame in a hundred, which read as a renderer
+        /// that did not repeat. With a picture more than there are slots, the copy that reuses a
+        /// picture's memory is the one after that, and `FrameResult::mPixels` stands until the
+        /// `renderFrame` after the one it was collected before.
+        Buffer& pictureOf(std::uint64_t frame) { return mPictures[frame % mPictures.size()]; }
+
     private:
         /// Waits the oldest frame in flight out and puts what it came to in `mReports`.
         void finishOldest();
@@ -168,6 +179,7 @@ namespace Rtx
         bool mCountHits = false;
 
         PerSlot<FrameRecord> mSlots;
+        std::array<Buffer, sFrameSlots + 1> mPictures;
 
         /// The next frame to record and the next to finish. Everything from `mFinished` to `mFrame`
         /// is in flight, and there are never more of those than there are slots.

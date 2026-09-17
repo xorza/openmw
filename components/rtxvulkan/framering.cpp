@@ -105,10 +105,9 @@ namespace Rtx
         if (mReports.size() >= sFrameSlots)
             mReports.erase(mReports.begin());
 
-        // The picture is the slot's own memory, handed out as a span: the slot is not begun again
-        // until the ring comes round to it, which is what the result promises.
+        // Handed out as a span over the ring's own memory, which `pictureOf` says how long stands.
         const std::span<const std::uint8_t> pixels = frame.mReadBackBytes > 0
-            ? std::span(static_cast<const std::uint8_t*>(frame.mReadBack.map()), frame.mReadBackBytes)
+            ? std::span(static_cast<const std::uint8_t*>(pictureOf(mFinished).map()), frame.mReadBackBytes)
             : std::span<const std::uint8_t>();
 
         FrameResult& report = mReports.emplace_back(FrameResult{

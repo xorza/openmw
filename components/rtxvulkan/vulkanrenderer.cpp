@@ -863,15 +863,15 @@ namespace Rtx
                 .mTimer = &timer,
             });
 
-        // The picture as the curve left it and before the interface, into the slot's own host
-        // memory, for the report that comes back with the frame. Grown here and not at the resize,
+        // The picture as the curve left it and before the interface, into host memory of the
+        // ring's, for the report that comes back with the frame. Grown here and not at the resize,
         // because most frames never ask.
         if (options.mReadBack)
         {
             const VkDeviceSize bytes = target.getReadBytes();
-            growTo(frame.mReadBack, mDevice, BufferKind::ReadBack, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                "frame readback");
-            target.recordRead(commands, Use::sComputeWrite, Use::sComputeWrite, frame.mReadBack);
+            Buffer& picture = mRing.pictureOf(mRing.getRecording());
+            growTo(picture, mDevice, BufferKind::ReadBack, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame readback");
+            target.recordRead(commands, Use::sComputeWrite, Use::sComputeWrite, picture);
             frame.mReadBackBytes = bytes;
         }
 
