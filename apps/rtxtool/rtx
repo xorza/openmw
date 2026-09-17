@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # The one way in: a build flavour, then what to do with it.
 #
-#   rtx.sh <flavour> build [targets]        configure once, build the harness, the game and the tests,
-#                                           or the targets named
-#   rtx.sh <flavour> test [gtest args]      components-tests Rtx* Sky*, then openmw-tests Rtx*
-#   rtx.sh <flavour> game [args]            openmw on the quicksave
-#   rtx.sh <flavour> repeat [--pairs=N] [bench args]
-#                                           two runs of one binary walk one place and must agree
-#   rtx.sh <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
-#                                           check, repeat — stops at the first failure
-#   rtx.sh <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
+#   rtx <flavour> build [targets]        configure once, build the harness, the game and the tests,
+#                                        or the targets named
+#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky*, then openmw-tests Rtx*
+#   rtx <flavour> game [args]            openmw on the quicksave
+#   rtx <flavour> repeat [--pairs=N] [bench args]
+#                                        two runs of one binary walk one place and must agree
+#   rtx <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
+#                                        check, repeat — stops at the first failure
+#   rtx <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
 #
 #   flavour   directory          what it is
 #   debug     build-debug        -O2 -g with every assert, the layers on with synchronization
@@ -35,6 +35,8 @@
 # **The same grammar under Git Bash on Windows, with MSVC.** Upstream's prebuilt dependency set is
 # fetched into `deps/` the way `windows.yml` fetches it, the compiler is found through vswhere and
 # its environment captured into this shell, and the flags below are MSVC's where GCC's are named.
+# `rtx.cmd` beside this is what a Windows shell resolves `apps/rtxtool/rtx` to, and it starts this
+# script in Git's bash — so an editor task names one command on both systems.
 # The Vulkan SDK, CMake and Ninja are the installers' and stay on the PATH they put themselves on;
 # `NGX_ROOT` names the checkout as it does anywhere. `asan` is refused: MSVC has a sanitizer, and
 # nobody has measured this tree under it.
@@ -54,7 +56,7 @@ onWindows() {
 flavour="${1-}"
 what="${2-}"
 if [ -z "$flavour" ] || [ -z "$what" ]; then
-    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 shift 2
@@ -118,7 +120,7 @@ describeFlavour() {
             ;;
         asan)
             if onWindows; then
-                echo "rtx.sh: asan is Linux's here — MSVC's sanitizer has not been measured on this tree" >&2
+                echo "rtx: asan is Linux's here — MSVC's sanitizer has not been measured on this tree" >&2
                 exit 2
             fi
             build="$root/build-debug-asan"
@@ -170,7 +172,7 @@ describeFlavour() {
             targets=(openmw-rtxtool openmw components-tests openmw-tests)
             ;;
         *)
-            echo "rtx.sh: no flavour is called '$1' — debug, release, asan or nodlss" >&2
+            echo "rtx: no flavour is called '$1' — debug, release, asan or nodlss" >&2
             exit 2
             ;;
     esac
@@ -193,7 +195,7 @@ activateMsvc() {
 
     local installer="/c/Program Files (x86)/Microsoft Visual Studio/Installer"
     if [ ! -x "$installer/vswhere.exe" ]; then
-        echo "rtx.sh: no Visual Studio installer at $installer, so no vswhere to find a compiler with" >&2
+        echo "rtx: no Visual Studio installer at $installer, so no vswhere to find a compiler with" >&2
         exit 2
     fi
 
@@ -201,7 +203,7 @@ activateMsvc() {
     studio="$("$installer/vswhere.exe" -latest -products '*' \
         -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)"
     if [ -z "$studio" ]; then
-        echo "rtx.sh: vswhere found no Visual Studio with the C++ tools" >&2
+        echo "rtx: vswhere found no Visual Studio with the C++ tools" >&2
         exit 2
     fi
 
@@ -220,49 +222,83 @@ activateMsvc() {
     source "$captured/changed"
 
     if [ -z "${VSCMD_VER-}" ] || ! command -v cl > /dev/null 2>&1; then
-        echo "rtx.sh: VsDevCmd.bat ran and left no compiler on the PATH" >&2
+        echo "rtx: VsDevCmd.bat ran and left no compiler on the PATH" >&2
         exit 2
     fi
+}
+
+# **The tools every Windows fetch shares.** 7-Zip is the one tool the SDK installers do not
+# bring, and it is looked for where its installer puts it; curl speaks TLS only.
+sevenZip() {
+    local found
+    found="$(command -v 7z || echo "/c/Program Files/7-Zip/7z.exe")"
+    if [ ! -x "$found" ]; then
+        echo "rtx: the archives are .7z and NSIS, and there is no 7-Zip: \`winget install 7zip.7zip\`" >&2
+        exit 2
+    fi
+    echo "$found"
+}
+
+fetch() {
+    curl --proto '=https' --fail --location --silent --show-error --retry 3 "$@"
 }
 
 # **Upstream's prebuilt dependency set, the way `windows.yml` gets it.** A manifest on
 # `openmw-deps` names the archive and its SHA-512 for the tag `CI/deps_versions.msvc.sh` pins —
 # the 2022 set, which upstream's own script links against Visual Studio 2026 as well. The
-# archive is fetched over TLS only, checked, and unpacked beside its final name, which it takes
-# only once the whole of it is there: a run cut off mid-way leaves nothing a later run mistakes
-# for a set. 7-Zip is the one tool the SDK installers do not bring, and it is looked for where
-# its installer puts it.
+# archive is fetched, checked, and unpacked beside its final name, which it takes only once the
+# whole of it is there: a run cut off mid-way leaves nothing a later run mistakes for a set.
 fetchWindowsDeps() {
     if [ -d "$deps" ]; then
         return
     fi
 
-    local sevenZip
-    sevenZip="$(command -v 7z || echo "/c/Program Files/7-Zip/7z.exe")"
-    if [ ! -x "$sevenZip" ]; then
-        echo "rtx.sh: the dependency archive is a .7z and there is no 7-Zip: \`winget install 7zip.7zip\`" >&2
-        exit 2
-    fi
-
-    local manifest fetch
+    local unpack manifest
+    unpack="$(sevenZip)"
     manifest="$(basename "$deps")-manifest.txt"
-    fetch=(curl --proto '=https' --fail --location --silent --show-error --retry 3)
     mkdir -p "$root/deps"
     (
         cd "$root/deps"
-        "${fetch[@]}" --output "$manifest" "https://gitlab.com/OpenMW/openmw-deps/-/raw/main/windows/$manifest"
+        fetch --output "$manifest" "https://gitlab.com/OpenMW/openmw-deps/-/raw/main/windows/$manifest"
         local url archive
         url="$(sed -n '1p' "$manifest")"
         archive="$(sed -n '2p' "$manifest" | awk '{ print $2 }')"
-        echo "fetching $archive"
-        "${fetch[@]}" --output "$archive" "$url"
+        echo "fetching $archive" >&2
+        fetch --output "$archive" "$url"
         # The second line alone: the first is the URL, which sha512sum would call malformed.
         sed -n '2p' "$manifest" | sha512sum --check --quiet --strict -
         rm -rf "$deps.partial"
-        "$sevenZip" x -y -o"$deps.partial" "$archive" > /dev/null
+        "$unpack" x -y -o"$deps.partial" "$archive" > /dev/null
         mv "$deps.partial" "$deps"
         rm -f "$archive"
     )
+}
+
+# **The formatter CI pins, out of LLVM's own Windows package.** Nothing installs clang-format 14
+# on Windows any more — LLVM's current installer and the Visual Studio component both carry a
+# later one, and the versions disagree — but LLVM still serves the 14.0.6 package, an NSIS
+# installer 7-Zip reads without running, and `bin/clang-format.exe` is one file of it. LLVM
+# publishes a signature and no checksum for that release, so the SHA-256 here is the one taken
+# off the download this was written against: the same bytes every time, and nothing else.
+fetchClangFormat() {
+    local found="$root/deps/clang-format-14.0.6/clang-format.exe"
+    if [ -x "$found" ]; then
+        echo "$found"
+        return
+    fi
+
+    local unpack package="LLVM-14.0.6-win64.exe"
+    unpack="$(sevenZip)"
+    mkdir -p "$root/deps"
+    (
+        cd "$root/deps"
+        echo "fetching $package" >&2
+        fetch --output "$package" "https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/$package"
+        echo "e8dbb2f7de8e37915273d65c1c2f2d96844b96bb8e8035f62c5182475e80b9fc  $package" | sha256sum --check --quiet --strict -
+        "$unpack" e -y -o"$(dirname "$found")" "$package" bin/clang-format.exe > /dev/null
+        rm -f "$package"
+    )
+    echo "$found"
 }
 
 # Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
@@ -339,6 +375,19 @@ buildTargets() {
     cmake --build "$build" -j"$(nproc)" --target "$@" -- -k 0
 }
 
+# Where the game keeps its saves, answered the way `Files::LinuxPath` and `Files::WindowsPath`
+# answer it: `XDG_DATA_HOME` or `~/.local/share`, and the Documents folder the system names —
+# which is not `~/Documents` on a box where OneDrive has moved it — under `My Games`.
+userDataDir() {
+    if onWindows; then
+        local documents
+        documents="$(powershell -NoProfile -NonInteractive -Command "[Environment]::GetFolderPath('MyDocuments')")"
+        echo "$(cygpath "$documents")/My Games/OpenMW"
+    else
+        echo "${XDG_DATA_HOME:-$HOME/.local/share}/openmw"
+    fi
+}
+
 # The flavour's layers, unless the line names a level of its own: a typed level wins.
 validationFor() {
     for arg in "$@"; do
@@ -352,11 +401,17 @@ validationFor() {
 # **Every source in the working tree, and not every one git tracks.** CI's own script walks
 # `git ls-files`, which names a file a move has deleted and misses one it has created — so a tree
 # with an uncommitted move failed it on the file that was gone and passed it on the file that was
-# new. CI pins clang-format 14; this box has 22 and they disagree.
+# new. CI pins clang-format 14; the desk has 22 and they disagree, and Windows has the one
+# `fetchClangFormat` takes out of LLVM's package.
 checkFormat() {
+    local clangFormat=clang-format-14
+    if onWindows; then
+        clangFormat="$(fetchClangFormat)"
+    fi
+
     (cd "$root" && git ls-files --cached --others --exclude-standard -- ':(exclude)extern/' '*.cpp' '*.hpp' '*.h' \
         | while read -r file; do [ -f "$file" ] && printf '%s\n' "$file"; done \
-        | xargs -P "$(nproc)" clang-format-14 --dry-run -Werror)
+        | xargs -P "$(nproc)" "$clangFormat" --dry-run -Werror)
 }
 
 # **The fork's two libraries, compiled the way a number is taken.** `-DNDEBUG` compiles every
@@ -390,7 +445,7 @@ compileWithoutDlss() {
 # whole where it failed, so a failure reads as one process's.
 runTests() {
     if [ ! -x "$build/components-tests" ]; then
-        echo "the $flavour build has no tests: \`rtx.sh debug test\` runs them" >&2
+        echo "the $flavour build has no tests: \`rtx debug test\` runs them" >&2
         return 1
     fi
 
@@ -505,7 +560,7 @@ case "$what" in
     game)
         buildTargets openmw
         cd "$build"
-        exec ./openmw --skip-menu --load-savegame "$HOME/.local/share/openmw/saves/asd/Quicksave.omwsave" "$@"
+        exec ./openmw --skip-menu --load-savegame "$(userDataDir)/saves/asd/Quicksave.omwsave" "$@"
         ;;
     repeat)
         buildTargets openmw-rtxtool
@@ -527,7 +582,7 @@ case "$what" in
         echo "gate: clean"
         ;;
     -*)
-        echo "rtx.sh: name a verb before the switches — \`rtx.sh $flavour view $what $*\`" >&2
+        echo "rtx: name a verb before the switches — \`rtx $flavour view $what $*\`" >&2
         exit 2
         ;;
     *)

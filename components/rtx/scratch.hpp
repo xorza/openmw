@@ -166,7 +166,10 @@ namespace Rtx
     /// because MSVC reads a `requires` expression written inline in a generic lambda as false for
     /// every one of them and compiles the `clear` branch against a type that has none.
     template <class Buffer>
-    concept Reusable = requires(Buffer& buffer) { buffer.reuse(); };
+    concept Reusable = requires(Buffer& buffer)
+    {
+        buffer.reuse();
+    };
 
     /// Puts `object` back to its default while keeping the room its buffers grew. Every field not
     /// named is reset, so a new scalar is reset for free and a buffer forgotten reallocates, which

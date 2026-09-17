@@ -59,7 +59,7 @@ jobs:
           persist-credentials: false
 
       - name: OpenMW dependencies
-        # Upstream's own list, plus what rtx.sh asks for: Ninja and the system Google Test.
+        # Upstream's own list, plus what rtx asks for: Ninja and the system Google Test.
         run: |
           sudo add-apt-repository -y ppa:openmw/openmw
           sudo apt-get update
@@ -125,13 +125,13 @@ jobs:
           max-size: 1000M
 
       - name: Build
-        run: apps/rtxtool/rtx.sh debug build
+        run: apps/rtxtool/rtx debug build
 
       - name: Test
-        run: apps/rtxtool/rtx.sh debug test
+        run: apps/rtxtool/rtx debug test
 
       - name: The backend without DLSS
-        run: apps/rtxtool/rtx.sh nodlss build openmw-rtx-vulkan
+        run: apps/rtxtool/rtx nodlss build openmw-rtx-vulkan
 
       - name: Logs
         if: failure()

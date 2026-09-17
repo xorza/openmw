@@ -17,7 +17,7 @@
 # waits in, and whether a wait passes through this fork's own code at all. Read the by-library
 # table; the total above it is dominated by driver worker threads parked for the length of the run.
 #
-# **It profiles the build `rtx.sh release` measures, and does not have one of its own.** A profile
+# **It profiles the build `rtx release` measures, and does not have one of its own.** A profile
 # is only as good as its call graph, and a stock Release build has neither line numbers nor frame
 # pointers — so the release flavour carries `-g1 -fno-omit-frame-pointer` instead, which costs less
 # than the run-to-run spread. A second build directory would cost nothing less and explain a frame
@@ -73,9 +73,9 @@ if [ "$tui" = true ]; then
     exec perf report -i "$data" --no-inline
 fi
 
-# Configured and built by `rtx.sh release`, which owns the flags this needs, so the binary perf
-# reads is the one `rtx.sh release bench` reported on.
-"$here/rtx.sh" release build
+# Configured and built by `rtx release`, which owns the flags this needs, so the binary perf
+# reads is the one `rtx release bench` reported on.
+"$here/rtx" release build
 
 # perf's control fifo. `--delay=-1` starts the counters off and `bench` turns them on around the
 # frames it measures, so the recording is those frames: not the engine starting, not two seconds of

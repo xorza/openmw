@@ -124,12 +124,12 @@ backend ever arrives.
 ## Traps
 
 `build-debug/` is the everyday build, `openmw-rtxtool --help` lists the harness, and
-`apps/rtxtool/rtx.sh debug gate` is the gate. What those do not tell you:
+`apps/rtxtool/rtx debug gate` is the gate. What those do not tell you:
 
 - **CMake's own `RelWithDebInfo` carries `-DNDEBUG`** and compiles out every `assert` in the tree.
   Both debug directories override `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to `-O2 -g` for that one
   reason, and `grep -c NDEBUG build-*/build.ninja` says which kind a directory is.
-- **Four build directories, one script: `apps/rtxtool/rtx.sh <flavour> <what>`.** The flavour
+- **Four build directories, one script: `apps/rtxtool/rtx <flavour> <what>`.** The flavour
   is `debug` (`build-debug/`), `asan` (`build-debug-asan/`, with the `ASAN_OPTIONS` without which
   there is no device), `release` (`build-release/`, `-O3 -DNDEBUG`, where a number is taken) or
   `nodlss` (`build-nodlss/`, `-DOPENMW_RTX_DLSS=OFF`: the other binary, with `noupscaler.cpp`
@@ -173,14 +173,14 @@ verified because it compiled.
 
 **What each step costs on this box**, because the rule above is only worth keeping if the numbers
 are known: `ninja` with nothing to do 0 s; a rebuild after touching a header 84 objects read 1 s;
-`rtx.sh debug test` 8 s over three shards, or `components-tests --gtest_filter='Rtx*'` 22 s in one
+`rtx debug test` 8 s over three shards, or `components-tests --gtest_filter='Rtx*'` 22 s in one
 process, of which 9 is the visibility suite's frames; the same filtered to `Rtx*Cell*` 2 s; one
-`bench` place 20 s; `check` 16 s under the layers; `rtx.sh debug repeat` 12 s a pair; the gate
+`bench` place 20 s; `check` 16 s under the layers; `rtx debug repeat` 12 s a pair; the gate
 52 s.
 
 **The build is not the slow part.** `ccache` and `mold` are configured and the cache runs about
 seventy per cent hits. Filter the tests to what the change touched and run the whole `Rtx*` once,
-before saying it works — not after every edit. `rtx.sh debug gate` once at the end: it runs the
+before saying it works — not after every edit. `rtx debug gate` once at the end: it runs the
 format check, the build, the two libraries compiled without asserts and the backend compiled
 without DLSS, the tests, `check` under synchronization validation and one repeat pair, in that
 order, and stops at the first failure. `repeat --pairs=10` is what a determinism reading takes.
@@ -212,7 +212,7 @@ made to step by frames — and a stop's own frame count is what the trace's samp
 upscaler's jitter are walked by. A game's frame number counts loading-screen frames, which is why it
 is not that.
 
-**`rtx.sh <flavour> repeat` is what says it still is.** It walks `one-cell-walk` twice in two
+**`rtx <flavour> repeat` is what says it still is.** It walks `one-cell-walk` twice in two
 processes, the second under `bench --against` the first's hashes. Two processes, because two walks
 in one share no world state and agree on nothing. Run it after touching anything a frame reads.
 

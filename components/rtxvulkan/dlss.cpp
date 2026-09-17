@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
-#include <string_view>
 #include <system_error>
 
 #include <nvsdk_ngx_defs.h>
@@ -24,6 +23,11 @@ namespace Rtx
         /// Somewhere NGX may write its own files — not where its feature libraries live, which
         /// are found through `NVSDK_NGX_FeatureCommonInfo`. Handing it the library directory fails
         /// at `Init` with `FAIL_InvalidParameter`, which names no parameter.
+        ///
+        /// **Wide through `std::filesystem::path`, on both platforms.** NGX takes `wchar_t`, and
+        /// what that holds is the system's: UTF-16 on Windows, where the path already is one and
+        /// a byte-by-byte widening handed NGX the wrong characters for any user name outside
+        /// ASCII, and UTF-32 on Linux.
         const wchar_t* dataPath()
         {
             static const std::wstring path = [] {
@@ -31,8 +35,7 @@ namespace Rtx
                 std::error_code ignored;
                 std::filesystem::create_directories(where, ignored);
 
-                const std::string given = where.string();
-                return std::wstring(given.begin(), given.end());
+                return where.wstring();
             }();
 
             return path.c_str();
@@ -42,10 +45,7 @@ namespace Rtx
         /// application's folder alone, and these are nowhere near the binary.
         const wchar_t* featurePath()
         {
-            static const std::wstring path = [] {
-                const std::string_view given = OPENMW_RTX_NGX_FEATURES;
-                return std::wstring(given.begin(), given.end());
-            }();
+            static const std::wstring path = std::filesystem::path(OPENMW_RTX_NGX_FEATURES).wstring();
 
             return path.c_str();
         }

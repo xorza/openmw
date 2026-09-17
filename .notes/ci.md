@@ -34,7 +34,7 @@ findings for both are at the end. Delete a step when it lands.
   test, the digests, the sheets, the sky, the readers. The gate stays on this box. GitHub's own
   hardening guide says a self-hosted runner "should almost never be used for public
   repositories", so a GPU runner is not in this plan.
-- **`rtx.sh` is the one grammar, and CI can speak it.** `rtx.sh debug build` and `rtx.sh debug
+- **`rtx` is the one grammar, and CI can speak it.** `rtx debug build` and `rtx debug
   test` are what the desk runs; the workflow runs the same two lines, so CI and the desk cannot
   configure differently. The script needs two small additions, below.
 - **Hardening, from GitHub's guide.** Pin every action to a full commit SHA (the only immutable
@@ -53,11 +53,11 @@ Three things, and nothing in upstream's files:
      CI/check_clang_format.sh`. Two minutes, fails fast, upstream's own script.
    - `ubuntu-rtx`: OpenMW's dependencies from the PPA through upstream's
      `CI/install_debian_deps.sh`, plus `ninja-build`, `libgtest-dev` and `libgmock-dev` because
-     `rtx.sh` asks for Ninja and the system Google Test; the Vulkan SDK tarball, checksum
+     `rtx` asks for Ninja and the system Google Test; the Vulkan SDK tarball, checksum
      verified, extracted to the four things the build needs and cached under its version; the
-     NGX checkout; ccache; then `rtx.sh debug build`, `rtx.sh debug test`, and
-     `rtx.sh nodlss build openmw-rtx-vulkan`. Logs and `CMakeCache.txt` uploaded on failure.
-3. **Two additions to `rtx.sh`**: `build` takes explicit targets after the verb, so CI can
+     NGX checkout; ccache; then `rtx debug build`, `rtx debug test`, and
+     `rtx nodlss build openmw-rtx-vulkan`. Logs and `CMakeCache.txt` uploaded on failure.
+3. **Two additions to `rtx`**: `build` takes explicit targets after the verb, so CI can
    compile the backend alone in the `nodlss` flavour the way the gate does; and `runTests`
    prints gtest's `[  SKIPPED ]` line beside `[  PASSED  ]`, so a log where every device test
    skipped says so.
@@ -73,15 +73,15 @@ What each choice buys:
   `FindVulkan` reads `VULKAN_SDK`; `LD_LIBRARY_PATH` is what lets `components-tests` start
   and skip.
 - `NGX_ROOT` in the environment is exactly how `FindNGX.cmake` is pointed at the checkout on
-  the desk, and `rtx.sh` passes nothing about it — one door.
-- `rtx.sh` configures with ccache and mold already, so the ccache action needs only to put a
+  the desk, and `rtx` passes nothing about it — one door.
+- `rtx` configures with ccache and mold already, so the ccache action needs only to put a
   warm cache on the path. Its key is per runner image and flavour.
 - A pull request from anybody runs on GitHub's ephemeral machine with a read-only token, which
   is what the hardening guide asks of a public repository.
 
 ## Plan
 
-Steps 1 and 2 have landed: `rtx.sh` takes explicit build targets and prints the skip line, and
+Steps 1 and 2 have landed: `rtx` takes explicit build targets and prints the skip line, and
 `.github/workflows/rtx.yml` is in the tree with the AGENTS.md paragraph beside it.
 
 **Step 3 — push to a branch and watch the first run.** Open a pull request or run `Ray tracing`

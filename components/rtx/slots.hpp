@@ -18,7 +18,7 @@ namespace Rtx
     /// The slots of a table that nothing stands in. The lowest is what a take answers with, never
     /// the last one freed: `Rtx::Identity` hashes by address, so a sweep retires in whatever order
     /// the allocator left its map in, and a list taken from the back would hand the same live set
-    /// different slots in two processes, which `rtx.sh debug repeat` catches. Its own type
+    /// different slots in two processes, which `rtx debug repeat` catches. Its own type
     /// because `GuiTextures` and the view scenes hold rows `SlotRows` cannot — a `unique_ptr` is
     /// move-only and `SlotRows::take` copies. A byte per slot says whether it is on the heap, so
     /// a slot freed twice is an assert here and not two entries the heap hands out as two slots.

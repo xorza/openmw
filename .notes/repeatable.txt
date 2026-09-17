@@ -1,4 +1,4 @@
-# Picture determinism, `rtx.sh <flavour> repeat`. Newest first.
+# Picture determinism, `rtx <flavour> repeat`. Newest first.
 #
 # The scene columns are exact at every reading here, so what a line records is the picture; since
 # 2026-09-15 the picture is the gate as well. A count of differing pictures is how early one

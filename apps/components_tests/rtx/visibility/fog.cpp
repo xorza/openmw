@@ -1173,11 +1173,13 @@ namespace Rtx::Testing
         /// tent the integrate pass reads averages a lit column with a black one. What that draws is
         /// a seam across the air rather than a step in time.
         ///
-        /// **Measured in a channel the air's own colour barely holds.** The threshold is
-        /// `FOG_SHAFT_FLOOR` of the *brightest* channel of the fog colour, so an air bright in red
-        /// and green and near black in blue puts the crossing far above what the air itself puts
-        /// into blue. An even grey would put the whole effect under the rounding of an eight-bit
-        /// channel.
+        /// **Measured in a channel the air's own colour barely holds, and in radiance.** The
+        /// threshold is `FOG_SHAFT_FLOOR` of the *brightest* channel of the fog colour, so an air
+        /// bright in red and green and near black in blue puts the crossing far above what the air
+        /// itself puts into blue. The faintest leg adds eight parts in a hundred thousand to that
+        /// channel, a quarter of the display curve's smallest step, so read through the curve the
+        /// figure was whichever side of a byte the air happened to sit on — and one card put it
+        /// at four times the bound.
         ///
         /// **What is asserted is the light per unit of irradiance**, which is bounded above and
         /// below rather than fixed: a leg under the threshold casts no ray and arrives unshadowed,
@@ -1228,12 +1230,12 @@ namespace Rtx::Testing
                     .mMesh = scene.addMesh(
                         MeshArrays{ .mPositions = sheetAt(4000.0f, -200000.0f), .mIndices = sQuadIndices }) });
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                std::vector<float> radiance;
+                renderRadiance(scene, camera, size, radiance);
 
                 // Blue is the third of the pixel's four values, and the channel the moon has to
                 // itself.
-                return decodeSrgb(pixels[centre + 2]);
+                return radiance[centre + 2];
             };
 
             const float dark = lit(0.0f);

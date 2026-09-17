@@ -1,0 +1,10 @@
+// The ray tracer's tasks: each is `apps/rtxtool/rtx` with a flavour and a verb. One name on both
+// systems — a POSIX shell runs the script, and PowerShell resolves it to `rtx.cmd` beside it.
+[
+  {
+    "label": "rtx: view the ship, debug",
+    "command": "apps/rtxtool/rtx",
+    "args": ["debug", "view", "--view=seyda-neen-ship"],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  }
+]
