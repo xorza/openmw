@@ -52,11 +52,6 @@ namespace RtxTool
 
         constexpr std::string_view applicationName = "RtxTool";
 
-        /// How long a window runs when nobody said: until it is closed. A count rather than a
-        /// special case, so one schedule serves a run of eight frames and a session somebody flies
-        /// for an hour.
-        constexpr std::uint32_t sForever = ~0u;
-
         /// Which layers a run wants, from what the command line asked for.
         ///
         /// Shared because `info` and every other command have to agree: a device that reported its
@@ -665,7 +660,8 @@ namespace RtxTool
             // **A schedule with no end, because somebody is watching.** `--frames` closes it after
             // that many, which is how the window path gets exercised by something that cannot click.
             const std::uint32_t frames = variables["frames"].as<std::uint32_t>();
-            staged.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : sForever };
+            staged.mSchedule.mSpec.mRun
+                = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : Rtx::BenchSpan::sUntilClosed };
             staged.mSchedule.mFreeCamera = true;
 
             Rtx::SessionRequest request;

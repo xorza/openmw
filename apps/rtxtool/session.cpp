@@ -88,12 +88,15 @@ namespace RtxTool
         if (!mRequest.mAgainst.empty())
             mRecord.readReference(mRequest.mAgainst);
 
+        // Reserved once at the longest stop's length, so no measured frame grows a vector — a
+        // benchmark that stops to reallocate is measuring its own allocator. A window that runs
+        // until it is closed is not a benchmark, and room for its "length" is thirty gigabytes a
+        // row: Linux promised that and never gave it, and Windows refuses it outright.
         std::uint32_t longest = 0;
         for (const Rtx::Stop& stop : mRequest.mStops)
-            longest = std::max(longest, stop.mSchedule.mSpec.getMeasured());
+            if (!stop.mSchedule.mSpec.mRun.isUntilClosed())
+                longest = std::max(longest, stop.mSchedule.mSpec.getMeasured());
 
-        // Reserved once at the longest stop's length, so no measured frame grows a vector — a
-        // benchmark that stops to reallocate is measuring its own allocator.
         mProgress.mSamples.reserve(longest);
 
         mRecord.reserve(mRequest.mStops.size());
@@ -373,7 +376,10 @@ namespace RtxTool
 
         Log(Debug::Info) << "Ray tracing session: stop " << (mAt + 1) << " of " << mRequest.mStops.size() << ", "
                          << (stop.mName.empty() ? "unnamed" : stop.mName) << " — " << stop.mSchedule.mSpec.getWarmup()
-                         << " frames warming up then " << stop.mSchedule.mSpec.getMeasured() << " measured";
+                         << " frames warming up then "
+                         << (stop.mSchedule.mSpec.mRun.isUntilClosed()
+                                    ? std::string("a window until it is closed")
+                                    : std::to_string(stop.mSchedule.mSpec.getMeasured()) + " measured");
     }
 
     void Session::fly()

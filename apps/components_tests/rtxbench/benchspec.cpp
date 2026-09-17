@@ -38,6 +38,13 @@ namespace Rtx
             EXPECT_TRUE(BenchSpan{}.empty());
             EXPECT_EQ(BenchSpan{}.getFrames(), 0u);
 
+            // A window's run is a count like any other to the schedule, and its own thing to
+            // whatever would make room for it.
+            EXPECT_TRUE((BenchSpan{ .mFrames = BenchSpan::sUntilClosed }).isUntilClosed());
+            EXPECT_EQ((BenchSpan{ .mFrames = BenchSpan::sUntilClosed }).getFrames(), BenchSpan::sUntilClosed);
+            EXPECT_FALSE((BenchSpan{ .mFrames = 240 }).isUntilClosed());
+            EXPECT_FALSE((BenchSpan{ .mSeconds = 10.0f }).isUntilClosed());
+
             const BenchSpec spec{ .mRun = { .mSeconds = 10.0f }, .mWarm = { .mFrames = 120 } };
             EXPECT_EQ(spec.getMeasured(), 600u);
             EXPECT_EQ(spec.getWarmup(), 120u);
