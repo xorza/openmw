@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The one way in: a build flavour, then what to do with it.
 #
-#   rtx.sh <flavour> build                  configure once, build the harness, the game and the tests
+#   rtx.sh <flavour> build [targets]        configure once, build the harness, the game and the tests,
+#                                           or the targets named
 #   rtx.sh <flavour> test [gtest args]      components-tests Rtx* Sky*, then openmw-tests Rtx*
 #   rtx.sh <flavour> game [args]            openmw on the quicksave
 #   rtx.sh <flavour> repeat [--pairs=N] [bench args]
@@ -229,7 +230,10 @@ runTests() {
     done
     for shard in $(seq 0 $((shards - 1))); do
         if grep -q '^\[  PASSED  \]' "$out/$shard.log" && ! grep -q '^\[  FAILED  \]' "$out/$shard.log"; then
-            grep -E '^\[==========\] .* ran|^\[  PASSED  \]' "$out/$shard.log" | sed "s/^/shard $shard: /"
+            # The skipped line too: without a device every RTX test skips, and a log that says so is
+            # the difference between a pass and a machine with nothing to test on.
+            grep -E '^\[==========\] .* ran|^\[  PASSED  \]|^\[  SKIPPED \]' "$out/$shard.log" \
+                | sed "s/^/shard $shard: /"
         else
             status=1
             echo "shard $shard failed:" >&2
@@ -313,7 +317,9 @@ runRepeat() {
 
 case "$what" in
     build)
-        buildTargets "${targets[@]}"
+        # The flavour's own targets, or the ones the line names: CI compiles the backend alone in
+        # the `nodlss` flavour, the way the gate does.
+        buildTargets "${@:-${targets[@]}}"
         ;;
     test)
         buildTargets components-tests openmw-tests

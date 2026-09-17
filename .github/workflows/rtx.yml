@@ -1,0 +1,134 @@
+# The fork's own CI: the ray-tracing build on Ubuntu, through the same script the desk uses.
+# Upstream's push.yml and release.yml stay as they are and are switched off in the repository's
+# settings (AGENTS.md says how); windows.yml and macos.yml have no trigger of their own.
+#
+# No hosted runner has a GPU, so every RTX test that needs a device skips at vkCreateInstance
+# and the test step's skip count says so. What this proves is that both binaries compile, the
+# format check holds and the device-free tests pass; the gate stays on a box with a card.
+#
+# Every action is pinned to a full commit, the token can only read and is not left in the
+# checkout, and a newer push cancels the run it supersedes.
+name: Ray tracing
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The backend needs VK_EXT_ray_tracing_invocation_reorder, which entered the SDK at 1.4.333;
+  # the distro's packages and LunarG's apt repository stop short of it, so the tarball, verified
+  # against the checksum LunarG publishes beside it.
+  VULKAN_SDK_VERSION: 1.4.357.1
+  VULKAN_SDK_SHA256: 4b41e3b30e8aedaa5dac7c136561ab463eb316a25a54e2c6245f2c299ea1fb85
+  # The tag components/rtxvulkan/CMakeLists.txt asks FindNGX for, exactly.
+  NGX_TAG: v310.7.0
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: clang-format 14, the version CI pins
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-14
+
+      - run: CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh
+
+  ubuntu-rtx:
+    # 24.04 by name and not ubuntu-latest, and not 26.04: the OpenMW PPA the dependencies come
+    # from publishes for noble and no later LTS.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: OpenMW dependencies
+        # Upstream's own list, plus what rtx.sh asks for: Ninja and the system Google Test.
+        run: |
+          sudo add-apt-repository -y ppa:openmw/openmw
+          sudo apt-get update
+          sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-dynamic
+          sudo apt-get install -y ninja-build libgtest-dev libgmock-dev
+
+      - name: Vulkan SDK cache
+        id: vulkan
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vulkan-sdk
+          key: vulkan-sdk-${{ env.VULKAN_SDK_VERSION }}-${{ env.VULKAN_SDK_SHA256 }}
+
+      - name: Vulkan SDK download
+        if: steps.vulkan.outputs.cache-hit != 'true'
+        # Only the four things the build needs out of 330 MB: the headers, the loader the tests
+        # start against, glslc and spirv-val. No device, so no layers.
+        run: |
+          tarball="vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz"
+          curl --fail --retry 3 -L -o "$tarball" \
+            "https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/linux/${tarball}"
+          echo "${VULKAN_SDK_SHA256}  ${tarball}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/vulkan-sdk"
+          tar -xJf "$tarball" -C "${RUNNER_TEMP}/vulkan-sdk" --strip-components=1 --wildcards \
+            '*/x86_64/include/*' '*/x86_64/lib/libvulkan.so*' '*/x86_64/bin/glslc' '*/x86_64/bin/spirv-val'
+
+      - name: Vulkan SDK environment
+        # What FindVulkan reads, what the test binaries load, and where glslc is found.
+        run: |
+          echo "VULKAN_SDK=${RUNNER_TEMP}/vulkan-sdk/x86_64" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${RUNNER_TEMP}/vulkan-sdk/x86_64/lib" >> "$GITHUB_ENV"
+          echo "${RUNNER_TEMP}/vulkan-sdk/x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: NGX SDK
+        # A sparse checkout of NVIDIA's public repository at the pinned tag: the headers, the
+        # static library and the release features, and neither the debug features nor Windows.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: NVIDIA/DLSS
+          ref: ${{ env.NGX_TAG }}
+          path: dlss
+          persist-credentials: false
+          sparse-checkout: |
+            include
+            lib/Linux_x86_64/rel
+
+      - name: NGX_ROOT, the one way FindNGX is pointed at a checkout
+        run: echo "NGX_ROOT=${GITHUB_WORKSPACE}/dlss" >> "$GITHUB_ENV"
+
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: ubuntu-24.04-rtx
+          max-size: 1000M
+
+      - name: Build
+        run: apps/rtxtool/rtx.sh debug build
+
+      - name: Test
+        run: apps/rtxtool/rtx.sh debug test
+
+      - name: The backend without DLSS
+        run: apps/rtxtool/rtx.sh nodlss build openmw-rtx-vulkan
+
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: logs-${{ github.sha }}
+          path: |
+            build-debug/CMakeCache.txt
+            build-debug/**/*.log
+            build-nodlss/CMakeCache.txt

@@ -82,6 +82,12 @@ the least code, and a review will offer to take them out for that reason; the an
 player turns the renderer on there, and the two live knobs are turned there. `Rtx::sUpscaleMenu`
 is the one list both menus offer.
 
+**Upstream's workflows stay byte for byte, switched off in the repository and not in the file.**
+`.github/workflows/rtx.yml` is the fork's CI; `push.yml` and `release.yml` are upstream's and are
+disabled with `gh workflow disable push.yml` and `gh workflow disable release.yml`, a state the
+repository keeps (`disabled_manually`) that a push does not undo. A fresh fork runs the two
+commands again. `windows.yml` and `macos.yml` have no trigger of their own and need nothing.
+
 **A gap in upstream's data, a missing extension or a missing feature is a hard failure naming it** —
 never a patch to upstream, never a fallback path.
 
