@@ -137,7 +137,7 @@ namespace Rtx::Testing
 
         Material material;
         material.mDiffuse = made.mTexture;
-        made.mMaterial = scene.materials().add(material);
+        made.mMaterial = scene.addMaterial(material);
         made.mPlacement = scene.addInstance(MeshInstance{ .mMesh = made.mMesh, .mMaterial = made.mMaterial });
 
         return made;
@@ -149,16 +149,18 @@ namespace Rtx::Testing
         return toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, z));
     }
 
-    /// A skin of one bone over `vertices` vertices, every weight one, so a pose is the bone's own
-    /// transform and nothing else — what a test expects is what it moved the bone by.
+    /// A body of `arrays` on a skin of one bone, every weight one, so a pose is the bone's own
+    /// transform and nothing else — what a test expects is what it moved the bone by. The rig
+    /// comes with the mesh, as every deformer does; `mDeformer` is what a second body on the
+    /// same skin names.
     ///
     /// A run word is `first << RUN_COUNT_BITS | count`, and every vertex here names the one
     /// influence at nought: a word of one.
-    inline Index addOneBoneRig(SceneDesc& scene, std::uint32_t vertices)
+    inline DeformedMesh addOneBoneBody(SceneDesc& scene, const MeshArrays& arrays)
     {
-        const std::vector<std::uint32_t> runs(vertices, 1u);
+        const std::vector<std::uint32_t> runs(arrays.mPositions.size(), 1u);
         const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-        return scene.deformers().addRig(runs, influences, 1);
+        return scene.addMesh(arrays, {}, RigSpec{ .mRuns = runs, .mInfluences = influences, .mBones = 1 });
     }
 
     /// Poses a mesh on a rig by `bones`, laid as the scene takes them. The scratch is kept, as

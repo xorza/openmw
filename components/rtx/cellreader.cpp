@@ -4,7 +4,6 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <exception>
 #include <optional>
 #include <span>
 #include <vector>
@@ -69,55 +68,39 @@ namespace Rtx
             return *known;
         }
 
-        PreparedTexture& texture = mTextures.take();
+        PreparedTexture& texture = mTextures.take([&](PreparedTexture& into) {
+            into.mImage = &image;
+            into.mPath = VFS::Path::Normalized(image.getFileName());
+
+            // What the frame's describe would have done, done here. A file that carried no chain
+            // gets one built; every file gets its shading estimated. Both read every texel, and
+            // both are what the frame then finds ready. A format this renderer does not upload is
+            // recorded as such and drawn as the stand-in there, as it would be without this.
+            try
+            {
+                mLevelScratch.clear();
+                const TextureData described = MipChain::withChain(describeImage(image, mLevelScratch), into.mChain);
+
+                const ShadingMap map(described);
+                const std::span<const float> values = map.getValues();
+                std::copy(values.begin(), values.end(), into.mShading.begin());
+
+                into.mReadable = true;
+            }
+            catch (const Error&)
+            {
+                into.mReadable = false;
+            }
+        });
+
         mTextures.lend(texture);
-        texture.mImage = &image;
-        texture.mPath = VFS::Path::Normalized(image.getFileName());
-
-        // What the frame's describe would have done, done here. A file that carried no chain
-        // gets one built; every file gets its shading estimated. Both read every texel, and both
-        // are what the frame then finds ready. A format this renderer does not upload is recorded as
-        // such and drawn as the stand-in there, as it would be without this.
-        try
-        {
-            mLevelScratch.clear();
-            const TextureData described = MipChain::withChain(describeImage(image, mLevelScratch), texture.mChain);
-
-            const ShadingMap map(described);
-            const std::span<const float> values = map.getValues();
-            std::copy(values.begin(), values.end(), texture.mShading.begin());
-
-            texture.mReadable = true;
-        }
-        catch (const Error&)
-        {
-            texture.mReadable = false;
-        }
-
         mByImage.insert(&texture);
 
         return &texture;
     }
 
-    PreparedModel* CellReader::readModel(const VFS::Path::NormalizedView path)
+    void CellReader::lendTextures(PreparedModel& model)
     {
-        if (PreparedModel* const* const known = mByPath.find(path.value()))
-            return *known;
-
-        const osg::ref_ptr<const osg::Node> node = mContent.getTemplate(path);
-        if (node == nullptr)
-            return nullptr;
-
-        PreparedModel& model = mModels.take();
-        model.mPath.assign(path.value());
-        model.mTemplate = node;
-
-        // The template's own bound, as `createChunk` measured a reference by it. Computed at load
-        // for every template the game hands out, so this is a read.
-        model.mRadius = node->getBound().radius();
-
-        mWalk.read(*node, mMask, model);
-
         for (const PreparedPart& part : model.mParts)
         {
             if (!part.mMaterial.mDescribed.has_value())
@@ -139,6 +122,31 @@ namespace Rtx
                     model.mTextures.push_back(texture);
             }
         }
+    }
+
+    PreparedModel* CellReader::readModel(const VFS::Path::NormalizedView path)
+    {
+        if (PreparedModel* const* const known = mByPath.find(path.value()))
+            return *known;
+
+        const osg::ref_ptr<const osg::Node> node = mContent.getTemplate(path);
+        if (node == nullptr)
+            return nullptr;
+
+        PreparedModel& model = mModels.take([&](PreparedModel& into) {
+            into.mPath.assign(path.value());
+            into.mTemplate = node;
+
+            // The template's own bound, as `createChunk` measured a reference by it. Computed at
+            // load for every template the game hands out, so this is a read.
+            into.mRadius = node->getBound().radius();
+
+            // The walk before the textures, because the walk is the one throw a cell survives
+            // (`read` says which) and the pool takes the model back on it: a texture lent before
+            // that throw would be one nothing gives back.
+            mWalk.read(*node, mMask, into);
+            lendTextures(into);
+        });
 
         mByPath.insert(&model);
 
@@ -147,8 +155,13 @@ namespace Rtx
 
     PreparedCell& CellReader::read(const osg::Vec2i& cell, const bool statics)
     {
-        PreparedCell& prepared = mCells.take();
+        PreparedCell& prepared = mCells.take([&](PreparedCell& into) { fill(into, cell, statics); });
         mCells.lend(prepared);
+        return prepared;
+    }
+
+    void CellReader::fill(PreparedCell& prepared, const osg::Vec2i& cell, const bool statics)
+    {
         prepared.mCell = cell;
         prepared.mStatics = statics;
 
@@ -185,7 +198,7 @@ namespace Rtx
         }
 
         if (!statics)
-            return prepared;
+            return;
 
         for (const Terrain::PagedCellRef& ref : mRefScratch)
         {
@@ -200,13 +213,16 @@ namespace Rtx
 
             // A model this cannot read is a reference left out and named, and never a cell
             // left out: a settled walk waits for every cell of the ring, and one that never came
-            // would hold it for ever.
+            // would hold it for ever. `Error` and no wider: the walk is what throws it, for a
+            // file that describes a mesh this renderer cannot take, and the loader answers a file
+            // it cannot read with the error marker rather than a throw. Anything else is the
+            // reader failing, which the monitor reports.
             PreparedModel* read = nullptr;
             try
             {
                 read = readModel(model);
             }
-            catch (const std::exception& e)
+            catch (const Error& e)
             {
                 Log(Debug::Warning) << "Ray tracing could not read " << model << " for " << ref.mRefId << ": "
                                     << e.what();
@@ -235,8 +251,6 @@ namespace Rtx
                 .mRadius = read->mRadius * ref.mScale,
             });
         }
-
-        return prepared;
     }
 
     void CellReader::giveBack(PreparedCell& cell)

@@ -114,9 +114,7 @@ namespace Rtx
         if (reading.mShape.mSheet)
             ++stats.mSheets;
 
-        const Index deformer = addDeformer(read, reading.mArrays.mPositions.size());
-
-        const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, read.mDeform, deformer);
+        const Index mesh = addMesh(read, reading);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 
@@ -187,31 +185,42 @@ namespace Rtx
         mMeshes.drop(known);
     }
 
-    /// Added once per skin and once per set of targets however many drawables share them, and
-    /// stamped through `reach` as it goes — so the sweep keeps it for as long as a mesh stands on it.
-    Index MeshResolver::addDeformer(const DrawableRead& read, const std::size_t vertices)
+    Index MeshResolver::addMesh(const DrawableRead& read, const MeshReading& reading)
     {
         if (read.mDeform == Deform::None)
-            return sNoIndex;
+            return mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex);
 
-        // A skin rewritten in place under the same address is a new skin. `setInfluences` on a
-        // rig the mirror has met writes into the `InfluenceData` every copy shares, so what the map
-        // holds describes a mesh of another length; the deformer it named stays for the meshes
-        // still on it and goes with the last of them, and this drawable gets one of its own. A set
-        // of targets grown or shrunk under the same base is a new set for the same reason.
-        const auto [known, arrived] = mDeformers.reach(deformerKeyOf(read));
-        Index& deformer = known->second.mIndex;
-        const bool stale = arrived || !fits(deformer, read)
-            || mScene.deformers().getDeformers()[deformer].getVertexCount() != vertices;
-        if (stale)
-            deformer = read.mDeform == Deform::Rig ? readRig(*read.mRig) : readMorph(*read.mMorph);
+        // A deformer the mirror holds that fits this drawable — the same kind, the same targets
+        // and exactly these vertices — is added once per skin and once per set of targets however
+        // many drawables share them, and stamped as each is met, so the sweep keeps it for as long
+        // as a mesh stands on it.
+        const std::size_t vertices = reading.mArrays.mPositions.size();
+        const Held held = holdDeformer(read);
+        if (held.mIndex != sNoIndex && mScene.deformers().getDeformers()[held.mIndex].getVertexCount() == vertices)
+        {
+            stampDeformer(held);
+            return mScene.addMesh(reading.mArrays, reading.mShape, read.mDeform, held.mIndex);
+        }
 
-        const std::size_t moved = mScene.deformers().getDeformers()[deformer].getVertexCount();
-        if (moved != vertices)
-            throw Error("a deforming mesh of " + std::to_string(vertices) + " vertices on a rig or morph of "
-                + std::to_string(moved));
+        // Otherwise this drawable gets a deformer of its own, made with its mesh. A skin rewritten
+        // in place under the same address is a new skin: `setInfluences` on a rig the mirror has
+        // met writes into the `InfluenceData` every copy shares, so what the map held described a
+        // mesh of another length; the deformer it named stays for the meshes still on it and goes
+        // with the last of them. A set of targets grown or shrunk under the same base is a new set
+        // for the same reason.
+        const DeformedMesh added = read.mDeform == Deform::Rig
+            ? mScene.addMesh(reading.mArrays, reading.mShape, readRig(*read.mRig))
+            : mScene.addMesh(reading.mArrays, reading.mShape, readMorph(*read.mMorph));
 
-        return deformer;
+        if (held.mEntry != mDeformers.end())
+        {
+            held.mEntry->second.mIndex = added.mDeformer;
+            mDeformers.stamp(held.mEntry);
+        }
+        else
+            mDeformers.add(deformerKeyOf(read), Known{ .mIndex = added.mDeformer });
+
+        return added.mMesh;
     }
 
     MeshResolver::Held MeshResolver::holdDeformer(const DrawableRead& read)
@@ -230,8 +239,9 @@ namespace Rtx
     void MeshResolver::stampDeformer(const Held& held)
     {
         // The entry is there, and the fit test is why. It agreed that the slot's deformer is
-        // this drawable's, and `addDeformer` never hands back `sNoIndex` — so a deformer the
-        // sweep had taken would have failed that test rather than reach here.
+        // this drawable's, and an entry names a deformer from the moment it is made (`addMesh`
+        // makes the rows first) — so a deformer the sweep had taken would have failed that test
+        // rather than reach here.
         contract(held.mEntry != mDeformers.end(), "a deforming mesh reused on a deformer the mirror has lost");
         mDeformers.stamp(held.mEntry);
     }
@@ -292,7 +302,7 @@ namespace Rtx
         ++stats.mDeformed;
     }
 
-    Index MeshResolver::readRig(const SceneUtil::RigGeometry& rig)
+    RigSpec MeshResolver::readRig(const SceneUtil::RigGeometry& rig)
     {
         const SceneUtil::RigGeometry::InfluenceData* skin = rig.getInfluenceData();
         assert(skin != nullptr);
@@ -330,10 +340,14 @@ namespace Rtx
             }
         }
 
-        return mScene.deformers().addRig(mRunScratch, mInfluenceScratch, static_cast<Index>(skin->mBones.size()));
+        return RigSpec{
+            .mRuns = mRunScratch,
+            .mInfluences = mInfluenceScratch,
+            .mBones = static_cast<Index>(skin->mBones.size()),
+        };
     }
 
-    Index MeshResolver::readMorph(const SceneUtil::MorphGeometry& morph)
+    MorphSpec MeshResolver::readMorph(const SceneUtil::MorphGeometry& morph)
     {
         const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
         assert(targets.size() > 1);
@@ -354,7 +368,7 @@ namespace Rtx
             std::copy_n(offsets->begin(), count, mOffsetScratch.begin() + target * vertices);
         }
 
-        return mScene.deformers().addMorph(mOffsetScratch, static_cast<Index>(targets.size()));
+        return MorphSpec{ .mOffsets = mOffsetScratch, .mTargets = static_cast<Index>(targets.size()) };
     }
 
     void MeshResolver::retire(std::vector<Index>& live)

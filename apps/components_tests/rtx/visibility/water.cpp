@@ -76,7 +76,7 @@ namespace Rtx::Testing
                     scene.addInstance(MeshInstance{
                         .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
-                        .mMaterial = scene.materials().add(material),
+                        .mMaterial = scene.addMaterial(material),
                     });
                 };
             };
@@ -519,12 +519,12 @@ namespace Rtx::Testing
             SceneDesc dry;
             dry.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = dry.addMesh(MeshArrays{ .mPositions = bed, .mIndices = sQuadIndices }),
-                .mMaterial = dry.materials().add(black) });
+                .mMaterial = dry.addMaterial(black) });
 
             SceneDesc wet = makeOpenWater(extent);
             wet.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = wet.addMesh(MeshArrays{ .mPositions = bed, .mIndices = sQuadIndices }),
-                .mMaterial = wet.materials().add(black) });
+                .mMaterial = wet.addMaterial(black) });
 
             // Straight down, with the image's up along +x so that a row is a run of x.
             const osg::Matrixf above = osg::Matrixf::lookAt(

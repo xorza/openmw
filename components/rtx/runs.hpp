@@ -57,8 +57,8 @@ namespace Rtx
         Run allocate(std::uint32_t count);
 
         /// Gives a run back. Merged with whatever it touches, and an empty run is not a run. The
-        /// run must be one `allocate` returned and must not already be free; not checked, because
-        /// the free list is walked per allocation and not per release.
+        /// run must be one `allocate` returned and must not already be free — asserted, off the
+        /// two holes it lands between, since a release finds them anyway.
         void release(Run span);
 
         /// Forgets every run. The buffer behind it is emptied by whoever owns it.

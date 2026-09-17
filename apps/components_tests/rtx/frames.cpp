@@ -51,9 +51,9 @@ namespace Rtx
 
                 // On a skin of one bone, so the same wall can be moved two ways: by its instance
                 // and by its pose. Its bind pose is at two hundred.
-                mWall = mScene.addMesh(
-                    MeshArrays{ .mPositions = Testing::wallAt(200.0f), .mIndices = Testing::sQuadIndices }, {},
-                    Deform::Rig, Testing::addOneBoneRig(mScene, 4));
+                mWall = Testing::addOneBoneBody(
+                    mScene, MeshArrays{ .mPositions = Testing::wallAt(200.0f), .mIndices = Testing::sQuadIndices })
+                            .mMesh;
                 mInstance = mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mWall });
                 Testing::poseByOneBone(mScene, mWall, osg::Matrixf::identity());
                 mRenderer->setScene(Rtx::SceneSlot::world(), mScene, {});
@@ -125,9 +125,9 @@ namespace Rtx
             // away rather than by a hundred quads landing over it.
             for (int at = 0; at < 100; ++at)
             {
-                const Index arrived = mScene.addMesh(
-                    MeshArrays{ .mPositions = Testing::wallAt(-1000.0f), .mIndices = Testing::sQuadIndices }, {},
-                    Deform::Rig, Testing::addOneBoneRig(mScene, 4));
+                const Index arrived = Testing::addOneBoneBody(
+                    mScene, MeshArrays{ .mPositions = Testing::wallAt(-1000.0f), .mIndices = Testing::sQuadIndices })
+                                          .mMesh;
                 mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = arrived });
                 Testing::poseByOneBone(mScene, arrived, osg::Matrixf::identity());
             }

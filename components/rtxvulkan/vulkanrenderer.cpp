@@ -921,7 +921,8 @@ namespace Rtx
 
     void VulkanRenderer::dropViewScene(const SceneSlot scene)
     {
-        assert(scene.getViewIndex() < mViewScenes.size() && "a scene given back twice");
+        assert(scene.getViewIndex() < mViewScenes.size() && "a scene nothing handed out");
+        assert(!mFreeViewScenes.isFree(scene.getViewIndex()) && "a scene given back twice");
 
         // Buried and not drained: a picture of it recorded this frame and not yet carried rides the
         // next submit, and so does the last placement's refit, so the scene goes once the timeline

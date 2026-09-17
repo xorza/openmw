@@ -58,7 +58,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(
                     MeshArrays{ .mPositions = Testing::sheetAt(1000.0f, -100.0f), .mIndices = Testing::sQuadIndices }),
-                .mMaterial = scene.materials().add(water) });
+                .mMaterial = scene.addMaterial(water) });
 
             return scene;
         }

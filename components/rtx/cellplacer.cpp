@@ -112,7 +112,7 @@ namespace Rtx
         material.mVertexColour = VertexColour::Tint;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.materials().addLayers(mLayerScratch);
-        stands.mStood.mMaterial = mScene.materials().add(material);
+        stands.mStood.mMaterial = mScene.addMaterial(material);
 
         // A heightfield is neither a sheet nor closed, and no fold is needed to say so.
         stands.mStood.mMesh = mScene.addMesh(MeshArrays{ .mPositions = ground.mPositions,

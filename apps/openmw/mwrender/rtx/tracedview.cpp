@@ -60,13 +60,12 @@ namespace MWRender
     TracedView::TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host,
         MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals)
         : mHost(host)
-        , mGui(gui)
         , mTrace(host.getBackend(), requestFor(spec, subject, traversals))
-        , mTexture(gui.makeTexture(nextViewName()))
+        , mTexture(gui.takeTexture(nextViewName()))
     {
         const int width = static_cast<int>(mTrace.getWidth());
         const int height = static_cast<int>(mTrace.getHeight());
-        mTexture.createManual(
+        mTexture->createManual(
             width, height, MyGUI::TextureUsage::Static | MyGUI::TextureUsage::Write, MyGUI::PixelFormat::R8G8B8A8);
 
         // **The clear colour, before anything has been traced.** A view is shown from the frame it
@@ -75,22 +74,20 @@ namespace MWRender
         const std::uint8_t colour[4] = { channel(spec.mClearColour.r()), channel(spec.mClearColour.g()),
             channel(spec.mClearColour.b()), channel(spec.mClearColour.a()) };
 
-        auto* pixels = static_cast<std::uint8_t*>(mTexture.lock(MyGUI::TextureUsage::Write));
+        auto* pixels = static_cast<std::uint8_t*>(mTexture->lock(MyGUI::TextureUsage::Write));
         for (int i = 0; i < width * height; ++i)
             std::memcpy(pixels + i * 4, colour, sizeof(colour));
-        mTexture.unlock();
+        mTexture->unlock();
     }
 
     TracedView::~TracedView()
     {
         mHost.forgetView(*this);
-
-        mGui.destroyTexture(&mTexture);
     }
 
     MyGUI::ITexture& TracedView::getTexture() const
     {
-        return mTexture;
+        return *mTexture;
     }
 
     void TracedView::setExtent(int width, int height)
@@ -128,7 +125,7 @@ namespace MWRender
         }
 
         const bool keepCopy = mCopyState != CopyState::NotWanted;
-        mTrace.traceInto(mTexture.getSlot(), keepCopy);
+        mTrace.traceInto(mTexture->getSlot(), keepCopy);
         if (keepCopy)
             mCopyState = CopyState::Recorded;
     }
@@ -159,7 +156,7 @@ namespace MWRender
         // handed, the first time it is asked for after the trace that made it has landed.
         if (mCopyState == CopyState::Recorded
             && mTrace.takeCopy(
-                mTexture.getSlot(), std::span<std::uint8_t>(mCopy->data(), mCopy->getTotalSizeInBytes())))
+                mTexture->getSlot(), std::span<std::uint8_t>(mCopy->data(), mCopy->getTotalSizeInBytes())))
             mCopyState = CopyState::Taken;
 
         return mCopyState == CopyState::Taken ? mCopy.get() : nullptr;

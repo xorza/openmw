@@ -21,8 +21,22 @@ namespace Rtx
         }
     }
 
-    Index MeshTable::add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
+    void MeshTable::checkFits(const MeshArrays& arrays)
     {
+        const std::span<const osg::Vec3f> positions = arrays.mPositions;
+        const std::span<const std::uint32_t> indices = arrays.mIndices;
+
+        if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
+            throw Error("a mesh of " + std::to_string(positions.size()) + " vertices and "
+                + std::to_string(indices.size()) + " indices is past the " + std::to_string(sVertexBlock) + " and "
+                + std::to_string(sIndexBlock) + " one block of the shared buffers holds");
+    }
+
+    Index MeshTable::add(
+        DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
+    {
+        checkFits(arrays);
+
         const std::span<const osg::Vec3f> positions = arrays.mPositions;
         const std::span<const std::uint32_t> indices = arrays.mIndices;
 
@@ -37,14 +51,9 @@ namespace Rtx
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
         assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
         assert(deform == Deform::None
-            || (deformer < mDeformers.getDeformers().size() && mDeformers.getDeformers()[deformer].mKind == deform
-                && mDeformers.getDeformers()[deformer].getVertexCount() == positions.size()
+            || (deformer < deformers.getDeformers().size() && deformers.getDeformers()[deformer].mKind == deform
+                && deformers.getDeformers()[deformer].getVertexCount() == positions.size()
                 && "a deformer moves exactly the vertices of the mesh on it"));
-
-        if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
-            throw Error("a mesh of " + std::to_string(positions.size()) + " vertices and "
-                + std::to_string(indices.size()) + " indices is past the " + std::to_string(sVertexBlock) + " and "
-                + std::to_string(sIndexBlock) + " one block of the shared buffers holds");
 
         ++mRevision;
 
@@ -63,7 +72,7 @@ namespace Rtx
             .mBounds = boundsOf(positions),
         };
 
-        mDeformers.stand(range);
+        deformers.stand(range);
 
         writeAttributes(range, arrays);
 
@@ -140,9 +149,9 @@ namespace Rtx
         return static_cast<std::uint32_t>(getIndices().size() / 3);
     }
 
-    std::size_t MeshTable::sweep()
+    std::size_t MeshTable::sweep(DeformerTable& deformers)
     {
-        const std::size_t freed = mRows.sweep([this](const Index index, MeshRange& range) {
+        const std::size_t freed = mRows.sweep([&](const Index index, MeshRange& range) {
             // The slot stays where it is and only its geometry goes back, because every index
             // above it names a bottom-level acceleration structure that would otherwise be built
             // again. The allocators merge the room with whatever it touches, so a cell leaves as
@@ -151,7 +160,7 @@ namespace Rtx
             mIndices.release(range.mIndices);
             if (range.mSecondTexCoords.mCount > 0)
                 mSecondTexCoords.release(range.mSecondTexCoords);
-            mDeformers.release(range);
+            deformers.release(range);
 
             range.mVertices.mCount = 0;
             range.mIndices.mCount = 0;
@@ -169,7 +178,7 @@ namespace Rtx
         // Both sets held a removal per row freed above, and each settles in one pass rather than
         // one per row.
         mDeformed.compact();
-        mDeformers.compact();
+        deformers.compact();
 
         return freed;
     }

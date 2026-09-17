@@ -2,7 +2,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -345,12 +348,15 @@ namespace Rtx
                 };
             }
 
+            /// The first skin brings the rig; every one after stands on it.
+            DeformedMesh addFirstSkin() { return Testing::addOneBoneBody(mScene, quad()); }
             Index addSkin() { return addQuad(Deform::Rig, mRig); }
 
             SceneDesc mScene;
-            Index mRig = Testing::addOneBoneRig(mScene, 4);
             Index mStill = addQuad(Deform::None, sNoIndex);
-            Index mMoving = addSkin();
+            DeformedMesh mFirst = addFirstSkin();
+            Index mRig = mFirst.mDeformer;
+            Index mMoving = mFirst.mMesh;
             Index mOther = addSkin();
 
             const std::array<Shaders::GpuBone, 1> mAtFive{ Testing::boneUp(5.0f) };
@@ -358,13 +364,14 @@ namespace Rtx
             const osg::BoundingBoxf mReach{ osg::Vec3f(0.0f, 0.0f, 5.0f), osg::Vec3f(1.0f, 1.0f, 5.0f) };
 
         private:
-            Index addQuad(Deform deform, Index deformer)
+            static MeshArrays quad()
             {
-                return mScene.addMesh(
-                    MeshArrays{
-                        .mPositions = Testing::sUnitQuad, .mNormals = upward(), .mIndices = Testing::sQuadIndices },
-                    {}, deform, deformer);
+                return MeshArrays{
+                    .mPositions = Testing::sUnitQuad, .mNormals = upward(), .mIndices = Testing::sQuadIndices
+                };
             }
+
+            Index addQuad(Deform deform, Index deformer) { return mScene.addMesh(quad(), {}, deform, deformer); }
         };
 
         /// A rig and the meshes on it arrive with the tables they name, and the still one is in none
@@ -460,13 +467,16 @@ namespace Rtx
             EXPECT_TRUE(mScene.deformers().getArrived().empty());
             EXPECT_TRUE(mScene.meshes().getDeformed().empty()) << "a slot given back still named a structure to refit";
 
-            EXPECT_EQ(Testing::addOneBoneRig(mScene, 4), mRig) << "the freed slot is the one handed out";
+            // The next skin brings its rig, which takes the freed slot and the freed runs; and its
+            // mesh is `mMoving` and not `mOther`, though `mOther` went last: `Rtx::SlotRows`
+            // answers with the lowest free slot, so which of the two arrives next is not the
+            // sweep's to decide.
+            const DeformedMesh next = addFirstSkin();
+            EXPECT_EQ(next.mDeformer, mRig) << "the freed rig slot is the one handed out";
             EXPECT_EQ(mScene.deformers().getRuns().size(), 4u) << "the freed run is the one handed out";
             EXPECT_EQ(sorted(mScene.deformers().getArrived()), (std::vector<Index>{ mRig }));
 
-            // `mMoving` and not `mOther`, though `mOther` went last: `Rtx::SlotRows` answers with
-            // the lowest free slot, so which of the two arrives next is not the sweep's to decide.
-            const Index back = addSkin();
+            const Index back = next.mMesh;
             EXPECT_EQ(back, mMoving) << "the freed mesh slot is the one handed out";
             EXPECT_EQ(mScene.meshes().getRows()[back].mBindOffset, 0u) << "the freed bind run is the one handed out";
             EXPECT_EQ(mScene.deformers().getBindVertexCount(), 4u)
@@ -482,41 +492,37 @@ namespace Rtx
         /// tell: it frees one slot, and one slot is the same answer either way.
         ///
         /// A sweep frees a rig where the last mesh on it goes, so rigs are given back in their
-        /// *meshes'* order and not in their own. Here the mesh on the second rig is the first mesh,
-        /// so the second rig is freed first and the free list is handed `1` and then `0` — which a
-        /// list built by pushing leaves out of order. `Rtx::SlotRows` answers with the lowest,
-        /// so the next rig has to land in slot 0; a stack would answer with slot 1.
+        /// *meshes'* order and not in their own. Here the first rig has a second mesh on it after
+        /// the second rig's only one, so the second rig is freed first and the free list is handed
+        /// `1` and then `0` — which a list built by pushing leaves out of order. `Rtx::SlotRows`
+        /// answers with the lowest, so the next rig has to land in slot 0; a stack would answer
+        /// with slot 1.
         TEST(RtxSceneDescTest, aFreedRigSlotIsHandedOutLowestFirstHoweverTheSweepMetIt)
         {
             SceneDesc scene;
+            const MeshArrays quad{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices };
 
-            const Index first = Testing::addOneBoneRig(scene, 4);
-            const Index second = Testing::addOneBoneRig(scene, 4);
-            ASSERT_EQ(first, 0u);
-            ASSERT_EQ(second, 1u);
+            const DeformedMesh first = Testing::addOneBoneBody(scene, quad);
+            const DeformedMesh second = Testing::addOneBoneBody(scene, quad);
+            ASSERT_EQ(first.mDeformer, 0u);
+            ASSERT_EQ(second.mDeformer, 1u);
 
-            const auto addSkin = [&](const Index rig) {
-                return scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
-                    {}, Deform::Rig, rig);
-            };
-
-            // The mesh on the second rig is the lower mesh slot, which is what makes the sweep free
-            // the two rigs in the order that catches this.
-            const Index early = addSkin(second);
-            const Index late = addSkin(first);
-            ASSERT_LT(early, late);
+            // The last mesh on the first rig is the highest mesh slot, which is what makes the sweep
+            // free the two rigs in the order that catches this.
+            const Index late = scene.addMesh(quad, {}, Deform::Rig, first.mDeformer);
+            ASSERT_LT(second.mMesh, late);
 
             ASSERT_TRUE(scene.release({}, {}));
-            ASSERT_EQ(scene.deformers().getHolds(first), 0u);
-            ASSERT_EQ(scene.deformers().getHolds(second), 0u);
+            ASSERT_EQ(scene.deformers().getHolds(first.mDeformer), 0u);
+            ASSERT_EQ(scene.deformers().getHolds(second.mDeformer), 0u);
 
             // **Read after two removals in one sweep**, which is the pass `DeformerTable::compact`
             // owes: a set with a removal outstanding refuses to answer at all.
             EXPECT_TRUE(scene.deformers().getArrived().empty()) << "both arrivals left with their rigs";
 
-            EXPECT_EQ(Testing::addOneBoneRig(scene, 4), first)
+            EXPECT_EQ(Testing::addOneBoneBody(scene, quad).mDeformer, first.mDeformer)
                 << "the lowest free rig slot, and not the last one the sweep gave back";
-            EXPECT_EQ(Testing::addOneBoneRig(scene, 4), second) << "then the one above it";
+            EXPECT_EQ(Testing::addOneBoneBody(scene, quad).mDeformer, second.mDeformer) << "then the one above it";
         }
 
         /// **Every table hands out its lowest free slot**, which is what `Rtx::SlotRows` promises
@@ -537,9 +543,8 @@ namespace Rtx
             const std::array meshes{ quad(), quad(), quad() };
             ASSERT_EQ(meshes[2], 2u);
 
-            const std::array materials{ scene.materials().add(Material{ .mAlphaRef = 0.25f }),
-                scene.materials().add(Material{ .mAlphaRef = 0.5f }),
-                scene.materials().add(Material{ .mAlphaRef = 0.75f }) };
+            const std::array materials{ scene.addMaterial(Material{ .mAlphaRef = 0.25f }),
+                scene.addMaterial(Material{ .mAlphaRef = 0.5f }), scene.addMaterial(Material{ .mAlphaRef = 0.75f }) };
             ASSERT_EQ(materials[2], 2u);
 
             const auto path = [](const char* name) { return VFS::Path::NormalizedView(name); };
@@ -571,7 +576,7 @@ namespace Rtx
             EXPECT_EQ(scene.textures().add(path("textures/d.dds")), textures[0]) << "textures";
             EXPECT_EQ(place(meshes[1]), placed[0]) << "placements";
             EXPECT_EQ(quad(), meshes[0]) << "meshes";
-            EXPECT_EQ(scene.materials().add(Material{ .mAlphaRef = 0.125f }), materials[0]) << "materials";
+            EXPECT_EQ(scene.addMaterial(Material{ .mAlphaRef = 0.125f }), materials[0]) << "materials";
         }
 
         /// A morphed mesh holds its base as its bind pose and its weights as its pose, and the
@@ -587,7 +592,11 @@ namespace Rtx
             for (std::size_t vertex = 4; vertex < 8; ++vertex)
                 offsets[vertex] = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
-            const Index morph = scene.deformers().addMorph(offsets, 2);
+            const MeshArrays quad{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices };
+            const MorphSpec targets{ .mOffsets = offsets, .mTargets = 2 };
+            const DeformedMesh added = scene.addMesh(quad, {}, targets);
+            const Index morph = added.mDeformer;
+            const Index face = added.mMesh;
             ASSERT_EQ(scene.deformers().getDeformers().size(), 1u);
             EXPECT_EQ(scene.deformers().getDeformers()[morph].mRows, 2u);
             EXPECT_EQ(scene.deformers().getDeformers()[morph].getVertexCount(), 4u);
@@ -595,9 +604,6 @@ namespace Rtx
             EXPECT_EQ(scene.deformers().getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
             EXPECT_EQ(sorted(scene.deformers().getArrived()), (std::vector<Index>{ morph }));
 
-            const Index face
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    Deform::Morph, morph);
             EXPECT_EQ(scene.meshes().getRows()[face].mDeform, Deform::Morph);
             EXPECT_EQ(scene.deformers().getHolds(morph), 1u);
             EXPECT_EQ(scene.deformers().getPoses().size(), 1u) << "two weights fit one word";
@@ -620,7 +626,7 @@ namespace Rtx
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(scene.deformers().getHolds(morph), 0u);
             EXPECT_EQ(scene.deformers().getDeformers()[morph].getVertexCount(), 0u);
-            EXPECT_EQ(scene.deformers().addMorph(offsets, 2), morph);
+            EXPECT_EQ(scene.addMesh(quad, {}, targets).mDeformer, morph);
             EXPECT_EQ(scene.deformers().getMorphOffsets().size(), 8u);
         }
 
@@ -634,13 +640,13 @@ namespace Rtx
             SceneDesc scene;
 
             const std::vector<osg::Vec3f> offsets(20, osg::Vec3f(0.0f, 0.0f, 1.0f));
-            const Index morph = scene.deformers().addMorph(offsets, 5);
+            const DeformedMesh added
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    MorphSpec{ .mOffsets = offsets, .mTargets = 5 });
+            const Index morph = added.mDeformer;
+            const Index face = added.mMesh;
             EXPECT_EQ(scene.deformers().getDeformers()[morph].getPoseWords(), 2u);
             EXPECT_EQ(scene.deformers().getDeformers()[morph].getVertexCount(), 4u);
-
-            const Index face
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    Deform::Morph, morph);
             ASSERT_EQ(scene.deformers().getPoses().size(), 2u);
 
             const std::array weights{ 1.0f, 0.125f, 0.25f, 0.375f, 0.5f };
@@ -683,9 +689,9 @@ namespace Rtx
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
             EXPECT_EQ(scene.meshes().getRows()[still].mDeform, Deform::None);
 
-            const Index rig
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    Deform::Rig, Testing::addOneBoneRig(scene, 4));
+            const Index rig = Testing::addOneBoneBody(
+                scene, MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices })
+                                  .mMesh;
             EXPECT_EQ(scene.meshes().getRows()[rig].mDeform, Deform::Rig);
 
             const Index dressed
@@ -707,8 +713,8 @@ namespace Rtx
             const Index leaf = scene.textures().add(VFS::Path::NormalizedView("textures/leaf.dds"));
 
             // A cutout: blended, all there, with a diffuse map to read a mask out of.
-            const Index foliage = scene.materials().add(Material{ .mDiffuse = leaf, .mAlphaMode = AlphaMode::Blend });
-            const Index sea = scene.materials().add(Material{ .mKind = MaterialKind::Water });
+            const Index foliage = scene.addMaterial(Material{ .mDiffuse = leaf, .mAlphaMode = AlphaMode::Blend });
+            const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
 
             const auto counts = [&] { return scene.placements().getCounts(); };
             EXPECT_EQ(counts().mPlaced, 0u);
@@ -758,8 +764,8 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index glass = scene.materials().add(Material{ .mOpacity = 0.5f, .mAlphaMode = AlphaMode::Blend });
-            const Index stone = scene.materials().add(Material{ .mAlphaMode = AlphaMode::Blend });
+            const Index glass = scene.addMaterial(Material{ .mOpacity = 0.5f, .mAlphaMode = AlphaMode::Blend });
+            const Index stone = scene.addMaterial(Material{ .mAlphaMode = AlphaMode::Blend });
 
             const Index one = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });
             const Index two = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });
@@ -811,7 +817,7 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index glass = scene.materials().add(Material{
+            const Index glass = scene.addMaterial(Material{
                 .mOpacity = 0.5f,
                 .mAlphaMode = AlphaMode::Blend,
             });
@@ -1144,6 +1150,22 @@ namespace Rtx
             EXPECT_EQ(scene.meshes().getRows().size(), 1u)
                 << "the table grew, so a size test would have caught this anyway";
             EXPECT_GT(scene.meshes().getRevision(), meshes) << "a slot taken over went unnoticed";
+
+            // **The last word wins.** Freed and then taken over inside one frame, the slot is an
+            // arrival and not a departure; arrived and then freed inside one frame, it is a
+            // departure the backend is told of a slot it never built — `BottomLevelStore::release`
+            // takes that as nothing, and the hand-over relies on it.
+            EXPECT_EQ(sorted(scene.meshes().getArrived()), (std::vector<Index>{ slot }));
+            EXPECT_TRUE(scene.meshes().getFreed().empty()) << "a slot taken over was still reported gone";
+
+            scene.clearArrivals();
+            const Index brief
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const std::array keep{ slot };
+            ASSERT_TRUE(scene.release(keep, {}));
+            EXPECT_TRUE(scene.meshes().getArrived().empty())
+                << "a slot that went inside the frame was still an arrival";
+            EXPECT_EQ(sorted(scene.meshes().getFreed()), (std::vector<Index>{ brief }));
         }
 
         /// Room given back is reused, and a mesh with nowhere to fit appends rather than being
@@ -1301,16 +1323,16 @@ namespace Rtx
                     .mMask = mScene.materials().addMask(sGroundWeights),
                     .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } } };
                 const Rtx::Run droppedRun = mScene.materials().addLayers(droppedLayers);
-                mDropped = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
+                mDropped = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
 
-                mPlain = mScene.materials().add(Material{ .mDiffuse = mStone });
+                mPlain = mScene.addMaterial(Material{ .mDiffuse = mStone });
 
                 const std::array keptLayers{ MaterialLayer{ .mDiffuse = mSand,
                                                  .mMask = mScene.materials().addMask(sSandWeights),
                                                  .mPlacing = { .mMaskWidth = 3, .mMaskHeight = 3 } },
                     MaterialLayer{ .mDiffuse = mMoss } };
                 const Rtx::Run keptRun = mScene.materials().addLayers(keptLayers);
-                mKept = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
+                mKept = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
 
                 mLayersBefore = mScene.materials().getLayers().size();
                 mMasksBefore = mScene.materials().getMasks().size();
@@ -1358,7 +1380,7 @@ namespace Rtx
 
             // The freed slot goes to the next material asked for, whatever size it is: a material is
             // one size, so there is no fit to find.
-            EXPECT_EQ(scene.materials().add(Material{ .mDiffuse = terrain.mMoss }), terrain.mDropped);
+            EXPECT_EQ(scene.addMaterial(Material{ .mDiffuse = terrain.mMoss }), terrain.mDropped);
             EXPECT_EQ(scene.materials().getRows().size(), 3u);
         }
 
@@ -1409,7 +1431,7 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index first = scene.materials().add(Material{});
+            const Index first = scene.addMaterial(Material{});
 
             const std::uint64_t structure = scene.getStructureRevision();
             scene.clearArrivals();
@@ -1417,7 +1439,7 @@ namespace Rtx
             // A second material, which is what a state set with a new address comes to.
             Material other;
             other.mTwoSided = true;
-            const Index kept = scene.materials().add(other);
+            const Index kept = scene.addMaterial(other);
 
             EXPECT_EQ(scene.getStructureRevision(), structure) << "a material asked for a rebuild";
             EXPECT_EQ(sorted(scene.materials().getWritten()), (std::vector<Index>{ kept }))
@@ -1443,7 +1465,7 @@ namespace Rtx
 
             // **The slot the sweep freed is taken over, and that is a row again.** A flipbook added
             // and then rewritten on one frame is one row too: the list holds each slot once.
-            EXPECT_EQ(scene.materials().add(Material{}), first) << "a freed slot was not the one handed out";
+            EXPECT_EQ(scene.addMaterial(Material{}), first) << "a freed slot was not the one handed out";
             scene.setMaterial(first, other);
             EXPECT_EQ(sorted(scene.materials().getWritten()), (std::vector<Index>{ first }));
 
@@ -1477,7 +1499,7 @@ namespace Rtx
             EXPECT_EQ(run, (Rtx::Run{ .mOffset = 0, .mCount = 2 }));
             EXPECT_EQ(runs(scene.materials().getArrived().mLayers), (std::vector<Rtx::Run>{ run }));
 
-            scene.materials().add(Material{ .mKind = MaterialKind::Terrain, .mLayers = run });
+            scene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = run });
             scene.clearArrivals();
             EXPECT_TRUE(scene.materials().getArrived().mMasks.empty());
             EXPECT_TRUE(scene.materials().getArrived().mLayers.empty());
@@ -1499,7 +1521,7 @@ namespace Rtx
             // reads a run nothing names. The next chunk that fits lands in the hole, and that
             // arrival is what names the run again.
             const std::array<Index, 0> noMeshes{};
-            const std::array keep{ scene.materials().add(Material{}) };
+            const std::array keep{ scene.addMaterial(Material{}) };
             scene.clearArrivals();
             ASSERT_TRUE(scene.release(noMeshes, keep));
             EXPECT_TRUE(scene.materials().getArrived().mMasks.empty()) << "a sweep reported a run to write";
@@ -1519,7 +1541,7 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index material = scene.materials().add(Material{});
+            const Index material = scene.addMaterial(Material{});
             scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
             const std::array meshes{ mesh };
@@ -1594,8 +1616,8 @@ namespace Rtx
             const Index shared = scene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
             const Index lone = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
 
-            scene.materials().add(Material{ .mDiffuse = shared });
-            const Index second = scene.materials().add(Material{ .mDiffuse = shared, .mEmissive = lone });
+            scene.addMaterial(Material{ .mDiffuse = shared });
+            const Index second = scene.addMaterial(Material{ .mDiffuse = shared, .mEmissive = lone });
 
             const std::array meshes{ mesh };
             const std::array keepSecond{ second };
@@ -1610,6 +1632,73 @@ namespace Rtx
             EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ shared, lone }));
             EXPECT_TRUE(scene.textures().getRows()[shared].mPath.value().empty());
             EXPECT_TRUE(scene.textures().getRows()[lone].mPath.value().empty());
+        }
+
+#ifndef NDEBUG
+        /// **The per-frame lists are open until the hand-over and closed until the next clear.** A
+        /// light added between the two is one the backend was not handed and the next frame's
+        /// clear throws away — or, on a frame that hands over again without clearing, one it
+        /// hands twice.
+        TEST(RtxSceneDescTest, aLightAddedAfterTheHandOverDies)
+        {
+            SceneDesc scene;
+            const std::optional<Light> light = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 10.0f, osg::Vec3f());
+            ASSERT_TRUE(light.has_value());
+
+            scene.addLight(*light);
+            scene.orderLights();
+            EXPECT_DEATH(scene.addLight(*light), "a call out of its turn");
+
+            scene.clearPlacement();
+            scene.addLight(*light);
+            EXPECT_EQ(scene.lights().size(), 1u);
+        }
+#endif
+
+        static_assert(std::is_move_constructible_v<SceneDesc> && std::is_move_assignable_v<SceneDesc>,
+            "a description is moved whole; a table holding a reference to a sibling forbids the assignment");
+
+        /// **A moved description's tables reach its own tables and not the ones it was moved
+        /// from.** `MeshTable` and `MaterialTable` once held a reference to a sibling, and a
+        /// defaulted move copied it: a material added to the moved scene held its texture on the
+        /// source's texture table — an assert where the source had fewer rows, and a slot never
+        /// freed where it had more. Every cross-table call goes through the scene now, so the same
+        /// sequence as above, run on a moved scene, frees the same slots of the moved scene.
+        TEST(RtxSceneDescTest, aMovedDescriptionsTablesReachItsOwnTables)
+        {
+            SceneDesc source;
+            const Index mesh
+                = source.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+
+            SceneDesc moved = std::move(source);
+            EXPECT_EQ(moved.meshes().size(), 1u);
+
+            const Index texture = moved.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            const Index material = moved.addMaterial(Material{ .mDiffuse = texture });
+            EXPECT_EQ(moved.textures().getRows()[texture].mPath, VFS::Path::NormalizedView("textures/tx_stone.dds"));
+
+            const std::array meshes{ mesh };
+            const std::array keep{ material };
+            ASSERT_FALSE(moved.release(meshes, keep)) << "nothing went";
+
+            const std::array<Index, 0> none{};
+            ASSERT_TRUE(moved.release(meshes, none));
+            EXPECT_EQ(sorted(moved.textures().getFreed()), (std::vector<Index>{ texture }))
+                << "the material's texture was held on another scene's table";
+            EXPECT_TRUE(moved.textures().isFree(texture));
+
+            // A rig on the moved scene stands on the moved scene's deformers, and goes with its
+            // mesh through them.
+            const DeformedMesh added = Testing::addOneBoneBody(
+                moved, MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index rig = added.mDeformer;
+            const Index body = added.mMesh;
+            EXPECT_EQ(moved.deformers().getHolds(rig), 1u);
+
+            const std::array<Index, 0> nothing{};
+            ASSERT_TRUE(moved.release(nothing, nothing));
+            EXPECT_EQ(moved.deformers().getHolds(rig), 0u) << "the mesh stood on another scene's deformer";
+            EXPECT_FALSE(moved.meshes().isLive(body));
         }
 
         /// An image with no file behind it takes a slot like any other and gives it back like any
@@ -1671,7 +1760,7 @@ namespace Rtx
             SceneDesc scene;
             const Index first = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
             const Index second = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_01.dds"));
-            const Index material = scene.materials().add(Material{ .mDiffuse = first });
+            const Index material = scene.addMaterial(Material{ .mDiffuse = first });
 
             scene.setMaterial(material, Material{ .mDiffuse = second });
 
@@ -1696,7 +1785,7 @@ namespace Rtx
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index material = scene.materials().add(Material{});
+            const Index material = scene.addMaterial(Material{});
             const Index sprite = scene.textures().add(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
             scene.textures().hold(sprite);
 
@@ -1782,6 +1871,36 @@ namespace Rtx
             // And exactly a block is not too many, so the refusal is a boundary and not a ban.
             EXPECT_NO_THROW(scene.addMesh(
                 MeshArrays{ .mPositions = std::span(tooMany).first(SceneDesc::sVertexBlock), .mIndices = triangle }));
+
+            // **A refusal makes no row.** A deforming mesh brings its deformer, and both checks —
+            // the spec against the vertices and the mesh against the block — run before either row
+            // is made, so a rig that arrives with a mesh of the wrong length or a mesh past a block
+            // leaves no deformer nothing stands on: a row the table has no sweep for.
+            const std::size_t deformers = scene.deformers().getDeformers().size();
+            const std::array<std::uint32_t, 3> shortRuns{ 1u, 1u, 1u };
+            const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
+            EXPECT_THROW(
+                scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    RigSpec{ .mRuns = shortRuns, .mInfluences = influences, .mBones = 1 }),
+                Error)
+                << "a rig of three vertices on a quad";
+
+            const std::vector<std::uint32_t> longRuns(tooMany.size(), 1u);
+            EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }, {},
+                             RigSpec{ .mRuns = longRuns, .mInfluences = influences, .mBones = 1 }),
+                Error)
+                << "a rig the length of a mesh past a block";
+
+            const std::array<osg::Vec3f, 6> shortOffsets{};
+            EXPECT_THROW(
+                scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
+                    MorphSpec{ .mOffsets = shortOffsets, .mTargets = 2 }),
+                Error)
+                << "two targets of three vertices on a quad";
+
+            EXPECT_EQ(scene.deformers().getDeformers().size(), deformers) << "a refused mesh left a deformer behind";
+            EXPECT_TRUE(scene.deformers().getRuns().empty());
+            EXPECT_TRUE(scene.deformers().getMorphOffsets().empty());
         }
 
         /// A camera is placed from what stands in a region, and the sea is not among it.
@@ -1797,8 +1916,8 @@ namespace Rtx
 
             const Index quad
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            const Index ground = scene.materials().add(Material{ .mKind = MaterialKind::Terrain });
-            const Index sea = scene.materials().add(Material{ .mKind = MaterialKind::Water });
+            const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
+            const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
 
             // One unit square at the origin, and a sheet ten thousand across under everything.
             scene.addInstance(
@@ -1846,10 +1965,10 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Index quad
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    Deform::Rig, Testing::addOneBoneRig(scene, 4));
-            const Index material = scene.materials().add(Material{});
+            const Index quad = Testing::addOneBoneBody(
+                scene, MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices })
+                                   .mMesh;
+            const Index material = scene.addMaterial(Material{});
             const Index placed = scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });
 

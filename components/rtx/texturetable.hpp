@@ -75,6 +75,13 @@ namespace Rtx
         /// because a slot is taken before it is named.
         bool isFree(Index texture) const { return mRows.at(texture).mKind == TextureKind::Free; }
 
+        /// How many slots stand a texture, which is what an empty scene has nought of.
+        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
+
+        /// What names `texture`, which is nought only between the take and the hold that follows
+        /// it: a live slot with no hold after that is one no sweep can reach.
+        std::uint32_t getHolds(Index texture) const { return mRows.getHolds(texture); }
+
         /// Every slot, free ones included, in slot order.
         std::span<const TextureRow> getRows() const { return mRows.getRows(); }
 

@@ -103,7 +103,15 @@ namespace Rtx
         // The holds on the parts outlive the models they were adopted from, which die with the
         // reader: `AdoptedPart` says why it keeps what the release needs.
         for (HeldModel& held : mModels)
+        {
             mReleasing.insert(mReleasing.end(), held.mParts.begin(), held.mParts.end());
+
+            // The row's room is kept for the next world's models, as `release` keeps a row's.
+            held.mParts.clear();
+            held.mModel = nullptr;
+            held.mNamed = 0;
+            mSpareModels.give(std::move(held));
+        }
 
         mModels.clear();
         mTextures.clear();

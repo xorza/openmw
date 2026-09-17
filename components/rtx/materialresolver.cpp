@@ -116,7 +116,7 @@ namespace Rtx
 
     MaterialResolver::Entry MaterialResolver::adopt(const osg::StateSet* const key, const Material& material)
     {
-        const Index index = mScene.materials().add(material);
+        const Index index = mScene.addMaterial(material);
         ++mPass.getStats().mMaterialsAdded;
 
         return mMaterials.add(key, HeldMaterial{ { .mIndex = index } });

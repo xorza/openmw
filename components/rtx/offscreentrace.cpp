@@ -105,7 +105,7 @@ namespace Rtx
         held.mUpdate = std::make_unique<PoseUpdate>();
         held.mPose = std::make_unique<PoseCull>();
         held.mPoseStamp = new osg::FrameStamp;
-        held.mSlot = renderer.addViewScene();
+        held.mSlot = ViewScene(renderer);
 
         held.mExtractor = std::make_unique<SceneExtractor>(*held.mScene, request.mTraversals);
         held.mExtractor->setTraversalMask(request.mSubjectMask);
@@ -114,11 +114,7 @@ namespace Rtx
 
     OffscreenTrace::Subject::~Subject() = default;
 
-    OffscreenTrace::~OffscreenTrace()
-    {
-        if (mSubject != nullptr)
-            mRenderer.dropViewScene(mSubject->mSlot);
-    }
+    OffscreenTrace::~OffscreenTrace() = default;
 
     const SceneDesc* OffscreenTrace::getScene() const
     {
@@ -221,7 +217,7 @@ namespace Rtx
         // world's frame: `Handing::mAdvance` says why a picture has no motion to describe.
         subject.mUploader.hand(mRenderer,
             SceneUploader::Handing{
-                .mSlot = subject.mSlot, .mScene = *subject.mScene, .mImages = images, .mAdvance = false });
+                .mSlot = subject.mSlot.get(), .mScene = *subject.mScene, .mImages = images, .mAdvance = false });
 
         return subject.mScene->placements().getCounts().mPlaced > 0;
     }
@@ -236,7 +232,7 @@ namespace Rtx
         mRenderer.traceGuiTexture(texture, *camera,
             GuiTraceOptions{
                 .mClear = { clear.r(), clear.g(), clear.b(), clear.a() },
-                .mScene = mSubject != nullptr ? mSubject->mSlot : SceneSlot::world(),
+                .mScene = mSubject != nullptr ? mSubject->mSlot.get() : SceneSlot::world(),
                 .mReadBack = readBack,
             });
     }

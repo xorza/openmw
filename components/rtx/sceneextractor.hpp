@@ -24,6 +24,7 @@
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
+#include "stepped.hpp"
 #include "walk.hpp"
 
 namespace osg
@@ -149,6 +150,13 @@ namespace Rtx
         /// Where this walk's traversal numbers come from — the one handed in, or its own.
         Traversals& getTraversals() { return mTraversals; }
 
+        /// Lets go of everything the walks stood and the ring held, for a world that is detached:
+        /// the ring's holds are given back — the two releases read nothing of a walk — and then a
+        /// retire at a fresh epoch, which keeps nothing but what is held, because a walk that will
+        /// not happen has met nothing. What is left of the world in the scene is nothing, which
+        /// `SceneDesc::isEmpty` says. Between walks, and the ring already told of no world.
+        Retirement detach(CellRing& ring);
+
         /// Drops everything the walks since the last call did not find — placements included — and
         /// compacts the scene. Mark and sweep, so only sound where the walks were the whole world:
         /// the game re-walks its whole graph every frame and can call this; the harness keeps a
@@ -177,15 +185,49 @@ namespace Rtx
         const osg::StateSet* animate(osg::Node& node);
 
     private:
+        /// Where the extractor stands: between walks, or inside one. A walk inside a walk would
+        /// point the pass at a second set of counts and lose the first's, and a retire inside one
+        /// would sweep what the walk is about to stamp; both are asserted where they happen.
+        enum class Phase
+        {
+            Between,
+            Walking,
+        };
+
+        /// The pass opened for one walk and closed however the walk ends: the counts pointer back
+        /// to null, the falls flag cleared and the phase back to `Between`, on the ordinary return
+        /// and on a throw alike. A resolver reached after a walk that threw would otherwise count
+        /// into an unwound local.
+        class WalkGuard
+        {
+        public:
+            WalkGuard(MirrorPass& pass, Stepped<Phase>& phase, ExtractionStats& stats, bool falls);
+            ~WalkGuard();
+
+            WalkGuard(const WalkGuard&) = delete;
+            WalkGuard& operator=(const WalkGuard&) = delete;
+
+        private:
+            MirrorPass& mPass;
+            Stepped<Phase>& mPhase;
+        };
+
         /// What the ring may do inside a walk, and nothing else may. `Rtx::SceneAdopter` is
         /// implemented privately, so the five calls that only mean anything inside one walk are
-        /// reachable through that interface and not in front of every reader of this class.
+        /// reachable through that interface and not in front of every reader of this class. The
+        /// two releases are allowed between walks as well — `detach` — because giving a
+        /// hold back reads nothing of a walk.
         void take(osg::Node& node) override;
         Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading) override
         {
+            mPhase.expect(Phase::Walking);
             return mMeshes.adopt(drawable, reading);
         }
-        Index adoptMaterial(const MaterialReading& reading) override { return mMaterials.adopt(reading); }
+        Index adoptMaterial(const MaterialReading& reading) override
+        {
+            mPhase.expect(Phase::Walking);
+            return mMaterials.adopt(reading);
+        }
         void releaseMesh(const osg::Drawable& drawable) override { mMeshes.release(drawable); }
         void releaseMaterial(const osg::StateSet* key) override { mMaterials.release(key); }
 
@@ -239,6 +281,8 @@ namespace Rtx
         /// the walk and every resolver below, which borrow it rather than keep a copy that could
         /// fall behind.
         MirrorPass mPass;
+
+        Stepped<Phase> mPhase{ Phase::Between };
 
         /// Which slot each placement holds, and when it was last met. One lookup a placement a
         /// frame, and the scene keeps the transform.

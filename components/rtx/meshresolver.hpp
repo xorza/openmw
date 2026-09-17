@@ -105,21 +105,25 @@ namespace Rtx
         /// it does not. Stamps nothing, because whether the slot still fits is decided after this.
         Held holdDeformer(const DrawableRead& read);
 
-        /// The same for a drawable the mirror is meeting afresh: the deformer added and stamped,
-        /// or `sNoIndex` where the drawable stands. Throws where it does not pose exactly
-        /// `vertices`, because a vertex count comes out of a content file.
-        Index addDeformer(const DrawableRead& read, std::size_t vertices);
+        /// Adds the mesh a drawable the mirror is meeting afresh was read as: standing, on a
+        /// deformer the mirror holds that fits it, or with a deformer of its own — both rows in one
+        /// call of the scene's, and the identity entry added or moved only once they exist. An
+        /// entry reached before the rows named nothing while the read could still throw. Throws
+        /// where the drawable's skin or targets do not pose exactly its vertices, because a
+        /// vertex count comes out of a content file.
+        Index addMesh(const DrawableRead& read, const MeshReading& reading);
 
         /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept, so a
         /// deformer is kept for as long as a mesh stands on it.
         void stampDeformer(const Held& held);
 
-        /// Reads a skin into the scene's tables and answers the rig's index: the groups flattened
-        /// into a run per vertex. Throws where the skin names a vertex the mesh has not got.
-        Index readRig(const SceneUtil::RigGeometry& rig);
+        /// Reads a skin into the scratch as the scene takes it: the groups flattened into a run
+        /// per vertex. Throws where the skin names a vertex the mesh has not got. The spec spans
+        /// the scratch, good until the next read.
+        RigSpec readRig(const SceneUtil::RigGeometry& rig);
 
         /// The same for a morph's targets, laid end to end.
-        Index readMorph(const SceneUtil::MorphGeometry& morph);
+        MorphSpec readMorph(const SceneUtil::MorphGeometry& morph);
 
         /// Poses `mesh` where the drawable deforms, and counts it. Nothing where it stands. A rig's
         /// rows are `RigGeometry::cull`'s own composition of each bone's inverse bind, its

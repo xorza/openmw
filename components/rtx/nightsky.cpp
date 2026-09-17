@@ -311,4 +311,12 @@ namespace Rtx
 
         return sky;
     }
+
+    void dropNightSky(SceneDesc& scene, const NightSky& sky)
+    {
+        // `sNoIndex` is a drop of nothing: a patch the mesh did not paint holds none.
+        scene.textures().drop(sky.mField);
+        for (const NightSky::Patch& patch : sky.mPatches)
+            scene.textures().drop(patch.mTexture);
+    }
 }

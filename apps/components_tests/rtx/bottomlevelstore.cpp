@@ -162,6 +162,15 @@ namespace Rtx
             store.release(std::span(grids).subspan(0, 1));
             EXPECT_EQ(store.getStructure(grids[0]), VK_NULL_HANDLE);
 
+            // **A release of a slot this never built, or built and already released, is nothing**
+            // — what the hand-over relies on: a slot the scene took and gave back inside one frame
+            // reaches the backend as gone, and the last word of a slot given back and taken over
+            // is arrived, so the same slot can be told gone again a frame later.
+            const std::array<Index, 2> unbuilt{ grids[0], static_cast<Index>(mScene.meshes().size() + 7) };
+            store.release(unbuilt);
+            EXPECT_EQ(store.getStructure(grids[0]), VK_NULL_HANDLE);
+            EXPECT_NE(store.getStructure(grids[1]), VK_NULL_HANDLE);
+
             const SlotSet& moved = place(store);
             EXPECT_FALSE(moved.has(grids[0])) << "a released structure was copied";
             EXPECT_TRUE(moved.has(grids[1])) << "the structure still standing was not copied";

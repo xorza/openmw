@@ -36,12 +36,14 @@ namespace Rtx
         std::vector<T> mSpare;
     };
 
-    /// What `Spares` counts on every object it lends: how many hold it. Nought is spare. The
-    /// count is the pool's and not the holder's, so one assert says an object was given back
-    /// once too often whatever kind of object it is.
+    /// What `Spares` counts on every object it lends: how many hold it, and whether the pool has
+    /// it back. The count is the pool's and not the holder's, so one assert says an object was
+    /// given back once too often whatever kind of object it is; the flag is what says it was
+    /// given back twice, which a list alone would take as two spares.
     struct Lent
     {
         std::uint32_t mLent = 0;
+        bool mIsSpare = false;
     };
 
     /// Objects lent out and given back, and never freed while this stands, so a loader reads a
@@ -52,24 +54,27 @@ namespace Rtx
     class Spares
     {
     public:
-        /// An object nobody holds, made where none is spare. Held by nobody until `lend` says
-        /// who, so the taker fills it first.
-        T& take()
+        /// An object nobody holds, made where none is spare, filled by `fill` before it is handed
+        /// out. Where `fill` throws the object is emptied and made spare again first, so no
+        /// failure leaves one taken and unfiled — a model whose walk threw was one such per cell
+        /// that named it. `T::reuse()` is what a failed fill leaves. Held by nobody until `lend`
+        /// says who.
+        template <class Fill>
+        T& take(Fill fill)
         {
-            if (mSpare.empty())
+            T& taken = takeSpare();
+            try
             {
-                mAll.push_back(std::make_unique<T>());
-
-                // Room for every object to be spare at once, so that a give-back never reaches the
-                // heap: the thread gives back while the frame counts what a walk allocated.
-                mSpare.reserve(mAll.size());
-                return *mAll.back();
+                fill(taken);
+            }
+            catch (...)
+            {
+                taken.reuse();
+                give(taken);
+                throw;
             }
 
-            T& spare = *mSpare.back();
-            mSpare.pop_back();
-            assert(spare.mLent == 0 && "a spare something still holds");
-            return spare;
+            return taken;
         }
 
         /// One more holder of `object`.
@@ -88,6 +93,8 @@ namespace Rtx
         void give(T& object)
         {
             assert(object.mLent == 0 && "an object given back while something holds it");
+            assert(!object.mIsSpare && "an object given back twice");
+            object.mIsSpare = true;
             mSpare.push_back(&object);
         }
 
@@ -95,6 +102,27 @@ namespace Rtx
         std::size_t size() const { return mAll.size(); }
 
     private:
+        /// A spare off the list, or a new object where the list is empty, unfilled.
+        T& takeSpare()
+        {
+            if (mSpare.empty())
+            {
+                mAll.push_back(std::make_unique<T>());
+
+                // Room for every object to be spare at once, so that a give-back never reaches the
+                // heap: the thread gives back while the frame counts what a walk allocated.
+                mSpare.reserve(mAll.size());
+                return *mAll.back();
+            }
+
+            T& spare = *mSpare.back();
+            mSpare.pop_back();
+            assert(spare.mLent == 0 && "a spare something still holds");
+            assert(spare.mIsSpare && "an object on the spare list that give did not put there");
+            spare.mIsSpare = false;
+            return spare;
+        }
+
         std::vector<std::unique_ptr<T>> mAll;
         std::vector<T*> mSpare;
     };
@@ -136,11 +164,13 @@ namespace Rtx
 
     /// Puts `object` back to its default while keeping the room its buffers grew. Every field not
     /// named is reset, so a new scalar is reset for free and a buffer forgotten reallocates, which
-    /// the allocation test sees.
+    /// the allocation test sees. A `Lent`'s count and flag are kept: they are the pool's and not
+    /// the holder's, and every give-back empties the object first — one that emptied them too
+    /// would give an object back twice without the pool noticing.
     template <class T, class... Buffers>
     void reuseKeeping(T& object, Buffers T::*... buffers)
     {
-        const auto empty = [](auto& buffer) {
+        [[maybe_unused]] const auto empty = [](auto& buffer) {
             if constexpr (requires { buffer.reuse(); })
                 buffer.reuse();
             else
@@ -150,6 +180,8 @@ namespace Rtx
         T fresh;
         (std::swap(fresh.*buffers, object.*buffers), ...);
         (empty(fresh.*buffers), ...);
+        if constexpr (std::derived_from<T, Lent>)
+            static_cast<Lent&>(fresh) = static_cast<const Lent&>(object);
         object = std::move(fresh);
     }
 }

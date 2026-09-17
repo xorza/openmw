@@ -76,7 +76,6 @@ namespace Rtx
         const VFS::Manager& vfs = *scenes.getVFS();
 
         SkyContent loaded;
-        loaded.mClouds.fill(sNoIndex);
 
         for (std::uint32_t weather = 0; weather < Shaders::WEATHER_COUNT; ++weather)
         {
@@ -115,6 +114,15 @@ namespace Rtx
         loaded.mNight = readNightSky(scene, scenes, meshes.mStars, meshes.mStarsFallback);
 
         return loaded;
+    }
+
+    void dropSkyContent(SceneDesc& scene, const SkyContent& content)
+    {
+        // `sNoIndex` is a drop of nothing: a weather the content files record no deck for holds
+        // none.
+        for (const Index deck : content.mClouds)
+            scene.textures().drop(deck);
+        dropNightSky(scene, content.mNight);
     }
 
     DeckLight deckLight(const Sun& sun, const osg::Vec3f& skyMean, std::span<const MoonPlacement, 2> moons)

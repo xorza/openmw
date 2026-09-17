@@ -469,12 +469,30 @@ namespace Rtx
         return walk(node, transform, anchor, frame, nullptr, true);
     }
 
+    SceneExtractor::WalkGuard::WalkGuard(
+        MirrorPass& pass, Stepped<Phase>& phase, ExtractionStats& stats, const bool falls)
+        : mPass(pass)
+        , mPhase(phase)
+    {
+        mPhase.step(Phase::Walking, Phase::Between);
+        mPass.mStats = &stats;
+        mPass.mFalls = falls;
+    }
+
+    SceneExtractor::WalkGuard::~WalkGuard()
+    {
+        // So that a resolver reached outside a walk fails where it is, rather than counting into a
+        // report that has gone.
+        mPass.mStats = nullptr;
+        mPass.mFalls = false;
+        mPhase.step(Phase::Between, Phase::Walking);
+    }
+
     ExtractionStats SceneExtractor::walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
         std::size_t frame, CellRing* const ring, const bool falls)
     {
         ExtractionStats stats;
-        mPass.mStats = &stats;
-        mPass.mFalls = falls;
+        const WalkGuard walking(mPass, mPhase, stats, falls);
 
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
@@ -495,11 +513,6 @@ namespace Rtx
         // one that depends on where an updater happened to sit among its siblings.
         mEmitters.flush();
 
-        // So that a resolver reached outside a walk fails where it is, rather than counting into a
-        // report that has gone.
-        mPass.mStats = nullptr;
-        mPass.mFalls = false;
-
         return stats;
     }
 
@@ -508,8 +521,23 @@ namespace Rtx
         node.accept(*mWalk);
     }
 
+    Retirement SceneExtractor::detach(CellRing& ring)
+    {
+        mPhase.expect(Phase::Between);
+
+        // Moved on before anything is let go of, so that a hold dropped here is dropped off an
+        // entry of an earlier epoch and owes the sweep, and the sweep keeps nothing stamped: what
+        // this epoch reached is nothing.
+        ++mPass.mEpoch;
+        ring.releaseHolds(*this);
+
+        return retire();
+    }
+
     Retirement SceneExtractor::retire()
     {
+        mPhase.expect(Phase::Between);
+
         Retirement went;
 
         // Placements first, because dropping one is what makes its mesh droppable. Freed rather
@@ -550,6 +578,11 @@ namespace Rtx
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
         ++mPass.mEpoch;
+
+        // Every live texture and deformer is held and every placement stands on live rows: what
+        // the sweeps above leave true, asked here because a slot taken and never held is one no
+        // sweep can reach, and this is the one point every frame passes after them.
+        assert(mScene.isConsistent() && "a retire left a live row nothing holds, or a placement on a freed one");
 
         return went;
     }

@@ -6,16 +6,11 @@
 #include <osg/Node>
 #include <osg/ref_ptr>
 
+#include <components/myguirtx/rendermanager.hpp>
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/walk.hpp>
 
 #include "../offscreenview.hpp"
-
-namespace MyGUIRtx
-{
-    class RenderManager;
-    class Texture;
-}
 
 namespace osg
 {
@@ -117,12 +112,12 @@ namespace MWRender
         };
 
         RtxRenderer& mHost;
-        MyGUIRtx::RenderManager& mGui;
         Rtx::OffscreenTrace mTrace;
 
-        /// The interface's own texture, made by the manager's typed factory: its slot in the
-        /// renderer's table is what is traced into.
-        MyGUIRtx::Texture& mTexture;
+        /// The interface's own texture, taken from the manager under a name of this view's own:
+        /// its slot in the renderer's table is what is traced into, and the handle is what gives
+        /// both back.
+        MyGUIRtx::TextureHandle mTexture;
 
         osg::ref_ptr<osg::Image> mCopy;
         CopyState mCopyState = CopyState::NotWanted;

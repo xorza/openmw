@@ -78,9 +78,12 @@ namespace Rtx
         Index of(Moon moon) const { return moon == Moon::Masser ? mMasser : mSecunda; }
     };
 
-    /// Adds `tx_masser_full.dds` and `tx_secunda_full.dds` to `scene` and holds them there for the
-    /// life of the scene. A moon drawn from the mean of its portrait is a coloured circle.
+    /// Adds `tx_masser_full.dds` and `tx_secunda_full.dds` to `scene` and holds them there until
+    /// `dropMoonFaces`. A moon drawn from the mean of its portrait is a coloured circle.
     MoonFaces addMoonFaces(SceneDesc& scene);
+
+    /// Gives both holds back, so a scene the world has left holds nothing of its moons.
+    void dropMoonFaces(SceneDesc& scene, const MoonFaces& faces);
 
     /// A moon placed from angles `MWWorld::MoonModel` worked out. What a moon *is* once those
     /// angles are known — where its face points, how wide it is, which way its terminator falls —

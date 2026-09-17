@@ -124,6 +124,12 @@ namespace Rtx
         return faces;
     }
 
+    void dropMoonFaces(SceneDesc& scene, const MoonFaces& faces)
+    {
+        scene.textures().drop(faces.mMasser);
+        scene.textures().drop(faces.mSecunda);
+    }
+
     Shaders::MoonDisc describeMoon(const MoonPlacement& placement)
     {
         return Shaders::MoonDisc{

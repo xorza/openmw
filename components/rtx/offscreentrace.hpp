@@ -18,6 +18,7 @@
 #include "sceneuploader.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
+#include "viewscene.hpp"
 #include "walk.hpp"
 
 namespace osg
@@ -158,9 +159,8 @@ namespace Rtx
         /// `mSubject` being null is the whole of what "this is a picture of the world" means.
         struct Subject
         {
-            /// @param shared where the walk's and the pick's traversal numbers come from, or null to
-            ///        keep a sequence of its own. Out of line with the destructor, because a
-            ///        constructor that unwinds needs the forward-declared types complete too.
+            /// Out of line with the destructor, because a constructor that unwinds needs the
+            /// forward-declared types complete too.
             Subject() = default;
             ~Subject();
 
@@ -189,8 +189,9 @@ namespace Rtx
             /// structure and a texture array built from nothing sixty times a second.
             SceneUploader mUploader;
 
-            /// The slot the renderer keeps this scene's acceleration structures in.
-            SceneSlot mSlot;
+            /// The slot the renderer keeps this scene's acceleration structures in, given back
+            /// with the subject.
+            ViewScene mSlot;
 
             /// The traversal number the subject's update last ran at. What `rebuildSubject` hands
             /// the update traversal, and what a pick's own cull is dated after.

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <optional>
 #include <set>
 #include <string>
@@ -88,6 +89,38 @@ namespace Rtx
             return all;
         }
 
+        /// Every line `match` accepts of every `.cpp` and `.hpp` straight under `places`, as
+        /// `file:line: code`, the files named in `exempt` left out. Comments are stripped before
+        /// the match, because a rule's own prose and the comments that explain a site name what
+        /// the rule looks for.
+        template <class Match>
+        std::vector<std::string> linesMatching(const std::initializer_list<std::filesystem::path> places,
+            const std::set<std::string>& exempt, const Match match)
+        {
+            std::vector<std::string> found;
+            for (const std::filesystem::path& place : places)
+            {
+                for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(place))
+                {
+                    const std::filesystem::path& file = entry.path();
+                    if (file.extension() != ".cpp" && file.extension() != ".hpp")
+                        continue;
+                    if (exempt.contains(file.filename().string()))
+                        continue;
+
+                    const std::vector<std::string> lines = linesOf(file);
+                    for (std::size_t at = 0; at < lines.size(); ++at)
+                    {
+                        const std::string code = lines[at].substr(0, lines[at].find("//"));
+                        if (match(std::string_view(code)))
+                            found.push_back(file.filename().string() + ':' + std::to_string(at + 1) + ": " + code);
+                    }
+                }
+            }
+
+            return found;
+        }
+
         /// Every Vulkan handle the backend owns is held by `Rtx::Owned`.
         ///
         /// **The rule is mechanical, and the holdouts accumulated silently.** `owned.hpp` says it
@@ -104,32 +137,18 @@ namespace Rtx
         /// sites not worth a second template parameter; `graveyard.cpp` destroys handles it was
         /// *given*, the counterpart of `Owned::release`; `accelerationstructure.cpp` destroys
         /// through a pointer the device loaded, which `Owned`'s template argument cannot name, so
-        /// it is the `Owned` for that handle. Comments are stripped before the match, because
-        /// `owned.hpp`'s own prose and half a dozen others name these calls to explain them.
+        /// it is the `Owned` for that handle.
         TEST(RtxSourceTreeTest, everyDeviceParentedVulkanHandleIsHeldByOwned)
         {
             const std::set<std::string> exemptFiles{ "owned.hpp", "graveyard.cpp", "accelerationstructure.cpp" };
             const std::set<std::string> allowed{ "vkDestroyInstance", "vkDestroyDevice", "vkDestroySurfaceKHR",
                 "vkDestroyDebugUtilsMessengerEXT", "mDestroyMessenger" };
 
-            std::vector<std::string> found;
-            for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(sBackend))
-            {
-                const std::filesystem::path& file = entry.path();
-                if (file.extension() != ".cpp" && file.extension() != ".hpp")
-                    continue;
-                if (exemptFiles.contains(file.filename().string()))
-                    continue;
-
-                const std::vector<std::string> lines = linesOf(file);
-                for (std::size_t at = 0; at < lines.size(); ++at)
-                {
-                    const std::string code = lines[at].substr(0, lines[at].find("//"));
-                    const std::optional<std::string> call = destroyCallOn(code);
-                    if (call.has_value() && !allowed.contains(*call))
-                        found.push_back(file.filename().string() + ':' + std::to_string(at + 1) + ": " + code);
-                }
-            }
+            const std::vector<std::string> found
+                = linesMatching({ sBackend }, exemptFiles, [&](const std::string_view code) {
+                      const std::optional<std::string> call = destroyCallOn(code);
+                      return call.has_value() && !allowed.contains(*call);
+                  });
 
             EXPECT_TRUE(found.empty())
                 << "a Vulkan handle is destroyed by hand where Rtx::Owned would do it — hold it "
@@ -149,27 +168,41 @@ namespace Rtx
         {
             const std::set<std::string> owners{ "buffer.hpp", "buffer.cpp", "image.hpp", "image.cpp" };
 
-            std::vector<std::string> found;
-            for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(sBackend))
-            {
-                const std::filesystem::path& file = entry.path();
-                if (file.extension() != ".cpp" && file.extension() != ".hpp")
-                    continue;
-                if (owners.contains(file.filename().string()))
-                    continue;
-
-                const std::vector<std::string> lines = linesOf(file);
-                for (std::size_t at = 0; at < lines.size(); ++at)
-                {
-                    const std::string code = lines[at].substr(0, lines[at].find("//"));
-                    if (code.find("mayDestroy") != std::string::npos || code.find("isReaping") != std::string::npos)
-                        found.push_back(file.filename().string() + ':' + std::to_string(at + 1) + ": " + code);
-                }
-            }
+            const std::vector<std::string> found = linesMatching({ sBackend }, owners, [](const std::string_view code) {
+                return code.find("mayDestroy") != std::string_view::npos
+                    || code.find("isReaping") != std::string_view::npos;
+            });
 
             EXPECT_TRUE(found.empty())
                 << "a device object asks something other than its own stamp whether it may be destroyed — "
                    "give it a ReadStamp and ask that:\n"
+                << joined(found);
+        }
+
+        /// A scene slot a renderer hands out is held by `Rtx::ViewScene`, which gives it back.
+        ///
+        /// **`OffscreenTrace` took the slot in its constructor and dropped it in its destructor**,
+        /// two classes and a throw apart: a constructor that unwound after the take leaked the slot
+        /// for the renderer's life, and a drop of a slot already dropped put it on the free list
+        /// twice. The handle is the one place the pair is spelled, so the next picture that wants a
+        /// scene holds one of these and cannot get the pair wrong.
+        TEST(RtxSourceTreeTest, everyViewSceneIsHeldByViewScene)
+        {
+            const std::filesystem::path root{ OPENMW_PROJECT_SOURCE_DIR };
+            const std::set<std::string> allowed{ "viewscene.cpp", "renderer.hpp", "vulkanrenderer.hpp",
+                "vulkanrenderer.cpp" };
+
+            const std::vector<std::string> found
+                = linesMatching({ root / "components" / "rtx", sBackend, root / "apps" / "openmw" / "mwrender" / "rtx",
+                                    root / "apps" / "rtxtool" },
+                    allowed, [](const std::string_view code) {
+                        return code.find("addViewScene(") != std::string_view::npos
+                            || code.find("dropViewScene(") != std::string_view::npos;
+                    });
+
+            EXPECT_TRUE(found.empty())
+                << "a view scene is taken or dropped by hand where Rtx::ViewScene would do it — hold "
+                   "one of those and delete the drop:\n"
                 << joined(found);
         }
 

@@ -57,18 +57,20 @@ namespace Rtx
         return index;
     }
 
-    Index DeformerTable::addRig(
-        std::span<const std::uint32_t> runs, std::span<const Shaders::GpuInfluence> influences, Index boneCount)
+    Index DeformerTable::addRig(const RigSpec& rig)
     {
+        const std::span<const std::uint32_t> runs = rig.mRuns;
+        const std::span<const Shaders::GpuInfluence> influences = rig.mInfluences;
+
         assert(!runs.empty());
-        assert(boneCount > 0);
+        assert(rig.mBones > 0);
         assert(std::all_of(runs.begin(), runs.end(), [&](std::uint32_t run) {
             const std::uint32_t first = run >> Shaders::RUN_COUNT_BITS;
             const std::uint32_t count = run & Shaders::RUN_COUNT_MASK;
             return first + count <= influences.size();
         }) && "a run past the influences it was handed");
         assert(std::all_of(influences.begin(), influences.end(), [&](const Shaders::GpuInfluence& influence) {
-            return influence.mBone < boneCount;
+            return influence.mBone < rig.mBones;
         }) && "an influence naming a bone the rig has not got");
 
         // A rig with no influence at all still takes a run of one, because a backend addresses the
@@ -81,18 +83,18 @@ namespace Rtx
             .mKind = Deform::Rig,
             .mRuns = words,
             .mInfluences = shares,
-            .mRows = boneCount,
+            .mRows = rig.mBones,
         });
     }
 
-    Index DeformerTable::addMorph(std::span<const osg::Vec3f> offsets, Index targets)
+    Index DeformerTable::addMorph(const MorphSpec& morph)
     {
-        assert(targets > 0 && offsets.size() % targets == 0 && !offsets.empty());
+        assert(morph.mTargets > 0 && morph.mOffsets.size() % morph.mTargets == 0 && !morph.mOffsets.empty());
 
         return take(Deformer{
             .mKind = Deform::Morph,
-            .mOffsets = mOffsets.allocate(offsets),
-            .mRows = targets,
+            .mOffsets = mOffsets.allocate(morph.mOffsets),
+            .mRows = morph.mTargets,
         });
     }
 

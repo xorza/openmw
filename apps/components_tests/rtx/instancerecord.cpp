@@ -51,17 +51,17 @@ namespace Rtx
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
 
-            const Index cutout = scene.materials().add(Material{
+            const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("textures/leaf.dds")),
                 .mAlphaRef = 0.5f,
                 .mAlphaMode = AlphaMode::Cutout,
             });
-            const Index glass = scene.materials().add(Material{
+            const Index glass = scene.addMaterial(Material{
                 .mOpacity = 0.5f,
                 .mAlphaMode = AlphaMode::Blend,
             });
-            const Index sea = scene.materials().add(Material{ .mKind = MaterialKind::Water });
-            const Index ground = scene.materials().add(Material{ .mKind = MaterialKind::Terrain });
+            const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
+            const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
 
             const Index leaf = scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::translate(1.0f, 0.0f, 0.0f), .mMesh = mesh, .mMaterial = cutout });

@@ -67,4 +67,7 @@ namespace Rtx
     ///        second one and Morrowind alone does not, and the rasterizer picks by the same test.
     NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh,
         VFS::Path::NormalizedView fallback);
+
+    /// Gives back every hold `readNightSky` took: the field's and each patch's.
+    void dropNightSky(SceneDesc& scene, const NightSky& sky);
 }

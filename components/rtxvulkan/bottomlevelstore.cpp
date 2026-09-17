@@ -394,7 +394,6 @@ namespace Rtx
         while (!mAnswered.empty() && taken < sCompactionPerPlacement)
         {
             const Index slot = mAnswered.at(0);
-            mAnswered.pop(1);
 
             // The slot may have been handed out again since it answered. A cell that left took
             // its meshes with it, and whatever stands here now is not what this answer is about —
@@ -402,14 +401,20 @@ namespace Rtx
             Row& row = mRows[slot];
             Compaction& state = row.mCompaction;
             if (state.mTightness != Tightness::Answered)
+            {
+                mAnswered.pop(1);
                 continue;
+            }
 
             // Made in a room of its own while the loose one stands, because the copy reads the
             // loose one; the top level can be built over the tight one in this same command
-            // buffer, because its address is its own from the moment it is made.
+            // buffer, because its address is its own from the moment it is made. Taken before the
+            // answer is popped: a device that refuses the room leaves the answer where it was, to
+            // be asked again, rather than a structure answered and never copied.
             const VkDeviceSize tight = state.mTightSize;
             AccelerationStructure made = AccelerationStructure::bottomLevel(
                 mDevice, mStorage, mStorage.take(mDevice, tight, sCompactionPerPlacement), tight);
+            mAnswered.pop(1);
 
             mCompactionCopies.push_back(VkCopyAccelerationStructureInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR,

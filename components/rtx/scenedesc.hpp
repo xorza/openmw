@@ -18,10 +18,19 @@
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
 #include "sprite.hpp"
+#include "stepped.hpp"
 #include "texturetable.hpp"
 
 namespace Rtx
 {
+    /// What `SceneDesc::addMesh` answers for a mesh that brought its own deformer: both rows, the
+    /// deformer's for the meshes that will share it.
+    struct DeformedMesh
+    {
+        Index mMesh = sNoIndex;
+        Index mDeformer = sNoIndex;
+    };
+
     /// Everything the renderer needs to know about a world, with no Vulkan and no scene graph in
     /// it. It appends and it dedups paths, and nothing else: deciding that two drawables are the
     /// same mesh belongs to whoever is reading the scene graph.
@@ -33,6 +42,10 @@ namespace Rtx
         static constexpr Index sIndexBlock = MeshTable::sIndexBlock;
 
         SceneDesc();
+
+        /// Moved whole: no table holds a reference to a sibling, so what a moved description's
+        /// tables reach is its own. Every fact that crosses two tables is asked of this class,
+        /// which hands its own members over — `addMaterial`, `addMesh`, `setMaterial`, `release`.
         SceneDesc(SceneDesc&&) noexcept = default;
         SceneDesc& operator=(SceneDesc&&) noexcept = default;
 
@@ -57,6 +70,15 @@ namespace Rtx
         Index addMesh(
             const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None, Index deformer = sNoIndex);
 
+        /// `addMesh` for a mesh that brings the skin or the targets that pose it. The deformer row
+        /// and the mesh row are made in one call with nothing between them, so a deformer no mesh
+        /// stands on cannot exist — a row nothing would free, because a deformer goes with its
+        /// last mesh. Every check that can throw runs before either row is made: the spec must
+        /// pose exactly this mesh's vertices, and the mesh must fit a block. A second mesh on the
+        /// same skin names the deformer answered here through the overload above.
+        DeformedMesh addMesh(const MeshArrays& arrays, FoldedShape shape, const RigSpec& rig);
+        DeformedMesh addMesh(const MeshArrays& arrays, FoldedShape shape, const MorphSpec& morph);
+
         /// Poses one deforming mesh: its bone rows or its target weights as `packBones` or
         /// `packWeights` lays them, and the box the pose reaches — the whole of what the host says
         /// about a body per frame, because its vertices are computed on the device from the bind
@@ -65,6 +87,11 @@ namespace Rtx
         /// write nothing, so an actor standing still costs no dispatch and no refit. Compared rather
         /// than trusted, because the walk poses every rig it meets.
         void pose(Index mesh, std::span<const PoseWord> words, const osg::BoundingBoxf& bounds);
+
+        /// Puts `material` in a slot of the material table, holding every texture it names, and
+        /// returns it. The one way in: a material names textures, and what crosses two tables is
+        /// this class's to do.
+        Index addMaterial(const Material& material);
 
         /// Rewrites a material in place, keeping its slot and everything standing on it — for
         /// shading that animates: a `NifOsg` flipbook or alpha controller rewrites its state set
@@ -89,6 +116,17 @@ namespace Rtx
         /// after a sweep, because a placement standing on a freed row would be traced against
         /// whatever the slot is given next, and nothing else would say so.
         bool placementsStandOnLiveRows() const;
+
+        /// Whether every live row of every table is held or named — what a sweep leaves true, and
+        /// what a caller that took a slot and forgot to hold it breaks: no live texture and no
+        /// live deformer with a hold count of nought, and every placement on live rows. Neither
+        /// table has a sweep that could find such a row, so the extractor asks this at the end of
+        /// every retire.
+        bool isConsistent() const;
+
+        /// Whether nothing stands: no live mesh, material, texture or deformer, and no placement.
+        /// What a detached world is, and what a mirror asserts of its scene at teardown.
+        bool isEmpty() const;
 
         /// Appends one particle system's live sprites, and the emitter that names them. The sphere
         /// is derived here rather than passed in, so the rejection test a ray makes and the sprites
@@ -144,7 +182,11 @@ namespace Rtx
         /// the sprites', cleared with the placement: a wake is a fact about a frame and not about
         /// a cell.
         std::span<const RippleImpulse> ripples() const { return mRipples; }
-        void addRipple(const RippleImpulse& impulse) { mRipples.push_back(impulse); }
+        void addRipple(const RippleImpulse& impulse)
+        {
+            mTurn.expect(Turn::Open);
+            mRipples.push_back(impulse);
+        }
 
         /// What a backend compares against to know whether the geometry or the textures it built
         /// from are still the ones the scene holds.
@@ -170,22 +212,35 @@ namespace Rtx
         void clearArrivals();
 
     private:
+        /// Where the per-frame lists stand: open to the walks that fill them, or handed to a
+        /// backend that has read them. A light, an emitter or a ripple added after the hand-over
+        /// and before the next `clearPlacement` is one the frame lost or the next frame doubled,
+        /// and it is asserted where it is added.
+        enum class Turn
+        {
+            Open,
+            Handed,
+        };
+
         template <class Visit>
         void forEachPlacement(Visit&& visit) const;
 
+        /// Throws where a deformer of `posed` vertices is handed `arrays` of another length,
+        /// because both counts come out of a content file.
+        static void checkPoses(Index posed, const MeshArrays& arrays);
+
         std::uint64_t mIdentity;
 
-        /// The two borrowed tables first, because a member is constructed in declaration order.
-        /// `MeshTable` takes a `DeformerTable&` and `MaterialTable` a `TextureTable&`, so either
-        /// moved below its borrower would bind a reference to storage no constructor had reached.
+        Stepped<Turn> mTurn{ Turn::Open };
+
         TextureTable mTextures;
         DeformerTable mDeformers;
 
         /// Every mesh, and the shared buffers its triangles live in.
-        MeshTable mMeshes{ mDeformers };
+        MeshTable mMeshes;
 
         /// The materials, their terrain layers and the weights those place.
-        MaterialTable mMaterials{ mTextures };
+        MaterialTable mMaterials;
 
         /// Where everything stands and which rows a backend has to write again.
         PlacementTable mPlacements;

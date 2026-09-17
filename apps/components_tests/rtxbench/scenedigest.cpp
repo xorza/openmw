@@ -69,7 +69,7 @@ namespace Rtx
         {
             Rtx::Material material;
             material.mDiffuse = scene.textures().add(VFS::Path::NormalizedView("textures/box.dds"));
-            const Rtx::Index wearing = scene.materials().add(material);
+            const Rtx::Index wearing = scene.addMaterial(material);
 
             const osg::Matrixf stood = osg::Matrixf::translate(10.0f, 20.0f, 30.0f);
             for (int which = 0; which < 2; ++which)
@@ -151,7 +151,7 @@ namespace Rtx
             change(material);
 
             Rtx::MeshInstance instance;
-            instance.mMaterial = scene.materials().add(material);
+            instance.mMaterial = scene.addMaterial(material);
             instance.mMesh = addBox(scene, false);
             scene.addInstance(instance);
 
@@ -187,13 +187,14 @@ namespace Rtx
 
             const std::array<std::uint32_t, 4> runs{ 1u, 1u, 1u, 1u };
             const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = weight } };
-            const Rtx::Index rig = scene.deformers().addRig(runs, influences, 1);
 
             const std::array positions{ osg::Vec3f(), osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 1.0f, 0.0f),
                 osg::Vec3f(0.0f, 1.0f, 0.0f) };
             const std::array<std::uint32_t, 6> indices{ 0, 1, 2, 0, 2, 3 };
-            const Rtx::Index quad
-                = scene.addMesh(MeshArrays{ .mPositions = positions, .mIndices = indices }, {}, Rtx::Deform::Rig, rig);
+            const Rtx::Index quad = scene
+                                        .addMesh(MeshArrays{ .mPositions = positions, .mIndices = indices }, {},
+                                            Rtx::RigSpec{ .mRuns = runs, .mInfluences = influences, .mBones = 1 })
+                                        .mMesh;
 
             const std::array bones{ toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, up)) };
             std::vector<PoseWord> words;

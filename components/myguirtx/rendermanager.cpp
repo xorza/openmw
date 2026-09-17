@@ -1,6 +1,7 @@
 #include "rendermanager.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <span>
@@ -122,6 +123,17 @@ namespace MyGUIRtx
         }
 
         return *mTextures.emplace(name, std::make_unique<Texture>(name, mRenderer, mImageManager)).first->second;
+    }
+
+    TextureHandle RenderManager::takeTexture(const std::string& name)
+    {
+        assert(!mTextures.contains(name) && "a texture taken under a name the interface already holds");
+        return TextureHandle(&makeTexture(name), TextureDestroyer{ .mManager = this });
+    }
+
+    void TextureDestroyer::operator()(Texture* const texture) const
+    {
+        mManager->destroyTexture(texture);
     }
 
     MyGUI::ITexture* RenderManager::createTexture(const std::string& name)

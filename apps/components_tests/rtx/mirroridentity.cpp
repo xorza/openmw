@@ -89,13 +89,14 @@ namespace Rtx
             EXPECT_EQ(mLive.size(), 1u);
         }
 
-        /// A held entry abandoned mid-walk comes off the held count, or every sweep after would
-        /// find the map one short of whole for ever.
-        TEST_F(RtxKeptTest, abandoningAHeldEntryCountsItOff)
+        /// An entry abandoned mid-walk comes off the reached count and owes a sweep, or every
+        /// sweep after would find the map one short of whole for ever. A held one is not the
+        /// walk's to abandon: its holders would release a key the map no longer knows.
+        TEST_F(RtxKeptTest, abandoningAnEntryCountsItOffAndAHeldOneIsNotAbandoned)
         {
             mKept.add(1, Known{ .mIndex = 10 });
-            mKept.hold(mKept.find(1));
             mKept.add(2, Known{ .mIndex = 20 });
+            mKept.hold(mKept.find(2));
 
             mKept.abandon(mKept.find(1));
             EXPECT_FALSE(mKept.whole()) << "an abandon owes a sweep";
@@ -105,8 +106,11 @@ namespace Rtx
             EXPECT_TRUE(mKept.whole());
 
             nextEpoch();
-            mKept.stamp(mKept.find(2));
-            EXPECT_TRUE(mKept.whole()) << "no held entry is counted that is not there";
+            EXPECT_TRUE(mKept.whole()) << "the held entry is the whole map";
+
+#ifndef NDEBUG
+            EXPECT_DEATH(mKept.abandon(mKept.find(2)), "an entry abandoned while something holds it");
+#endif
         }
     }
 }

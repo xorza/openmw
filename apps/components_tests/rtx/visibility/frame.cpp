@@ -937,8 +937,8 @@ namespace Rtx::Testing
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, far);
 
             SceneDesc scene;
-            const Index wall = scene.addMesh(MeshArrays{ .mPositions = wallAt(200.0f), .mIndices = sQuadIndices }, {},
-                Deform::Rig, addOneBoneRig(scene, 4));
+            const Index wall
+                = addOneBoneBody(scene, MeshArrays{ .mPositions = wallAt(200.0f), .mIndices = sQuadIndices }).mMesh;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
             poseByOneBone(scene, wall, osg::Matrixf::identity());
 
@@ -1072,11 +1072,11 @@ namespace Rtx::Testing
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
-                .mMaterial = scene.materials().add(Material{ .mDiffuse = grey }) });
+                .mMaterial = scene.addMaterial(Material{ .mDiffuse = grey }) });
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = pane, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
-                .mMaterial = scene.materials().add(Material{ .mDiffuse = red }),
+                .mMaterial = scene.addMaterial(Material{ .mDiffuse = red }),
                 .mClass = InstanceClass::FirstPerson });
 
             Shaders::VisibilityConstants camera = makeCamera(

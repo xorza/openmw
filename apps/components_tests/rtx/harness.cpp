@@ -136,7 +136,14 @@ namespace Rtx::Testing
             return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, exponent - 15);
         }
 
-        /// Closes every device the binary cached, after the last test and before `main` returns.
+        /// What holding a device for the run costs the rest of the binary: death tests that exec
+        /// rather than fork, and every device closed after the last test and before `main` returns.
+        ///
+        /// **A fork of a process holding a device runs to seconds**: its mappings are copied and
+        /// the driver's fork handlers run, and gtest's default death test is a fork. Measured at
+        /// four to eight seconds a death test once the pixel suite had built a renderer, against
+        /// a fifth of a second for the re-exec the `threadsafe` style does — a child that never
+        /// held a device.
         ///
         /// **Two Vulkan devices destroyed after `main` has returned abort inside the validation
         /// layer**, with no message and no stack of ours on it. One pair survives static destruction
@@ -145,8 +152,10 @@ namespace Rtx::Testing
         /// directly and a `Renderer` for the pixel suite, each in a validated and an unvalidated
         /// flavour. Closing them here is both the fix and where they belonged: a cache that lives
         /// for the run should end with the run, not with the process.
-        class DeviceTeardown : public ::testing::Environment
+        class DeviceEnvironment : public ::testing::Environment
         {
+            void SetUp() override { GTEST_FLAG_SET(death_test_style, "threadsafe"); }
+
             void TearDown() override
             {
                 const std::string why = "the suite closed its devices after the last test";
@@ -162,7 +171,7 @@ namespace Rtx::Testing
 
         // Before `main`, because gtest only tears down environments registered before the run starts.
         [[maybe_unused]] const bool sRegistered = [] {
-            ::testing::AddGlobalTestEnvironment(new DeviceTeardown);
+            ::testing::AddGlobalTestEnvironment(new DeviceEnvironment);
             return true;
         }();
     }

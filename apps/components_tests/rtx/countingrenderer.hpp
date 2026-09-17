@@ -163,7 +163,7 @@ namespace Rtx::Testing
                 mDescribedSlots.push_back(texture.mSlot);
         }
 
-        void dropViewScene(Rtx::SceneSlot) override {}
+        void dropViewScene(Rtx::SceneSlot slot) override { mViewDropped.push_back(slot.getViewIndex()); }
         bool takeGuiCopy(Rtx::GuiSlot, std::span<std::uint8_t>) override { return false; }
         void finishGuiTraces() override {}
         void readPixels(std::vector<std::uint8_t>&) override {}
@@ -181,6 +181,11 @@ namespace Rtx::Testing
         std::vector<Built> mViewBuilt;
         Built mBuilt;
         std::uint32_t mViewScenes = 0;
+
+        /// Every view scene given back, in the order it was, so a test can say a slot went back
+        /// once and no more.
+        std::vector<std::uint32_t> mViewDropped;
+
         std::uint32_t mPlaced = 0;
         std::uint32_t mExtended = 0;
         std::uint32_t mRebuilt = 0;

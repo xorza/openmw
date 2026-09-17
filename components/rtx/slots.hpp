@@ -11,6 +11,7 @@
 
 #include "contract.hpp"
 #include "runs.hpp"
+#include "stepped.hpp"
 
 namespace Rtx
 {
@@ -19,7 +20,8 @@ namespace Rtx
     /// the allocator left its map in, and a list taken from the back would hand the same live set
     /// different slots in two processes, which `rtx.sh debug repeat` catches. Its own type
     /// because `GuiTextures` and the view scenes hold rows `SlotRows` cannot — a `unique_ptr` is
-    /// move-only and `SlotRows::take` copies.
+    /// move-only and `SlotRows::take` copies. A byte per slot says whether it is on the heap, so
+    /// a slot freed twice is an assert here and not two entries the heap hands out as two slots.
     class SlotPool
     {
     public:
@@ -32,6 +34,7 @@ namespace Rtx
             std::pop_heap(mFree.begin(), mFree.end(), std::greater<>());
             const Index index = mFree.back();
             mFree.pop_back();
+            mIsFree[index] = 0;
 
             return index;
         }
@@ -40,9 +43,19 @@ namespace Rtx
         /// it is no heap and the pop above answers with whatever the top happens to be.
         void free(Index slot)
         {
+            // Grown here and not by the table, as `SlotSet::addMakingRoom` grows: the first free of
+            // a slot is after the growth that made it, and a free is not the frame path's busy part.
+            if (slot >= mIsFree.size())
+                mIsFree.resize(std::size_t{ slot } + 1, 0);
+            assert(mIsFree[slot] == 0 && "a slot freed twice");
+
+            mIsFree[slot] = 1;
             mFree.push_back(slot);
             std::push_heap(mFree.begin(), mFree.end(), std::greater<>());
         }
+
+        /// Whether `slot` is on the list — what a caller asks before it gives one back.
+        bool isFree(Index slot) const { return slot < mIsFree.size() && mIsFree[slot] != 0; }
 
         /// How many slots stand empty, which a table subtracts from its length to count what lives.
         std::size_t size() const { return mFree.size(); }
@@ -54,6 +67,9 @@ namespace Rtx
     private:
         /// A min-heap of the slots nothing stands in.
         std::vector<Index> mFree;
+
+        /// A byte per slot ever freed, set for exactly the slots the heap holds.
+        std::vector<std::uint8_t> mIsFree;
     };
 
     /// The slots of one table that something is true of, in the order they were named, each once.
@@ -148,9 +164,12 @@ namespace Rtx
     };
 
     /// Which slots of one table arrived and which were given back, since a frame last read them.
-    /// Two sets, and a slot stands in at most one of them: a slot that arrives and goes inside one
-    /// frame belongs to neither. A backend comparing table sizes could not tell, and a slot taken
-    /// over in place would tell it nothing at all.
+    /// Two sets, and a slot stands in at most one of them: the last word wins, so a slot that
+    /// arrived and went inside one frame is reported gone, and one that went and was taken over
+    /// is reported arrived. A backend then releases a slot it never built and builds into one it
+    /// never released — both of which it takes as nothing, and the hand-over relies on it. A
+    /// backend comparing table sizes could not tell, and a slot taken over in place would tell it
+    /// nothing at all.
     class SlotChanges
     {
     public:
@@ -227,6 +246,8 @@ namespace Rtx
         /// growth. By value and moved in, so a row that owns a name is built once.
         Index take(Row row)
         {
+            mMark.step(Mark::Stale, Mark::Stale, Mark::Fresh);
+
             const Index index = mFree.take();
             if (index == sNoIndex)
             {
@@ -247,6 +268,8 @@ namespace Rtx
         /// Puts `slot` back. What its row now holds is the caller's to have decided.
         void free(Index slot)
         {
+            mMark.step(Mark::Stale, Mark::Stale, Mark::Fresh);
+
             assert(slot < mRows.size());
             assert(mHolds[slot] == 0 && "a slot freed while something holds it");
             assert(mLive[slot] != 0 && "a slot freed twice");
@@ -291,6 +314,8 @@ namespace Rtx
         /// rows are live, and a span measured by its length would miscount a row named twice.
         std::size_t mark(std::span<const Index> keep)
         {
+            mMark.step(Mark::Fresh, Mark::Stale, Mark::Fresh);
+
             // Cleared before it is grown, so the fill reaches every row rather than only the rows
             // past the length the last sweep left. A table that never sweeps never allocates it.
             mKept.clear();
@@ -320,7 +345,9 @@ namespace Rtx
             return distinct;
         }
 
-        /// Frees every slot the last `mark` did not name, and says how many that was.
+        /// Frees every slot the last `mark` did not name, and says how many that was. Once per
+        /// mark: a second sweep on the same mark freed every row again, and a take or a free
+        /// between the two makes the mark describe rows that are not there — both are the step.
         ///
         /// @param release `void(Index, Row&)`, called before each row goes. What the row named is
         ///        given back there — a mesh's runs, a material's textures — because only the table
@@ -328,7 +355,7 @@ namespace Rtx
         template <class Release>
         std::size_t sweep(Release release)
         {
-            assert(mKept.size() == mRows.size() && "a sweep with no mark in front of it");
+            mMark.step(Mark::Stale, Mark::Fresh);
 
             std::size_t freed = 0;
             for (Index index = 0; index < mRows.size(); ++index)
@@ -359,6 +386,16 @@ namespace Rtx
         /// Which slots the last `mark` named, one flag per row. Held rather than made, because a
         /// sweep runs on the frame a cell left, which is busy enough already.
         std::vector<std::uint8_t> mKept;
+
+        /// Whether `mKept` describes the rows as they stand: fresh from a mark until the sweep that
+        /// consumes it or the take or free that changes what it describes.
+        enum class Mark
+        {
+            Stale,
+            Fresh,
+        };
+
+        Stepped<Mark> mMark{ Mark::Stale };
 
         bool mDroppedHolds = false;
     };

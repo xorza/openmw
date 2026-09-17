@@ -1,5 +1,6 @@
 #include <array>
 #include <cstddef>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -103,7 +104,15 @@ namespace Rtx
         struct Reading : Lent
         {
             int mValue = 0;
+
+            void reuse() { reuseKeeping(*this); }
         };
+
+        /// Fills a reading with `value`, for a take.
+        auto valued(const int value)
+        {
+            return [value](Reading& reading) { reading.mValue = value; };
+        }
 
         /// **A spare is held by whoever `lend`s it, and given back once the last of them releases
         /// it.** The pool counts, so every lent type has one count and one assert: a cell's, a
@@ -112,7 +121,8 @@ namespace Rtx
         {
             Spares<Reading> spares;
 
-            Reading& first = spares.take();
+            Reading& first = spares.take(valued(1));
+            EXPECT_EQ(first.mValue, 1) << "handed out filled";
             EXPECT_EQ(first.mLent, 0u) << "taken is not yet held";
             EXPECT_EQ(spares.size(), 1u);
 
@@ -125,13 +135,104 @@ namespace Rtx
             spares.give(first);
 
             // The next take is the object just given back, and nothing was made for it.
-            EXPECT_EQ(&spares.take(), &first);
+            EXPECT_EQ(&spares.take(valued(2)), &first);
             EXPECT_EQ(spares.size(), 1u);
 
             // A second object while the first is out is made, not shared.
-            Reading& second = spares.take();
+            Reading& second = spares.take(valued(3));
             EXPECT_NE(&second, &first);
             EXPECT_EQ(spares.size(), 2u);
         }
+
+        /// **A fill that throws leaves nothing taken.** The pool empties the object and has it
+        /// back before the throw goes on, so the next take answers with the same object, emptied,
+        /// and the pool has made nothing for it. What `CellReader::readModel` lost one model per
+        /// cell to: a spare taken before a walk that threw, and never filed or given back.
+        TEST(RtxSparesTest, aFillThatThrowsLeavesTheObjectSpareAndEmpty)
+        {
+            Spares<Reading> spares;
+
+            Reading* attempted = nullptr;
+            EXPECT_THROW(spares.take([&](Reading& reading) {
+                attempted = &reading;
+                reading.mValue = 7;
+                throw std::runtime_error("a walk that refused the file");
+            }),
+                std::runtime_error);
+            ASSERT_NE(attempted, nullptr);
+            EXPECT_EQ(spares.size(), 1u) << "one object was made for the attempt";
+
+            Reading& taken = spares.take(valued(0));
+            EXPECT_EQ(&taken, attempted) << "the object the fill threw out of is the spare";
+            EXPECT_EQ(taken.mValue, 0) << "emptied on the way back";
+            EXPECT_EQ(taken.mLent, 0u);
+            EXPECT_EQ(spares.size(), 1u) << "nothing was made for the second take";
+        }
+
+#ifndef NDEBUG
+        /// **A sweep consumes its mark, and a take or a free spoils it.** A second sweep on one
+        /// mark freed every row twice and handed one slot to two arrivals; a sweep after a take
+        /// would free by a mark made of rows that were not there.
+        TEST(RtxSlotRowsTest, aSweepWithoutAFreshMarkDies)
+        {
+            SlotRows<int> rows;
+            rows.take(1);
+            rows.take(2);
+            rows.mark({});
+            EXPECT_EQ(rows.sweep([](const Index, int&) {}), 2u);
+            EXPECT_DEATH(rows.sweep([](const Index, int&) {}), "a call out of its turn");
+
+            rows.mark({});
+            rows.take(3);
+            EXPECT_DEATH(rows.sweep([](const Index, int&) {}), "a call out of its turn");
+        }
+#endif
+
+        /// **The pool knows which slots it holds.** A slot freed is on the list, a slot taken is
+        /// not, and the two questions every table asks of it read the same byte.
+        TEST(RtxSlotPoolTest, aSlotIsFreeFromItsFreeToItsTake)
+        {
+            SlotPool pool;
+            EXPECT_FALSE(pool.isFree(3)) << "a slot nothing ever freed";
+            EXPECT_EQ(pool.take(), sNoIndex);
+
+            pool.free(3);
+            pool.free(1);
+            EXPECT_TRUE(pool.isFree(3));
+            EXPECT_TRUE(pool.isFree(1));
+            EXPECT_FALSE(pool.isFree(2));
+
+            EXPECT_EQ(pool.take(), 1u) << "the lowest";
+            EXPECT_FALSE(pool.isFree(1));
+            EXPECT_TRUE(pool.isFree(3));
+            EXPECT_EQ(pool.take(), 3u);
+            EXPECT_FALSE(pool.isFree(3));
+            EXPECT_EQ(pool.take(), sNoIndex);
+        }
+
+#ifndef NDEBUG
+        /// **A slot freed twice is the pool's assert**, and not two entries on the heap handing one
+        /// slot to two takers — which `VulkanRenderer::dropViewScene` could reach with a drop of a
+        /// slot already dropped.
+        TEST(RtxSlotPoolTest, aSlotFreedTwiceDies)
+        {
+            SlotPool pool;
+            pool.free(2);
+            EXPECT_DEATH(pool.free(2), "a slot freed twice");
+        }
+
+        /// **An object given back twice is the pool's assert**, and not two entries on the spare
+        /// list handing one object to two takers. Emptied before each give, as every give-back
+        /// empties: the flag is the pool's, and a reuse that reset it would hide the second give.
+        TEST(RtxSparesTest, anObjectGivenBackTwiceDies)
+        {
+            Spares<Reading> spares;
+            Reading& reading = spares.take(valued(1));
+            reading.reuse();
+            spares.give(reading);
+            reading.reuse();
+            EXPECT_DEATH(spares.give(reading), "an object given back twice");
+        }
+#endif
     }
 }

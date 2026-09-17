@@ -23,7 +23,23 @@ namespace Resource
 namespace MyGUIRtx
 {
 
+    class RenderManager;
     class Texture;
+
+    /// What ends a texture a caller took under its own name: the manager's own destroy, which is
+    /// the one MyGUI's widgets would call.
+    struct TextureDestroyer
+    {
+        RenderManager* mManager = nullptr;
+
+        void operator()(Texture* texture) const;
+    };
+
+    /// A texture the caller owns for as long as the handle stands, and the manager files under its
+    /// name for as long as MyGUI needs to find it. What a view inside the interface holds instead
+    /// of a reference it has to remember to destroy: a constructor that throws after the texture
+    /// was made unwinds the handle, and the slot the texture took goes with it.
+    using TextureHandle = std::unique_ptr<Texture, TextureDestroyer>;
 
     /// MyGUI over `Rtx::GuiRenderer`, whichever graphics API is behind that.
     ///
@@ -74,6 +90,12 @@ namespace MyGUIRtx
         /// `createTexture`, as the type it makes: for a view inside the interface, which traces
         /// into the slot the texture holds and so needs to ask for it.
         Texture& makeTexture(const std::string& name);
+
+        /// `makeTexture` under a name nothing holds yet, owned by the caller: the handle destroys
+        /// it here when the caller lets go. The name is asserted new, because a handle over a
+        /// texture MyGUI already hands to widgets would be a second owner.
+        TextureHandle takeTexture(const std::string& name);
+
         void destroyTexture(MyGUI::ITexture* texture) override;
         MyGUI::ITexture* getTexture(const std::string& name) override;
 

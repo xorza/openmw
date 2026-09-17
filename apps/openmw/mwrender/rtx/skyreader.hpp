@@ -45,12 +45,16 @@ namespace MWRender
         /// died. Once, where the world is attached.
         void attach(Rtx::SceneDesc& scene, Resource::SceneManager& scenes);
 
+        /// Gives every hold `attach` took back to `scene`, so a scene the world has left holds
+        /// nothing of the sky: `attach`'s pair, where the world is detached.
+        void detach(Rtx::SceneDesc& scene);
+
         /// @param seconds the world's clock, which the sea is animated by.
         /// @param reach how far the world is built, in units, which the open air closes over.
         Rtx::WorldReading read(const WorldState& world, float seconds, float reach) const;
 
     private:
-        /// The moons' portraits and the sky's own meshes, added once and never given back.
+        /// The moons' portraits and the sky's own meshes, held from `attach` to `detach`.
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;
 

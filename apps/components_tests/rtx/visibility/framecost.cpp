@@ -91,8 +91,8 @@ namespace Rtx::Testing
             // A wall to trace, and a second one behind it skinned to one bone so that there is a body
             // to pose.
             SceneDesc scene = makeWall();
-            const Index body = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mIndices = sQuadIndices }, {},
-                Deform::Rig, addOneBoneRig(scene, 4));
+            const Index body
+                = addOneBoneBody(scene, MeshArrays{ .mPositions = sWallQuad, .mIndices = sQuadIndices }).mMesh;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 100.0f, 0.0f), .mMesh = body });
             poseByOneBone(scene, body, osg::Matrixf::identity());
 

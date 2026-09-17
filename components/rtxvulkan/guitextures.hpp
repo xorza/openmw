@@ -159,9 +159,10 @@ namespace Rtx
         GuiRegion mLentRegion;
         VkDeviceSize mLentAt = 0;
 
-        /// Last, so that it is destroyed first: its own destructor flushes, and what it has
-        /// recorded names images and staging that must still exist when that happens. A texture
-        /// given back is kept on it, because the copy recorded against it may not have run.
+        /// Last, so that it is destroyed first: what it has recorded names images and staging that
+        /// must still exist when it goes, and its destructor asserts that nothing is recorded —
+        /// `VulkanRenderer::~VulkanRenderer` calls `finish` for that. A texture given back is kept
+        /// on it, because the copy recorded against it may not have run.
         Batch mBatch;
     };
 }

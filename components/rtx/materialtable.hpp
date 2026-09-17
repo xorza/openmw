@@ -28,8 +28,10 @@ namespace Rtx
 
     /// Every material the scene holds, the terrain layers they name, and the weights those place.
     /// One type, because a material's textures have to be given back before the run that says
-    /// which they were is handed to the next chunk. The textures are borrowed and not owned: a slot
-    /// is named by holds nothing here can see.
+    /// which they were is handed to the next chunk. The textures are the scene's, handed in per
+    /// call rather than held: a slot is named by holds nothing here can see, and a table that held
+    /// a reference to the texture table was one a defaulted move of the scene left pointing at the
+    /// scene it was moved from.
     class MaterialTable
     {
     public:
@@ -44,17 +46,14 @@ namespace Rtx
         bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
         std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
 
-        explicit MaterialTable(TextureTable& textures)
-            : mTextures(textures)
-        {
-        }
-
-        Index add(const Material& material);
+        /// Puts `material` in a slot, holding every texture it names on `textures`.
+        Index add(TextureTable& textures, const Material& material);
 
         /// Rewrites a material in place, keeping its slot and everything standing on it, and says
         /// whether what traversal is told about the surfaces wearing it changed — a fade crossing
-        /// opaque does, a flipbook turning does not.
-        bool set(Index material, const Material& what);
+        /// opaque does, a flipbook turning does not. What it names anew is held on `textures` and
+        /// what it stops naming given back.
+        bool set(TextureTable& textures, Index material, const Material& what);
 
         /// Copies `weights` into the shared mask table and returns where they landed. One float per
         /// weight rather than the byte the source holds: a cell's worth is tens of kilobytes.
@@ -75,8 +74,9 @@ namespace Rtx
         /// backend was not told would be read stale for its life.
         std::uint64_t getRunRevision() const { return mRunRevision; }
 
-        /// Frees every slot the last `mark` did not name, and says how many that was.
-        std::size_t sweep();
+        /// Frees every slot the last `mark` did not name, and says how many that was. What a freed
+        /// row named goes back to `textures`.
+        std::size_t sweep(TextureTable& textures);
 
         void clearArrivals();
 
@@ -99,10 +99,8 @@ namespace Rtx
 
         /// Takes and gives back those slots. Only ever called in that pair, and `set` is why the
         /// order between them matters.
-        void holdTextures(const Material& material);
-        void dropTextures(const Material& material);
-
-        TextureTable& mTextures;
+        void holdTextures(TextureTable& textures, const Material& material);
+        void dropTextures(TextureTable& textures, const Material& material);
 
         SlotRows<Material> mRows;
 

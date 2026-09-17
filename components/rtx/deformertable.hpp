@@ -82,6 +82,28 @@ namespace Rtx
         Index getPoseWords() const { return poseWordsFor(mKind, mRows); }
     };
 
+    /// A skin as a mesh arrives with it: the run word per vertex, the influences those words
+    /// name, and how many bones a pose has. Spans into the reader's own buffers, good for the
+    /// call that adds it.
+    struct RigSpec
+    {
+        std::span<const std::uint32_t> mRuns;
+        std::span<const Shaders::GpuInfluence> mInfluences;
+        Index mBones = 0;
+
+        Index getVertexCount() const { return static_cast<Index>(mRuns.size()); }
+    };
+
+    /// A set of morph targets as a mesh arrives with them: every target's offsets end to end, the
+    /// base's included, and how many targets there are.
+    struct MorphSpec
+    {
+        std::span<const osg::Vec3f> mOffsets;
+        Index mTargets = 0;
+
+        Index getVertexCount() const { return mTargets > 0 ? static_cast<Index>(mOffsets.size() / mTargets) : 0; }
+    };
+
     /// What poses the meshes that deform: the deformers, and the pose each mesh on one holds.
     /// One type, because a deformer's rows, the runs behind it and the words each mesh was given
     /// have to be released in one order across five allocators. A mesh standing on a deformer is
@@ -92,11 +114,13 @@ namespace Rtx
     {
     public:
         /// Copies a skin's runs and influences into the shared tables and returns the rig's index.
-        Index addRig(
-            std::span<const std::uint32_t> runs, std::span<const Shaders::GpuInfluence> influences, Index boneCount);
+        /// The row arrives with nothing on it; `SceneDesc::addMesh` is what calls this, and stands
+        /// the first mesh on the row in the same call, because a row no mesh stands on is one
+        /// nothing frees.
+        Index addRig(const RigSpec& rig);
 
-        /// Copies a morph's offsets into the shared table and returns the morph's index.
-        Index addMorph(std::span<const osg::Vec3f> offsets, Index targets);
+        /// The same for a morph's targets.
+        Index addMorph(const MorphSpec& morph);
 
         /// Gives `range` the runs its kind needs, and counts one more mesh on the deformer it names.
         /// Nothing for a mesh that stands. The words it hands out are zeroed, which is a pose
@@ -132,8 +156,13 @@ namespace Rtx
 
         void clearArrivals();
 
-        // Read by the tests and by nothing else.
-        /// How many meshes stand on a deformer. Nought is a free slot.
+        /// Whether `deformer` holds a rig or a set of targets: what `SceneDesc::isConsistent`
+        /// asks beside the holds, because a live row with none is one nothing frees.
+        bool isLive(Index deformer) const { return mDeformers.isLive(deformer); }
+        std::size_t getLiveCount() const { return mDeformers.getLiveCount(); }
+
+        /// How many meshes stand on a deformer. Nought is a free slot, or one the mesh that
+        /// brought it has not stood on yet — a window `SceneDesc::addMesh` closes in the same call.
         std::uint32_t getHolds(Index deformer) const { return mDeformers.getHolds(deformer); }
 
     private:

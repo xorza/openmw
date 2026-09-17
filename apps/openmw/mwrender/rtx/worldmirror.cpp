@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <exception>
 #include <memory>
 #include <span>
 
@@ -134,11 +135,23 @@ namespace MWRender
         mContent = std::make_unique<SceneContent>(*resources.getSceneManager());
     }
 
+    WorldMirror::~WorldMirror()
+    {
+        assert((std::uncaught_exceptions() > 0 || mScene.isEmpty()) && "a world detached and still standing rows");
+    }
+
     void WorldMirror::detach()
     {
         // **The ring's thread reads the storages the world owns.** A world with nothing in it is
         // what stops the thread and drops what it held.
         mRing.follow(Rtx::WorldAround{});
+
+        // What the ring held on the extractor's rows goes back, and the sweep frees them with
+        // everything the walks stood: nothing of this world stays in the scene. Not on the way
+        // out of an exception a frame threw, where the scene is whatever the throw left and the
+        // assert in the retire would stand between the throw and its message.
+        if (std::uncaught_exceptions() == 0)
+            mExtractor.detach(mRing);
 
         mContent.reset();
         mResources = nullptr;

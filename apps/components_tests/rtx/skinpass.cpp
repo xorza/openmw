@@ -73,7 +73,7 @@ namespace Rtx
             // One bone over the whole quad, every weight one.
             const std::array oneRuns{ run(0, 1), run(0, 1), run(0, 1), run(0, 1) };
             const std::array oneInfluence{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-            const Index oneBone = scene.deformers().addRig(oneRuns, oneInfluence, 1);
+            const RigSpec oneBone{ .mRuns = oneRuns, .mInfluences = oneInfluence, .mBones = 1 };
 
             // Two bones, and the third vertex a blend of them: a quarter of the first and three
             // quarters of the second.
@@ -83,13 +83,13 @@ namespace Rtx
                 Shaders::GpuInfluence{ .mBone = 0, .mWeight = 0.25f },
                 Shaders::GpuInfluence{ .mBone = 1, .mWeight = 0.75f },
             };
-            const Index twoBones = scene.deformers().addRig(twoRuns, twoInfluences, 2);
+            const RigSpec twoBones{ .mRuns = twoRuns, .mInfluences = twoInfluences, .mBones = 2 };
 
             // Two targets over the quad: the base's zeroes and a unit lift.
             std::array<osg::Vec3f, 8> offsets{};
             for (std::size_t at = 4; at < 8; ++at)
                 offsets[at] = osg::Vec3f(0.0f, 0.0f, 1.0f);
-            const Index lift = scene.deformers().addMorph(offsets, 2);
+            const MorphSpec lift{ .mOffsets = offsets, .mTargets = 2 };
 
             const std::array sideways{
                 osg::Vec3f(1.0f, 0.0f, 0.0f),
@@ -104,20 +104,27 @@ namespace Rtx
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
             };
 
-            const Index raised = scene.addMesh(
+            // Each rig with the first mesh on it, and the second mesh on the one-bone rig by its
+            // index: the slots come out as they would have with the rigs made first.
+            const DeformedMesh onOneBone = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, oneBone);
+                {}, oneBone);
+            const Index raised = onOneBone.mMesh;
             const Index still = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices });
-            const Index blended = scene.addMesh(
+            const DeformedMesh onTwoBones = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, twoBones);
+                {}, twoBones);
+            const Index blended = onTwoBones.mMesh;
             const Index turned = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = sideways, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, oneBone);
-            const Index lifted = scene.addMesh(
-                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Morph, lift);
+                {}, Deform::Rig, onOneBone.mDeformer);
+            const Index lifted = scene
+                                     .addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad,
+                                                  .mNormals = upward,
+                                                  .mIndices = Testing::sQuadIndices },
+                                         {}, lift)
+                                     .mMesh;
 
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 
@@ -261,7 +268,7 @@ namespace Rtx
             // 2 there and 1 elsewhere, so a stale bind, a stale row or a stale influence would each
             // show as a different number.
             const MeshRange went = scene.meshes().getRows()[blended];
-            const Deformer wentRig = scene.deformers().getDeformers()[twoBones];
+            const Deformer wentRig = scene.deformers().getDeformers()[onTwoBones.mDeformer];
             scene.clearArrivals();
             const std::array kept{ raised, still, turned, lifted };
             ASSERT_TRUE(scene.release(kept, {}));
@@ -271,13 +278,14 @@ namespace Rtx
                 Shaders::GpuInfluence{ .mBone = 0, .mWeight = 0.5f },
                 Shaders::GpuInfluence{ .mBone = 1, .mWeight = 0.5f },
             };
-            const Index twoMore = scene.deformers().addRig(twoRuns, halfAndHalf, 2);
             std::array<osg::Vec3f, 4> shifted = Testing::sUnitQuad;
             for (osg::Vec3f& corner : shifted)
                 corner += osg::Vec3f(1.0f, 0.0f, 0.0f);
-            const Index arrived = scene.addMesh(
+            const DeformedMesh moreArrived = scene.addMesh(
                 MeshArrays{ .mPositions = shifted, .mNormals = upward, .mIndices = Testing::sQuadIndices }, {},
-                Deform::Rig, twoMore);
+                RigSpec{ .mRuns = twoRuns, .mInfluences = halfAndHalf, .mBones = 2 });
+            const Index twoMore = moreArrived.mDeformer;
+            const Index arrived = moreArrived.mMesh;
             const MeshRange& taken = scene.meshes().getRows()[arrived];
             ASSERT_EQ(arrived, blended) << "the slot was not handed out again";
             ASSERT_EQ(taken.mBindOffset, went.mBindOffset) << "the bind run was not handed out again";
@@ -333,7 +341,7 @@ namespace Rtx
 
             const std::array oneRuns{ run(0, 1), run(0, 1), run(0, 1), run(0, 1) };
             const std::array oneInfluence{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-            const Index oneBone = scene.deformers().addRig(oneRuns, oneInfluence, 1);
+            const RigSpec oneBone{ .mRuns = oneRuns, .mInfluences = oneInfluence, .mBones = 1 };
 
             const std::array upward{
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
@@ -343,9 +351,10 @@ namespace Rtx
             };
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 
-            const Index first = scene.addMesh(
+            const DeformedMesh body = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, oneBone);
+                {}, oneBone);
+            const Index first = body.mMesh;
             const std::array atFive{ Testing::boneUp(5.0f) };
             Testing::poseRig(scene, first, atFive, anywhere);
 
@@ -377,7 +386,7 @@ namespace Rtx
             scene.clearPlacement();
             const Index second = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, oneBone);
+                {}, Deform::Rig, body.mDeformer);
             const std::array atTwo{ Testing::boneUp(2.0f) };
             Testing::poseRig(scene, second, atTwo, anywhere);
             ASSERT_EQ(scene.meshes().getArrived().size(), 1u);

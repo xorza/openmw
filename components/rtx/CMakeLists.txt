@@ -91,6 +91,8 @@ set(RTX_FILES
     nightsky.hpp
     offscreentrace.cpp
     offscreentrace.hpp
+    viewscene.cpp
+    viewscene.hpp
     worker.hpp
     ownedtexture.cpp
     ownedtexture.hpp

@@ -167,11 +167,11 @@ namespace Rtx
         {
             freshen();
 
+            // An entry something holds is not the walk's to let go of: the holder would release a
+            // key the map no longer knows, and trap there rather than here.
             const Known& held = entry->second;
-            if (held.mHolds != 0)
-                --mHeld;
-            else
-                mReached -= held.mEpoch == mPass.mEpoch ? 1 : 0;
+            assert(held.mHolds == 0 && "an entry abandoned while something holds it");
+            mReached -= held.mEpoch == mPass.mEpoch ? 1 : 0;
 
             mKnown.erase(entry);
             mAbandoned = true;

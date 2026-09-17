@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Array>
 #include <osg/GL>
 #include <osg/Geometry>
 #include <osg/Group>
@@ -34,6 +35,7 @@
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/refnum.hpp>
 #include <components/misc/constants.hpp>
+#include <components/rtx/cellreader.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/lightbuilder.hpp>
@@ -44,6 +46,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/sceneutil/lightcommon.hpp>
+#include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/terrain/objectstorage.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -271,6 +274,16 @@ namespace Rtx::Testing
                 mAround.mExterior = true;
             }
 
+            /// What `WorldMirror::detach` does, asked of every scenario: the ring told of no
+            /// world, its holds given back, the extractor swept — and the scene then empty, or a
+            /// row of this world outlived it.
+            void TearDown() override
+            {
+                mRing.follow(WorldAround{});
+                mExtractor.detach(mRing);
+                EXPECT_TRUE(mScene.isEmpty()) << "a world detached and still standing rows";
+            }
+
             void start()
             {
                 mAround.mWorld = Rtx::CellWorld{
@@ -299,6 +312,7 @@ namespace Rtx::Testing
             ExtractionStats walk(std::size_t frame)
             {
                 mScene.clearPlacement();
+                mRing.follow(mAround);
                 mRing.setFrame(frame);
                 const ExtractionStats stats
                     = mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, frame, mRing);
@@ -844,6 +858,69 @@ namespace Rtx::Testing
             fill();
             EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells)
                 << "the supply stayed closed after its reader was replaced";
+        }
+
+#ifndef NDEBUG
+        /// **A walk that was not told where the world is dies where it happens**, rather than
+        /// standing last frame's rings under this frame's eye.
+        TEST_F(RtxCellRingTest, aWalkThatWasNotToldWhereTheWorldIsDies)
+        {
+            start();
+            walk(mWalked++);
+            EXPECT_DEATH(mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, mWalked, mRing),
+                "a call out of its turn");
+        }
+#endif
+
+        /// Content whose one template is a morph the reader refuses: three vertices over a base
+        /// target of two, which `MeshReader::read` throws on.
+        class ShortMorph final : public ContentSource
+        {
+        public:
+            osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView) override { return mFace; }
+            osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView) override { return nullptr; }
+
+            osg::ref_ptr<osg::Group> mFace = [] {
+                osg::ref_ptr<osg::Geometry> source = new osg::Geometry;
+                source->setVertexArray(makePositions({ sUnitTriangle[0], sUnitTriangle[1], sUnitTriangle[2] }));
+                source->addPrimitiveSet(makeTriangles({ 0, 1, 2 }));
+
+                osg::ref_ptr<SceneUtil::MorphGeometry> morph = new SceneUtil::MorphGeometry;
+                morph->setSourceGeometry(source);
+                morph->addMorphTarget(new osg::Vec3Array(2), 1.0f);
+                morph->addMorphTarget(new osg::Vec3Array(3), 0.0f);
+
+                osg::ref_ptr<osg::Group> root = new osg::Group;
+                root->addChild(morph);
+                return root;
+            }();
+        };
+
+        /// **A model the walk refuses costs the reader nothing it keeps.** The reference is left
+        /// out and named, as `CellReader::read` promises, and the spare the attempt was made in
+        /// goes back to the pool: read again, the cell takes no second spare and the template is
+        /// held by nothing. Before `Spares::take` took the fill, every read of a cell naming such a
+        /// model lost one spare, each holding the template.
+        TEST(RtxCellReaderTest, aModelTheWalkRefusesLeavesNoSpareTakenAndNoTemplateHeld)
+        {
+            FakeLand land;
+            FewStatics storage;
+            storage.mPlaced.push_back(Placed{ .mCell = osg::Vec2i(0, 0), .mModel = "face" });
+            ShortMorph content;
+
+            CellReader reader(storage, land, content, ESM::Cell::sDefaultWorldspaceId, ~0u);
+
+            const int held = content.mFace->referenceCount();
+            for (int pass = 0; pass < 3; ++pass)
+            {
+                PreparedCell& cell = reader.read(osg::Vec2i(0, 0), true);
+                EXPECT_TRUE(cell.mModels.empty()) << "a model the walk refused was named";
+                EXPECT_TRUE(cell.mRefs.empty());
+                reader.giveBack(cell);
+
+                EXPECT_EQ(content.mFace->referenceCount(), held)
+                    << "read " << pass + 1 << " kept a hold on the template";
+            }
         }
     }
 }

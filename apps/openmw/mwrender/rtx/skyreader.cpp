@@ -62,6 +62,14 @@ namespace MWRender
         mSkyContent = Rtx::addSkyContent(scene, scenes, meshes());
     }
 
+    void SkyReader::detach(Rtx::SceneDesc& scene)
+    {
+        Rtx::dropSkyContent(scene, mSkyContent);
+        Rtx::dropMoonFaces(scene, mMoonFaces);
+        mSkyContent = Rtx::SkyContent{};
+        mMoonFaces = Rtx::MoonFaces{};
+    }
+
     Rtx::WorldReading SkyReader::read(const WorldState& world, const float seconds, const float reach) const
     {
         // Where the sun is, and the light comes back along it. `mSunVector` is where the

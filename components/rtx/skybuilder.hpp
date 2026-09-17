@@ -37,9 +37,18 @@ namespace Rtx
     /// back. All ten weathers at once, under a megabyte, so a storm arriving costs no upload.
     struct SkyContent
     {
+        /// Every weather's deck unset — what a content that has not been read holds, and what
+        /// `std::array`'s own default is not, since `sNoIndex` is not nought.
+        static constexpr std::array<Index, Shaders::WEATHER_COUNT> noDecks()
+        {
+            std::array<Index, Shaders::WEATHER_COUNT> none{};
+            none.fill(sNoIndex);
+            return none;
+        }
+
         /// One per weather, in `WEATHER_*` order. `sNoIndex` where the content files record no
         /// cloud texture for that weather, which the shipped fallbacks do for ash and blight.
-        std::array<Index, Shaders::WEATHER_COUNT> mClouds{};
+        std::array<Index, Shaders::WEATHER_COUNT> mClouds = noDecks();
 
         /// The mean luminance of what each weather's sheet paints, linear. Nought where no sheet
         /// was read. What a texel is read as a ratio to, so the painting gives shape and not a
@@ -79,6 +88,10 @@ namespace Rtx
     /// fallbacks name Solstheim's two skies without Bloodmoon, and the unreadable stand-in is an
     /// opaque grey, which over a cloud deck is the entire sky.
     SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes, const SkyMeshes& meshes);
+
+    /// Gives back every hold `addSkyContent` took — each weather's deck and the night sky's
+    /// sheets — so a scene the world has left holds nothing of its sky.
+    void dropSkyContent(SceneDesc& scene, const SkyContent& content);
 
     /// What a cloud deck radiates from below, where its own body shadows it and where it does not.
     /// The deck takes only the *shape* out of a sheet (`SkyContent::mCloudMean`) and the colour

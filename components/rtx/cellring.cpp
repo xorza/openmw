@@ -46,6 +46,9 @@ namespace Rtx
 
     void CellRing::follow(const WorldAround& around)
     {
+        // From either: a world told twice before a walk is the last word, and a detach tells the
+        // ring of no world whether or not a walk came between.
+        mTurn.step(Turn::Followed, Turn::Collected, Turn::Followed);
         mAround = around;
 
         if (mSupply.isReading(around.mWorld))
@@ -65,6 +68,11 @@ namespace Rtx
         {
             mPlacer.dropSlots(cell);
             mPlacer.dropGround(cell, mHolds);
+
+            // Nothing is given back — what the reader lent dies with it — but the rows are the
+            // frame's own, and a worldspace change is the one time this runs while the game plays.
+            cell.reuse();
+            mSpareCells.give(std::move(cell));
         }
 
         mHolds.forget();
@@ -294,6 +302,8 @@ namespace Rtx
 
     void CellRing::collect(SceneAdopter& into, ExtractionStats& stats)
     {
+        mTurn.step(Turn::Collected, Turn::Followed);
+
         // What `forget` let go of since the last walk, and then what this walk lets go of.
         mHolds.releaseParts(into);
         walkRings(into, stats);

@@ -56,9 +56,17 @@ namespace Rtx
         void giveBack(PreparedTexture& texture);
 
     private:
+        /// Reads the cell into `prepared`, which `read` has taken and lends after: the whole of a
+        /// read but the pool's part.
+        void fill(PreparedCell& prepared, const osg::Vec2i& cell, bool statics);
+
         /// The model at `path`, read whole where this holds none under that path. Null where nothing
-        /// stands for the path.
+        /// stands for the path. Throws `Error` where the template describes a mesh this renderer
+        /// cannot take, and holds nothing then.
         PreparedModel* readModel(VFS::Path::NormalizedView path);
+
+        /// Lends `model` every image its parts name, once each.
+        void lendTextures(PreparedModel& model);
 
         /// The image described, read where this holds no description of it, and one more holder
         /// counted on it. Null where the image names no file, which is an image no slot is ever

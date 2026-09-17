@@ -56,7 +56,7 @@ namespace Rtx
             material.mFlatten = true;
             material.mLayers = scene.materials().addLayers(layers);
 
-            return scene.materials().add(material);
+            return scene.addMaterial(material);
         }
 
         /// Which frame a composite lands on is the schedule's answer and never a baker's.

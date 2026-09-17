@@ -18,6 +18,7 @@
 #include "residency.hpp"
 #include "scratch.hpp"
 #include "slots.hpp"
+#include "stepped.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx
@@ -91,6 +92,10 @@ namespace Rtx
         /// Hands `into` everything held that the graph does not parent, and adds what it stood to
         /// `stats` — the walk's own, because the ring is stood inside the walk.
         void collect(SceneAdopter& into, ExtractionStats& stats);
+
+        /// Gives `into` back every hold `forget` let go of, for a ring the frame will not walk
+        /// again — a world detached. `collect` does the same at both ends of a walk.
+        void releaseHolds(SceneAdopter& into) { mHolds.releaseParts(into); }
 
         /// The models and images lent, for the frame's describe to find a reading by its image.
         const CellHolds& getHolds() const { return mHolds; }
@@ -174,6 +179,17 @@ namespace Rtx
 
         /// Where the eye is and how much world there is around it, as the last `follow` said.
         WorldAround mAround;
+
+        /// Where the ring stands in a frame: told where the world is, or walked. `follow` comes
+        /// before `collect` — "told once a frame, before the walk" — and a walk that was not told
+        /// is asserted where it happens rather than standing last frame's rings.
+        enum class Turn
+        {
+            Followed,
+            Collected,
+        };
+
+        Stepped<Turn> mTurn{ Turn::Collected };
 
         bool mStatics = true;
         bool mSettled = false;

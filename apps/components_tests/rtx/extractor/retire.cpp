@@ -20,6 +20,7 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shapefold.hpp>
+#include <components/vfs/pathutil.hpp>
 
 namespace Rtx::Testing
 {
@@ -106,7 +107,7 @@ namespace Rtx::Testing
                     osg::Vec3f(0.0f, 1.0f, 0.0f) };
                 const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
-                mMaterial = mScene.materials().add(Material{ .mKind = MaterialKind::Terrain });
+                mMaterial = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
                 mMesh = mScene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = triangle });
                 mSlot = mScene.addInstance(MeshInstance{ .mMesh = mMesh, .mMaterial = mMaterial });
                 mScene.meshes().hold(mMesh);
@@ -165,6 +166,19 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.meshes().getLiveCount(), 0u) << "the row nothing holds was released";
             EXPECT_EQ(mScene.materials().getLiveCount(), 0u);
             EXPECT_FALSE(mScene.hasDroppedHolds());
+            EXPECT_TRUE(mScene.isEmpty()) << "a scene whose last rows were released still stands something";
+
+            // **A live row nothing holds is what no sweep can reach**, and the question the retire
+            // asks of the scene at its end. The texture table has no sweep at all: a slot taken and
+            // not held on the next line would carry its image for the life of the scene, and only
+            // this would say so.
+            EXPECT_TRUE(mScene.isConsistent());
+            const Index orphan = mScene.textures().add(VFS::Path::NormalizedView("textures/forgotten.dds"));
+            EXPECT_FALSE(mScene.isConsistent()) << "a live texture with no hold was not reported";
+            mScene.textures().hold(orphan);
+            EXPECT_TRUE(mScene.isConsistent());
+            mScene.textures().drop(orphan);
+            EXPECT_TRUE(mScene.isEmpty());
         }
 
         TEST_F(RtxSceneExtractorTest, aSweepDropsWhatTheWalkNoLongerFindsAndCarriesTheRest)

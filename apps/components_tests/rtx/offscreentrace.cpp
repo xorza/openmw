@@ -1,4 +1,7 @@
+#include <cstdint>
 #include <initializer_list>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -16,6 +19,8 @@
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/slot.hpp>
+#include <components/rtx/viewscene.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "countingrenderer.hpp"
@@ -72,15 +77,52 @@ namespace Rtx
             EXPECT_EQ(world.getScene(), nullptr);
             EXPECT_EQ(renderer.mViewScenes, 0u);
 
-            const OffscreenTrace doll(renderer,
-                ViewRequest{ .mWidth = 64,
-                    .mHeight = 64,
-                    .mRayMask = Shaders::MASK_EVERY_CLASS,
-                    .mSubject = subject.get(),
-                    .mSubjectMask = sEveryNode });
-            EXPECT_FALSE(doll.isOfWorld());
-            ASSERT_NE(doll.getScene(), nullptr);
-            EXPECT_EQ(renderer.mViewScenes, 1u);
+            {
+                const OffscreenTrace doll(renderer,
+                    ViewRequest{ .mWidth = 64,
+                        .mHeight = 64,
+                        .mRayMask = Shaders::MASK_EVERY_CLASS,
+                        .mSubject = subject.get(),
+                        .mSubjectMask = sEveryNode });
+                EXPECT_FALSE(doll.isOfWorld());
+                ASSERT_NE(doll.getScene(), nullptr);
+                EXPECT_EQ(renderer.mViewScenes, 1u);
+                EXPECT_TRUE(renderer.mViewDropped.empty());
+            }
+
+            // The scene goes with the picture, once.
+            EXPECT_EQ(renderer.mViewDropped, (std::vector<std::uint32_t>{ 0 }));
+        }
+
+        /// **The slot is the handle's, and one handle gives it back.** Moved, the slot goes with the
+        /// move and the emptied handle drops nothing; the one that holds it at the end drops it
+        /// once. What `OffscreenTrace` paired by hand across a constructor and a destructor.
+        TEST(RtxOffscreenTraceTest, aViewSceneGivesItsSlotBackOnceHoweverItIsMoved)
+        {
+            Testing::CountingRenderer renderer;
+            {
+                ViewScene taken(renderer);
+                EXPECT_TRUE(taken.holds());
+                EXPECT_EQ(taken.get(), SceneSlot::view(0));
+                EXPECT_EQ(renderer.mViewScenes, 1u);
+
+                ViewScene moved(std::move(taken));
+                EXPECT_FALSE(taken.holds()) << "a moved-from handle still holds the slot";
+                EXPECT_EQ(moved.get(), SceneSlot::view(0));
+
+                ViewScene assigned;
+                EXPECT_FALSE(assigned.holds());
+                assigned = std::move(moved);
+                EXPECT_FALSE(moved.holds());
+                EXPECT_EQ(assigned.get(), SceneSlot::view(0));
+                EXPECT_TRUE(renderer.mViewDropped.empty()) << "a move dropped the slot";
+
+                // Assigned over, the slot a handle held goes back before it takes the next.
+                assigned = ViewScene(renderer);
+                EXPECT_EQ(renderer.mViewDropped, (std::vector<std::uint32_t>{ 0 }));
+                EXPECT_EQ(assigned.get(), SceneSlot::view(1));
+            }
+            EXPECT_EQ(renderer.mViewDropped, (std::vector<std::uint32_t>{ 0, 1 }));
         }
 
         /// A subject taken apart and put back together places what is there now and lets the rest go.

@@ -356,6 +356,16 @@ namespace MWRender
 
         Rtx::Stepped<Phase> mPhase{ Phase::Between };
 
+        /// Whether a world is attached: `attachWorld` and `detachWorld` are a pair, and a second
+        /// attach would hold the sky's sheets twice and give neither back.
+        enum class Attachment
+        {
+            Detached,
+            Attached,
+        };
+
+        Rtx::Stepped<Attachment> mAttachment{ Attachment::Detached };
+
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
 

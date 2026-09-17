@@ -20,7 +20,9 @@ namespace Rtx
 {
     /// Every mesh the scene holds, and the shared buffers its triangles live in. One type, because
     /// a mesh that deforms has to give its deformer back between the free list and the two
-    /// allocators. The deformers are borrowed: a rig is shared by every mesh built from one skin.
+    /// allocators. The deformers are the scene's and handed in per call rather than held: a table
+    /// that held a reference to its sibling was one a defaulted move of the scene left pointing at
+    /// the scene it was moved from.
     class MeshTable
     {
     public:
@@ -41,22 +43,23 @@ namespace Rtx
         static constexpr Index sVertexBlock = Shaders::VERTEX_BLOCK;
         static constexpr Index sIndexBlock = Shaders::INDEX_BLOCK;
 
-        explicit MeshTable(DeformerTable& deformers)
-            : mDeformers(deformers)
-        {
-        }
+        /// Throws where `arrays` is longer than a block, because a vertex count comes out of a
+        /// content file. What `add` asks first, and what a caller that makes another row before
+        /// the mesh's asks before that row.
+        static void checkFits(const MeshArrays& arrays);
 
         /// Copies the vertex data into the shared buffers and returns the new mesh's index. Throws
-        /// where the mesh is longer than a block, because a vertex count comes out of a content
-        /// file.
-        Index add(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer);
+        /// as `checkFits` does. A deforming mesh is stood on `deformer` in `deformers`, which must
+        /// hold it.
+        Index add(DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer);
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the
         /// frame, once.
         void notePosed(Index mesh, const osg::BoundingBoxf& bounds);
 
-        /// Frees every slot the last `mark` did not name, and says how many that was.
-        std::size_t sweep();
+        /// Frees every slot the last `mark` did not name, and says how many that was. A deforming
+        /// mesh gives its runs back to `deformers`, which every mesh here stood on.
+        std::size_t sweep(DeformerTable& deformers);
 
         std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
@@ -92,8 +95,6 @@ namespace Rtx
 
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void note(Index slot, SlotNews what);
-
-        DeformerTable& mDeformers;
 
         SlotRows<MeshRange> mRows;
 

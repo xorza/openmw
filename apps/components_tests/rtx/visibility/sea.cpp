@@ -833,7 +833,7 @@ namespace Rtx::Testing
 
                 const Index bed = scene.addMesh(MeshArrays{
                     .mPositions = sheetAt(500.0f, -depth), .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-                const Index glow = scene.materials().add(
+                const Index glow = scene.addMaterial(
                     Material{ .mEmissive = scene.textures().add(VFS::Path::NormalizedView("ladder.dds")) });
                 scene.addInstance(
                     MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = bed, .mMaterial = glow });

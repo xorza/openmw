@@ -136,8 +136,8 @@ namespace Rtx::Testing
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-            const Index red = scene.materials().add(
-                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("red.dds")) });
+            const Index red
+                = scene.addMaterial(Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("red.dds")) });
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = red });
 
             mRenderer->resize(size, size);
@@ -159,7 +159,7 @@ namespace Rtx::Testing
 
             // A second texture and a second material, on a wall nearer the eye. The mesh table is
             // untouched, so this is the append path and not a rebuild.
-            const Index blue = scene.materials().add(
+            const Index blue = scene.addMaterial(
                 Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("blue.dds")) });
             scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f), .mMesh = mesh, .mMaterial = blue });
@@ -223,7 +223,7 @@ namespace Rtx::Testing
             // wall's material goes: what is left is one description naming slot one over a slot zero
             // nothing stands in. An array numbering its descriptions by position would write it at
             // zero, and the wall would sample a descriptor nobody ever wrote.
-            const Index again = scene.materials().add(
+            const Index again = scene.addMaterial(
                 Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("blue.dds")) });
             ASSERT_EQ(scene.materials().getRows()[again].mDiffuse, blueTexture) << "the freed slot was not taken over";
 
@@ -280,7 +280,7 @@ namespace Rtx::Testing
             SceneDesc textured;
             const Index mesh = textured.addMesh(
                 MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-            const Index material = textured.materials().add(
+            const Index material = textured.addMaterial(
                 Material{ .mDiffuse = textured.textures().add(VFS::Path::NormalizedView("red.dds")),
                     .mEmissive = textured.textures().add(VFS::Path::NormalizedView("green.dds")) });
             textured.addInstance(
@@ -369,7 +369,7 @@ namespace Rtx::Testing
                     .mNormals = quadNormals,
                     .mTexCoords = sQuadUv,
                     .mIndices = sQuadIndices });
-                const Index material = scene.materials().add(
+                const Index material = scene.addMaterial(
                     Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("corners.dds")) });
                 scene.addInstance(
                     MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
@@ -440,7 +440,7 @@ namespace Rtx::Testing
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-            const Index material = scene.materials().add(
+            const Index material = scene.addMaterial(
                 Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds")) });
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
@@ -500,7 +500,7 @@ namespace Rtx::Testing
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-            const Index material = scene.materials().add(
+            const Index material = scene.addMaterial(
                 Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds")) });
             scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::scale(fills, 1.0f, fills), .mMesh = mesh, .mMaterial = material });
@@ -554,7 +554,7 @@ namespace Rtx::Testing
                 SceneDesc scene;
                 const Index mesh = scene.addMesh(MeshArrays{
                     .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mColours = colours, .mIndices = sQuadIndices });
-                const Index material = scene.materials().add(Material{
+                const Index material = scene.addMaterial(Material{
                     .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds")), .mVertexColour = mode });
                 scene.addInstance(
                     MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
@@ -596,7 +596,7 @@ namespace Rtx::Testing
                 SceneDesc scene;
                 const Index mesh = scene.addMesh(MeshArrays{
                     .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mColours = colours, .mIndices = sQuadIndices });
-                const Index material = scene.materials().add(
+                const Index material = scene.addMaterial(
                     Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds")),
                         .mEmissiveColour = emissive,
                         .mVertexColour = mode });
@@ -662,7 +662,7 @@ namespace Rtx::Testing
                     MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                 const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
                 const Index environment = scene.textures().add(VFS::Path::NormalizedView("sheet.dds"));
-                const Index material = scene.materials().add(Material{
+                const Index material = scene.addMaterial(Material{
                     .mDiffuse = diffuse,
                     .mEnvironment = sheeted ? environment : sNoIndex,
                     .mEnvironmentColour = tint,
@@ -744,7 +744,7 @@ namespace Rtx::Testing
                 const Index darkSheet = scene.textures().add(VFS::Path::NormalizedView("sheet.dds"));
                 EXPECT_EQ(darkFlat, 1u);
                 EXPECT_EQ(darkSheet, 2u);
-                const Index material = scene.materials().add(Material{
+                const Index material = scene.addMaterial(Material{
                     .mDiffuse = diffuse,
                     .mDark = darkSlot,
                     .mDarkUnit = unit,
@@ -802,13 +802,13 @@ namespace Rtx::Testing
                 const Index glow = scene.textures().add(VFS::Path::NormalizedView("red.dds"));
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = wall,
-                    .mMaterial = scene.materials().add(Material{ .mDiffuse = diffuse }) });
+                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse }) });
 
                 if (withQuad)
                 {
                     const Index sheet = scene.addMesh(
                         MeshArrays{ .mPositions = held, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-                    const Index additive = scene.materials().add(Material{
+                    const Index additive = scene.addMaterial(Material{
                         .mDiffuse = glow,
                         .mOpacity = 0.5f,
                         .mAlphaMode = AlphaMode::Blend,
@@ -886,8 +886,8 @@ namespace Rtx::Testing
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = positions, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
-            const Index material = scene.materials().add(
-                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("mip.dds")) });
+            const Index material
+                = scene.addMaterial(Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("mip.dds")) });
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
@@ -988,9 +988,8 @@ namespace Rtx::Testing
                 material.mKind = MaterialKind::Terrain;
                 material.mLayers = run;
 
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = mesh,
-                    .mMaterial = scene.materials().add(material) });
+                scene.addInstance(MeshInstance{
+                    .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
 
                 std::vector<std::uint8_t> pixels;
                 EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);

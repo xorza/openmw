@@ -1,6 +1,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <string_view>
 
@@ -56,7 +57,6 @@ namespace Rtx
         TEST(RtxSkyBuilderTest, aCloudBlendThatIsNotANumberComesOutAsNoBlendAtAll)
         {
             SkyContent textures;
-            textures.mClouds.fill(Rtx::sNoIndex);
             textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
             textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
             textures.mShell = sShell;
@@ -333,6 +333,49 @@ namespace Rtx
             unread.mClouds.fill(Rtx::sNoIndex);
             unread.mNight.mField = 8;
             EXPECT_EQ(describeStars(1.0f, 1.0f, 0.0f, unread).mTexture, Rtx::Shaders::NO_TEXTURE);
+        }
+
+        /// **What the sky holds on a scene, it gives back whole.** The moons' portraits, each
+        /// weather's deck and the night sky's field and patches are held by nothing but the sky —
+        /// a ray that reached nothing draws them — so a world detached has to drop every one, or
+        /// the scene it leaves is never empty and the gate on it can never be asked.
+        TEST(RtxSkyBuilderTest, whatTheSkyHoldsIsGivenBackWhole)
+        {
+            SceneDesc scene;
+
+            const Rtx::MoonFaces moons = Rtx::addMoonFaces(scene);
+            EXPECT_EQ(scene.textures().getHolds(moons.mMasser), 1u);
+            EXPECT_EQ(scene.textures().getHolds(moons.mSecunda), 1u);
+
+            // The content as `addSkyContent` would leave it, built by hand: two decks and a night
+            // sky of a field and one patch, held once each, and the rest unset.
+            SkyContent content;
+            for (const std::uint32_t weather : { Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLOUDY })
+            {
+                content.mClouds[weather] = scene.textures().add(VFS::Path::NormalizedView("textures/deck.dds"));
+                scene.textures().hold(content.mClouds[weather]);
+            }
+            content.mNight.mField = scene.textures().add(VFS::Path::NormalizedView("textures/stars.dds"));
+            scene.textures().hold(content.mNight.mField);
+            content.mNight.mPatches[0].mTexture
+                = scene.textures().add(VFS::Path::NormalizedView("textures/nebula.dds"));
+            scene.textures().hold(content.mNight.mPatches[0].mTexture);
+
+            EXPECT_EQ(scene.textures().getLiveCount(), 5u);
+            EXPECT_EQ(scene.textures().getHolds(content.mClouds[Rtx::Shaders::WEATHER_CLEAR]), 2u)
+                << "one file under one wrap is one slot, held once per deck naming it";
+            EXPECT_TRUE(scene.isConsistent());
+
+            dropSkyContent(scene, content);
+            EXPECT_EQ(scene.textures().getLiveCount(), 2u) << "the moons stand until they are dropped";
+            EXPECT_TRUE(scene.isConsistent());
+
+            Rtx::dropMoonFaces(scene, moons);
+            EXPECT_TRUE(scene.isEmpty()) << "a sky given back left a slot standing";
+
+            // Content nothing was read into holds nothing, and dropping it is nothing.
+            dropSkyContent(scene, SkyContent{});
+            EXPECT_TRUE(scene.isEmpty());
         }
 
         /// A star dome the archives hold neither spelling of is a gap in the content, named rather

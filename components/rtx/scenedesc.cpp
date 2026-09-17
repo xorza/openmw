@@ -5,9 +5,12 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <string>
 #include <tuple>
 
 #include <osg/Vec3f>
+
+#include "error.hpp"
 
 namespace Rtx
 {
@@ -25,7 +28,43 @@ namespace Rtx
 
     Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
     {
-        return mMeshes.add(arrays, shape, deform, deformer);
+        return mMeshes.add(mDeformers, arrays, shape, deform, deformer);
+    }
+
+    void SceneDesc::checkPoses(const Index posed, const MeshArrays& arrays)
+    {
+        if (posed != arrays.mPositions.size())
+            throw Error("a deforming mesh of " + std::to_string(arrays.mPositions.size())
+                + " vertices on a rig or morph of " + std::to_string(posed));
+    }
+
+    DeformedMesh SceneDesc::addMesh(const MeshArrays& arrays, const FoldedShape shape, const RigSpec& rig)
+    {
+        checkPoses(rig.getVertexCount(), arrays);
+        MeshTable::checkFits(arrays);
+
+        const Index deformer = mDeformers.addRig(rig);
+        return DeformedMesh{
+            .mMesh = mMeshes.add(mDeformers, arrays, shape, Deform::Rig, deformer),
+            .mDeformer = deformer,
+        };
+    }
+
+    DeformedMesh SceneDesc::addMesh(const MeshArrays& arrays, const FoldedShape shape, const MorphSpec& morph)
+    {
+        checkPoses(morph.getVertexCount(), arrays);
+        MeshTable::checkFits(arrays);
+
+        const Index deformer = mDeformers.addMorph(morph);
+        return DeformedMesh{
+            .mMesh = mMeshes.add(mDeformers, arrays, shape, Deform::Morph, deformer),
+            .mDeformer = deformer,
+        };
+    }
+
+    Index SceneDesc::addMaterial(const Material& material)
+    {
+        return mMaterials.add(mTextures, material);
     }
 
     void SceneDesc::pose(Index mesh, std::span<const PoseWord> words, const osg::BoundingBoxf& bounds)
@@ -37,7 +76,7 @@ namespace Rtx
 
     void SceneDesc::setMaterial(Index material, const Material& what)
     {
-        if (!mMaterials.set(material, what))
+        if (!mMaterials.set(mTextures, material, what))
             return;
 
         mPlacements.rewriteWearing(material, what.getTraversed());
@@ -50,12 +89,14 @@ namespace Rtx
 
     void SceneDesc::addLight(const Light& light)
     {
+        mTurn.expect(Turn::Open);
         mLights.push_back(light);
     }
 
     void SceneDesc::addEmitter(
         std::span<const Sprite> sprites, Index texture, bool additive, float width, Index lighting, bool falls)
     {
+        mTurn.expect(Turn::Open);
         if (sprites.empty())
             return;
 
@@ -132,8 +173,34 @@ namespace Rtx
         return true;
     }
 
+    bool SceneDesc::isConsistent() const
+    {
+        if (!placementsStandOnLiveRows())
+            return false;
+
+        for (Index slot = 0; slot < mTextures.getRows().size(); ++slot)
+            if (!mTextures.isFree(slot) && mTextures.getHolds(slot) == 0)
+                return false;
+
+        for (Index slot = 0; slot < mDeformers.getDeformers().size(); ++slot)
+            if (mDeformers.isLive(slot) && mDeformers.getHolds(slot) == 0)
+                return false;
+
+        return true;
+    }
+
+    bool SceneDesc::isEmpty() const
+    {
+        return mMeshes.getLiveCount() == 0 && mMaterials.getLiveCount() == 0 && mTextures.getLiveCount() == 0
+            && mDeformers.getLiveCount() == 0 && mPlacements.getCounts().mPlaced == 0;
+    }
+
     void SceneDesc::orderLights()
     {
+        // From either: a scene handed over twice between clears is handed the same lists twice,
+        // which is what a picture asked for again is. What may not come between is an addition.
+        mTurn.step(Turn::Handed, Turn::Open, Turn::Handed);
+
         // A total order, so that two lights the walk could hand over either way round come out the
         // same way round every time. Tied and not built, because a tuple of references copies
         // nothing over thousands of comparisons.
@@ -145,6 +212,8 @@ namespace Rtx
 
     void SceneDesc::clearPlacement()
     {
+        mTurn.step(Turn::Open, Turn::Open, Turn::Handed);
+
         mLights.clear();
 
         mMeshes.clearDeformed();
@@ -165,8 +234,8 @@ namespace Rtx
         if (keptMeshes == mMeshes.getLiveCount() && keptMaterials == mMaterials.getLiveCount())
             return false;
 
-        const std::size_t freedMeshes = mMeshes.sweep();
-        const std::size_t freedMaterials = mMaterials.sweep();
+        const std::size_t freedMeshes = mMeshes.sweep(mDeformers);
+        const std::size_t freedMaterials = mMaterials.sweep(mTextures);
 
         // A sweep frees a row nothing holds and nothing named this walk; a placement still standing
         // on it would be traced against whatever the slot is next given to.

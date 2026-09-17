@@ -1026,7 +1026,7 @@ namespace Rtx::Testing
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(0.0f), .mIndices = sQuadIndices }),
-                    .mMaterial = scene.materials().add(Material{
+                    .mMaterial = scene.addMaterial(Material{
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                     }) });
 
@@ -1107,7 +1107,7 @@ namespace Rtx::Testing
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }),
-                    .mMaterial = scene.materials().add(Material{
+                    .mMaterial = scene.addMaterial(Material{
                         .mDiffuseColour = osg::Vec3f(0.0f, 0.0f, 0.0f),
                     }) });
 
@@ -1116,7 +1116,7 @@ namespace Rtx::Testing
                 const std::array<osg::Vec3f, 4> pane = uprightQuadAt(2400.0f, paneAway - wallAway);
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
-                    .mMaterial = scene.materials().add(Material{
+                    .mMaterial = scene.addMaterial(Material{
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                         .mOpacity = 0.5f,
                         .mAlphaMode = AlphaMode::Blend,

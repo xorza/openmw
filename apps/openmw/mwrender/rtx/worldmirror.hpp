@@ -75,11 +75,18 @@ namespace MWRender
     public:
         explicit WorldMirror(const MirrorKnobs& knobs);
 
+        /// Asserts the scene empty: a world detached has given every row back, and the one that
+        /// did not is named here rather than found at the next frame's horizon. Not while an
+        /// exception unwinds, where the frame's own message is the one to read.
+        ~WorldMirror();
+
         /// The resource system the cell ring's models and images are loaded through. Told once,
         /// where the world is attached.
         void attach(Resource::ResourceSystem& resources);
 
-        /// The world is going: every thread that reads it stops, and what was read of it goes.
+        /// The world is going: every thread that reads it stops, what was read of it goes, and
+        /// every row the world stood is swept — so a detached world is an empty scene, which the
+        /// destructor asserts. `SkyReader::detach` gives the sky's own back before this.
         void detach();
 
         /// Walks this frame's world into the scene, and says what the walk found.
