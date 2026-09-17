@@ -5,6 +5,7 @@
 #                                        or the targets named
 #   rtx <flavour> test [gtest args]      components-tests Rtx* Sky*, then openmw-tests Rtx*
 #   rtx <flavour> game [args]            openmw on the quicksave
+#   rtx <flavour> setup <morrowind dir>  write the openmw.cfg a fresh box has none of
 #   rtx <flavour> repeat [--pairs=N] [bench args]
 #                                        two runs of one binary walk one place and must agree
 #   rtx <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
@@ -56,7 +57,7 @@ onWindows() {
 flavour="${1-}"
 what="${2-}"
 if [ -z "$flavour" ] || [ -z "$what" ]; then
-    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 shift 2
@@ -301,13 +302,50 @@ fetchClangFormat() {
     echo "$found"
 }
 
+# **SDL2 with Vulkan, from SDL's own release.** Upstream's prebuilt SDL2 is built without
+# `SDL_VIDEO_VULKAN`, since the rasterizer never asks for a Vulkan surface, and the renderer's
+# window is one: the symbols link and refuse at runtime. SDL's own Windows package of the same
+# version carries it — the same version, because vcpkg's SDL2_image loads `SDL2.dll` by name and
+# was built against that one. The version is read off the set and has to be the one pinned here
+# beside the package's checksum, which SDL does not publish: a bump upstream is a bump here.
+fetchWindowsSdl() {
+    local version="2.32.10" sum="af347939395a58b365846aaea27391e69f9ec9d4dd650d6ac40802159b418a6e"
+    sdl="$root/deps/SDL2-$version"
+
+    local stamp
+    stamp="$(basename "$deps"/installed/vcpkg/info/sdl2_*_x64-windows.list)"
+    if [ "$stamp" != "sdl2_${version}_x64-windows.list" ]; then
+        echo "rtx: the dependency set carries $stamp and this script pins SDL2 $version" >&2
+        exit 2
+    fi
+    if [ -d "$sdl" ]; then
+        return
+    fi
+
+    local unpack package="SDL2-devel-$version-VC.zip"
+    unpack="$(sevenZip)"
+    (
+        cd "$root/deps"
+        echo "fetching $package" >&2
+        fetch --output "$package" "https://github.com/libsdl-org/SDL/releases/download/release-$version/$package"
+        echo "$sum  $package" | sha256sum --check --quiet --strict -
+        rm -rf "$sdl.partial"
+        "$unpack" x -y -o"$sdl.partial" "$package" > /dev/null
+        mv "$sdl.partial/SDL2-$version" "$sdl"
+        rm -rf "$sdl.partial" "$package"
+    )
+}
+
 # Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
 # names the checkout, as CMake's own `find_package` reads it, and a build directory remembers what
 # it found. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
 #
 # **What the platform supplies.** Linux has recastnavigation and Google Test as packages, and
 # ccache and mold to build with. Windows has upstream's vcpkg set, which carries neither of those
-# nor SQLite, yaml-cpp or Qt: the first four CMake fetches, and the launcher stays unbuilt.
+# nor SQLite, yaml-cpp or Qt: the first four CMake fetches, and the launcher stays unbuilt. Its
+# SDL2 has no Vulkan, so SDL's own stands in, and vcpkg's copying of DLLs beside a binary is
+# off, since it would put its SDL2 back over SDL's on every link: `placeWindowsRuntime` is the
+# one copy.
 configureIfNeeded() {
     if [ -f "$build/CMakeCache.txt" ]; then
         return
@@ -316,8 +354,11 @@ configureIfNeeded() {
     local platform=()
     if onWindows; then
         fetchWindowsDeps
+        fetchWindowsSdl
         platform=(
             -DCMAKE_TOOLCHAIN_FILE="$deps/scripts/buildsystems/vcpkg.cmake"
+            -DVCPKG_APPLOCAL_DEPS=OFF
+            -DSDL2_DIR="$sdl/cmake"
             -DLuaJit_INCLUDE_DIR="$deps/installed/x64-windows/include/luajit"
             -DLuaJit_LIBRARY="$deps/installed/x64-windows/lib/lua51.lib"
             -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=OFF -DOPENMW_USE_SYSTEM_GOOGLETEST=OFF
@@ -352,6 +393,7 @@ configureIfNeeded() {
 placeWindowsRuntime() {
     local bin="$deps/installed/x64-windows/bin"
     cp "$bin"/*.dll "$bin/Release/MyGUIEngine.dll" "$build/"
+    cp "$sdl/lib/x64/SDL2.dll" "$build/"
     mkdir -p "$build/osgPlugins-3.6.5"
     cp "$bin"/osgPlugins-3.6.5/*.dll "$build/osgPlugins-3.6.5/"
 }
@@ -386,6 +428,46 @@ userDataDir() {
     else
         echo "${XDG_DATA_HOME:-$HOME/.local/share}/openmw"
     fi
+}
+
+# A path as the game's own binaries take it: Windows spelling under Git Bash, the same path
+# anywhere else.
+nativePath() {
+    if onWindows; then
+        cygpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
+
+# **What upstream's wizard does, on a box with no Qt to run it.** A fresh box has no `openmw.cfg`
+# and the harness stages no world until one names the game: `data=` says where `Data Files` is,
+# and upstream's `openmw-iniimporter`, built here for the purpose, reads `Morrowind.ini` for the
+# content files, the archives and the five hundred `fallback=` values the weather, the sky and
+# the lighting are read from — without which the sky is black. The file is written where the
+# game reads it, and never over one that is there: a box that has one has settings in it.
+setupGame() {
+    local install="${1-}"
+    if [ ! -f "$install/Morrowind.ini" ] || [ ! -d "$install/Data Files" ]; then
+        echo "rtx: setup takes the Morrowind directory — the one holding Morrowind.ini and Data Files" >&2
+        exit 2
+    fi
+
+    local cfg
+    cfg="$(userDataDir)/openmw.cfg"
+    if [ -e "$cfg" ]; then
+        echo "rtx: $cfg is already there; move it away to start over" >&2
+        exit 2
+    fi
+
+    cmake -DBUILD_MWINIIMPORTER=ON "$build" > /dev/null
+    buildTargets openmw-iniimporter
+
+    mkdir -p "$(dirname "$cfg")"
+    printf 'data="%s"\n' "$(nativePath "$install/Data Files")" > "$cfg"
+    (cd "$build" && ./openmw-iniimporter --game-files --encoding win1252 \
+        "$(nativePath "$install/Morrowind.ini")" "$(nativePath "$cfg")")
+    echo "wrote $cfg"
 }
 
 # The flavour's layers, unless the line names a level of its own: a typed level wins.
@@ -556,6 +638,9 @@ case "$what" in
     test)
         buildTargets components-tests openmw-tests
         runTests "$@"
+        ;;
+    setup)
+        setupGame "$@"
         ;;
     game)
         buildTargets openmw

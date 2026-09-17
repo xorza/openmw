@@ -163,7 +163,11 @@ backend ever arrives.
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.
 - **`openmw.cfg` already points at the Morrowind install**, so nothing needs `--data`. The harness
-  runs from its own build directory, since `--resources` defaults to `./resources`.
+  runs from its own build directory, since `--resources` defaults to `./resources`. A fresh box has
+  no `openmw.cfg`, and `rtx debug setup <Morrowind directory>` writes it the way the wizard would.
+- **Upstream's prebuilt SDL2 for Windows has no Vulkan.** It links, and refuses the window at
+  runtime. `rtx` fetches SDL's own package of the same version beside the set and points CMake at
+  it, and copies every DLL itself, since vcpkg's own copy would put its SDL2 back on every link.
 
 ## Verification, after changing code and before saying it works
 
