@@ -5,7 +5,7 @@
 #include <osg/Array>
 #include <osg/Drawable>
 #include <osg/Geometry>
-#include <osg/Matrixd>
+#include <osg/Matrix>
 #include <osg/Matrixf>
 #include <osg/PrimitiveSet>
 #include <osg/TemplatePrimitiveIndexFunctor>
@@ -112,9 +112,10 @@ namespace MWRender
     {
         const osg::Matrixf above = mHere;
 
-        // In the graph's own precision, as `computeLocalToWorldMatrix` takes it, and back to the
-        // single the lines are drawn in.
-        osg::Matrixd here(mHere);
+        // In the graph's own precision, as `computeLocalToWorldMatrix` takes it — `osg::Matrix`
+        // is double on this box and single on a distribution's OSG — and back to the single the
+        // lines are drawn in.
+        osg::Matrix here(mHere);
         transform.computeLocalToWorldMatrix(here, this);
         mHere = osg::Matrixf(here);
 

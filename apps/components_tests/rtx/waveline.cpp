@@ -108,7 +108,7 @@ namespace Rtx
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::WaveConstants), {},
                 Testing::getShaderDirectory() / "waveline.comp.spv", "test-waveline");
 
-            for (const std::pair<std::uint32_t, std::uint32_t> wavevector :
+            for (const std::pair<std::uint32_t, std::uint32_t>& wavevector :
                 { std::pair{ 1u, 0u }, std::pair{ 0u, 3u }, std::pair{ 2u, 5u } })
             {
                 const auto [column, row] = wavevector;
@@ -153,7 +153,7 @@ namespace Rtx
 
             // A handful of entries and their mirrors. Index arithmetic is modulo the grid, so the
             // partner of `(c, r)` sits at `(n - c, n - r)` with nought its own partner.
-            for (const std::pair<std::uint32_t, std::uint32_t> at :
+            for (const std::pair<std::uint32_t, std::uint32_t>& at :
                 { std::pair{ 1u, 2u }, std::pair{ 5u, 0u }, std::pair{ 3u, 7u } })
             {
                 const auto [column, row] = at;

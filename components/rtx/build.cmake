@@ -23,12 +23,14 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clang)
         -Wcast-qual
     )
 
-    # GCC 13 reports the payload of a `std::optional` "may be used uninitialized" on every copy of
-    # a struct that holds one (GCC bug 80635), which under `-Werror` stops `materialresolver.cpp`
-    # on Ubuntu 24.04's compiler. GCC 15 compiles the same four libraries clean, so the check is
-    # kept where it is right and taken off where it is not.
+    # Two checks GCC 13 gets wrong, measured on Ubuntu 24.04's compiler and taken off there:
+    # `-Wmaybe-uninitialized` reports the payload of a `std::optional` on every copy of a struct
+    # that holds one (GCC bug 80635; `materialresolver.cpp`), and `-Wnull-dereference` reports
+    # `std::construct_at` inside `std::vector<osg::Node*>::insert`, reached through OSG's own
+    # inline `pushOntoNodePath` (the tests). GCC 15 compiles the whole tree clean with both on, so
+    # each check is kept where it is right.
     if (CMAKE_CXX_COMPILER_ID STREQUAL GNU AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
-        list(APPEND OPENMW_RTX_COMPILE_OPTIONS -Wno-maybe-uninitialized)
+        list(APPEND OPENMW_RTX_COMPILE_OPTIONS -Wno-maybe-uninitialized -Wno-null-dereference)
     endif()
 
     # `-Wdouble-promotion` is GCC's only. Clang applies it to implicit argument conversions as

@@ -211,7 +211,7 @@ namespace Rtx
             constexpr float amplitude = 0.5f;
             constexpr int middle = static_cast<int>(sCount) / 2;
 
-            for (const std::pair<int, int> place : { std::pair{ 3, 0 }, std::pair{ 0, -2 }, std::pair{ 2, -5 } })
+            for (const std::pair<int, int>& place : { std::pair{ 3, 0 }, std::pair{ 0, -2 }, std::pair{ 2, -5 } })
             {
                 const auto [alongX, alongY] = place;
 
