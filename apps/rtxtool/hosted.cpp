@@ -1,5 +1,6 @@
 #include "run.hpp"
 
+#include <memory>
 #include <ostream>
 #include <set>
 #include <string>
@@ -9,6 +10,8 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include <apps/openmw/engine.hpp>
+#include <apps/openmw/mwrender/renderer.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/debug/debugging.hpp>
 #include <components/fallback/fallback.hpp>
@@ -41,11 +44,6 @@ namespace RtxTool
                    "installation.\n";
             return 1;
         }
-
-        // **The renderer this tool exists to drive, whatever the user's settings file says.** The
-        // choice is read once inside `Engine::go` and never revisited, so it is set here rather
-        // than left to whichever value a played session was last configured with.
-        Settings::rtx().mEnabled.set(true);
 
         // **The limiter comes off, because there is nobody to pace for.** A hosted run is measured
         // or it is written to a file, and a frame held back to meet a refresh is a frame spent
@@ -130,8 +128,13 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
+            // **The renderer this tool exists to drive, whatever the user's settings file says**,
+            // made here with the run, so the engine never reads `[RTX] enabled` and never sees the
+            // run: who makes the renderer is the host's question, and this is a host.
             const MWRender::RtxSetup installed{ .mSetup = setup, .mRun = session };
-            engine.setRtxSetup(&installed);
+            engine.setRendererFactory([&installed](const MWRender::RendererSpec& spec) {
+                return std::make_unique<MWRender::RtxRenderer>(spec, &installed);
+            });
 
             engine.go();
         }

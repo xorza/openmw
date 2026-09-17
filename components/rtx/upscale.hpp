@@ -1,6 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -15,7 +18,7 @@ namespace Rtx
     {
         /// Trace and present at the same size, with no upscaler in the frame at all — what every
         /// test and every reference render uses. Reachable by name and offered by no menu
-        /// (`Settings::RTXCategory::sUpscaleMenu`).
+        /// (`sUpscaleMenu`).
         Off,
 
         /// A third of the output's width and height, so a ninth of its pixels — 1280×720 internal
@@ -45,4 +48,40 @@ namespace Rtx
         std::pair{ Upscale::Quality, std::string_view("quality") },
         std::pair{ Upscale::Dlaa, std::string_view("dlaa") },
     } };
+
+    /// The modes the launcher and the settings window offer, in the order both list them, spelled
+    /// as `[RTX] upscale` takes them: fewest pixels traced first, every pixel last. `off` is not
+    /// among them: Ray Reconstruction is the renderer's denoiser, so a menu that offered it would
+    /// offer a worse picture as a speed setting. Derived from `sUpscaleNames`, the one list of the
+    /// spellings, so a mode added there reaches both menus.
+    inline constexpr std::array<std::string_view, sUpscaleNames.mNames.size() - 1> sUpscaleMenu = [] {
+        std::array<std::string_view, sUpscaleNames.mNames.size() - 1> offered{};
+        std::size_t at = 0;
+        for (const auto& [mode, spelling] : sUpscaleNames.mNames)
+            if (mode != Upscale::Off)
+                offered[at++] = spelling;
+
+        return offered;
+    }();
+
+    /// Where the mode `name` spells sits in that menu, or nothing for one it does not offer.
+    inline std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
+    {
+        const auto* found = std::find(sUpscaleMenu.begin(), sUpscaleMenu.end(), name);
+        if (found == sUpscaleMenu.end())
+            return std::nullopt;
+
+        return static_cast<std::size_t>(found - sUpscaleMenu.begin());
+    }
+
+    /// The mode at `index` of that menu, or nothing where the menu is shorter than that — asked
+    /// rather than indexed, because the list of entries lives in a layout file, and a menu with
+    /// an entry the list has no mode for would otherwise read past the end of it.
+    inline std::optional<std::string_view> upscaleMenuName(std::size_t index)
+    {
+        if (index >= sUpscaleMenu.size())
+            return std::nullopt;
+
+        return sUpscaleMenu[index];
+    }
 }

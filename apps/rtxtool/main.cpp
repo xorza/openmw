@@ -353,8 +353,9 @@ namespace RtxTool
             Settings::camera().mFieldOfView.set(frame.mFieldOfView);
 
             // **What the engine reads and the renderer does not.** Everything the trace itself is
-            // configured by travels as a `Rtx::RenderProfile` through `RendererSpec`, so these are
-            // the settings a harness genuinely overrides rather than a channel between two objects.
+            // configured by travels as a `Rtx::RenderProfile` in the `RtxSetup` the renderer is made
+            // with, so these are the settings a harness genuinely overrides rather than a channel
+            // between two objects.
             Settings::rtx().mDistantLandCells.set(frame.mDistantCells);
             Settings::terrain().mObjectPaging.set(frame.mDistantStatics);
         }

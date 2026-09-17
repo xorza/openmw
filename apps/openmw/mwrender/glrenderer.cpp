@@ -380,10 +380,8 @@ namespace MWRender
 
     // Upstream's, from RenderingManager's constructor: what the shader visitor is told before it
     // meets a model.
-    void GlRenderer::prepareResources(Resource::ResourceSystem& resources)
+    void GlRenderer::configureResources(Resource::ResourceSystem& resources)
     {
-        mResources = &resources;
-
         Resource::SceneManager& scene = *resources.getSceneManager();
         scene.getShaderManager().setMaxTextureUnits(mMaxTextureUnits);
 
@@ -413,9 +411,9 @@ namespace MWRender
                 .mLightFadeStart = Settings::shaders().mLightFadeStart,
                 .mLightRadiusMultiplier = Settings::shaders().mLightRadiusMultiplier,
             },
-            mResources);
+            &getResources());
 
-        mResources->getSceneManager()->setSupportsClusteredLighting(sceneRoot->isClusteredSupported());
+        getResources().getSceneManager()->setSupportsClusteredLighting(sceneRoot->isClusteredSupported());
 
         // Sync clustered lighting setting so it's more intuitive when viewed in the in-game setting panel
         Settings::shaders().mClusteredLighting.set(sceneRoot->getClusteredLighting());
@@ -429,7 +427,7 @@ namespace MWRender
     void GlRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
     {
         assert(mSceneRoot != nullptr && "the world is built under a root this renderer made");
-        mWorld = std::make_unique<GlWorld>(*mViewer, world, worldRoot, *mSceneRoot, *mResources);
+        mWorld = std::make_unique<GlWorld>(*mViewer, world, worldRoot, *mSceneRoot, getResources());
 
         // **The chain goes above the world and becomes what is traversed.**
         setTraversalRoot(mWorld->getPostProcessor());
@@ -475,7 +473,7 @@ namespace MWRender
             mWorld->setWorldShown(isWorldToggled());
     }
 
-    void GlRenderer::applyViewMask(const unsigned int)
+    void GlRenderer::applyViewMask()
     {
         // **Not while a screen covers the world.** The camera then carries the two bits the
         // interface is drawn with, and `applyWorldShown` writes the seam's word when the screen ends.
@@ -514,7 +512,7 @@ namespace MWRender
     {
         // Whatever GLSL was edited since the last frame, recompiled before anything reads it. The
         // hot-reload manager stops the viewer's threads itself where it has to.
-        mResources->getSceneManager()->getShaderManager().update(*mViewer);
+        getResources().getSceneManager()->getShaderManager().update(*mViewer);
 
         // The settings and not `frame.mEye`, which follows a Lua `setViewDistance`: what upstream fed
         // the stereo manager, exactly. Read by the stereo update callback, so before the traversal.
@@ -642,7 +640,7 @@ namespace MWRender
 
     std::unique_ptr<SubjectView> GlRenderer::createSubjectView(const OffscreenViewSpec& spec)
     {
-        return std::make_unique<GlDollView>(spec, getTraversalRoot(), getFrameStamp(), *mResources);
+        return std::make_unique<GlDollView>(spec, getTraversalRoot(), getFrameStamp(), getResources());
     }
 
     void GlRenderer::renderGui()
@@ -802,16 +800,16 @@ namespace MWRender
         mStereoManager->disableStereoForNode(guiRoot);
 
         auto manager = std::make_unique<MyGUIPlatform::RenderManager>(
-            mViewer, guiRoot, mResources->getImageManager(), scalingFactor);
+            mViewer, guiRoot, getResources().getImageManager(), scalingFactor);
         MyGUIPlatform::RenderManager& gui = *manager;
 
         auto platform = std::make_unique<MyGUIPlatform::Platform>(
-            std::move(manager), mResources->getVFS(), resourcePath, logPath);
+            std::move(manager), getResources().getVFS(), resourcePath, logPath);
 
         // **Which program the GUI is drawn with is this renderer's business**, and it is settled
         // after the platform rather than before it: the drawable the program goes on is made by the
         // `initialise` the platform's constructor calls.
-        gui.enableShaders(mResources->getSceneManager()->getShaderManager());
+        gui.enableShaders(getResources().getSceneManager()->getShaderManager());
 
         return platform;
     }

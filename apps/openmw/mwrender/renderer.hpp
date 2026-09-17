@@ -70,7 +70,6 @@ namespace MWRender
     class PostProcessor;
     class RenderingManager;
     struct SceneFrame;
-    struct RtxSetup;
 
     /// What a renderer is given to exist. The rasterizer reads none of it: its shaders come
     /// through the resource system's shader path and it compiles nothing it keeps.
@@ -81,10 +80,6 @@ namespace MWRender
 
         /// Where a renderer keeps what it compiled: regenerable, so the cache directory.
         std::filesystem::path mCachePath;
-
-        /// What a harness run asks of the ray tracer, or null for a played session. A run handed
-        /// to the rasterizer is a contradiction `createRenderer` refuses by name.
-        const RtxSetup* mRtx = nullptr;
     };
 
     /// One image of the world on the screen, and the window it goes in. Nothing below this line is
@@ -108,12 +103,10 @@ namespace MWRender
         Renderer& operator=(const Renderer&) = delete;
 
         /// The resource system exists; keep it, and tell its scene manager what this renderer needs
-        /// of every model it loads. The rasterizer sets how many textures a shader may sample and
-        /// the switches its shader visitor reads; the ray tracer turns that visitor off, because it
-        /// compiles no GLSL and reads a model's state as the loader left it. Called once, before any
-        /// model is loaded and before anything below asks for a picture, and the one place a
-        /// renderer is handed the resource system: it outlives the renderer and never changes.
-        virtual void prepareResources(Resource::ResourceSystem& resources) = 0;
+        /// of every model it loads. Called once, before any model is loaded and before anything
+        /// below asks for a picture, and the one place a renderer is handed the resource system: it
+        /// outlives the renderer and never changes, so the base keeps it for both.
+        void prepareResources(Resource::ResourceSystem& resources);
 
         /// The window the renderer made, for input, the GUI's scale and the gamma ramp.
         virtual SDL_Window* getWindow() const = 0;
@@ -338,8 +331,18 @@ namespace MWRender
         /// or the camera the ray tracer walks from.
         virtual void adoptTraversalRoot(osg::Group& root) = 0;
 
-        /// The view mask has changed; put it where this renderer reads it from.
-        virtual void applyViewMask(unsigned int mask) = 0;
+        /// `prepareResources`'s hook, with the resource system already kept. The rasterizer sets
+        /// how many textures a shader may sample and the switches its shader visitor reads; the ray
+        /// tracer turns that visitor off, because it compiles no GLSL and reads a model's state as
+        /// the loader left it.
+        virtual void configureResources(Resource::ResourceSystem& resources) = 0;
+
+        /// What `prepareResources` kept, for a subclass that resolves a picture, a GUI or a preload
+        /// through it. Asserts that it has.
+        Resource::ResourceSystem& getResources() const;
+
+        /// The view mask has changed; put `getViewMask()` where this renderer reads it from.
+        virtual void applyViewMask() = 0;
 
         /// `isWorldShown` or `isWorldToggled` has changed; put both where this renderer reads
         /// them from.
@@ -355,6 +358,7 @@ namespace MWRender
         SceneUtil::AsyncScreenCaptureOperation& getScreenshotWriter() const;
 
     private:
+        Resource::ResourceSystem* mResources = nullptr;
         osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;
@@ -369,9 +373,10 @@ namespace MWRender
         bool mWorldToggled = true;
     };
 
-    /// The one place the choice is made. Throws naming the name where there is no such renderer,
-    /// and naming the run where one was installed for a renderer that cannot drive it, because a
-    /// fallback would answer "why does it look like that" with silence.
+    /// The game's own choice, by name. Throws naming the name where there is no such renderer,
+    /// because a fallback would answer "why does it look like that" with silence. A host with a
+    /// renderer of its own — the harness, with its run — makes it itself, through
+    /// `OMW::Engine::setRendererFactory`.
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec);
 
     /// Where a window goes and what it is, as the video settings ask for it.

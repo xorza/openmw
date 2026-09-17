@@ -26,6 +26,18 @@ namespace MWRender
     Renderer::Renderer() = default;
     Renderer::~Renderer() = default;
 
+    void Renderer::prepareResources(Resource::ResourceSystem& resources)
+    {
+        mResources = &resources;
+        configureResources(resources);
+    }
+
+    Resource::ResourceSystem& Renderer::getResources() const
+    {
+        assert(mResources != nullptr && "the resource system is Engine's to hand over, and it has not yet");
+        return *mResources;
+    }
+
     void Renderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)
     {
         mScreenshotWriter = &writer;
@@ -85,7 +97,7 @@ namespace MWRender
     void Renderer::setViewMask(const unsigned int mask)
     {
         mViewMask = mask;
-        applyViewMask(mask);
+        applyViewMask();
     }
 
     void Renderer::showWorld(const bool shown)
@@ -117,14 +129,7 @@ namespace MWRender
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec)
     {
         if (name == "opengl")
-        {
-            // A run states what a measured frame is, and the rasterizer measures nothing: the
-            // harness that installed one has asked for the other renderer and not said so.
-            if (spec.mRtx != nullptr)
-                throw std::runtime_error("a ray tracing run was installed, and the renderer asked for is \"opengl\"");
-
             return std::make_unique<GlRenderer>(spec);
-        }
 
 #ifdef OPENMW_RTX
         if (name == "raytrace")

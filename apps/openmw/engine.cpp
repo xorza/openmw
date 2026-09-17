@@ -517,8 +517,8 @@ void OMW::Engine::prepareEngine()
         Version::getOpenmwVersionDescription(), mCfgMgr);
     mEnvironment.setWindowManager(*mWindowManager);
 
-    mInputManager = std::make_unique<MWInput::InputManager>(mRenderer->getWindow(), *mRenderer, keybinderUser,
-        keybinderUserExists, userGameControllerdb, gameControllerdb, mGrab);
+    mInputManager = std::make_unique<MWInput::InputManager>(
+        *mRenderer, keybinderUser, keybinderUserExists, userGameControllerdb, gameControllerdb, mGrab);
     mEnvironment.setInputManager(*mInputManager);
 
     // Create sound system
@@ -642,15 +642,15 @@ void OMW::Engine::go()
     mEncoder = std::make_unique<ToUTF8::Utf8Encoder>(mEncoding);
 
     // Decided once, before the window exists
-    const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
-    Log(Debug::Info) << "Renderer: " << wanted;
-
-    mRenderer = MWRender::createRenderer(wanted,
-        MWRender::RendererSpec{
-            .mResourceDir = mResDir,
-            .mCachePath = mCfgMgr.getCachePath(),
-            .mRtx = mRtxSetup,
-        });
+    const MWRender::RendererSpec spec{ .mResourceDir = mResDir, .mCachePath = mCfgMgr.getCachePath() };
+    if (mRendererFactory)
+        mRenderer = mRendererFactory(spec);
+    else
+    {
+        const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
+        Log(Debug::Info) << "Renderer: " << wanted;
+        mRenderer = MWRender::createRenderer(wanted, spec);
+    }
     setWindowIcon();
 
     mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);

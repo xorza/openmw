@@ -1,4 +1,5 @@
-#pragma once
+#ifndef OPENMW_COMPONENTS_SKY_SKYCLOCK_H
+#define OPENMW_COMPONENTS_SKY_SKYCLOCK_H
 
 #include <algorithm>
 
@@ -24,3 +25,5 @@ namespace Sky
         return seconds * (std::max(timeScale, 0.0f) / sVanillaTimeScale);
     }
 }
+
+#endif

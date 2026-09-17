@@ -196,7 +196,7 @@ namespace MWRender
 
         // What the weather drops, walked as a second root, because the sky's mask keeps the world
         // walk out of that subtree: the same systems the rasterizer draws, stood at the eye.
-        const osg::Matrixd inverseView = frame.mCamera.getInverseViewMatrix();
+        const osg::Matrixd inverseView = osg::Matrixd::inverse(frame.mEye.mView);
         const osg::Vec3f eye = inverseView.getTrans();
         mEye = eye;
 

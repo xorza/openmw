@@ -1,7 +1,5 @@
-#include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -15,8 +13,6 @@
 
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/resource/resourcesystem.hpp>
-#include <components/rtx/reconstruction.hpp>
-#include <components/rtx/renderer.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -24,24 +20,11 @@
 #include "apps/openmw/mwrender/offscreenview.hpp"
 #include "apps/openmw/mwrender/renderer.hpp"
 #include "apps/openmw/mwrender/rendermode.hpp"
-#include "apps/openmw/mwrender/rtx/rtxrun.hpp"
 
 namespace MWRender
 {
     namespace
     {
-        /// A run that answers nothing, because the test never gets as far as asking it anything.
-        class NoRun final : public RtxRun
-        {
-        public:
-            std::optional<std::uint32_t> getSampleFrame() const override { return std::nullopt; }
-            std::uint32_t getAccumulated() const override { return 0; }
-            bool wantsSecondWalk() const override { return false; }
-            bool wantsFrameCopy() const override { return false; }
-            void beforeFrame() override {}
-            void frame(const FrameContext&, const FrameReport&) override {}
-        };
-
         /// A renderer that draws nothing and records what the seam tells it about the world.
         class RecordingRenderer final : public Renderer
         {
@@ -49,7 +32,7 @@ namespace MWRender
             /// Whether the world was to be drawn, at each `applyWorldShown`.
             std::vector<bool> mApplied;
 
-            void prepareResources(Resource::ResourceSystem&) override {}
+            void configureResources(Resource::ResourceSystem&) override {}
             SDL_Window* getWindow() const override { return nullptr; }
             Ground createGround(const GroundSpec&) override { return {}; }
             float getGroundReach() const override { return 0.0f; }
@@ -75,7 +58,7 @@ namespace MWRender
 
         protected:
             void adoptTraversalRoot(osg::Group&) override {}
-            void applyViewMask(unsigned int) override {}
+            void applyViewMask() override {}
             void applyWorldShown() override { mApplied.push_back(drawsWorld()); }
         };
 
@@ -109,18 +92,6 @@ namespace MWRender
             // The rest are the game's own nodes, and a renderer that has none says so.
             EXPECT_FALSE(renderer.toggleRenderMode(Render_Wireframe));
             EXPECT_EQ(renderer.mApplied.size(), 4u);
-        }
-
-        /// **A run installed for the rasterizer is refused before a window is made.** The choice
-        /// of renderer is the setting's, and a harness that installed a run without setting it
-        /// has contradicted itself; the rasterizer ignoring the run would answer that with silence.
-        TEST(RendererTest, aRunInstalledForTheRasterizerIsRefusedByName)
-        {
-            NoRun run;
-            const RtxSetup setup{ .mSetup = {}, .mRun = run };
-            const RendererSpec spec{ .mRtx = &setup };
-
-            EXPECT_THROW(createRenderer("opengl", spec), std::runtime_error);
         }
 
         /// A name this build has no renderer for is a configuration mistake, refused by name.

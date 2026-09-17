@@ -92,8 +92,8 @@ namespace MWRender
     {
         /// What a played binary runs: the two choices `[RTX]` leaves a player, and for the rest the
         /// one answer a played frame has. The knobs a measurement turns — delight, albedo, the
-        /// filter, the exposure, the crossings — are a run's, handed over in `RendererSpec::mRtx`
-        /// by the harness that makes one, and a settings file cannot reach them: one that could
+        /// filter, the exposure, the crossings — are a run's, handed to the constructor by the
+        /// harness that makes one, and a settings file cannot reach them: one that could
         /// once turned a played game into a fixed-step run for good.
         ///
         /// **Here and not in `components/rtx`**, because the settings registry is a global the core
@@ -233,11 +233,11 @@ namespace MWRender
         return true;
     }
 
-    RtxRenderer::RtxRenderer(const RendererSpec& spec)
+    RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* run)
         : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
         , mMirror(knobsFromSettings())
-        , mInstalled(spec.mRtx != nullptr ? *spec.mRtx : playedSetup())
+        , mInstalled(run != nullptr ? *run : playedSetup())
     {
         const Rtx::RunSetup& setup = mInstalled.mSetup;
 
@@ -301,7 +301,7 @@ namespace MWRender
         // what tells "the cell rendered" from "the camera faced away from it" — and nothing a
         // player does ever reads it, so a played session is specialized without the atomic rather
         // than writing a number to a buffer nobody looks at, once per pixel that hit anything.
-        options.mCountHits = spec.mRtx != nullptr;
+        options.mCountHits = run != nullptr;
 
         // **The knobs a measurement turns, handed over whole where the renderer is built**, so a
         // picture taken by the harness and a frame drawn by the game come from one configuration.
@@ -425,9 +425,8 @@ namespace MWRender
         return mMirror.getReach();
     }
 
-    void RtxRenderer::prepareResources(Resource::ResourceSystem& resources)
+    void RtxRenderer::configureResources(Resource::ResourceSystem& resources)
     {
-        mResources = &resources;
         resources.getSceneManager()->setShadersEnabled(false);
     }
 
@@ -479,7 +478,7 @@ namespace MWRender
         // is an expansion's.
         const Rtx::SkyMeshes sky = SkyReader::meshes();
         models.push_back(sky.mClouds);
-        if (mResources->getVFS()->exists(sky.mStars))
+        if (getResources().getVFS()->exists(sky.mStars))
             models.push_back(sky.mStars);
         models.push_back(sky.mStarsFallback);
 
@@ -497,11 +496,11 @@ namespace MWRender
         worldRoot.addChild(world.getSceneRoot());
         mWorldRoot = &worldRoot;
 
-        mMirror.attach(*mResources);
+        mMirror.attach(getResources());
 
         // The sky's sheets into the mirror's scene, once: they are drawn by rays that reach
         // nothing, so nothing the walk finds would keep their slots.
-        mSky.attach(mMirror.getScene(), *mResources->getSceneManager());
+        mSky.attach(mMirror.getScene(), *getResources().getSceneManager());
     }
 
     void RtxRenderer::adoptTraversalRoot(osg::Group& root)
@@ -623,21 +622,18 @@ namespace MWRender
     {
         return FrameContext{
             .mRenderer = *this,
-            .mResources = mResources,
+            .mResources = &getResources(),
             .mScene = mMirror.getScene(),
             .mReach = mMirror.getReach(),
             .mEye = mMirror.getEye(),
         };
     }
 
-    std::optional<PoseMoment> RtxRenderer::describePose()
+    PoseMoment RtxRenderer::describePose()
     {
         mPhase.expect(Phase::Views, Phase::Run);
 
-        if (mResources == nullptr)
-            return std::nullopt;
-
-        return PoseMoment{ .mStamp = getFrameStamp(), .mFrame = mFrame, .mImages = *mResources->getImageManager() };
+        return PoseMoment{ .mStamp = getFrameStamp(), .mFrame = mFrame, .mImages = *getResources().getImageManager() };
     }
 
     void RtxRenderer::redraw(TracedView& view)
@@ -779,13 +775,13 @@ namespace MWRender
     std::unique_ptr<OffscreenView> RtxRenderer::createWorldView(const OffscreenViewSpec& spec)
     {
         assert(mGui != nullptr && "a view before the interface was made");
-        return std::make_unique<TracedView>(spec, nullptr, *this, *mGui, mMirror.getTraversals());
+        return std::make_unique<TracedView>(spec, ViewKind::World, *this, *mGui, mMirror.getTraversals());
     }
 
     std::unique_ptr<SubjectView> RtxRenderer::createSubjectView(const OffscreenViewSpec& spec)
     {
         assert(mGui != nullptr && "a view before the interface was made");
-        return std::make_unique<TracedView>(spec, &spec.mScene, *this, *mGui, mMirror.getTraversals());
+        return std::make_unique<TracedView>(spec, ViewKind::Subject, *this, *mGui, mMirror.getTraversals());
     }
 
     void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
@@ -862,11 +858,11 @@ namespace MWRender
         // graph; the backend is called by this renderer's own frame instead — `updateTraversal` for
         // the widget animation and `renderFrame` for the triangles.
         auto manager
-            = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, mResources->getImageManager(), scalingFactor);
+            = std::make_unique<MyGUIRtx::RenderManager>(*mRenderer, getResources().getImageManager(), scalingFactor);
         mGui = manager.get();
 
         return std::make_unique<MyGUIPlatform::Platform>(
-            std::move(manager), mResources->getVFS(), resourcePath, logPath);
+            std::move(manager), getResources().getVFS(), resourcePath, logPath);
     }
 
     void RtxRenderer::notifyWorldSpaceChanged()
@@ -1052,9 +1048,8 @@ namespace MWRender
         // **The frame's field of view and not the setting's.** `WorldState` carries the one the
         // world settled on, which is the override wherever something asked for one — a zoom, a
         // cutscene, a script — and the setting only where nothing did.
-        std::optional<Rtx::Shaders::VisibilityConstants> constants
-            = Rtx::makeCameraFromView(frame.mCamera.getViewMatrix(), frame.mEye.mFieldOfView, extents.mRenderWidth,
-                extents.mRenderHeight, sNear, Rtx::sFarPlane);
+        std::optional<Rtx::Shaders::VisibilityConstants> constants = Rtx::makeCameraFromView(frame.mEye.mView,
+            frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
 
         // **Asked of the builder rather than tested for here**: a test here would be a copy of
         // the builder's contract with two places to be right. Reported once, because a camera

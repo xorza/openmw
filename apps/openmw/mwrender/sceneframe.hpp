@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 
+#include <osg/Matrixd>
 #include <osg/Matrixf>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
@@ -13,7 +14,6 @@
 
 namespace osg
 {
-    class Camera;
     class FrameStamp;
     class Node;
 }
@@ -57,7 +57,9 @@ namespace MWRender
     struct SkySettled
     {
         /// Where the sun is drawn, which is not where its light comes from whenever
-        /// `match sunlight to sun` is off. `RenderingManager::setSunDirection`, as are the two below.
+        /// `match sunlight to sun` is off. `RenderingManager::setSunDirection`, as are the two
+        /// below, and `configureAmbient` in a room, where upstream pointed the chain's sun the way
+        /// it pointed the light.
         osg::Vec4f mSunPosition;
 
         /// The way the light travels: the rasterizer's, and a ray tracer takes `-mSunPosition`
@@ -266,6 +268,13 @@ namespace MWRender
         /// Whether the eye is the player's, as against a camera a script or a harness parked
         /// somewhere: what decides whether the player's own body is in the picture.
         bool mPlayersEye = true;
+
+        /// Where the eye stands and which way it looks, as the update traversal settled it: the
+        /// camera's view matrix, written by `RenderingManager::renderFrame` after that traversal
+        /// and before the renderer draws. Identity in `describeFrame`, which runs before the pose
+        /// is known. Doubles, because a cell stands 8192 units from the next and a float there
+        /// resolves a hundredth of a unit.
+        osg::Matrixd mView;
     };
 
     /// What there is to draw, and what the world is doing while it is drawn. Handed down rather
@@ -275,8 +284,6 @@ namespace MWRender
     {
         /// The whole world, from the top. Not the cull's results: rays go everywhere.
         osg::Node& mScene;
-
-        const osg::Camera& mCamera;
 
         /// Frame number and simulation time. The clock stops when the game is paused and so does
         /// everything the graph animates off it.

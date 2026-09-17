@@ -80,6 +80,14 @@ allowed — `components/sky/`, `components/weather/` and `components/sceneutil/v
 with the rasterizer still reading what it read before. Git shows a lift as a delete and a create
 unless it is asked for `-M20%`.
 
+**The `[RTX]` settings pages stay, and so do their translations**: the config tool's graphics page
+(`apps/launcher/graphicspage.{cpp,ui}`, `files/lang/launcher_*.ts`) and the in-game settings
+window (`mwgui/settingswindow.*`, `files/data/mygui/openmw_settings_window.layout`,
+`files/data/l10n/OMWEngine/*.yaml`). They are the most lines this fork puts in upstream files for
+the least code, and a review will offer to take them out for that reason; the answer is no. A
+player turns the renderer on there, and the two live knobs are turned there. `Rtx::sUpscaleMenu`
+is the one list both menus offer.
+
 **A gap in upstream's data, a missing extension or a missing feature is a hard failure naming it** —
 never a patch to upstream, never a fallback path.
 

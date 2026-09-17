@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <optional>
 #include <span>
 #include <string>
 
@@ -30,8 +29,9 @@ namespace MWRender
 
         /// The spec as the trace takes it. Bottom row first, which is what
         /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for.
-        Rtx::ViewRequest requestFor(const OffscreenViewSpec& spec, osg::Node* subject, Rtx::Traversals& traversals)
+        Rtx::ViewRequest requestFor(const OffscreenViewSpec& spec, ViewKind kind, Rtx::Traversals& traversals)
         {
+            osg::Node* const subject = kind == ViewKind::Subject ? &spec.mScene : nullptr;
             return Rtx::ViewRequest{
                 .mWidth = static_cast<std::uint32_t>(spec.mWidth),
                 .mHeight = static_cast<std::uint32_t>(spec.mHeight),
@@ -57,10 +57,10 @@ namespace MWRender
         }
     }
 
-    TracedView::TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host,
+    TracedView::TracedView(const OffscreenViewSpec& spec, ViewKind kind, RtxRenderer& host,
         MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals)
         : mHost(host)
-        , mTrace(host.getBackend(), requestFor(spec, subject, traversals))
+        , mTrace(host.getBackend(), requestFor(spec, kind, traversals))
         , mTexture(gui.takeTexture(nextViewName()))
     {
         const int width = static_cast<int>(mTrace.getWidth());
@@ -116,11 +116,8 @@ namespace MWRender
     {
         if (!mTrace.isOfWorld())
         {
-            const std::optional<PoseMoment> moment = mHost.describePose();
-            if (!moment.has_value())
-                return;
-
-            if (!mTrace.rebuildSubject(moment->mStamp, moment->mFrame, moment->mImages))
+            const PoseMoment moment = mHost.describePose();
+            if (!mTrace.rebuildSubject(moment.mStamp, moment.mFrame, moment.mImages))
                 return;
         }
 

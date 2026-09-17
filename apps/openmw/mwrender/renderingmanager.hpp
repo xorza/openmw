@@ -366,8 +366,9 @@ namespace MWRender
         std::unique_ptr<FogManager> mFog;
         /// What the weather system settled about the sky, written by the setter that decided it
         SkySettled mSky;
-        /// The weather the world settled on, copied so that `mSky.mWeather` points at something
-        /// the frame owns. Its strings keep their capacity across the same weather.
+        /// The weather the world settled on, copied because `World::startNewGame` destroys and
+        /// re-creates the `WeatherManager` that owns the original, and the last weather has to
+        /// outlive that. Its strings keep their capacity across the same weather.
         WeatherResult mWeather{};
         const bool mTimescaleClouds;
         std::unique_ptr<EffectManager> mEffectManager;

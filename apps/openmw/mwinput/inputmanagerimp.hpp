@@ -31,8 +31,6 @@ namespace SDLUtil
     class InputWrapper;
 }
 
-struct SDL_Window;
-
 namespace MWInput
 {
     class ControlSwitch;
@@ -50,8 +48,8 @@ namespace MWInput
     class InputManager final : public MWBase::InputManager
     {
     public:
-        InputManager(SDL_Window* window, MWRender::Renderer& renderer, const std::filesystem::path& userFile,
-            bool userFileExists, const std::filesystem::path& userControllerBindingsFile,
+        InputManager(MWRender::Renderer& renderer, const std::filesystem::path& userFile, bool userFileExists,
+            const std::filesystem::path& userControllerBindingsFile,
             const std::filesystem::path& controllerBindingsFile, bool grab);
 
         ~InputManager() final;

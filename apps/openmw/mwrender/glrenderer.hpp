@@ -75,7 +75,7 @@ namespace MWRender
         explicit GlRenderer(const RendererSpec& spec);
         ~GlRenderer() override;
 
-        void prepareResources(Resource::ResourceSystem& resources) override;
+        void configureResources(Resource::ResourceSystem& resources) override;
 
         float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
@@ -84,7 +84,7 @@ namespace MWRender
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void detachWorld() override;
         void adoptTraversalRoot(osg::Group& root) override;
-        void applyViewMask(unsigned int mask) override;
+        void applyViewMask() override;
         void applyWorldShown() override;
         bool toggleOwnRenderMode(RenderMode mode) override;
 
@@ -165,10 +165,6 @@ namespace MWRender
         /// How many frames behind the dump runs: the draw thread reports a frame's figures after the
         /// main thread has moved on, and three frames is where they have all landed.
         static constexpr unsigned sStatsReportDelay = 3;
-
-        /// What the scene root, the GUI and an offscreen view's light rig are built out of. Known
-        /// from `prepareResources` onwards, which is before any of them asks.
-        Resource::ResourceSystem* mResources = nullptr;
 
         SDL_Window* mWindow = nullptr;
 

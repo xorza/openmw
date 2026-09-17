@@ -46,7 +46,6 @@
 #include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/upscaler.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
-#include <components/settings/categories/rtx.hpp>
 
 #include "testtexture.hpp"
 
@@ -640,11 +639,11 @@ namespace Rtx
             EXPECT_GT(fine.mRenderWidth, fast.mRenderWidth) << "quality traces more of each side than performance";
 
             // **Every mode a menu offers, in the order it offers them.** The menu is a list of
-            // names beside the setting, so a name that spells no mode fails here rather than in a
+            // names beside the table, so a name that spells no mode fails here rather than in a
             // menu; then each traces at least as many pixels as the one before it and DLAA traces
             // every one, which is the whole of what the list means.
             std::uint32_t before = 0;
-            for (const std::string_view name : Settings::RTXCategory::sUpscaleMenu)
+            for (const std::string_view name : sUpscaleMenu)
             {
                 const std::optional<Upscale> mode = sUpscaleNames.named(name);
                 ASSERT_TRUE(mode.has_value()) << name << " is on the menu and spells no mode";
@@ -658,7 +657,7 @@ namespace Rtx
                 before = at.mRenderWidth;
             }
 
-            EXPECT_EQ(sUpscaleNames.named(Settings::RTXCategory::sUpscaleMenu.back()), Upscale::Dlaa);
+            EXPECT_EQ(sUpscaleNames.named(sUpscaleMenu.back()), Upscale::Dlaa);
             EXPECT_EQ(upscaling->getExtents().mRenderWidth, upscaling->getExtents().mOutputWidth)
                 << "the last mode a menu offers traces every pixel it shows";
         }

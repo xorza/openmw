@@ -2,6 +2,8 @@
 #define ENGINE_H
 
 #include <filesystem>
+#include <functional>
+#include <memory>
 
 #include <osg/ref_ptr>
 
@@ -60,7 +62,7 @@ namespace MWGui
 namespace MWRender
 {
     class Renderer;
-    struct RtxSetup;
+    struct RendererSpec;
 }
 
 namespace MWInput
@@ -107,6 +109,8 @@ struct SDL_Window;
 
 namespace OMW
 {
+    using RendererFactory = std::function<std::unique_ptr<MWRender::Renderer>(const MWRender::RendererSpec&)>;
+
     /// \brief Main engine class, that brings together all the components of OpenMW
     class Engine
     {
@@ -150,7 +154,7 @@ namespace OMW
         std::filesystem::path mSaveGameFile;
         // Grab mouse?
         bool mGrab;
-        const MWRender::RtxSetup* mRtxSetup = nullptr;
+        RendererFactory mRendererFactory;
 
         bool mExportFonts;
         unsigned int mRandomSeed;
@@ -212,8 +216,9 @@ namespace OMW
 
         void setGrabMouse(bool grab) { mGrab = grab; }
 
-        /// What a harness run asks of the ray tracer, or null. Must outlive go().
-        void setRtxSetup(const MWRender::RtxSetup* setup) { mRtxSetup = setup; }
+        /// Who makes the renderer `go` runs. The game's own default is `MWRender::createRenderer`
+        /// off `[RTX] enabled`; a host with a renderer of its own hands one in before `go`.
+        void setRendererFactory(RendererFactory factory) { mRendererFactory = std::move(factory); }
 
         /// Initialise and enter main loop.
         void go();

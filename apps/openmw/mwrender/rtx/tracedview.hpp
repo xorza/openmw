@@ -44,6 +44,17 @@ namespace MWRender
         Resource::ImageManager& mImages;
     };
 
+    /// Which of the seam's two pictures a view is: `Rtx::ViewRequest::mSubject`'s own word, said as
+    /// a word rather than as a pointer that repeats the spec's scene.
+    enum class ViewKind
+    {
+        /// A tile of the world, traced against the scene the renderer holds.
+        World,
+
+        /// A subject the game assembled for the picture, mirrored into a scene of its own.
+        Subject,
+    };
+
     /// An offscreen view as a ray tracer makes one: the GUI's side of `Rtx::OffscreenTrace`.
     ///
     /// **What is here is what the trace is not.** The picture itself — the camera, the subject's own
@@ -63,10 +74,8 @@ namespace MWRender
         /// every view's. A subtree both can reach would otherwise be posed by whichever counter
         /// got there first and frozen for the other.
         ///
-        /// @param subject the spec's scene where the picture is of a subject, null where it is of
-        ///        the world — `Rtx::ViewRequest::mSubject`'s own word.
         /// @param gui whose texture the trace writes into, and which draws it.
-        TracedView(const OffscreenViewSpec& spec, osg::Node* subject, RtxRenderer& host, MyGUIRtx::RenderManager& gui,
+        TracedView(const OffscreenViewSpec& spec, ViewKind kind, RtxRenderer& host, MyGUIRtx::RenderManager& gui,
             Rtx::Traversals& traversals);
         ~TracedView() override;
 

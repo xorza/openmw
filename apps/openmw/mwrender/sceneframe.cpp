@@ -1,9 +1,11 @@
-// The frame's own record of the world, and the call that hands it to whichever renderer draws.
+// The pair of `sceneframe.hpp`: the `RenderingManager` members that fill its records and hand the
+// frame to whichever renderer draws.
 //
 // **`RenderingManager`'s, defined apart from the rest of it.** Everything here is what this fork
-// added to the class — the record `WorldState` is, where each part of it is written, and the one
-// call a frame makes to describe itself — and none of it touches what upstream's file does. Kept
-// out of that file so that it reads as upstream's with the seam edits and nothing else.
+// added to the class — where each part of `SkySettled` is written, how `WorldState` and `EyeState`
+// are read off the world, and the one call a frame makes to describe itself — and none of it
+// touches what upstream's file does. Kept out of that file so that it reads as upstream's with the
+// seam edits and nothing else.
 #include "renderingmanager.hpp"
 
 #include <algorithm>
@@ -161,9 +163,9 @@ namespace MWRender
                                                           : Location::Interior;
 
         // **A room's facts, read off the cell the player stands in.** The weather system stops the
-        // moment they step inside, so everything the setters above wrote for the sky is the last
-        // outdoor hour's. The ray tracer lights a room from the record alone; the rasterizer's
-        // chain reads the sun `configureAmbient` gave the light, which is where it points it too.
+        // moment they step inside, so everything the setters wrote for the sky is the last outdoor
+        // hour's, bar the sun `configureAmbient` pointed. The ray tracer lights a room from the
+        // record alone.
         const MWWorld::Ptr& player = MWMechanics::getPlayer();
         if (described.mLocation == Location::Interior && player.isInCell())
         {
@@ -174,9 +176,6 @@ namespace MWRender
                 .mFog = mood.mFogColor,
                 .mFogDensity = mood.mFogDensity,
             };
-            described.mSky.mSunPosition = mSunLight->getPosition();
-            described.mSky.mSunVector = -mSunLight->getPosition();
-            described.mSky.mSunAtNight = false;
         }
 
         described.mUnderwater = underwater;
@@ -202,7 +201,6 @@ namespace MWRender
 
         mFrame.emplace(SceneFrame{
             .mScene = *mSceneRoot,
-            .mCamera = mRenderer.getCamera(),
             .mWhen = mRenderer.getFrameStamp(),
             .mWorld = mFrameWorld,
             .mEye = mFrameEye,
@@ -217,11 +215,14 @@ namespace MWRender
 
     void RenderingManager::renderFrame()
     {
-        // **Where the eye is, told to the precipitation before the frame**, so the underwater switch
-        // that freezes the rain reads this frame's eye and not the point a traversal last left.
-        // Here and not in `describeFrame`, because `Camera::updateCamera` writes the view matrix
-        // from the update traversal, which runs between the two.
-        mPrecipitation->setViewPoint(mRenderer.getCamera().getInverseViewMatrix().getTrans());
+        // **Where the eye is, settled into the frame and told to the precipitation before the
+        // draw**, so the trace and the underwater switch that freezes the rain both read this
+        // frame's eye and not the point a traversal last left. Here and not in `describeFrame`,
+        // because `Camera::updateCamera` writes the view matrix from the update traversal, which
+        // runs between the two.
+        const osg::Camera& camera = mRenderer.getCamera();
+        mFrameEye.mView = camera.getViewMatrix();
+        mPrecipitation->setViewPoint(camera.getInverseViewMatrix().getTrans());
 
         assert(mFrame.has_value() && "a frame is described before it is drawn");
         mRenderer.renderFrame(*mFrame);

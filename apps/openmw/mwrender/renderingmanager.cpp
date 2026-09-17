@@ -354,6 +354,11 @@ namespace MWRender
         static const osg::Vec4f interiorSunPos
             = osg::Vec4f(-1.f, osg::DegreesToRadians(45.f), osg::DegreesToRadians(45.f), 0.f);
         mSunLight->setPosition(interiorSunPos);
+
+        // Where upstream pointed the chain's sun; the frame carries it instead
+        mSky.mSunPosition = interiorSunPos;
+        mSky.mSunVector = -interiorSunPos;
+        mSky.mSunAtNight = false;
     }
 
     void RenderingManager::setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis)

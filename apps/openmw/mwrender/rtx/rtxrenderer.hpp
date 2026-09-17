@@ -90,13 +90,15 @@ namespace MWRender
     {
     public:
         /// Throws naming what stopped it — no loader, no device that qualifies, an upscale mode this
-        /// build cannot provide — and never falls back to the other renderer.
-        explicit RtxRenderer(const RendererSpec& spec);
+        /// build cannot provide — and never falls back to the other renderer. `run` is the
+        /// harness's, and outlives this; null is a played session, made from `[RTX]` and the
+        /// played answers.
+        explicit RtxRenderer(const RendererSpec& spec, const RtxSetup* run = nullptr);
         ~RtxRenderer() override;
 
         /// No GLSL is compiled here, so no model is given a program: the shader visitor is off, and
         /// a model's state is read as the loader left it.
-        void prepareResources(Resource::ResourceSystem& resources) override;
+        void configureResources(Resource::ResourceSystem& resources) override;
 
         /// A plain group: the lights are gathered on this renderer's own walk, so nothing here
         /// wants a light manager's method.
@@ -131,7 +133,7 @@ namespace MWRender
         void adoptTraversalRoot(osg::Group& root) override;
 
         /// Read off the seam at the trace, so nothing to put anywhere.
-        void applyViewMask(unsigned int mask) override {}
+        void applyViewMask() override {}
         void applyWorldShown() override {}
 
         void tickSchedule() override;
@@ -189,8 +191,8 @@ namespace MWRender
         /// with and stays so.
         const Rtx::RenderProfile& getProfile() const { return mRenderer->getProfile(); }
 
-        /// Nothing before the resource system has arrived, which is a view that cannot walk yet.
-        std::optional<PoseMoment> describePose();
+        /// The moment a subject is posed at, for a view drawn inside this frame's window.
+        PoseMoment describePose();
 
         /// Draws `view` in the next frame's window, after the world's placement and before its
         /// trace, where the copy of the tables a picture reads is the frame's own; drawn where asked,
@@ -368,10 +370,6 @@ namespace MWRender
 
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
-
-        /// What the GUI, the preload list and a picture of its own resolve their textures through.
-        /// Null until `prepareResources`, which is before any of them asks.
-        Resource::ResourceSystem* mResources = nullptr;
 
         /// Pictures asked for and not yet drawn, in the order asked. Raw pointers because the
         /// caller owns every view, and `forgetView` keeps that sound.

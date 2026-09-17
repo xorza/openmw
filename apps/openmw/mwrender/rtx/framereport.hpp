@@ -78,7 +78,8 @@ namespace MWRender
         /// wants one before the next frame.
         RtxRenderer& mRenderer;
 
-        /// The world's, or null before there is a world.
+        /// The world's. A pointer because upstream's `CharacterPreview` takes one; never null,
+        /// because a frame is reported only while there is a world.
         Resource::ResourceSystem* mResources = nullptr;
 
         /// The scene the last walk handed over.
