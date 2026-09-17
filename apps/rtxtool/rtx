@@ -341,21 +341,24 @@ fetchWindowsSdl() {
 # Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
 # names the checkout, as CMake's own `find_package` reads it, and a build directory remembers what
 # it found. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
+# "Once" is judged by `build.ninja`, the last file a configure writes: a configure that failed
+# leaves a cache behind and no build file, and a directory in that state is configured again
+# rather than handed to ninja to find nothing in.
 #
 # **What the platform supplies.** Both have ccache, which drives MSVC as well as GCC. Linux has
-# recastnavigation and Google Test as packages, and mold to link with.
+# recastnavigation and Google Test as packages, and mold to link with. Windows has upstream's
+# vcpkg set, which carries neither of those nor SQLite, yaml-cpp or Qt: the first four CMake
+# fetches, and the launcher stays unbuilt. Its SDL2 has no Vulkan, so SDL's own stands in, and
+# vcpkg's copying of DLLs beside a binary is off, since it would put its SDL2 back over SDL's on
+# every link: `placeWindowsRuntime` is the one copy.
 #
 # **Upstream's precompiled headers are off under MSVC, because ccache cannot see through them**:
 # with them on, 593 of 623 compiles of the backend were "could not use precompiled header" and
 # the cache held nothing. Measured on the backend alone: with the headers, 2 min 54 s cold and
 # the same again every time; without them, 3 min 16 s cold and 10 s from a warm cache. The
-# fork's own libraries never had them, so what is edited every day compiles the same either way. Windows has upstream's vcpkg set, which carries neither of those
-# nor SQLite, yaml-cpp or Qt: the first four CMake fetches, and the launcher stays unbuilt. Its
-# SDL2 has no Vulkan, so SDL's own stands in, and vcpkg's copying of DLLs beside a binary is
-# off, since it would put its SDL2 back over SDL's on every link: `placeWindowsRuntime` is the
-# one copy.
+# fork's own libraries never had them, so what is edited every day compiles the same either way.
 configureIfNeeded() {
-    if [ -f "$build/CMakeCache.txt" ]; then
+    if [ -f "$build/build.ninja" ]; then
         return
     fi
 
