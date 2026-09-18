@@ -34,8 +34,14 @@ namespace Rtx
         /// @param depth how many slices it holds. One is a 2D image, which is what everything a
         ///        camera writes or a screen reads is; more makes it a volume, and a chain over one
         ///        halves the third axis with the other two.
+        /// @param storageFormat the format a storage descriptor sees the image in, where that is
+        ///        not `format`: an `SRGB` image has no storage view of its own, so a dispatch that
+        ///        writes one stores display-encoded bytes through a `UNORM` view of the same bits,
+        ///        and the sampler decodes them through the other. `VK_FORMAT_UNDEFINED` is
+        ///        `format` itself, which is every image but such a one.
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
-            std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1);
+            std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1,
+            VkFormat storageFormat = VK_FORMAT_UNDEFINED);
 
         /// Asserts that no submit still reads the image — `isIdle` — as a buffer's does: an image
         /// a submit may still read is buried, never destroyed.
@@ -163,8 +169,9 @@ namespace Rtx
         Owned<VkImage, vkDestroyImage> mHandle;
         Owned<VkImageView, vkDestroyImageView> mView;
 
-        /// One view a level, for a chain something writes through as storage; empty for an image
-        /// that is not both, which is nearly every one.
+        /// One view a level, for a chain something writes through as storage, or for a storage
+        /// format that is not the image's; empty for an image that is neither, which is nearly
+        /// every one.
         std::vector<Owned<VkImageView, vkDestroyImageView>> mLevelViews;
         DeviceMemory mMemory;
         std::uint32_t mWidth = 0;

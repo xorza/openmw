@@ -212,30 +212,6 @@ namespace Rtx::Testing
     /// whole answer.
     inline constexpr float sFoggySky = 0.6f;
 
-    /// A texture whose every mip is one flat colour — level `i` is `40 + 30i`, evenly spaced
-    /// and none of them black.
-    ///
-    /// **The byte a ray comes back with reads out the level it sampled**, and because the levels
-    /// are evenly spaced in value, `textureLod` blending two of them lands exactly on
-    /// `40 + 30 * lod`. A *fractional* level is readable that way, which is what makes a cone's
-    /// width measurable rather than merely orderable. Flat colours also mean the answer does not
-    /// depend on where in the texture the cone landed.
-    inline void paintMipLadder(TestTexture& texture)
-    {
-        constexpr std::uint32_t extent = 64;
-        constexpr std::uint32_t levels = 7;
-
-        for (std::uint32_t level = 0; level < levels; ++level)
-        {
-            const std::uint32_t side = extent >> level;
-            texture.mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), side, side });
-            texture.mBytes.insert(
-                texture.mBytes.end(), std::size_t{ side } * side * 4, static_cast<std::uint8_t>(40 + 30 * level));
-        }
-
-        texture.describe(extent, extent, "mip ladder");
-    }
-
     /// A texture that is white and wholly opaque, at one level.
     ///
     /// **What `paintMipLadder` cannot be.** Its levels encode which one was sampled, so its alpha
@@ -461,6 +437,15 @@ namespace Rtx::Testing
             requireFrame(pixels, size);
         }
 
+        /// The frame the caller drew itself through `mRenderer`, as the bytes `countHits` gives:
+        /// for a test that extends or places the standing world and draws it again, which
+        /// `renderShot` cannot, since it sets the scene.
+        void encodeLastFrame(std::uint32_t size, std::vector<std::uint8_t>& pixels)
+        {
+            readRadiance(size, mRadiance);
+            encodeRadiance(pixels);
+        }
+
         /// The same render as `countHits`, read back in linear radiance rather than as bytes.
         ///
         /// **What a figure is measured on.** `readPixels` gives the picture a display would
@@ -627,10 +612,10 @@ namespace Rtx::Testing
             return { pixels[centre], pixels[centre + 1], pixels[centre + 2] };
         }
 
-        /// What the last `countHits` traced, in linear radiance, for a test that wants the figure
-        /// rather than the byte.
+        /// What the last `countHits` or `encodeLastFrame` traced, in linear radiance, for a test
+        /// that wants the figure rather than the byte.
         ///
-        /// **Filled by `countHits` and by nothing else**, because that is the helper whose bytes a
+        /// **Filled by those two and by nothing else**, because they are the helpers whose bytes a
         /// test then holds this against. `renderRadiance` reads into the caller's own vector, so a
         /// read of this after one of those is a read of the frame before it.
         std::vector<float> mRadiance;

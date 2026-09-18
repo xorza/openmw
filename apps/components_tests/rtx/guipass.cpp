@@ -21,7 +21,6 @@
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
-#include <components/rtxvulkan/shadingpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "guiquad.hpp"
@@ -107,12 +106,12 @@ namespace Rtx
             /// Its shading map is estimated as the renderer's would be, and read by nothing here.
             Texture makeTexture(const TextureData& data, std::string_view name)
             {
-                const ShadingPass shading(getDevice(), Testing::getShaderDirectory());
+                const Testing::TexturePassSet passes(getDevice());
                 const Sampler sampler = makeContentSampler(getDevice(), "gui test");
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                Texture texture(getDevice(), upload, shading, sampler.get(), data, name, regions);
+                Texture texture(getDevice(), upload, passes.mPasses, sampler.get(), data, name, regions);
                 upload.flush();
                 return texture;
             }

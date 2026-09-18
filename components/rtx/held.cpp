@@ -4,47 +4,15 @@
 
 namespace Rtx
 {
-    void CellHolds::holdTexture(const PreparedTexture& texture)
-    {
-        const osg::Image* const image = texture.mImage.get();
-        HeldTexture& held = mTextures.findOrInsert(
-            image, [&] { return HeldTexture{ .mImage = image, .mTexture = &texture, .mHolders = 0 }; });
-
-        ++held.mHolders;
-    }
-
-    void CellHolds::dropTexture(const PreparedTexture& texture)
-    {
-        const osg::Image* const image = texture.mImage.get();
-        HeldTexture& held = mTextures.at(image);
-        if (--held.mHolders == 0)
-            mTextures.erase(image);
-    }
-
-    const PreparedTexture* CellHolds::find(const osg::Image& image) const
-    {
-        const HeldTexture* const held = mTextures.find(&image);
-        return held != nullptr ? held->mTexture : nullptr;
-    }
-
     CellHolds::HeldModel& CellHolds::know(PreparedModel& model)
     {
-        bool made = false;
         HeldModel& known = mModels.findOrInsert(&model, [&] {
-            made = true;
-
             HeldModel taking = mSpareModels.take();
             taking.mModel = &model;
             taking.mParts.clear();
             taking.mNamed = 0;
             return taking;
         });
-
-        // The images the model names, for `find`: counted per model that names them, so only the
-        // first to know it counts.
-        if (made)
-            for (const PreparedTexture* texture : model.mTextures)
-                holdTexture(*texture);
 
         return known;
     }
@@ -80,9 +48,6 @@ namespace Rtx
         if (--known.mNamed > 0)
             return;
 
-        for (const PreparedTexture* texture : model.mTextures)
-            dropTexture(*texture);
-
         mReleasing.insert(mReleasing.end(), known.mParts.begin(), known.mParts.end());
         mSpareModels.give(mModels.take(&model));
     }
@@ -114,6 +79,5 @@ namespace Rtx
         }
 
         mModels.clear();
-        mTextures.clear();
     }
 }

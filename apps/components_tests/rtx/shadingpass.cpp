@@ -35,7 +35,7 @@ namespace Rtx
             std::vector<std::uint16_t> mapOf(const TextureData& data, std::string_view name)
             {
                 Device& device = getDevice();
-                const ShadingPass shading(device, Testing::getShaderDirectory());
+                const Testing::TexturePassSet passes(device);
                 const Sampler sampler = makeContentSampler(device, "shading test");
 
                 const Image map(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
@@ -44,8 +44,8 @@ namespace Rtx
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                const Texture source(device, upload, shading, sampler.get(), data, name, regions);
-                shading.record(upload.getCommands(), source.getImage(), sampler.get(), map, data);
+                const Texture source(device, upload, passes.mPasses, sampler.get(), data, name, regions);
+                passes.mShading.record(upload.getCommands(), source.getImage(), sampler.get(), map, data);
                 upload.flush();
 
                 std::vector<std::uint8_t> bytes;

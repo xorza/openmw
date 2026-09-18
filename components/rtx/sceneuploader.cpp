@@ -32,7 +32,6 @@ namespace Rtx
         SceneDesc& scene = handing.mScene;
         Resource::ImageManager& images = handing.mImages;
         CompositeQueue* const composites = handing.mComposites;
-        const CellHolds* const readings = handing.mReadings;
         FrameSpend* const spend = handing.mSpend;
 
         // Timed into a row nobody reads where the caller handed none, so the three stretches below
@@ -58,8 +57,7 @@ namespace Rtx
         // which carries no frame pointer. `Rtx::Timing::Bake` says the rest.
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 
-        const std::size_t baked = composites != nullptr ? composites->advance(scene, images) : 0;
-        done.mUnreadable = composites != nullptr ? composites->takeUnreadable() : 0;
+        const std::size_t baked = composites != nullptr ? composites->advance(scene) : 0;
 
         const std::chrono::steady_clock::time_point gathered = std::chrono::steady_clock::now();
         timed.at(Timing::Bake) = since(began, gathered);
@@ -97,15 +95,15 @@ namespace Rtx
             // Read only across the call below: `TextureData` carries spans into `mTextures`. The
             // whole table where there is nothing to append to, and the arrivals otherwise.
             if (!mine)
-                mTextures.describeAll(tables, images, composites, readings);
+                mTextures.describeAll(tables, images, composites);
             else
-                mTextures.describe(tables, images, tables.textures().getArrived(), composites, readings);
+                mTextures.describe(tables, images, tables.textures().getArrived(), composites);
 
             const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();
             timed.at(Timing::Textures) = since(gathered, described);
 
             done.mDescribed = mTextures.getDescriptions().size();
-            done.mUnreadable += mTextures.getUnreadable();
+            done.mUnreadable = mTextures.getUnreadable();
 
             if (!mine)
             {
@@ -131,9 +129,8 @@ namespace Rtx
         // finished — and the release is the line a frame that baked a composite never reaches.
         scene.clearArrivals();
 
-        // After the upload and not before. Between the collect and here, what the queue holds is
-        // the only copy of a composite's bytes; a region's worth is fifty megabytes, and keeping
-        // them past the frame that read them would be paying for one picture twice.
+        // After the upload and not before: between the take and here, what the queue holds is
+        // which arriving slots are ground and whose, and the describe above is what reads it.
         if (composites != nullptr)
             composites->releaseFinished();
 

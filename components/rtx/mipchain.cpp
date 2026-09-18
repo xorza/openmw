@@ -14,12 +14,6 @@
 
 namespace Rtx
 {
-    TextureData MipChain::withChain(const TextureData& described, MipChain& chain)
-    {
-        chain.build(described);
-        return chain.isEmpty() ? described : chain.describe();
-    }
-
     namespace
     {
         std::byte quantise(float value)
@@ -28,27 +22,20 @@ namespace Rtx
         }
     }
 
+    bool MipChain::wantedFor(const TextureData& described)
+    {
+        return described.mLevels.size() == 1 && std::size_t{ described.mWidth } * described.mHeight > 1;
+    }
+
     void MipChain::build(const TextureData& described)
     {
         mTexture.reuse();
         mEncoded = true;
 
-        if (described.mLevels.empty())
+        if (!wantedFor(described))
             return;
 
-        // Only a file that carried no chain at all. Morrowind's own stop short of a single
-        // texel — a 256-square texture ships six levels and ends at 8 by 8 — and that last level is
-        // already the texture's own mean to within what a ray can tell. Rebuilding those would
-        // decompress the whole game to gain nothing, and double what a cell's textures hold.
-        if (described.mLevels.size() != 1)
-            return;
-
-        // A level with no extent is a level with no texels to read, and every reader below would
-        // be asked for one.
         const MipLevel& finest = described.mLevels.front();
-        if (finest.mWidth == 0 || finest.mHeight == 0 || (finest.mWidth == 1 && finest.mHeight == 1))
-            return;
-
         mEncoded = isSrgb(described.mFormat);
 
         // The whole shape first, so the texels are asked for once and the levels never move.

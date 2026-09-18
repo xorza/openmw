@@ -126,70 +126,17 @@ vec4 sampleDiffuse(uint slot, TexturePoint point)
     return textureLod(textures[nonuniformEXT(slot)], point.mAt, coneLod(slot, point));
 }
 
-/// The light a texture already carries at `at`, bilinear across its grid and wrapping with it.
-///
-/// **One fetch through the array's own sampler, which does the wrap and the blend.** Read out of a
-/// buffer by hand this was four loads and the modulo apiece on every albedo read of every hit and
-/// every ground layer; measured, the loads cost nothing the trace can see, and the fetch is here for
-/// what it is rather than for what it saves. Wrapping because Morrowind's textures tile and a great
-/// many of them rely on it: a map that clamped at the edges would put a seam down every wall that
-/// repeats.
-///
-/// Decoded after the filter, which is exact: a blend of stored values decodes to the same blend of
-/// the values they stand for, because the decode is affine.
-float paintedLight(uint slot, vec2 at)
-{
-    return mix(SHADING_FLOOR, SHADING_CEILING, textureLod(shadingMaps[nonuniformEXT(slot)], at, 0.0).r);
-}
-
-/// The albedo a hit landed on, with the light painted into the texture divided back out.
-///
-/// **A texture drawn for a renderer with no bounce has the bounce drawn into it** — occlusion in
-/// the corners, a highlight along a rim, the glow a lamp throws on the wall behind it. Lighting it
-/// again puts every one of those in twice, so what is wanted from the file is the colour underneath
-/// and the estimate is what takes the rest off.
-///
-/// Only where an albedo is being read. The same sampler serves a cutout's mask, which is alpha and
-/// unaffected, and an emissive map, which is light rather than a surface and must keep what it was
-/// painted with.
+/// The albedo a hit landed on, read at the level its cone can resolve, with the light painted
+/// into the texture divided back out by the run's `mDelight` — `sampleAlbedoLod` says why.
 vec3 sampleAlbedo(uint slot, TexturePoint point)
 {
-    const vec3 texel = sampleDiffuse(slot, point).rgb;
-    if (frame.mDelight <= 0.0)
-        return texel;
-
-    return texel / mix(1.0, paintedLight(slot, point.mAt), frame.mDelight);
+    return sampleAlbedoLod(slot, point.mAt, coneLod(slot, point), frame.mDelight);
 }
 
-/// How much of a terrain layer shows at `uv`, from its grid of weights.
-///
-/// Sampled by hand rather than through a sampler because the grid is ten texels across and lives in
-/// a buffer, and because a mask has to clamp at its edges — the one sampler every texture in this
-/// scene shares repeats, which is what the tiling ground needs and the mask cannot have.
+/// How much of a terrain layer shows at `uv`, from the scene's grid of weights — `maskWeightIn`.
 float maskWeight(GpuLayer layer, vec2 uv)
 {
-    // A chunk of one ground type is given no mask at all: there is nothing to blend it against.
-    if (layer.mMaskWidth == 0u || layer.mMaskHeight == 0u)
-        return 1.0;
-
-    const ivec2 grid = ivec2(layer.mMaskWidth, layer.mMaskHeight);
-
-    // Held inside the mask, because a mask clamps at its edges where every other texture repeats:
-    // a transform that carried the point past one would read past the run.
-    const vec2 at = clamp(uv * layer.mMaskTransform.xy + layer.mMaskTransform.zw, 0.0, 1.0);
-
-    // Texel centres sit at half-integers, so the bilinear footprint starts half a texel back.
-    const vec2 texel = at * vec2(grid) - 0.5;
-    const vec2 frac = fract(texel);
-    const ivec2 low = ivec2(floor(texel));
-    const ivec2 high = min(low + 1, grid - 1);
-    const ivec2 base = max(low, ivec2(0));
-
-    const uint row0 = layer.mMaskOffset + uint(base.y) * layer.mMaskWidth;
-    const uint row1 = layer.mMaskOffset + uint(high.y) * layer.mMaskWidth;
-
-    return mix(mix(maskAt(row0 + uint(base.x)), maskAt(row0 + uint(high.x)), frac.x),
-        mix(maskAt(row1 + uint(base.x)), maskAt(row1 + uint(high.x)), frac.x), frac.y);
+    return maskWeightIn(layer, uv, MaskTable(frame.mTables.mMasks));
 }
 
 #endif

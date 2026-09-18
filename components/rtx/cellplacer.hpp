@@ -47,19 +47,18 @@ namespace Rtx
         /// cells `held` stands again at once, as `setReferenceEnabled` would stand each.
         void forgetReferences(std::span<HeldCell> held);
 
-        /// Adopts a cell's ground into the scene, on rows held on the scene, and holds its textures
-        /// on `holds` for the frame's describe. `around` says whether it shades from its stack.
-        void adoptGround(const PreparedCell& cell, HeldCell& held, CellHolds& holds, const WorldAround& around,
-            ExtractionStats& stats);
+        /// Adopts a cell's ground into the scene, on rows held on the scene. `around` says whether
+        /// it shades from its stack.
+        void adoptGround(const PreparedCell& cell, HeldCell& held, const WorldAround& around, ExtractionStats& stats);
 
         /// Fills `held.mPlacements` from the cell's references, one per part of each model as
         /// `holds` adopted it, disabled where a script said so, and sorted for `place`; and
         /// `held.mLights` from the cell's lamps, whole.
         void adoptPlacements(const PreparedCell& cell, HeldCell& held, CellHolds& holds);
 
-        /// Lets a cell's ground go: its slot, its texture holds and its rows. The sweep after this
-        /// walk is what frees the rows.
-        void dropGround(HeldCell& cell, CellHolds& holds);
+        /// Lets a cell's ground go: its slot and its rows. The sweep after this walk is what frees
+        /// the rows.
+        void dropGround(HeldCell& cell);
 
         /// Takes a cell's placements out of the top level, keeping the cell.
         void dropSlots(HeldCell& cell);

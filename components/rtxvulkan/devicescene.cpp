@@ -6,8 +6,10 @@
 #include <vector>
 
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
 
 #include "commands.hpp"
+#include "groundcompositepass.hpp"
 #include "placing.hpp"
 #include "skinpass.hpp"
 
@@ -26,15 +28,16 @@ namespace Rtx
     }
 
     DeviceScene::DeviceScene(const Device& device, Batch& batch, const SetLayout& textureLayout, const SkinPass& skin,
-        const ShadingPass& shading, const SpriteLightPass& bake, const SceneDesc& scene,
+        const TexturePasses& passes, const GroundCompositePass& ground, const SceneDesc& scene,
         std::span<const TextureData> textures)
         : mSkin(skin)
+        , mGround(ground)
         , mRecords(recordsOf(scene))
         , mAcceleration(device, batch, scene, sFrameSlots)
         , mBuffers(device, batch, scene, mRecords, sFrameSlots)
         , mSkinTables(device, batch, scene, sFrameSlots)
-        , mTextures(device, batch, textureLayout, shading, bake,
-              static_cast<std::uint32_t>(scene.textures().getRows().size()), textures)
+        , mTextures(device, batch, textureLayout, passes, static_cast<std::uint32_t>(scene.textures().getRows().size()),
+              textures)
     {
         // Posed before it is built. The structures are built over the first copy of the
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the
@@ -50,6 +53,17 @@ namespace Rtx
 
         // The first copy's set, which the first frame binds before any placement pays it.
         mTextures.sync(FrameSlot{});
+
+        // And the ground that arrived flattened, off that copy: a scene built from nothing is
+        // traced before any placement, and a composite stood empty is undefined until baked.
+        bakeGround(batch.getCommands(), FrameSlot{});
+    }
+
+    bool DeviceScene::bakeGround(const VkCommandBuffer commands, const FrameSlot slot)
+    {
+        Shaders::GpuTables tables{};
+        mBuffers.describeTables(slot, tables);
+        return mTextures.bakeComposites(commands, mGround, slot, tables);
     }
 
     void DeviceScene::extend(
@@ -106,9 +120,13 @@ namespace Rtx
         // of it is tens of milliseconds on a nine-by-nine region.
         mBuffers.place(scene, mRecords, mChangedRecords, placing);
 
+        // The ground that arrived flattened here, after the tables its stack is in are written
+        // and the set its layers are in is synced: the trace behind this samples it as a file.
+        const bool baked = bakeGround(placing.mCommands, placing.mSlot);
+
         mCounts = scene.placements().getCounts();
 
-        return posed || built;
+        return posed || built || baked;
     }
 
     void DeviceScene::finishReads(const FrameSlot slot) const

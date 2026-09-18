@@ -22,7 +22,6 @@
 namespace osg
 {
     class Drawable;
-    class Image;
     class StateSet;
 }
 
@@ -164,8 +163,7 @@ namespace Rtx
             std::uint32_t mNamed = 0;
         };
 
-        /// The entry for `model`, made where the frame knows of none — and its images held for
-        /// `find` when it is.
+        /// The entry for `model`, made where the frame knows of none.
         HeldModel& know(PreparedModel& model);
 
         /// The entry for a model the frame knows of.
@@ -175,47 +173,25 @@ namespace Rtx
         /// the mesh and on the material, which `release` gives back.
         void adoptParts(HeldModel& held, SceneAdopter& into);
 
-        /// Counts one cell of `model` off, and forgets the model where none is left: its images
-        /// stop being found, and its parts' holds go back on the next `releaseParts`.
+        /// Counts one cell of `model` off, and forgets the model where none is left: its parts'
+        /// holds go back on the next `releaseParts`.
         void release(PreparedModel& model);
-
-        /// Counts one more holder of `texture`'s reading, for `find`.
-        void holdTexture(const PreparedTexture& texture);
-
-        /// Counts one holder off, and forgets the reading where none is left.
-        void dropTexture(const PreparedTexture& texture);
-
-        /// The reading of `image` where a model or a cell's ground the frame holds names it.
-        const PreparedTexture* find(const osg::Image& image) const;
 
         /// Gives the holds of every part `release` and `forget` let go of back to the walk,
         /// deferred because a release can happen outside one and only the walk can reach the
         /// resolvers. Run at both ends of a walk.
         void releaseParts(SceneAdopter& into);
 
-        /// Lets go of every model and every image, keeping their parts' holds for `releaseParts`.
-        /// What the reader lent dies with it, so nothing is given back here.
+        /// Lets go of every model, keeping their parts' holds for `releaseParts`. What the reader
+        /// lent dies with it, so nothing is given back here.
         void forget();
 
     private:
-        /// An image some known model or held ground names, and its reading, for `find`.
-        struct HeldTexture
-        {
-            const osg::Image* mImage = nullptr;
-            const PreparedTexture* mTexture = nullptr;
-            std::uint32_t mHolders = 0;
-        };
-
-        /// What each of the two tables is ordered by, stated once each so that no search can
-        /// disagree with the insertion it is looking for.
+        /// What the table is ordered by, stated once so that no search can disagree with the
+        /// insertion it is looking for.
         struct ModelAt
         {
             const PreparedModel* operator()(const HeldModel& held) const { return held.mModel; }
-        };
-
-        struct TextureAt
-        {
-            const osg::Image* operator()(const HeldTexture& held) const { return held.mImage; }
         };
 
         SortedRows<HeldModel, const PreparedModel*, ModelAt> mModels;
@@ -223,8 +199,6 @@ namespace Rtx
         /// A model's row taken back out is room the next one refills rather than a heap call on
         /// the frame a cell lands.
         Recycled<HeldModel> mSpareModels;
-
-        SortedRows<HeldTexture, const osg::Image*, TextureAt> mTextures;
 
         /// Parts let go of and not yet released to the walk. See `releaseParts`.
         std::vector<AdoptedPart> mReleasing;

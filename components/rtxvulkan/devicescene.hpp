@@ -25,9 +25,8 @@ namespace Rtx
     class Device;
     class GpuTimer;
     class SceneDesc;
-    class ShadingPass;
+    class GroundCompositePass;
     class SkinPass;
-    class SpriteLightPass;
     struct Placing;
 
     /// Everything one scene is traced against, on the device — the world's, or a picture's in
@@ -48,10 +47,10 @@ namespace Rtx
         /// again while that one is still tracing — so every table has `sFrameSlots` copies.
         ///
         /// @param skin what poses this scene's bodies, at the build and at every placement.
-        /// @param shading what estimates every texture's map as it arrives.
-        /// @param bake what makes every sprite's light bake as it arrives.
+        /// @param passes what every texture is made with as it arrives.
+        /// @param ground what flattens every chunk's stack, in the placement after it arrives.
         DeviceScene(const Device& device, Batch& batch, const SetLayout& textureLayout, const SkinPass& skin,
-            const ShadingPass& shading, const SpriteLightPass& bake, const SceneDesc& scene,
+            const TexturePasses& passes, const GroundCompositePass& ground, const SceneDesc& scene,
             std::span<const TextureData> textures);
 
         /// Takes in what the scene says arrived: the textures, and the meshes where the mesh table's
@@ -112,7 +111,12 @@ namespace Rtx
         VkDescriptorSet getTextures() const { return mTextures.getSet(mSlot); }
 
     private:
+        /// Records the bake of every composite that arrived since the last, over `slot`'s copy of
+        /// the tables — the copy just written, whose set is synced. True where one was recorded.
+        bool bakeGround(VkCommandBuffer commands, FrameSlot slot);
+
         const SkinPass& mSkin;
+        const GroundCompositePass& mGround;
 
         /// One row per placement slot, made whole when the scene is built and kept across frames,
         /// with the rows the scene says changed rewritten by each placement. Here rather than in

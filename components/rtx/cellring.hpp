@@ -82,7 +82,7 @@ namespace Rtx
         /// Whether a walk waits for the cell it is about to adopt, so which frame a cell is adopted
         /// on is the schedule's answer and not the thread's. The order is what makes it so: one
         /// reader takes the cells `ask` sorted and hands them back in that order. One cell a frame
-        /// either way. `CompositeQueue::setSettled` is the same rule for the ground's composites.
+        /// either way.
         void setSettled(bool settled);
 
         /// `CellPlacer::setReferenceEnabled` and `forgetReferences`, over the cells held.
@@ -96,9 +96,6 @@ namespace Rtx
         /// Gives `into` back every hold `forget` let go of, for a ring the frame will not walk
         /// again — a world detached. `collect` does the same at both ends of a walk.
         void releaseHolds(SceneAdopter& into) { mHolds.releaseParts(into); }
-
-        /// The models and images lent, for the frame's describe to find a reading by its image.
-        const CellHolds& getHolds() const { return mHolds; }
 
         /// Appends the reference number of every static standing in the top level, for a check
         /// that asks the game whether it stands the same one.

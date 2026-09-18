@@ -13,7 +13,6 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
-#include <components/rtxvulkan/shadingpass.hpp>
 #include <components/rtxvulkan/spritelightpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
@@ -33,8 +32,7 @@ namespace Rtx
             std::vector<std::vector<std::uint8_t>> bakeOf(const TextureData& sprite)
             {
                 Device& device = getDevice();
-                const ShadingPass shading(device, Testing::getShaderDirectory());
-                const SpriteLightPass pass(device, Testing::getShaderDirectory());
+                const Testing::TexturePassSet passes(device);
                 const Sampler sampler = makeContentSampler(device, "sprite light test");
 
                 const auto levels = static_cast<std::uint32_t>(sprite.mLevels.size());
@@ -44,8 +42,8 @@ namespace Rtx
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                const Texture source(device, upload, shading, sampler.get(), sprite, "sprite", regions);
-                pass.record(upload.getCommands(), source.getImage(), sampler.get(), bake);
+                const Texture source(device, upload, passes.mPasses, sampler.get(), sprite, "sprite", regions);
+                passes.mBake.record(upload.getCommands(), source.getImage(), sampler.get(), bake);
                 upload.flush();
 
                 std::vector<std::vector<std::uint8_t>> read(levels);

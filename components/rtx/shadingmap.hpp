@@ -20,10 +20,10 @@ namespace Rtx
     /// painted lighting varies slowly and painted detail does not, and following the detail is the
     /// over-correction that flattens a texture into a colour.
     ///
-    /// **The host's statement of the estimate.** The one the trace divides by is made on the
-    /// device as the texture arrives, `shadingmap.comp`, and held to this one by a test; this is
-    /// what the composite bake divides its layers by, what the texture sheet draws, and what
-    /// `paintedLight` reads.
+    /// **The host's statement of the estimate, which the game never runs.** The one the trace
+    /// and the ground bake divide by is made on the device as the texture arrives,
+    /// `shadingmap.comp`, and held to this one by a test; this is what the texture sheet draws
+    /// and what `paintedLight` reads.
     class ShadingMap
     {
     public:

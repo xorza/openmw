@@ -23,19 +23,16 @@
 #include "material.hpp"
 #include "materialresolver.hpp"
 #include "meshreader.hpp"
-#include "mipchain.hpp"
 #include "runs.hpp"
 #include "scratch.hpp"
 #include "shapefold.hpp"
 
 namespace Rtx
 {
-    /// One image, described where the model that names it was read: the levels its file did not
-    /// carry, and the light painted into it — the two things describing a texture costs, both of
-    /// which read every texel, done off the frame. Lent by a `Spares`, held once by every lent
-    /// model and cell that names it, and given back with the last of them. The reader's count,
-    /// and the frame never reads it: `CellReader::giveBack` says why a hold is a cell's and not
-    /// the frame's.
+    /// One image, named where the model that names it was read, so that the frame adopts a layer
+    /// by a path built off the frame. Lent by a `Spares`, held once by every lent model and cell
+    /// that names it, and given back with the last of them. The reader's count, and the frame
+    /// never reads it: `CellReader::giveBack` says why a hold is a cell's and not the frame's.
     struct PreparedTexture : Lent
     {
         /// The image itself, which is what the frame's describe looks a texture up by: the loader's
@@ -46,15 +43,8 @@ namespace Rtx
         /// that a frame adopting a layer names its texture without building the path again.
         VFS::Path::Normalized mPath;
 
-        /// The levels the file did not carry, or empty where it carried them.
-        MipChain mChain;
-
-        /// False where the image is in a format this renderer does not upload, which the frame
-        /// draws the stand-in for. Nothing above is meaningful then.
-        bool mReadable = false;
-
-        /// Makes room for the next image. The chain keeps its bytes.
-        void reuse() { reuseKeeping(*this, &PreparedTexture::mPath, &PreparedTexture::mChain); }
+        /// Makes room for the next image.
+        void reuse() { reuseKeeping(*this, &PreparedTexture::mPath); }
     };
 
     /// One ground texture a cell's land names, and the weights that place it.
@@ -157,9 +147,6 @@ namespace Rtx
 
         std::vector<PreparedPart> mParts;
 
-        /// Every image the parts name, once each. The reader's, lent for as long as this is.
-        std::vector<PreparedTexture*> mTextures;
-
         std::vector<osg::Vec3f> mPositions;
         std::vector<osg::Vec3f> mNormals;
         std::vector<osg::Vec2f> mTexCoords;
@@ -188,9 +175,9 @@ namespace Rtx
         /// Makes room for the next model, keeping what the buffers grew.
         void reuse()
         {
-            reuseKeeping(*this, &PreparedModel::mPath, &PreparedModel::mParts, &PreparedModel::mTextures,
-                &PreparedModel::mPositions, &PreparedModel::mNormals, &PreparedModel::mTexCoords,
-                &PreparedModel::mSecondTexCoords, &PreparedModel::mColours, &PreparedModel::mIndices);
+            reuseKeeping(*this, &PreparedModel::mPath, &PreparedModel::mParts, &PreparedModel::mPositions,
+                &PreparedModel::mNormals, &PreparedModel::mTexCoords, &PreparedModel::mSecondTexCoords,
+                &PreparedModel::mColours, &PreparedModel::mIndices);
         }
     };
 

@@ -23,7 +23,11 @@
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/instance.hpp>
+#include <components/rtxvulkan/mipchainpass.hpp>
 #include <components/rtxvulkan/pipelinecache.hpp>
+#include <components/rtxvulkan/shadingpass.hpp>
+#include <components/rtxvulkan/spritelightpass.hpp>
+#include <components/rtxvulkan/texture.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 
 namespace Rtx
@@ -192,6 +196,25 @@ namespace Rtx::Testing
         std::vector<std::string> mRaised;
     };
 
+    /// The three passes a texture is made with, over the test's device, and the bundle an array
+    /// or a `Texture` takes them as: what every test that stands a texture needs and none is
+    /// about.
+    struct TexturePassSet
+    {
+        explicit TexturePassSet(const Device& device)
+            : mChain(device, getShaderDirectory())
+            , mShading(device, getShaderDirectory())
+            , mBake(device, getShaderDirectory())
+            , mPasses{ mChain, mShading, mBake }
+        {
+        }
+
+        MipChainPass mChain;
+        ShadingPass mShading;
+        SpriteLightPass mBake;
+        TexturePasses mPasses;
+    };
+
     /// The base of a test that renders.
     ///
     /// **The validation errors are drained before the test and reported after it**, which two of the
@@ -233,9 +256,7 @@ namespace Rtx::Testing
     /// The four bytes at a pixel of an RGBA8 image `width` texels across, row zero at the top.
     ///
     /// **Beside `readHalves` because both are the read-back side**, and the two GUI test files each
-    /// wrapped this arithmetic for themselves. Named for what it reads rather than for a texel:
-    /// `terraincomposite.cpp` has a `texelOf` that indexes a `TextureData` by mip level and answers
-    /// one packed integer.
+    /// wrapped this arithmetic for themselves.
     inline std::array<std::uint8_t, 4> rgbaAt(
         std::span<const std::uint8_t> pixels, std::uint32_t width, std::uint32_t x, std::uint32_t y)
     {

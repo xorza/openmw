@@ -75,7 +75,7 @@ namespace Rtx
     }
 
     void CellPlacer::adoptGround(
-        const PreparedCell& cell, HeldCell& held, CellHolds& holds, const WorldAround& around, ExtractionStats& stats)
+        const PreparedCell& cell, HeldCell& held, const WorldAround& around, ExtractionStats& stats)
     {
         const PreparedGround& ground = cell.mGround;
         if (!ground.mStands)
@@ -95,7 +95,6 @@ namespace Rtx
             mLayerScratch.push_back(row);
 
             stands.mTextures.push_back(layer.mTexture);
-            holds.holdTexture(*layer.mTexture);
         }
 
         stands.mLayers = static_cast<std::uint32_t>(mLayerScratch.size());
@@ -187,16 +186,13 @@ namespace Rtx
         --standing;
     }
 
-    void CellPlacer::dropGround(HeldCell& cell, CellHolds& holds)
+    void CellPlacer::dropGround(HeldCell& cell)
     {
         if (!cell.mGround.has_value())
             return;
 
         HeldGround& ground = *cell.mGround;
         drop(ground.mStood, mGroundPlaced);
-
-        for (PreparedTexture* texture : ground.mTextures)
-            holds.dropTexture(*texture);
 
         // The rows lose their holds, and the sweep after this walk is what frees them.
         mScene.meshes().drop(ground.mStood.mMesh);

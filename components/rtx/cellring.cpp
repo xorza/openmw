@@ -67,7 +67,7 @@ namespace Rtx
         for (HeldCell& cell : mCells)
         {
             mPlacer.dropSlots(cell);
-            mPlacer.dropGround(cell, mHolds);
+            mPlacer.dropGround(cell);
 
             // Nothing is given back — what the reader lent dies with it — but the rows are the
             // frame's own, and a worldspace change is the one time this runs while the game plays.
@@ -223,7 +223,7 @@ namespace Rtx
         held.mCell = cell.mCell;
         held.mStatics = cell.mStatics;
 
-        mPlacer.adoptGround(cell, held, mHolds, mAround, stats);
+        mPlacer.adoptGround(cell, held, mAround, stats);
 
         for (PreparedModel* model : cell.mModels)
         {
@@ -261,7 +261,7 @@ namespace Rtx
 
         giveBackHolds(cell);
 
-        mPlacer.dropGround(cell, mHolds);
+        mPlacer.dropGround(cell);
 
         cell.reuse();
         mSpareCells.give(std::move(cell));

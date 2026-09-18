@@ -15,7 +15,6 @@ namespace Resource
 
 namespace Rtx
 {
-    class CellHolds;
     class CompositeQueue;
     class SceneDesc;
     class Renderer;
@@ -72,9 +71,6 @@ namespace Rtx
             /// The world's terrain baker, or null for a scene with no distant ground: a doll and a
             /// map tile have none to flatten.
             CompositeQueue* mComposites = nullptr;
-
-            /// Where a describe finds images read ahead of the frame, or null.
-            const CellHolds* mReadings = nullptr;
 
             /// Where the three halves of the hand-over are timed into, or null — `Bake`, `Textures`
             /// and `Upload`. Timed here, because a backend that timed itself would be answering a

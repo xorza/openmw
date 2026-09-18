@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +22,13 @@ namespace Rtx
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
     };
+
+    /// How many levels a chain from `width` by `height` down to one texel has: what
+    /// `MipPyramid::layOutTo1x1` lays out, for an image made to hold one.
+    inline std::uint32_t levelsTo1x1(std::uint32_t width, std::uint32_t height)
+    {
+        return static_cast<std::uint32_t>(std::bit_width(std::max(width, height)));
+    }
 
     /// The shape of a chain of mip levels: where each one sits and how big it is. The shape and not
     /// the texels, because four payloads build the same chain.
@@ -165,6 +174,18 @@ namespace Rtx
         /// carries no bytes and no levels of its own: the bake is shaped like its source. `sNoIndex`
         /// for every texture whose bytes are its own, which is every other one.
         Index mBakedFrom = sNoIndex;
+
+        /// The material row of the chunk this is the flattened ground of — `GroundCompositePass`
+        /// sums that chunk's layer stack into it on the device, in the placement that writes the
+        /// row — so this carries no bytes and no levels: a composite is `GROUND_COMPOSITE_EXTENT`
+        /// square with a chain to one texel. `sNoIndex` for every other texture.
+        Index mCompositeOf = sNoIndex;
+
+        /// Whether a backend completes the chain the file did not carry, `MipChainPass`, from the
+        /// one level here down to one texel. Set by the builder where `MipChain::wantedFor` says,
+        /// and never for a texture a test paints to be read at its one level, or for a bake or a
+        /// composite, which carry no level at all.
+        bool mCompleteChain = false;
 
         /// Whether the shading map beside it is the neutral one rather than an estimate made off
         /// its texels — a composite, whose painted light came off per tile in the bake and would

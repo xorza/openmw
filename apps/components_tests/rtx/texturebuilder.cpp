@@ -15,12 +15,10 @@
 #include <osg/ref_ptr>
 
 #include <components/resource/imagemanager.hpp>
+#include <components/rtx/compositequeue.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/held.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
-#include <components/rtx/mipchain.hpp>
-#include <components/rtx/prepared.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/spritelight.hpp>
@@ -171,9 +169,9 @@ namespace Rtx
             ASSERT_EQ(described.getUnreadable(), 0u) << "the image did not come back from the cache";
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
 
-            // Four texels across and one level in the file, so `MipChain` builds the rest: 4, 2 and
-            // 1. That puts the pooled chain under the guard below rather than only the flat tables.
-            ASSERT_EQ(described.getDescriptions()[0].mLevels.size(), std::size_t{ 3 });
+            // Four texels across and one level in the file, which is the level described: the rest
+            // are the device's to make.
+            ASSERT_EQ(described.getDescriptions()[0].mLevels.size(), std::size_t{ 1 });
 
             const std::size_t before = Testing::getAllocationCount();
             described.describeAll(scene, images);
@@ -276,14 +274,57 @@ namespace Rtx
             EXPECT_TRUE(described.getDescriptions()[0].mNeutralShading);
             EXPECT_EQ(described.getUnreadable(), 0u);
         }
-        /// A describe takes a reading's chain and shading over building its own, and builds its own
-        /// where nothing read the image ahead of it.
-        TEST(RtxTextureBuilderTest, aReadingIsTakenOverABuildAndAMissIsBuilt)
+
+        /// A chunk's flattened ground is a slot the queue gave out: the description carries the
+        /// chunk the device sums into it and no bytes. The same slot described with no queue, or
+        /// by one that did not give it out this frame, is a baked name nothing can read and gets
+        /// the stand-in.
+        TEST(RtxTextureBuilderTest, aCompositeNamesItsChunkAndOneNoQueueGaveOutGetsTheStandIn)
+        {
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
+
+            Rtx::SceneDesc scene;
+            const std::array<Rtx::MaterialLayer, 2> layers{ Rtx::MaterialLayer{ .mDiffuse = 0 },
+                Rtx::MaterialLayer{ .mDiffuse = 1 } };
+            scene.textures().add(VFS::Path::NormalizedView("textures/under.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("textures/over.dds"));
+            Rtx::Material chunk;
+            chunk.mKind = Rtx::MaterialKind::Terrain;
+            chunk.mFlatten = true;
+            chunk.mLayers = scene.materials().addLayers(layers);
+            const Rtx::Index material = scene.addMaterial(chunk);
+
+            Rtx::CompositeQueue queue;
+            ASSERT_EQ(queue.advance(scene), 1u);
+            const Rtx::Index composite = scene.materials().getRows()[material].mDiffuse;
+            ASSERT_NE(composite, Rtx::sNoIndex);
+
+            SceneTextures described;
+            described.describe(scene, images, std::span(&composite, 1), &queue);
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+            EXPECT_EQ(described.getDescriptions()[0].mSlot, composite);
+            EXPECT_EQ(described.getDescriptions()[0].mCompositeOf, material);
+            EXPECT_EQ(described.getDescriptions()[0].mFormat, Rtx::TextureFormat::Rgba8Srgb);
+            EXPECT_TRUE(described.getDescriptions()[0].mBytes.empty()) << "a composite carries no bytes";
+            EXPECT_TRUE(described.getDescriptions()[0].mLevels.empty()) << "a composite is shaped by the pass";
+            EXPECT_TRUE(described.getDescriptions()[0].mNeutralShading);
+            EXPECT_EQ(described.getUnreadable(), 0u);
+
+            queue.releaseFinished();
+            described.describe(scene, images, std::span(&composite, 1), &queue);
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+            EXPECT_EQ(described.getDescriptions()[0].mCompositeOf, Rtx::sNoIndex);
+            EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
+            EXPECT_EQ(described.getUnreadable(), 1u);
+        }
+
+        /// A file that carried one level is described as that level and nothing more: the chain is
+        /// the device's to make, `mipchain.comp`, and a describe reads no texel for it.
+        TEST(RtxTextureBuilderTest, aFileWithoutAChainIsDescribedAsItsOneLevel)
         {
             constexpr VFS::Path::NormalizedView path("textures/tx_read.dds");
 
-            // Four by four, one level, so the builder has a chain to build and the reading has one to
-            // carry: 4x4, 2x2 and 1x1.
             osg::ref_ptr<osg::Image> image = new osg::Image;
             image->setFileName(std::string(path.value()));
             image->allocateImage(4, 4, 1, GL_RGBA, GL_UNSIGNED_BYTE);
@@ -296,38 +337,14 @@ namespace Rtx
             Rtx::SceneDesc scene;
             Testing::addModel(scene, path);
 
-            // What the static ring answers: one image, read ahead of the frame and held.
-            PreparedTexture texture;
-            texture.mImage = image;
-            std::vector<Rtx::MipLevel> levels;
-            texture.mChain.build(describeImage(*image, levels));
-            ASSERT_FALSE(texture.mChain.isEmpty());
-            texture.mReadable = true;
-
-            CellHolds reading;
-            reading.holdTexture(texture);
-
-            SceneTextures taken;
-            taken.describeAll(scene, images, nullptr, &reading);
-            ASSERT_EQ(taken.getDescriptions().size(), 1u);
-            EXPECT_EQ(taken.getDescriptions()[0].mLevels.size(), 3u) << "the reading's chain, down to one texel";
-            EXPECT_EQ(taken.getDescriptions()[0].mBytes.data(), texture.mChain.describe().mBytes.data())
-                << "the reading's own bytes, not a chain built here";
-            EXPECT_FALSE(taken.getDescriptions()[0].mNeutralShading) << "a file is estimated on the device";
-
-            SceneTextures built;
-            built.describeAll(scene, images);
-            ASSERT_EQ(built.getDescriptions().size(), 1u);
-            EXPECT_EQ(built.getDescriptions()[0].mLevels.size(), 3u) << "built here, to the same chain";
-            EXPECT_NE(built.getDescriptions()[0].mBytes.data(), texture.mChain.describe().mBytes.data());
-
-            // An unreadable reading is no reading: the miss path runs and the stand-in follows.
-            texture.mReadable = false;
-            SceneTextures again;
-            again.describeAll(scene, images, nullptr, &reading);
-            EXPECT_EQ(again.getDescriptions()[0].mLevels.size(), 3u);
-            EXPECT_NE(again.getDescriptions()[0].mBytes.data(), texture.mChain.describe().mBytes.data());
+            SceneTextures described;
+            described.describeAll(scene, images);
+            ASSERT_EQ(described.getDescriptions().size(), 1u);
+            EXPECT_EQ(described.getDescriptions()[0].mLevels.size(), 1u) << "the file's own level and no chain";
+            EXPECT_TRUE(described.getDescriptions()[0].mCompleteChain) << "the chain is the device's to make";
+            EXPECT_EQ(described.getDescriptions()[0].mBytes.data(), reinterpret_cast<const std::byte*>(image->data()))
+                << "the file's own bytes, spanned and not copied";
+            EXPECT_FALSE(described.getDescriptions()[0].mNeutralShading) << "a file is estimated on the device";
         }
-
     }
 }

@@ -133,8 +133,6 @@ set(RTX_FILES
     surface.hpp
     templatewalk.cpp
     templatewalk.hpp
-    terraincomposite.cpp
-    terraincomposite.hpp
     texels.cpp
     texels.hpp
     texturebuilder.cpp
@@ -168,9 +166,11 @@ set(RTX_SHADER_HEADERS
     shaders/fogvolume.h
     shaders/gbuffer.h
     shaders/glare.h
+    shaders/ground.h
     shaders/hosttypes.h
     shaders/line.h
     shaders/look.h
+    shaders/mipchain.h
     shaders/portable.h
     shaders/probe.h
     shaders/ripple.h

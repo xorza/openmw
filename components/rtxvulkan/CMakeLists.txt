@@ -41,11 +41,13 @@ set(RTX_SHADERS
     shaders/fogdepth.rgen
     shaders/fogintegrate.comp
     shaders/fogscatter.rgen
+    shaders/groundcomposite.comp
     shaders/gui.frag
     shaders/gui.vert
     shaders/histogram.comp
     shaders/line.frag
     shaders/line.vert
+    shaders/mipchain.comp
     shaders/morph.comp
     shaders/ripplecompose.comp
     shaders/ripplestep.comp
@@ -124,6 +126,7 @@ set(RTX_SHADER_LIB
     shaders/lib/frame.glsl
     shaders/lib/froxel.glsl
     shaders/lib/geometry.glsl
+    shaders/lib/ground.glsl
     shaders/lib/hitstage.glsl
     shaders/lib/lights.glsl
     shaders/lib/medium.glsl
@@ -200,6 +203,8 @@ set(RTX_VULKAN_FILES
     graphicspipeline.hpp
     graveyard.cpp
     graveyard.hpp
+    groundcompositepass.cpp
+    groundcompositepass.hpp
     guipass.cpp
     guipass.hpp
     guitextures.cpp
@@ -213,6 +218,8 @@ set(RTX_VULKAN_FILES
     instance.hpp
     linepass.cpp
     linepass.hpp
+    mipchainpass.cpp
+    mipchainpass.hpp
     memory.cpp
     memory.hpp
     owned.hpp

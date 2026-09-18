@@ -8,14 +8,18 @@
 
 #include <components/rtx/contract.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/mipchain.hpp>
 #include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/ground.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/shadingmap.h>
 
 #include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
+#include "groundcompositepass.hpp"
 #include "imageuse.hpp"
+#include "mipchainpass.hpp"
 #include "shadingpass.hpp"
 #include "spritelightpass.hpp"
 
@@ -58,6 +62,36 @@ namespace Rtx
         /// What a map costs in the accounting `Texture::getBytes` reports.
         constexpr std::size_t sShadingBytes
             = std::size_t{ Shaders::SHADING_EXTENT } * Shaders::SHADING_EXTENT * sizeof(std::uint16_t);
+
+        /// Four bytes a texel over every level of a loose chain: a third again over the finest.
+        std::size_t chainBytes(const Image& chain)
+        {
+            std::size_t texels = 0;
+            for (std::uint32_t level = 0; level < chain.getMipLevels(); ++level)
+                texels += std::size_t{ chain.getWidthAt(level) } * chain.getHeightAt(level);
+            return texels * 4;
+        }
+
+        /// `format` with its transfer curve taken off: the same bytes, read as the bytes they are.
+        /// Every format this uploads has such a twin, in the same compatibility class.
+        VkFormat withoutCurve(const VkFormat format)
+        {
+            switch (format)
+            {
+                case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+                    return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
+                case VK_FORMAT_BC2_SRGB_BLOCK:
+                    return VK_FORMAT_BC2_UNORM_BLOCK;
+                case VK_FORMAT_BC3_SRGB_BLOCK:
+                    return VK_FORMAT_BC3_UNORM_BLOCK;
+                case VK_FORMAT_R8G8B8A8_SRGB:
+                    return VK_FORMAT_R8G8B8A8_UNORM;
+                case VK_FORMAT_B8G8R8A8_SRGB:
+                    return VK_FORMAT_B8G8R8A8_UNORM;
+                default:
+                    return format;
+            }
+        }
 
         /// The two arrays the set holds: the textures, and their shading maps at the same slots.
         constexpr std::uint32_t sTextureBinding = 0;
@@ -112,14 +146,12 @@ namespace Rtx
         throw Error("a texture format this renderer does not upload");
     }
 
-    Texture::Texture(const Device& device, Batch& batch, const ShadingPass& shading, const VkSampler sampler,
+    Texture::Texture(const Device& device, Batch& batch, const TexturePasses& passes, const VkSampler sampler,
         const TextureData& data, std::string_view name, std::vector<VkBufferImageCopy>& regions)
     {
         assert(!data.mLevels.empty());
 
         const auto levels = static_cast<std::uint32_t>(data.mLevels.size());
-        mImage = Image(device, data.mWidth, data.mHeight, toVulkanFormat(data.mFormat),
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, levels);
 
         // Every level in one submit: the levels are already contiguous in the source, so this is one
         // copy per level out of one buffer rather than one upload per level.
@@ -132,19 +164,49 @@ namespace Rtx
                 .imageExtent = { data.mLevels[level].mWidth, data.mLevels[level].mHeight, 1 },
             });
 
-        uploadImage(batch, mImage, data.mBytes, regions);
+        if (!data.mCompleteChain)
+        {
+            mImage = Image(device, data.mWidth, data.mHeight, toVulkanFormat(data.mFormat),
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, levels);
+            uploadImage(batch, mImage, data.mBytes, regions);
+            mBytes = data.mBytes.size();
+        }
+        else
+        {
+            assert(MipChain::wantedFor(data) && "a chain completed for a file that has one");
+
+            // The file's one level, uploaded as the bytes it holds, in a format with no curve under
+            // it so that the chain's first dispatch fetches those bytes and not the light behind
+            // them; gone with the batch, because the chain is what the trace samples.
+            Image upload(device, data.mWidth, data.mHeight, withoutCurve(toVulkanFormat(data.mFormat)),
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, 1);
+            uploadImage(batch, upload, data.mBytes, regions);
+
+            // Four bytes a texel down to one texel, with the file's own curve over the sampler's
+            // read and none over the dispatch's store — `MipChain` says why the chain is loose.
+            const bool encoded = isSrgb(data.mFormat);
+            mImage = Image(device, data.mWidth, data.mHeight,
+                encoded ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, levelsTo1x1(data.mWidth, data.mHeight),
+                1, encoded ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_UNDEFINED);
+            passes.mChain.record(batch.getCommands(), upload, sampler, mImage, encoded);
+            batch.keep(std::move(upload));
+
+            mBytes = chainBytes(mImage);
+        }
+
         mWrap = data.mWrap;
 
-        // Estimated off the texture just uploaded, by a dispatch behind the copy, or cleared to
-        // the neutral factor where nothing is to be estimated — `TextureData::mNeutralShading`.
+        // Estimated off the texture just made, by a dispatch behind it, or cleared to the neutral
+        // factor where nothing is to be estimated — `TextureData::mNeutralShading`.
         mShading = makeShadingMap(device, batch, name, data.mNeutralShading);
         if (!data.mNeutralShading)
-            shading.record(batch.getCommands(), mImage, sampler, mShading, data);
+            passes.mShading.record(batch.getCommands(), mImage, sampler, mShading, data);
 
-        mBytes = data.mBytes.size() + sShadingBytes;
+        mBytes += sShadingBytes;
     }
 
-    Texture::Texture(const Device& device, Batch& batch, const SpriteLightPass& bake, const VkSampler sampler,
+    Texture::Texture(const Device& device, Batch& batch, const TexturePasses& passes, const VkSampler sampler,
         const Texture& source, std::string_view name)
     {
         assert(!source.isEmpty());
@@ -152,7 +214,7 @@ namespace Rtx
         const Image& from = source.mImage;
         mImage = Image(device, from.getWidth(), from.getHeight(), VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, from.getMipLevels());
-        bake.record(batch.getCommands(), from, sampler, mImage);
+        passes.mBake.record(batch.getCommands(), from, sampler, mImage);
 
         // Clamped, because a bake is one image whose coordinates run edge to edge — what
         // `TextureTable::addBaked` says of its row.
@@ -161,11 +223,29 @@ namespace Rtx
         // Neutral, because nothing divides a bake by a map, and the array binds one at every slot.
         mShading = makeShadingMap(device, batch, name, true);
 
-        // Four bytes a texel over every level: a third again over the finest, as a chain is.
-        std::size_t texels = 0;
-        for (std::uint32_t level = 0; level < from.getMipLevels(); ++level)
-            texels += std::size_t{ from.getWidthAt(level) } * from.getHeightAt(level);
-        mBytes = texels * 4 + sShadingBytes;
+        mBytes = chainBytes(mImage) + sShadingBytes;
+    }
+
+    Texture::Texture(const Device& device, Batch& batch, std::string_view name)
+    {
+        // A chain to one texel, which the bake blits down from the level it writes; both transfer
+        // usages for that blit, and the `UNORM` view for the store.
+        constexpr std::uint32_t extent = Shaders::GROUND_COMPOSITE_EXTENT;
+        mImage = Image(device, extent, extent, VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            name, levelsTo1x1(extent, extent), 1, VK_FORMAT_R8G8B8A8_UNORM);
+
+        // Clamped, because a composite is one image whose coordinates run edge to edge — what
+        // `TextureTable::addBaked` says of its row.
+        mWrap = TextureWrap::Clamp;
+
+        // Neutral, because the light painted into each ground texture came off per tile in the
+        // bake, which is the only place the tiling is known; an estimate off the composite would
+        // take it off twice.
+        mShading = makeShadingMap(device, batch, name, true);
+
+        mBytes = chainBytes(mImage) + sShadingBytes;
     }
 
     SetLayout TextureArray::describeLayout(const Device& device)
@@ -187,11 +267,10 @@ namespace Rtx
             device, sBindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
     }
 
-    TextureArray::TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const ShadingPass& shading,
-        const SpriteLightPass& bake, const std::uint32_t slots, std::span<const TextureData> textures)
+    TextureArray::TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const TexturePasses& passes,
+        const std::uint32_t slots, std::span<const TextureData> textures)
         : mDevice(device)
-        , mShading(shading)
-        , mBake(bake)
+        , mPasses(passes)
         , mSamplers{ makeContentSampler(device, "textures repeating", TextureWrap::Repeat),
             makeContentSampler(device, "textures clamped along s", TextureWrap::ClampS),
             makeContentSampler(device, "textures clamped along t", TextureWrap::ClampT),
@@ -256,9 +335,14 @@ namespace Rtx
 
         // What the slot held is buried and not destroyed: its descriptor is the one a frame in
         // flight bound, and it stays valid until the timeline says nothing reads it.
-        if (texture.mBakedFrom == sNoIndex)
+        if (texture.mCompositeOf != sNoIndex)
+        {
+            mDevice.getGraveyard().replace(mTextures[texture.mSlot], Texture(mDevice, batch, name));
+            mPendingComposites.push_back(PendingComposite{ .mSlot = texture.mSlot, .mMaterial = texture.mCompositeOf });
+        }
+        else if (texture.mBakedFrom == sNoIndex)
             mDevice.getGraveyard().replace(
-                mTextures[texture.mSlot], Texture(mDevice, batch, mShading, sampler, texture, name, mRegionScratch));
+                mTextures[texture.mSlot], Texture(mDevice, batch, mPasses, sampler, texture, name, mRegionScratch));
         else
         {
             // The source stands: `SceneTextures` names one only where the table holds it live, a
@@ -266,8 +350,8 @@ namespace Rtx
             // every bake. A bake of a slot that holds nothing is a contract broken and not content.
             contract(texture.mBakedFrom < mTextures.size() && !mTextures[texture.mBakedFrom].isEmpty(),
                 "a sprite light bake names a source that does not stand");
-            mDevice.getGraveyard().replace(
-                mTextures[texture.mSlot], Texture(mDevice, batch, mBake, sampler, mTextures[texture.mBakedFrom], name));
+            mDevice.getGraveyard().replace(mTextures[texture.mSlot],
+                Texture(mDevice, batch, mPasses, sampler, mTextures[texture.mBakedFrom], name));
         }
 
         for (SlotSet& owed : mOwed.live())
@@ -320,6 +404,36 @@ namespace Rtx
         updateSets(mDevice, mWriteScratch);
 
         owed.clear();
+    }
+
+    bool TextureArray::bakeComposites(const VkCommandBuffer commands, const GroundCompositePass& pass,
+        const FrameSlot slot, const Shaders::GpuTables& tables)
+    {
+        if (mPendingComposites.empty())
+            return false;
+
+        bool baked = false;
+        const VkDescriptorSet set = getSet(slot);
+        for (const PendingComposite& pending : mPendingComposites)
+        {
+            // Arrived and since dropped, before any placement baked it: the slot holds nothing,
+            // and a bake of nothing is nothing to record.
+            const Texture& held = mTextures[pending.mSlot];
+            if (held.isEmpty())
+                continue;
+
+            pass.record(commands, set, held.getImage(),
+                Shaders::GroundCompositeConstants{
+                    .mMaterials = tables.mMaterials,
+                    .mLayers = tables.mLayers,
+                    .mMasks = tables.mMasks,
+                    .mMaterial = pending.mMaterial,
+                });
+            baked = true;
+        }
+
+        mPendingComposites.clear();
+        return baked;
     }
 
     void TextureArray::drop(std::span<const std::uint32_t> slots)

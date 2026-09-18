@@ -10,9 +10,7 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "mipchain.hpp"
 #include "runs.hpp"
-#include "scratch.hpp"
 #include "texturedata.hpp"
 
 namespace Resource
@@ -22,14 +20,14 @@ namespace Resource
 
 namespace Rtx
 {
-    class CellHolds;
     class CompositeQueue;
     class SceneDesc;
 
     /// Describes one image for a backend's uploader without copying a byte of it. Levels are
     /// appended to `levels`, and the returned description spans the ones it added, so `levels`
-    /// must not grow again while the description is alive. The levels are the file's own;
-    /// `MipChain` builds the rest. Throws for a format Morrowind does not produce.
+    /// must not grow again while the description is alive. The levels are the file's own; a
+    /// backend completes a chain the file did not carry, on the device. Throws for a format
+    /// Morrowind does not produce.
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
 
     /// The image at `path`, or null where nothing could be read there — null and not an exception,
@@ -40,7 +38,7 @@ namespace Rtx
     /// Every live texture a scene names, described, and the storage those descriptions point into.
     /// Each description carries the slot it belongs to and there is not one per slot: a slot the
     /// scene has given back is passed over. `TextureData` carries spans rather than bytes, so this
-    /// owns the decoded images and the level table while a backend reads them, and knows no
+    /// holds the images and owns the level table while a backend reads them, and knows no
     /// graphics API. Non-copyable because the descriptions point into its own vectors; held for
     /// the life of its owner and refilled per arrival, so every buffer settles at the busiest cell.
     class SceneTextures
@@ -55,20 +53,16 @@ namespace Rtx
 
         /// Resolves and describes every texture `scene` still names, in table order, for a backend
         /// building an array from nothing. The free slots are not among them.
-        /// @param composites where a chunk's flattened ground comes from, or null for a caller
-        ///        that bakes none. A terrain slot the queue has no composite for yet is passed over.
-        /// @param readings the cell ring's holds, where images read ahead of the frame are found
-        ///        by the image — a lookup instead of every texel for the chain a file did not
-        ///        carry — or null for a caller with none: a doll, a map tile, the harness's own
-        ///        world.
-        void describeAll(const SceneDesc& scene, Resource::ImageManager& images,
-            const CompositeQueue* composites = nullptr, const CellHolds* readings = nullptr);
+        /// @param composites which slots are chunks' flattened ground, or null for a caller that
+        ///        flattens none. A terrain slot the queue did not give out is passed over.
+        void describeAll(
+            const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
 
-        /// The same, for `slots` and nothing else — what stops a texture being decoded twice. A
+        /// The same, for `slots` and nothing else — what stops a texture being described twice. A
         /// list and not an offset, because a slot a departing cell freed is taken over wherever it
         /// sits.
         void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-            const CompositeQueue* composites = nullptr, const CellHolds* readings = nullptr);
+            const CompositeQueue* composites = nullptr);
 
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }
@@ -106,11 +100,6 @@ namespace Rtx
         std::vector<MipLevel> mLevels;
 
         std::vector<TextureData> mDescriptions;
-
-        /// The levels the files did not carry, for the few textures that carry none — a hundred
-        /// and eighty-seven of Morrowind's five thousand. A pool of the chains that were built and
-        /// not one entry a texture, because an entry that ever held a 512-square chain keeps 1.4 MB.
-        Pool<MipChain> mChains;
 
         /// Every slot of the scene's table, which is what a rebuild asks about. Held rather than
         /// built, because a rebuild is a fifth of a second and none of it should be this.

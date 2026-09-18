@@ -10,6 +10,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/shaders/scene.h>
 #include <components/rtx/slots.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/texturewrap.hpp>
@@ -24,6 +25,8 @@ namespace Rtx
 {
     class Batch;
     class Device;
+    class GroundCompositePass;
+    class MipChainPass;
     class ShadingPass;
     class SpriteLightPass;
 
@@ -31,6 +34,16 @@ namespace Rtx
     /// display-encoded bytes and the hardware converts them in the filter. Throws for a format
     /// `describeImage` refuses, because one arriving here is a contract broken and not a file.
     VkFormat toVulkanFormat(TextureFormat format);
+
+    /// The three dispatches a texture is made with as it arrives, which the renderer owns and
+    /// every array is handed together: the chain a file did not carry, the light painted into it,
+    /// and a sprite's own light bake.
+    struct TexturePasses
+    {
+        const MipChainPass& mChain;
+        const ShadingPass& mShading;
+        const SpriteLightPass& mBake;
+    };
 
     /// A sampled image on the GPU, the levels a content file brought for it, and the light the
     /// file already had painted into it — two `Image`s: the first uploaded, the second the shading
@@ -42,20 +55,30 @@ namespace Rtx
         /// A slot with nothing in it yet, which is what the array holds while it is being filled.
         Texture() = default;
 
-        /// @param shading what estimates the map, or fills it with the neutral one where `data`
-        ///        says the texture is not to be estimated.
-        /// @param sampler the sampler the array binds this texture through, which the estimate is
-        ///        handed the texture with.
+        /// A texture from its file's bytes: uploaded level by level where the file carried a
+        /// chain, and where it carried one level of more than a texel, uploaded once and the chain
+        /// made by `passes.mChain` from that upload — `MipChain` says which files and why — into
+        /// a four-byte image of the same curve, the upload buried under the batch.
+        ///
+        /// @param passes what makes the chain and estimates the map, or fills the map with the
+        ///        neutral one where `data` says the texture is not to be estimated.
+        /// @param sampler the sampler the array binds this texture through, which the dispatches
+        ///        are handed the texture with.
         /// @param name what a capture calls it. Empty where the build names no objects.
         /// @param regions the caller's scratch, cleared and refilled here with one copy per level.
-        Texture(const Device& device, Batch& batch, const ShadingPass& shading, VkSampler sampler,
+        Texture(const Device& device, Batch& batch, const TexturePasses& passes, VkSampler sampler,
             const TextureData& data, std::string_view name, std::vector<VkBufferImageCopy>& regions);
 
-        /// A sprite's light bake: shaped like `source`, made from its alpha by `bake` in the same
-        /// batch, under the neutral map. `source` must stand, and its upload must be recorded
-        /// ahead of this, in this batch or in one already submitted.
-        Texture(const Device& device, Batch& batch, const SpriteLightPass& bake, VkSampler sampler,
+        /// A sprite's light bake: shaped like `source`, made from its alpha by `passes.mBake` in
+        /// the same batch, under the neutral map. `source` must stand, and its upload must be
+        /// recorded ahead of this, in this batch or in one already submitted.
+        Texture(const Device& device, Batch& batch, const TexturePasses& passes, VkSampler sampler,
             const Texture& source, std::string_view name);
+
+        /// A chunk's flattened ground, stood empty under the neutral map: `GROUND_COMPOSITE_EXTENT`
+        /// square, display-encoded, with a chain to one texel and a `UNORM` view a dispatch stores
+        /// through. Written by `TextureArray::bakeComposites`, in the placement after it arrives.
+        Texture(const Device& device, Batch& batch, std::string_view name);
         Texture(Texture&&) noexcept = default;
         Texture& operator=(Texture&&) noexcept = default;
 
@@ -74,8 +97,8 @@ namespace Rtx
             return mShading.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
 
-        // Read by the tests and by nothing else: the interface's pass draws with one, and the two
-        // passes' tests hand the image to a pass over a chain of their own.
+        // Read by the tests, the interface's pass, which draws with one, and the array, which
+        // hands a composite's image to the bake.
         VkImageView getView() const { return mImage.getView(); }
         const Image& getImage() const { return mImage; }
 
@@ -126,10 +149,9 @@ namespace Rtx
         ///
         /// @param layout what `describeLayout` made: every array is shaped by the one the renderer
         ///        keeps, which is what lets one pass be handed any scene's set.
-        /// @param shading the renderer's, which every texture's map is made by as it arrives.
-        /// @param bake the renderer's, which every sprite's light bake is made by as it arrives.
-        TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const ShadingPass& shading,
-            const SpriteLightPass& bake, std::uint32_t slots, std::span<const TextureData> textures);
+        /// @param passes the renderer's, which every texture is made with as it arrives.
+        TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const TexturePasses& passes,
+            std::uint32_t slots, std::span<const TextureData> textures);
 
         /// The shape of every set an array here holds: two bindless arrays, partially bound and
         /// updated after bind. Made once by whoever owns the passes that name it.
@@ -147,6 +169,14 @@ namespace Rtx
         /// `finishReads`: the bindings allow an update after a bind, but not of a descriptor a
         /// pending submit samples, and a trace samples whichever slots its materials name.
         void sync(FrameSlot slot);
+
+        /// Records the bake of every composite that arrived since the last call, into the
+        /// composites themselves, reading `slot`'s set and the tables `tables` names — the copy
+        /// the placement recording this has just written. After `sync(slot)`, so the set holds the
+        /// layers' textures and the composites alike. True where a bake was recorded, because a
+        /// placement that recorded nothing else is not submitted.
+        bool bakeComposites(VkCommandBuffer commands, const GroundCompositePass& pass, FrameSlot slot,
+            const Shaders::GpuTables& tables);
 
         /// Waits until nothing on the queue binds `slot`'s set, ahead of the `sync` that writes it.
         void finishReads(FrameSlot slot) const;
@@ -184,8 +214,7 @@ namespace Rtx
         void reserveSlot(std::uint32_t slot);
 
         const Device& mDevice;
-        const ShadingPass& mShading;
-        const SpriteLightPass& mBake;
+        const TexturePasses& mPasses;
 
         /// Cleared and refilled by every describe and every write, never freed. Each settles at the
         /// busiest arrival so far, and an arrival is the frame with the least room to grow one.
@@ -212,5 +241,14 @@ namespace Rtx
 
         /// The slots each set has yet to be told, each once however often it was written.
         PerSlot<SlotSet> mOwed;
+
+        /// Which composites arrived and stand empty, and whose ground each is: what the next
+        /// placement bakes. Cleared by `bakeComposites` and never freed.
+        struct PendingComposite
+        {
+            Index mSlot;
+            Index mMaterial;
+        };
+        std::vector<PendingComposite> mPendingComposites;
     };
 }

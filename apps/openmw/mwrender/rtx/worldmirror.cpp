@@ -254,7 +254,6 @@ namespace MWRender
                 .mScene = mScene,
                 .mImages = *mResources->getImageManager(),
                 .mComposites = &mComposites,
-                .mReadings = &mRing.getHolds(),
                 .mSpend = &spend });
     }
 

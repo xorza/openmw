@@ -145,13 +145,14 @@ namespace RtxTool
                         "  materials:            {}\n"
                         "  textures:             {}\n"
                         "  triangles:            {}\n"
-                        "  vertex+index bytes:   {} KiB\n"
+                        "  vertex+index bytes:   {} KiB, of which vertex colours {} KiB\n"
                         "  handed over:          {}\n"
                         "  laid out as:          {}\n",
                 scene.placements().getCounts().mPlaced, stats.mDistantStatics, stats.mGroundCells,
                 scene.meshes().getRows().size(), scene.materials().getRows().size(), scene.textures().getRows().size(),
                 scene.meshes().getTriangleCount(), scene.meshes().getGeometryBytes() / 1024,
-                Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
+                scene.meshes().getColours().size() * sizeof(osg::Vec3f) / 1024, Rtx::spellHash(Rtx::digestScene(scene)),
+                Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
         for (std::size_t at = 0; at < stats.mFormats.mMet.size(); ++at)
         {

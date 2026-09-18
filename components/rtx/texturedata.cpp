@@ -1,7 +1,6 @@
 #include "texturedata.hpp"
 
 #include <algorithm>
-#include <bit>
 
 namespace Rtx
 {
@@ -14,7 +13,7 @@ namespace Rtx
 
         // Exactly, because a bake that grew this vector as it walked reached the heap once a level
         // — which is what `aScratchTheCallerKeepsLeavesABakeNothingButItsAnswerToAllocate` counts.
-        mLevels.reserve(std::bit_width(std::max(width, height)));
+        mLevels.reserve(levelsTo1x1(width, height));
 
         std::size_t bytes = 0;
         for (MipLevel level{ .mOffset = 0, .mWidth = width, .mHeight = height };;)

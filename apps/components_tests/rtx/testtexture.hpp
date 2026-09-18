@@ -67,6 +67,30 @@ namespace Rtx::Testing
         }
     };
 
+    /// A texture whose every mip is one flat colour — level `i` is `40 + 30i`, evenly spaced
+    /// and none of them black.
+    ///
+    /// **The byte a ray comes back with reads out the level it sampled**, and because the levels
+    /// are evenly spaced in value, `textureLod` blending two of them lands exactly on
+    /// `40 + 30 * lod`. A *fractional* level is readable that way, which is what makes a cone's
+    /// width measurable rather than merely orderable. Flat colours also mean the answer does not
+    /// depend on where in the texture the cone landed.
+    inline void paintMipLadder(TestTexture& texture)
+    {
+        constexpr std::uint32_t extent = 64;
+        constexpr std::uint32_t levels = 7;
+
+        for (std::uint32_t level = 0; level < levels; ++level)
+        {
+            const std::uint32_t side = extent >> level;
+            texture.mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), side, side });
+            texture.mBytes.insert(
+                texture.mBytes.end(), std::size_t{ side } * side * 4, static_cast<std::uint8_t>(40 + 30 * level));
+        }
+
+        texture.describe(extent, extent, "mip ladder");
+    }
+
     /// A texture of exactly these texels at `extent` square: one level, uncompressed and not
     /// display-encoded, so what comes back out is what went in.
     ///

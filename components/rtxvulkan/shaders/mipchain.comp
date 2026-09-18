@@ -1,0 +1,82 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+// The levels a texture needs, built on the device where its file carried none.
+//
+// **`Rtx::MipChain`, on the device.** A hundred and eighty-seven of Morrowind's textures ship one
+// level, the rain among them, and read at their finest a drop's peak alpha is 0.400 where the
+// levels below hold 0.283, 0.129 and 0.068 — a storm as hard white marks that flicker. Made on the
+// host this decoded every texel of the finest level and box-filtered every level under it on the
+// cell ring's worker, and uploaded the lot loose; here the file's own bytes are uploaded as they
+// are, in whichever block format they came in, and one dispatch a level makes the rest.
+//
+// **The finest level is fetched and not filtered**, texel for texel out of the upload through a
+// view with no curve under it, so the bytes a file holds are the bytes the chain's first level
+// holds. **Every other level is the box over the one above it, with each colour weighed by the
+// alpha carrying it**: a punch-through block stores black where nothing was painted, and an even
+// mean draws a dark rim round every leaf card and every raindrop one level down. In light and not
+// in bytes, because the mean of two stored bytes is not the byte of their mean; the alpha is
+// linear in every format and is the even mean of its own. Where nothing in a quad was painted
+// there is no weight to divide by, and the even mean is what is left — the host's rule, texel for
+// texel, so that `RtxMipChainPassTest` can hold the two to a byte.
+
+#include "colour.h"
+#include "mipchain.h"
+
+layout(local_size_x = MIP_CHAIN_WORKGROUP, local_size_y = MIP_CHAIN_WORKGROUP) in;
+
+/// The upload: the file's finest level, in its own format read as `UNORM`, so a fetch is the
+/// stored bytes and not the light behind them. The sampler is whichever the array binds, and is
+/// not read.
+layout(set = 0, binding = 0) uniform sampler2D source;
+
+/// The level above the one written, through the chain's own `UNORM` view — the bytes as stored,
+/// decoded here where the format says to. Bound to the level written for the first dispatch,
+/// which reads it not at all.
+layout(set = 0, binding = 1, rgba8) uniform readonly image2D above;
+
+/// The level this dispatch writes.
+layout(set = 0, binding = 2, rgba8) uniform writeonly image2D into;
+
+layout(push_constant, scalar) uniform Push
+{
+    MipChainConstants level;
+};
+
+void main()
+{
+    const uint x = gl_GlobalInvocationID.x;
+    const uint y = gl_GlobalInvocationID.y;
+    if (x >= level.mWidth || y >= level.mHeight)
+        return;
+
+    if (level.mLevel == 0u)
+    {
+        imageStore(into, ivec2(x, y), texelFetch(source, ivec2(x, y), 0));
+        return;
+    }
+
+    // The level above's last texel serves twice along an odd edge, which is how the host halves
+    // an odd extent: the quad is 2x..2x+1, held inside the level.
+    const ivec2 last = imageSize(above) - 1;
+    const bool encoded = level.mEncoded != 0u;
+
+    vec3 weighed = vec3(0.0);
+    vec3 even = vec3(0.0);
+    float painted = 0.0;
+    for (int dy = 0; dy < 2; ++dy)
+        for (int dx = 0; dx < 2; ++dx)
+        {
+            const ivec2 at = min(ivec2(2u * x + uint(dx), 2u * y + uint(dy)), last);
+            const vec4 texel = imageLoad(above, at);
+            const vec3 colour = encoded ? decodeSrgb(texel.rgb) : texel.rgb;
+
+            even += colour;
+            weighed += colour * texel.a;
+            painted += texel.a;
+        }
+
+    const vec3 mean = painted > 0.0 ? weighed / painted : even / 4.0;
+    imageStore(into, ivec2(x, y), vec4(encoded ? encodeSrgb(mean) : mean, painted / 4.0));
+}

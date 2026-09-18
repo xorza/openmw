@@ -13,6 +13,16 @@
   ten identical to none of four. The scene columns repeat on every pair, which is why this is a
   report and not a gate.
 
+2026-09-18  39e43777ad+  — twenty-eight pairs of `one-cell-walk`, six seconds, build-debug, taken
+  over the ground composite and the mip chain moved onto the device (`GroundCompositePass` in
+  the placement the chunk's slot is given in, `MipChainPass` at the texture's arrival):
+  twenty-five with the exposure measured and three with `--exposure=1`. Twenty-six identical
+  over every column. The two that differed were the pairs of the first gate run after each of
+  the two rebuilds — 21 of 360 pictures scattered from frame 223, and 59 from frame 13, every
+  scene column the same — and the gate run again with nothing to build was identical both
+  times, as were two pairs from a cold pipeline cache and two straight after `check` under
+  synchronization validation. `.notes/ISSUES.md` carries it.
+
 2026-09-17  66194d138f+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
   measured, two frames in flight at every submit, the picture read off the ring's own memory
   (`FrameRing::pictureOf`, one buffer more than there are slots). Identical over every pair,

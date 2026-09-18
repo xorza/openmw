@@ -1029,5 +1029,115 @@ namespace Rtx::Testing
             EXPECT_EQ(at(green, 63)[1], 255) << "and its near half, half a coordinate back";
             EXPECT_EQ(at(green, 63)[2], 0);
         }
+
+        /// A chunk flattened on the device is the ground its stack sums, whichever way it arrived.
+        ///
+        /// Two solid layers at constant weights, a quarter of red and three quarters of green, so
+        /// the composite is one colour at every level and the trace's choice of level cannot
+        /// enter: the stack gives (0.25, 0.75) linear, encoded 1.055 * 0.25^(1/2.4) - 0.055 =
+        /// 0.53711, or 137, and 1.055 * 0.75^(1/2.4) - 0.055 = 0.88083, or 225. What the bake
+        /// sums, and at which level, is `RtxGroundCompositePassTest`'s; this is that a chunk
+        /// given its slot draws the composite and not its stack, by both roads a composite
+        /// arrives on — a world built from nothing, whose bake is the build's own batch, and an
+        /// arrival into a standing world, whose bake is the placement after it — a placement that
+        /// records nothing else, because the world stands still, and is submitted for the bake.
+        TEST_F(RtxVisibilityTest, aFlattenedChunkDrawsItsCompositeHoweverItArrived)
+        {
+            constexpr std::uint32_t size = 64;
+
+            const std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
+            const std::array<std::uint8_t, 4> greenTexel{ 0, 255, 0, 255 };
+            const std::array positions = cardAt(0.0f);
+            constexpr std::array<float, 1> quarter{ 0.25f };
+            constexpr std::array<float, 1> threeQuarters{ 0.75f };
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mShowAlbedo = 1u;
+
+            SceneDesc scene;
+            const Index mesh
+                = scene.addMesh(MeshArrays{ .mPositions = positions, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+            scene.textures().add(VFS::Path::NormalizedView("red.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("green.dds"));
+
+            const std::array layers{
+                MaterialLayer{
+                    .mDiffuse = 0,
+                    .mMask = scene.materials().addMask(quarter),
+                    .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 },
+                },
+                MaterialLayer{
+                    .mDiffuse = 1,
+                    .mMask = scene.materials().addMask(threeQuarters),
+                    .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 },
+                },
+            };
+
+            Material material;
+            material.mKind = MaterialKind::Terrain;
+            material.mLayers = scene.materials().addLayers(layers);
+            const Index chunk = scene.addMaterial(material);
+            scene.addInstance(
+                MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = chunk });
+
+            const auto everyPixelIs = [&](const std::vector<std::uint8_t>& pixels, const char* road) {
+                ASSERT_EQ(pixels.size(), std::size_t{ size } * size * 4) << road;
+                for (std::size_t at = 0; at < pixels.size(); at += 4 * 61)
+                {
+                    EXPECT_NEAR(int{ pixels[at] }, 137, 1) << road << " at pixel " << at / 4;
+                    EXPECT_NEAR(int{ pixels[at + 1] }, 225, 1) << road << " at pixel " << at / 4;
+                    EXPECT_EQ(int{ pixels[at + 2] }, 0) << road << " at pixel " << at / 4;
+                }
+            };
+
+            const std::array<TextureData, 2> stackTextures{ describeTexel(redTexel), describeTexel(greenTexel) };
+            std::vector<std::uint8_t> pixels;
+            EXPECT_EQ(countHits(scene, stackTextures, camera, size, pixels), size * size);
+            everyPixelIs(pixels, "the stack");
+
+            // Two more frames with the placement ended after each, as the uploader ends it, so
+            // both copies of the tables are written and owe nothing — the instance settles into
+            // the other copy on the first, and that write is owed back to the first copy on the
+            // second. The placement below then owes nothing but the bake: a world that stands
+            // still records no refit and no top level, and the bake has to be reason enough to
+            // submit it.
+            for (int frame = 0; frame < 2; ++frame)
+            {
+                scene.placements().advance();
+                mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
+                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+                ASSERT_TRUE(mRenderer->finishFrame().has_value());
+            }
+            scene.placements().advance();
+
+            // The chunk asks and is given its slot, as `CompositeQueue::advance` gives it: the
+            // material rewritten in place, and the slot described as the builder describes a
+            // composite — which chunk it is the ground of, and no bytes.
+            Material flattened = material;
+            flattened.mFlatten = true;
+            flattened.mDiffuse = scene.textures().addBaked("chunk/0");
+            scene.setMaterial(chunk, flattened);
+            const TextureData composite{
+                .mSlot = flattened.mDiffuse,
+                .mFormat = TextureFormat::Rgba8Srgb,
+                .mCompositeOf = chunk,
+                .mNeutralShading = true,
+            };
+
+            // Into the standing world: the arrival stands the composite empty, and the placement
+            // `extendScene` ends in bakes it.
+            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&composite, 1));
+            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            ASSERT_TRUE(mRenderer->finishFrame().has_value());
+            encodeLastFrame(size, pixels);
+            everyPixelIs(pixels, "arrived into a standing world");
+
+            // And from nothing, where there is no placement before the first trace.
+            const std::array<TextureData, 3> flattenedTextures{ describeTexel(redTexel), describeTexel(greenTexel),
+                composite };
+            EXPECT_EQ(countHits(scene, flattenedTextures, camera, size, pixels), size * size);
+            everyPixelIs(pixels, "built from nothing");
+        }
     }
 }

@@ -132,8 +132,11 @@ namespace Rtx
         , mRipples(mDevice, options.mShaderDirectory)
         , mFog(mDevice)
         , mSkinPass(mDevice, options.mShaderDirectory)
+        , mMipChainPass(mDevice, options.mShaderDirectory)
         , mShadingPass(mDevice, options.mShaderDirectory)
         , mSpriteLightPass(mDevice, options.mShaderDirectory)
+        , mTexturePasses{ mMipChainPass, mShadingPass, mSpriteLightPass }
+        , mGroundPass(mDevice, options.mShaderDirectory, mTextureLayout.get())
         , mNoSprites(Buffer::hostWritten(
               mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "no sprites"))
         , mViewCounts(
@@ -417,7 +420,7 @@ namespace Rtx
         // of being logged on the way past.
         Batch setup(mDevice.getPool());
         held = std::make_unique<DeviceScene>(
-            mDevice, setup, mTextureLayout, mSkinPass, mShadingPass, mSpriteLightPass, scene, textures);
+            mDevice, setup, mTextureLayout, mSkinPass, mTexturePasses, mGroundPass, scene, textures);
         setup.flush();
 
         if (slot.isWorld())

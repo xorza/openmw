@@ -664,9 +664,10 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     vec3 albedo = NO_TEXTURE_ALBEDO;
 
     // **Ground that kept its stack**, which is every chunk near enough to be worth the sharpness.
-    // A chunk wide enough to be distant had the whole stack flattened into one texture in its own
-    // coordinates instead, and falls through to the single fetch below — which is what it now is.
-    // `Rtx::sCompositeFrom` is where the two swap over.
+    // A chunk outside the active grid had the whole stack flattened into one texture in its own
+    // coordinates instead, by `groundcomposite.comp` over the same sum as this, and falls through
+    // to the single fetch below — which is what it now is. `CellPlacer::wantsFlattening` is where
+    // the two swap over.
     if (layered && material.mLayerCount > 0u && material.mDiffuse == NO_TEXTURE)
     {
         // Each layer is a tiling texture masked by its own grid of weights, and the stack sums to

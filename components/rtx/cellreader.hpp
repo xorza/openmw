@@ -17,7 +17,6 @@
 #include "scratch.hpp"
 #include "slots.hpp"
 #include "templatewalk.hpp"
-#include "texturedata.hpp"
 
 namespace Rtx
 {
@@ -65,12 +64,8 @@ namespace Rtx
         /// cannot take, and holds nothing then.
         PreparedModel* readModel(VFS::Path::NormalizedView path);
 
-        /// Lends `model` every image its parts name, once each.
-        void lendTextures(PreparedModel& model);
-
-        /// The image described, read where this holds no description of it, and one more holder
-        /// counted on it. Null where the image names no file, which is an image no slot is ever
-        /// made for.
+        /// The image's reading, made where this holds none, and one more holder counted on it.
+        /// Null where the image names no file, which is an image no slot is ever made for.
         PreparedTexture* readTexture(const osg::Image& image);
 
         const Terrain::ObjectStorage& mStorage;
@@ -84,7 +79,6 @@ namespace Rtx
         // Refilled per cell, per model and per image.
         std::vector<Terrain::PagedCellRef> mRefScratch;
         std::vector<Terrain::PagedCellRef> mLitScratch;
-        std::vector<MipLevel> mLevelScratch;
 
         Spares<PreparedCell> mCells;
         Spares<PreparedModel> mModels;

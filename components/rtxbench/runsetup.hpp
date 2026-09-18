@@ -32,10 +32,9 @@ namespace Rtx
         /// fixed-step run for good.
         std::optional<float> mStep;
 
-        /// Whether each hand-over waits for the distant ground it queued and each walk for the
-        /// cell it adopts, or nothing to let the frame clock decide. Settled is what makes two
-        /// processes draw one picture; a run timing the streaming path says no
-        /// (`Rtx::CompositeQueue::setSettled`).
+        /// Whether each walk waits for the cell it adopts, or nothing to let the frame clock
+        /// decide. Settled is what makes two processes draw one picture; a run timing the
+        /// streaming path says no (`Rtx::CellRing::setSettled`).
         std::optional<bool> mSettled;
     };
 }

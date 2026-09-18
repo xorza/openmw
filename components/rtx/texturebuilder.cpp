@@ -21,11 +21,9 @@
 
 #include "compositequeue.hpp"
 #include "error.hpp"
-#include "held.hpp"
-#include "prepared.hpp"
+#include "mipchain.hpp"
 #include "scenedesc.hpp"
 #include "spritelight.hpp"
-#include "terraincomposite.hpp"
 #include "texels.hpp"
 
 namespace Rtx
@@ -99,22 +97,21 @@ namespace Rtx
         };
     }
 
-    void SceneTextures::describeAll(const SceneDesc& scene, Resource::ImageManager& images,
-        const CompositeQueue* composites, const CellHolds* readings)
+    void SceneTextures::describeAll(
+        const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites)
     {
         mEverything.resize(scene.textures().getRows().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
-        describe(scene, images, mEverything, composites, readings);
+        describe(scene, images, mEverything, composites);
     }
 
     void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-        const CompositeQueue* composites, const CellHolds* readings)
+        const CompositeQueue* composites)
     {
         mLevels.clear();
         mDescriptions.clear();
         mKept.clear();
-        mChains.reset();
         mUnreadable = 0;
 
         mKept.reserve(slots.size());
@@ -173,25 +170,9 @@ namespace Rtx
                 {
                     described = describeImage(*kept.mImage, mLevels);
 
-                    // What was read ahead of the frame is taken, and the rest read here. A
-                    // reading carries the chain the file did not have, spanning the reading's own
-                    // storage, which outlives this describe.
-                    const PreparedTexture* read = readings != nullptr ? readings->find(*kept.mImage) : nullptr;
-                    if (read != nullptr && read->mReadable)
-                    {
-                        if (!read->mChain.isEmpty())
-                            described = read->mChain.describe();
-                    }
-                    else
-                    {
-                        // What the file did not carry, built rather than done without.
-                        // `MipChain` says why almost nothing in the game needs this and why the
-                        // rain does. The pool's entry is kept only where a chain was built.
-                        MipChain& chain = mChains.next();
-                        described = MipChain::withChain(*described, chain);
-                        if (!chain.isEmpty())
-                            mChains.keep();
-                    }
+                    // What the file did not carry, the device makes. `MipChain` says why almost
+                    // nothing in the game needs this and why the rain does.
+                    described->mCompleteChain = MipChain::wantedFor(*described);
                 }
                 catch (const Error&)
                 {
@@ -206,9 +187,16 @@ namespace Rtx
                     .mNeutralShading = true,
                 };
             }
-            else if (const TerrainComposite* baked = composites != nullptr ? composites->find(kept.mSlot) : nullptr)
+            else if (const Index chunk = composites != nullptr ? composites->find(kept.mSlot) : sNoIndex;
+                     chunk != sNoIndex)
             {
-                described = baked->describe();
+                // Flattened on the device in the placement after this arrival, from the chunk's
+                // own stack: the description carries the chunk and no bytes.
+                described = TextureData{
+                    .mFormat = TextureFormat::Rgba8Srgb,
+                    .mCompositeOf = chunk,
+                    .mNeutralShading = true,
+                };
             }
 
             if (!described.has_value())

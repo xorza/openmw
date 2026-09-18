@@ -113,14 +113,9 @@ namespace MWRender
         /// texture the mirror has not seen before is read through the world's images.
         Rtx::SceneUpload hand(Rtx::Renderer& renderer, Rtx::FrameSpend& spend);
 
-        /// Whether each hand-over waits for the composites it collects, and each walk for the one
-        /// cell it adopts. `Rtx::CompositeQueue::setSettled` and `Rtx::CellRing::setSettled` say why
-        /// a run would, and what waiting costs it.
-        void setSettled(bool settled)
-        {
-            mComposites.setSettled(settled);
-            mRing.setSettled(settled);
-        }
+        /// Whether each walk waits for the one cell it adopts. `Rtx::CellRing::setSettled` says
+        /// why a run would, and what waiting costs it.
+        void setSettled(bool settled) { mRing.setSettled(settled); }
 
         /// What the game says of one reference, which the content files cannot: a script has
         /// disabled it, or enabled it again. A cleared world says it of none.
@@ -196,9 +191,10 @@ namespace MWRender
         /// The distant cells waiting for their ground to be flattened, and the thread flattening
         /// them.
         ///
-        /// **Here because only a world has ground.** A bake outlives the frame that asked for it,
-        /// so it belongs to what outlives frames rather than to the once-a-frame call — and every
-        /// picture inside the interface goes through that same call with no ground to flatten.
+        /// **Here because only a world has ground.** A chunk waits past the frame that asked for
+        /// it, so the schedule belongs to what outlives frames rather than to the once-a-frame
+        /// call — and every picture inside the interface goes through that same call with no
+        /// ground to flatten.
         Rtx::CompositeQueue mComposites;
 
         /// Where the ring's models and images are loaded from, and the pictures the hand-over

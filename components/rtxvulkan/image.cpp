@@ -1,6 +1,7 @@
 #include "image.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstring>
 #include <utility>
@@ -33,6 +34,7 @@ namespace Rtx
                     return 2;
                 case VK_FORMAT_R8G8B8A8_UNORM:
                 case VK_FORMAT_R8G8B8A8_SRGB:
+                case VK_FORMAT_B8G8R8A8_UNORM:
                 case VK_FORMAT_B8G8R8A8_SRGB:
                     return 4;
                 case VK_FORMAT_R16G16_SFLOAT:
@@ -46,8 +48,11 @@ namespace Rtx
                     return 16;
 
                 case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+                case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
                 case VK_FORMAT_BC2_SRGB_BLOCK:
+                case VK_FORMAT_BC2_UNORM_BLOCK:
                 case VK_FORMAT_BC3_SRGB_BLOCK:
+                case VK_FORMAT_BC3_UNORM_BLOCK:
                     return 0;
 
                 default:
@@ -57,7 +62,8 @@ namespace Rtx
     }
 
     Image::Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
-        VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth)
+        VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth,
+        VkFormat storageFormat)
         : mDevice(&device)
         , mWidth(width)
         , mHeight(height)
@@ -72,8 +78,26 @@ namespace Rtx
 
         const bool volume = depth > 1;
 
+        // A second format is a second view of the same bits, which the image has to be created
+        // able to give: the list is what lets the driver keep the image's own layout for both.
+        // **Extended usage, because the storage usage is the other format's.** An `SRGB` format
+        // has no storage feature, so an image of it asking for storage is refused outright — the
+        // extended-usage flag has the usage checked against every format of the list instead,
+        // and the view in the image's own format below then has to say it carries no storage.
+        const bool twoFormats = storageFormat != VK_FORMAT_UNDEFINED && storageFormat != format;
+        const std::array<VkFormat, 2> formats{ format, storageFormat };
+        const VkImageFormatListCreateInfo list{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO,
+            .viewFormatCount = 2,
+            .pViewFormats = formats.data(),
+        };
+
         const VkImageCreateInfo create{
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .pNext = twoFormats ? &list : nullptr,
+            .flags = twoFormats
+                ? VkImageCreateFlags{ VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT }
+                : VkImageCreateFlags{},
             .imageType = volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
             .format = format,
             .extent = { width, height, depth },
@@ -93,8 +117,13 @@ namespace Rtx
         checkVk(vkBindImageMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
             "vkBindImageMemory");
 
+        const VkImageViewUsageCreateInfo sampledOnly{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+            .usage = usage & ~VkImageUsageFlags{ VK_IMAGE_USAGE_STORAGE_BIT },
+        };
         const VkImageViewCreateInfo view{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = twoFormats ? &sampledOnly : nullptr,
             .image = mHandle.get(),
             .viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D,
             .format = format,
@@ -106,12 +135,14 @@ namespace Rtx
         // Only where something will write through them. A storage descriptor is what these views
         // exist for, and an image without the usage bit can have none — a chain that is only ever
         // sampled would be paying for views nothing may name.
-        if (mipLevels > 1 && (usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
+        if ((mipLevels > 1 || twoFormats) && (usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
         {
             mLevelViews.reserve(mipLevels);
             for (std::uint32_t level = 0; level < mipLevels; ++level)
             {
                 VkImageViewCreateInfo one = view;
+                one.pNext = nullptr;
+                one.format = twoFormats ? storageFormat : format;
                 one.subresourceRange.baseMipLevel = level;
                 one.subresourceRange.levelCount = 1;
                 mLevelViews.push_back(Owned<VkImageView, vkDestroyImageView>::make(

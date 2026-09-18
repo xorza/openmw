@@ -1,11 +1,8 @@
 #include "cellreader.hpp"
 
-#include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <vector>
 
 #include <osg/Matrixf>
@@ -20,8 +17,6 @@
 #include "error.hpp"
 #include "lightbuilder.hpp"
 #include "residency.hpp"
-#include "surface.hpp"
-#include "texturebuilder.hpp"
 
 namespace Rtx
 {
@@ -40,9 +35,6 @@ namespace Rtx
 
             return transform;
         }
-
-        /// The two images a material can name, in the roles the frame's describe takes them by.
-        constexpr std::array<TextureRole, 2> sRoles{ TextureRole::Diffuse, TextureRole::Emissive };
 
     }
 
@@ -70,53 +62,12 @@ namespace Rtx
         PreparedTexture& texture = mTextures.take([&](PreparedTexture& into) {
             into.mImage = &image;
             into.mPath = VFS::Path::Normalized(image.getFileName());
-
-            // What the frame's describe would have done, done here: a file that carried no chain
-            // gets one built, which reads every texel and is what the frame then finds ready. A
-            // format this renderer does not upload is recorded as such and drawn as the stand-in
-            // there, as it would be without this.
-            try
-            {
-                mLevelScratch.clear();
-                MipChain::withChain(describeImage(image, mLevelScratch), into.mChain);
-
-                into.mReadable = true;
-            }
-            catch (const Error&)
-            {
-                into.mReadable = false;
-            }
         });
 
         mTextures.lend(texture);
         mByImage.insert(&texture);
 
         return &texture;
-    }
-
-    void CellReader::lendTextures(PreparedModel& model)
-    {
-        for (const PreparedPart& part : model.mParts)
-        {
-            if (!part.mMaterial.mDescribed.has_value())
-                continue;
-
-            for (const TextureRole role : sRoles)
-            {
-                const osg::Image* const image = part.mMaterial.mDescribed->getTexture(role);
-                if (image == nullptr)
-                    continue;
-
-                // Once per model, however many parts wear it: the holder count is of models.
-                const bool named = std::any_of(model.mTextures.begin(), model.mTextures.end(),
-                    [&](const PreparedTexture* held) { return held->mImage == image; });
-                if (named)
-                    continue;
-
-                if (PreparedTexture* texture = readTexture(*image))
-                    model.mTextures.push_back(texture);
-            }
-        }
     }
 
     PreparedModel* CellReader::readModel(const VFS::Path::NormalizedView path)
@@ -136,11 +87,7 @@ namespace Rtx
             // load for every template the game hands out, so this is a read.
             into.mRadius = node->getBound().radius();
 
-            // The walk before the textures, because the walk is the one throw a cell survives
-            // (`read` says which) and the pool takes the model back on it: a texture lent before
-            // that throw would be one nothing gives back.
             mWalk.read(*node, mMask, into);
-            lendTextures(into);
         });
 
         mByPath.insert(&model);
@@ -271,9 +218,6 @@ namespace Rtx
     {
         if (!mModels.release(model))
             return;
-
-        for (PreparedTexture* texture : model.mTextures)
-            giveBack(*texture);
 
         // Erased under the path it is still filed under, before `reuse` clears it.
         mByPath.erase(std::string_view(model.mPath));

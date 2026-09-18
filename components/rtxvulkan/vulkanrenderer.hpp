@@ -30,11 +30,13 @@
 #include "fogvolume.hpp"
 #include "framering.hpp"
 #include "frameslots.hpp"
+#include "groundcompositepass.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "handles.hpp"
 #include "image.hpp"
 #include "instance.hpp"
+#include "mipchainpass.hpp"
 #include "presenttargets.hpp"
 #include "ripplepass.hpp"
 #include "shadingpass.hpp"
@@ -42,6 +44,7 @@
 #include "spritelightpass.hpp"
 #include "spritepasses.hpp"
 #include "stresspass.hpp"
+#include "texture.hpp"
 #include "tracechain.hpp"
 #include "visibilitypass.hpp"
 #include "wavepass.hpp"
@@ -303,10 +306,18 @@ namespace Rtx
         /// tables, which each `DeviceScene` holds. Before the scenes, which hold it by reference.
         SkinPass mSkinPass;
 
-        /// One pass for every texture's shading map and one for every sprite's light bake, the
-        /// doll's and the maps' included, for the same reason and held the same way.
+        /// One pass for every texture's missing chain, one for every texture's shading map and
+        /// one for every sprite's light bake, the doll's and the maps' included, for the same
+        /// reason and held the same way; the bundle the arrays are handed, after the three it
+        /// names.
+        MipChainPass mMipChainPass;
         ShadingPass mShadingPass;
         SpriteLightPass mSpriteLightPass;
+        TexturePasses mTexturePasses;
+
+        /// One pass for every chunk's flattened ground, for the same reason. After the texture
+        /// layout, whose set it binds.
+        GroundCompositePass mGroundPass;
 
         /// The hold `RenderProfile::mStressOverlapMs` asked for, or nothing.
         std::unique_ptr<StressPass> mStress;

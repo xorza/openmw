@@ -440,17 +440,6 @@ namespace Rtx::Testing
             EXPECT_FALSE(mScene.materials().getRows()[home->mMaterial].mFlatten);
             EXPECT_FALSE(groundOf(osg::Vec2i(5, 0)).has_value()) << "prepared a band out, and not placed";
 
-            // The ground's textures were read on the thread as the bark was.
-            EXPECT_NE(
-                mRing.getHolds().find(*mContent.mImages.get(VFS::Path::NormalizedView("textures/grass.dds"))), nullptr);
-
-            // The bark was read on the thread: its chain built down from four to one.
-            const PreparedTexture* bark = mRing.getHolds().find(*mContent.mBark);
-            ASSERT_NE(bark, nullptr);
-            EXPECT_TRUE(bark->mReadable);
-            EXPECT_FALSE(bark->mChain.isEmpty());
-            EXPECT_EQ(bark->mChain.describe().mLevels.size(), 3u);
-
             // The sheet's origin, lifted five units in the template and then stood as the game
             // stands the reference — which one placement of the three lands on. The cells are
             // walked in their own order, so the tree's is not the first placement.
@@ -519,7 +508,6 @@ namespace Rtx::Testing
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 2u + sPreparedCells);
             EXPECT_EQ(went.mMaterials, 2u + sPreparedCells);
-            EXPECT_EQ(mRing.getHolds().find(*mContent.mBark), nullptr) << "no model the ring knows of names it";
 
             fill();
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";

@@ -99,6 +99,22 @@ RTX_SHADER vec3 encodeSrgb(vec3 linear)
     return clamp(vec3(encodeSrgb(linear.x), encodeSrgb(linear.y), encodeSrgb(linear.z)), vec3(0.0), vec3(1.0));
 }
 
+/// The curve the other way: a stored value back to the linear radiance it stands for, which is
+/// what a sampler does to a display-encoded texel and what a dispatch reading the bytes through a
+/// `UNORM` view has to do itself. `Rtx::toLinear` is the host's spelling.
+RTX_SHADER float decodeSrgb(float encoded)
+{
+    if (encoded <= 0.04045)
+        return encoded / 12.92;
+
+    return pow((encoded + 0.055) / 1.055, 2.4);
+}
+
+RTX_SHADER vec3 decodeSrgb(vec3 encoded)
+{
+    return vec3(decodeSrgb(encoded.x), decodeSrgb(encoded.y), decodeSrgb(encoded.z));
+}
+
 #endif
 
 #endif

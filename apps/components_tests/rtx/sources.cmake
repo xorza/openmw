@@ -47,6 +47,7 @@ set(RTX_TEST_FILES
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp
     rtx/memory.cpp
+    rtx/mipchainpass.cpp
     rtx/meshreader.cpp
     rtx/mipchain.cpp
     rtx/mirroridentity.cpp
@@ -69,6 +70,7 @@ set(RTX_TEST_FILES
     rtx/shading.cpp
     rtx/shadingmap.cpp
     rtx/shapefold.cpp
+    rtx/groundcompositepass.cpp
     rtx/shadingpass.cpp
     rtx/skinpass.cpp
     rtx/skybuilder.cpp
@@ -86,7 +88,6 @@ set(RTX_TEST_FILES
     rtx/sun.cpp
     rtx/surface.cpp
     rtx/templatewalk.cpp
-    rtx/terraincomposite.cpp
     rtx/testtexture.hpp
     rtx/texels.cpp
     rtx/texturearray.cpp

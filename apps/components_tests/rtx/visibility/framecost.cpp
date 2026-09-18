@@ -21,8 +21,6 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
-#include <components/rtxvulkan/shadingpass.hpp>
-#include <components/rtxvulkan/spritelightpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "../allocations.hpp"
@@ -200,10 +198,9 @@ namespace Rtx::Testing
             };
 
             const SetLayout layout = TextureArray::describeLayout(device);
-            const ShadingPass shading(device, Testing::getShaderDirectory());
-            const SpriteLightPass bake(device, Testing::getShaderDirectory());
+            const Testing::TexturePassSet passes(device);
             Batch setup(pool);
-            TextureArray array(device, setup, layout, shading, bake, slots, {});
+            TextureArray array(device, setup, layout, passes.mPasses, slots, {});
             setup.flush();
 
             const auto arrive = [&](Batch& batch, std::uint32_t slot) {

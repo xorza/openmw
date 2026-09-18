@@ -38,6 +38,7 @@
 #include "visibility.h"
 #include "wave.h"
 
+#include "ground.glsl"
 #include "spritelist.glsl"
 #include "texturearray.glsl"
 
@@ -246,21 +247,6 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     GpuInstance at[];
 };
 
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer MaterialTable
-{
-    GpuMaterial at[];
-};
-
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_LAYERS) readonly buffer LayerTable
-{
-    GpuLayer at[];
-};
-
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer MaskTable
-{
-    float at[];
-};
-
 layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer LightTable
 {
     GpuLight at[];
@@ -295,11 +281,6 @@ GpuMaterial materialAt(uint index)
 GpuLayer layerAt(uint index)
 {
     return LayerTable(frame.mTables.mLayers).at[index];
-}
-
-float maskAt(uint index)
-{
-    return MaskTable(frame.mTables.mMasks).at[index];
 }
 
 GpuLight lightAt(uint index)
