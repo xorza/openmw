@@ -35,7 +35,7 @@
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
-#include <components/rtxvulkan/instance.hpp>
+#include <components/rtxvulkan/drivershadercache.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>

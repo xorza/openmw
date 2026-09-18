@@ -9,6 +9,7 @@
 
 #include <osg/GL>
 #include <osg/Image>
+#include <osg/Texture>
 #include <osg/ref_ptr>
 
 #include <components/rtx/alphaimage.hpp>

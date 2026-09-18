@@ -32,6 +32,7 @@
 #include <components/sdlutil/vsyncmode.hpp>
 
 #include "devicescene.hpp"
+#include "drivershadercache.hpp"
 #include "gbuffer.hpp"
 #include "graphicspipeline.hpp"
 #include "graveyard.hpp"
