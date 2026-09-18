@@ -234,7 +234,7 @@ in one share no world state and agree on nothing. Run it after touching anything
 
 **Every column is the gate.** What a run is handed — every part of the scene in the hashes table —
 and what it drew both repeat exactly, and `bench --against` fails on either, naming the frames and
-the parts. `.notes/repeatable.txt` holds the readings.
+the parts.
 
 **A count of differing pictures says when, and never how much.** The exposure is measured off the
 frame and approaches its target from the value it held, so every frame depends on the one before
