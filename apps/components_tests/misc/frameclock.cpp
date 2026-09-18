@@ -4,9 +4,9 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/frameclock.hpp>
+#include <components/misc/frameclock.hpp>
 
-namespace Rtx
+namespace Misc
 {
     namespace
     {
@@ -14,7 +14,7 @@ namespace Rtx
         ///
         /// **The measurement is handed in and ignored**, which is the whole of what makes a run
         /// repeatable: the clock says the same thing on a fast machine and a slow one.
-        TEST(RtxFrameClockTest, aStatedStepIgnoresWhatTheWallSaid)
+        TEST(MiscFrameClockTest, aStatedStepIgnoresWhatTheWallSaid)
         {
             // **The step is a `float` and the time is a `double`**, because the step is a setting
             // and the time is a sum of thousands of them. So what is expected is the widened float
@@ -41,7 +41,7 @@ namespace Rtx
         ///
         /// **A stall should age a player's caches**, which is why the time is the wall's rather than
         /// the frames added up: `MWWorld::Scene` expires what it holds against this.
-        TEST(RtxFrameClockTest, withNoStepStatedTheWallDecidesBothAnswers)
+        TEST(MiscFrameClockTest, withNoStepStatedTheWallDecidesBothAnswers)
         {
             FrameClock clock;
             EXPECT_EQ(clock.getStatedStep(), std::nullopt) << "which is what says the run does not repeat itself";
@@ -63,7 +63,7 @@ namespace Rtx
         }
 
         /// The two modes disagree, which is what makes the choice worth making.
-        TEST(RtxFrameClockTest, aStatedStepAndTheWallGiveDifferentAnswersForOneFrame)
+        TEST(MiscFrameClockTest, aStatedStepAndTheWallGiveDifferentAnswersForOneFrame)
         {
             FrameClock stated(1.0f / 60.0f);
             FrameClock walled;

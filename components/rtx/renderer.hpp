@@ -182,7 +182,7 @@ namespace Rtx
 
         /// How long this frame stands for, in seconds, or nothing to take it off the wall clock. The
         /// eye adapts and the upscaler tunes itself by it, so a measured run states it
-        /// (`Rtx::FrameClock`) or two runs of one build draw different pictures.
+        /// (`Misc::FrameClock`) or two runs of one build draw different pictures.
         std::optional<float> mSinceLast = std::nullopt;
 
         /// What to multiply the measured exposure by: the hour, which the histogram cannot see

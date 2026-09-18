@@ -169,7 +169,8 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
             mStateManager->update(frametime);
         }
 
-        mRenderer->tickSchedule();
+        if (mHost != nullptr)
+            mHost->beforeFrame();
 
         bool paused = mWorld->getTimeManager()->isPaused();
 
@@ -643,14 +644,21 @@ void OMW::Engine::go()
 
     // Decided once, before the window exists
     const MWRender::RendererSpec spec{ .mResourceDir = mResDir, .mCachePath = mCfgMgr.getCachePath() };
-    if (mRendererFactory)
-        mRenderer = mRendererFactory(spec);
+    if (mHost != nullptr)
+        mRenderer = mHost->createRenderer(spec);
     else
     {
         const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
         Log(Debug::Info) << "Renderer: " << wanted;
         mRenderer = MWRender::createRenderer(wanted, spec);
     }
+
+    // The clock every frame is measured by, made once here and read by the renderer from now on:
+    // a host that states a step makes a run that repeats itself, and the played game follows the
+    // wall.
+    mClock = Misc::FrameClock(mHost != nullptr ? mHost->getFrameStep() : std::nullopt);
+    mRenderer->setFrameClock(mClock);
+
     setWindowIcon();
 
     mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);
@@ -692,12 +700,13 @@ void OMW::Engine::go()
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
     while (!mStateManager->hasQuitRequest())
     {
-        // What the wall says the last frame took, which Renderer::beginFrame may overrule with a run's step
+        // What the wall says the last frame took, which a host's stated step overrules
         const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
             std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
                                     .count();
 
-        const double dt = mRenderer->beginFrame(measured) * timeManager.getSimulationTimeScale();
+        mClock.advance(measured);
+        const double dt = mClock.getStep() * timeManager.getSimulationTimeScale();
 
         mRenderer->advance(timeManager.getRenderingSimulationTime());
 

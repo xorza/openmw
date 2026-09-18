@@ -38,6 +38,12 @@ namespace MWRender
         return *mResources;
     }
 
+    const Misc::FrameClock& Renderer::getFrameClock() const
+    {
+        assert(mClock != nullptr && "a frame before the host's clock was handed over");
+        return *mClock;
+    }
+
     void Renderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)
     {
         mScreenshotWriter = &writer;

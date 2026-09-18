@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <span>
@@ -95,6 +96,7 @@ namespace RtxTool
 
     Session::Session(Rtx::SessionRequest request)
         : mRequest(std::move(request))
+        , mInstalled{ .mSetup = mRequest.mSetup, .mRun = *this }
         , mProfiling(mRequest.mPerfControl)
     {
         if (!mRequest.mAgainst.empty())
@@ -115,6 +117,16 @@ namespace RtxTool
 
         if (mRequest.mStops.empty())
             mDone = true;
+    }
+
+    std::unique_ptr<MWRender::Renderer> Session::createRenderer(const MWRender::RendererSpec& spec)
+    {
+        return std::make_unique<MWRender::RtxRenderer>(spec, &mInstalled);
+    }
+
+    std::optional<float> Session::getFrameStep() const
+    {
+        return mRequest.mSetup.mStep;
     }
 
     Rtx::SessionResult Session::describe() const

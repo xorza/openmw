@@ -13,9 +13,10 @@ namespace MWRender
     /// A run the harness drives through this renderer, as the renderer sees it per frame: what
     /// the run asks of the frame ahead and what it is fed once the frame is drawn. What a run
     /// decides before anything is built — the window, the layers, the clock — is data beside it in
-    /// `RtxSetup`. The harness implements it and owns it, and reads the run's answer once
-    /// `Engine::go` has returned. A played session is a run as well, the one whose every answer
-    /// is the played one, so the renderer never asks which host it is under.
+    /// `RtxSetup`, and what it does to the world between frames is the engine host's
+    /// (`OMW::EngineHost::beforeFrame`) and never this renderer's. The harness implements it and
+    /// owns it, and reads the run's answer once `Engine::go` has returned. A played session is a
+    /// run as well, `PlayedRun`, so the renderer never asks which host it is under.
     ///
     /// **An interface, because the run is the harness's and the renderer is the game's.** The run
     /// reads the world through `MWBase::Environment` and writes pictures, sheets and records that
@@ -42,10 +43,6 @@ namespace MWRender
         /// which a run that hashes every frame asks for and nothing a player does ever does.
         virtual bool wantsFrameCopy() const = 0;
 
-        /// Before the world is walked, because a teleport has to happen before the walk that would
-        /// mirror the cell it left.
-        virtual void beforeFrame() = 0;
-
         /// Takes one traced frame, and with it whatever the device answered for an earlier one —
         /// `FrameReport::mResult`, set where an answer came back this frame. Every traced frame and
         /// not only the answered ones, because an answer comes back a frame later or two by
@@ -53,6 +50,18 @@ namespace MWRender
         /// answers stood at different points of its sequence in two runs of one build. The two
         /// halves meet by frame number, `FrameReport::mFrame` and `FrameResult::mFrame`.
         virtual void frame(const FrameContext& context, const FrameReport& report) = 0;
+    };
+
+    /// The run a played session is: every answer the played one, and nothing noted from any
+    /// frame. The renderer holds one for a session that installed no run of its own.
+    class PlayedRun final : public RtxRun
+    {
+    public:
+        std::optional<std::uint32_t> getSampleFrame() const override { return std::nullopt; }
+        std::uint32_t getAccumulated() const override { return 0; }
+        bool wantsSecondWalk() const override { return false; }
+        bool wantsFrameCopy() const override { return false; }
+        void frame(const FrameContext& context, const FrameReport& report) override {}
     };
 
     /// What the harness installs before the engine starts, where the harness started this process:

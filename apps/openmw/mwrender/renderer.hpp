@@ -46,6 +46,11 @@ namespace MyGUIPlatform
     class Platform;
 }
 
+namespace Misc
+{
+    class FrameClock;
+}
+
 namespace Resource
 {
     class ResourceSystem;
@@ -86,8 +91,8 @@ namespace MWRender
     /// abstracted — contexts, swapchains, render bins and acceleration structures belong to a
     /// renderer outright, and an interface over them would be a mini-GL that Vulkan does not fit.
     /// Every member is a question the game asks; a pure virtual is one both renderers answer, and
-    /// a default is an empty answer — for a schedule the rasterizer does not run, or a loading
-    /// budget the ray tracer has no compiler to spend. What the game must never be handed is one
+    /// a default is an empty answer — a loading budget the ray tracer has no compiler to spend, or
+    /// a world-space change the rasterizer has no history to lose. What the game must never be handed is one
     /// renderer's mechanism to poke at, because every caller of that grows a null test that is a
     /// renderer test in disguise; the two that remain, the shader chain and the compile operation,
     /// are there for upstream callers that cannot be changed.
@@ -210,17 +215,11 @@ namespace MWRender
         /// for; every reader already treats null as "no chain".
         virtual PostProcessor* getPostProcessor() { return nullptr; }
 
-        /// The one point in the frame where the world is the calling thread's alone, for a renderer
-        /// that has a schedule to run against it: the harness's `RtxTool::Session` teleports, aims a
-        /// camera and turns a sky, and each is a change to the simulation. Called from
-        /// `Engine::frame` and from nowhere else, because a loading screen drives `advance` and
-        /// `updateTraversal` for frames of its own and a teleport made from inside one re-enters it.
-        virtual void tickSchedule() {}
-
-        /// Opens the frame's clock and says how long the frame stands for, in seconds: what the wall
-        /// measured, unless a renderer that has to repeat itself keeps a clock of its own
-        /// (`Rtx::FrameClock`).
-        virtual double beginFrame(double measured) { return measured; }
+        /// The host's clock: what time it is and how long the frame now open stands for. Handed
+        /// over once, before the first frame, and outlives this. The rasterizer's viewer stamps the
+        /// wall for itself; the ray tracer stamps what this says, which is what makes a stated step
+        /// a run that repeats.
+        void setFrameClock(const Misc::FrameClock& clock) { mClock = &clock; }
 
         /// Stamps the next frame. Simulation time stops when the game is paused; reference time
         /// does not.
@@ -341,6 +340,9 @@ namespace MWRender
         /// through it. Asserts that it has.
         Resource::ResourceSystem& getResources() const;
 
+        /// What `setFrameClock` handed over. Asserts that it has.
+        const Misc::FrameClock& getFrameClock() const;
+
         /// The view mask has changed; put `getViewMask()` where this renderer reads it from.
         virtual void applyViewMask() = 0;
 
@@ -359,6 +361,7 @@ namespace MWRender
 
     private:
         Resource::ResourceSystem* mResources = nullptr;
+        const Misc::FrameClock* mClock = nullptr;
         osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;
@@ -375,8 +378,8 @@ namespace MWRender
 
     /// The game's own choice, by name. Throws naming the name where there is no such renderer,
     /// because a fallback would answer "why does it look like that" with silence. A host with a
-    /// renderer of its own — the harness, with its run — makes it itself, through
-    /// `OMW::Engine::setRendererFactory`.
+    /// renderer of its own — the harness, with its run — makes it itself, as the engine's host
+    /// (`OMW::EngineHost::createRenderer`).
     std::unique_ptr<Renderer> createRenderer(std::string_view name, const RendererSpec& spec);
 
     /// Where a window goes and what it is, as the video settings ask for it.

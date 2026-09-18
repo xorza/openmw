@@ -15,7 +15,7 @@
 
 #include "colour.hpp"
 #include "error.hpp"
-#include "frameclock.hpp"
+#include "framespend.hpp"
 
 namespace Rtx
 {

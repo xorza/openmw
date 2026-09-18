@@ -21,6 +21,7 @@ file(GLOB UNITTEST_SRC_FILES
     lua/testyaml.cpp
 
     misc/compression.cpp
+    misc/frameclock.cpp
     misc/progressreporter.cpp
     misc/testendianness.cpp
     misc/testmathutil.cpp

@@ -2,12 +2,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <vector>
 
 #include <osg/Vec3f>
 
+#include <apps/openmw/engine.hpp>
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/rtx/renderer.hpp>
@@ -25,6 +27,12 @@ namespace MWBase
     class World;
 }
 
+namespace MWRender
+{
+    class Renderer;
+    struct RendererSpec;
+}
+
 namespace RtxTool
 {
     /// Drives a run of the game and measures it — the game, because a staged world never pays for
@@ -33,14 +41,22 @@ namespace RtxTool
     /// through the interface it implements, and ends the run through `StateManager::requestQuit`
     /// the way the player's quit key does.
     ///
-    /// **The harness's, and built before the engine.** It is installed as `RtxSetup::mRun`, and
-    /// what it came to is read with `describe` once `Engine::go` has returned — the run that ends
-    /// its last stop and the window somebody closes both end there, and only the first ever
-    /// reaches `finish`.
-    class Session final : public MWRender::RtxRun
+    /// **The harness's, and built before the engine.** It is the engine's host — it makes the
+    /// renderer with itself installed as `RtxSetup::mRun`, states the run's step and runs the
+    /// schedule before each frame — and what it came to is read with `describe` once
+    /// `Engine::go` has returned: the run that ends its last stop and the window somebody closes
+    /// both end there, and only the first ever reaches `finish`.
+    class Session final : public MWRender::RtxRun, public OMW::EngineHost
     {
     public:
         explicit Session(Rtx::SessionRequest request);
+
+        /// The renderer this tool exists to drive, whatever the user's settings file says, made
+        /// with the run: the engine never reads `[RTX] enabled` and never sees the run.
+        std::unique_ptr<MWRender::Renderer> createRenderer(const MWRender::RendererSpec& spec) override;
+
+        /// The run's own step, or the wall for a window somebody watches.
+        std::optional<float> getFrameStep() const override;
 
         std::optional<std::uint32_t> getSampleFrame() const override;
         std::uint32_t getAccumulated() const override;
@@ -204,6 +220,10 @@ namespace RtxTool
         };
 
         Rtx::SessionRequest mRequest;
+
+        /// What the renderer is made with: the request's setup, and this as the run. After the
+        /// request, which it refers into.
+        const MWRender::RtxSetup mInstalled;
 
         /// Which stop is running, and whether it has been started.
         std::size_t mAt = 0;

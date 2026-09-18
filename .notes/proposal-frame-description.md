@@ -1,7 +1,11 @@
 # Proposal: the frame is described by its owners
 
-Status: Phases 0 to 2 (redesign A) are in the working tree, uncommitted, verified 2026-09-19.
-Phases 3 and 4 are not started.
+Status: Phases 0 to 3 (redesigns A and B) are in the working tree, uncommitted, verified
+2026-09-19. Phase 4 is not started. Phase 3 landed with one change to the shape below: the
+engine hands the renderer a reference to its `Misc::FrameClock` once (`Renderer::setFrameClock`)
+and `advance(simulationTime)` keeps its signature, because a loading screen advances the
+renderer with no new time and the tracer reads the clock's own step for its interface. No
+step arithmetic was added, so nothing new needed a test beyond the moved clock's.
 
 Companion to `review-upstream-diff.md`. This addresses the items I would act on first, as one
 redesign with a phased plan. Items it closes are named at the end of each phase; delete them from

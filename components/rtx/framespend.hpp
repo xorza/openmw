@@ -1,13 +1,23 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <ratio>
 
 #include "namedenum.hpp"
 
 namespace Rtx
 {
+    /// Milliseconds between two readings of the steady clock, which is what every timed figure in
+    /// this fork is. Beside the figures and not beside the report, because a backend timing a wait
+    /// should not reach the report to subtract two time points.
+    inline double since(std::chrono::steady_clock::time_point from, std::chrono::steady_clock::time_point to)
+    {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    }
+
     /// Which of a measured frame's figures a row holds. `Wait` is the CPU standing still for the
     /// device — a wait near the frame is a device that cannot keep up, near nought a CPU that
     /// cannot — and `Finish` is the whole of collecting the frame behind, of which `Wait` is the

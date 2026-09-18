@@ -117,7 +117,7 @@ namespace MyGUIRtx
         /// this call ages by it — the screen faders included, which are the red overlay a hit puts
         /// up and the black one a fade uses. A run that steps its world by the frame index and its
         /// interface by the wall draws that overlay at a different strength on the same frame in
-        /// every run. `Rtx::FrameClock` is what a caller answers from.
+        /// every run. `Misc::FrameClock` is what a caller answers from.
         void update(float step);
 
         /// Gathers every layer's triangles and hands them to the renderer in one call.

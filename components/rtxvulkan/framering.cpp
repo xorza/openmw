@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-#include <components/rtx/frameclock.hpp>
+#include <components/rtx/framespend.hpp>
 
 #include "commands.hpp"
 #include "device.hpp"

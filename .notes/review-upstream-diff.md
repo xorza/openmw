@@ -74,11 +74,6 @@ Every one is also diff a reviewer must read as a behaviour change rather than as
       dirs, `data-local`, fallback archives, encoding, fallback map) and says so in its comment. The
       one-source shape is a function on `OMW::Engine` that takes the variables map, used by both. It
       touches `engine.hpp`; name the trade-off if the copy stays.
-- [ ] `RtxSetup{ RunSetup, RtxRun& }` is filled by the harness through `Engine::setRendererFactory`,
-      and by the played game through a file-static `PlayedRun sPlayedRun` in `rtxrenderer.cpp`. Two
-      construction paths for one renderer. Let `Engine` build the played `RtxSetup` and pass it the
-      way the harness passes `Session`, or let the harness install through the same static.
-
 ## Per-frame work the fork's own rules forbid
 
 - [ ] `GlobalMap::exploreCell` calls `mOverlayImage->dirty()` after compositing one cell. Under GL
@@ -96,10 +91,6 @@ Every one is also diff a reviewer must read as a behaviour change rather than as
 renderers implement. Members that only the harness or only the trace uses make the GL side carry
 stubs and make the interface read as the RT renderer's.
 
-- [ ] `Renderer::tickSchedule()` and `Renderer::beginFrame(double measured)` exist so the harness
-      can step the world by `RunSetup::mStep`. `GlRenderer` inherits the no-op defaults. `Engine`
-      already owns the frame clock's inputs; give `Engine` the step (a `FrameClock` it reads from the
-      installed run) and take both virtuals off the seam.
 - [ ] `Renderer::enableReference` / `forgetReferences` are seam members with no-op defaults that
       only `RtxRenderer` overrides, called from `RenderingManager::setEnabled` and
       `notifyWorldSpaceChanged` for the cell ring. A default no-op on the seam is one renderer's

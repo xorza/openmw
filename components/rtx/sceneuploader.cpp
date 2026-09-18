@@ -4,7 +4,7 @@
 #include <span>
 
 #include "compositequeue.hpp"
-#include "frameclock.hpp"
+#include "framespend.hpp"
 #include "renderer.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"

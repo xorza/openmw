@@ -45,7 +45,6 @@ set(RTX_FILES
     extractionstats.hpp
     fogbuilder.cpp
     fogbuilder.hpp
-    frameclock.hpp
     frameimage.cpp
     frameimage.hpp
     framespend.hpp

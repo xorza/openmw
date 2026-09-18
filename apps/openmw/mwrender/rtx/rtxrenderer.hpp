@@ -17,7 +17,6 @@
 #include <osg/ref_ptr>
 
 #include <components/esm3/refnum.hpp>
-#include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/reconstruction.hpp>
@@ -137,8 +136,6 @@ namespace MWRender
         void applyViewMask() override {}
         void applyWorldShown() override {}
 
-        void tickSchedule() override;
-        double beginFrame(double measured) override;
         void advance(double simulationTime) override;
         void eventTraversal() override;
         void updateTraversal() override;
@@ -405,6 +402,8 @@ namespace MWRender
         /// renderers, because both reach the renderer through this one record. The run inside it is
         /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this. Before the mirror,
         /// which is built from its knobs.
+        /// The played answers, for a session that installed no run: `mInstalled` refers to it then.
+        PlayedRun mPlayed;
         const RtxSetup mInstalled;
 
         /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
@@ -436,11 +435,6 @@ namespace MWRender
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.
         Rtx::FogDrift mFogDrift;
-
-        /// The one clock a frame is measured by: how far the simulation steps, how long the trace
-        /// is told the frame took, and what OpenMW ages its caches by. A run's step fills it once,
-        /// because it cannot change while a run is being made; a played session follows the wall.
-        Rtx::FrameClock mClock;
 
         /// Where this frame began and ended inside this renderer, and what it presented.
         FrameSpan mSpan;

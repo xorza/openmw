@@ -29,6 +29,7 @@
 #include <osg/Timer>
 
 #include <components/debug/debuglog.hpp>
+#include <components/misc/frameclock.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/resource/resourcesystem.hpp>
@@ -36,7 +37,6 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
@@ -125,21 +125,6 @@ namespace MWRender
             };
         }
 
-        /// The run a played session is: every answer the played one, and nothing noted from any
-        /// frame. One for the process, because a played session has no state a run would keep.
-        class PlayedRun final : public RtxRun
-        {
-        public:
-            std::optional<std::uint32_t> getSampleFrame() const override { return std::nullopt; }
-            std::uint32_t getAccumulated() const override { return 0; }
-            bool wantsSecondWalk() const override { return false; }
-            bool wantsFrameCopy() const override { return false; }
-            void beforeFrame() override {}
-            void frame(const FrameContext& context, const FrameReport& report) override {}
-        };
-
-        PlayedRun sPlayedRun;
-
         /// What a played session is made with, where the harness installed nothing: the two knobs
         /// `[RTX]` leaves a player and the played answer to everything else. The layers are the
         /// build's, which `Rtx::sValidationByDefault` says is the one thing that should decide
@@ -148,7 +133,7 @@ namespace MWRender
         /// each reader times what it is about — a setting that could state a step once made a
         /// played game step by frames, and at two hundred of them a second the world ran three
         /// times over.
-        RtxSetup playedSetup()
+        RtxSetup playedSetup(PlayedRun& played)
         {
             return RtxSetup{
                 .mSetup = {
@@ -160,7 +145,7 @@ namespace MWRender
                     .mStep = std::nullopt,
                     .mSettled = std::nullopt,
                 },
-                .mRun = sPlayedRun,
+                .mRun = played,
             };
         }
 
@@ -225,7 +210,7 @@ namespace MWRender
     RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* run)
         : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
-        , mInstalled(run != nullptr ? *run : playedSetup())
+        , mInstalled(run != nullptr ? *run : playedSetup(mPlayed))
         , mMirror(mInstalled.mSetup.mMirror)
     {
         const Rtx::RunSetup& setup = mInstalled.mSetup;
@@ -334,14 +319,7 @@ namespace MWRender
         if (SDL_GL_GetCurrentContext() != nullptr)
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
 
-        // **The clock everything in the frame is measured by**, and the last thing that would
-        // otherwise run on the wall. A measured run cannot run on the wall: two runs of one build
-        // would adapt by different amounts and draw different pictures. So the step is the run's
-        // and nothing else's; `playedSetup` says why a played session and a run somebody watches
-        // both state none.
-        mClock = Rtx::FrameClock(setup.mStep);
-
-        // **The same step decides whether the ground waits, unless the run says otherwise.** A
+        // **The run's stated step decides whether the ground waits, unless the run says otherwise.** A
         // composite comes back whenever the baker finishes it, so which frame it lands on is a
         // thread's answer rather than the schedule's, and a run whose pictures are compared with
         // another's cannot have that.
@@ -355,7 +333,7 @@ namespace MWRender
         // **And a run that means to time the streaming path overrides it**, because waiting is
         // most of what that path then measures. `Rtx::RunSetup::mSettled` says what the
         // override costs and what it buys.
-        mMirror.setSettled(setup.mSettled.value_or(mClock.getStatedStep().has_value()));
+        mMirror.setSettled(setup.mSettled.value_or(setup.mStep.has_value()));
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -512,21 +490,14 @@ namespace MWRender
             camera.addChild(&root);
     }
 
-    double RtxRenderer::beginFrame(const double measured)
-    {
-        mClock.advance(measured);
-
-        return mClock.getStep();
-    }
-
     void RtxRenderer::advance(double simulationTime)
     {
         mPhase.expect(Phase::Between);
         getFrameStamp().setFrameNumber(getFrameStamp().getFrameNumber() + 1);
 
-        // **What OpenMW ages its caches by**, which is why it comes from the frame's own clock and
-        // not from the wall. `Rtx::FrameClock` says what reading the wall here cost.
-        getFrameStamp().setReferenceTime(mClock.getNow());
+        // **What OpenMW ages its caches by**, which is why it comes from the host's clock and not
+        // from the wall. `Misc::FrameClock` says what reading the wall here cost.
+        getFrameStamp().setReferenceTime(getFrameClock().getNow());
         getFrameStamp().setSimulationTime(simulationTime);
     }
 
@@ -534,12 +505,6 @@ namespace MWRender
     {
         // Nothing to traverse: this renderer adopted no queue, and everything the game acts on came
         // through `SDLUtil::InputWrapper` and MyGUI before this.
-    }
-
-    void RtxRenderer::tickSchedule()
-    {
-        mPhase.expect(Phase::Between);
-        mInstalled.mRun.beforeFrame();
     }
 
     void RtxRenderer::updateTraversal()
@@ -554,7 +519,7 @@ namespace MWRender
         // milliseconds, and a hit's red overlay faded by it — so two runs of one build drew the
         // overlay at different strengths on the same frame.
         assert(mGui != nullptr && "a frame before the interface was made");
-        mGui->update(static_cast<float>(mClock.getStep()));
+        mGui->update(static_cast<float>(getFrameClock().getStep()));
 
         mUpdateVisitor->reset();
         mUpdateVisitor->setFrameStamp(&getFrameStamp());
@@ -1130,7 +1095,7 @@ namespace MWRender
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
 
         Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
-            mInstalled.mSetup.mProfile, accumulated, mClock.getStatedStep(), exposureBias);
+            mInstalled.mSetup.mProfile, accumulated, mInstalled.mSetup.mStep, exposureBias);
         options.mReadBack = mInstalled.mRun.wantsFrameCopy();
 
         // What the debug modes drew, read off the world root here, after the game's own update

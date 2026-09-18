@@ -2,8 +2,8 @@
 #define ENGINE_H
 
 #include <filesystem>
-#include <functional>
 #include <memory>
+#include <optional>
 
 #include <osg/ref_ptr>
 
@@ -11,6 +11,7 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm/refid.hpp>
 #include <components/files/collections.hpp>
+#include <components/misc/frameclock.hpp>
 #include <components/settings/settings.hpp>
 #include <components/translation/translation.hpp>
 
@@ -109,7 +110,27 @@ struct SDL_Window;
 
 namespace OMW
 {
-    using RendererFactory = std::function<std::unique_ptr<MWRender::Renderer>(const MWRender::RendererSpec&)>;
+    /// Who runs the engine, where it is not the played game: a harness with a renderer of its own,
+    /// a clock of its own and a schedule to run against the world. Everything the run decides is
+    /// the host's, and the renderer only draws.
+    class EngineHost
+    {
+    public:
+        virtual ~EngineHost() = default;
+
+        /// The renderer `go` runs, made once before the window exists.
+        virtual std::unique_ptr<MWRender::Renderer> createRenderer(const MWRender::RendererSpec& spec) = 0;
+
+        /// How long every frame stands for, in seconds, or nothing to follow the wall: what the
+        /// engine's clock is made with (`Misc::FrameClock`).
+        virtual std::optional<float> getFrameStep() const { return std::nullopt; }
+
+        /// The one point in the frame where the world is the calling thread's alone, for a host
+        /// with a schedule: a teleport, an aimed camera, a turned sky, each a change to the
+        /// simulation. From `Engine::frame` and from nowhere else, because a loading screen drives
+        /// frames of its own and a teleport made from inside one re-enters it.
+        virtual void beforeFrame() {}
+    };
 
     /// \brief Main engine class, that brings together all the components of OpenMW
     class Engine
@@ -154,7 +175,8 @@ namespace OMW
         std::filesystem::path mSaveGameFile;
         // Grab mouse?
         bool mGrab;
-        RendererFactory mRendererFactory;
+        EngineHost* mHost = nullptr;
+        Misc::FrameClock mClock;
 
         bool mExportFonts;
         unsigned int mRandomSeed;
@@ -216,9 +238,9 @@ namespace OMW
 
         void setGrabMouse(bool grab) { mGrab = grab; }
 
-        /// Who makes the renderer `go` runs. The game's own default is `MWRender::createRenderer`
-        /// off `[RTX] enabled`; a host with a renderer of its own hands one in before `go`.
-        void setRendererFactory(RendererFactory factory) { mRendererFactory = std::move(factory); }
+        /// Who runs this engine, before `go`. The played game installs none: its renderer is
+        /// `MWRender::createRenderer` off `[RTX] enabled`, its clock the wall, its frames unwatched.
+        void setHost(EngineHost& host) { mHost = &host; }
 
         /// Initialise and enter main loop.
         void go();

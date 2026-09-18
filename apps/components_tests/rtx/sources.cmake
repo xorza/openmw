@@ -28,7 +28,6 @@ set(RTX_TEST_FILES
     rtx/extractor/walk.cpp
     rtx/fallbackseed.cpp
     rtx/fogbuilder.cpp
-    rtx/frameclock.cpp
     rtx/frameimage.cpp
     rtx/frameoptions.cpp
     rtx/framering.cpp

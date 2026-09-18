@@ -1,6 +1,5 @@
 #include "run.hpp"
 
-#include <memory>
 #include <ostream>
 #include <set>
 #include <string>
@@ -10,9 +9,6 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include <apps/openmw/engine.hpp>
-#include <apps/openmw/mwrender/renderer.hpp>
-#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
-#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/debug/debugging.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/fallback/validate.hpp>
@@ -131,13 +127,9 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
-            // **The renderer this tool exists to drive, whatever the user's settings file says**,
-            // made here with the run, so the engine never reads `[RTX] enabled` and never sees the
-            // run: who makes the renderer is the host's question, and this is a host.
-            const MWRender::RtxSetup installed{ .mSetup = setup, .mRun = session };
-            engine.setRendererFactory([&installed](const MWRender::RendererSpec& spec) {
-                return std::make_unique<MWRender::RtxRenderer>(spec, &installed);
-            });
+            // The session is the host: it makes the renderer, states the step and runs the
+            // schedule, so the engine never reads `[RTX] enabled` and never sees the run.
+            engine.setHost(session);
 
             engine.go();
         }

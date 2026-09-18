@@ -1,21 +1,14 @@
-#pragma once
+#ifndef OPENMW_COMPONENTS_MISC_FRAMECLOCK_H
+#define OPENMW_COMPONENTS_MISC_FRAMECLOCK_H
 
 #include <chrono>
 #include <optional>
-#include <ratio>
 
-namespace Rtx
+namespace Misc
 {
-    /// Milliseconds between two readings of the steady clock, which is what every timed figure in
-    /// this fork is. Beside the clock and not beside the report, because a backend timing a wait
-    /// should not reach the report to subtract two time points.
-    inline double since(std::chrono::steady_clock::time_point from, std::chrono::steady_clock::time_point to)
-    {
-        return std::chrono::duration<double, std::milli>(to - from).count();
-    }
-
-    /// How long a frame stands for, and what time it is once it has. One clock for a run, because
-    /// a run that reads two cannot repeat itself: `SceneManager::checkLoaded` and
+    /// How long a frame stands for, and what time it is once it has. The host's clock — the
+    /// engine's loop opens every frame on it and the renderer reads it — and one clock for a run,
+    /// because a run that reads two cannot repeat itself: `SceneManager::checkLoaded` and
     /// `CellPreloader::isTerrainLoaded` decide by the reference time, so two runs on two clocks
     /// are handed different worlds. A measured run states a step and what ages is the frame
     /// index; a played session is handed the wall, so a stall ages a player's caches and not a
@@ -66,3 +59,5 @@ namespace Rtx
         double mNow = 0.0;
     };
 }
+
+#endif
