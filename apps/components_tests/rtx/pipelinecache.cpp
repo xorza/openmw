@@ -19,6 +19,7 @@
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/pipelinecache.hpp>
 #include <components/rtxvulkan/requirements.hpp>
+#include <components/testing/util.hpp>
 
 #include "harness.hpp"
 
@@ -156,7 +157,7 @@ namespace Rtx
         /// whatever else the game keeps there.
         TEST_F(RtxPipelineCacheTest, theNameCarriesTheShadersAndOtherCachesAreKeptToABound)
         {
-            const std::filesystem::path scratch = std::filesystem::temp_directory_path() / "openmw-rtx-cache-test";
+            const std::filesystem::path scratch = TestingOpenMW::outputFilePath("cache-test");
             std::filesystem::remove_all(scratch);
 
             const std::filesystem::path cacheDirectory = scratch / "cache";

@@ -11,6 +11,7 @@
 
 #include <components/rtx/error.hpp>
 #include <components/rtxbench/framehashes.hpp>
+#include <components/testing/util.hpp>
 
 namespace Rtx
 {
@@ -104,7 +105,7 @@ namespace Rtx
         /// A run written and read back is the run that was written, column for column.
         TEST(RtxFrameHashesTest, aRunSurvivesTheFileItIsWrittenTo)
         {
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-hashes-test.csv";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-test.csv");
             std::filesystem::remove(file);
 
             plainRun().write(file);
@@ -160,7 +161,7 @@ namespace Rtx
 
             FrameHashes half;
             half.note("somewhere", 1, 7, partsOf(100));
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-hashes-half.csv";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-half.csv");
             EXPECT_THROW(half.write(file), Error) << "a row with no picture was written";
             std::filesystem::remove(file);
         }
@@ -169,7 +170,7 @@ namespace Rtx
         /// not this build's, so comparing them one for one would name a table nobody touched.
         TEST(RtxFrameHashesTest, aFileWhoseColumnsAreNotThisBuildsIsRefused)
         {
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-hashes-old.csv";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-old.csv");
 
             {
                 std::ofstream out(file);

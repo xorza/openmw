@@ -12,9 +12,10 @@
 #include <osg/Vec3f>
 
 #include <apps/rtxtool/run.hpp>
+#include <components/rtxbench/benchrun.hpp>
+#include <components/testing/util.hpp>
 
 #include "../rtx/harness.hpp"
-#include <components/rtxbench/benchrun.hpp>
 
 namespace RtxTool
 {
@@ -102,7 +103,7 @@ namespace RtxTool
 
             // The whole of what a window prints, because the command line is pasted with the rest
             // and has to read as a comment.
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-test.cfg";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("viewpoint-test.cfg");
             {
                 std::ofstream out(file);
                 out << describeStanding(spot);
@@ -131,8 +132,7 @@ namespace RtxTool
             dawn.mSky.mHour = 6.5f;
             dawn.mSky.mWeather = "Thunderstorm";
 
-            const std::filesystem::path second
-                = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-dawn.cfg";
+            const std::filesystem::path second = TestingOpenMW::outputFilePath("viewpoint-dawn.cfg");
             {
                 std::ofstream out(second);
                 out << describeSpot(dawn) << describeBlock(dawn);
@@ -165,8 +165,7 @@ namespace RtxTool
             EXPECT_EQ(block.find("[balmora-guild-of-mages]"), 0u) << block;
             EXPECT_EQ(block.find("note ="), std::string::npos) << "an empty note is left out, not written blank";
 
-            const std::filesystem::path file
-                = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-unnamed.cfg";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("viewpoint-unnamed.cfg");
             {
                 std::ofstream out(file);
                 out << describeSpot(spot) << block;
@@ -192,7 +191,7 @@ namespace RtxTool
 
         TEST(RtxBenchSuiteTest, aSuiteFileIsSectionsOfViewNames)
         {
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-suite-test.cfg";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("suite-test.cfg");
             {
                 std::ofstream written(file);
                 written << "[quick]\n"
@@ -231,7 +230,7 @@ namespace RtxTool
         /// place out of the list.
         TEST(RtxBenchSuiteTest, aMalformedSuiteSaysSoRatherThanRunningNothing)
         {
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-suite-bad.cfg";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("suite-bad.cfg");
             {
                 std::ofstream written(file);
                 written << "[empty]\nnote = nothing here\n";
@@ -270,9 +269,14 @@ namespace RtxTool
     namespace
     {
         /// Writes `text` to a scratch view file, reads it back, and removes the file.
+        ///
+        /// **In this run's own directory, `TestingOpenMW::outputDir`, and never under a fixed name
+        /// in the temp directory**: `rtx test` runs the suite as concurrent shards and gtest deals
+        /// a fixture's tests out to different ones, so a file two tests share by name is a file
+        /// one shard removes under the other.
         std::vector<Rtx::Stop> readViews(std::string_view text)
         {
-            const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-route-test.cfg";
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("route-test.cfg");
             {
                 std::ofstream out(file);
                 out << text;

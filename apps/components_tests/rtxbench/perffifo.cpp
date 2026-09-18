@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <components/rtxbench/frametimes.hpp>
+#include <components/testing/util.hpp>
 
 // What `PerfControl` sends down a fifo, read off the fifo's other end. POSIX's alone, because a
 // fifo is: the tests that need none of one stay in `frametimes.cpp`, and Windows refuses the fifo
@@ -61,7 +62,7 @@ namespace Rtx
 
         TEST(RtxPerfControlTest, aBracketedRunSendsPerfTheTwoWordsItListensFor)
         {
-            const Reader listening(std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-test");
+            const Reader listening(TestingOpenMW::outputFilePath("perf-control-test"));
 
             {
                 PerfControl control(listening.getPath());
@@ -74,7 +75,7 @@ namespace Rtx
 
         TEST(RtxPerfControlTest, twoPlacesEachBracketTheirOwnFrames)
         {
-            const Reader listening(std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-pair-test");
+            const Reader listening(TestingOpenMW::outputFilePath("perf-control-pair-test"));
 
             PerfControl control(listening.getPath());
             control.enable();
@@ -88,7 +89,7 @@ namespace Rtx
 
         TEST(RtxPerfControlTest, aStopBeforeTheFirstFrameSaysNothing)
         {
-            const Reader listening(std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-stop-test");
+            const Reader listening(TestingOpenMW::outputFilePath("perf-control-stop-test"));
 
             PerfControl control(listening.getPath());
             control.disable();

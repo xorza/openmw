@@ -7,10 +7,11 @@
 
 #include <gtest/gtest.h>
 
+#include <components/rtx/renderer.hpp>
 #include <components/rtxbench/frametimes.hpp>
+#include <components/testing/util.hpp>
 
 #include "../rtx/allocations.hpp"
-#include <components/rtx/renderer.hpp>
 
 namespace Rtx
 {
@@ -77,8 +78,7 @@ namespace Rtx
         /// On Linux, a path nothing reads; on Windows, any path at all. Named either way.
         TEST(RtxPerfControlTest, aFifoWithNobodyReadingItIsNamedRatherThanWaitedOn)
         {
-            const std::filesystem::path missing
-                = std::filesystem::temp_directory_path() / "openmw-rtx-perf-control-absent";
+            const std::filesystem::path missing = TestingOpenMW::outputFilePath("perf-control-absent");
             std::filesystem::remove(missing);
 
             PerfControl control(missing);

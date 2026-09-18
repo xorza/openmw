@@ -15,6 +15,7 @@
 #include <apps/rtxtool/verbs.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/testing/util.hpp>
 
 namespace RtxTool
 {
@@ -208,7 +209,7 @@ namespace RtxTool
         /// because the last configuration directory is the one the engine writes into.
         TEST(RtxOwnConfigTest, theDirectoryIsMadeAndComesLast)
         {
-            const std::filesystem::path own = std::filesystem::temp_directory_path() / "openmw-rtx-own-config-test";
+            const std::filesystem::path own = TestingOpenMW::outputFilePath("own-config-test");
             std::filesystem::remove_all(own);
 
             bpo::variables_map bare = parse({ "openmw-rtxtool" });
