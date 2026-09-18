@@ -66,10 +66,6 @@ namespace Sky
         /// manager's constructor used to do, so that a harness with no weather manager ramps its
         /// dawn on the same hours as the game.
         static TimeOfDaySettings fromFallback();
-
-        /// One reading for the process, made on first use. The content cannot change while the
-        /// process runs, and the reading walks the fallback map a dozen times over built-up strings.
-        static const TimeOfDaySettings& shared();
     };
 
     /// Interpolates between 4 data points (sunrise, day, sunset, night) based on the time of day.

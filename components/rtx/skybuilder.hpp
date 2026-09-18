@@ -128,8 +128,8 @@ namespace Rtx
         osg::Vec3f mDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
         osg::Vec3f mNextDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
-        /// `MWRender::WorldState::mSkyCloudScroll`, which both sheets share: the engine sets one
-        /// texture matrix on both of its cloud updaters.
+        /// How far the deck has scrolled, `Sky::SkyClock::mCloudScroll`, which both sheets share:
+        /// the engine sets one texture matrix on both of its cloud updaters.
         float mScroll = 0.0f;
     };
 

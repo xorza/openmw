@@ -19,8 +19,7 @@ namespace TestingOpenMW
         std::map<std::string, std::string> fallbackSeed()
         {
             return {
-                // The day's phases. `Sky::TimeOfDaySettings::shared` refuses a day that ends before it
-                // starts, so anything asking the sky about an hour needs these.
+                // The day's phases, which anything asking the sky about an hour reads.
                 { "Weather_Sunrise_Time", "6" },
                 { "Weather_Sunrise_Duration", "2" },
                 { "Weather_Sunset_Time", "18" },

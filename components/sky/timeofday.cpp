@@ -1,6 +1,5 @@
 #include "timeofday.hpp"
 
-#include <stdexcept>
 #include <string>
 
 #include <components/fallback/fallback.hpp>
@@ -47,25 +46,6 @@ namespace Sky
                   settings.mStarsPostSunsetStart, settings.mStarsFadingDuration - settings.mStarsPostSunsetStart };
 
         settings.mSunriseTransitions["Stars"] = starSetting;
-
-        return settings;
-    }
-
-    const TimeOfDaySettings& TimeOfDaySettings::shared()
-    {
-        // Refuses a day that never begins rather than holding one: `Fallback::Map` answers a key
-        // nobody planted with a silent nought, and this reading lasts the process. A logic error,
-        // because reading settings before they are loaded is an ordering fault of the caller's.
-        static const TimeOfDaySettings settings = [] {
-            TimeOfDaySettings read = fromFallback();
-            if (!(read.mDayEnd > read.mNightEnd))
-                throw std::logic_error(
-                    "the sky was asked about an hour before Weather_Sunrise_Time and "
-                    "Weather_Sunset_Time were read: a day that ends before it starts is "
-                    "not one this renderer can light");
-
-            return read;
-        }();
 
         return settings;
     }

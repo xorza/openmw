@@ -321,6 +321,8 @@ namespace MWWorld
 
         float getWeatherTransition() const override;
 
+        const MWRender::SkyState& getSkyState() const override;
+
         unsigned int getNightDayMode() const override;
 
         int getMasserPhase() const override;

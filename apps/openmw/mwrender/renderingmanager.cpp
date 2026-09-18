@@ -27,6 +27,8 @@
 
 #include <components/fallback/fallback.hpp>
 #include <components/settings/values.hpp>
+#include <components/sky/moonstate.hpp>
+#include <components/sky/sundisc.hpp>
 
 #include <components/sceneutil/cullsafeboundsvisitor.hpp>
 #include <components/sceneutil/depth.hpp>
@@ -80,6 +82,7 @@
 #include "recastmesh.hpp"
 #include "renderer.hpp"
 #include "sceneframe.hpp"
+#include "skystate.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"
 #include "vismask.hpp"
@@ -129,7 +132,6 @@ namespace MWRender
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
         , mNavigator(navigator)
-        , mTimescaleClouds(Fallback::Map::getBool("Weather_Timescale_Clouds"))
         , mNightEyeFactor(0.f)
         // TODO: Near clip should not need to be bounded like this, but too small values break OSG shadow calculations
         // CPU-side. See issue: #6072
@@ -288,32 +290,17 @@ namespace MWRender
 
     int RenderingManager::skyGetMasserPhase() const
     {
-        return Sky::MoonState::phaseToInt(mSky.mMoons[0].mPhase);
+        return Sky::MoonState::phaseToInt(MWBase::Environment::get().getWorld()->getSkyState().mMoons[0].mPhase);
     }
 
     int RenderingManager::skyGetSecundaPhase() const
     {
-        return Sky::MoonState::phaseToInt(mSky.mMoons[1].mPhase);
+        return Sky::MoonState::phaseToInt(MWBase::Environment::get().getWorld()->getSkyState().mMoons[1].mPhase);
     }
 
     void RenderingManager::skySetMoonColour(bool red)
     {
-        mSky.mMoonRed = red;
-    }
-
-    void RenderingManager::setStormParticleDirection(const osg::Vec3f& direction)
-    {
-        mPrecipitation->setStormParticleDirection(direction);
-    }
-
-    void RenderingManager::setSunEnabled(bool enabled)
-    {
-        mSky.mSunEnabled = enabled;
-    }
-
-    void RenderingManager::setGlareFade(float fade)
-    {
-        mSky.mGlareFade = fade;
+        mMoonRed = red;
     }
 
     void RenderingManager::configureAmbient(const MWWorld::Cell& cell)
@@ -354,11 +341,6 @@ namespace MWRender
         static const osg::Vec4f interiorSunPos
             = osg::Vec4f(-1.f, osg::DegreesToRadians(45.f), osg::DegreesToRadians(45.f), 0.f);
         mSunLight->setPosition(interiorSunPos);
-
-        // Where upstream pointed the chain's sun; the frame carries it instead
-        mSky.mSunPosition = interiorSunPos;
-        mSky.mSunVector = -interiorSunPos;
-        mSky.mSunAtNight = false;
     }
 
     void RenderingManager::setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis)
@@ -367,7 +349,7 @@ namespace MWRender
         mSunLight->setDiffuse(diffuse);
         mSunLight->setSpecular(osg::Vec4f(specular.x(), specular.y(), specular.z(), specular.w() * sunVis));
 
-        mSky.mSunVisibility = sunVis;
+        mSunVisibility = sunVis;
     }
 
     const osg::Vec4f& RenderingManager::getSunLightPosition() const
@@ -377,19 +359,12 @@ namespace MWRender
 
     void RenderingManager::setSunDirection(const osg::Vec3f& direction)
     {
-        osg::Vec3f position = -direction;
-
-        // This is based on the exterior sun orbit and won't make sense for interiors, see WeatherManager::update
-        position.z() = 400.f - std::abs(position.x());
+        const osg::Vec3f position = Sky::sunDiscPosition(direction);
 
         // The sun is not always synchronized with the sunlight because reasons
         const osg::Vec3f sunlightPos = Settings::shaders().mMatchSunlightToSun ? position : -direction;
         // need to wrap this in a StateUpdater?
         mSunLight->setPosition(osg::Vec4f(sunlightPos, 0.f));
-
-        mSky.mSunPosition = osg::Vec4f(position, 0.f);
-        mSky.mSunVector = osg::Vec4f(-sunlightPos, 0.f);
-        mSky.mSunAtNight = mNight;
     }
 
     void RenderingManager::addCell(const MWWorld::CellStore* store)
@@ -438,7 +413,7 @@ namespace MWRender
     void RenderingManager::setSkyEnabled(bool enabled)
     {
         mPrecipitation->setEnabled(enabled);
-        mSky.mSkyEnabled = enabled;
+        mSkyEnabled = enabled;
     }
 
     bool RenderingManager::toggleBorders()
@@ -491,11 +466,16 @@ namespace MWRender
     {
         reportStats();
 
+        // Fed the weather where the sky manager was fed it upstream: every update the weather ran,
+        // paused or not, and before the particles step.
+        const SkyState& sky = MWBase::Environment::get().getWorld()->getSkyState();
+        if (sky.mOutdoors)
+            mPrecipitation->setWeather(sky);
+
         if (!paused)
         {
             mEffectManager->update(dt);
             mPrecipitation->update();
-            updateSkyClocks(dt);
         }
 
         mFrameDelta = dt;
@@ -841,7 +821,7 @@ namespace MWRender
 
     void RenderingManager::clear()
     {
-        mSky.mMoonRed = false;
+        mMoonRed = false;
 
         notifyWorldSpaceChanged();
         mRenderer.forgetReferences();

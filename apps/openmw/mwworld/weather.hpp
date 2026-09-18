@@ -15,6 +15,7 @@
 
 #include "../mwbase/soundmanager.hpp"
 
+#include "../mwrender/skystate.hpp"
 #include "../mwrender/skyutil.hpp"
 
 namespace ESM
@@ -317,6 +318,9 @@ namespace MWWorld
 
         std::vector<Moon> getCurrentMoons(const TimeStamp& time) const;
 
+        /// What this settled about the sky, for whatever draws it.
+        const MWRender::SkyState& getSkyState() const { return mSky; }
+
         void write(ESM::ESMWriter& writer, Loading::Listener& progress);
 
         bool readRecord(ESM::ESMReader& reader, uint32_t type);
@@ -332,7 +336,12 @@ namespace MWWorld
         float mSunsetDuration;
         float mSunPreSunsetTime;
 
-        TimeOfDaySettings mTimeSettings;
+        /// The sky as this settles it, which both renderers read. `mTimeSettings` and `mResult`
+        /// are two of its fields under upstream's names, so the code that fills them reads as
+        /// upstream reads.
+        MWRender::SkyState mSky;
+
+        TimeOfDaySettings& mTimeSettings;
 
         // fading of night skydome
         TimeOfDayInterpolator<float> mNightFade;
@@ -363,7 +372,7 @@ namespace MWWorld
         ESM::RefId mNextWeather;
         ESM::RefId mQueuedWeather;
         std::map<ESM::RefId, RegionWeather> mRegions;
-        MWRender::WeatherResult mResult;
+        MWRender::WeatherResult& mResult;
 
         MWBase::Sound* mAmbientSound{ nullptr };
         ESM::RefId mPlayingAmbientSoundID;

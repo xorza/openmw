@@ -34,6 +34,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../../mwworld/cellstore.hpp"
+#include "../precipitation.hpp"
 #include "../sceneframe.hpp"
 #include "../vismask.hpp"
 #include "classmasks.hpp"
@@ -179,7 +180,8 @@ namespace MWRender
         mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
     }
 
-    Rtx::ExtractionStats WorldMirror::mirror(const SceneFrame& frame, const std::size_t frameNumber)
+    Rtx::ExtractionStats WorldMirror::mirror(
+        const SceneFrame& frame, const osg::Matrixd& view, const std::size_t frameNumber)
     {
         // The world's clock and not this renderer's, or the controllers would run while the game
         // was paused; the emitters by the gap between frames, which the extractor clamps, because
@@ -195,15 +197,17 @@ namespace MWRender
 
         // What the weather drops, walked as a second root, because the sky's mask keeps the world
         // walk out of that subtree: the same systems the rasterizer draws, stood at the eye.
-        const osg::Matrixd inverseView = osg::Matrixd::inverse(frame.mEye.mView);
+        const osg::Matrixd inverseView = osg::Matrixd::inverse(view);
         const osg::Vec3f eye = inverseView.getTrans();
         mEye = eye;
 
         // And the eye every billboard in the world turns to, which the rasterizer's cull hands its
         // `AutoTransform`s and this walk has to be told.
         mExtractor.setEye(Rtx::viewBasisOf(inverseView));
-        Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mRain, eye, frame.mWorld.mUnderwater, frameNumber);
-        Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mWeatherEffect, eye, frame.mWorld.mUnderwater, frameNumber);
+        Rtx::mirrorPrecipitation(
+            mExtractor, frame.mPrecipitation.getRainNode(), eye, frame.mWorld.mUnderwater, frameNumber);
+        Rtx::mirrorPrecipitation(
+            mExtractor, frame.mPrecipitation.getParticleNode(), eye, frame.mWorld.mUnderwater, frameNumber);
 
         // The sea, where the frame says there is one: hidden by its mask otherwise, as the
         // rasterizer's `updateVisible` hid the same plane, so the walk leaves no placement of it.

@@ -2,20 +2,31 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Camera>
+#include <osg/Group>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
+#include <osg/ref_ptr>
 
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
+#include <components/resource/bgsmfilemanager.hpp>
+#include <components/resource/imagemanager.hpp>
+#include <components/resource/niffilemanager.hpp>
+#include <components/resource/scenemanager.hpp>
 #include <components/rtx/colour.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
+#include <components/sky/skyclock.hpp>
+#include <components/vfs/manager.hpp>
 
+#include "apps/openmw/mwrender/precipitation.hpp"
 #include "apps/openmw/mwrender/rtx/skyreader.hpp"
 #include "apps/openmw/mwrender/sceneframe.hpp"
+#include "apps/openmw/mwrender/skystate.hpp"
 
 namespace MWRender
 {
@@ -23,31 +34,76 @@ namespace MWRender
     {
         constexpr float sReach = 4.0f * static_cast<float>(Constants::CellSizeInUnits);
 
-        /// Noon under clear weather, wherever the caller says the player is standing.
-        WorldState standingIn(const Location where)
+        /// The two records a reading is made of.
+        struct Standing
         {
-            WorldState world;
-            world.mLocation = where;
-            world.mSky.mSkyEnabled = where != Location::Interior;
-            world.mGameHour = 12.0f;
-            world.mSky.mFogDepth = 0.69f;
-            world.mSky.mBaseWindSpeed = 0.3f;
-            world.mAir = { .mColour = osg::Vec4f(0.62f, 0.77f, 1.0f, 1.0f) };
-            world.mSky.mSkyColour = osg::Vec4f(0.11f, 0.24f, 0.6f, 1.0f);
-            world.mSky.mSunPosition = osg::Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
-            world.mSunColour = osg::Vec4f(1.0f, 0.97f, 0.85f, 1.0f);
-            world.mSky.mSunDiscColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
+            SkyState mSky;
+            WorldState mWorld;
+        };
 
-            return world;
+        /// Noon under clear weather, wherever the caller says the player is standing: the sun
+        /// straight overhead, the weather run wherever there is a sky over the player.
+        Standing standingIn(const Location where)
+        {
+            Standing standing;
+            SkyState& sky = standing.mSky;
+            WorldState& world = standing.mWorld;
+
+            // Morrowind's shipped day: sunrise at six for two hours, sunset at eighteen for two.
+            sky.mTimes.mNightEnd = 6.f;
+            sky.mTimes.mSunriseDuration = 2.f;
+            sky.mTimes.mDayStart = 8.f;
+            sky.mTimes.mDayEnd = 18.f;
+            sky.mTimes.mNightStart = 20.f;
+
+            world.mLocation = where;
+            world.mSkyShown = where != Location::Interior;
+            sky.mOutdoors = where != Location::Interior;
+            world.mGameHour = 12.0f;
+            sky.mWeather.mFogDepth = 0.69f;
+            sky.mWeather.mBaseWindSpeed = 0.3f;
+            sky.mWeather.mGlareView = 1.0f;
+            world.mAir = { .mColour = osg::Vec4f(0.62f, 0.77f, 1.0f, 1.0f) };
+            sky.mWeather.mSkyColor = osg::Vec4f(0.11f, 0.24f, 0.6f, 1.0f);
+
+            // An orbit direction whose disc, bent by `Sky::sunDiscPosition`, stands straight up;
+            // and the same point on the light, for a room where the weather has not run.
+            sky.mSunDirection = osg::Vec3f(0.0f, 0.0f, -100.0f);
+            world.mSunLightPosition = osg::Vec4f(0.0f, 0.0f, 1.0f, 0.0f);
+            world.mSunColour = osg::Vec4f(1.0f, 0.97f, 0.85f, 1.0f);
+            sky.mWeather.mSunDiscColor = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+            return standing;
         }
 
+        /// What the weather drops, over an empty archive: nothing, until a test hands it a
+        /// weather that rains.
+        struct Falling
+        {
+            VFS::Manager mVfs;
+            Resource::ImageManager mImages{ &mVfs, 0 };
+            Resource::NifFileManager mNifs{ &mVfs, nullptr };
+            Resource::BgsmFileManager mMaterials{ &mVfs, 0 };
+            Resource::SceneManager mScenes{ &mVfs, &mImages, &mNifs, &mMaterials, 0 };
+            osg::ref_ptr<osg::Group> mRoot = new osg::Group;
+            osg::ref_ptr<osg::Camera> mCamera = new osg::Camera;
+            Precipitation mPrecipitation{ mRoot, mCamera, &mScenes };
+
+            Falling()
+            {
+                // The box's shaders are the rasterizer's, and an empty archive holds none of them.
+                mScenes.setShadersEnabled(false);
+            }
+        };
+
         /// A reader at the reach the assertions below count on, with the sky and the moons it
-        /// holds before a world arrives: none.
-        Rtx::WorldReading readFrom(const WorldState& world)
+        /// holds before a world arrives: none, and nothing falling.
+        Rtx::WorldReading readFrom(const Standing& standing)
         {
             const SkyReader reader;
+            const Falling falling;
 
-            return reader.read(world, 0.0f, sReach);
+            return reader.read(standing.mSky, standing.mWorld, falling.mPrecipitation, 0.0f, sReach);
         }
 
         /// A quasi-exterior stands under the exterior's sun and in the exterior's air.
@@ -93,18 +149,47 @@ namespace MWRender
             EXPECT_EQ(air.mEdge, 0.0f);
         }
 
-        /// The deck scrolls and the fog churns by the sky's clock, and not by the rasterizer's
-        /// scroll beside it, which keeps upstream's pace whatever `timescale` says.
+        /// The disc stands where the orbit's direction puts it, bent toward the horizon by the
+        /// rule both renderers share, and not where the light happens to point: `match sunlight
+        /// to sun` may have left the light on the orbit, and the shadows have to fall from the disc.
+        TEST(RtxReadWorldTest, theDiscIsWhereTheOrbitPutsItAndNotWhereTheLightPoints)
+        {
+            Standing dusk = standingIn(Location::Exterior);
+            dusk.mSky.mSunDirection = osg::Vec3f(-300.0f, 75.0f, -100.0f);
+            dusk.mWorld.mSunLightPosition = osg::Vec4f(300.0f, -75.0f, 100.0f, 0.0f);
+
+            // `(300, -75, 400 - 300)`, unit length: the disc a hundred up where the light is
+            // a hundred up too, but the disc's is the bent height and the light's the orbit's.
+            osg::Vec3f disc(300.0f, -75.0f, 100.0f);
+            disc.normalize();
+            EXPECT_EQ(readFrom(dusk).mDaylight.mLight.mSun.mPosition, disc);
+
+            dusk.mSky.mSunDirection = osg::Vec3f(-100.0f, 75.0f, -100.0f);
+            osg::Vec3f higher(100.0f, -75.0f, 300.0f);
+            higher.normalize();
+            EXPECT_EQ(readFrom(dusk).mDaylight.mLight.mSun.mPosition, higher) << "the light did not move, the disc did";
+        }
+
+        /// The deck scrolls and the fog churns by the reader's own clock, which the frame steps
+        /// and the frame does not carry: one frame at the shipped scale under the fastest deck
+        /// moves the scroll and the seconds by that frame.
         TEST(RtxReadWorldTest, theDeckAndTheFogReadTheSkysClock)
         {
-            WorldState world = standingIn(Location::Exterior);
-            world.mSky.mCloudScroll = 3.0f;
-            world.mSky.mSkyCloudScroll = 1.25f;
-            world.mSky.mSkySeconds = 1234.5;
+            constexpr float step = 1.0f / 60.0f;
+            const Standing standing = standingIn(Location::Exterior);
+            const Falling falling;
 
-            const Rtx::WorldReading reading = readFrom(world);
-            EXPECT_EQ(reading.mClouds.mScroll, 1.25f);
-            EXPECT_EQ(reading.mSkySeconds, 1234.5);
+            SkyReader reader;
+            const Rtx::WorldReading still
+                = reader.read(standing.mSky, standing.mWorld, falling.mPrecipitation, 0.0f, sReach);
+            EXPECT_EQ(still.mClouds.mScroll, 0.0f);
+            EXPECT_EQ(still.mSkySeconds, 0.0);
+
+            reader.step(step, Sky::sVanillaTimeScale, 400.0f);
+            const Rtx::WorldReading stepped
+                = reader.read(standing.mSky, standing.mWorld, falling.mPrecipitation, 0.0f, sReach);
+            EXPECT_FLOAT_EQ(stepped.mClouds.mScroll, step);
+            EXPECT_DOUBLE_EQ(stepped.mSkySeconds, static_cast<double>(step));
         }
 
         /// A room is lit by its own record, and the record is the only thing that decides it.
@@ -113,11 +198,11 @@ namespace MWRender
         /// no sun at any hour, and holds the still even air `sInteriorFogReach` is measured over.
         TEST(RtxReadWorldTest, aRoomIsLitByItsOwnRecordAndHasNoSun)
         {
-            WorldState cellar = standingIn(Location::Interior);
-            cellar.mRoom = ESM::Cell::AMBIstruct{ .mAmbient = 0x00201818u,
+            Standing cellar = standingIn(Location::Interior);
+            cellar.mWorld.mRoom = ESM::Cell::AMBIstruct{ .mAmbient = 0x00201818u,
                 .mSunlight = 0x00403028u,
                 .mFog = 0x00151510u,
-                .mFogDensity = cellar.mSky.mFogDepth };
+                .mFogDensity = cellar.mSky.mWeather.mFogDepth };
 
             const Rtx::WorldReading room = readFrom(cellar);
 
@@ -126,7 +211,7 @@ namespace MWRender
             EXPECT_EQ(room.mDaylight.mFog.mUniform, 1.0f);
             EXPECT_EQ(room.mDaylight.mFog.mEdge, 0.0f);
             EXPECT_NEAR(room.mDaylight.mFog.mExtinction,
-                Rtx::fogExtinction(cellar.mSky.mFogDepth, Rtx::sInteriorFogReach), 1e-10f);
+                Rtx::fogExtinction(cellar.mSky.mWeather.mFogDepth, Rtx::sInteriorFogReach), 1e-10f);
 
             // Its sky is its own air and not the one the player last stood under, which the weather
             // system stopped writing the moment they stepped inside.
@@ -140,10 +225,10 @@ namespace MWRender
         /// and its sun is the noon sun with no disc to draw.
         TEST(RtxReadWorldTest, theSkyToggleHidesTheSkyAndKeepsTheSun)
         {
-            WorldState world = standingIn(Location::Exterior);
-            world.mSky.mSkyEnabled = false;
+            Standing standing = standingIn(Location::Exterior);
+            standing.mWorld.mSkyShown = false;
 
-            const Rtx::WorldReading hidden = readFrom(world);
+            const Rtx::WorldReading hidden = readFrom(standing);
             const Rtx::WorldReading shown = readFrom(standingIn(Location::Exterior));
 
             EXPECT_FALSE(hidden.mOutdoors);
@@ -163,10 +248,10 @@ namespace MWRender
             const osg::Vec3f paint = Rtx::decodeColour(Fallback::Map::getColour("Moons_Script_Color"));
             ASSERT_NE(paint, white);
 
-            WorldState world = standingIn(Location::Exterior);
-            world.mSky.mMoonRed = true;
+            Standing standing = standingIn(Location::Exterior);
+            standing.mWorld.mMoonRed = true;
 
-            const Rtx::WorldReading red = readFrom(world);
+            const Rtx::WorldReading red = readFrom(standing);
             EXPECT_EQ(red.mMoons[static_cast<std::size_t>(Rtx::Moon::Masser)].mPaint, white);
             EXPECT_EQ(red.mMoons[static_cast<std::size_t>(Rtx::Moon::Secunda)].mPaint, paint);
 
@@ -175,18 +260,32 @@ namespace MWRender
         }
 
         /// What falls is kept off by a roof up to the top of the game's own occluder box — the
-        /// precipitation's range and a cell over it — and by nothing where the game says what
-        /// falls is not that kind.
+        /// precipitation's range and a cell over it — and by nothing where nothing falls. Asked of
+        /// the precipitation itself: a weather that rains sizes the box by its own numbers, the
+        /// height being the mean of the drops' two spawn heights.
         TEST(RtxReadWorldTest, theShelterIsTheOccludersBox)
         {
-            WorldState world = standingIn(Location::Exterior);
-            world.mPrecipitating = true;
-            world.mPrecipitationRange = osg::Vec3f(1024.0f, 1024.0f, 800.0f);
+            const Standing standing = standingIn(Location::Exterior);
+            const SkyReader reader;
+            Falling falling;
 
-            EXPECT_EQ(readFrom(world).mShelterHeight, 800.0f + static_cast<float>(Constants::CellSizeInUnits));
+            SkyState rain = standing.mSky;
+            rain.mWeather.mRainEffect = "meshes/raindrop.nif";
+            rain.mWeather.mRainDiameter = 600.0f;
+            rain.mWeather.mRainMinHeight = 200.0f;
+            rain.mWeather.mRainMaxHeight = 700.0f;
+            rain.mWeather.mRainSpeed = 200.0f;
+            rain.mWeather.mRainEntranceSpeed = 1.0f;
+            rain.mWeather.mRainMaxRaindrops = 650;
+            rain.mWeather.mPrecipitationAlpha = 1.0f;
 
-            world.mPrecipitating = false;
-            EXPECT_EQ(readFrom(world).mShelterHeight, 0.0f);
+            falling.mPrecipitation.setWeather(rain);
+            EXPECT_EQ(reader.read(rain, standing.mWorld, falling.mPrecipitation, 0.0f, sReach).mShelterHeight,
+                450.0f + static_cast<float>(Constants::CellSizeInUnits));
+
+            falling.mPrecipitation.setWeather(standing.mSky);
+            EXPECT_EQ(
+                reader.read(standing.mSky, standing.mWorld, falling.mPrecipitation, 0.0f, sReach).mShelterHeight, 0.0f);
         }
     }
 }

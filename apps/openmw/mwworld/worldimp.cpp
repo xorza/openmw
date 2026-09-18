@@ -1815,6 +1815,11 @@ namespace MWWorld
         return mWeatherManager->getTransitionFactor();
     }
 
+    const MWRender::SkyState& World::getSkyState() const
+    {
+        return mWeatherManager->getSkyState();
+    }
+
     unsigned int World::getNightDayMode() const
     {
         return mWeatherManager->getNightDayMode();

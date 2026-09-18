@@ -420,8 +420,11 @@ namespace MWRender
         mRainParticleSystem->setFrozen(freeze);
     }
 
-    void Precipitation::setWeather(const WeatherResult& weather)
+    void Precipitation::setWeather(const SkyState& sky)
     {
+        const WeatherResult& weather = sky.mWeather;
+        mStormParticleDirection = sky.mStormParticleDirection;
+
         mRainEntranceSpeed = weather.mRainEntranceSpeed;
         mRainMaxRaindrops = weather.mRainMaxRaindrops;
         mRainDiameter = weather.mRainDiameter;
@@ -532,11 +535,6 @@ namespace MWRender
         }
 
         mPrecipitationAlpha = weather.mPrecipitationAlpha;
-    }
-
-    void Precipitation::setStormParticleDirection(const osg::Vec3f& direction)
-    {
-        mStormParticleDirection = direction;
     }
 
     void Precipitation::setWaterHeight(float height)

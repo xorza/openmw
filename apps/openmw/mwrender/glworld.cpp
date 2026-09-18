@@ -28,9 +28,11 @@
 #include <components/terrain/world.hpp>
 
 #include "postprocessor.hpp"
+#include "precipitation.hpp"
 #include "precipitationocclusion.hpp"
 #include "renderingmanager.hpp"
 #include "sky.hpp"
+#include "skystate.hpp"
 #include "vismask.hpp"
 #include "water.hpp"
 
@@ -308,15 +310,20 @@ namespace MWRender
     void GlWorld::describe(const SceneFrame& frame)
     {
         const WorldState& world = frame.mWorld;
+        const SkyState& sky = frame.mSky;
         const EyeState& eye = frame.mEye;
+        const Precipitation& precipitation = frame.mPrecipitation;
+
+        const bool weathered = sky.mOutdoors;
+        const osg::Vec4f disc = sunDiscOf(sky, world);
 
         Fx::StateUpdater& state = *mPostProcessor->getStateUpdater();
-        state.setSunPos(world.mSky.mSunPosition, world.mSky.mSunAtNight);
-        state.setSunVec(world.mSky.mSunVector);
+        state.setSunPos(disc, weathered && sky.mNight);
+        state.setSunVec(-world.mSunLightPosition);
         state.setSunColor(world.mSunColour);
-        state.setSunVis(world.mSky.mSunVisibility);
+        state.setSunVis(world.mSunVisibility);
         state.setAmbientColor(world.mAmbientColour);
-        state.setSkyColor(world.mSky.mSkyColour);
+        state.setSkyColor(sky.mWeather.mSkyColor);
         state.setIsInterior(world.isInteriorCell());
         state.setIsWaterEnabled(world.mWaterEnabled);
         state.setWaterHeight(world.mWaterHeight);
@@ -350,7 +357,7 @@ namespace MWRender
 
         if (!frame.mPaused)
         {
-            mSharedUniformStateUpdater->setWindSpeed(world.mSky.mBaseWindSpeed);
+            mSharedUniformStateUpdater->setWindSpeed(sky.mWeather.mBaseWindSpeed);
             mSharedUniformStateUpdater->setPlayerPos(world.mPlayerPosition);
         }
 
@@ -370,46 +377,44 @@ namespace MWRender
 
         // **The dome, fed as the weather manager fed it**: every setter per frame, in the weather
         // manager's order — a moon's state sets its transparency and the weather then scales it —
-        // and only while there is a sky, because the setters want a built dome and `setEnabled(true)`
-        // is what builds it. The weather is null until the weather has run, which it has whenever
-        // the sky is on.
-        if (!mApplied.mAny || mApplied.mSkyEnabled != world.mSky.mSkyEnabled)
+        // and only while there is a sky and the weather has run, because the setters want a built
+        // dome and `setEnabled(true)` is what builds it. The switch every frame, because the dome
+        // answers it by setting two masks.
+        mSky->setEnabled(world.mSkyShown);
+        if (world.mSkyShown && weathered)
         {
-            mSky->setEnabled(world.mSky.mSkyEnabled);
-            mApplied.mSkyEnabled = world.mSky.mSkyEnabled;
-        }
-        if (world.mSky.mSkyEnabled && world.mSky.mWeather != nullptr)
-        {
-            if (world.mSky.mSunEnabled)
+            if (sky.mSunUp)
                 mSky->sunEnable();
             else
                 mSky->sunDisable();
-            mSky->setSunDirection(
-                osg::Vec3f(world.mSky.mSunPosition.x(), world.mSky.mSunPosition.y(), world.mSky.mSunPosition.z()));
-            mSky->setGlareTimeOfDayFade(world.mSky.mGlareFade);
-            mSky->setMasserState(world.mSky.mMoons[0]);
-            mSky->setSecundaState(world.mSky.mMoons[1]);
-            mSky->setWeather(*world.mSky.mWeather);
-            mSky->setMoonColour(world.mSky.mMoonRed);
+            mSky->setSunDirection(osg::Vec3f(disc.x(), disc.y(), disc.z()));
+            mSky->setGlareTimeOfDayFade(sky.mGlareFade);
+            mSky->setMasserState(sky.mMoons[0]);
+            mSky->setSecundaState(sky.mMoons[1]);
+            mSky->setWeather(sky.mWeather);
+            mSky->setMoonColour(world.mMoonRed);
         }
 
         // The occluder as the sky manager drove it: enabled where the precipitation says it was,
         // its range whenever it is on, and stepped after the dome each unpaused frame. A fresh one
         // is disabled, which is what `Applied` starts at.
-        if (mPrecipitationOcclusion && mApplied.mPrecipitating != world.mPrecipitating)
+        const bool precipitating = precipitation.isOccluded();
+        if (mPrecipitationOcclusion && mApplied.mPrecipitating != precipitating)
         {
-            if (world.mPrecipitating)
+            if (precipitating)
                 mPrecipitationOccluder->enable();
             else
                 mPrecipitationOccluder->disable();
-            mApplied.mPrecipitating = world.mPrecipitating;
+            mApplied.mPrecipitating = precipitating;
         }
-        if (mPrecipitationOcclusion && world.mPrecipitating)
-            mPrecipitationOccluder->updateRange(world.mPrecipitationRange);
+        if (mPrecipitationOcclusion && precipitating)
+            mPrecipitationOccluder->updateRange(precipitation.getOcclusionRange());
 
-        if (!frame.mPaused && world.mSky.mSkyEnabled)
+        // The dome's own clocks, stepped by the frame as upstream stepped them from
+        // `RenderingManager::update`.
+        if (!frame.mPaused && world.mSkyShown)
         {
-            mSky->update(world.mSky.mCloudScroll, world.mSky.mStarRoll);
+            mSky->update(frame.mDeltaTime);
             mPrecipitationOccluder->update();
         }
 
@@ -446,7 +451,7 @@ namespace MWRender
             mApplied.mWaterEnabled = world.mWaterEnabled;
         }
 
-        mWater->setRainIntensity(world.mRainOnWater);
+        mWater->setRainIntensity(precipitation.getRainRipplesEnabled() ? precipitation.getPrecipitationAlpha() : 0.f);
         mWater->update(frame.mDeltaTime, frame.mPaused);
 
         mApplied.mAny = true;

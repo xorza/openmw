@@ -20,7 +20,7 @@ source_group(apps/openmw FILES main.cpp androidmain.cpp ${OPENMW_SOURCES} ${OPEN
 # The renderer seam: `MWRender::Renderer`, what a frame is described as, and the rasterizer behind
 # the seam. Built whichever renderer is, and named once so the block below can find them.
 set(OPENMW_RENDERER_SEAM
-    renderer sceneframe objectstorage precipitation ground glrenderer glworld gloffscreenview pixels
+    renderer sceneframe skystate objectstorage precipitation ground glrenderer glworld gloffscreenview pixels
     )
 
 add_openmw_dir (mwrender

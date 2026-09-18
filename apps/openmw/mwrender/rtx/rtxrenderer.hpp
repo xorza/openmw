@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <SDL_video.h>
+#include <osg/Matrixd>
 #include <osg/Node>
 #include <osg/Timer>
 #include <osg/ref_ptr>
@@ -302,7 +303,8 @@ namespace MWRender
         /// Its refusals — an empty world, a camera with no roll — are not reasons not to present, so
         /// they end here rather than in `renderFrame`. `since` is how long the frame before this one
         /// stood for, or nothing on the first.
-        void traceWorld(const SceneFrame& frame, FrameReport& report, std::optional<double> since);
+        void traceWorld(
+            const SceneFrame& frame, const osg::Matrixd& view, FrameReport& report, std::optional<double> since);
 
         /// Waits the frame behind out and reads what the device answered for it, into the report.
         void finishBehind(FrameReport& report);
@@ -315,7 +317,8 @@ namespace MWRender
         /// arrived with, built for the render extent, the arms' own, the classes the eye sees, the
         /// sample to take, and the profile's rules for the textures. The world's half is
         /// `Rtx::describeWorld`'s. Nothing for a camera the builder refused, which is reported once.
-        std::optional<Rtx::Shaders::VisibilityConstants> describeTrace(const SceneFrame& frame);
+        std::optional<Rtx::Shaders::VisibilityConstants> describeTrace(
+            const SceneFrame& frame, const osg::Matrixd& view);
 
         /// Traces one frame from `constants`, with the world's sky described into it, and closes
         /// the report with what it came to.

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <osg/Vec3f>
+
 #include <components/sky/sundisc.hpp>
 #include <components/sky/timeofday.hpp>
 
@@ -67,6 +69,17 @@ namespace Sky
             // And the ramp alone says nothing about the night: the fade is held at one past dusk.
             EXPECT_FLOAT_EQ(sunDiscAlpha(23.f, times), 0.f);
             EXPECT_FLOAT_EQ(sunDiscAlpha(3.f, times), 1.f) << "before dawn the ramp is one; sunUp is the gate";
+        }
+
+        /// Where the disc is drawn for an orbit direction: reversed, and its height bent down by
+        /// the width it stands from the zenith, which is Morrowind's own rule. At the orbit's
+        /// noon `(0, 75, -100)` the disc stands at `(0, -75, 400)`; at its edge `(-400, 75, -100)`
+        /// the bend takes the whole four hundred off and the disc sits on the horizon.
+        TEST(SkySunDiscTest, theDiscIsTheOrbitReversedAndBentTowardTheHorizon)
+        {
+            EXPECT_EQ(sunDiscPosition(osg::Vec3f(0.f, 75.f, -100.f)), osg::Vec3f(0.f, -75.f, 400.f));
+            EXPECT_EQ(sunDiscPosition(osg::Vec3f(-400.f, 75.f, -100.f)), osg::Vec3f(400.f, -75.f, 0.f));
+            EXPECT_EQ(sunDiscPosition(osg::Vec3f(200.f, 75.f, -100.f)), osg::Vec3f(-200.f, -75.f, 200.f));
         }
     }
 }

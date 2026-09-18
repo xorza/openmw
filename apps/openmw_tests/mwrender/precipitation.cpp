@@ -11,7 +11,7 @@
 #include <components/vfs/manager.hpp>
 
 #include "apps/openmw/mwrender/precipitation.hpp"
-#include "apps/openmw/mwrender/skyutil.hpp"
+#include "apps/openmw/mwrender/skystate.hpp"
 
 namespace MWRender
 {
@@ -19,9 +19,10 @@ namespace MWRender
     {
         /// A weather that rains, with the numbers `Precipitation::createRain` sizes the box by and
         /// divides by. Morrowind's own for Rain.
-        WeatherResult rain()
+        SkyState rain()
         {
-            WeatherResult weather{};
+            SkyState sky;
+            WeatherResult& weather = sky.mWeather;
             weather.mRainEffect = "meshes/raindrop.nif";
             weather.mRainDiameter = 600.0f;
             weather.mRainMinHeight = 200.0f;
@@ -30,7 +31,7 @@ namespace MWRender
             weather.mRainEntranceSpeed = 1.0f;
             weather.mRainMaxRaindrops = 650;
             weather.mPrecipitationAlpha = 1.0f;
-            return weather;
+            return sky;
         }
 
         /// **Nothing falls while the sky is off.** The weather manager turns the sky off the moment

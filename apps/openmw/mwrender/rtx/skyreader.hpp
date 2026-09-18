@@ -5,6 +5,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
+#include <components/sky/skyclock.hpp>
 
 namespace Resource
 {
@@ -18,6 +19,8 @@ namespace Rtx
 
 namespace MWRender
 {
+    class Precipitation;
+    struct SkyState;
     struct WorldState;
 
     /// Turns what the game says about a frame's world into what the renderer builds a sky, an air
@@ -27,7 +30,8 @@ namespace MWRender
     /// device, and nothing here is a decision this host makes on its own.
     ///
     /// Apart from `WorldMirror`, which is the walk and the hand-over: what this holds is read off
-    /// the content once and never off the graph, and `read` is a function of the frame's world.
+    /// the content once and never off the graph, and `read` is a function of the frame's records
+    /// and the one clock this keeps.
     class SkyReader
     {
     public:
@@ -49,17 +53,29 @@ namespace MWRender
         /// nothing of the sky: `attach`'s pair, where the world is detached.
         void detach(Rtx::SceneDesc& scene);
 
+        /// Moves the sky's clocks on by one frame: the deck's scroll, the stars' roll and the
+        /// seconds the fog drifts by. Every unpaused frame the sky is on, as the rasterizer's dome
+        /// steps its own.
+        void step(float seconds, float timeScale, float cloudSpeed) { mClock.step(seconds, timeScale, cloudSpeed); }
+
+        /// @param falling what the weather drops, for how much of it rings the water and how high
+        ///        a roof shelters from it.
         /// @param seconds the world's clock, which the sea is animated by.
         /// @param reach how far the world is built, in units, which the open air closes over.
-        Rtx::WorldReading read(const WorldState& world, float seconds, float reach) const;
+        Rtx::WorldReading read(const SkyState& sky, const WorldState& world, const Precipitation& falling,
+            float seconds, float reach) const;
 
     private:
         /// The moons' portraits and the sky's own meshes, held from `attach` to `detach`.
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;
 
+        /// The deck, the stars and the fog's seconds, this renderer's own: the dome keeps the same
+        /// clocks for itself and neither reads the other's.
+        Sky::SkyClock mClock;
+
         /// What a script paints Secunda, `Moons_Script_Color` decoded, read once as the
-        /// rasterizer's `SkyManager` reads it. `SkySettled::mMoonRed` says when.
+        /// rasterizer's `SkyManager` reads it. `WorldState::mMoonRed` says when.
         osg::Vec3f mMoonPaint;
 
         /// The sun glare fader's three constants, read once as `SunGlareCallback` reads them:

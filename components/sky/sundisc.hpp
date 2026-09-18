@@ -1,6 +1,8 @@
 #ifndef OPENMW_COMPONENTS_SKY_SUNDISC_H
 #define OPENMW_COMPONENTS_SKY_SUNDISC_H
 
+#include <osg/Vec3f>
+
 namespace Sky
 {
     struct TimeOfDaySettings;
@@ -17,6 +19,12 @@ namespace Sky
     /// because a rasterizer that has hidden the disc has no use for the answer; `sunUp` is the
     /// other half.
     float sunDiscAlpha(float hour, const TimeOfDaySettings& times);
+
+    /// Where the disc is drawn for the orbit's `direction`: the direction reversed, and its height
+    /// bent down as it leaves the zenith by Morrowind's own rule, which `RenderingManager` applied
+    /// before handing the dome its sun. One statement, because the light and the disc are placed
+    /// by two renderers off one direction, and the disc has to be where the shadows say it is.
+    osg::Vec3f sunDiscPosition(const osg::Vec3f& direction);
 }
 
 #endif

@@ -114,9 +114,6 @@ namespace MWRender
             /// Whether the water's height cull is in place: the terrain hands one out only once it
             /// has chunks, so an exterior asks again until it does.
             bool mWaterCulled = false;
-            /// The dome's switch, applied on the edge as upstream's `adjustSky` applied it; the
-            /// first frame applies it whatever it is, since a fresh dome starts enabled.
-            bool mSkyEnabled = false;
             /// The occluder's `enable` adds a callback each call, so it follows the edge.
             bool mPrecipitating = false;
             bool mAny = false;

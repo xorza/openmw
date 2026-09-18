@@ -39,10 +39,7 @@ namespace MWRender
         SkyManager(osg::Group* parentNode, Resource::SceneManager* sceneManager, bool enableSkyRTT);
         ~SkyManager();
 
-        /// Where the two clocks stand: how far the cloud deck has scrolled, in texture units, and
-        /// how far the star sphere has rolled, in radians. The game advances them, since one
-        /// renderer draws no dome and both draw the same sky.
-        void update(float cloudAnimationTimer, float atmosphereNightRoll);
+        void update(float duration);
 
         void setEnabled(bool enabled);
 
@@ -103,6 +100,7 @@ namespace MWRender
         osg::ref_ptr<osg::Node> mAtmosphereDay;
 
         osg::ref_ptr<osg::PositionAttitudeTransform> mAtmosphereNightNode;
+        float mAtmosphereNightRoll;
         osg::ref_ptr<AtmosphereNightUpdater> mAtmosphereNightUpdater;
 
         osg::ref_ptr<AtmosphereUpdater> mAtmosphereUpdater;
@@ -114,6 +112,9 @@ namespace MWRender
         bool mCreated;
 
         bool mIsStorm;
+
+        bool mTimescaleClouds;
+        float mCloudAnimationTimer;
 
         osg::Vec3f mStormDirection;
         osg::Vec3f mNextStormDirection;

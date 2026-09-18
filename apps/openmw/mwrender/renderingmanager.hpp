@@ -7,7 +7,6 @@
 #include "renderinginterface.hpp"
 #include "rendermode.hpp"
 #include "sceneframe.hpp"
-#include "skyutil.hpp"
 
 #include <components/settings/settings.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -55,11 +54,6 @@ namespace ESM
 namespace Terrain
 {
     class World;
-}
-
-namespace Sky
-{
-    struct MoonState;
 }
 
 namespace Fallback
@@ -148,12 +142,6 @@ namespace MWRender
         int skyGetSecundaPhase() const;
         void skySetMoonColour(bool red);
 
-        /// What the weather manager decides about the sky each frame, kept for whichever renderer
-        /// draws a dome: the storm's direction is the precipitation's, the rest is the frame's.
-        void setStormParticleDirection(const osg::Vec3f& direction);
-        void setSunEnabled(bool enabled);
-        void setGlareFade(float fade);
-
         const osg::Vec4f& getSunLightPosition() const;
         void setSunDirection(const osg::Vec3f& direction);
         void setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis);
@@ -205,10 +193,6 @@ namespace MWRender
         osg::Vec2f getScreenCoords(const osg::BoundingBox& bb);
 
         void setSkyEnabled(bool enabled);
-
-        /// What the weather system has just worked out, for whatever draws the sky: the sky manager and WorldState.
-        void setWeather(const WeatherResult& weather);
-        void setMoonStates(const Sky::MoonState& masser, const Sky::MoonState& secunda);
 
         bool toggleRenderMode(RenderMode mode);
 
@@ -324,11 +308,6 @@ namespace MWRender
 
         void updateRecastMesh();
 
-        /// The cloud deck's scroll and the star sphere's roll, advanced by a frame's time while the
-        /// sky is on — upstream's `SkyManager::update` arithmetic, kept by the game since the
-        /// dome is one renderer's and the clocks are both's.
-        void updateSkyClocks(float dt);
-
         osg::ref_ptr<osgUtil::IntersectionVisitor> getIntersectionVisitor(osgUtil::Intersector* intersector,
             bool ignorePlayer, bool ignoreActors, bool ignoreTerrain, std::span<const MWWorld::Ptr> ignoreList = {});
 
@@ -364,13 +343,12 @@ namespace MWRender
         Groundcover* mGroundcover;
         std::unique_ptr<Precipitation> mPrecipitation;
         std::unique_ptr<FogManager> mFog;
-        /// What the weather system settled about the sky, written by the setter that decided it
-        SkySettled mSky;
-        /// The weather the world settled on, copied because `World::startNewGame` destroys and
-        /// re-creates the `WeatherManager` that owns the original, and the last weather has to
-        /// outlive that. Its strings keep their capacity across the same weather.
-        WeatherResult mWeather{};
-        const bool mTimescaleClouds;
+        /// What the game decides about the sky and the sun beyond the light itself: the third
+        /// argument of `setSunColour`, `setSkyEnabled`'s switch and the script's moon paint. Each
+        /// is read into the frame by `describeWorld`.
+        float mSunVisibility = 0.f;
+        bool mSkyEnabled = false;
+        bool mMoonRed = false;
         std::unique_ptr<EffectManager> mEffectManager;
         osg::ref_ptr<NpcAnimation> mPlayerAnimation;
         osg::ref_ptr<SceneUtil::PositionAttitudeTransform> mPlayerNode;

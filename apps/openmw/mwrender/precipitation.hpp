@@ -9,7 +9,7 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "skyutil.hpp"
+#include "skystate.hpp"
 
 namespace osg
 {
@@ -46,15 +46,14 @@ namespace MWRender
 
         void setEnabled(bool enabled);
 
-        void setWeather(const WeatherResult& weather);
+        /// The weather and the storm's direction, as the weather manager settled them.
+        void setWeather(const SkyState& sky);
 
         bool hasRain() const;
 
         bool getRainRipplesEnabled() const;
 
         float getPrecipitationAlpha() const;
-
-        void setStormParticleDirection(const osg::Vec3f& direction);
 
         /// Enable or disable the water plane (used to remove underwater weather particles)
         void setWaterEnabled(bool enabled);
@@ -66,8 +65,8 @@ namespace MWRender
         /// while the sky is off: the root's mask hides both nodes from the rasterizer's cull the
         /// moment the player steps indoors, and a walk that starts at the node never meets that
         /// mask. Both are camera-relative.
-        osg::Group* getRainNode() { return mEnabled ? mRainNode.get() : nullptr; }
-        osg::PositionAttitudeTransform* getParticleNode() { return mEnabled ? mParticleNode.get() : nullptr; }
+        osg::Group* getRainNode() const { return mEnabled ? mRainNode.get() : nullptr; }
+        osg::PositionAttitudeTransform* getParticleNode() const { return mEnabled ? mParticleNode.get() : nullptr; }
 
         /// The root everything here hangs under, for a renderer that wants state on it.
         osg::Group& getRoot() { return *mRoot; }

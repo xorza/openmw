@@ -620,6 +620,7 @@ namespace MWWorld
         , mSunriseDuration(Fallback::Map::getFloat("Weather_Sunrise_Duration"))
         , mSunsetDuration(Fallback::Map::getFloat("Weather_Sunset_Duration"))
         , mSunPreSunsetTime(Fallback::Map::getFloat("Weather_Sun_Pre-Sunset_Time"))
+        , mTimeSettings(mSky.mTimes)
         , mNightFade(0, 0, 0, 1)
         , mHoursBetweenWeatherChanges(Fallback::Map::getFloat("Weather_Hours_Between_Weather_Changes"))
         , mUnderwaterFog(Fallback::Map::getFloat("Water_UnderwaterSunriseFog"),
@@ -641,7 +642,7 @@ namespace MWWorld
         , mTransitionFactor(0)
         , mNightDayMode(Default)
         , mRegions()
-        , mResult()
+        , mResult(mSky.mWeather)
     {
         mTimeSettings = Sky::TimeOfDaySettings::fromFallback();
 
@@ -767,6 +768,7 @@ namespace MWWorld
         else
             mNightDayMode = Default;
 
+        mSky.mOutdoors = isExterior;
         if (!isExterior)
         {
             mRendering.setSkyEnabled(false);
@@ -793,10 +795,10 @@ namespace MWWorld
             && mResult.mParticleEffect != Settings::models().mWeatherashcloud.get();
 
         mStormDirection = calculateStormDirection(mResult.mParticleEffect);
-        mRendering.setStormParticleDirection(mStormDirection);
+        mSky.mStormParticleDirection = mStormDirection;
 
         // disable sun during night
-        mRendering.setSunEnabled(Sky::sunUp(time.getHour(), mTimeSettings));
+        mSky.mSunUp = Sky::sunUp(time.getHour(), mTimeSettings);
 
         // Update the sun direction.  Run it east to west at a fixed angle from overhead.
         // The sun's speed at day and night may differ, since mSunriseTime and mNightStart
@@ -830,6 +832,8 @@ namespace MWWorld
             const osg::Vec3f sunDir(-400.f * orbit, 75.f, -100.f);
             mRendering.setSunDirection(sunDir);
             mRendering.setNight(isNight);
+            mSky.mSunDirection = sunDir;
+            mSky.mNight = isNight;
         }
 
         float underwaterFog = mUnderwaterFog.getValue(time.getHour(), mTimeSettings, "Fog");
@@ -843,16 +847,15 @@ namespace MWWorld
         else
             glareFade = 1.f - (time.getHour() - peakHour) / (mTimeSettings.mNightStart - peakHour);
 
-        mRendering.setGlareFade(glareFade);
+        mSky.mGlareFade = glareFade;
 
-        mRendering.setMoonStates(mMasser.calculateState(time), mSecunda.calculateState(time));
+        mSky.mMoons[0] = mMasser.calculateState(time);
+        mSky.mMoons[1] = mSecunda.calculateState(time);
 
         mRendering.configureFog(
             mResult.mFogDepth, underwaterFog, mResult.mDLFogFactor, mResult.mDLFogOffset / 100.0f, mResult.mFogColor);
         mRendering.setAmbientColour(mResult.mAmbientColor);
         mRendering.setSunColour(mResult.mSunColor, mResult.mSunColor, mResult.mGlareView * glareFade);
-
-        mRendering.setWeather(mResult);
 
         // Play sounds
         if (mPlayingAmbientSoundID != mResult.mAmbientLoopSoundID)

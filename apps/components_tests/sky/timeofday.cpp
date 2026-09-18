@@ -26,29 +26,25 @@ namespace Sky
 
         /// Every quantity the interpolators ask for has a window, and a missing one is silent:
         /// `getSetting` answers an hour either side for a name it does not hold, which is a usable
-        /// window and so cannot be told from a recorded one by its value. Asked of the cache as
-        /// well as of a fresh reading, and the two are not compared: `shared()` is filled on first
-        /// use, and a test in this binary opens the real installation after that.
+        /// window and so cannot be told from a recorded one by its value.
         TEST(SkyTimeOfDayTest, everyQuantityTheRampReadsCarriesAWindowOfItsOwn)
         {
-            for (const TimeOfDaySettings& times : { TimeOfDaySettings::fromFallback(), TimeOfDaySettings::shared() })
-                for (const char* quantity : { "Sky", "Ambient", "Fog", "Sun", "Stars" })
-                    EXPECT_TRUE(times.mSunriseTransitions.contains(quantity)) << quantity << " has no window";
+            const TimeOfDaySettings times = TimeOfDaySettings::fromFallback();
+            for (const char* quantity : { "Sky", "Ambient", "Fog", "Sun", "Stars" })
+                EXPECT_TRUE(times.mSunriseTransitions.contains(quantity)) << quantity << " has no window";
         }
 
         /// The stars' window is derived from their three recorded numbers rather than read: when
         /// they begin after sunset, when they finish before sunrise, and how long each fade lasts.
         TEST(SkyTimeOfDayTest, theStarsWindowIsWhatIsLeftOfTheirFade)
         {
-            for (const TimeOfDaySettings& times : { TimeOfDaySettings::fromFallback(), TimeOfDaySettings::shared() })
-            {
-                const WeatherSetting stars = times.getSetting("Stars");
+            const TimeOfDaySettings times = TimeOfDaySettings::fromFallback();
+            const WeatherSetting stars = times.getSetting("Stars");
 
-                EXPECT_EQ(stars.mPreSunriseTime, times.mStarsPreSunriseFinish);
-                EXPECT_EQ(stars.mPostSunriseTime, times.mStarsFadingDuration - times.mStarsPreSunriseFinish);
-                EXPECT_EQ(stars.mPreSunsetTime, times.mStarsPostSunsetStart);
-                EXPECT_EQ(stars.mPostSunsetTime, times.mStarsFadingDuration - times.mStarsPostSunsetStart);
-            }
+            EXPECT_EQ(stars.mPreSunriseTime, times.mStarsPreSunriseFinish);
+            EXPECT_EQ(stars.mPostSunriseTime, times.mStarsFadingDuration - times.mStarsPreSunriseFinish);
+            EXPECT_EQ(stars.mPreSunsetTime, times.mStarsPostSunsetStart);
+            EXPECT_EQ(stars.mPostSunsetTime, times.mStarsFadingDuration - times.mStarsPostSunsetStart);
         }
     }
 }

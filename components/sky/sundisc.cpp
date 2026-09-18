@@ -1,6 +1,7 @@
 #include "sundisc.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 #include "timeofday.hpp"
 
@@ -25,5 +26,15 @@ namespace Sky
             return hour - times.mNightEnd;
 
         return 1.f;
+    }
+
+    osg::Vec3f sunDiscPosition(const osg::Vec3f& direction)
+    {
+        osg::Vec3f position = -direction;
+
+        // This is based on the exterior sun orbit and won't make sense for interiors, see WeatherManager::update
+        position.z() = 400.f - std::abs(position.x());
+
+        return position;
     }
 }

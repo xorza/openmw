@@ -72,6 +72,7 @@ namespace MWRender
     class Camera;
     class RenderingManager;
     class PostProcessor;
+    struct SkyState;
 }
 
 namespace MWMechanics
@@ -229,6 +230,9 @@ namespace MWBase
         virtual const MWWorld::Weather* getNextWeather() const = 0;
 
         virtual float getWeatherTransition() const = 0;
+
+        /// What the weather manager settled about the sky, for whatever draws it.
+        virtual const MWRender::SkyState& getSkyState() const = 0;
 
         virtual unsigned int getNightDayMode() const = 0;
 

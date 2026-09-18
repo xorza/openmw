@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include <osg/Matrixd>
 #include <osg/PositionAttitudeTransform>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
@@ -77,7 +78,10 @@ namespace MWRender
         /// hangs under a camera-relative transform the world walk is masked out of, the sea because
         /// this renderer stands it — the plane the rasterizer's `Water` stood was the sea a ray met,
         /// and that object is the rasterizer's now.
-        Rtx::ExtractionStats mirror(const SceneFrame& frame, std::size_t frameNumber);
+        ///
+        /// @param view the camera's view matrix as the update traversal settled it, which the
+        ///        frame does not carry: `EyeState` says why.
+        Rtx::ExtractionStats mirror(const SceneFrame& frame, const osg::Matrixd& view, std::size_t frameNumber);
 
         /// What disturbed the water this frame, into the scene the walk just cleared, so the
         /// trace presses it and the digest sees it. After `mirror`, which clears the frame's lists.

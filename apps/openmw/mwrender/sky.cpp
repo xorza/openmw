@@ -20,6 +20,9 @@
 
 #include <components/nifosg/particle.hpp>
 
+#include "../mwbase/environment.hpp"
+#include "../mwbase/world.hpp"
+#include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/weather.hpp"
 
 #include "renderbin.hpp"
@@ -60,8 +63,11 @@ namespace MWRender
 {
     SkyManager::SkyManager(osg::Group* parentNode, Resource::SceneManager* sceneManager, bool enableSkyRTT)
         : mSceneManager(sceneManager)
+        , mAtmosphereNightRoll(0.f)
         , mCreated(false)
         , mIsStorm(false)
+        , mTimescaleClouds(Fallback::Map::getBool("Weather_Timescale_Clouds"))
+        , mCloudAnimationTimer(0.f)
         , mStormDirection(MWWorld::Weather::defaultDirection())
         , mClouds()
         , mNextClouds()
@@ -201,13 +207,24 @@ namespace MWRender
         return mEnabled;
     }
 
-    void SkyManager::update(float cloudAnimationTimer, float atmosphereNightRoll)
+    void SkyManager::update(float duration)
     {
         if (!mEnabled)
             return;
 
-        mNextCloudUpdater->setTextureCoord(cloudAnimationTimer);
-        mCloudUpdater->setTextureCoord(cloudAnimationTimer);
+        const float timeScale = MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale();
+
+        // UV Scroll the clouds
+        float cloudDelta = duration * mCloudSpeed / 400.f;
+        if (mTimescaleClouds)
+            cloudDelta *= timeScale / 60.f;
+
+        mCloudAnimationTimer += cloudDelta;
+        if (mCloudAnimationTimer >= 4.f)
+            mCloudAnimationTimer -= 4.f;
+
+        mNextCloudUpdater->setTextureCoord(mCloudAnimationTimer);
+        mCloudUpdater->setTextureCoord(mCloudAnimationTimer);
 
         // morrowind rotates each cloud mesh independently
         osg::Quat rotation;
@@ -220,8 +237,10 @@ namespace MWRender
             mNextCloudMesh->setAttitude(rotation);
         }
 
+        // rotate the stars by 360 degrees every 4 days
+        mAtmosphereNightRoll += timeScale * duration * osg::DegreesToRadians(360.f) / (3600 * 96.f);
         if (mAtmosphereNightNode->getNodeMask() != 0)
-            mAtmosphereNightNode->setAttitude(osg::Quat(atmosphereNightRoll, osg::Vec3f(0, 0, 1)));
+            mAtmosphereNightNode->setAttitude(osg::Quat(mAtmosphereNightRoll, osg::Vec3f(0, 0, 1)));
     }
 
     void SkyManager::setEnabled(bool enabled)

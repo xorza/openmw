@@ -62,6 +62,7 @@
 #include "../renderingmanager.hpp"
 #include "../rendermode.hpp"
 #include "../sceneframe.hpp"
+#include "../skystate.hpp"
 #include "../vismask.hpp"
 #include "classmasks.hpp"
 #include "rtxrun.hpp"
@@ -901,6 +902,11 @@ namespace MWRender
 
         mFrame = when.getFrameNumber();
 
+        // The sky's own clock, stepped where the game stepped the dome's: every unpaused frame the
+        // sky is on, whether or not this one is drawn.
+        if (!frame.mPaused && frame.mWorld.mSkyShown)
+            mSky.step(frame.mDeltaTime, frame.mWorld.mTimeScale, frame.mSky.mWeather.mCloudSpeed);
+
         // **Ahead of the trace and not after the present**, so the frame this draws is the one the
         // window's own extent asked for rather than the one behind it.
         fitToWindow();
@@ -923,6 +929,10 @@ namespace MWRender
         // is the player's, and a session is only the thing that usually makes it not.
         mMirror.setShowsPlayer(frame.mEye.mPlayersEye);
 
+        // Where the eye stands, as the update traversal settled it on the camera this renderer
+        // adopted: read here, at the one moment it is this frame's.
+        const osg::Matrixd view = getCamera().getViewMatrix();
+
         // What disturbs the water this frame, decided before the walk and handed to the scene
         // beside the sprites, which is where the trace and the digest both read it. Not on a
         // paused frame: the actors have not moved, and a wake pressed on a frame the simulation
@@ -934,7 +944,7 @@ namespace MWRender
         // harness times the same stretch, which is what lets the two rows be read against each
         // other.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
-        mWalked.mFound = mMirror.mirror(frame, mFrame);
+        mWalked.mFound = mMirror.mirror(frame, view, mFrame);
         report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
         report.mSpend.at(Rtx::Timing::Fold) = mWalked.mFound.mFoldMs;
 
@@ -942,12 +952,12 @@ namespace MWRender
         // because a second whole-graph walk is the largest cost a frame has.
         mWalked.mAgain.reset();
         if (mInstalled.mRun.wantsSecondWalk())
-            mWalked.mAgain = mMirror.mirror(frame, mFrame);
+            mWalked.mAgain = mMirror.mirror(frame, view, mFrame);
 
         // After the last walk, because a walk clears the frame's lists.
         mMirror.addRipples(mRipples.getImpulses());
 
-        traceWorld(frame, report, since);
+        traceWorld(frame, view, report, since);
 
         renderGui();
 
@@ -960,7 +970,8 @@ namespace MWRender
         mSpan.leave(std::chrono::steady_clock::now());
     }
 
-    void RtxRenderer::traceWorld(const SceneFrame& frame, FrameReport& report, const std::optional<double> since)
+    void RtxRenderer::traceWorld(
+        const SceneFrame& frame, const osg::Matrixd& view, FrameReport& report, const std::optional<double> since)
     {
         if (mMirror.getScene().placements().getCounts().mPlaced == 0)
             return;
@@ -979,7 +990,7 @@ namespace MWRender
         report.mSpend.at(Rtx::Timing::Views) = drawViews();
 
         mPhase.step(Phase::Tracing, Phase::Views);
-        const std::optional<Rtx::Shaders::VisibilityConstants> constants = describeTrace(frame);
+        const std::optional<Rtx::Shaders::VisibilityConstants> constants = describeTrace(frame, view);
         if (!constants.has_value())
             return;
 
@@ -1033,7 +1044,8 @@ namespace MWRender
                                 << " textures and drew them grey — a live graph holds textures that were never files";
     }
 
-    std::optional<Rtx::Shaders::VisibilityConstants> RtxRenderer::describeTrace(const SceneFrame& frame)
+    std::optional<Rtx::Shaders::VisibilityConstants> RtxRenderer::describeTrace(
+        const SceneFrame& frame, const osg::Matrixd& view)
     {
         const Rtx::FrameExtents extents = mRenderer->getExtents();
 
@@ -1050,8 +1062,8 @@ namespace MWRender
         // **The frame's field of view and not the setting's.** `WorldState` carries the one the
         // world settled on, which is the override wherever something asked for one — a zoom, a
         // cutscene, a script — and the setting only where nothing did.
-        std::optional<Rtx::Shaders::VisibilityConstants> constants = Rtx::makeCameraFromView(frame.mEye.mView,
-            frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
+        std::optional<Rtx::Shaders::VisibilityConstants> constants = Rtx::makeCameraFromView(
+            view, frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
 
         // **Asked of the builder rather than tested for here**: a test here would be a copy of
         // the builder's contract with two places to be right. Reported once, because a camera
@@ -1098,8 +1110,8 @@ namespace MWRender
     void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report,
         const std::optional<double> since)
     {
-        const Rtx::WorldReading read
-            = mSky.read(frame.mWorld, static_cast<float>(frame.mWhen.getSimulationTime()), mMirror.getReach());
+        const Rtx::WorldReading read = mSky.read(frame.mSky, frame.mWorld, frame.mPrecipitation,
+            static_cast<float>(frame.mWhen.getSimulationTime()), mMirror.getReach());
 
         const float exposureBias = Rtx::describeWorld(read, mFogDrift, constants);
 
