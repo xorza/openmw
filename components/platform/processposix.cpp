@@ -12,9 +12,13 @@ namespace Platform::Process
         __builtin_trap();
     }
 
-    void setEnvironmentDefault(const char* name, const char* value)
+    bool setEnvironmentDefault(const char* name, const char* value)
     {
+        if (std::getenv(name) != nullptr)
+            return false;
+
         setenv(name, value, 0);
+        return true;
     }
 
     void readCommandOutput(const char* command, std::string& into)

@@ -253,7 +253,16 @@ namespace MWRender
 
         Rtx::RendererOptions options;
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
-        options.mCacheDirectory = spec.mCachePath;
+
+        // **A measured run compiles its pipelines from source and keeps none.** A pipeline the
+        // driver hands back from a cache — its own on disk, or the blob `PipelineCache` keeps —
+        // is not the code a compile of the same SPIR-V makes: over `one-cell-walk` the two drew
+        // 59 of 360 pictures a part in 255 apart, and a pipeline loaded from a blob was swapped
+        // for the other code a few seconds into the run, which is what the gate's pair failed on
+        // after a rebuild. A compile is one code and stays it. The player keeps the cache: a game
+        // is not compared with itself, and the seconds it saves at start are the player's.
+        if (run == nullptr)
+            options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mAskedWidth;
         options.mHeight = mAskedHeight;
         options.mWindow = mWindow.get();

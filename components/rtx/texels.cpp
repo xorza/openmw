@@ -11,6 +11,7 @@
 #include <osg/Texture>
 #include <osg/Vec3d>
 #include <osg/ref_ptr>
+#include <osgDB/Options>
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 
@@ -200,7 +201,10 @@ namespace Rtx
         for (std::uint32_t y = 0; y < height; ++y)
             std::memcpy(image->data(0, static_cast<int>(height - 1 - y)), pixels.data() + y * stride, stride);
 
-        if (!osgDB::writeImageFile(*image, Files::pathToUnicodeString(path)))
+        // zlib's fastest level: a 1080p frame in 60 ms against 260 at the plugin's default, for a
+        // file a fifth larger — and a run that keeps every frame writes hundreds of them.
+        const osg::ref_ptr<osgDB::Options> options = new osgDB::Options("PNG_COMPRESSION 1");
+        if (!osgDB::writeImageFile(*image, Files::pathToUnicodeString(path), options.get()))
             throw Error("cannot write " + Files::pathToUnicodeString(path));
     }
 

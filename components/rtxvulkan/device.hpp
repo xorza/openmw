@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -193,7 +194,8 @@ namespace Rtx
         /// Logs what the driver's compiler made of `pipeline` — registers a thread, spills, shared
         /// memory a block. The register count exists only inside the driver, which is what lets an
         /// occupancy figure be had here with no external profiler.
-        void reportPipeline(VkPipeline pipeline, std::string_view name) const;
+        void reportPipeline(
+            VkPipeline pipeline, std::string_view name, std::optional<double> compileMs = std::nullopt) const;
 
         /// Whether a name handed to `setName` or `beginLabel` reaches anything at all — what a
         /// caller asks before it builds one, or a release run spends a heap allocation per texture

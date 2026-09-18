@@ -23,6 +23,7 @@
 #include <osg/Vec3f>
 
 #include <components/debug/debugging.hpp>
+#include <components/debug/debuglog.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/platform/platform.hpp>
 #include <components/platform/process.hpp>
@@ -34,6 +35,7 @@
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
+#include <components/rtxvulkan/instance.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
@@ -228,14 +230,12 @@ namespace RtxTool
             // Reporting on a device is not a reason to build half a renderer, and a build whose
             // shaders are missing should say so here rather than at the first frame asked for.
             //
-            // **And the cache is the one every other command fills**, since compiling those
-            // pipelines is most of what this verb waits for. A run that named no cache compiled
-            // them from source, kept nothing, and left the next `shot` to compile them again.
+            // **And no pipeline cache, as no verb of this tool keeps one**: `RtxRenderer` says why a
+            // measured run compiles from source, and this verb's few seconds are that compile.
             try
             {
                 const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createVulkanRenderer(Rtx::RendererOptions{
                     .mShaderDirectory = command.mResources / "rtx" / "shaders",
-                    .mCacheDirectory = command.mConfig.getCachePath(),
                     .mWidth = 1,
                     .mHeight = 1,
                     .mValidation = validation,
@@ -614,8 +614,8 @@ namespace RtxTool
 
             const Rtx::BenchSpec spec = specFrom(variables);
             const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
-            const bool hashing
-                = !variables["hashes"].as<std::string>().empty() || !variables["against"].as<std::string>().empty();
+            const bool hashing = !variables["hashes"].as<std::string>().empty()
+                || !variables["against"].as<std::string>().empty() || !variables["pictures"].as<std::string>().empty();
 
             Rtx::SessionRequest request;
             request.mStops.reserve(stops.size());
@@ -631,6 +631,7 @@ namespace RtxTool
             request.mJson = variables["json"].as<std::string>();
             request.mHashes = variables["hashes"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
+            request.mPictures = variables["pictures"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
             request.mSetup.mProfile = frame.mProfile;
             request.mSetup.mSettled = run.mSettled;
@@ -691,10 +692,14 @@ namespace RtxTool
         ///
         /// **Every check named, and no `default`**, so one added to `Rtx::Check` stops the
         /// build here and has to say which kind it is.
-        bool canAsk(const Rtx::Check check, const Rtx::Stop& stop)
+        bool canAsk(const Rtx::Check check, const Rtx::Stop& stop, const Rtx::RenderProfile& profile)
         {
             switch (check)
             {
+                // A hold a run did not ask for cannot come out short.
+                case Rtx::Check::QueueHeld:
+                    return profile.mStressOverlapMs > 0.0;
+
                 case Rtx::Check::CrossingsAppend:
                     return stop.mSchedule.mRoute.has_value();
 
@@ -775,7 +780,7 @@ namespace RtxTool
                 holdStill(stop, variables, 2);
 
                 for (const Rtx::Check check : every)
-                    if (canAsk(check, stop))
+                    if (canAsk(check, stop, frame.mProfile))
                         stop.mActions.mChecks.push_back(check);
 
                 if (stop.mSchedule.mRoute.has_value())
@@ -890,6 +895,13 @@ namespace RtxTool
             config.readConfiguration(variables, options.mDescription);
             Debug::setupLogging(config.getLogPath(), applicationName);
             Settings::Manager::load(config);
+
+            // Every verb but `info` compares pictures, and `refuseDriverShaderCache` says why a
+            // picture drawn through the driver's cache is not the picture a compile draws. Said
+            // where the shell's word stood, because the run is then one that may not repeat.
+            if (!Rtx::refuseDriverShaderCache())
+                Log(Debug::Warning) << "the driver's shader cache is on by the shell's word: two runs of this "
+                                       "build may not draw the same picture";
 
             const std::filesystem::path resources = variables["resources"].as<Files::MaybeQuotedPath>();
 

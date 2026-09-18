@@ -185,8 +185,12 @@ namespace Rtx
         /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
         /// hold it not at all. A held queue keeps the device that far behind the host, so every
         /// frame is recorded over a frame still running: what makes a hazard that needs the
-        /// overlap show on the first frame of every run. `check` sets it and nothing else does.
+        /// overlap show on the first frame of every run. `check` sets it, and so does the second
+        /// leg of `repeat`. What the hold came to on each frame is the zone `sHoldZone` of the
+        /// frame's report, which is what the run's `QueueHeld` check reads it back by.
         double mStressOverlapMs = 0.0;
+
+        static constexpr std::string_view sHoldZone = "stress";
 
         /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of
         /// whether a run sums its frames or shows them. The reference's width unless a run says

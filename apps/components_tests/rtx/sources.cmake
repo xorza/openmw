@@ -80,6 +80,7 @@ set(RTX_TEST_FILES
     rtx/sourcetree.cpp
     rtx/spritelight.cpp
     rtx/spritelightpass.cpp
+    rtx/stresspass.cpp
     rtx/spritelistsize.cpp
     rtx/spritepasses.cpp
     rtx/statistics.hpp

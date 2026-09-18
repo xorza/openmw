@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
+#include <memory>
+#include <optional>
 #include <span>
 #include <thread>
 #include <vector>
@@ -267,6 +269,27 @@ namespace Rtx
                             },
                             variant.describe("visibility"), specialization);
             });
+    }
+
+    std::optional<double> VisibilityPass::getCompileMs() const
+    {
+        std::optional<double> total;
+        const auto add = [&](const std::unique_ptr<TracePipeline>& launch) {
+            if (launch == nullptr || !launch->getCompileMs().has_value())
+                return;
+
+            total = total.value_or(0.0) + *launch->getCompileMs();
+        };
+
+        for (const std::unique_ptr<TracePipeline>& launch : mPipelines)
+            add(launch);
+        for (const std::unique_ptr<TracePipeline>& launch : mScatterPipelines)
+            add(launch);
+        add(mDepthPipeline);
+        add(mSpriteCompositePipeline);
+        add(mSpriteShelterPipeline);
+
+        return total;
     }
 
     const TracePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant) const

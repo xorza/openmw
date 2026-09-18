@@ -121,6 +121,12 @@ namespace Rtx::Testing
     /// directory of its own is a suite that pays for a cold compile the game has already paid for.
     /// `PipelineCache` keys the file on the driver and on the shaders, so the two share it only
     /// while they agree about both.
+    ///
+    /// **And the driver's own cache stays on, unlike a measuring process's** — `RtxRenderer` says
+    /// what a pipeline out of a cache draws differently. A suite holds its pictures against values
+    /// it derived, to a tolerance that covers what two compiles of one shader round apart, and
+    /// never against another run's; the harness compiles every process, which is a suite four
+    /// times as long for a promise no test here makes.
     PipelineCacheSpec getPipelineCacheSpec();
 
     /// How every renderer in this suite is built, apart from the extent and the upscaler a caller

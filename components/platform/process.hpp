@@ -14,8 +14,10 @@ namespace Platform::Process
     [[noreturn]] void trap() noexcept;
 
     /// Gives `name` the value `value` in this process's environment unless the shell already gave
-    /// it one: a default the program states, and never a word over the shell's.
-    void setEnvironmentDefault(const char* name, const char* value);
+    /// it one: a default the program states, and never a word over the shell's. Answers whether
+    /// the default took, so a program whose promise rests on it can say when the shell's word
+    /// stood instead.
+    bool setEnvironmentDefault(const char* name, const char* value);
 
     /// What `command` wrote to standard output when run through the platform's shell, with its
     /// standard error discarded. A tool that is not there, or that refuses the question, leaves

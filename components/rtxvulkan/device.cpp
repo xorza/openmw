@@ -261,8 +261,11 @@ namespace Rtx
         return mPipelineCache->getHandle();
     }
 
-    void Device::reportPipeline(VkPipeline pipeline, std::string_view name) const
+    void Device::reportPipeline(VkPipeline pipeline, std::string_view name, const std::optional<double> compileMs) const
     {
+        if (compileMs.has_value())
+            Log(Debug::Verbose) << "pipeline " << name << ": compiled in " << *compileMs << " ms";
+
         const VkPipelineInfoKHR asked{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR,
             .pipeline = pipeline,

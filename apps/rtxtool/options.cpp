@@ -328,6 +328,12 @@ namespace RtxTool
             "megabytes. Reading a frame back waits on the device, so a run under this or "
             "--against is not a benchmark and its times are not comparable with one");
 
+        option(Verbs::Bench, "pictures", bpo::value<std::string>()->default_value(""),
+            "write every measured frame's picture into this directory as <view>-<frame>.png, "
+            "beside its hash, which is what a pair that differed is diffed pixel by pixel from: a "
+            "hash names the frame and never where in it. A PNG a frame on the frame path, some "
+            "sixty milliseconds each, so a run under this is further still from a benchmark");
+
         option(Verbs::Shot | Verbs::Check, "out", bpo::value<std::string>()->default_value(""),
             "the directory to write every picture into, as <view>.png beside <view>-doll.png, "
             "<view>-map.png and <view>-textures.png: \"shot\" and \"check\" unless named");

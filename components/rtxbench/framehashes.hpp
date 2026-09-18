@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -32,10 +33,20 @@ namespace Rtx
         /// numbered it, which is how `picture` finds the row once the picture has come back.
         void note(std::string_view view, std::uint32_t frame, std::uint64_t submitted, const ScenePartDigests& parts);
 
+        /// Which row a picture landed on: the view and the frame the hashes file spells it as.
+        /// The view is the row's own, and stands until the next `note`.
+        struct Pictured
+        {
+            std::string_view mView;
+            std::uint32_t mFrame = 0;
+        };
+
         /// The picture of the frame numbered `submitted`, once it has come back — `pixels` as the
         /// tool would write them to a PNG, so a hash names the picture a person would look at.
-        /// Nothing for a frame nobody noted, which a warm-up's is.
-        void picture(std::uint64_t submitted, std::span<const std::uint8_t> pixels);
+        /// Nothing for a frame nobody noted, which a warm-up's is, and the row it landed on
+        /// otherwise, so a caller keeping the picture itself can file it under the frame the
+        /// report will name.
+        std::optional<Pictured> picture(std::uint64_t submitted, std::span<const std::uint8_t> pixels);
 
         /// How many rows are noted and not yet pictured: what a stop that did not drain its ring
         /// leaves, and what `write` refuses to write.

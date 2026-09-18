@@ -17,10 +17,13 @@ namespace Platform::Process
         __fastfail(FAST_FAIL_FATAL_APP_EXIT);
     }
 
-    void setEnvironmentDefault(const char* name, const char* value)
+    bool setEnvironmentDefault(const char* name, const char* value)
     {
-        if (std::getenv(name) == nullptr)
-            _putenv_s(name, value);
+        if (std::getenv(name) != nullptr)
+            return false;
+
+        _putenv_s(name, value);
+        return true;
     }
 
     void readCommandOutput(const char* command, std::string& into)

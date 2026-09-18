@@ -60,6 +60,8 @@ namespace RtxTool
 
         request.mHud = variables["hud"].as<bool>();
         request.mVanity = variables["vanity"].as<bool>();
+        request.mRandomSeed = variables["random-seed"].as<unsigned int>();
+        const unsigned int seed = request.mRandomSeed;
 
         // **Built before the engine and read after it.** A run that ends its last stop and a window
         // somebody closes both have to be reported, and only the first ever reaches `finish` — so
@@ -121,7 +123,7 @@ namespace RtxTool
             // where it stands, and standing anywhere at all is the only thing the start has to do.
             engine.setSkipMenu(true, false);
             engine.setSaveGameFile(variables["load-savegame"].as<Files::MaybeQuotedPath>().u8string());
-            engine.setRandomSeed(variables["random-seed"].as<unsigned int>());
+            engine.setRandomSeed(seed);
 
             // **No sound and no mouse, because nobody is here.** A run measured with an audio device
             // open measures the mixer as well, and a grabbed pointer in a headless run is a pointer

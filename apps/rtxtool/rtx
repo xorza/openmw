@@ -499,7 +499,8 @@ runTests() {
 #
 # **Every column is the gate.** The second run is compared by `bench --against`, which names the
 # frames whose picture moved and the parts of the scene that did, and fails on either. One pair
-# gates and ten read: `.notes/repeatable.txt` holds the readings.
+# gates and ten read: `.notes/repeatable.txt` holds the readings. Both legs' hashes are kept beside
+# the logs of a pair that differed, so which frames moved can be read off the two files.
 #
 # **The second leg runs with the queue held behind the host.** Two runs of one binary keep the
 # same phase between the host and the device, so a frame that read the device's clock — a report
@@ -532,7 +533,7 @@ runRepeat() {
             tail -20 "$out/$pair-1.log" >&2
             return 1
         }
-        if (cd "$build" && "${bench[@]}" --hold=8 --against="$out/$pair.csv" > "$out/$pair-2.log" 2>&1); then
+        if (cd "$build" && "${bench[@]}" --hold=8 --hashes="$out/$pair-2.csv" --against="$out/$pair.csv" > "$out/$pair-2.log" 2>&1); then
             echo "pair $pair of $pairs: identical"
         elif grep -q '^against ' "$out/$pair-2.log"; then
             status=1

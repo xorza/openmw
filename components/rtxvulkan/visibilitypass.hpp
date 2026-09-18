@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -187,6 +188,13 @@ namespace Rtx
         ///        from there.
         void recordSpriteComposite(
             VkCommandBuffer commands, const VisibilityInputs& inputs, VkExtent2D shown, GpuTimer* timer) const;
+
+        /// How long the driver took to compile every launch here together, in milliseconds, off
+        /// each one's creation feedback — and nothing where none was compiled: no feedback, or
+        /// every one out of the application's own cache. Seconds for a compile of them, and a few
+        /// milliseconds where the driver handed them back from a cache of its own, which
+        /// `VulkanRenderer` says why a measured run refuses.
+        std::optional<double> getCompileMs() const;
 
     private:
         /// Makes every kernel this pass can ever need, before it returns, because the frame path

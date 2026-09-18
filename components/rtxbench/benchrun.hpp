@@ -74,6 +74,13 @@ namespace Rtx
         /// the device idled for the whole of this fork's life before `Renderer::collectFrame`.
         /// Asked of a place that stands still, because an arrival drains the ring by design.
         FramesOverlap,
+
+        /// The queue was held as far behind the host as the run asked, by the hold's own zone
+        /// over the measured frames. Asked of a run that asked for a hold: the hold is a premise
+        /// of what such a run measures, and one that came out short is a run of something else —
+        /// a count taken once at the card's idle clock held a fifth of what was asked, under the
+        /// barrier gate, and said so nowhere but in a figure among twenty.
+        QueueHeld,
     };
 
     /// What a check is called on a command line and in a report.
@@ -251,11 +258,23 @@ namespace Rtx
         /// keeps flying after the schedule has run out.
         bool mQuitAtEnd = true;
 
+        /// What the world's random draws are seeded with at every stop's first frame, so a stop's
+        /// world is a function of the seed and the frames. The engine is seeded with it once at
+        /// start, and what the start consumes before a stop begins is not a count of frames: it
+        /// moved with the cache the run found and the environment it ran in, and every wandering
+        /// body then stood elsewhere from the first measured frame.
+        unsigned int mRandomSeed = 0;
+
         /// Where the run is written as a record, and the hashes it writes and compares. Empty
         /// where none was asked for.
         std::filesystem::path mJson;
         std::filesystem::path mHashes;
         std::filesystem::path mAgainst;
+
+        /// Where every hashed frame's picture is written as well, or empty to keep only the hash:
+        /// what a pair that differed is diffed pixel by pixel from, since a hash says which frame
+        /// and never where in it.
+        std::filesystem::path mPictures;
 
         /// perf's control fifo, or empty where the run is not being profiled.
         std::filesystem::path mPerfControl;

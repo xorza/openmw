@@ -5,7 +5,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstring>
+#include <format>
 #include <memory>
+#include <optional>
 #include <ratio>
 #include <span>
 #include <string>
@@ -53,6 +55,13 @@ namespace Rtx
 {
     namespace
     {
+        /// Under what the launches together take to make, in milliseconds, they were not compiled.
+        /// Each launch reports its own time, and they are made in parallel, so the sum is thread
+        /// time: forty seconds on this box for a compile, the least of them a second, against
+        /// seven hundred milliseconds handed back from the driver's cache and seventy from the
+        /// fork's own blob. The floor sits eight times off either side.
+        constexpr double sLaunchCompileFloorMs = 5000.0;
+
         /// One half float, as the number it stands for. By bits, where the test harness spells the
         /// same conversion out by arithmetic, so that each derivation checks the other.
         float fromHalf(std::uint16_t bits)
@@ -144,6 +153,25 @@ namespace Rtx
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice)
     {
+        // **A launch the driver handed back from a cache of its own is refused where the run
+        // refused that cache.** `refuseDriverShaderCache` says why the two codes draw apart; the
+        // word it sets is one the driver may not read on every system, and a run measured on
+        // the cache's code would be one that never says so. A compile of the launches is seconds
+        // on any card that can run them, and a cache hands them back in a few milliseconds, so
+        // the floor sits between with room on both sides. The application's own cache is not
+        // the driver's: what it hands back is a compile of this fork's, and it counts as none.
+        if (driverShaderCacheRefused())
+        {
+            const std::optional<double> made = mPass.getCompileMs();
+            if (made.has_value() && *made < sLaunchCompileFloorMs)
+                throw Error(
+                    std::format("the driver handed the ray tracing pipelines back from its own shader cache in "
+                                "{:.0f} ms, where a compile takes seconds: this run was told to refuse that "
+                                "cache and would draw the cache's code rather than this build's. Turn the "
+                                "driver's shader cache off in its settings",
+                        *made));
+        }
+
         // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
         mNoSprites.clear();
 
@@ -559,12 +587,26 @@ namespace Rtx
 
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
-        return mRing.collect();
+        std::optional<FrameResult> finished = mRing.collect();
+        followHold(finished);
+        return finished;
     }
 
     std::optional<FrameResult> VulkanRenderer::collectFrame()
     {
-        return mRing.collectFinished();
+        std::optional<FrameResult> finished = mRing.collectFinished();
+        followHold(finished);
+        return finished;
+    }
+
+    void VulkanRenderer::followHold(const std::optional<FrameResult>& finished)
+    {
+        if (mStress == nullptr || !finished.has_value())
+            return;
+
+        for (const GpuSpan& span : finished->mGpu.spans())
+            if (span.mName == RenderProfile::sHoldZone)
+                mStress->follow(finished->mFrame, span.mMs);
     }
 
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
@@ -884,7 +926,7 @@ namespace Rtx
         // After the picture and inside the frame's trace, so the frame is finished when its value
         // has passed and the hold is the last thing it did.
         if (mStress != nullptr)
-            mStress->record(commands, timer);
+            mStress->record(commands, timer, mRing.getRecording());
 
         // Submitted and not waited for: `finishFrame` or `collectFrame` brings the count and the
         // report back a frame or two late. A wait's access scope is the device's, so the counters

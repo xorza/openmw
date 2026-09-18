@@ -87,8 +87,17 @@ namespace Rtx
                 });
         }
 
+        // Asked to say how long the whole pipeline took, and nothing per stage: the question is
+        // whether it was compiled at all, which `getCompileMs` says why.
+        VkPipelineCreationFeedback feedback{};
+        const VkPipelineCreationFeedbackCreateInfo timed{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO,
+            .pPipelineCreationFeedback = &feedback,
+        };
+
         const VkRayTracingPipelineCreateInfoKHR pipeline{
             .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
+            .pNext = &timed,
             // Asked for and, on this driver, not answered. NVIDIA reports one executable for
             // every compute pipeline in this renderer and none at all for a ray tracing one —
             // `Device::reportPipeline` is where that shows. The flag stays because it costs the
@@ -109,8 +118,14 @@ namespace Rtx
                     device.getPipelineCache(), 1, &pipeline, nullptr, mHandle.put(device.getHandle())),
             "vkCreateRayTracingPipelinesKHR");
 
+        constexpr VkPipelineCreationFeedbackFlags valid = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
+        constexpr VkPipelineCreationFeedbackFlags fromApplicationCache
+            = VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
+        if ((feedback.flags & (valid | fromApplicationCache)) == valid)
+            mCompileMs = static_cast<double>(feedback.duration) / 1e6;
+
         device.setName(mHandle.get(), name);
-        device.reportPipeline(mHandle.get(), name);
+        device.reportPipeline(mHandle.get(), name, mCompileMs);
 
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& limits
             = device.getPhysicalDevice().getProperties().mRayTracingPipeline;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <optional>
 #include <ostream>
@@ -44,9 +45,11 @@
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/esm3/loadskil.hpp>
+#include <components/misc/rng.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/skylight.hpp>
+#include <components/rtx/texels.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxbench/framehashes.hpp>
@@ -301,6 +304,10 @@ namespace RtxTool
 
         if (!stop.mSky.mTurnThrough.empty())
             setWeather(world, stop.mSky.mTurnThrough.front());
+
+        // **Seeded again here, where the stop's frames begin**: `SessionRequest::mRandomSeed`
+        // says why the seed the engine started with is not enough.
+        Misc::Rng::init(mRequest.mRandomSeed);
 
         // **The clock stops after the world has been moved and not before.** A frozen stop is a
         // reference: nothing animates, so a frame traced many times is the same frame and an
@@ -640,16 +647,29 @@ namespace RtxTool
         // backend gave the frame. A frame the warm-up drew has no row and its picture is dropped.
         if (stop.mActions.mHash)
         {
-            Rtx::FrameHashes& hashes = mRecord.getHashes();
-            hashes.note(stop.mName, drawn, report.mFrame, mDigester.digest(context.mScene));
-            if (!report.mResult->mPixels.empty())
-                hashes.picture(report.mResult->mFrame, report.mResult->mPixels);
+            mRecord.getHashes().note(stop.mName, drawn, report.mFrame, mDigester.digest(context.mScene));
+            keepPicture(*report.mResult, extents);
         }
 
         if (drawn < measured && !mProgress.mArrived)
             return;
 
         endStop(context, report);
+    }
+
+    void Session::keepPicture(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
+    {
+        if (finished.mPixels.empty())
+            return;
+
+        const std::optional<Rtx::FrameHashes::Pictured> row
+            = mRecord.getHashes().picture(finished.mFrame, finished.mPixels);
+        if (!row.has_value() || mRequest.mPictures.empty())
+            return;
+
+        std::filesystem::create_directories(mRequest.mPictures);
+        Rtx::writePng(mRequest.mPictures / std::format("{}-{}.png", row->mView, row->mFrame), extents.mOutputWidth,
+            extents.mOutputHeight, finished.mPixels);
     }
 
     void Session::endStop(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
@@ -663,14 +683,13 @@ namespace RtxTool
         // describes.
         mProgress.mClock = mClockWatch.stop();
 
+        const Rtx::FrameExtents extents = renderer.getExtents();
+
         // The last frame's picture is still on the queue; a stop that hashes waits it out here,
         // where a drain is a stop's to pay and never a frame's.
         if (stop.mActions.mHash)
             while (const std::optional<Rtx::FrameResult> finished = renderer.finishFrame())
-                if (!finished->mPixels.empty())
-                    mRecord.getHashes().picture(finished->mFrame, finished->mPixels);
-
-        const Rtx::FrameExtents extents = renderer.getExtents();
+                keepPicture(*finished, extents);
 
         if (mRecord.empty())
         {
@@ -686,8 +705,17 @@ namespace RtxTool
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
+        // Summarised ahead of the writer, whose checks read the zones, and kept for the place.
+        const std::span<const Rtx::GpuZone> zones = mProgress.mGpu.summariseZones();
+
         mWriter.write(context, report, stop.mActions,
-            StopFacts{ .mCrossings = mProgress.mCrossings, .mStand = stop.mStand, .mOverlap = mProgress.mOverlap },
+            StopFacts{
+                .mCrossings = mProgress.mCrossings,
+                .mStand = stop.mStand,
+                .mOverlap = mProgress.mOverlap,
+                .mZones = zones,
+                .mHoldAskedMs = mRequest.mSetup.mProfile.mStressOverlapMs,
+            },
             mRecord);
 
         Rtx::BenchPlace place;
@@ -716,7 +744,6 @@ namespace RtxTool
         place.mScene = renderer.getSceneStats();
         place.mMemory = renderer.getMemoryReport();
 
-        const std::span<const Rtx::GpuZone> zones = mProgress.mGpu.summariseZones();
         place.mGpu.assign(zones.begin(), zones.end());
 
         mRecord.add(std::move(place));

@@ -16,7 +16,8 @@ namespace Rtx
     struct PipelineCacheSpec
     {
         /// The directory the file goes in, made if it is not there. Empty keeps no file at all,
-        /// which is a renderer that compiles from source every run.
+        /// which is a renderer that compiles from source every run — every measuring process,
+        /// for the reason `RtxRenderer` gives where it leaves this empty.
         std::filesystem::path mDirectory;
 
         /// The compiled shaders the pipelines are built from, digested into the file's name.

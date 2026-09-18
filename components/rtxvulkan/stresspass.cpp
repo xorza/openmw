@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 
-#include <components/rtx/renderer.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/stress.h>
 
 #include "commands.hpp"
@@ -18,12 +18,6 @@ namespace Rtx
     {
         constexpr std::array<VkDescriptorSetLayoutBinding, 1> sBindings
             = computeBindings<1>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-
-        /// What the calibration runs: a count a card of this class takes about a millisecond over,
-        /// repeated until this much device time has gone by, so the reading is taken at the clock
-        /// the frames will run at rather than the one the card idles at.
-        constexpr std::uint32_t sCalibrationIterations = 1u << 20;
-        constexpr double sCalibrationMs = 100.0;
     }
 
     StressPass::StressPass(
@@ -31,40 +25,35 @@ namespace Rtx
         : mPipeline(
             device, sBindings, sizeof(Shaders::StressConstants), {}, shaderDirectory / "stress.comp.spv", "stress")
         , mSink(Buffer::deviceLocal(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "stress sink"))
+        , mAskedMs(milliseconds)
     {
-        GpuTimer timer(device);
-        double lastMs = 0.0;
-        for (double spent = 0.0; spent < sCalibrationMs;)
-        {
-            mIterations = sCalibrationIterations;
-            timer.beginFrame();
-            device.getPool().submitAndWait([&](VkCommandBuffer commands) { record(commands, timer); });
-
-            GpuZones zones;
-            timer.resolve(zones);
-            lastMs = zones.spans().empty() ? 0.0 : zones.spans().front().mMs;
-
-            // A device that cannot time itself cannot be calibrated against, and a loop that read
-            // nought would never end: the stated count stands for the stated time.
-            if (lastMs <= 0.0)
-                break;
-
-            spent += lastMs;
-        }
-
-        if (lastMs > 0.0)
-            mIterations = static_cast<std::uint32_t>(
-                std::clamp(std::round(milliseconds / lastMs * sCalibrationIterations), 1.0, 4.0e9));
     }
 
-    void StressPass::record(VkCommandBuffer commands, GpuTimer& timer) const
+    void StressPass::record(VkCommandBuffer commands, GpuTimer& timer, const std::uint64_t frame)
     {
-        timer.open(commands, "stress");
+        mCounts[frame % sRemembered] = mIterations;
+
+        timer.open(commands, RenderProfile::sHoldZone);
 
         DescriptorWrites<1> writes;
         writes.buffer(0, mSink.describe());
         dispatch(commands, mPipeline, writes.get(), Shaders::StressConstants{ .mIterations = mIterations }, 1);
 
         timer.close(commands);
+    }
+
+    void StressPass::follow(const std::uint64_t frame, const double heldMs)
+    {
+        // A device that cannot time itself reads nought, and a count corrected by nothing stays.
+        const std::uint32_t ran = mCounts[frame % sRemembered];
+        if (!(heldMs > 0.0) || ran == 0)
+            return;
+
+        // Half of each reading, because one reading is one clock: a frame the card ran a notch
+        // faster read a sixth short and put the next one a sixth long, and half of that is inside
+        // what the clock moves by anyway.
+        const double read = heldMs / ran;
+        mMsPerIteration = mMsPerIteration > 0.0 ? 0.5 * (mMsPerIteration + read) : read;
+        mIterations = static_cast<std::uint32_t>(std::clamp(std::round(mAskedMs / mMsPerIteration), 1.0, 4.0e9));
     }
 }

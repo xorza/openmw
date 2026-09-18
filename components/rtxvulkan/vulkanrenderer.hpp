@@ -188,6 +188,10 @@ namespace Rtx
         /// interface is handed with it.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
 
+        /// Hands the hold what a finished frame measured of it, where there is a hold: every
+        /// frame that comes back sets the next one recorded (`StressPass::follow`).
+        void followHold(const std::optional<FrameResult>& finished);
+
         // Declaration order is destruction order reversed, and everything below the device is built
         // on it.
         Instance mInstance;

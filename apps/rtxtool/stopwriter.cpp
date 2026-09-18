@@ -44,6 +44,7 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -546,6 +547,27 @@ namespace RtxTool
                 found = std::format(
                     "{:.2f} frames in flight at a submit, {} at the least", overlap.getMean(), overlap.mLeast);
                 return overlap.mFrames > 0 && overlap.mLeast == 2;
+            }
+
+            case Rtx::Check::QueueHeld:
+            {
+                const auto zone = std::find_if(facts.mZones.begin(), facts.mZones.end(),
+                    [](const Rtx::GpuZone& held) { return held.mName == Rtx::RenderProfile::sHoldZone; });
+                if (zone == facts.mZones.end() || zone->mFrames == 0)
+                {
+                    found = "no frame timed the hold";
+                    return false;
+                }
+
+                // The median, because the hold follows the clock a frame at a time and a run's
+                // first frames are where it is still catching up. A quarter either way: the
+                // clock moves under a power cap by less, and a count taken at the idle clock
+                // missed by four times.
+                const double held = zone->mTimes.mMedian;
+                found = std::format("{:.2f} ms held at the median frame of {:.1f} asked, on {} of {} frames", held,
+                    facts.mHoldAskedMs, zone->mFrames, zone->mOfFrames);
+                return zone->mFrames == zone->mOfFrames && held >= 0.75 * facts.mHoldAskedMs
+                    && held <= 1.25 * facts.mHoldAskedMs;
             }
 
             case Rtx::Check::CameraStands:

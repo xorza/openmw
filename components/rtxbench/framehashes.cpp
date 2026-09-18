@@ -74,18 +74,21 @@ namespace Rtx
             Frame{ .mView = std::string(view), .mFrame = frame, .mParts = parts, .mSubmitted = submitted });
     }
 
-    void FrameHashes::picture(const std::uint64_t submitted, const std::span<const std::uint8_t> pixels)
+    std::optional<FrameHashes::Pictured> FrameHashes::picture(
+        const std::uint64_t submitted, const std::span<const std::uint8_t> pixels)
     {
         // From the back, because the frame that came back is one of the last few noted.
         const auto row = std::find_if(mFrames.rbegin(), mFrames.rend(),
             [submitted](const Frame& held) { return held.mSubmitted == submitted && !held.mPictured; });
         if (row == mFrames.rend())
-            return;
+            return std::nullopt;
 
         Digest digest;
         digest.add(pixels);
         row->mHash = digest.getWords();
         row->mPictured = true;
+
+        return Pictured{ .mView = row->mView, .mFrame = row->mFrame };
     }
 
     std::size_t FrameHashes::countUnpictured() const

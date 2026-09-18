@@ -84,6 +84,10 @@ namespace RtxTool
         /// the last measured frame's, which is the frame every writer describes.
         void endStop(const MWRender::FrameContext& context, const MWRender::FrameReport& report);
 
+        /// Hashes a frame's picture into the record, and writes it where the request asked for
+        /// the pictures themselves, at `extents`.
+        void keepPicture(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
+
         /// Writes what the run was asked to write and ends it.
         void finish();
 
