@@ -91,7 +91,7 @@ namespace Rtx
             // The two storage buffers left: every table the shader reads travels as an address in
             // the frame block, and neither the hit counter — a harness facility — nor the glare
             // fader's query has a table to ride in.
-            declared[Shaders::BIND_HITS] = VkDescriptorSetLayoutBinding{ Shaders::BIND_HITS, sStorage, 1, sStages };
+            declared[Shaders::BIND_COUNTS] = VkDescriptorSetLayoutBinding{ Shaders::BIND_COUNTS, sStorage, 1, sStages };
             declared[Shaders::BIND_SUN_GLARE]
                 = VkDescriptorSetLayoutBinding{ Shaders::BIND_SUN_GLARE, sStorage, 1, sStages };
 
@@ -325,7 +325,7 @@ namespace Rtx
     {
         assert(inputs.mChannels != nullptr && inputs.mCounts != nullptr && "a launch handed no channels or no census");
         const GBuffer& buffer = *inputs.mChannels;
-        const Buffer& hitCount = *inputs.mCounts;
+        const Buffer& counts = *inputs.mCounts;
 
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
@@ -355,10 +355,10 @@ namespace Rtx
         // The two buffers still bound: the hit counter, and the frame block every table is reached
         // through. Nothing bound here may be nothing: a null handle at the dispatch is undefined
         // and cost this renderer a device before the layers were asked.
-        assert(!hitCount.isEmpty() && !mConstants.isEmpty() && "an input bound as nothing");
+        assert(!counts.isEmpty() && !mConstants.isEmpty() && "an input bound as nothing");
         assert(
             inputs.mSunGlare != nullptr && !inputs.mSunGlare->isEmpty() && "a trace with no glare query to count into");
-        writes.buffer(Shaders::BIND_HITS, hitCount.describe());
+        writes.buffer(Shaders::BIND_COUNTS, counts.describe());
         writes.buffer(Shaders::BIND_FRAME, mConstants.describe(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writes.buffer(Shaders::BIND_SUN_GLARE, inputs.mSunGlare->describe());
 

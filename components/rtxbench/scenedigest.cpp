@@ -372,6 +372,8 @@ namespace Rtx
                 return "deformers";
             case ScenePart::Poses:
                 return "poses";
+            case ScenePart::Frame:
+                return "frame";
             case ScenePart::Count:
                 break;
         }
@@ -404,7 +406,7 @@ namespace Rtx
         ++mVertexHashes;
     }
 
-    const ScenePartDigests& SceneDigester::digest(const SceneDesc& scene)
+    const ScenePartDigests& SceneDigester::digest(const SceneDesc& scene, const Shaders::VisibilityConstants* frame)
     {
         digestVertices(scene);
 
@@ -481,6 +483,11 @@ namespace Rtx
         take(ScenePart::Deformers, deformers.take());
 
         take(ScenePart::Poses, wordsOf(scene.deformers().getPoses()));
+
+        // Whole, because the block is scalar-packed on every side, which `visibility.h` pins.
+        take(ScenePart::Frame,
+            frame != nullptr ? wordsOf(std::span<const Shaders::VisibilityConstants>(frame, 1))
+                             : std::array<std::uint64_t, 2>{});
 
         return mParts;
     }

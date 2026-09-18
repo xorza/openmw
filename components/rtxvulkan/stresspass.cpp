@@ -23,25 +23,18 @@ namespace Rtx
         const Device& device, const std::filesystem::path& shaderDirectory, const double milliseconds)
         : mPipeline(
             device, sBindings, sizeof(Shaders::StressConstants), {}, shaderDirectory / "stress.comp.spv", "stress")
-        , mSink(Buffer::readBack(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "stress sink"))
         , mNanoseconds(static_cast<std::uint32_t>(std::llround(milliseconds * 1.0e6)))
     {
     }
 
-    void StressPass::record(VkCommandBuffer commands, GpuTimer& timer)
+    void StressPass::record(VkCommandBuffer commands, GpuTimer& timer, const Buffer& counts)
     {
         timer.open(commands, RenderProfile::sHoldZone);
 
         DescriptorWrites<1> writes;
-        writes.buffer(0, mSink.describe());
+        writes.buffer(0, counts.describe());
         dispatch(commands, mPipeline, writes.get(), Shaders::StressConstants{ .mNanoseconds = mNanoseconds }, 1);
-        mSink.orderForHostRead(commands);
 
         timer.close(commands);
-    }
-
-    std::uint32_t StressPass::getHeldNs() const
-    {
-        return *static_cast<const std::uint32_t*>(mSink.map());
     }
 }

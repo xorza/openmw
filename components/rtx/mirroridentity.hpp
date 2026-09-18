@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include <osg/Node>
 #include <osg/ref_ptr>
 
 #include "runs.hpp"
@@ -292,4 +294,39 @@ namespace Rtx
     /// stands. See `ByAddress`.
     template <class T, class Held = Known>
     using Identity = Kept<std::unordered_map<osg::ref_ptr<T>, Held, ByAddress<T>, ByAddress<T>>>;
+
+    /// What makes the addresses a placement's identity is folded from as true as a `ref_ptr` key
+    /// makes a map's: a reference on every node a walk passed, kept until the sweep after the next
+    /// walk has run. The engine frees a body part between two walks and builds its replacement,
+    /// and with the freed nodes still held the replacement cannot land on their addresses — so it
+    /// stands as what it is, a new placement, rather than as the old one or a new one by the
+    /// allocator's mood, which is what made two runs of one scene disagree on their slots. Two
+    /// lists and no map, because nothing is looked up here: a walk pushes what it passes and a
+    /// sweep lets the older list go.
+    class HeldPaths
+    {
+    public:
+        /// Room for `count` nodes a walk, so no push on the frame path grows a list.
+        void reserve(std::size_t count)
+        {
+            for (std::vector<osg::ref_ptr<const osg::Node>>& held : mHeld)
+                held.reserve(count);
+        }
+
+        /// Holds `node`, whose address the walk in progress has just folded into an identity.
+        void hold(const osg::Node& node) { mHeld[mCurrent].emplace_back(&node); }
+
+        /// Lets go of what the walks before the last sweep held, after a sweep: every identity
+        /// folded from those nodes and not reached since has gone with it, and what the walks
+        /// since held is kept through the next.
+        void release()
+        {
+            mCurrent = 1 - mCurrent;
+            mHeld[mCurrent].clear();
+        }
+
+    private:
+        std::array<std::vector<osg::ref_ptr<const osg::Node>>, 2> mHeld;
+        std::size_t mCurrent = 0;
+    };
 }

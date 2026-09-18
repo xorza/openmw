@@ -215,8 +215,13 @@ namespace Rtx
         /// says so.
         RenderProfile mProfile;
 
-        /// The frames in flight and what each came to. After the counters it is handed.
-        FrameRing mRing{ mDevice, mCountHits };
+        /// Whether a frame's counts come back to the host at all: where the trace counts its
+        /// hits, and where a hold leaves its reading. One answer, read where the block is cleared,
+        /// ordered for the host and read back, so the three cannot disagree.
+        bool mReadsCounts = false;
+
+        /// The frames in flight and what each came to. After the flag it is handed.
+        FrameRing mRing{ mDevice, mReadsCounts };
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
         /// spent by the next frame that reconstructs from one, which is not always the one after.

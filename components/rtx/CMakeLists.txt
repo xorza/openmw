@@ -163,6 +163,7 @@ set(RTX_SHADER_HEADERS
     shaders/camera.h
     shaders/colour.h
     shaders/composite.h
+    shaders/counts.h
     shaders/exposure.h
     shaders/fogvolume.h
     shaders/gbuffer.h

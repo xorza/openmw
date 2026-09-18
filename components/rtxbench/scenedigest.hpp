@@ -9,6 +9,8 @@
 #include <string_view>
 #include <vector>
 
+#include <components/rtx/shaders/visibility.h>
+
 namespace Rtx
 {
     class SceneDesc;
@@ -51,6 +53,14 @@ namespace Rtx
         /// The poses themselves, in the words both kinds are laid in.
         Poses,
 
+        /// What the frame was traced with beside the scene: the camera, the sky, the air, the sea
+        /// and the sample, as `Shaders::VisibilityConstants` — the one input to a trace the scene
+        /// does not hold. A picture that moved while every column before this stood is a frame
+        /// column that moved, a history's, or the code the launches compiled to —
+        /// `PipelineCacheSpec::mDirectory` says how one build compiles to two. Nought where no
+        /// frame was traced, which is what `scene` reports.
+        Frame,
+
         Count,
     };
 
@@ -75,8 +85,9 @@ namespace Rtx
     class SceneDigester
     {
     public:
-        /// Every part's digest of `scene` as it stands.
-        const ScenePartDigests& digest(const SceneDesc& scene);
+        /// Every part's digest of `scene` as it stands, and of `frame`, the constants it is traced
+        /// with, or null where nothing is traced.
+        const ScenePartDigests& digest(const SceneDesc& scene, const Shaders::VisibilityConstants* frame = nullptr);
 
         /// How many times the vertex tables were hashed, which is once per change to them. Read
         /// by the tests and by nothing else.

@@ -228,6 +228,14 @@ namespace Rtx
             EXPECT_EQ(std::find(after.begin(), after.end(), "rtx-older-0.pipelinecache"), after.end())
                 << "the oldest cache was kept";
 
+            // **And no directory is no cache object**, `PipelineCacheSpec::mDirectory`: a
+            // measuring process shares nothing between its compiles, not even an empty object the
+            // driver would fill as they run.
+            const PipelineCache none(getDevice().getHandle(), deviceProperties(),
+                PipelineCacheSpec{ .mShaderDirectory = Testing::getShaderDirectory() });
+            EXPECT_EQ(none.getHandle(), VK_NULL_HANDLE) << "a spec with no directory made a cache object";
+            EXPECT_EQ(filesIn(cacheDirectory).size(), 6u) << "a spec with no directory touched the directory";
+
             std::filesystem::remove_all(scratch);
         }
     }

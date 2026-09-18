@@ -40,6 +40,8 @@
 #include <apps/openmw/mwworld/timestamp.hpp>
 #include <components/debug/debugging.hpp>
 #include <components/debug/debuglog.hpp>
+#include <components/detournavigator/navigator.hpp>
+#include <components/detournavigator/waitconditiontype.hpp>
 #include <components/esm/attr.hpp>
 #include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
@@ -306,8 +308,13 @@ namespace RtxTool
             setWeather(world, stop.mSky.mTurnThrough.front());
 
         // **Seeded again here, where the stop's frames begin**: `SessionRequest::mRandomSeed`
-        // says why the seed the engine started with is not enough.
+        // says why the seed the engine started with is not enough. Both generators, because the
+        // world keeps one of its own beside the process's — `AiWander`, `Combat`,
+        // `CharacterController` and `WeatherManager` roll on `World::getPrng` — and a stop that
+        // seeded only the process's would stand its actors and strike its lightning wherever every
+        // stop before it left that stream.
         Misc::Rng::init(mRequest.mRandomSeed);
+        world.getPrng().seed(mRequest.mRandomSeed);
 
         // **The clock stops after the world has been moved and not before.** A frozen stop is a
         // reference: nothing animates, so a frame traced many times is the same frame and an
@@ -362,6 +369,14 @@ namespace RtxTool
         {
             standWhereThePlayerIs();
         }
+
+        // **The navmesh whole before the first frame.** Its tiles are built on a thread of their
+        // own, and an actor told to go somewhere paths over the tiles there are when it asks: a
+        // tile landing a frame earlier or later is a different path, and a different place on
+        // every frame after. Waited for here and not every frame, because a route's cells bring
+        // tiles with them and a frame that waited for those would be measuring the navmesh.
+        if (DetourNavigator::Navigator* navigator = world.getNavigator())
+            navigator->wait(DetourNavigator::WaitConditionType::allJobsDone, nullptr);
 
         // **A stop is a discontinuity, and only a worldspace change says so on its own.** A
         // teleport from Balmora to Vivec stays in one worldspace, so nothing tells the renderer its
@@ -608,17 +623,28 @@ namespace RtxTool
             // like a leg that lost its speed. `Rtx::ClockWatch` says what the sampling costs.
             mClockWatch.start();
             mProfiling.enable();
+
+            // The backend's number of the first measured frame: what says of a result that comes
+            // back later whether the frame it answers for was measured.
+            mProgress.mFirstMeasured = report.mFrame;
         }
 
+        // **Counted here, at the frame the run traced, and never at the frame the device answered
+        // for it.** The count is what the trace's sampler and the upscaler's jitter are walked by,
+        // what the hashes table numbers its rows by and what ends the stop; and a result comes back
+        // one frame later or two, by whether the card had finished when the frame after asked —
+        // so a count of results put two runs of one build at different points of the sequence,
+        // and paired the scene of one frame with the picture of another. What the device answered
+        // is taken in below, under the number of the frame it answers for.
         ++mProgress.mSeen;
+
+        if (report.mResult.has_value())
+            answered(*report.mResult, renderer.getExtents());
 
         if (mProgress.mSeen <= warmup)
             return;
 
         mProgress.mSamples.add(frameMs, report.mSpend);
-        mProgress.mSamples.addWait(report.mResult->mWaitMs);
-        mProgress.mOverlap.add(report.mResult->mInFlight);
-        mProgress.mGpu.add(report.mResult->mGpu.spans());
         mProgress.mWallMs += frameMs;
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
@@ -635,26 +661,42 @@ namespace RtxTool
             mProgress.mCell = cell;
         }
 
-        const Rtx::FrameExtents extents = renderer.getExtents();
-        const double traced = static_cast<double>(extents.mRenderWidth) * extents.mRenderHeight;
-        if (traced > 0.0)
-            mProgress.mHitPercent = static_cast<double>(report.mResult->mHits) / traced * 100.0;
-
         const std::uint32_t drawn = mProgress.mSeen - warmup;
 
-        // The scene now, which is this frame's, and the picture that came back with the report,
-        // which is an earlier frame's: the two halves of a row meet through the number the
-        // backend gave the frame. A frame the warm-up drew has no row and its picture is dropped.
+        // The scene of this frame under the number the backend gave the frame, which is what the
+        // picture finds its row by when it comes back. A frame the warm-up drew has no row.
         if (stop.mActions.mHash)
-        {
-            mRecord.getHashes().note(stop.mName, drawn, report.mFrame, mDigester.digest(context.mScene));
-            keepPicture(*report.mResult, extents);
-        }
+            mRecord.getHashes().note(
+                stop.mName, drawn, report.mFrame, mDigester.digest(context.mScene, &report.mConstants));
 
         if (drawn < measured && !mProgress.mArrived)
             return;
 
         endStop(context, report);
+    }
+
+    void Session::answered(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
+    {
+        // A frame the warm-up drew: its picture has no row and its figures are nobody's.
+        if (mProgress.mSeen <= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup()
+            || finished.mFrame < mProgress.mFirstMeasured)
+            return;
+
+        mProgress.mSamples.addWait(finished.mWaitMs);
+        mProgress.mOverlap.add(finished.mInFlight);
+        mProgress.mGpu.add(finished.mGpu.spans());
+
+        // A frame that held, and no other: a run with no hold has no reading to summarise, and a
+        // loop that left nothing behind is a frame `QueueHeld` counts as unheld.
+        if (finished.mHeldMs > 0.0)
+            mProgress.mHold.add(finished.mHeldMs);
+
+        const double traced = static_cast<double>(extents.mRenderWidth) * extents.mRenderHeight;
+        if (traced > 0.0)
+            mProgress.mHitPercent = static_cast<double>(finished.mHits) / traced * 100.0;
+
+        if (mRequest.mStops[mAt].mActions.mHash)
+            keepPicture(finished, extents);
     }
 
     void Session::keepPicture(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
@@ -685,11 +727,11 @@ namespace RtxTool
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 
-        // The last frame's picture is still on the queue; a stop that hashes waits it out here,
-        // where a drain is a stop's to pay and never a frame's.
-        if (stop.mActions.mHash)
-            while (const std::optional<Rtx::FrameResult> finished = renderer.finishFrame())
-                keepPicture(*finished, extents);
+        // The last frames' answers are still on the queue: waited out here, where a drain is a
+        // stop's to pay and never a frame's, so every measured frame's figures and picture are in
+        // the place they belong to.
+        while (const std::optional<Rtx::FrameResult> finished = renderer.finishFrame())
+            answered(*finished, extents);
 
         if (mRecord.empty())
         {
@@ -714,6 +756,7 @@ namespace RtxTool
                 .mStand = stop.mStand,
                 .mOverlap = mProgress.mOverlap,
                 .mZones = zones,
+                .mHold = mProgress.mHold,
                 .mHoldAskedMs = mRequest.mSetup.mProfile.mStressOverlapMs,
             },
             mRecord);

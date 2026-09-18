@@ -31,8 +31,9 @@ namespace Rtx::Shaders
     /// The top-level structure every ray is traced against.
     const uint BIND_SCENE = 0;
 
-    /// The atomic a specialized trace counts its hits into.
-    const uint BIND_HITS = 1;
+    /// The frame's counts, `counts.h`: the atomic a specialized trace counts its hits into, and
+    /// the word the hold leaves its reading in.
+    const uint BIND_COUNTS = 1;
 
     /// The one uniform: everything the frame itself says, and where every table is.
     const uint BIND_FRAME = 2;

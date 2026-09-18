@@ -84,6 +84,11 @@ namespace RtxTool
         /// the last measured frame's, which is the frame every writer describes.
         void endStop(const MWRender::FrameContext& context, const MWRender::FrameReport& report);
 
+        /// Takes in what the device answered for one frame, under the number of the frame it
+        /// answers for: the figures a frame has only once the device is done with it, and its
+        /// picture. Nothing for a frame the warm-up drew.
+        void answered(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
+
         /// Hashes a frame's picture into the record, and writes it where the request asked for
         /// the pictures themselves, at `extents`.
         void keepPicture(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
@@ -126,8 +131,13 @@ namespace RtxTool
         /// because the samples are reserved once for the longest stop of the run.
         struct StopProgress
         {
-            /// Frames seen since the stop began, warm-up included.
+            /// Frames traced since the stop began, warm-up included. Traced and not answered for:
+            /// `frame` says why the count is the run's and not the device's.
             std::uint32_t mSeen = 0;
+
+            /// The backend's number of the first measured frame, so a result that comes back once
+            /// the warm-up is over can say whether the frame it answers for was measured.
+            std::uint64_t mFirstMeasured = 0;
 
             /// What the measured ones came to outside the distributions: how much of the last one hit
             /// something, and how long they took between them.
@@ -160,6 +170,7 @@ namespace RtxTool
             Rtx::GpuBreakdown mGpu;
             Rtx::Crossings mCrossings;
             Rtx::Overlap mOverlap;
+            Rtx::HoldTimes mHold;
             Rtx::GpuClock mClock;
 
             /// Puts the route where it starts. One call, because two callers set the three and either
@@ -175,6 +186,7 @@ namespace RtxTool
             void restart()
             {
                 mSeen = 0;
+                mFirstMeasured = 0;
                 mHitPercent = 0.0;
                 mWallMs = 0.0;
                 mCell = nullptr;
@@ -186,6 +198,7 @@ namespace RtxTool
                 mGpu = Rtx::GpuBreakdown{};
                 mCrossings = Rtx::Crossings{};
                 mOverlap = Rtx::Overlap{};
+                mHold = Rtx::HoldTimes{};
                 mClock = Rtx::GpuClock{};
             }
         };

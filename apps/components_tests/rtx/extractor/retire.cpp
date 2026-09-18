@@ -8,6 +8,7 @@
 
 #include <osg/Array>
 #include <osg/Matrix>
+#include <osg/MatrixTransform>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 #include <osg/observer_ptr>
@@ -86,6 +87,63 @@ namespace Rtx::Testing
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
             EXPECT_FALSE(watch.valid()) << "the sweep dropped the entry and kept the drawable alive";
+        }
+
+        /// **The same figure, torn one level up.** A placement is known by the path of nodes over
+        /// its drawable, folded to a hash of their addresses — and the drawable a change of clothes
+        /// keeps is the shared mesh, while the nodes over it are freed and built again. Whether the
+        /// new nodes land where the old ones were is the allocator's, so with nothing holding the
+        /// old nodes the same change was a placement kept on one run and a placement stood on the
+        /// next, and two runs of one scene disagreed on their slots. The walk holds every node it
+        /// folds until the sweep after the next walk, so the replacement cannot land where the old
+        /// part was, and stands as a new placement every time.
+        TEST_F(RtxSceneExtractorTest, aNodeOverADrawableKeepsItsAddressUntilTheSweepReleasesIt)
+        {
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            osg::ref_ptr<osg::Geometry> shared = makeQuad();
+            osg::ref_ptr<osg::MatrixTransform> part = new osg::MatrixTransform(osg::Matrix::translate(1.0, 0.0, 0.0));
+            part->addChild(shared);
+            root->addChild(part);
+
+            walk(*root);
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
+            ASSERT_TRUE(mExtractor.retire().empty());
+
+            const osg::MatrixTransform* was = part.get();
+            osg::observer_ptr<osg::MatrixTransform> watch = part;
+
+            // The graph lets go of the node and keeps the drawable, as `NpcAnimation::updateParts`
+            // does for a part whose mesh the cache shares. Only the walk holds the node now.
+            root->removeChild(part);
+            part = nullptr;
+            ASSERT_TRUE(watch.valid()) << "the walk let the node go while its placement still stood";
+            ASSERT_EQ(was->referenceCount(), 1) << "something other than the held paths is holding it";
+
+            osg::ref_ptr<osg::MatrixTransform> replacement
+                = new osg::MatrixTransform(osg::Matrix::translate(2.0, 0.0, 0.0));
+            replacement->addChild(shared);
+            ASSERT_NE(replacement.get(), was) << "the replacement landed on the retired node's address";
+            root->addChild(replacement);
+
+            mScene.clearPlacement();
+            const ExtractionStats again = walk(*root, 0, 1);
+
+            // A second placement of the one mesh, and not the first one moved: a restand keeps a
+            // slot and its previous transform, and this part has no previous.
+            EXPECT_EQ(again.mMeshesReused, 1u);
+            EXPECT_EQ(again.mInstances, 1u);
+            EXPECT_EQ(again.mRestood, 0u);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
+            EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(2.0f, 0.0f, 0.0f));
+            EXPECT_EQ(mScene.placements().getRows()[1].mPrevious.getTrans(), osg::Vec3f(2.0f, 0.0f, 0.0f));
+
+            // Held through this walk, because the placement folded from it stood until now; let go
+            // by the sweep that dropped the placement.
+            EXPECT_TRUE(watch.valid()) << "the node went before the sweep that dropped its placement";
+            EXPECT_TRUE(mExtractor.retire().empty()) << "the shared mesh is still placed";
+            EXPECT_EQ(mScene.placements().getCounts().mPlaced, 1u);
+            EXPECT_FALSE(mScene.placements().getRows()[0].mInstance.isPlaced());
+            EXPECT_FALSE(watch.valid()) << "the sweep dropped the placement and kept its node alive";
         }
 
         /// A mesh and a material of the scene's own, which no drawable names.

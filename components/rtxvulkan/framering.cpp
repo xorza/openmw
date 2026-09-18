@@ -15,14 +15,14 @@ namespace Rtx
 {
     FrameRecord::FrameRecord(const Device& device)
         : mTimer(device)
-        , mHitCount(Buffer::readBack(device, sizeof(FrameCounts),
-              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "hit count"))
+        , mCounts(Buffer::readBack(device, sizeof(Shaders::FrameCounts),
+              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame counts"))
     {
     }
 
-    FrameRing::FrameRing(const Device& device, const bool countHits)
+    FrameRing::FrameRing(const Device& device, const bool readsCounts)
         : mDevice(device)
-        , mCountHits(countHits)
+        , mReadsCounts(readsCounts)
         , mSlots([&](FrameSlot) { return FrameRecord{ device }; })
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
@@ -96,11 +96,11 @@ namespace Rtx
 
         frame.mState.step(FrameState::Idle, FrameState::Submitted);
 
-        // Read after the wait and never before: the count is the device's sum, and the queries
+        // Read after the wait and never before: the counts are the device's, and the queries
         // are the device's clock.
-        FrameCounts counted;
-        if (mCountHits)
-            counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
+        Shaders::FrameCounts counted{};
+        if (mReadsCounts)
+            counted = *static_cast<const Shaders::FrameCounts*>(frame.mCounts.map());
 
         if (mReports.size() >= sFrameSlots)
             mReports.erase(mReports.begin());
@@ -112,6 +112,7 @@ namespace Rtx
 
         FrameResult& report = mReports.emplace_back(FrameResult{
             .mHits = counted.mHits,
+            .mHeldMs = counted.mHeldNs * 1.0e-6,
             .mWaitMs = waited,
             .mInFlight = frame.mInFlight,
             .mReconstruction = frame.mReconstruction,

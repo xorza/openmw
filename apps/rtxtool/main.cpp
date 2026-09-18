@@ -364,6 +364,15 @@ namespace RtxTool
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
             Settings::video().mVsyncMode.set(frame.mVerticalSync);
             Settings::camera().mFieldOfView.set(frame.mFieldOfView);
+
+            // **Physics on the frame's own thread, so a run is the same run twice.** A physics
+            // worker refreshes the AI's line-of-sight cache after each step
+            // (`PhysicsTaskScheduler::refreshLOSCache`) while the AI on the main thread reads it,
+            // and whether a refresh landed before or after a read is the worker's timing: an actor
+            // that saw or did not see its target walks elsewhere from the next frame on. The step
+            // is one physics step a frame either way, so nothing about the simulation changes but
+            // who runs it and when the cache is read.
+            Settings::physics().mAsyncNumThreads.set(0);
         }
 
         /// The one place a command names on its line, as a stop: a view, a cell, a save, and

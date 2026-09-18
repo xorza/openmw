@@ -10,6 +10,7 @@
 
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/shaders/counts.h>
 #include <components/rtx/stepped.hpp>
 
 #include "buffer.hpp"
@@ -19,14 +20,6 @@
 namespace Rtx
 {
     class Device;
-
-    /// What the trace counts over a frame: the host's spelling of `lib/bindings.glsl`'s `HitCount`
-    /// block, so the frame that clears the buffer and the frame that reads it back agree about
-    /// where each word sits.
-    struct FrameCounts
-    {
-        std::uint32_t mHits = 0;
-    };
 
     /// One command buffer and the timeline value it was submitted under.
     struct Submission
@@ -73,10 +66,10 @@ namespace Rtx
         /// `FrameResult::mInFlight`, taken at the submit.
         std::uint32_t mInFlight = 0;
 
-        /// Its own timer and its own counters, because both are read after the wait, when the
-        /// next frame is already writing its own.
+        /// Its own timer and its own counts, because both are read after the wait, when the
+        /// next frame is already writing its own. The counts are `Shaders::FrameCounts`.
         GpuTimer mTimer;
-        Buffer mHitCount;
+        Buffer mCounts;
 
         Reconstruction mReconstruction;
 
@@ -102,9 +95,9 @@ namespace Rtx
     class FrameRing
     {
     public:
-        /// @param countHits whether a frame's count is worth reading back. Borrowed from the
-        ///        renderer, which decides it once and compiles its pipeline against the same answer.
-        FrameRing(const Device& device, bool countHits);
+        /// @param readsCounts whether a frame's counts are worth reading back: the renderer
+        ///        decides it once, `VulkanRenderer::mReadsCounts`.
+        FrameRing(const Device& device, bool readsCounts);
 
         FrameRing(const FrameRing&) = delete;
         FrameRing& operator=(const FrameRing&) = delete;
@@ -176,7 +169,7 @@ namespace Rtx
         /// By value, because it is settled at construction and never moves. A reference into the
         /// renderer's own members would tie this ring's correctness to where a boolean happens to
         /// live.
-        bool mCountHits = false;
+        bool mReadsCounts = false;
 
         PerSlot<FrameRecord> mSlots;
         std::array<Buffer, sFrameSlots + 1> mPictures;

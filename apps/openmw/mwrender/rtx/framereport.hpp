@@ -9,6 +9,7 @@
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/shaders/visibility.h>
 
 namespace Rtx
 {
@@ -51,8 +52,9 @@ namespace MWRender
         /// Whether the hand-over rebuilt the scene from nothing, which a crossing is counted by.
         bool mRebuilt = false;
 
-        /// What the device answered for the frame behind, or nothing on the first frames of a run,
-        /// which have no frame behind them to answer for.
+        /// What the device answered for a frame behind, or nothing where it had finished none
+        /// when this frame asked — the first frames of a run, and any frame the card was still
+        /// busy for. Which frame it answers for is `FrameResult::mFrame`, never this one.
         std::optional<Rtx::FrameResult> mResult;
 
         /// What the backend numbered this frame — `Renderer::getFrameCount` as it stood before the
@@ -62,6 +64,10 @@ namespace MWRender
 
         /// What put this frame back together.
         Rtx::Reconstruction mReconstruction;
+
+        /// What the frame was traced with beside the scene — the camera, the sky, the air, the sea
+        /// and the sample — for the run's hashes to name when a picture moves and the scene did not.
+        Rtx::Shaders::VisibilityConstants mConstants{};
 
         WalkReport mWalked;
 

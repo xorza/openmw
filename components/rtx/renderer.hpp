@@ -268,6 +268,13 @@ namespace Rtx
         /// away" without opening the image. Nought where `RendererOptions::mCountHits` was cleared.
         std::uint32_t mHits = 0;
 
+        /// What the hold's own clock said the hold came to, in milliseconds: what
+        /// `RenderProfile::mStressOverlapMs` asked and the tick past it, on a run that holds, and
+        /// nought on one that does not. The loop's reading and not the timer's zone around it,
+        /// which takes in the launch and the drain: this is the figure that says the loop did as
+        /// it was told, and the zone's excess over it is the card's.
+        double mHeldMs = 0.0;
+
         /// How long the ring waited for this frame; nought where it was already done.
         double mWaitMs = 0.0;
 

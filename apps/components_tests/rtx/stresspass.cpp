@@ -5,6 +5,8 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/shaders/counts.h>
+#include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/gputimer.hpp>
@@ -19,11 +21,14 @@ namespace Rtx
         struct RtxStressPassTest : Testing::DeviceTest
         {
             /// One frame of `hold`: recorded, waited out and read, as the zone measured it, in
-            /// milliseconds.
-            double frameOf(StressPass& hold, GpuTimer& timer, const std::uint64_t frame)
+            /// milliseconds. The loop's own reading lands in `counts`.
+            double frameOf(StressPass& hold, GpuTimer& timer, Buffer& counts, const std::uint64_t frame)
             {
                 timer.beginFrame(frame);
-                getDevice().getPool().submitAndWait([&](VkCommandBuffer commands) { hold.record(commands, timer); });
+                getDevice().getPool().submitAndWait([&](VkCommandBuffer commands) {
+                    hold.record(commands, timer, counts);
+                    counts.orderForHostRead(commands);
+                });
 
                 GpuZones zones;
                 timer.resolve(zones);
@@ -52,6 +57,10 @@ namespace Rtx
             StressPass four(device, Testing::getShaderDirectory(), 4.0);
             StressPass eight(device, Testing::getShaderDirectory(), 8.0);
 
+            // Where the loop leaves its reading, as the ring's frame slot holds it.
+            Buffer counts = Buffer::readBack(
+                device, sizeof(Shaders::FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "frame counts");
+
             struct Hold
             {
                 StressPass* mPass;
@@ -61,11 +70,11 @@ namespace Rtx
             for (const Hold hold : { Hold{ &four, 4000000u }, Hold{ &eight, 8000000u } })
                 for (std::uint64_t frame = 0; frame < 8; ++frame)
                 {
-                    const double zoneMs = frameOf(*hold.mPass, timer, frame);
+                    const double zoneMs = frameOf(*hold.mPass, timer, counts, frame);
                     if (zoneMs <= 0.0)
                         GTEST_SKIP() << "the device does not time its own zones";
 
-                    const std::uint32_t held = hold.mPass->getHeldNs();
+                    const std::uint32_t held = static_cast<const Shaders::FrameCounts*>(counts.map())->mHeldNs;
                     EXPECT_GE(held, hold.mAskedNs) << "frame " << frame;
                     EXPECT_LE(held, hold.mAskedNs + 10000u) << "frame " << frame;
                     EXPECT_GE(zoneMs, static_cast<double>(held) * 1.0e-6) << "frame " << frame;

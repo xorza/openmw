@@ -46,6 +46,10 @@ namespace Rtx
         }
 
         constexpr std::size_t sPlacementBudget = 65536;
+
+        /// Nodes a walk passes: a loaded model is a transform over a `NiNode` over its shapes, so a
+        /// placement is one to two nodes, and the ring stands its cells with none.
+        constexpr std::size_t sNodeBudget = 2 * sPlacementBudget;
         constexpr std::size_t sMeshBudget = 16384;
         constexpr std::size_t sMaterialBudget = 16384;
         constexpr std::size_t sTextureBudget = 8192;
@@ -61,7 +65,8 @@ namespace Rtx
         /// and the node path under it, together, because a hundred crates share one geometry and,
         /// walked from a shared template node, one path as well. Hashed rather than kept, because a
         /// path is a vector of pointers per placement; folded on the way down, so the prefix every
-        /// sibling shares is worked out once.
+        /// sibling shares is worked out once. True for as long as the identity stands because the
+        /// walk holds every node it folds — `HeldPaths` — and the drawable is the mesh map's key.
         std::size_t identityWith(std::size_t key, const std::size_t part)
         {
             return (key ^ part) * 0x100000001b3ull;
@@ -245,6 +250,7 @@ namespace Rtx
         const std::size_t held = mShading.size();
         const std::size_t above = mPathHash;
         mPathHash = identity;
+        mExtractor.holdPath(node);
 
         if (const osg::StateSet* own = node.getStateSet())
             pushShading(*own, false);
@@ -408,6 +414,7 @@ namespace Rtx
         // on the insert that did it. Budgets past what a Morrowind exterior reaches at four cells
         // of distance, and a few hundred kilobytes of buckets apiece.
         mPlacements.reserve(sPlacementBudget);
+        mPaths.reserve(sNodeBudget);
         mMeshes.reserve(sMeshBudget, sDeformerBudget);
         mMaterials.reserve(sMaterialBudget, sTextureBudget, sAnimatedBudget);
         mEmitters.reserve(sEmitterBudget);
@@ -508,11 +515,6 @@ namespace Rtx
         return stats;
     }
 
-    void SceneExtractor::take(osg::Node& node)
-    {
-        node.accept(*mWalk);
-    }
-
     Retirement SceneExtractor::detach(CellRing& ring)
     {
         mPhase.expect(Phase::Between);
@@ -565,6 +567,9 @@ namespace Rtx
         mMeshes.retireDeformers();
         mMaterials.retireHolds();
         mEmitters.retire();
+
+        // After the placements' sweep, which dropped every identity the released nodes were in.
+        mPaths.release();
 
         // After the sweep and not before it, so that the walk which fills the next epoch is the
         // one this is measured against. Every entry that survived is still carrying the old stamp
@@ -688,12 +693,12 @@ namespace Rtx
 
         mPlacements.stamp(held);
 
-        // A slot stands what the walk resolved this frame, or it is stood again. The key is a hash
-        // of addresses nothing keeps alive, so a path whose nodes the game freed and allotted again
-        // between two walks — a cell unloaded and another loaded in one step of the world — finds
-        // the entry of what stood there before; and a deforming drawable whose source geometry was
-        // replaced is mirrored afresh under the path it kept. Moved, the slot would carry the old
-        // surface at the new place until the next sweep, standing on a row the sweep may free.
+        // A slot stands what the walk resolved this frame, or it is stood again: a deforming
+        // drawable whose source geometry was replaced, or a state set a controller rewrote into
+        // another material, is mirrored afresh under the path it kept. Never a path that is
+        // somebody else's, because every node in the key is held while the entry stands
+        // (`HeldPaths`). Moved, the slot would carry the old surface at the new place until the
+        // next sweep, standing on a row the sweep may free.
         Index& slot = held->second.mIndex;
         const MeshInstance& standing = mScene.placements().getRows()[slot].mInstance;
         if (standing.mMesh != resolved.mMesh || standing.mMaterial != resolved.mMaterial

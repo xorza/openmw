@@ -559,18 +559,23 @@ namespace RtxTool
                     return false;
                 }
 
-                // No frame shorter than asked, because the loop leaves on its own clock and
-                // nothing shortens it; and the median within a twentieth, because a clock switch
-                // stalls the card for a millisecond on a frame or two of a run, which lands in the
-                // worst frame and not in the median. `StressPass` says why the hold is a time and
-                // not a count.
-                const double held = zone->mTimes.mMedian;
-                const double shortest = zone->mTimes.mBest;
+                // Every frame held for at least as long as asked, by both clocks: the loop's own,
+                // which leaves at its first tick past the time and so cannot read shorter unless
+                // the loop is wrong, and the timer's zone around it, which says the queue was
+                // occupied for all of it. No bound above, because everything past the tick is
+                // the card's — a clock switch, a compositor's slice of the device — and a hold
+                // that ran long is a queue held longer, which weakens nothing the hold is for. The
+                // longest reading is printed so a stall can be seen for what it is, and the zone
+                // beside the loop so its excess is known to be the launch and the drain.
+                const Rtx::HoldTimes& hold = facts.mHold;
+                const double zoneShortest = zone->mTimes.mBest;
                 found = std::format(
-                    "{:.3f} ms held at the median frame of {:.1f} asked, {:.3f} at the shortest, on {} of {} frames",
-                    held, facts.mHoldAskedMs, shortest, zone->mFrames, zone->mOfFrames);
-                return zone->mFrames == zone->mOfFrames && shortest >= facts.mHoldAskedMs
-                    && held <= 1.05 * facts.mHoldAskedMs;
+                    "{:.3f} ms held by the loop at the shortest frame of {:.1f} asked, {:.3f} at the "
+                    "longest, {:.3f} timed around it at the shortest, on {} of {} frames",
+                    hold.mShortestMs, facts.mHoldAskedMs, hold.mLongestMs, zoneShortest, zone->mFrames,
+                    zone->mOfFrames);
+                return zone->mFrames == zone->mOfFrames && hold.mFrames == zone->mOfFrames
+                    && hold.mShortestMs >= facts.mHoldAskedMs && zoneShortest >= facts.mHoldAskedMs;
             }
 
             case Rtx::Check::CameraStands:

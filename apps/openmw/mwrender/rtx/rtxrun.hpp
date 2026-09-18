@@ -46,7 +46,12 @@ namespace MWRender
         /// mirror the cell it left.
         virtual void beforeFrame() = 0;
 
-        /// Takes one traced frame the device answered for — `FrameReport::mResult` is set.
+        /// Takes one traced frame, and with it whatever the device answered for an earlier one —
+        /// `FrameReport::mResult`, set where an answer came back this frame. Every traced frame and
+        /// not only the answered ones, because an answer comes back a frame later or two by
+        /// whether the card had finished when the frame after asked, and a run that counted
+        /// answers stood at different points of its sequence in two runs of one build. The two
+        /// halves meet by frame number, `FrameReport::mFrame` and `FrameResult::mFrame`.
         virtual void frame(const FrameContext& context, const FrameReport& report) = 0;
     };
 

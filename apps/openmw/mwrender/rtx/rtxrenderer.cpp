@@ -256,10 +256,11 @@ namespace MWRender
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
 
         // **A measured run compiles its pipelines from source and keeps none.** A pipeline the
-        // driver hands back from a cache — its own on disk, or the blob `PipelineCache` keeps —
-        // is not the code a compile of the same SPIR-V makes: over `one-cell-walk` the two drew
-        // 59 of 360 pictures a part in 255 apart, and a pipeline loaded from a blob was swapped
-        // for the other code a few seconds into the run, which is what the gate's pair failed on
+        // driver hands back from a cache — its own on disk, the blob `PipelineCache` keeps, or
+        // the object its compiles would share in memory (`PipelineCacheSpec::mDirectory`) — is
+        // not the code a compile of the same SPIR-V makes: over `one-cell-walk` the two drew 59
+        // of 360 pictures a part in 255 apart, and a pipeline loaded from a blob was swapped for
+        // the other code a few seconds into the run, which is what the gate's pair failed on
         // after a rebuild. A compile is one code and stays it. The player keeps the cache: a game
         // is not compared with itself, and the seconds it saves at start are the player's.
         if (run == nullptr)
@@ -1127,6 +1128,7 @@ namespace MWRender
 
         report.mFrame = mRenderer->getFrameCount();
         report.mReconstruction = mRenderer->renderFrame(constants, options);
+        report.mConstants = constants;
 
         report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, std::chrono::steady_clock::now());
         report.mSpend.at(Rtx::Timing::Present) = mSpan.takePresent();
@@ -1137,15 +1139,13 @@ namespace MWRender
             report.mWalked = mWalked;
             report.mUnreadableTextures = mUnreadable;
 
-            if (report.mResult.has_value())
-            {
-                mPhase.step(Phase::Run, Phase::Tracing);
-                mInstalled.mRun.frame(describeContext(), report);
-            }
+            // Every traced frame, whether or not the device has answered for one yet: the run
+            // counts the frames it traced, and `RtxRun::frame` says why a count of answers is not
+            // that.
+            mPhase.step(Phase::Run, Phase::Tracing);
+            mInstalled.mRun.frame(describeContext(), report);
 
-            // **Every frame and not the ones the device answered for**, because what this reads is
-            // the wall between two traces and the device's answer is not part of it. Once a
-            // second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
+            // Once a second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
             if (const std::string_view title = mSpeed.addFrame(*since);
                 !title.empty() && (SDL_GetWindowFlags(mWindow.get()) & SDL_WINDOW_HIDDEN) == 0)

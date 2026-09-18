@@ -74,6 +74,23 @@ namespace Rtx
         double getMean() const { return mFrames == 0 ? 0.0 : mSum / mFrames; }
     };
 
+    /// What the hold's own clock said on each frame of a run that held — `FrameResult::mHeldMs`.
+    /// The shortest and the longest, because the question is whether every frame held for as long
+    /// as asked, and the longest is where a stall inside the loop shows.
+    struct HoldTimes
+    {
+        double mShortestMs = 0.0;
+        double mLongestMs = 0.0;
+        std::uint32_t mFrames = 0;
+
+        void add(double heldMs)
+        {
+            mShortestMs = mFrames == 0 ? heldMs : std::min(mShortestMs, heldMs);
+            mLongestMs = std::max(mLongestMs, heldMs);
+            ++mFrames;
+        }
+    };
+
     /// What one place came to.
     struct BenchPlace
     {

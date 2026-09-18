@@ -78,9 +78,6 @@ namespace Rtx
         SceneAdopter(const SceneAdopter&) = delete;
         SceneAdopter& operator=(const SceneAdopter&) = delete;
 
-        /// Walks `node` as though the graph had parented it where the residency was asked.
-        virtual void take(osg::Node& node) = 0;
-
         /// The material of a reading somebody else made, adopted under the state set it names, with
         /// one hold taken on it. `sNoIndex` and no hold where the reading names no state set.
         virtual Index adoptMaterial(const MaterialReading& reading) = 0;

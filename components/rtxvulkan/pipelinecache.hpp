@@ -15,9 +15,19 @@ namespace Rtx
     /// Where a pipeline cache is kept, and what it is keyed on.
     struct PipelineCacheSpec
     {
-        /// The directory the file goes in, made if it is not there. Empty keeps no file at all,
-        /// which is a renderer that compiles from source every run — every measuring process,
-        /// for the reason `RtxRenderer` gives where it leaves this empty.
+        /// The directory the file goes in, made if it is not there. Empty keeps no cache at all —
+        /// no file, and no `VkPipelineCache` object either — which is a renderer that compiles
+        /// every stage of every pipeline from source: every measuring process, for the reason
+        /// `RtxRenderer` gives where it leaves this empty.
+        ///
+        /// **No object, not merely no file**, because the object is shared by every pipeline
+        /// created against it, and the pipelines are created in parallel. A stage two of them
+        /// share — the hit and miss shaders under every visibility variant — is compiled by
+        /// whichever asked first and handed back from the object to whichever asked later, and
+        /// what is handed back is not the code a compile of the same SPIR-V makes. Which
+        /// pipelines got which was the hands' timing: a third of the runs of one scene drew a
+        /// pixel a part in 255 apart on one frame in two hundred, with every input the same, and
+        /// none of twelve did with the object gone. The compiles are faster without it as well.
         std::filesystem::path mDirectory;
 
         /// The compiled shaders the pipelines are built from, digested into the file's name.
@@ -39,8 +49,8 @@ namespace Rtx
         PipelineCache(VkDevice device, const VkPhysicalDeviceProperties& properties, const PipelineCacheSpec& spec);
         ~PipelineCache();
 
-        /// Null when the cache could not be created, which every `vkCreate*Pipelines` accepts as
-        /// "no cache" — so a caller passes this without asking whether it worked.
+        /// Null where the spec keeps no cache or the cache could not be created, which every
+        /// `vkCreate*Pipelines` accepts as "no cache" — so a caller passes this without asking.
         VkPipelineCache getHandle() const { return mHandle.get(); }
 
         /// The most a blob may hold before a run throws it away and starts one again — a backstop

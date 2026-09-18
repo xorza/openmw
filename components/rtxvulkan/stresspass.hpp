@@ -22,28 +22,22 @@ namespace Rtx
     ///
     /// **The time is measured where it passes, in the loop, off the device's real-time clock.**
     /// `stress.comp` says why a count is not a time on a card whose clock moves, and it moves the
-    /// most on the frames a run measures first.
+    /// most on the frames a run measures first. What the loop's clock came to is left in the
+    /// frame's counts, `Shaders::FrameCounts::mHeldNs`, which the ring reads back once the frame is
+    /// waited for — `FrameResult::mHeldMs`.
     class StressPass
     {
     public:
         /// @param milliseconds how long every frame's hold is to be.
         StressPass(const Device& device, const std::filesystem::path& shaderDirectory, double milliseconds);
 
-        /// Records the hold into `commands`, timed as `RenderProfile::sHoldZone`.
-        void record(VkCommandBuffer commands, GpuTimer& timer);
-
-        /// What the loop's own clock said the last hold that finished came to, in nanoseconds:
-        /// what was asked and the tick past it. Read once the submit that recorded the hold is
-        /// waited for; a frame in flight is still writing it. The zone can only read longer — a
-        /// clock switch stalls the card for a millisecond or so, and the loop's clock runs on
-        /// through it — so this is the figure that says the loop did as it was told.
-        std::uint32_t getHeldNs() const;
+        /// Records the hold into `commands`, timed as `RenderProfile::sHoldZone`, leaving what the
+        /// loop's clock read in `counts`: the frame's own block, so the reading is the frame's and
+        /// not whichever frame in flight wrote last.
+        void record(VkCommandBuffer commands, GpuTimer& timer, const Buffer& counts);
 
     private:
         ComputePipeline mPipeline;
-
-        /// Where the loop leaves what its clock read, for `getHeldNs`.
-        Buffer mSink;
 
         std::uint32_t mNanoseconds;
     };

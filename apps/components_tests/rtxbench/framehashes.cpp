@@ -124,7 +124,7 @@ namespace Rtx
                 std::ifstream in(file);
                 std::getline(in, header);
             }
-            EXPECT_EQ(header.substr(0, 29), "hashes 2: view,frame,picture,");
+            EXPECT_EQ(header.substr(0, 29), "hashes 3: view,frame,picture,");
             EXPECT_NE(header.find(",textures,"), std::string::npos) << header;
 
             std::filesystem::remove(file);

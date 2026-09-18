@@ -121,6 +121,7 @@ namespace Rtx
               deviceExtensionsFor(options))
         , mCountHits(options.mCountHits)
         , mProfile(options.mProfile)
+        , mReadsCounts(mCountHits || mProfile.mStressOverlapMs > 0.0)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         , mTextureLayout(TextureArray::describeLayout(mDevice))
@@ -149,8 +150,8 @@ namespace Rtx
         , mGroundPass(mDevice, options.mShaderDirectory, mTextureLayout.get())
         , mNoSprites(Buffer::hostWritten(
               mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "no sprites"))
-        , mViewCounts(
-              Buffer::deviceLocal(mDevice, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
+        , mViewCounts(Buffer::deviceLocal(
+              mDevice, sizeof(Shaders::FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice)
     {
@@ -767,12 +768,12 @@ namespace Rtx
             : (mLastFrameAt.has_value() ? std::chrono::duration<float, std::milli>(now - *mLastFrameAt).count() : 0.0f);
         mLastFrameAt = now;
 
-        // The count is an atomic sum over the frame, so it starts each one at nothing — and it is
-        // not started at all where the trace was specialized to write nothing into it, which is the
-        // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
-        // this is the write a frame that never reads it was still paying for.
-        if (mCountHits)
-            frame.mHitCount.writable<FrameCounts>(0, 1).front() = FrameCounts{};
+        // The hit count is an atomic sum over the frame, so the block starts each one at nothing
+        // — and it is not started at all where nothing reads it back, which is the other half of
+        // taking the counter out of the game: the atomic went with `COUNT_HITS`, and this is the
+        // write a frame that never reads it was still paying for.
+        if (mReadsCounts)
+            frame.mCounts.writable<Shaders::FrameCounts>(0, 1).front() = Shaders::FrameCounts{};
 
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
@@ -786,7 +787,7 @@ namespace Rtx
         // trace's own composite where nothing does. Named before the trace, because the set that
         // carries it is pushed for every launch.
         const VisibilityInputs inputs = describeInputs(*mWorld, mFrame, camera.mRayMask,
-            upscaling() ? mUpscaler->getOutput() : mFrame.getColour(), frame.mHitCount, mRing.getRecordingSlot());
+            upscaling() ? mUpscaler->getOutput() : mFrame.getColour(), frame.mCounts, mRing.getRecordingSlot());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
@@ -922,14 +923,14 @@ namespace Rtx
         // After the picture and inside the frame's trace, so the frame is finished when its value
         // has passed and the hold is the last thing it did.
         if (mStress != nullptr)
-            mStress->record(commands, timer);
+            mStress->record(commands, timer, frame.mCounts);
 
-        // Submitted and not waited for: `finishFrame` or `collectFrame` brings the count and the
-        // report back a frame or two late. A wait's access scope is the device's, so the counters
-        // need a dependency of their own, recorded here after every pass that could have added to
-        // them.
-        if (mCountHits)
-            frame.mHitCount.orderForHostRead(commands);
+        // Submitted and not waited for: `finishFrame` or `collectFrame` brings the counts and the
+        // report back a frame or two late. A wait's access scope is the device's, so the counts
+        // need a dependency of their own, recorded here after every pass that could have written
+        // them — the hold included.
+        if (mReadsCounts)
+            frame.mCounts.orderForHostRead(commands);
 
         mRing.submit(frame);
 

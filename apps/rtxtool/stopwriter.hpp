@@ -44,9 +44,10 @@ namespace RtxTool
         /// How many frames the ring held at each submit, which only `FramesOverlap` reads.
         const Rtx::Overlap& mOverlap;
 
-        /// What the frames' zones came to, and how long a hold the run asked for, which only
-        /// `QueueHeld` reads.
+        /// What the frames' zones came to, what the hold's own clock read, and how long a hold
+        /// the run asked for, which only `QueueHeld` reads.
         std::span<const Rtx::GpuZone> mZones;
+        const Rtx::HoldTimes& mHold;
         double mHoldAskedMs = 0.0;
     };
 

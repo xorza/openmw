@@ -13,13 +13,14 @@
 // dozen frames to settle. `clockRealtimeEXT` runs at a fixed rate whatever the card is clocked at,
 // so the loop leaves when the time it was told has passed, on the first frame as on every other.
 
+#include "counts.h"
 #include "stress.h"
 
 layout(local_size_x = STRESS_WORKGROUP) in;
 
-layout(set = 0, binding = 0, scalar) buffer Sink
+layout(set = 0, binding = 0, scalar) buffer Counted
 {
-    uint sink;
+    FrameCounts counts;
 };
 
 layout(push_constant, scalar) uniform Push
@@ -36,7 +37,7 @@ void main()
     while (elapsed < asked)
         elapsed = clockRealtimeEXT() - start;
 
-    // What the loop's own clock came to, for `StressPass::getHeldNs`.
+    // What the loop's own clock came to, for `FrameResult::mHeldMs`.
     if (gl_LocalInvocationIndex == 0u)
-        sink = uint(elapsed);
+        counts.mHeldNs = uint(elapsed);
 }

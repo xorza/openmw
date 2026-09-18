@@ -31,6 +31,7 @@
 #extension GL_EXT_ray_query : require
 
 #include "bindings.h"
+#include "counts.h"
 #include "fogvolume.h"
 #include "gbuffer.h"
 #include "glare.h"
@@ -127,9 +128,9 @@ layout(set = 2, binding = CHANNEL_PUFFS_DEPTH, GBUFFER_PUFF_DEPTH) uniform image
 // reduction in its place gives back: few rays hit, and the reduction would cost the device a
 // subgroup-arithmetic requirement it does not otherwise need. Measure again if a pass ever hits
 // most of its pixels.
-layout(set = 0, binding = BIND_HITS) buffer HitCount
+layout(set = 0, binding = BIND_COUNTS, scalar) buffer Counted
 {
-    uint hits;
+    FrameCounts counts;
 };
 
 /// The sun glare fader's query, as `glare.h` states it: two atomics, added to by every primary

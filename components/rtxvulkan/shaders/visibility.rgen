@@ -324,7 +324,7 @@ void main()
     imageStore(puffsDepth, ivec2(pixel), vec4(layer.mCoveredAt, shellsThrough, arms ? 1.0 : 0.0, 0.0));
 
     if (COUNT_HITS && hit)
-        atomicAdd(hits, 1);
+        atomicAdd(counts.mHits, 1);
 
     // **The sun glare fader's query, one ray at a time.** The rasterizer draws the sun's quad
     // against the world's depth and counts the pixels that survived; here every primary ray inside

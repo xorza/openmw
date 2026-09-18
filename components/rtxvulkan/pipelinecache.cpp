@@ -183,6 +183,11 @@ namespace Rtx
         : mDevice(device)
         , mPath(cachePath(spec, properties))
     {
+        // No file is no object: `PipelineCacheSpec::mDirectory` says why a measuring process may
+        // not share even an empty one between its compiles.
+        if (mPath.empty())
+            return;
+
         // Before the read and not after it, so that a run which then fails to load its own file has
         // still taken the rest away.
         sweep();

@@ -183,6 +183,10 @@ namespace Rtx
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, InstanceClass what);
 
+        /// Holds `node` for the identities folded from its address — `HeldPaths`. Called for every
+        /// node the walk enters, before anything under it is placed.
+        void holdPath(const osg::Node& node) { mPaths.hold(node); }
+
         /// The state set a node's controllers write, or null where it has none. Applied here rather
         /// than left to a callback: a `SceneUtil::StateSetUpdater` as a cull callback writes a state
         /// set that exists only inside a cull traversal, and as an update callback alternates the
@@ -218,12 +222,11 @@ namespace Rtx
             Stepped<Phase>& mPhase;
         };
 
-        /// What the ring may do inside a walk, and nothing else may. `Rtx::SceneAdopter` is
-        /// implemented privately, so the five calls that only mean anything inside one walk are
-        /// reachable through that interface and not in front of every reader of this class. The
-        /// two releases are allowed between walks as well — `detach` — because giving a
-        /// hold back reads nothing of a walk.
-        void take(osg::Node& node) override;
+        /// What the ring may do, and nothing else may. `Rtx::SceneAdopter` is implemented
+        /// privately, so its four calls are reachable through that interface and not in front of
+        /// every reader of this class. The two adoptions mean anything only inside a walk; the
+        /// two releases are allowed between walks as well — `detach` — because giving a hold
+        /// back reads nothing of a walk.
         Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading) override
         {
             mPhase.expect(Phase::Walking);
@@ -302,6 +305,9 @@ namespace Rtx
         /// Which slot each placement holds, and when it was last met. One lookup a placement a
         /// frame, and the scene keeps the transform.
         Kept<std::unordered_map<std::size_t, Known>> mPlacements{ mPass };
+
+        /// What keeps the keys above true. Released in `retire`, after the sweep.
+        HeldPaths mPaths;
 
         /// The drawables the walk met, and what poses the ones that deform.
         MeshResolver mMeshes{ mScene, mPass };
