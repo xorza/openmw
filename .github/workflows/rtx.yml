@@ -53,7 +53,7 @@ jobs:
 
   build:
     name: ${{ matrix.os }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -68,7 +68,6 @@ jobs:
         # built for its toolset.
         include:
           - os: ubuntu-24.04
-            runner: beelink-ser5-dev
             vulkan: 1.4.357.1
             vulkan-sha256: 4b41e3b30e8aedaa5dac7c136561ab463eb316a25a54e2c6245f2c299ea1fb85
             # What FindNGX reads on this system: the headers, the static library and the release
@@ -77,7 +76,6 @@ jobs:
               include
               lib/Linux_x86_64/rel
           - os: windows-2022
-            runner: windows-2022
             vulkan: 1.4.357.0
             vulkan-sha256: 81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d
             # The loader, which the SDK's installer does not carry and a runner with no driver
