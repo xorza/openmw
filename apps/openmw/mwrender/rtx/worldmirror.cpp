@@ -96,7 +96,7 @@ namespace MWRender
         }
     }
 
-    WorldMirror::WorldMirror(const MirrorKnobs& knobs)
+    WorldMirror::WorldMirror(const Rtx::MirrorKnobs& knobs)
         : mExtractor(mScene, &mTraversals)
         , mReach(knobs.mReach)
     {

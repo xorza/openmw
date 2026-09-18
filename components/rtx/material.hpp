@@ -7,6 +7,7 @@
 
 #include "runs.hpp"
 #include "shaders/look.h"
+#include "shaders/scene.h"
 #include "surface.hpp"
 
 namespace Rtx
@@ -219,40 +220,33 @@ namespace Rtx
         }
     };
 
-    /// How one layer's textures are addressed over a chunk: the grid its weights form and the two
-    /// transforms from cell coordinates. Stated once and carried whole from the land record to
-    /// the scene's row to the bake, so the three cannot disagree about where a texel lands.
-    struct LayerPlacing
+    /// One layer of a terrain material: a ground texture and the weights that place it. The
+    /// device's own row, carried whole from the land record to the scene's layer run and the
+    /// bake — `Shaders::GpuLayer` says what each field is. A fresh one is all nought, which is a
+    /// layer with no texture and no transform: `wholeLayer` is what a reader starts from.
+    using MaterialLayer = Shaders::GpuLayer;
+
+    /// The weights a layer placed, as the run the mask table handed out — what is given back is
+    /// what was taken, because the count is the grid's area. Here and not on the row, because the
+    /// row is a shared header's and `Run` is the host's.
+    inline Run maskOf(const MaterialLayer& layer)
     {
-        /// The grid the weights form. Nought by nought where the layer covers everything.
-        std::uint16_t mMaskWidth = 0;
-        std::uint16_t mMaskHeight = 0;
+        return Run{ .mOffset = layer.mMaskOffset, .mCount = layer.mMaskWidth * layer.mMaskHeight };
+    }
 
-        /// Cell texture coordinates to this layer's, as `uv * xy + zw`. `GroundReader` derives both
-        /// from the tile count as `Terrain::createPasses` does, and a test holds the numbers.
-        osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-        osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-
-        bool operator==(const LayerPlacing& other) const = default;
-    };
-
-    /// One layer of a terrain material: a ground texture and the weights that place it. OpenMW
-    /// draws the stack as one alpha-blended pass per layer; a ray tracer has one hit and sums the
-    /// layers at it instead.
-    struct MaterialLayer
+    /// A layer that covers the whole chunk at its cell coordinates and names no texture yet: no
+    /// grid, and both transforms the identity `uv * (1, 1) + (0, 0)`. What every layer starts as
+    /// before the land record says otherwise, because a value-initialised row would place its
+    /// texture at one texel.
+    inline MaterialLayer wholeLayer()
     {
-        /// The ground texture, which tiles many times across a chunk.
-        Index mDiffuse = sNoIndex;
-
-        /// This layer's weights in the scene's mask table. An empty run means the layer covers
-        /// everything. The run holds the placing's grid of weights and is kept rather than rebuilt
-        /// from the sides, so that what is given back is what was taken.
-        Run mMask;
-
-        LayerPlacing mPlacing;
-
-        /// Two layers are the same when every field is, which is what says a chunk still stands
-        /// where a bake of it began.
-        bool operator==(const MaterialLayer& other) const = default;
-    };
+        return MaterialLayer{
+            .mDiffuse = sNoIndex,
+            .mMaskOffset = 0,
+            .mMaskWidth = 0,
+            .mMaskHeight = 0,
+            .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
+            .mMaskTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
+        };
+    }
 }

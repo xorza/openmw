@@ -453,7 +453,10 @@ namespace Rtx
         setup.flush();
 
         if (slot.isWorld())
+        {
             held->readStats(mStats);
+            keepRipples(scene);
+        }
     }
 
     void VulkanRenderer::extendScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived)
@@ -562,6 +565,12 @@ namespace Rtx
         held.placed(into);
 
         held.readPlacedStats(mStats);
+        keepRipples(scene);
+    }
+
+    void VulkanRenderer::keepRipples(const SceneDesc& scene)
+    {
+        mFrameRipples.assign(scene.ripples().begin(), scene.ripples().end());
     }
 
     MemoryReport VulkanRenderer::getMemoryReport() const
@@ -806,7 +815,7 @@ namespace Rtx
         // step left it. A frame with no sea leaves the tiles as they were and stands no field.
         if (inputs.mWater)
         {
-            mRipples.record(commands, mRing.getRecordingSlot(), options.mRipples,
+            mRipples.record(commands, mRing.getRecordingSlot(), mFrameRipples,
                 osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), static_cast<double>(camera.mSkyTime), &timer);
             sampled.mRippleOrigin = mRipples.getOrigin();
             sampled.mRippleExtent = RipplePass::getExtent();

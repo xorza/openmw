@@ -976,8 +976,10 @@ namespace Rtx::Testing
 
                 // Wide enough to fill the middle of the frame from three scale heights away, which
                 // is what the descent costs in distance.
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 2000.0f, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 2000.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, true);
 
                 Shaders::VisibilityConstants camera = makeCamera(

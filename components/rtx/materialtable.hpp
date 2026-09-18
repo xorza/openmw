@@ -32,20 +32,9 @@ namespace Rtx
     /// call rather than held: a slot is named by holds nothing here can see, and a table that held
     /// a reference to the texture table was one a defaulted move of the scene left pointing at the
     /// scene it was moved from.
-    class MaterialTable
+    class MaterialTable : public HeldRows<Material>
     {
     public:
-        /// The half of `SlotRows` a reader and a sweep use. A row goes in through `add` and out
-        /// through `sweep`, so `take`, `at` and the sweep stay this table's own.
-        std::size_t size() const { return mRows.size(); }
-        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
-        bool isLive(Index slot) const { return mRows.isLive(slot); }
-        std::span<const Material> getRows() const { return mRows.getRows(); }
-        void hold(Index slot) { mRows.hold(slot); }
-        bool drop(Index slot) { return mRows.drop(slot); }
-        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
-        std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
-
         /// Puts `material` in a slot, holding every texture it names on `textures`.
         Index add(TextureTable& textures, const Material& material);
 
@@ -101,8 +90,6 @@ namespace Rtx
         /// order between them matters.
         void holdTextures(TextureTable& textures, const Material& material);
         void dropTextures(TextureTable& textures, const Material& material);
-
-        SlotRows<Material> mRows;
 
         /// Rows written since the last `clearArrivals` — a flipbook that is added and then
         /// rewritten on one frame is one row, not two.

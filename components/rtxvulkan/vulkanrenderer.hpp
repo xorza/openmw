@@ -13,6 +13,7 @@
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/ripple.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
@@ -171,6 +172,10 @@ namespace Rtx
         /// Brings the upscaler's runtime up if it is not already, and throws where it cannot be.
         void startUpscaler();
 
+        /// Copies what the world's scene says disturbed the water into `mFrameRipples`, at the
+        /// two places the world's scene passes through: built and placed.
+        void keepRipples(const SceneDesc& scene);
+
         /// Everything the queue was given and everything waiting to be given it, finished, and
         /// everything buried let go: what a rebuild, a resize and a scene going away do before
         /// what they replace can go. In the one order that is right — a deferred batch first,
@@ -296,6 +301,12 @@ namespace Rtx
         /// What walked through the water, stepped once a frame the world stands in a sea and read
         /// by every picture beside the waves.
         RipplePass mRipples;
+
+        /// What disturbed the water, as the world's scene said it when it was last built or
+        /// placed — `SceneDesc::ripples`, a per-frame list of the scene like its lights — kept
+        /// for the trace that follows. A copy and not a span, because the scene's list is cleared
+        /// by the next walk and nothing here would say so. Refilled and never freed.
+        std::vector<RippleImpulse> mFrameRipples;
 
         /// One field for everything traced, drawn once for the life of the device. Nothing about
         /// it turns on the weather or the cell — those decide the extinction and the layer's height,

@@ -125,19 +125,25 @@ namespace Rtx
         for (const Sprite& sprite : sprites)
             reach = std::max(reach, (sprite.mPosition - centre).length() + sprite.mRadius * spanOf(sprite));
 
+        // Each sprite names the emitter that placed it as it is copied in: this is the one place
+        // that knows, and a tile's list is sprites that have to say when their run changed.
+        const auto emitter = static_cast<Index>(mEmitters.size());
         mEmitters.push_back(SpriteEmitter{
             .mCentre = centre,
             .mReach = reach,
-            .mSprites
-            = Run{ .mOffset = static_cast<Index>(mSprites.size()), .mCount = static_cast<Index>(sprites.size()) },
+            .mFirst = static_cast<Index>(mSprites.size()),
+            .mCount = static_cast<Index>(sprites.size()),
             .mTexture = texture,
-            .mLighting = lighting,
-            .mAdditive = additive,
-            .mFalls = falls,
+            .mFlags = (additive ? Shaders::EMITTER_ADDITIVE : 0u) | (falls ? Shaders::EMITTER_FALLS : 0u),
             .mWidth = width,
+            .mLighting = lighting,
         });
 
-        mSprites.insert(mSprites.end(), sprites.begin(), sprites.end());
+        for (const Sprite& sprite : sprites)
+        {
+            Sprite& placed = mSprites.emplace_back(sprite);
+            placed.mEmitter = emitter;
+        }
     }
 
     Index SceneDesc::addInstance(const MeshInstance& instance)

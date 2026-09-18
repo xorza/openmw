@@ -529,9 +529,9 @@ namespace Rtx
             sheet.mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
             Glow glow;
-            addSheet(glow, sheet, quad, stood, 1.0f);
+            glow.addSheet(sheet, quad, stood, 1.0f);
 
-            std::optional<Light> lamp = makeGlow(glow);
+            std::optional<Light> lamp = glow.makeLight();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 2.0f * 628.32f, 1e-2f);
             EXPECT_NEAR(lamp->mIntensity.y(), 628.32f, 1e-2f);
@@ -544,11 +544,11 @@ namespace Rtx
 
             // The instance's fade weighs the sheet as the material's opacity does.
             Glow faded;
-            addSheet(faded, sheet, quad, stood, 0.5f);
-            EXPECT_NEAR(makeGlow(faded)->mIntensity.x(), 628.32f, 1e-2f);
+            faded.addSheet(sheet, quad, stood, 0.5f);
+            EXPECT_NEAR(faded.makeLight()->mIntensity.x(), 628.32f, 1e-2f);
 
-            addSheet(glow, sheet, quad, stood * osg::Matrixf::translate(0.0f, 0.0f, 20.0f), 1.0f);
-            lamp = makeGlow(glow);
+            glow.addSheet(sheet, quad, stood * osg::Matrixf::translate(0.0f, 0.0f, 20.0f), 1.0f);
+            lamp = glow.makeLight();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * 5654.9f, 1.0f);
             EXPECT_NEAR(lamp->mIntensity.y(), 2.0f * 5654.9f, 1.0f);
@@ -557,25 +557,26 @@ namespace Rtx
             EXPECT_FLOAT_EQ(lamp->mReach, 240.0f);
 
             Glow turned;
-            addSheet(turned, sheet, quad, stood, 1.0f);
-            addSheet(turned, sheet, quad,
+            turned.addSheet(sheet, quad, stood, 1.0f);
+            turned.addSheet(sheet, quad,
                 osg::Matrixf::translate(-0.5f, -0.5f, 0.0f) * osg::Matrixf::rotate(1.0, osg::Vec3f(0.0f, 0.0f, 1.0f))
                     * osg::Matrixf::translate(0.5f, 0.5f, 0.0f) * stood,
                 1.0f);
-            EXPECT_NEAR(makeGlow(turned)->mSourceRadius, 5.0f, 1e-4f) << "a billboard turning grew the ball";
+            EXPECT_NEAR(turned.makeLight()->mSourceRadius, 5.0f, 1e-4f) << "a billboard turning grew the ball";
 
             Material whole = sheet;
             whole.mBlend = BlendKind::AddWhole;
             Glow unread;
-            addSheet(unread, whole, quad, stood, 0.5f);
-            EXPECT_NEAR(makeGlow(unread)->mIntensity.x(), 4.0f * 628.32f, 1e-2f) << "neither the opacity nor the fade";
+            unread.addSheet(whole, quad, stood, 0.5f);
+            EXPECT_NEAR(unread.makeLight()->mIntensity.x(), 4.0f * 628.32f, 1e-2f)
+                << "neither the opacity nor the fade";
 
             Material pane = sheet;
             pane.mBlend = BlendKind::Over;
             Glow none;
-            addSheet(none, pane, quad, stood, 1.0f);
-            EXPECT_FALSE(makeGlow(none).has_value()) << "a pane is no glow";
-            EXPECT_FALSE(makeGlow(Glow{}).has_value()) << "an effect of no sheets";
+            none.addSheet(pane, quad, stood, 1.0f);
+            EXPECT_FALSE(none.makeLight().has_value()) << "a pane is no glow";
+            EXPECT_FALSE(Glow{}.makeLight().has_value()) << "an effect of no sheets";
         }
 
         /// An effect's flames join the same lamp: each sprite's disc at the texture's mean under
@@ -614,16 +615,17 @@ namespace Rtx
             };
             const osg::Vec3f mean(0.5f, 0.25f, 0.0f);
 
-            SpriteEmitter flames;
+            SpriteEmitter flames{};
             flames.mCentre = osg::Vec3f(100.0f, 0.0f, 10.0f);
             flames.mReach = 8.0f;
-            flames.mSprites = Rtx::Run{ .mOffset = 0, .mCount = 2 };
-            flames.mAdditive = true;
+            flames.mFirst = 0;
+            flames.mCount = 2;
+            flames.mFlags = Shaders::EMITTER_ADDITIVE;
 
             Glow glow;
-            addSprites(glow, flames, sprites, mean);
+            glow.addSprites(flames, sprites, mean);
 
-            std::optional<Light> lamp = makeGlow(glow);
+            std::optional<Light> lamp = glow.makeLight();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 352.0f, 1e-3f);
             EXPECT_NEAR(lamp->mIntensity.y(), 104.0f, 1e-3f);
@@ -640,10 +642,10 @@ namespace Rtx
             sheet.mDiffuseMean = mean;
             sheet.mOpacity = 0.5f;
             sheet.mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            addSheet(glow, sheet, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 0.0f)),
+            glow.addSheet(sheet, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 0.0f)),
                 osg::Matrixf::scale(10.0f, 10.0f, 10.0f) * osg::Matrixf::translate(100.0f, 0.0f, 0.0f), 1.0f);
 
-            lamp = makeGlow(glow);
+            lamp = glow.makeLight();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * (314.16f + 88.0f), 1e-1f);
             EXPECT_NEAR(lamp->mIntensity.y(), 4.0f * (157.08f + 26.0f), 1e-1f);
@@ -654,19 +656,19 @@ namespace Rtx
             EXPECT_NEAR(lamp->mReach, 16.0f * 12.624f, 1e-2f);
 
             SpriteEmitter smoke = flames;
-            smoke.mAdditive = false;
+            smoke.mFlags = 0;
             Glow dark;
-            addSprites(dark, smoke, sprites, mean);
-            EXPECT_FALSE(makeGlow(dark).has_value()) << "smoke is no glow";
+            dark.addSprites(smoke, sprites, mean);
+            EXPECT_FALSE(dark.makeLight().has_value()) << "smoke is no glow";
 
             SpriteEmitter spent = flames;
-            spent.mSprites.mCount = 0;
+            spent.mCount = 0;
             Glow empty;
-            addSprites(empty, spent, {}, mean);
-            EXPECT_FALSE(makeGlow(empty).has_value()) << "an emitter with nothing alive";
+            empty.addSprites(spent, {}, mean);
+            EXPECT_FALSE(empty.makeLight().has_value()) << "an emitter with nothing alive";
 
             glow.mLit = true;
-            EXPECT_FALSE(makeGlow(glow).has_value()) << "the game's own light is the effect's";
+            EXPECT_FALSE(glow.makeLight().has_value()) << "the game's own light is the effect's";
         }
     }
 }

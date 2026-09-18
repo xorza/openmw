@@ -42,24 +42,6 @@ namespace MWRender
 {
     struct SceneFrame;
 
-    /// What the mirror is handed of the settings, and never reads for itself: the two knobs the
-    /// paging read for the distance's statics, which this renderer stands itself, and how far out
-    /// the world is built. Handed once, because a frame reads what it was handed: the reach is one
-    /// number for the ground, the air, the distant lights and the checks, and a host that asked
-    /// the registry per frame could answer it differently in each. The statics need a restart; the
-    /// reach follows the menu through `setReach`.
-    struct MirrorKnobs
-    {
-        /// `Rtx::distantLandReach`, in units.
-        float mReach = 0.0f;
-
-        /// `object paging`: whether the distance's statics stand at all.
-        bool mDistantStatics = true;
-
-        /// `object paging min size`: the size rule's constant.
-        float mMinSize = 0.0f;
-    };
-
     /// The engine's scene graph mirrored into what a ray can meet.
     ///
     /// **Everything between "the game has a frame" and "trace it".** The walk, what it walks past,
@@ -73,7 +55,7 @@ namespace MWRender
     class WorldMirror
     {
     public:
-        explicit WorldMirror(const MirrorKnobs& knobs);
+        explicit WorldMirror(const Rtx::MirrorKnobs& knobs);
 
         /// Asserts the scene empty: a world detached has given every row back, and the one that
         /// did not is named here rather than found at the next frame's horizon. Not while an
@@ -188,8 +170,7 @@ namespace MWRender
 
         Rtx::SceneUploader mUploader;
 
-        /// The distant cells waiting for their ground to be flattened, and the thread flattening
-        /// them.
+        /// The distant cells waiting for their ground to be flattened, in the order the walks asked.
         ///
         /// **Here because only a world has ground.** A chunk waits past the frame that asked for
         /// it, so the schedule belongs to what outlives frames rather than to the once-a-frame

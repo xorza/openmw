@@ -49,7 +49,7 @@ namespace Rtx
         // One question, because a particle's whole silhouette is its texture's alpha and an emitter
         // this cannot name a sprite for draws nothing.
         SurfaceDescription described;
-        const TextureUse& use = described.getTextureUse(TextureRole::Diffuse);
+        const TextureUse& use = described.getTextureUse(SurfaceMap::Diffuse);
         const osg::Image* sprite = describeSurface(shading, described) ? use.get() : nullptr;
         if (sprite != nullptr && sprite->getFileName().empty())
             sprite = nullptr;
@@ -234,12 +234,12 @@ namespace Rtx
         // What a flame under an effect adds to the effect's lamp. The mean is read at the first
         // flame that asks and never for smoke, whose glow reads nothing of it.
         const SpriteEmitter& emitter = mScene.emitters().back();
-        if (pending.mGlow.has_value() && emitter.mAdditive)
+        if (pending.mGlow.has_value() && emitter.isAdditive())
         {
             if (held.mMean == nullptr)
                 held.mMean = &mMeans.of(*held.mSprite);
 
-            addSprites(glows[*pending.mGlow], emitter, mSpriteScratch, held.mMean->mColour);
+            glows[*pending.mGlow].addSprites(emitter, mSpriteScratch, held.mMean->mColour);
         }
     }
 

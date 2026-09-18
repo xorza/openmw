@@ -82,8 +82,10 @@ namespace Rtx::Testing
                     .mMesh
                     = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("blob.dds"), TextureWrap::Clamp);
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(150.0f, 259.81f, 200.0f), .mRadius = 50.0f, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(150.0f, 259.81f, 200.0f),
+                    .mRadius = 50.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false);
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -158,8 +160,10 @@ namespace Rtx::Testing
             const auto sprited = [&](bool lidded, Source source) {
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 60.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false);
 
                 if (lidded)
@@ -233,8 +237,10 @@ namespace Rtx::Testing
             const auto boxedAt = [&](float half) {
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 40.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false);
 
                 // Nothing at all where the fill is whole, rather than sheets moved out of reach: a
@@ -301,8 +307,10 @@ namespace Rtx::Testing
                 if (sprited)
                 {
                     const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                    const std::array<Sprite, 1> sprites{ Sprite{
-                        .mPosition = osg::Vec3f(0.0f, 0.0f, height), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                    const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, height),
+                        .mRadius = 60.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 1.0f } };
                     scene.addEmitter(sprites, cut, false);
                 }
 
@@ -354,8 +362,11 @@ namespace Rtx::Testing
             const auto glowing = [&](std::size_t count) {
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                const std::vector<Sprite> flames(
-                    count, Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f });
+                const std::vector<Sprite> flames(count,
+                    Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                        .mRadius = 60.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 1.0f });
                 scene.addEmitter(flames, cut, true);
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -405,8 +416,11 @@ namespace Rtx::Testing
             const auto drawn = [&](const osg::Vec3f& axis) {
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = radius, .mAxis = axis, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = radius,
+                    .mAxis = axis,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, true, width);
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -486,8 +500,11 @@ namespace Rtx::Testing
             const auto lit = [&](const osg::Vec3f& axis) {
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAxis = axis, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 60.0f,
+                    .mAxis = axis,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false, 0.25f);
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -556,6 +573,7 @@ namespace Rtx::Testing
                 const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
                     .mRadius = 60.0f,
                     .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f),
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                     .mAlpha = 1.0f } };
 
                 // Additive, so what a pixel holds is the texel it read and nothing has to light it.
@@ -611,8 +629,10 @@ namespace Rtx::Testing
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const Index bake
                     = scene.textures().addBaked(SpriteLightMap::keyFor(VFS::Path::NormalizedView("sprite.dds")));
-                const std::array<Sprite, 1> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 60.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false, 0.0f, bake);
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -670,11 +690,15 @@ namespace Rtx::Testing
             const auto lit = [&](bool shaded) {
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-                std::vector<Sprite> sprites{ Sprite{
-                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                std::vector<Sprite> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 60.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f } };
                 if (shaded)
-                    sprites.push_back(
-                        Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f });
+                    sprites.push_back(Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 0.0f),
+                        .mRadius = 60.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 1.0f });
                 scene.addEmitter(sprites, cut, false);
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -733,8 +757,14 @@ namespace Rtx::Testing
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 2> drops{
-                    Sprite{ .mPosition = osg::Vec3f(-100.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f },
-                    Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f },
+                    Sprite{ .mPosition = osg::Vec3f(-100.0f, 0.0f, 0.0f),
+                        .mRadius = 40.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 1.0f },
+                    Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 0.0f),
+                        .mRadius = 40.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 1.0f },
                 };
                 scene.addEmitter(drops, cut, false, 0.0f, sNoIndex, falls);
 

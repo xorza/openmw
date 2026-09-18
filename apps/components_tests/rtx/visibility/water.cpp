@@ -206,7 +206,7 @@ namespace Rtx::Testing
             constexpr std::size_t centre = centreOf(size);
             constexpr float depth = 100.0f;
 
-            const SceneDesc scene = makeFlooded(4000.0f, depth);
+            SceneDesc scene = makeFlooded(4000.0f, depth);
 
             // A sun well off the vertical, so a tilted surface refracts and reflects visibly
             // different light rather than the same overhead sun.
@@ -214,23 +214,22 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             litThroughWater(camera, osg::DegreesToRadians(45.0f));
 
-            const std::array<RippleImpulse, 1> footfall{ RippleImpulse{
-                .mAt = osg::Vec2f(0.0f, 0.0f), .mSize = 12.0f } };
-
-            const auto look = [&](std::span<const RippleImpulse> impulses, std::vector<std::uint8_t>& pixels) {
+            // On the scene, as the walk puts them, and pressed on every frame of the run: the
+            // renderer reads the scene's list as the scene is set.
+            const auto look = [&](std::vector<std::uint8_t>& pixels) {
                 mRenderer->resetHistory();
                 countHits(scene, {}, camera, size, pixels,
                     Shot{ .mSea = SeaState{ .mSignificantHeight = 0.0f },
                         .mFrames = 30,
                         .mAverage = false,
-                        .mRipples = impulses,
                         .mSkyStep = 1.0f / Shaders::RIPPLE_STEP_RATE });
             };
 
             std::vector<std::uint8_t> still;
             std::vector<std::uint8_t> walked;
-            look({}, still);
-            look(footfall, walked);
+            look(still);
+            scene.addRipple(RippleImpulse{ .mAt = osg::Vec2f(0.0f, 0.0f), .mSize = 12.0f });
+            look(walked);
 
             EXPECT_NE(still, walked) << "the footfall moved nothing";
 

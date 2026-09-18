@@ -475,8 +475,10 @@ namespace Rtx
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
             const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-            const std::array<Sprite, 1> sprites{ Sprite{
-                .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+            const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                .mRadius = 60.0f,
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
             scene.addEmitter(sprites, cut, false);
 
             const auto cameraAt = [](const std::uint32_t width, const std::uint32_t height) {

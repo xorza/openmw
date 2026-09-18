@@ -23,6 +23,7 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
+#include <components/rtx/sprite.hpp>
 #include <components/rtxbench/scenedigest.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -82,7 +83,7 @@ namespace Rtx
                 scene.addInstance(instance);
             }
 
-            Rtx::Light lamp;
+            Rtx::Light lamp{};
             lamp.mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f);
             lamp.mIntensity = osg::Vec3f(4.0f, 5.0f, 6.0f);
             scene.addLight(lamp);
@@ -176,6 +177,40 @@ namespace Rtx
                 const auto [movedScene, movedLayout] = digestsOfMaterial(change);
                 EXPECT_NE(scene, movedScene) << what;
                 EXPECT_NE(layout, movedLayout) << what;
+            }
+        }
+
+        /// One sprite under one emitter that adds where `additive` and falls where `falls`,
+        /// digested part by part.
+        ScenePartDigests partsOfPlume(const bool additive, const bool falls)
+        {
+            Rtx::SceneDesc scene;
+            const Rtx::Index texture = scene.textures().add(VFS::Path::NormalizedView("textures/puff.dds"));
+            const std::array sprites{ Sprite{ .mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f),
+                .mRadius = 4.0f,
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
+            scene.addEmitter(sprites, texture, additive, 0.0f, Rtx::sNoIndex, falls);
+
+            return digestParts(scene);
+        }
+
+        /// **An emitter's flag word moves the emitters column.** The table is hashed whole, so a
+        /// bit that changed what the trace does with a plume — whether it adds, whether a roof
+        /// keeps it off — has to be a change the report can see, and a sprite's own row names its
+        /// emitter, which is the sprites column's to see.
+        TEST(RtxSceneDigestTest, anEmittersFlagsMoveTheEmittersColumn)
+        {
+            const ScenePartDigests smoke = partsOfPlume(false, false);
+            EXPECT_EQ(smoke, partsOfPlume(false, false)) << "one plume built twice";
+
+            const ScenePartDigests flame = partsOfPlume(true, false);
+            const ScenePartDigests rain = partsOfPlume(false, true);
+            for (std::size_t at = 0; at < smoke.size(); ++at)
+            {
+                const auto part = static_cast<ScenePart>(at);
+                EXPECT_EQ(smoke[at] != flame[at], part == ScenePart::Emitters) << nameOf(part) << " under a flame";
+                EXPECT_EQ(smoke[at] != rain[at], part == ScenePart::Emitters) << nameOf(part) << " under rain";
             }
         }
 

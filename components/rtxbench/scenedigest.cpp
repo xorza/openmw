@@ -123,9 +123,9 @@ namespace Rtx
             for (const Rtx::MaterialLayer& layer : material.mLayers.in(scene.materials().getLayers()))
             {
                 addTexture(digest, scene, layer.mDiffuse);
-                digest.add(layer.mPlacing.mDiffuseTransform);
-                digest.add(layer.mPlacing.mMaskTransform);
-                digest.add(layer.mMask.in(scene.materials().getMasks()));
+                digest.add(layer.mDiffuseTransform);
+                digest.add(layer.mMaskTransform);
+                digest.add(maskOf(layer).in(scene.materials().getMasks()));
             }
         }
 
@@ -154,12 +154,6 @@ namespace Rtx
         {
             const auto& [kind, runs, influences, offsets, rows] = deformer;
             return std::tie(kind, runs, influences, offsets, rows);
-        }
-
-        auto fieldsOf(const SpriteEmitter& emitter)
-        {
-            const auto& [centre, reach, sprites, texture, lighting, additive, falls, width] = emitter;
-            return std::tie(centre, reach, sprites, texture, lighting, additive, falls, width);
         }
 
         void addFields(Digest& digest, const auto& fields)
@@ -306,9 +300,10 @@ namespace Rtx
             Digest plume;
             plume.add(emitter.mCentre);
             plume.add(emitter.mReach);
-            plume.add(emitter.mAdditive);
+            plume.add(emitter.isAdditive());
             addTexture(plume, scene, emitter.mTexture);
-            for (const Rtx::Sprite& sprite : emitter.mSprites.in(scene.sprites()))
+            const Rtx::Run run = spritesOf(emitter);
+            for (const Rtx::Sprite& sprite : run.in(scene.sprites()))
             {
                 plume.add(sprite.mPosition);
                 plume.add(sprite.mRadius);
@@ -327,7 +322,8 @@ namespace Rtx
     /// would call two identical runs different — once, unrepeatably, and for a reason nothing in
     /// the report could name.
     static_assert(sizeof(Light) == 40, "Light is read whole and must have no padding");
-    static_assert(sizeof(Sprite) == 44, "Sprite is read whole and must have no padding");
+    static_assert(sizeof(Sprite) == 56, "Sprite is read whole and must have no padding");
+    static_assert(sizeof(SpriteEmitter) == 40, "SpriteEmitter is read whole and must have no padding");
     static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
@@ -464,11 +460,7 @@ namespace Rtx
 
         take(ScenePart::Lights, wordsOf(scene.lights()));
         take(ScenePart::Sprites, wordsOf(scene.sprites()));
-
-        Column emitters(mScratch);
-        for (const SpriteEmitter& emitter : scene.emitters())
-            emitters.addFields(fieldsOf(emitter));
-        take(ScenePart::Emitters, emitters.take());
+        take(ScenePart::Emitters, wordsOf(scene.emitters()));
 
         Column ripples(mScratch);
         for (const RippleImpulse& impulse : scene.ripples())

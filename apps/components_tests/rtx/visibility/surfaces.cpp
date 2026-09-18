@@ -33,6 +33,7 @@
 
 #include "../geometry.hpp"
 #include "../harness.hpp"
+#include "../layers.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
@@ -961,16 +962,8 @@ namespace Rtx::Testing
                 scene.textures().add(VFS::Path::NormalizedView("strip.dds"));
 
                 const std::array layers{
-                    MaterialLayer{
-                        .mDiffuse = 0,
-                        .mMask = scene.materials().addMask(firstMask),
-                        .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 },
-                    },
-                    MaterialLayer{
-                        .mDiffuse = second,
-                        .mMask = scene.materials().addMask(secondMask),
-                        .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1, .mDiffuseTransform = secondTransform },
-                    },
+                    Testing::layerOf(0, scene.materials().addMask(firstMask), 2, 1),
+                    Testing::layerOf(second, scene.materials().addMask(secondMask), 2, 1, secondTransform),
                 };
                 const Rtx::Run run = scene.materials().addLayers(layers);
 
@@ -1062,16 +1055,8 @@ namespace Rtx::Testing
             scene.textures().add(VFS::Path::NormalizedView("green.dds"));
 
             const std::array layers{
-                MaterialLayer{
-                    .mDiffuse = 0,
-                    .mMask = scene.materials().addMask(quarter),
-                    .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 },
-                },
-                MaterialLayer{
-                    .mDiffuse = 1,
-                    .mMask = scene.materials().addMask(threeQuarters),
-                    .mPlacing = { .mMaskWidth = 1, .mMaskHeight = 1 },
-                },
+                Testing::layerOf(0, scene.materials().addMask(quarter), 1, 1),
+                Testing::layerOf(1, scene.materials().addMask(threeQuarters), 1, 1),
             };
 
             Material material;

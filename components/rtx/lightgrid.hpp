@@ -7,12 +7,11 @@
 #include <osg/Vec3ui>
 #include <osg/Vec4f>
 
+#include "light.hpp"
 #include "runs.hpp"
 
 namespace Rtx
 {
-    struct Light;
-
     /// Which lamps can reach where: a uniform grid in world space, because a bounce lands where no
     /// pixel is looking, and a fog march asking every lamp twenty-four times a pixel was several
     /// times the trace. A lamp is binned into every cell its reach touches, so the shader's own

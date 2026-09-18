@@ -680,8 +680,10 @@ namespace Rtx
 
             SceneDesc scene = makeSheet(25.0f);
             const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
-            const std::array<Sprite, 1> sprites{ Sprite{
-                .mPosition = osg::Vec3f(0.0f, 0.0f, 50.0f), .mRadius = 30.0f, .mAlpha = 1.0f } };
+            const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 50.0f),
+                .mRadius = 30.0f,
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
             scene.addEmitter(sprites, cut, false);
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, puff);
 

@@ -113,6 +113,17 @@ namespace MWRender
             return profile;
         }
 
+        /// The three settings the mirror is handed, read here and nowhere else: into a played
+        /// session's `RunSetup`, and again when the menu moves the reach.
+        Rtx::MirrorKnobs knobsFromSettings()
+        {
+            return Rtx::MirrorKnobs{
+                .mReach = Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance),
+                .mDistantStatics = Settings::terrain().mObjectPaging,
+                .mMinSize = Settings::terrain().mObjectPagingMinSize,
+            };
+        }
+
         /// The run a played session is: every answer the played one, and nothing noted from any
         /// frame. One for the process, because a played session has no state a run would keep.
         class PlayedRun final : public RtxRun
@@ -143,6 +154,7 @@ namespace MWRender
                     .mProfile = profileFromSettings(),
                     .mValidation
                     = { .mLevel = Rtx::sValidationByDefault ? Rtx::ValidationLevel::On : Rtx::ValidationLevel::Off },
+                    .mMirror = knobsFromSettings(),
                     .mHeadless = false,
                     .mStep = std::nullopt,
                     .mSettled = std::nullopt,
@@ -170,17 +182,6 @@ namespace MWRender
         /// **Six frames at sixty.** Long enough that a drag settles into one rebuild, short enough
         /// that letting go of a window edge and seeing the picture follow reads as immediate.
         constexpr double sSettleSeconds = 0.1;
-
-        /// The three settings the mirror is handed, read here and nowhere else: once at
-        /// construction and again when the menu moves the reach.
-        MirrorKnobs knobsFromSettings()
-        {
-            return MirrorKnobs{
-                .mReach = Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance),
-                .mDistantStatics = Settings::terrain().mObjectPaging,
-                .mMinSize = Settings::terrain().mObjectPagingMinSize,
-            };
-        }
 
         /// Whether an environment variable is set to anything other than nothing or `0`.
         bool askedFor(const char* name)
@@ -223,8 +224,8 @@ namespace MWRender
     RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* run)
         : mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
-        , mMirror(knobsFromSettings())
         , mInstalled(run != nullptr ? *run : playedSetup())
+        , mMirror(mInstalled.mSetup.mMirror)
     {
         const Rtx::RunSetup& setup = mInstalled.mSetup;
 
@@ -815,8 +816,12 @@ namespace MWRender
         catch (const Rtx::Error& what)
         {
             // What asks is somebody choosing from a menu, and a machine that cannot run the mode they
-            // picked is an answer rather than a fault: the renderer keeps drawing under the one it had.
+            // picked is an answer rather than a fault: the renderer keeps drawing under the one it
+            // had, and the setting is put back to that one, so the menu reads the mode the frames
+            // are traced under and the next launch does not refuse at construction what this one
+            // refused here.
             Log(Debug::Warning) << "Ray tracing kept the upscaler it had: " << what.what();
+            Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(mRenderer->getUpscale())));
         }
     }
 
@@ -1113,7 +1118,6 @@ namespace MWRender
 
         Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
             mInstalled.mSetup.mProfile, accumulated, mClock.getStatedStep(), exposureBias);
-        options.mRipples = mMirror.getScene().ripples();
         options.mReadBack = mInstalled.mRun.wantsFrameCopy();
 
         // What the debug modes drew, read off the world root here, after the game's own update

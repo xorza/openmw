@@ -396,6 +396,14 @@ namespace MWRender
         std::uint32_t mAskedHeight = 0;
         osg::Timer_t mAskedSince = 0;
 
+        /// What the run was made with, and the run itself: the setup the harness installed before
+        /// the engine started, or the played session's own, made from `[RTX]` and the played
+        /// answers. The two hosts cannot come to draw one picture through two differently configured
+        /// renderers, because both reach the renderer through this one record. The run inside it is
+        /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this. Before the mirror,
+        /// which is built from its knobs.
+        const RtxSetup mInstalled;
+
         /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
         /// puts it on the device.
         WorldMirror mMirror;
@@ -421,13 +429,6 @@ namespace MWRender
         /// What the CPU stood still for the device, and the frame rate the window's title says: the
         /// only instrument on this path, and the number that says whether this is playable.
         SpeedReport mSpeed;
-
-        /// What the run was made with, and the run itself: the setup the harness installed before
-        /// the engine started, or the played session's own, made from `[RTX]` and the played
-        /// answers. The two hosts cannot come to draw one picture through two differently configured
-        /// renderers, because both reach the renderer through this one record. The run inside it is
-        /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this.
-        const RtxSetup mInstalled;
 
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.

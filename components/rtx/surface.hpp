@@ -99,6 +99,45 @@ namespace Rtx
     /// rather than an untextured surface.
     std::string_view textureRoleName(TextureRole role);
 
+    /// The maps a surface keeps: the four roles the trace reads. `TextureRole` names what the
+    /// content can bind, so a unit can be told from one that is no role at all; this names what
+    /// is recorded, because `Rtx::Material` declines the rest by decision and a fold that kept
+    /// them anyway paid a reference apiece for nothing.
+    enum class SurfaceMap : std::uint8_t
+    {
+        Diffuse,
+        Emissive,
+        Dark,
+        Environment,
+    };
+
+    inline constexpr std::size_t sSurfaceMapCount = 4;
+
+    /// The map a role is kept as, or nothing for a role the trace declines to read.
+    constexpr std::optional<SurfaceMap> mapOf(const TextureRole role)
+    {
+        switch (role)
+        {
+            case TextureRole::Diffuse:
+                return SurfaceMap::Diffuse;
+            case TextureRole::Emissive:
+                return SurfaceMap::Emissive;
+            case TextureRole::Dark:
+                return SurfaceMap::Dark;
+            case TextureRole::Environment:
+                return SurfaceMap::Environment;
+            case TextureRole::Normal:
+            case TextureRole::NormalHeight:
+            case TextureRole::Specular:
+            case TextureRole::Detail:
+            case TextureRole::Decal:
+            case TextureRole::Gloss:
+            case TextureRole::Bump:
+                break;
+        }
+        return std::nullopt;
+    }
+
     /// One texture as a surface uses it: the image, and how it is addressed past its edges.
     ///
     /// **The image and not an `osg::Texture2D`**, for the reason `SurfaceDescription::mTextures`
@@ -178,12 +217,12 @@ namespace Rtx
     /// copy: a chain of state sets is folded into one of these in order.
     struct SurfaceDescription
     {
-        /// One texture per role, null where the content has none. The image and not an
-        /// `osg::Texture2D`: `osgDB::SharedStateManager` replaces the texture `NifOsg` bound by
-        /// one it never saw, and the image is what `Resource::ImageManager` caches by path and what
-        /// carries the file name a renderer identifies a texture by. The wrap comes across with it,
-        /// and the rest of the sampler state stays on the texture.
-        std::array<TextureUse, sTextureRoleCount> mTextures;
+        /// One texture per map the trace reads, null where the content has none. The image and
+        /// not an `osg::Texture2D`: `osgDB::SharedStateManager` replaces the texture `NifOsg` bound
+        /// by one it never saw, and the image is what `Resource::ImageManager` caches by path and
+        /// what carries the file name a renderer identifies a texture by. The wrap comes across
+        /// with it, and the rest of the sampler state stays on the texture.
+        std::array<TextureUse, sSurfaceMapCount> mTextures;
 
         /// How a blended surface composites, meaningful under `AlphaMode::Blend`.
         BlendKind mBlend = BlendKind::Over;
@@ -220,19 +259,17 @@ namespace Rtx
         /// wound the other way, which is `Rtx::ShapeFold`'s business.
         bool mTwoSided = false;
 
-        /// The four colours a `NiMaterialProperty` states for a surface, display-encoded.
+        /// Three of the four colours a `NiMaterialProperty` states for a surface, display-encoded.
+        /// The specular and the glossiness beside them are not read: `Rtx::Material` says why the
+        /// trace declines a specular it was never given a map for.
         EncodedColour mDiffuseColour{ 1.0f, 1.0f, 1.0f };
         EncodedColour mAmbientColour{ 1.0f, 1.0f, 1.0f };
         EncodedColour mEmissiveColour;
-        EncodedColour mSpecularColour;
 
         /// How much of the surface is there, before its texture is read. Beside the diffuse colour
         /// and not inside it, because that is where `NiMaterialProperty` keeps it and
         /// `NifOsg::AlphaController` animates this one field alone.
         float mOpacity = 1.0f;
-
-        /// Clamped to OpenGL's limit at the point of authoring, because content routinely exceeds it.
-        float mGlossiness = 0.0f;
 
         /// A separate multiplier rather than folded into `mEmissiveColour`, because a
         /// `NiMaterialColorController` animates the colour and leaves this alone.
@@ -245,20 +282,20 @@ namespace Rtx
         osg::Vec2f mTextureScale{ 1.0f, 1.0f };
         osg::Vec2f mTextureOffset{ 0.0f, 0.0f };
 
-        const osg::Image* getTexture(TextureRole role) const { return mTextures[static_cast<std::size_t>(role)].get(); }
+        const osg::Image* getTexture(SurfaceMap map) const { return mTextures[static_cast<std::size_t>(map)].get(); }
 
-        const TextureUse& getTextureUse(TextureRole role) const { return mTextures[static_cast<std::size_t>(role)]; }
+        const TextureUse& getTextureUse(SurfaceMap map) const { return mTextures[static_cast<std::size_t>(map)]; }
 
         /// Repeating, which is what a caller that has no texture to read a wrap off means.
-        void setTexture(TextureRole role, const osg::Image* image, TextureWrap wrap = TextureWrap::Repeat)
+        void setTexture(SurfaceMap map, const osg::Image* image, TextureWrap wrap = TextureWrap::Repeat)
         {
-            mTextures[static_cast<std::size_t>(role)] = TextureUse{ .mImage = image, .mWrap = wrap };
+            mTextures[static_cast<std::size_t>(map)] = TextureUse{ .mImage = image, .mWrap = wrap };
         }
 
         /// The same, taking whatever the texture was bound as, its wrap included. Null and
-        /// imageless textures clear the role, which is what a placeholder a flip controller has
+        /// imageless textures clear the map, which is what a placeholder a flip controller has
         /// not filled in yet amounts to.
-        void setTexture(TextureRole role, const osg::Texture* texture);
+        void setTexture(SurfaceMap map, const osg::Texture* texture);
 
         bool operator==(const SurfaceDescription& other) const = default;
     };

@@ -33,6 +33,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
+#include "layers.hpp"
 
 namespace Rtx
 {
@@ -936,11 +937,23 @@ namespace Rtx
                 SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
 
             const std::array sPlume{
-                Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
-                Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
-                Sprite{ .mPosition = osg::Vec3f(4.0f, 0.0f, 0.0f), .mRadius = 1.0f },
+                Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 1.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f },
+                Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 1.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f },
+                Sprite{ .mPosition = osg::Vec3f(4.0f, 0.0f, 0.0f),
+                    .mRadius = 1.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f },
             };
-            const std::array sSmoke{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 10.0f), .mRadius = 2.0f } };
+            const std::array sSmoke{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 10.0f),
+                .mRadius = 2.0f,
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
 
             scene.addEmitter(sPlume, texture, true, 0.0f, lighting);
             ASSERT_EQ(scene.emitters().size(), 1u);
@@ -958,16 +971,21 @@ namespace Rtx
 
             EXPECT_EQ(made[0].mCentre, osg::Vec3f(2.0f, 0.0f, 0.0f));
             EXPECT_FLOAT_EQ(made[0].mReach, 3.0f);
-            EXPECT_EQ(made[0].mSprites, (Rtx::Run{ .mOffset = 0, .mCount = 3 }));
+            EXPECT_EQ(spritesOf(made[0]), (Rtx::Run{ .mOffset = 0, .mCount = 3 }));
             EXPECT_EQ(made[0].mTexture, texture);
             EXPECT_EQ(made[0].mLighting, lighting);
-            EXPECT_TRUE(made[0].mAdditive);
+            EXPECT_TRUE(made[0].isAdditive());
 
-            EXPECT_EQ(made[1].mSprites, (Rtx::Run{ .mOffset = 3, .mCount = 1 }));
-            EXPECT_FALSE(made[1].mAdditive) << "the blend the file asked for is what tells the two apart";
+            EXPECT_EQ(spritesOf(made[1]), (Rtx::Run{ .mOffset = 3, .mCount = 1 }));
+            EXPECT_FALSE(made[1].isAdditive()) << "the blend the file asked for is what tells the two apart";
             EXPECT_EQ(made[1].mLighting, sNoIndex) << "an emitter with no bake is lit as a card";
             EXPECT_EQ(scene.sprites().size(), 4u);
             EXPECT_EQ(scene.sprites()[3].mPosition, osg::Vec3f(0.0f, 0.0f, 10.0f));
+
+            // Each sprite names the emitter that placed it, which the scene alone knows.
+            EXPECT_EQ(scene.sprites()[0].mEmitter, 0u);
+            EXPECT_EQ(scene.sprites()[2].mEmitter, 0u);
+            EXPECT_EQ(scene.sprites()[3].mEmitter, 1u);
 
             // A frame's worth, so they go when the frame's placements do — and the texture they name
             // stays, because the array it indexes was uploaded when the scene was built.
@@ -993,17 +1011,26 @@ namespace Rtx
             const Index texture = scene.textures().add(VFS::Path::NormalizedView("textures/tx_raindrop_01.dds"));
 
             // Facing the eye: a disc, and the reach is the radius.
-            const std::array disc{ Sprite{ .mPosition = osg::Vec3f(), .mRadius = 10.0f } };
+            const std::array disc{ Sprite{ .mPosition = osg::Vec3f(),
+                .mRadius = 10.0f,
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
 
             // Morrowind's own rain shape. The quad runs `+-0.1 * 10` across and `+-1 * 10` down, so
             // its corner is `|(0.1, 0, -1)| * 10 = 10.0499` from the middle — and that, not the ten,
             // is what has to fit in the sphere.
-            const std::array streak{ Sprite{
-                .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f) } };
+            const std::array streak{ Sprite{ .mPosition = osg::Vec3f(),
+                .mRadius = 10.0f,
+                .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f),
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
 
             // The same streak leant by the wind, which is what the last claim below is measured on.
-            const std::array leant{ Sprite{
-                .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.5f, -0.8660254f) } };
+            const std::array leant{ Sprite{ .mPosition = osg::Vec3f(),
+                .mRadius = 10.0f,
+                .mAxis = osg::Vec3f(0.0f, 0.5f, -0.8660254f),
+                .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAlpha = 1.0f } };
 
             // **Every add before any read**, for the reason `SceneDesc`'s spans give: a row named
             // while another emitter is still to come is a row the next `addEmitter` moves out from
@@ -1324,18 +1351,15 @@ namespace Rtx
 
             ReleasedTerrain()
             {
-                const std::array droppedLayers{ MaterialLayer{ .mDiffuse = mGround,
-                    .mMask = mScene.materials().addMask(sGroundWeights),
-                    .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } } };
+                const std::array droppedLayers{ Testing::layerOf(
+                    mGround, mScene.materials().addMask(sGroundWeights), 2, 2) };
                 const Rtx::Run droppedRun = mScene.materials().addLayers(droppedLayers);
                 mDropped = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
 
                 mPlain = mScene.addMaterial(Material{ .mDiffuse = mStone });
 
-                const std::array keptLayers{ MaterialLayer{ .mDiffuse = mSand,
-                                                 .mMask = mScene.materials().addMask(sSandWeights),
-                                                 .mPlacing = { .mMaskWidth = 3, .mMaskHeight = 3 } },
-                    MaterialLayer{ .mDiffuse = mMoss } };
+                const std::array keptLayers{ Testing::layerOf(mSand, mScene.materials().addMask(sSandWeights), 3, 3),
+                    Testing::layerOf(mMoss) };
                 const Rtx::Run keptRun = mScene.materials().addLayers(keptLayers);
                 mKept = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
 
@@ -1371,12 +1395,11 @@ namespace Rtx
             // **The next chunk of the same shape lands in the hole the first one left.** One layer
             // and four weights, which is exactly what went: both come back at zero and neither table
             // is any longer than it was.
-            const std::array arrivingLayers{ MaterialLayer{ .mDiffuse = terrain.mMoss,
-                .mMask = scene.materials().addMask(ReleasedTerrain::sGroundWeights),
-                .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } } };
+            const std::array arrivingLayers{ Testing::layerOf(
+                terrain.mMoss, scene.materials().addMask(ReleasedTerrain::sGroundWeights), 2, 2) };
             const Rtx::Run arrivingRun = scene.materials().addLayers(arrivingLayers);
 
-            EXPECT_EQ(arrivingLayers[0].mMask, (Rtx::Run{ .mOffset = 0, .mCount = 4 })) << "the freed mask run";
+            EXPECT_EQ(maskOf(arrivingLayers[0]), (Rtx::Run{ .mOffset = 0, .mCount = 4 })) << "the freed mask run";
             EXPECT_EQ(arrivingRun, (Rtx::Run{ .mOffset = 0, .mCount = 1 })) << "the freed layer run";
             EXPECT_EQ(scene.materials().getLayers().size(), terrain.mLayersBefore)
                 << "the layer table grew past a hole that fitted";
@@ -1497,8 +1520,8 @@ namespace Rtx
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 0, .mCount = 4 } }));
 
             const std::array layers{
-                MaterialLayer{ .mMask = mask, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 2 } },
-                MaterialLayer{},
+                Testing::layerOf(sNoIndex, mask, 2, 2),
+                Testing::layerOf(sNoIndex),
             };
             const Rtx::Run run = scene.materials().addLayers(layers);
             EXPECT_EQ(run, (Rtx::Run{ .mOffset = 0, .mCount = 2 }));
@@ -1515,8 +1538,7 @@ namespace Rtx
             EXPECT_EQ(runs(scene.materials().getArrived().mMasks),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 4, .mCount = 2 } }));
 
-            const std::array one{ MaterialLayer{
-                .mMask = Rtx::Run{ .mOffset = 4, .mCount = 2 }, .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 } } };
+            const std::array one{ Testing::layerOf(sNoIndex, Rtx::Run{ .mOffset = 4, .mCount = 2 }, 2, 1) };
             EXPECT_EQ(scene.materials().addLayers(one), (Rtx::Run{ .mOffset = 2, .mCount = 1 }));
             EXPECT_EQ(runs(scene.materials().getArrived().mLayers),
                 (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 2, .mCount = 1 } }));

@@ -11,6 +11,8 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "layers.hpp"
+
 namespace Rtx
 {
     namespace
@@ -20,12 +22,10 @@ namespace Rtx
         {
             constexpr std::array<float, 4> weights{ 1.0f, 0.0f, 0.0f, 1.0f };
 
-            std::array<MaterialLayer, 2> layers{};
-            layers[0].mDiffuse = scene.textures().add(under);
-            layers[1].mDiffuse = scene.textures().add(over);
-            layers[1].mMask = scene.materials().addMask(weights);
-            layers[1].mPlacing.mMaskWidth = 2;
-            layers[1].mPlacing.mMaskHeight = 2;
+            const std::array layers{
+                Testing::layerOf(scene.textures().add(under)),
+                Testing::layerOf(scene.textures().add(over), scene.materials().addMask(weights), 2, 2),
+            };
 
             Material material;
             material.mKind = MaterialKind::Terrain;

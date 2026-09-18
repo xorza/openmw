@@ -174,8 +174,6 @@ namespace Rtx
 
             // Morrowind has specular lighting off, and the loader zeroes it rather than describing what
             // the record happens to hold.
-            EXPECT_EQ(found->mSpecularColour, Rtx::EncodedColour{});
-            EXPECT_FLOAT_EQ(found->mGlossiness, 0.0f);
         }
 
         /// A surface shows one face unless a stencil property draws both.

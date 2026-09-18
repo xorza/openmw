@@ -57,6 +57,7 @@ set(RTX_FILES
     held.hpp
     instancerecord.cpp
     instancerecord.hpp
+    light.hpp
     lightbuilder.cpp
     lightbuilder.hpp
     lightgrid.cpp

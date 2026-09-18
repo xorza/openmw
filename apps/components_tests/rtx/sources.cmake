@@ -44,6 +44,7 @@ set(RTX_TEST_FILES
     rtx/harness.cpp
     rtx/harness.hpp
     rtx/instancerecord.cpp
+    rtx/layers.hpp
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp
     rtx/memory.cpp

@@ -72,8 +72,8 @@ namespace RtxTool
         float mDistantCells = 4.0f;
 
         /// Whether what the content files stand on the distant ground is paged in with it: the
-        /// game's own `object paging`, set here, so the A/B that says what the buildings cost is
-        /// that setting turned off.
+        /// game's own `object paging`, as the run's `MirrorKnobs` carry it, so the A/B that says
+        /// what the buildings cost is that knob turned off.
         bool mDistantStatics = true;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
@@ -83,8 +83,8 @@ namespace RtxTool
         /// lands in `wait ms`; a watched window keeps the player's own setting.
         SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
 
-        /// What the trace itself is configured by, handed to the renderer through `RendererSpec`:
-        /// the one type the game reads out of `[RTX]` and this fills from the command line.
+        /// What the trace itself is configured by, handed to the renderer in its `RunSetup`: the
+        /// one type the game reads out of `[RTX]` and this fills from the command line.
         Rtx::RenderProfile mProfile{ .mUpscaling = { .mMode = sUpscaleByDefault } };
     };
 

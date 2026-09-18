@@ -149,7 +149,6 @@ namespace Rtx
         PerSlot<Tables> mTables;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;
-        std::vector<Shaders::GpuLayer> mLayerScratch;
 
         /// What the material table's runs stood at when they were last staged, which `shade` checks
         /// against: a run that arrived without an `extend` to stage it would be shaded stale for its
@@ -171,13 +170,6 @@ namespace Rtx
         /// are recomputed every frame — by `SkinPass`, into the copy the frame traces; the rest of a
         /// cell's are written once into every copy.
         SlotBlocks mNormalTable{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
-
-        // Refilled per placement rather than reallocated: a scene is thousands of these and this is
-        // the frame path.
-        std::vector<Shaders::GpuLight> mLightScratch;
-
-        std::vector<Shaders::GpuSprite> mSpriteScratch;
-        std::vector<Shaders::GpuEmitter> mEmitterScratch;
 
         /// Kept because the pass writes its geometry into the frame's block, which no table carries.
         LightGrid mLightGrid;

@@ -90,7 +90,7 @@ namespace Rtx
 
             SurfaceDescription material;
             EXPECT_FALSE(describeStateSet(*unnamed, material));
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), nullptr);
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), nullptr);
 
             osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
             state->setTextureAttributeAndModes(0, new osg::Texture2D(diffuse));
@@ -104,13 +104,26 @@ namespace Rtx
             state->addUniform(new osg::Uniform("blendMap", 3));
 
             EXPECT_TRUE(describeStateSet(*state, material));
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), diffuse.get());
-            EXPECT_EQ(material.getTexture(TextureRole::Emissive), glow.get());
-            EXPECT_EQ(material.getTexture(TextureRole::Normal), normal.get());
-            for (const TextureRole other :
-                { TextureRole::NormalHeight, TextureRole::Specular, TextureRole::Dark, TextureRole::Detail,
-                    TextureRole::Decal, TextureRole::Gloss, TextureRole::Bump, TextureRole::Environment })
-                EXPECT_EQ(material.getTexture(other), nullptr) << textureRoleName(other);
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), diffuse.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Emissive), glow.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Dark), nullptr);
+            EXPECT_EQ(material.getTexture(SurfaceMap::Environment), nullptr);
+
+            // The normal map was a role — it named the surface as one — and is kept nowhere: the
+            // trace declines it, and a description that held it paid a reference for nothing.
+            EXPECT_EQ(normal->referenceCount(), 2) << "the image and its texture, and no description";
+            osg::ref_ptr<osg::StateSet> onlyNormal = new osg::StateSet;
+            onlyNormal->setTextureAttributeAndModes(0, new osg::Texture2D(normal));
+            onlyNormal->addUniform(new osg::Uniform("normalMap", 0));
+            SurfaceDescription declined;
+            EXPECT_TRUE(describeStateSet(*onlyNormal, declined)) << "a normal map alone still says a surface";
+            for (const SurfaceMap map :
+                { SurfaceMap::Diffuse, SurfaceMap::Emissive, SurfaceMap::Dark, SurfaceMap::Environment })
+                EXPECT_EQ(declined.getTexture(map), nullptr);
+            for (const TextureRole declinedRole :
+                { TextureRole::Normal, TextureRole::NormalHeight, TextureRole::Specular, TextureRole::Detail,
+                    TextureRole::Decal, TextureRole::Gloss, TextureRole::Bump })
+                EXPECT_FALSE(mapOf(declinedRole).has_value()) << textureRoleName(declinedRole);
         }
 
         /// The colours come off the material attribute, and the opacity off it too until an
@@ -136,8 +149,6 @@ namespace Rtx
             EXPECT_FLOAT_EQ(material.mOpacity, 0.5f);
             EXPECT_EQ(material.mAmbientColour, (EncodedColour{ 0.1f, 0.2f, 0.3f }));
             EXPECT_EQ(material.mEmissiveColour, (EncodedColour{ 0.5f, 0.25f, 0.0f }));
-            EXPECT_EQ(material.mSpecularColour, EncodedColour{});
-            EXPECT_FLOAT_EQ(material.mGlossiness, 12.0f);
             EXPECT_FLOAT_EQ(material.mEmissiveMult, 2.0f);
             EXPECT_EQ(material.mVertexColour, VertexColour::Glow);
 
@@ -222,7 +233,7 @@ namespace Rtx
             SurfaceDescription material;
             EXPECT_TRUE(describeStateSet(*root, material, locks));
             EXPECT_TRUE(describeStateSet(*leaf, material, locks));
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), blood.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), blood.get());
 
             // A protected leaf wins back what the root claimed.
             osg::ref_ptr<osg::StateSet> protectedLeaf = new osg::StateSet;
@@ -233,7 +244,7 @@ namespace Rtx
             material = SurfaceDescription{};
             describeStateSet(*root, material, locks);
             describeStateSet(*protectedLeaf, material, locks);
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), own.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), own.get());
 
             // The lock is per role: the root's diffuse claims nothing about the leaf's glow.
             osg::ref_ptr<osg::StateSet> glowing = new osg::StateSet;
@@ -244,13 +255,13 @@ namespace Rtx
             material = SurfaceDescription{};
             describeStateSet(*root, material, locks);
             describeStateSet(*glowing, material, locks);
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), blood.get());
-            EXPECT_EQ(material.getTexture(TextureRole::Emissive), own.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), blood.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Emissive), own.get());
 
             // And the one-state-set fold carries no lock, so the leaf on its own reads the leaf.
             material = SurfaceDescription{};
             describeStateSet(*leaf, material);
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), own.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), own.get());
         }
 
         /// The other things a parent can claim: the material's colours, the alpha uniform, the
@@ -305,21 +316,21 @@ namespace Rtx
             mirrored->setWrap(osg::Texture::WRAP_T, osg::Texture::MIRROR);
 
             SurfaceDescription material;
-            material.setTexture(TextureRole::Diffuse, clamped.get());
-            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::Clamp);
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), image.get());
+            material.setTexture(SurfaceMap::Diffuse, clamped.get());
+            EXPECT_EQ(material.getTextureUse(SurfaceMap::Diffuse).mWrap, TextureWrap::Clamp);
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), image.get());
 
-            material.setTexture(TextureRole::Diffuse, alongT.get());
-            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::ClampT);
+            material.setTexture(SurfaceMap::Diffuse, alongT.get());
+            EXPECT_EQ(material.getTextureUse(SurfaceMap::Diffuse).mWrap, TextureWrap::ClampT);
 
-            material.setTexture(TextureRole::Diffuse, mirrored.get());
-            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::Repeat);
+            material.setTexture(SurfaceMap::Diffuse, mirrored.get());
+            EXPECT_EQ(material.getTextureUse(SurfaceMap::Diffuse).mWrap, TextureWrap::Repeat);
 
-            material.setTexture(TextureRole::Diffuse, image.get());
-            EXPECT_EQ(material.getTextureUse(TextureRole::Diffuse).mWrap, TextureWrap::Repeat);
+            material.setTexture(SurfaceMap::Diffuse, image.get());
+            EXPECT_EQ(material.getTextureUse(SurfaceMap::Diffuse).mWrap, TextureWrap::Repeat);
 
-            material.setTexture(TextureRole::Diffuse, static_cast<const osg::Texture*>(nullptr));
-            EXPECT_EQ(material.getTexture(TextureRole::Diffuse), nullptr);
+            material.setTexture(SurfaceMap::Diffuse, static_cast<const osg::Texture*>(nullptr));
+            EXPECT_EQ(material.getTexture(SurfaceMap::Diffuse), nullptr);
 
             EXPECT_EQ(textureWrapOf(true, false), TextureWrap::ClampS);
             EXPECT_TRUE(clampsS(TextureWrap::ClampS));
@@ -371,9 +382,9 @@ namespace Rtx
 
             SurfaceDescription material;
             EXPECT_TRUE(describeStateSet(*state, material));
-            EXPECT_EQ(material.getTexture(TextureRole::Environment), sheet.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Environment), sheet.get());
             EXPECT_EQ(material.mEnvironmentColour, (EncodedColour{ 0.25f, 0.5f, 1.0f }));
-            EXPECT_EQ(material.getTexture(TextureRole::Dark), dark.get());
+            EXPECT_EQ(material.getTexture(SurfaceMap::Dark), dark.get());
             EXPECT_EQ(material.mDarkUnit, 1);
             ASSERT_TRUE(material.mAmbientOverride.has_value());
             EXPECT_EQ(*material.mAmbientOverride, (EncodedColour{ 1.0f, 1.0f, 1.0f }));

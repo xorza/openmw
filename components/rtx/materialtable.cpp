@@ -84,7 +84,7 @@ namespace Rtx
             // past; the runs are variable length, which is why they are given back to an allocator
             // rather than to a list of slots.
             for (const MaterialLayer& layer : going.mLayers.in(getLayers()))
-                mMasks.release(layer.mMask);
+                mMasks.release(maskOf(layer));
 
             if (!going.mLayers.empty())
                 mLayers.release(going.mLayers);

@@ -400,6 +400,27 @@ namespace Rtx
         bool mDroppedHolds = false;
     };
 
+    /// The half of `SlotRows` a reader and a sweep use, for a table whose rows go in through its
+    /// own `add` and out through its own `sweep`: `take`, `at`, `free` and the raw sweep stay with
+    /// the table, which alone knows what a freed row holds and what it gives back. One base and
+    /// not the eight forwarders written per table, which were one policy twice.
+    template <class Row>
+    class HeldRows
+    {
+    public:
+        std::size_t size() const { return mRows.size(); }
+        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
+        bool isLive(Index slot) const { return mRows.isLive(slot); }
+        std::span<const Row> getRows() const { return mRows.getRows(); }
+        void hold(Index slot) { mRows.hold(slot); }
+        bool drop(Index slot) { return mRows.drop(slot); }
+        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
+        std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
+
+    protected:
+        SlotRows<Row> mRows;
+    };
+
     /// Rows kept in the order of a key taken from each, found by binary search. A type rather than
     /// a `std::lower_bound` at each site, because a search whose comparator disagreed with the
     /// insertion finds nothing and says nothing. Not a map: what these hold is walked in order every

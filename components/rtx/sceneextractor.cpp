@@ -108,10 +108,6 @@ namespace Rtx
         /// Moves the emitter clock on by one frame. See `mEmitterStamp`.
         void advanceEmitters(double elapsed);
 
-        /// Runs the emitters under `node` and looks through everything else, for a caller that wants
-        /// them moved without a frame being mirrored.
-        void stepOnly(osg::Node& node);
-
         void apply(osg::Node& node) override;
         void apply(osg::Transform& node) override;
         void apply(osg::Drawable& drawable) override;
@@ -160,9 +156,6 @@ namespace Rtx
         osg::ref_ptr<osg::FrameStamp> mEmitterStamp = new osg::FrameStamp;
         double mEmitterSeconds = 0.0;
         unsigned int mEmitterFrame = 0;
-
-        /// Whether this walk is running emitters and looking through everything else.
-        bool mStepOnly = false;
 
         /// The class the innermost root over the node being walked stated: everything under an
         /// actor's root is the actor. Carried down the subtree rather than read off each drawable,
@@ -230,13 +223,6 @@ namespace Rtx
     void MirrorTraversal::enter(osg::Node& node, const std::size_t identity)
     {
         const NodeKind kind = mKinds.of(node);
-
-        if (mStepOnly)
-        {
-            if (!stepParticles(node, kind))
-                descend(node, kind);
-            return;
-        }
 
         // Told it was reached, because a semi-active skeleton stops moving its bones once three
         // traversals have passed with nothing reaching it, and here this walk is what reaches it.
@@ -348,13 +334,6 @@ namespace Rtx
         mEmitterStamp->setFrameNumber(++mEmitterFrame);
     }
 
-    void MirrorTraversal::stepOnly(osg::Node& node)
-    {
-        mStepOnly = true;
-        node.accept(*this);
-        mStepOnly = false;
-    }
-
     /// Accumulated on the way down rather than recomputed on the way up: `osg::computeLocalToWorld`
     /// walks a drawable's whole path back to the root, O(depth) per drawable, and
     /// `computeLocalToWorldMatrix` is what it calls on each transform, so the answer is the same.
@@ -363,14 +342,6 @@ namespace Rtx
     /// not a cull visitor takes the branch a null one would have.
     void MirrorTraversal::enterTransform(osg::Transform& node, const std::size_t identity)
     {
-        // Nothing an emitter needs is in the chain: a processor reads its world transform off the
-        // node path, which `accept` keeps whatever this does.
-        if (mStepOnly)
-        {
-            enter(node, identity);
-            return;
-        }
-
         const osg::Matrix above = mHere;
 
         // **A billboard is turned here, toward the eye this walk was told**, because the node
@@ -414,9 +385,6 @@ namespace Rtx
 
     void MirrorTraversal::apply(osg::Drawable& drawable)
     {
-        if (mStepOnly)
-            return;
-
         const std::size_t held = mShading.size();
         if (const osg::StateSet* own = drawable.getStateSet())
             pushShading(*own, false);
@@ -458,11 +426,6 @@ namespace Rtx
     void SceneExtractor::advanceEmitters(double elapsed)
     {
         mWalk->advanceEmitters(elapsed);
-    }
-
-    void SceneExtractor::stepEmitters(osg::Node& node)
-    {
-        mWalk->stepOnly(node);
     }
 
     ExtractionStats SceneExtractor::extract(
@@ -535,7 +498,7 @@ namespace Rtx
         // And the effects' lamps after the emitters, because a burst's flames are in them.
         for (const Glow& glow : mGlows)
         {
-            if (const std::optional<Light> made = makeGlow(glow); made.has_value())
+            if (const std::optional<Light> made = glow.makeLight(); made.has_value())
             {
                 mScene.addLight(*made);
                 ++stats.mLights;
@@ -714,8 +677,8 @@ namespace Rtx
         // this frame: a controller may have rewritten the material on the way here, and
         // `resolve` rewrote the row before this read.
         if (mGlow.has_value() && material.mIndex != sNoIndex)
-            addSheet(mGlows[*mGlow], mScene.materials().getRows()[material.mIndex],
-                mScene.meshes().getRows()[mesh].mBounds, place, fade);
+            mGlows[*mGlow].addSheet(
+                mScene.materials().getRows()[material.mIndex], mScene.meshes().getRows()[mesh].mBounds, place, fade);
 
         if (held == mPlacements.end())
         {

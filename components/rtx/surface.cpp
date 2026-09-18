@@ -127,8 +127,6 @@ namespace Rtx
                 material.mOpacity = diffuse.a();
                 material.mAmbientColour = stated(own->getAmbient());
                 material.mEmissiveColour = stated(own->getEmission());
-                material.mSpecularColour = stated(own->getSpecular());
-                material.mGlossiness = own->getShininess();
                 material.mEmissiveMult = own->getEmissiveMultiplier();
                 material.mVertexColour = vertexColourOf(own->getVertexColorMode());
                 return;
@@ -144,8 +142,6 @@ namespace Rtx
                 material.mOpacity = diffuse.a();
                 material.mAmbientColour = stated(plain->getAmbient(osg::Material::FRONT));
                 material.mEmissiveColour = stated(plain->getEmission(osg::Material::FRONT));
-                material.mSpecularColour = stated(plain->getSpecular(osg::Material::FRONT));
-                material.mGlossiness = plain->getShininess(osg::Material::FRONT);
             }
         }
 
@@ -181,9 +177,9 @@ namespace Rtx
         return taken;
     }
 
-    void SurfaceDescription::setTexture(TextureRole role, const osg::Texture* texture)
+    void SurfaceDescription::setTexture(SurfaceMap map, const osg::Texture* texture)
     {
-        TextureUse& use = mTextures[static_cast<std::size_t>(role)];
+        TextureUse& use = mTextures[static_cast<std::size_t>(map)];
         if (texture == nullptr)
         {
             use = TextureUse{};
@@ -248,13 +244,17 @@ namespace Rtx
                 continue;
 
             said = true;
-            if (!locks.takesTexture(*role, pair->second))
+
+            // A role the trace declines is still a role — it said the surface is one — and is
+            // kept nowhere, so no lock is worth taking for it.
+            const std::optional<SurfaceMap> map = mapOf(*role);
+            if (!map.has_value() || !locks.takesTexture(*role, pair->second))
                 continue;
 
-            material.setTexture(*role, texture);
-            if (*role == TextureRole::Diffuse)
+            material.setTexture(*map, texture);
+            if (*map == SurfaceMap::Diffuse)
                 diffuseUnit = unit;
-            if (*role == TextureRole::Dark)
+            if (*map == SurfaceMap::Dark)
                 material.mDarkUnit = static_cast<std::uint8_t>(unit);
         }
 

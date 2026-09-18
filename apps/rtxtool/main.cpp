@@ -27,9 +27,11 @@
 #include <components/files/configurationmanager.hpp>
 #include <components/platform/platform.hpp>
 #include <components/platform/process.hpp>
+#include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/residency.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
@@ -307,13 +309,27 @@ namespace RtxTool
             stop.mSchedule.mFrozen = true;
         }
 
+        /// How much world the mirror builds and what of it, as the command line asked: the knobs a
+        /// run hands the renderer in its `RunSetup`, where a played session reads the same three
+        /// off the registry. The size rule's constant is the player's own, since no option names
+        /// it.
+        Rtx::MirrorKnobs mirrorKnobsOf(const FrameRequest& frame)
+        {
+            return Rtx::MirrorKnobs{
+                .mReach = Rtx::distantLandReach(frame.mDistantCells, Settings::camera().mViewingDistance),
+                .mDistantStatics = frame.mDistantStatics,
+                .mMinSize = Settings::terrain().mObjectPagingMinSize,
+            };
+        }
+
         /// Runs a list of stops against a real game, which is what every command that writes
         /// pictures or reports does.
-        int runStops(const Command& command, const Rtx::RenderProfile& profile, std::vector<Rtx::Stop> stops)
+        int runStops(const Command& command, const FrameRequest& frame, std::vector<Rtx::Stop> stops)
         {
             Rtx::SessionRequest request;
             request.mStops = std::move(stops);
-            request.mSetup.mProfile = profile;
+            request.mSetup.mProfile = frame.mProfile;
+            request.mSetup.mMirror = mirrorKnobsOf(frame);
             request.mSetup.mValidation = validationFrom(command.mVariables);
 
             return runHosted(command.mVariables, command.mConfig, command.mResources, std::move(request));
@@ -335,11 +351,12 @@ namespace RtxTool
         }
 
         /// Everything a hosted run writes into the settings before the engine reads them: the
-        /// window it is presented in, and the knobs the trace is made with.
+        /// window it is presented in.
         ///
         /// **These are settings and not a second command line**, because both binaries have to
-        /// reach one engine configured one way. What the *trace* is configured by is
-        /// `FrameRequest::mProfile`, which the renderer is handed directly.
+        /// reach one engine configured one way. What the *trace* and the *mirror* are configured
+        /// by travels in the `RunSetup` the renderer is made with — `FrameRequest::mProfile` and
+        /// `mirrorKnobsOf` — and never through the registry, which is the player's.
         void applyHostedSettings(const FrameRequest& frame)
         {
             Settings::video().mResolutionX.set(static_cast<int>(frame.mWidth));
@@ -347,13 +364,6 @@ namespace RtxTool
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
             Settings::video().mVsyncMode.set(frame.mVerticalSync);
             Settings::camera().mFieldOfView.set(frame.mFieldOfView);
-
-            // **What the engine reads and the renderer does not.** Everything the trace itself is
-            // configured by travels as a `Rtx::RenderProfile` in the `RtxSetup` the renderer is made
-            // with, so these are the settings a harness genuinely overrides rather than a channel
-            // between two objects.
-            Settings::rtx().mDistantLandCells.set(frame.mDistantCells);
-            Settings::terrain().mObjectPaging.set(frame.mDistantStatics);
         }
 
         /// The one place a command names on its line, as a stop: a view, a cell, a save, and
@@ -534,7 +544,7 @@ namespace RtxTool
                 stop.mActions.mWalkTwice = true;
             }
 
-            return runStops(command, frame.mProfile, std::move(stops));
+            return runStops(command, frame, std::move(stops));
         }
 
         /// The pictures of each place, taken headless: the frame, and the doll, the tile and the
@@ -592,7 +602,7 @@ namespace RtxTool
                     stop.mActions.mSheet = file("-textures");
             }
 
-            if (const int status = runStops(command, frame.mProfile, std::move(stops)); status != 0)
+            if (const int status = runStops(command, frame, std::move(stops)); status != 0)
                 return status;
 
             return compareRuns(out, against, written);
@@ -634,6 +644,7 @@ namespace RtxTool
             request.mPictures = variables["pictures"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
             request.mSetup.mProfile = frame.mProfile;
+            request.mSetup.mMirror = mirrorKnobsOf(frame);
             request.mSetup.mSettled = run.mSettled;
             request.mSetup.mHeadless = !variables["window"].as<bool>();
             request.mSetup.mValidation = validationForMeasuring(variables);
@@ -679,6 +690,7 @@ namespace RtxTool
             // Watched and never summed, like a bench.
             request.mSetup.mProfile = frame.mProfile;
             request.mSetup.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+            request.mSetup.mMirror = mirrorKnobsOf(frame);
 
             return runHosted(variables, command.mConfig, command.mResources, std::move(request), true);
         }
@@ -795,6 +807,7 @@ namespace RtxTool
 
             request.mSuite = run.mSuite;
             request.mSetup.mProfile = frame.mProfile;
+            request.mSetup.mMirror = mirrorKnobsOf(frame);
             request.mSetup.mValidation = validationFrom(variables);
 
             return runHosted(variables, command.mConfig, command.mResources, std::move(request));

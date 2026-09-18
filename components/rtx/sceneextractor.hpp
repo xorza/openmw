@@ -118,10 +118,6 @@ namespace Rtx
         /// kept against, so however many walks reach one, exactly one of them steps it.
         void advanceEmitters(double elapsed);
 
-        /// Runs the emitters under `node` without mirroring anything, on the clock above — a
-        /// harness warming a cell's candles up so the first shot has flames in it.
-        void stepEmitters(osg::Node& node);
-
         /// Walks `node` and places what it finds by `transform`, under `anchor`. A subtree, and it
         /// never reaches the ring: the precipitation node would otherwise place the ground a
         /// second time. `extractWorld` is the call that means the whole of it.

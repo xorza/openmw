@@ -30,6 +30,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "harness.hpp"
+#include "layers.hpp"
 #include "testtexture.hpp"
 
 namespace Rtx
@@ -67,18 +68,9 @@ namespace Rtx
                 scene.textures().add(VFS::Path::NormalizedView("red.dds"));
                 scene.textures().add(VFS::Path::NormalizedView("ladder.dds"));
                 const std::array layers{
-                    MaterialLayer{
-                        .mDiffuse = 0,
-                        .mMask = scene.materials().addMask(firstMask),
-                        .mPlacing = { .mMaskWidth = 2, .mMaskHeight = 1 },
-                    },
-                    MaterialLayer{
-                        .mDiffuse = 1,
-                        .mMask = scene.materials().addMask(secondMask),
-                        .mPlacing = { .mMaskWidth = 2,
-                            .mMaskHeight = 1,
-                            .mDiffuseTransform = osg::Vec4f(tiling, tiling, 0.0f, 0.0f) },
-                    },
+                    Testing::layerOf(0, scene.materials().addMask(firstMask), 2, 1),
+                    Testing::layerOf(
+                        1, scene.materials().addMask(secondMask), 2, 1, osg::Vec4f(tiling, tiling, 0.0f, 0.0f)),
                 };
                 Material chunk;
                 chunk.mKind = MaterialKind::Terrain;

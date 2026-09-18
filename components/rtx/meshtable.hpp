@@ -23,20 +23,9 @@ namespace Rtx
     /// allocators. The deformers are the scene's and handed in per call rather than held: a table
     /// that held a reference to its sibling was one a defaulted move of the scene left pointing at
     /// the scene it was moved from.
-    class MeshTable
+    class MeshTable : public HeldRows<MeshRange>
     {
     public:
-        /// The half of `SlotRows` a reader and a sweep use. A row goes in through `add` and out
-        /// through `sweep`, so `take`, `at` and the sweep stay this table's own.
-        std::size_t size() const { return mRows.size(); }
-        std::size_t getLiveCount() const { return mRows.getLiveCount(); }
-        bool isLive(Index slot) const { return mRows.isLive(slot); }
-        std::span<const MeshRange> getRows() const { return mRows.getRows(); }
-        void hold(Index slot) { mRows.hold(slot); }
-        bool drop(Index slot) { return mRows.drop(slot); }
-        bool hasDroppedHolds() const { return mRows.hasDroppedHolds(); }
-        std::size_t mark(std::span<const Index> keep) { return mRows.mark(keep); }
-
         /// How many vertices one block of the vertex attribute buffers holds, and how many indices
         /// one block of the index buffer does — the shaders' own numbers, because a shader resolves
         /// a run back to its block by dividing by the same figure.
@@ -95,8 +84,6 @@ namespace Rtx
 
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void note(Index slot, SlotNews what);
-
-        SlotRows<MeshRange> mRows;
 
         /// Where a mesh's vertices and its indices live — runs and not slots, because the geometry
         /// behind a row is as long as the model. One buffer holds the run and the three parallel

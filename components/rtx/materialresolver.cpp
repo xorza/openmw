@@ -170,7 +170,7 @@ namespace Rtx
         const SurfaceDescription& described = *reading.mDescribed;
         const bool translucent = translucentSurface(described.mAlphaMode, described.mOpacity, described.mBlend);
         const bool additive = additiveSurface(described.mAlphaMode, described.mBlend);
-        const osg::Image* const diffuse = described.getTexture(TextureRole::Diffuse);
+        const osg::Image* const diffuse = described.getTexture(SurfaceMap::Diffuse);
 
         if (diffuse != nullptr && !diffuse->getFileName().empty())
         {
@@ -382,13 +382,13 @@ namespace Rtx
 
         // Kept, because the medium test below asks about the same image and asking the description
         // twice for it is asking twice.
-        const osg::Image* const diffuse = described->getTexture(TextureRole::Diffuse);
+        const osg::Image* const diffuse = described->getTexture(SurfaceMap::Diffuse);
 
-        material.mDiffuse = takeTexture(described->getTextureUse(TextureRole::Diffuse), worn);
-        material.mEmissive = takeTexture(described->getTextureUse(TextureRole::Emissive), worn);
-        material.mEnvironment = takeTexture(described->getTextureUse(TextureRole::Environment), worn);
+        material.mDiffuse = takeTexture(described->getTextureUse(SurfaceMap::Diffuse), worn);
+        material.mEmissive = takeTexture(described->getTextureUse(SurfaceMap::Emissive), worn);
+        material.mEnvironment = takeTexture(described->getTextureUse(SurfaceMap::Environment), worn);
         material.mEnvironmentColour = decodeColour(described->mEnvironmentColour);
-        material.mDark = takeTexture(described->getTextureUse(TextureRole::Dark), worn);
+        material.mDark = takeTexture(described->getTextureUse(SurfaceMap::Dark), worn);
         material.mDarkUnit = described->mDarkUnit;
 
         material.mAlphaRef = described->mAlphaRef;

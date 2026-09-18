@@ -483,31 +483,45 @@ namespace Rtx::Shaders
         vec4 mMotion[3];
     };
 
-    /// One point light, with everything a shader needs already derived.
+    /// One light placed in the world — a lamp, or the fill a Light spell casts — with everything a
+    /// shader needs already derived: a `LIGH` record carries a colour and a radius and no
+    /// intensity at all, and `Rtx::makeLight` settles both on the way in, so the shader has one
+    /// falloff to evaluate and no rules to remember.
     ///
-    /// The colour is folded into the intensity and the reach is not the radius the record carried;
-    /// both are settled on the way in, so the shader has one falloff to evaluate and no rules to
-    /// remember. `Rtx::Light` says why each is what it is.
+    /// **The scene's own row, and the device's.** `Rtx::Light` is this struct: the walk builds
+    /// one, the scene keeps and sorts them, the digest hashes the table whole, and a placement
+    /// uploads the table as it lies. There is no host spelling to translate from.
     struct GpuLight
     {
         vec3 mPosition;
+
+        /// Radiant intensity, linear, with the colour folded in, scaled by the square of the
+        /// recorded radius: what makes a lantern and a candle differ by their size.
         vec3 mIntensity;
+
+        /// How far the light reaches, beyond which it contributes exactly nothing. Stretched from
+        /// the recorded radius, because Morrowind's ran 64 to 256 units with an ambient filling the
+        /// room, and here the lamps have to be what lights the place.
         float mReach;
 
-        /// How big the glowing part is, in world units. A shadow ray opens to this, so a lamp with
-        /// one casts a penumbra. `Rtx::Light` says what it is derived from.
+        /// How big the glowing part is, in world units: the flame, which a shadow ray opens to for
+        /// a penumbra as wide as it is, and what stops the falloff running away at the lamp. Zero,
+        /// which a light built by hand carries, is a point.
         ///
         /// **And it is what makes the falloff above a sphere's rather than a point's.** An inverse
         /// square runs away at zero distance, which is where the air beside a lamp is sampled; a
         /// source with an extent flattens inside its own surface instead.
         float mSourceRadius;
 
-        /// How far short of the centre that ray stops. `Rtx::Light` says why it is a separate
-        /// question from the size.
+        /// How far short of the centre a shadow ray stops, because a lamp sits inside its own
+        /// fitting and a ray that runs all the way ends among it.
         float mClearance;
 
-        /// One for a fill, whose flame is a ball `mSourceRadius` wide that lights whatever stands
-        /// inside it from every side, and nought for a lamp. `Rtx::makeFill` says what a fill is.
+        /// One where this light is a fill and nought where it is a lamp. A fill is a lamp whose
+        /// flame is a ball `mSourceRadius` wide that a body can stand inside, lit from every side
+        /// there; it is what the game means by a light whose whole output is in its ambient, and
+        /// `Rtx::makeFill` says which light that is. A word and not a bool, because the record is
+        /// hashed whole and a bool leaves three bytes nothing wrote.
         uint mFill;
     };
 
@@ -590,44 +604,80 @@ namespace Rtx::Shaders
     const uint TABLE_ALIGN_BLOCKS = 8u;
     const uint TABLE_ALIGN_LAYERS = 16u;
 
-    /// One layer of terrain: a tiling ground texture and the weights that place it.
+    /// One layer of a terrain material: a tiling ground texture and the weights that place it.
     ///
-    /// A chunk is four or five of these summed. The mask is a grid of weights in the shared mask
-    /// buffer rather than a texture, because it is ten texels across — a whole cell's worth fits in
-    /// tens of kilobytes, and sampling it by hand is what lets the edges clamp instead of inheriting
-    /// the repeat every other texture in the game needs.
+    /// A chunk is four or five of these summed at one hit, where OpenMW draws the stack as one
+    /// alpha-blended pass per layer. The mask is a grid of weights in the shared mask buffer
+    /// rather than a texture, because it is ten texels across — a whole cell's worth fits in tens
+    /// of kilobytes, and sampling it by hand is what lets the edges clamp instead of inheriting the
+    /// repeat every other texture in the game needs.
+    ///
+    /// **The scene's own row, and the device's.** `Rtx::MaterialLayer` is this struct, carried
+    /// whole from the land record through `Rtx::PreparedLayer` to the scene's layer run and the
+    /// bake, so the three cannot disagree about where a texel lands. The grid and the two
+    /// transforms come from the land record; the texture slot and the mask offset are the
+    /// scene's, written where the layer is adopted.
     struct GpuLayer
     {
+        /// The ground texture, which tiles many times across a chunk.
         uint mDiffuse;
+
+        /// Where this layer's weights start in the scene's mask table. The run's count is not
+        /// stored: it is the grid's own area, and nought for a layer that covers everything —
+        /// `Rtx::maskOf` reads the run back.
         uint mMaskOffset;
+
+        /// The grid the weights form. Nought by nought where the layer covers everything.
         uint mMaskWidth;
         uint mMaskHeight;
 
-        /// Chunk texture coordinates to this layer's, as `uv * xy + zw`.
+        /// Cell texture coordinates to this layer's, as `uv * xy + zw`: the diffuse texture's, and
+        /// the mask's. `Rtx::GroundReader` derives both from the tile count as
+        /// `Terrain::createPasses` does, and a test holds the numbers.
         vec4 mDiffuseTransform;
         vec4 mMaskTransform;
+
+#ifdef RTX_HOST
+        /// Two layers are the same when every field is, which is what says a chunk still stands
+        /// where a bake of it began.
+        bool operator==(const GpuLayer& other) const = default;
+#endif
     };
 
-    /// One live particle, as a disc facing the eye.
+    /// One live particle, drawn as a disc facing the eye. Nothing here reaches an acceleration
+    /// structure: the layer is marched against the primary ray and composited, which blends in
+    /// depth order without the candidate loop an alpha-blended hit would cost traversal.
     ///
     /// **The layer is composited rather than denoised**, for the reason a rain streak is: a
     /// particle is not noise in an estimate, coverage arrives as a fraction so a sprite finer than a
     /// pixel dims instead of flickering in and out, and none of it costs a bottom-level structure.
     /// `spritecomposite.rgen` composites it at the picture's own resolution, after whatever
-    /// denoises. `Rtx::Sprite` says what each field is.
+    /// denoises.
+    ///
+    /// **The scene's own row, and the device's.** `Rtx::Sprite` is this struct: the resolver
+    /// reads one off each live particle, `Rtx::SceneDesc::addEmitter` names its emitter as it
+    /// appends it, the digest hashes the table whole, and a placement uploads it as it lies. The
+    /// two layer counts at the end are the device's alone, and the host leaves them at nought.
     struct GpuSprite
     {
         vec3 mPosition;
+
+        /// Half the sprite's width in world units, which is what `osgParticle` means by a size.
         float mRadius;
 
         /// The streak's own axis in the world, per unit of `mRadius`, or zero for a sprite that
-        /// faces the eye. `Rtx::Sprite::mAxis` says why a particle's rotation puts it here.
+        /// faces the eye. Per particle, because `Weather::RainShooter` leans each drop into the wind
+        /// it was fired under. Not normalised, because its length is the shape.
         vec3 mAxis;
 
+        /// Linear, and already carrying wherever the particle's own colour ramp has reached.
         vec3 mColour;
+
+        /// What the particle's own fade left of it, multiplied into the texture's alpha at the hit.
         float mAlpha;
 
-        /// Which emitter placed it, which is what a tile's list has to carry.
+        /// Which emitter placed it, which is what a tile's list has to carry. Written by
+        /// `Rtx::SceneDesc::addEmitter`, the one place that knows.
         ///
         /// **Walking sprites rather than emitters is what made this necessary.** The march evaluates
         /// the fog's field once per emitter per ray — forty hashes, amortised over that emitter's
@@ -695,11 +745,22 @@ namespace Rtx::Shaders
     /// keeps the mean over the sphere where it was and puts three to one between front and back.
     const float SPRITE_WRAP = 0.5;
 
-    /// One particle system: a sphere a ray is rejected by, and the run of sprites behind it.
+    /// One particle system: what its sprites are drawn with, and a sphere that holds all of them,
+    /// which is the whole spatial structure because one rejection throws a small emitter away for
+    /// almost every pixel.
+    ///
+    /// **The scene's own row, and the device's.** `Rtx::SpriteEmitter` is this struct, built by
+    /// `Rtx::SceneDesc::addEmitter` and uploaded as it lies. The flags are read through the two
+    /// members below, and the run through `Rtx::spritesOf`, which needs the host's `Run`.
     struct GpuEmitter
     {
         vec3 mCentre;
+
+        /// Far enough from `mCentre` to contain every sprite in the run, rim included.
         float mReach;
+
+        /// Where the sprites sit in the scene's sprite table, laid end to end as the emitter
+        /// placed them — `Rtx::spritesOf` reads the run back.
         uint mFirst;
         uint mCount;
 
@@ -707,19 +768,34 @@ namespace Rtx::Shaders
         /// since a particle's whole silhouette is that texture's alpha.
         uint mTexture;
 
-        /// `EMITTER_ADDITIVE` for a blend that adds — a flame adds and hides nothing; smoke covers
-        /// and is lit — and `EMITTER_FALLS` for what the weather drops, which `spriteshelter.rgen`
-        /// keeps out from under cover.
+        /// `EMITTER_ADDITIVE` for a blend that adds — `SRC_ALPHA, ONE`: a flame, which adds light
+        /// and hides nothing behind it, where the rest blend over and are smoke that needs its
+        /// colour ramp to fade it — and `EMITTER_FALLS` for what the weather drops, the rain box
+        /// or a driven storm, which `spriteshelter.rgen` keeps out from under a roof.
+        /// `Rtx::SceneExtractor::extractFalling` is the walk that says so.
         uint mFlags;
 
         /// How wide this emitter's quads are against their own axis, per unit of
         /// `GpuSprite::mRadius` — **or nought, which is a sprite that faces the eye and is nearly
-        /// everything.** `Rtx::SpriteEmitter::mWidth` says why the axis itself is the sprite's.
+        /// everything.** Morrowind's rain is an X axis squashed to a tenth against a Y axis
+        /// pointing straight down. The length and not the direction, because the march swings the
+        /// width about the sprite's own axis to meet the ray.
         float mWidth;
 
-        /// The bake of the sprite texture's alpha, or `NO_TEXTURE`. `Rtx::SpriteLightMap` says what
-        /// it holds and `spritesAlong` how it is read.
+        /// The bake of the sprite texture's alpha, or `NO_TEXTURE` for one lit as a flat card.
+        /// `Rtx::SpriteLightMap` says what it holds and `spritesAlong` how it is read.
         uint mLighting;
+
+#ifdef RTX_HOST
+        bool isAdditive() const
+        {
+            return (mFlags & EMITTER_ADDITIVE) != 0u;
+        }
+        bool falls() const
+        {
+            return (mFlags & EMITTER_FALLS) != 0u;
+        }
+#endif
     };
 
     struct GpuMaterial

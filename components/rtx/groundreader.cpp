@@ -161,7 +161,7 @@ namespace Rtx
 
             PreparedLayer layer;
             layer.mImage = std::move(image);
-            layer.mPlacing.mDiffuseTransform = diffuseTransform(mTileCount);
+            layer.mRow.mDiffuseTransform = diffuseTransform(mTileCount);
 
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)
             {
@@ -169,13 +169,15 @@ namespace Rtx
                 layer.mWeights.mOffset = static_cast<std::uint32_t>(into.mWeights.size());
                 readMask(mask, into.mWeights);
                 layer.mWeights.mCount = static_cast<std::uint32_t>(into.mWeights.size()) - layer.mWeights.mOffset;
-                layer.mPlacing.mMaskWidth = static_cast<std::uint16_t>(mask.s());
-                layer.mPlacing.mMaskHeight = static_cast<std::uint16_t>(mask.t());
+                layer.mRow.mMaskWidth = static_cast<std::uint32_t>(mask.s());
+                layer.mRow.mMaskHeight = static_cast<std::uint32_t>(mask.t());
+                assert(layer.mWeights.mCount == layer.mRow.mMaskWidth * layer.mRow.mMaskHeight
+                    && "a mask read to a length that is not its grid's area");
 
                 // An ESM4 blend map is sampled as it stands: `createPasses` attaches no matrix
-                // for one.
+                // for one, and the row keeps the identity it started with.
                 if (!mEsm4)
-                    layer.mPlacing.mMaskTransform = maskTransform(mTileCount);
+                    layer.mRow.mMaskTransform = maskTransform(mTileCount);
             }
 
             into.mLayers.push_back(std::move(layer));

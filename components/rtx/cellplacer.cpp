@@ -85,12 +85,17 @@ namespace Rtx
         mLayerScratch.clear();
         for (const PreparedLayer& layer : ground.mLayers)
         {
-            MaterialLayer row;
+            MaterialLayer row = layer.mRow;
             row.mDiffuse = mScene.textures().add(layer.mTexture->mPath);
-            row.mPlacing = layer.mPlacing;
 
+            // The row keeps no count: `maskOf` reads the grid's area back, so the run
+            // the table hands out has to be exactly that long, which the reader asserts as it reads.
             if (!layer.mWeights.empty())
-                row.mMask = mScene.materials().addMask(layer.mWeights.in(std::span<const float>(ground.mWeights)));
+            {
+                const Run mask = mScene.materials().addMask(layer.mWeights.in(std::span<const float>(ground.mWeights)));
+                assert(mask.mCount == row.mMaskWidth * row.mMaskHeight && "a mask run that is not its grid's area");
+                row.mMaskOffset = mask.mOffset;
+            }
 
             mLayerScratch.push_back(row);
 

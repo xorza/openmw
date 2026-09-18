@@ -4,6 +4,7 @@
 
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/residency.hpp>
 
 namespace Rtx
 {
@@ -19,6 +20,12 @@ namespace Rtx
         /// Which validation layers the run asked for. Carried here and never in a settings file,
         /// for the reason `sValidationByDefault` gives.
         ValidationOptions mValidation;
+
+        /// How much world the mirror builds and what of it, as the run decided: the harness from
+        /// its command line, a played session from `[RTX] distant land cells` and the paging's
+        /// two. Here and not written into the registry by the harness, because the registry is the
+        /// player's and a knob of a run travels with the run.
+        MirrorKnobs mMirror;
 
         /// Whether the window stays hidden, which saves a present per frame and nothing else.
         bool mHeadless = false;

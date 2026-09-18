@@ -59,8 +59,10 @@ namespace Rtx
         /// Into `PreparedGround::mWeights`. An empty run is a layer covering the whole cell.
         Run mWeights;
 
-        /// As the scene's row will carry it, so adopting a layer copies one value.
-        LayerPlacing mPlacing;
+        /// The scene's row as far as the land record fills it — the grid and the two transforms —
+        /// so adopting a layer copies one value and writes the two slots the scene hands out,
+        /// `mDiffuse` and `mMaskOffset`. Starts as `wholeLayer`.
+        MaterialLayer mRow = wholeLayer();
     };
 
     /// One cell's ground, read off the land records on a thread that is not the frame's. A cell

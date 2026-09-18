@@ -6,10 +6,8 @@
 #include <cstdint>
 #include <utility>
 
-#include <osg/Vec4f>
-
 #include <components/rtx/instancerecord.hpp>
-#include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/light.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
@@ -72,56 +70,6 @@ namespace Rtx
                     | (material.isAdditive() && material.mBlend == BlendKind::AddWhole ? Shaders::MATERIAL_ADD_WHOLE
                                                                                        : 0u)
                     | ((material.mDarkUnit & Shaders::MATERIAL_DARK_UNIT_MASK) << Shaders::MATERIAL_DARK_UNIT_SHIFT),
-            };
-        }
-
-        Shaders::GpuLight toGpu(const Light& light)
-        {
-            return Shaders::GpuLight{
-                .mPosition = light.mPosition,
-                .mIntensity = light.mIntensity,
-                .mReach = light.mReach,
-                .mSourceRadius = light.mSourceRadius,
-                .mClearance = light.mClearance,
-                .mFill = light.mFill,
-            };
-        }
-
-        Shaders::GpuSprite toGpu(const Sprite& sprite)
-        {
-            return Shaders::GpuSprite{
-                .mPosition = sprite.mPosition,
-                .mRadius = sprite.mRadius,
-                .mAxis = sprite.mAxis,
-                .mColour = sprite.mColour,
-                .mAlpha = sprite.mAlpha,
-            };
-        }
-
-        Shaders::GpuEmitter toGpu(const SpriteEmitter& emitter)
-        {
-            return Shaders::GpuEmitter{
-                .mCentre = emitter.mCentre,
-                .mReach = emitter.mReach,
-                .mFirst = emitter.mSprites.mOffset,
-                .mCount = emitter.mSprites.mCount,
-                .mTexture = emitter.mTexture,
-                .mFlags
-                = (emitter.mAdditive ? Shaders::EMITTER_ADDITIVE : 0u) | (emitter.mFalls ? Shaders::EMITTER_FALLS : 0u),
-                .mWidth = emitter.mWidth,
-                .mLighting = emitter.mLighting,
-            };
-        }
-
-        Shaders::GpuLayer toGpu(const MaterialLayer& layer)
-        {
-            return Shaders::GpuLayer{
-                .mDiffuse = layer.mDiffuse,
-                .mMaskOffset = layer.mMask.mOffset,
-                .mMaskWidth = layer.mPlacing.mMaskWidth,
-                .mMaskHeight = layer.mPlacing.mMaskHeight,
-                .mDiffuseTransform = layer.mPlacing.mDiffuseTransform,
-                .mMaskTransform = layer.mPlacing.mMaskTransform,
             };
         }
 
@@ -307,31 +255,13 @@ namespace Rtx
         // never touches these tables.
         if (outgrow(mLayers, mDevice, BufferKind::DeviceLocal,
                 std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer), sTableFilledUsage, "layers"))
-        {
-            mLayerScratch.clear();
-            mLayerScratch.reserve(layers.size());
-            for (const MaterialLayer& layer : layers)
-                mLayerScratch.push_back(toGpu(layer));
-
             stageInto(batch, mLayers, 0,
-                std::as_bytes(mLayerScratch.empty() ? std::span<const Shaders::GpuLayer>(&noLayer, 1)
-                                                    : std::span<const Shaders::GpuLayer>(mLayerScratch)));
-        }
+                std::as_bytes(layers.empty() ? std::span<const Shaders::GpuLayer>(&noLayer, 1) : layers));
         else
-        {
-            // Each run as the chunk placed it: converted into the scratch and staged at the run's
-            // own offset, so a table of a thousand layers pays for the five that arrived.
+            // Each run as the chunk placed it, staged at the run's own offset, so a table of a
+            // thousand layers pays for the five that arrived.
             for (const Run run : scene.materials().getArrived().mLayers)
-            {
-                mLayerScratch.clear();
-                mLayerScratch.reserve(run.mCount);
-                for (const MaterialLayer& layer : run.in(layers))
-                    mLayerScratch.push_back(toGpu(layer));
-
-                stageInto(batch, mLayers, run.mOffset * sizeof(Shaders::GpuLayer),
-                    std::as_bytes(std::span<const Shaders::GpuLayer>(mLayerScratch)));
-            }
-        }
+                stageInto(batch, mLayers, run.mOffset * sizeof(Shaders::GpuLayer), std::as_bytes(run.in(layers)));
 
         if (outgrow(mMasks, mDevice, BufferKind::DeviceLocal, std::max<std::size_t>(masks.size(), 1) * sizeof(float),
                 sTableFilledUsage, "masks"))
@@ -390,41 +320,17 @@ namespace Rtx
 
         mInstanceTable.sync(slot);
 
-        mLightScratch.clear();
-        mLightScratch.reserve(scene.lights().size());
-        for (const Light& light : scene.lights())
-            mLightScratch.push_back(toGpu(light));
-
-        mSpriteScratch.clear();
-        mSpriteScratch.reserve(scene.sprites().size());
-        for (const Sprite& sprite : scene.sprites())
-            mSpriteScratch.push_back(toGpu(sprite));
-
-        mEmitterScratch.clear();
-        mEmitterScratch.reserve(scene.emitters().size());
-        for (const SpriteEmitter& emitter : scene.emitters())
-            mEmitterScratch.push_back(toGpu(emitter));
-
-        // Which emitter placed a sprite, written from this side because only this side knows.
-        // The scene keeps the pairing as a run on the emitter; a tile's list is sprites, and a
-        // sprite walked out of one has to be able to say when the run it belongs to has changed.
-        for (std::uint32_t at = 0; at < mEmitterScratch.size(); ++at)
-        {
-            const Shaders::GpuEmitter& emitter = mEmitterScratch[at];
-            for (std::uint32_t sprite = emitter.mFirst; sprite < emitter.mFirst + emitter.mCount; ++sprite)
-                mSpriteScratch[sprite].mEmitter = at;
-        }
-
         mLightGrid.rebuild(scene.lights());
 
-        // The tables go over as they are, empty ones included. Something has to stand at every
+        // The tables go over as they lie: the scene's rows are the device's, so a placement is a
+        // copy and never a conversion. Empty ones included: something has to stand at every
         // address the frame carries, and `growTo` makes a table that is empty rather than leaving
         // the slot empty — a stand-in per table is one table without one, and that costs a
         // device. What stops the shader reading an empty table is its count.
-        const std::span<const Shaders::GpuLight> lights(mLightScratch);
+        const std::span<const Light> lights = scene.lights();
         const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
-        const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
-        const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
+        const std::span<const SpriteEmitter> emitters = scene.emitters();
+        const std::span<const Sprite> sprites = scene.sprites();
 
         growTo(tables.mLights, mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights");
         growTo(tables.mLightList, mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list");

@@ -344,8 +344,8 @@ namespace Rtx::Testing
 
             SurfaceDescription described;
             describeStateSet(state, described);
-            EXPECT_EQ(described.getTextureUse(TextureRole::Emissive).mWrap, TextureWrap::Clamp);
-            EXPECT_EQ(described.getTexture(TextureRole::Emissive), sameFile.get());
+            EXPECT_EQ(described.getTextureUse(SurfaceMap::Emissive).mWrap, TextureWrap::Clamp);
+            EXPECT_EQ(described.getTexture(SurfaceMap::Emissive), sameFile.get());
 
             walk(*quad);
 

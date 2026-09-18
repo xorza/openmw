@@ -19,7 +19,6 @@
 #include "mesh.hpp"
 #include "namedenum.hpp"
 #include "reconstruction.hpp"
-#include "ripple.hpp"
 #include "runs.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
@@ -201,11 +200,6 @@ namespace Rtx
         /// frame's histogram; a picture wants it measured, so a run's profile says so.
         std::optional<float> mExposure = 1.0f;
 
-        /// What disturbed the water this frame — every wading actor and every strike — pressed into
-        /// the ripple field before the trace reads it. Spans the caller's own list for the length
-        /// of the call.
-        std::span<const RippleImpulse> mRipples;
-
         /// What the game's debug modes drew, over the picture and under the interface. A tool and
         /// not the picture: nothing traces it, and a frame with none pays nothing for it.
         DebugLines mDebug;
@@ -229,7 +223,6 @@ namespace Rtx
                 .mExposureBias = exposureBias,
                 .mReconstruction = profile.mReconstruction,
                 .mExposure = profile.mExposure,
-                .mRipples = {},
                 .mDebug = {},
             };
         }
@@ -327,7 +320,10 @@ namespace Rtx
         /// The same scene with its instances and lights somewhere else and its actors in a new
         /// pose: rebuilds only what says where things are, plus the structure of each mesh
         /// `getDeformed` names. `scene` must be the scene `setScene` was given, because the
-        /// placements index into structures this already holds.
+        /// placements index into structures this already holds. The world's ripples are read here
+        /// too, beside its lights and sprites: what disturbed the water is a per-frame list of the
+        /// scene like the other three, and the next `renderFrame` presses what the last placement
+        /// or `setScene` read.
         virtual void placeScene(SceneSlot slot, const SceneDesc& scene) = 0;
 
         /// A scene of its own for a picture inside the interface — the inventory doll, the race

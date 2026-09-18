@@ -197,7 +197,7 @@ namespace Rtx::Testing
                 extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
 
                 EXPECT_EQ(scene.emitters().size(), 1u);
-                return scene.emitters().front().mAdditive;
+                return scene.emitters().front().isAdditive();
             };
 
             EXPECT_TRUE(extractOne(true));
@@ -217,12 +217,12 @@ namespace Rtx::Testing
 
             extractor.extractFalling(*plume.mRoot, osg::Matrixf::identity(), 0);
             ASSERT_EQ(scene.emitters().size(), 1u);
-            EXPECT_TRUE(scene.emitters().front().mFalls);
+            EXPECT_TRUE(scene.emitters().front().falls());
 
             scene.clearPlacement();
             extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
             ASSERT_EQ(scene.emitters().size(), 1u);
-            EXPECT_FALSE(scene.emitters().front().mFalls) << "a walk after a falling one was left falling";
+            EXPECT_FALSE(scene.emitters().front().falls()) << "a walk after a falling one was left falling";
         }
 
         /// A dead slot keeps the position its last particle expired at, and an emitter with nothing
@@ -561,23 +561,24 @@ namespace Rtx::Testing
             EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u);
         }
 
-        /// The emitters can be run without a frame being mirrored, which is what a warm-up is.
-        TEST_F(RtxSceneExtractorTest, emittersCanBeSteppedWithoutMirroringAnything)
+        /// A warm-up is frames drawn: every walk steps the emitters it meets on the clock above,
+        /// and a walk whose clock did not move steps nothing, so the walk that follows three
+        /// stepped ones finds what they emitted and adds nothing of its own.
+        TEST_F(RtxSceneExtractorTest, everyWalkStepsTheEmittersItMeetsOnce)
         {
             Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/true);
             drive(plume, 100.0);
 
+            // Two of the three turns emit — the first only starts the clock.
+            std::uint32_t seen = 0;
             for (int turn = 0; turn < 3; ++turn)
             {
                 mExtractor.advanceEmitters(0.1);
-                mExtractor.stepEmitters(*plume.mRoot);
+                seen = walk(*plume.mRoot).mSprites;
             }
+            EXPECT_EQ(seen, 20u);
 
-            EXPECT_EQ(mScene.sprites().size(), 0u) << "stepping is not mirroring: nothing was placed";
-
-            // Two of those three turns emitted — the first only started the clock — and the walk that
-            // finally mirrors them adds none of its own, because its turn is already spent.
-            EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u) << "a walk on a clock that did not move emits nothing";
         }
     }
 }

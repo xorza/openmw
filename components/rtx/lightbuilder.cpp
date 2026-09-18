@@ -264,8 +264,7 @@ namespace Rtx
         return std::max(source.getSourceRadius(), areaFeet * Constants::UnitsPerFoot);
     }
 
-    void addSheet(
-        Glow& glow, const Material& worn, const osg::BoundingBoxf& box, const osg::Matrixf& place, const float fade)
+    void Glow::addSheet(const Material& worn, const osg::BoundingBoxf& box, const osg::Matrixf& place, const float fade)
     {
         if (!worn.isAdditive() || !box.valid())
             return;
@@ -276,47 +275,46 @@ namespace Rtx
         const float opacity = worn.mBlend == BlendKind::AddWhole ? 1.0f : worn.mOpacity * fade;
 
         const osg::Vec3f tinted = osg::componentMultiply(worn.mDiffuseMean, worn.mDiffuseColour) * opacity;
-        glow.mRadiance += osg::componentMultiply(tinted, worn.mEmissiveColour) * Shaders::EMISSIVE_INTENSITY;
+        mRadiance += osg::componentMultiply(tinted, worn.mEmissiveColour) * Shaders::EMISSIVE_INTENSITY;
 
         const osg::Vec3f half = (box._max - box._min) * 0.5f;
         const float radius = std::max({ half.x(), half.y(), half.z() }) * placedScale(place);
         const osg::BoundingSpheref stood(box.center() * place, radius);
-        glow.mSheets.expandBy(stood);
-        glow.mBall.expandBy(stood);
+        mSheets.expandBy(stood);
+        mBall.expandBy(stood);
     }
 
-    void addSprites(
-        Glow& glow, const SpriteEmitter& emitter, const std::span<const Sprite> sprites, const osg::Vec3f& mean)
+    void Glow::addSprites(const SpriteEmitter& emitter, const std::span<const Sprite> sprites, const osg::Vec3f& mean)
     {
-        assert(sprites.size() == emitter.mSprites.mCount && "an emitter handed sprites that are not its own");
+        assert(sprites.size() == emitter.mCount && "an emitter handed sprites that are not its own");
 
-        if (!emitter.mAdditive || sprites.empty())
+        if (!emitter.isAdditive() || sprites.empty())
             return;
 
-        // `r^2 * L` a sprite, with the pi of the disc's area put on once by `makeGlow`.
+        // `r^2 * L` a sprite, with the pi of the disc's area put on once by `makeLight`.
         osg::Vec3f discs;
         for (const Sprite& sprite : sprites)
             discs += osg::componentMultiply(mean, sprite.mColour) * (sprite.mAlpha * sprite.mRadius * sprite.mRadius);
 
-        glow.mDiscs += discs * Shaders::FLAME_INTENSITY;
-        glow.mBall.expandBy(osg::BoundingSpheref(emitter.mCentre, emitter.mReach));
+        mDiscs += discs * Shaders::FLAME_INTENSITY;
+        mBall.expandBy(osg::BoundingSpheref(emitter.mCentre, emitter.mReach));
     }
 
-    std::optional<Light> makeGlow(const Glow& glow)
+    std::optional<Light> Glow::makeLight() const
     {
-        if (glow.mLit || !glow.mBall.valid() || !(glow.mBall.radius() > 0.0f))
+        if (mLit || !mBall.valid() || !(mBall.radius() > 0.0f))
             return std::nullopt;
 
-        osg::Vec3f intensity = glow.mDiscs * Shaders::PI;
-        if (glow.mSheets.valid())
-            intensity += glow.mRadiance * (2.0f * Shaders::PI * glow.mSheets.radius() * glow.mSheets.radius());
+        osg::Vec3f intensity = mDiscs * Shaders::PI;
+        if (mSheets.valid())
+            intensity += mRadiance * (2.0f * Shaders::PI * mSheets.radius() * mSheets.radius());
 
         if (intensity == osg::Vec3f())
             return std::nullopt;
 
-        const float radius = glow.mBall.radius();
+        const float radius = mBall.radius();
 
-        return fillOf(glow.mBall.center(), intensity * sGlowGain, radius, radius * sGlowReachScale);
+        return fillOf(mBall.center(), intensity * sGlowGain, radius, radius * sGlowReachScale);
     }
 
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime)
