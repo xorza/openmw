@@ -17,6 +17,8 @@
 #include <components/esm3/loadligh.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
+#include <components/rtx/runs.hpp>
+#include <components/rtx/sprite.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
@@ -498,18 +500,18 @@ namespace Rtx
         }
 
         /// An effect's glowing sheets are one fill lamp: what they radiate, summed, off a shell the
-        /// size of the box they all stand in.
+        /// size of the box they all stand in, at the level a burst is set to by eye.
         ///
         /// A unit quad whose map averages (0.5, 0.25, 0) under a white tint at half opacity and a
         /// white glow radiates `0.5 * 0.5 * 8 = 2` in red and `0.25 * 0.5 * 8 = 1` in green, per
         /// unit of area. Stood at (100, 0, 0) by ten its box runs from (100, 0, 0) to (110, 10, 0),
-        /// so the ball is centred at (105, 5, 0) and 5 wide, half the widest side; the lamp is
-        /// `2 * pi * 25 = 157.08` times the radiance, the reach four radii, the ray kept clear of
-        /// the whole ball.
+        /// so the ball is centred at (105, 5, 0) and 5 wide, half the widest side; the shell is
+        /// `2 * pi * 25 = 157.08` times the radiance, and the lamp is that by the gain of four,
+        /// 628.32, reaching eight radii, the ray kept clear of the whole ball.
         ///
         /// A second sheet twenty units up doubles the radiance, and the ball is the one both balls
-        /// fit: centred ten up and `(20 + 5 + 5) / 2 = 15` wide, so the lamp is `2 * pi * 225 =
-        /// 1413.7` times `(4, 2, 0)`. The same sheet turned about its centre, as a billboard is,
+        /// fit: centred ten up and `(20 + 5 + 5) / 2 = 15` wide, so the lamp is `4 * 2 * pi * 225 =
+        /// 5654.9` times `(4, 2, 0)`. The same sheet turned about its centre, as a billboard is,
         /// moves the ball by nothing. A sheet that adds whole reads no opacity, so it radiates
         /// twice the first. A sheet that blends over is no glow at all, and an effect of none is
         /// no lamp.
@@ -531,27 +533,28 @@ namespace Rtx
 
             std::optional<Light> lamp = makeGlow(glow);
             ASSERT_TRUE(lamp.has_value());
-            EXPECT_NEAR(lamp->mIntensity.x(), 2.0f * 157.08f, 1e-2f);
-            EXPECT_NEAR(lamp->mIntensity.y(), 157.08f, 1e-2f);
+            EXPECT_NEAR(lamp->mIntensity.x(), 2.0f * 628.32f, 1e-2f);
+            EXPECT_NEAR(lamp->mIntensity.y(), 628.32f, 1e-2f);
             EXPECT_FLOAT_EQ(lamp->mIntensity.z(), 0.0f);
             EXPECT_EQ(lamp->mPosition, osg::Vec3f(105.0f, 5.0f, 0.0f));
             EXPECT_FLOAT_EQ(lamp->mSourceRadius, 5.0f);
             EXPECT_EQ(lamp->mClearance, lamp->mSourceRadius);
-            EXPECT_FLOAT_EQ(lamp->mReach, 20.0f);
+            EXPECT_FLOAT_EQ(lamp->mReach, 40.0f);
             EXPECT_EQ(lamp->mFill, 1u);
 
             // The instance's fade weighs the sheet as the material's opacity does.
             Glow faded;
             addSheet(faded, sheet, quad, stood, 0.5f);
-            EXPECT_NEAR(makeGlow(faded)->mIntensity.x(), 157.08f, 1e-2f);
+            EXPECT_NEAR(makeGlow(faded)->mIntensity.x(), 628.32f, 1e-2f);
 
             addSheet(glow, sheet, quad, stood * osg::Matrixf::translate(0.0f, 0.0f, 20.0f), 1.0f);
             lamp = makeGlow(glow);
             ASSERT_TRUE(lamp.has_value());
-            EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * 1413.7f, 1.0f);
-            EXPECT_NEAR(lamp->mIntensity.y(), 2.0f * 1413.7f, 1.0f);
+            EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * 5654.9f, 1.0f);
+            EXPECT_NEAR(lamp->mIntensity.y(), 2.0f * 5654.9f, 1.0f);
             EXPECT_EQ(lamp->mPosition, osg::Vec3f(105.0f, 5.0f, 10.0f));
             EXPECT_FLOAT_EQ(lamp->mSourceRadius, 15.0f);
+            EXPECT_FLOAT_EQ(lamp->mReach, 120.0f);
 
             Glow turned;
             addSheet(turned, sheet, quad, stood, 1.0f);
@@ -565,7 +568,7 @@ namespace Rtx
             whole.mBlend = BlendKind::AddWhole;
             Glow unread;
             addSheet(unread, whole, quad, stood, 0.5f);
-            EXPECT_NEAR(makeGlow(unread)->mIntensity.x(), 4.0f * 157.08f, 1e-2f) << "neither the opacity nor the fade";
+            EXPECT_NEAR(makeGlow(unread)->mIntensity.x(), 4.0f * 628.32f, 1e-2f) << "neither the opacity nor the fade";
 
             Material pane = sheet;
             pane.mBlend = BlendKind::Over;
@@ -573,6 +576,97 @@ namespace Rtx
             addSheet(none, pane, quad, stood, 1.0f);
             EXPECT_FALSE(makeGlow(none).has_value()) << "a pane is no glow";
             EXPECT_FALSE(makeGlow(Glow{}).has_value()) << "an effect of no sheets";
+        }
+
+        /// An effect's flames join the same lamp: each sprite's disc at the texture's mean under
+        /// the particle's own colour and alpha, summed as an intensity, and the ball grown to the
+        /// emitter's own.
+        ///
+        /// Two sprites of an emitter drawn with a map averaging (0.5, 0.25, 0): one of radius 6,
+        /// colour (1, 0.5, 0) at alpha a half, and one of radius 2, white and whole. Each is
+        /// `r^2 * alpha` of `mean * colour`: `18 * (0.5, 0.125, 0) = (9, 2.25, 0)` and
+        /// `4 * (0.5, 0.25, 0) = (2, 1, 0)`, summed `(11, 3.25, 0)`. A disc's area puts on a pi
+        /// and `FLAME_INTENSITY` is `8 / pi`, so the intensity is `8 * (11, 3.25, 0)`, and by the
+        /// gain of four `(352, 104, 0)`. The lamp stands at the emitter's own ball — centre
+        /// (100, 0, 10), reach 8 — reaching eight radii.
+        ///
+        /// Beside the sheet of the test above, the sheets' shell keeps its own ball of 5 — the
+        /// sheets' `2 * pi * 25 * (2, 1, 0) = (314.16, 157.08, 0)` plus the flames' `(88, 26, 0)`,
+        /// by four — while the lamp's ball is the one both fit: the centres are `sqrt(150) =
+        /// 12.247` apart, so it is `(8 + 12.247 + 5) / 2 = 12.624` wide and stands `12.624 - 8 =
+        /// 4.624` along the way from the emitter's centre to the sheets', at (101.888, 1.888,
+        /// 6.224). A grown ball that widened the shell would have read the sheets at
+        /// `2 * pi * 12.624^2 = 1001.3` instead.
+        ///
+        /// Smoke joins nothing, an emitter with no sprites joins nothing, and an effect the game
+        /// hung a light of its own on is no glow at all, whatever it holds.
+        TEST(RtxLightBuilderTest, anEffectsFlamesJoinItsLampAtTheirDiscsWorth)
+        {
+            const std::vector<Sprite> sprites{
+                Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 4.0f),
+                    .mRadius = 6.0f,
+                    .mColour = osg::Vec3f(1.0f, 0.5f, 0.0f),
+                    .mAlpha = 0.5f },
+                Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 18.0f),
+                    .mRadius = 2.0f,
+                    .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    .mAlpha = 1.0f },
+            };
+            const osg::Vec3f mean(0.5f, 0.25f, 0.0f);
+
+            SpriteEmitter flames;
+            flames.mCentre = osg::Vec3f(100.0f, 0.0f, 10.0f);
+            flames.mReach = 8.0f;
+            flames.mSprites = Rtx::Run{ .mOffset = 0, .mCount = 2 };
+            flames.mAdditive = true;
+
+            Glow glow;
+            addSprites(glow, flames, sprites, mean);
+
+            std::optional<Light> lamp = makeGlow(glow);
+            ASSERT_TRUE(lamp.has_value());
+            EXPECT_NEAR(lamp->mIntensity.x(), 352.0f, 1e-3f);
+            EXPECT_NEAR(lamp->mIntensity.y(), 104.0f, 1e-3f);
+            EXPECT_FLOAT_EQ(lamp->mIntensity.z(), 0.0f);
+            EXPECT_EQ(lamp->mPosition, osg::Vec3f(100.0f, 0.0f, 10.0f));
+            EXPECT_FLOAT_EQ(lamp->mSourceRadius, 8.0f);
+            EXPECT_EQ(lamp->mClearance, lamp->mSourceRadius);
+            EXPECT_FLOAT_EQ(lamp->mReach, 64.0f);
+            EXPECT_EQ(lamp->mFill, 1u);
+
+            Material sheet;
+            sheet.mAlphaMode = AlphaMode::Blend;
+            sheet.mBlend = BlendKind::Add;
+            sheet.mDiffuseMean = mean;
+            sheet.mOpacity = 0.5f;
+            sheet.mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            addSheet(glow, sheet, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 0.0f)),
+                osg::Matrixf::scale(10.0f, 10.0f, 10.0f) * osg::Matrixf::translate(100.0f, 0.0f, 0.0f), 1.0f);
+
+            lamp = makeGlow(glow);
+            ASSERT_TRUE(lamp.has_value());
+            EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * (314.16f + 88.0f), 1e-1f);
+            EXPECT_NEAR(lamp->mIntensity.y(), 4.0f * (157.08f + 26.0f), 1e-1f);
+            EXPECT_NEAR(lamp->mSourceRadius, 12.624f, 1e-3f);
+            EXPECT_NEAR(lamp->mPosition.x(), 101.888f, 1e-3f);
+            EXPECT_NEAR(lamp->mPosition.y(), 1.888f, 1e-3f);
+            EXPECT_NEAR(lamp->mPosition.z(), 6.224f, 1e-3f);
+            EXPECT_NEAR(lamp->mReach, 8.0f * 12.624f, 1e-2f);
+
+            SpriteEmitter smoke = flames;
+            smoke.mAdditive = false;
+            Glow dark;
+            addSprites(dark, smoke, sprites, mean);
+            EXPECT_FALSE(makeGlow(dark).has_value()) << "smoke is no glow";
+
+            SpriteEmitter spent = flames;
+            spent.mSprites.mCount = 0;
+            Glow empty;
+            addSprites(empty, spent, {}, mean);
+            EXPECT_FALSE(makeGlow(empty).has_value()) << "an emitter with nothing alive";
+
+            glow.mLit = true;
+            EXPECT_FALSE(makeGlow(glow).has_value()) << "the game's own light is the effect's";
         }
     }
 }

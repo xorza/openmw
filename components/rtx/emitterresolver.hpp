@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -27,6 +28,9 @@ namespace osgParticle
 
 namespace Rtx
 {
+    struct Glow;
+    struct MeanTexel;
+    class MeanTexels;
     struct Shading;
 
     /// Turns the particle systems a walk met into the scene's sprites: a run of discs the trace
@@ -39,18 +43,25 @@ namespace Rtx
         /// @param pass the walk in progress: its sweep stamp and its counts, read at every call.
         ///        Borrowed, so that the mirror and everything resolving into it cannot come to hold
         ///        two answers.
-        EmitterResolver(SceneDesc& scene, const MirrorPass& pass)
+        /// @param means the process's mean texels, shared with the materials, because a flame's
+        ///        texture is a sheet's too and one file is averaged once.
+        EmitterResolver(SceneDesc& scene, const MirrorPass& pass, MeanTexels& means)
             : mScene(scene)
             , mPass(pass)
+            , mMeans(means)
         {
         }
 
         /// Notes one system the walk met, to be read when the walk is over.
-        void add(
-            const osgParticle::ParticleSystem& particles, std::span<const Shading> shading, const osg::Matrixf& place);
+        ///
+        /// @param glow which effect the system stood under, as an index into what `flush` is
+        ///        handed, or nothing for a system outside every effect.
+        void add(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
+            const osg::Matrixf& place, std::optional<std::size_t> glow);
 
-        /// Reads every system noted, now that everything in the graph has been stepped.
-        void flush();
+        /// Reads every system noted, now that everything in the graph has been stepped, adding
+        /// what each one under an effect radiates to that effect's glow in `glows`.
+        void flush(std::span<Glow> glows);
 
         /// Lets go of the textures of every system this epoch did not meet.
         void retire();
@@ -87,6 +98,11 @@ namespace Rtx
             /// sprite for, which draws nothing and is counted. What a rewrite is told apart by,
             /// and what the census names once per emitter.
             const osg::Image* mSprite = nullptr;
+
+            /// That image's mean texel, or null until an effect's glow asks for it: read then and
+            /// kept, because `MeanTexels` keeps a named file's mean for the process, and every
+            /// image here is a named file. Nulled with `mSprite`.
+            const MeanTexel* mMean = nullptr;
         };
 
         /// An emitter the walk met, waiting for the walk to finish before its particles are read.
@@ -96,10 +112,13 @@ namespace Rtx
             osg::Matrixf mPlace;
 
             /// The map's own entry, which holds its place until `retire`, after every flush.
-            const HeldSprite* mHeld;
+            HeldSprite* mHeld;
 
             /// Whether its sprites fall from the sky, which is the walk's word and not the system's.
             bool mFalls;
+
+            /// The effect it stood under, or nothing.
+            std::optional<std::size_t> mGlow;
         };
 
         /// Reads what a system draws with off its chain into `held`, taking the scene's slots for
@@ -109,11 +128,13 @@ namespace Rtx
         /// Gives back the slots `held` took, where it took any.
         void releaseSprite(const HeldSprite& held);
 
-        /// Reads one noted system into the scene.
-        void placeSprites(const Pending& pending);
+        /// Reads one noted system into the scene, and into its effect's glow where it stood under
+        /// one.
+        void placeSprites(const Pending& pending, std::span<Glow> glows);
 
         SceneDesc& mScene;
         const MirrorPass& mPass;
+        MeanTexels& mMeans;
 
         /// Which textures each particle system draws with. This entry is the reference: a sprite's
         /// texture hangs off no material, so the scene holds it from first meeting until the sweep

@@ -85,7 +85,8 @@ namespace Rtx::Testing
         /// radiates `1 * 0.5 * 8 = 4` red and `0.21586 * 0.5 * 8 = 0.86342` green per unit of
         /// area. Stood at (1000, 0, 0) a hundred times its size, its box runs from (1000, 0, 0)
         /// to (1100, 100, 0): a ball at (1050, 50, 0) fifty wide, and a lamp of `2 * pi * 2500 =
-        /// 15,708` times the radiance — 62,832 red and 13,563 green — reaching four radii.
+        /// 15,708` times the radiance by the gain of four — 251,327 red and 54,254 green —
+        /// reaching eight radii.
         ///
         /// Beside it, under the same root, a sheet that blends over — blood — adds nothing; and
         /// the same glowing quad stood outside any effect is a glow the walk does not read.
@@ -133,13 +134,13 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mLights, 1u);
             ASSERT_EQ(mScene.lights().size(), 1u);
             const Rtx::Light& lamp = mScene.lights().front();
-            EXPECT_NEAR(lamp.mIntensity.x(), 62832.0f, 1.0f);
-            EXPECT_NEAR(lamp.mIntensity.y(), 13563.0f, 1.0f);
+            EXPECT_NEAR(lamp.mIntensity.x(), 251327.0f, 4.0f);
+            EXPECT_NEAR(lamp.mIntensity.y(), 54254.0f, 4.0f);
             EXPECT_FLOAT_EQ(lamp.mIntensity.z(), 0.0f);
             EXPECT_EQ(lamp.mPosition, osg::Vec3f(1050.0f, 50.0f, 0.0f));
             EXPECT_FLOAT_EQ(lamp.mSourceRadius, 50.0f);
             EXPECT_EQ(lamp.mClearance, lamp.mSourceRadius);
-            EXPECT_FLOAT_EQ(lamp.mReach, 200.0f);
+            EXPECT_FLOAT_EQ(lamp.mReach, 400.0f);
             EXPECT_EQ(lamp.mFill, 1u);
 
             // The map was averaged once and every sheet that adds reads that mean, the one
@@ -157,11 +158,87 @@ namespace Rtx::Testing
             mScene.clearPlacement();
             walk(*stood);
             ASSERT_EQ(mScene.lights().size(), 1u);
-            EXPECT_NEAR(mScene.lights().front().mIntensity.x(), 62832.0f, 1.0f);
+            EXPECT_NEAR(mScene.lights().front().mIntensity.x(), 251327.0f, 4.0f);
 
             mScene.clearPlacement();
             walk(*makeSheet(GL_ONE));
             EXPECT_TRUE(mScene.lights().empty());
+        }
+
+        /// A magic effect's flames light the world as the effect's lamp too, read after the walk
+        /// with the other emitters, and an effect the game hung a light on — a bolt in flight —
+        /// is lit by that light alone.
+        ///
+        /// The flames: the plume of `fixture.hpp`, scaled by two and stood at x = 100, drawn
+        /// with a map every texel (255, 128, 0) at full alpha — (1, 0.21586, 0) in light, which is
+        /// the mean. One sprite of radius 6, colour (1, 0.5, 0.25) decoded to (1, 0.21404, 0.05088)
+        /// at a quarter of alpha, and one of radius 2, white and whole. Each is `r^2 * alpha` of
+        /// `mean * colour`: `9 * (1, 0.046203, 0)` and `4 * (1, 0.21586, 0)`, summed
+        /// `(13, 1.27927, 0)`; the disc's pi and `FLAME_INTENSITY`'s `8 / pi` leave eight, and the
+        /// gain four, so the lamp is `(416, 40.937, 0)`, at the emitter's own ball — (100, 0, 12)
+        /// and 8 wide, as `particles.cpp` measures it — reaching eight radii.
+        ///
+        /// The same plume under a root that also carries a light of 66 is one light, the game's:
+        /// a lamp of `66^2 * 0.25 * pi = 3421.2` on white, reaching `66 * 2 + 128 = 260`, and no
+        /// glow beside it. And the plume outside any effect is a flame the walk lights nothing
+        /// with.
+        TEST_F(RtxSceneExtractorTest, anEffectsFlamesLightTheWorldAsItsLampUnlessTheGameLitIt)
+        {
+            constexpr osg::Node::NodeMask sEffect = 1u << 1;
+
+            osg::ref_ptr<osg::Image> map = new osg::Image;
+            map->setFileName("textures/vfx_fireglow.tga");
+            map->allocateImage(2, 2, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+            for (std::size_t texel = 0; texel < 4; ++texel)
+            {
+                map->data()[texel * 4] = 255;
+                map->data()[texel * 4 + 1] = 128;
+                map->data()[texel * 4 + 2] = 0;
+                map->data()[texel * 4 + 3] = 255;
+            }
+
+            const Plume flames = makePlume(
+                osg::Matrix::scale(2.0, 2.0, 2.0) * osg::Matrix::translate(100.0, 0.0, 0.0), /*additive=*/true, map);
+            emit(*flames.mParticles, osg::Vec3f(0.0f, 0.0f, 5.0f), 3.0f, osg::Vec4f(1.0f, 0.5f, 0.25f, 0.5f));
+            emit(*flames.mParticles, osg::Vec3f(0.0f, 0.0f, 9.0f), 1.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f));
+
+            osg::ref_ptr<osg::Group> effect = new osg::Group;
+            effect->setNodeMask(sEffect);
+            effect->addChild(flames.mRoot);
+
+            mExtractor.setClassMask(Rtx::InstanceClass::Effect, sEffect);
+            ExtractionStats stats = walk(*effect);
+
+            EXPECT_EQ(stats.mLights, 1u);
+            EXPECT_EQ(stats.mEmitters, 1u);
+            ASSERT_EQ(mScene.lights().size(), 1u);
+            const Rtx::Light& lamp = mScene.lights().front();
+            EXPECT_NEAR(lamp.mIntensity.x(), 416.0f, 1e-2f);
+            EXPECT_NEAR(lamp.mIntensity.y(), 40.937f, 1e-2f);
+            EXPECT_FLOAT_EQ(lamp.mIntensity.z(), 0.0f);
+            EXPECT_EQ(lamp.mPosition, osg::Vec3f(100.0f, 0.0f, 12.0f));
+            EXPECT_FLOAT_EQ(lamp.mSourceRadius, 8.0f);
+            EXPECT_EQ(lamp.mClearance, lamp.mSourceRadius);
+            EXPECT_FLOAT_EQ(lamp.mReach, 64.0f);
+            EXPECT_EQ(lamp.mFill, 1u);
+
+            osg::ref_ptr<osg::Group> bolt = new osg::Group;
+            bolt->setNodeMask(sEffect);
+            bolt->addChild(flames.mRoot);
+            bolt->addChild(makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1)));
+
+            mScene.clearPlacement();
+            stats = walk(*bolt);
+            EXPECT_EQ(stats.mLights, 1u);
+            ASSERT_EQ(mScene.lights().size(), 1u);
+            EXPECT_NEAR(mScene.lights().front().mIntensity.x(), 3421.2f, 0.1f) << "the bolt's own, and no glow";
+            EXPECT_NEAR(mScene.lights().front().mReach, 260.0f, 0.01f);
+            EXPECT_EQ(mScene.lights().front().mFill, 0u);
+
+            mScene.clearPlacement();
+            stats = walk(*flames.mRoot);
+            EXPECT_EQ(stats.mEmitters, 1u);
+            EXPECT_TRUE(mScene.lights().empty()) << "a flame outside an effect lights nothing";
         }
 
         /// **What the walk asks a `LightSource` is what it radiates, and nothing else.**

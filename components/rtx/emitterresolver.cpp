@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>
@@ -13,6 +16,8 @@
 
 #include "colour.hpp"
 #include "extractionstats.hpp"
+#include "lightbuilder.hpp"
+#include "meantexels.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
 #include "sprite.hpp"
@@ -63,6 +68,7 @@ namespace Rtx
         held.mIndex = sNoIndex;
         held.mLighting = sNoIndex;
         held.mSprite = sprite;
+        held.mMean = nullptr;
         if (sprite == nullptr)
             return;
 
@@ -86,8 +92,8 @@ namespace Rtx
         mScene.textures().drop(held.mLighting);
     }
 
-    void EmitterResolver::add(
-        const osgParticle::ParticleSystem& particles, std::span<const Shading> shading, const osg::Matrixf& place)
+    void EmitterResolver::add(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
+        const osg::Matrixf& place, const std::optional<std::size_t> glow)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -119,24 +125,25 @@ namespace Rtx
             .mPlace = place,
             .mHeld = &held,
             .mFalls = mPass.mFalls,
+            .mGlow = glow,
         });
     }
 
-    void EmitterResolver::flush()
+    void EmitterResolver::flush(const std::span<Glow> glows)
     {
         for (const Pending& pending : mPending)
-            placeSprites(pending);
+            placeSprites(pending, glows);
 
         mPending.clear();
     }
 
-    void EmitterResolver::placeSprites(const Pending& pending)
+    void EmitterResolver::placeSprites(const Pending& pending, const std::span<Glow> glows)
     {
         ExtractionStats& stats = mPass.getStats();
 
         const osgParticle::ParticleSystem& particles = *pending.mParticles;
         const osg::Matrixf& place = pending.mPlace;
-        const HeldSprite& held = *pending.mHeld;
+        HeldSprite& held = *pending.mHeld;
 
         const float scale = placedScale(place);
 
@@ -223,6 +230,17 @@ namespace Rtx
 
         ++stats.mEmitters;
         stats.mSprites += static_cast<std::uint32_t>(mSpriteScratch.size());
+
+        // What a flame under an effect adds to the effect's lamp. The mean is read at the first
+        // flame that asks and never for smoke, whose glow reads nothing of it.
+        const SpriteEmitter& emitter = mScene.emitters().back();
+        if (pending.mGlow.has_value() && emitter.mAdditive)
+        {
+            if (held.mMean == nullptr)
+                held.mMean = &mMeans.of(*held.mSprite);
+
+            addSprites(glows[*pending.mGlow], emitter, mSpriteScratch, held.mMean->mColour);
+        }
     }
 
     void EmitterResolver::retire()

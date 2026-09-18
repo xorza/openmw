@@ -1,8 +1,10 @@
 #include "lightbuilder.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <string>
 
 #include <osg/BoundingBox>
@@ -19,6 +21,7 @@
 #include "mesh.hpp"
 #include "shaders/look.h"
 #include "shaders/scene.h"
+#include "sprite.hpp"
 
 namespace Rtx
 {
@@ -68,6 +71,19 @@ namespace Rtx
         /// reach and the intensity, never the ball: a ball the spell's radius wide held everything
         /// within it flat.
         constexpr float sFillBallRadius = 96.0f;
+
+        /// How much brighter a burst's lamp is than the shell and the discs it is derived from,
+        /// and how far it reaches, in radii of its ball.
+        ///
+        /// **Derived is the shape and by eye is the level**, like `sIntensity`: the derivation
+        /// says how one burst stands to another and to its own size, and nothing in it says how
+        /// a burst stands to the lamps of a room, because the room's lamps were set by eye too. At
+        /// one and four radii a burst was judged too dim and too short. Twice the reach at four
+        /// times the intensity is the same pool twice as wide, ending at the level it ended at:
+        /// `falloff` windows a lamp to nought at its reach, and an inverse square at twice the
+        /// distance is a quarter.
+        constexpr float sGlowGain = 4.0f;
+        constexpr float sGlowReachScale = 16.0f;
 
         /// The top of the ladder every animation is built from, in hertz: a buoyant diffusion flame
         /// sheds a vortex ring at about `1.5 / sqrt(D)` hertz, so a lamp flame near 28 mm across
@@ -263,18 +279,43 @@ namespace Rtx
 
         const osg::Vec3f half = (box._max - box._min) * 0.5f;
         const float radius = std::max({ half.x(), half.y(), half.z() }) * placedScale(place);
-        glow.mBall.expandBy(osg::BoundingSpheref(box.center() * place, radius));
+        const osg::BoundingSpheref stood(box.center() * place, radius);
+        glow.mSheets.expandBy(stood);
+        glow.mBall.expandBy(stood);
+    }
+
+    void addSprites(
+        Glow& glow, const SpriteEmitter& emitter, const std::span<const Sprite> sprites, const osg::Vec3f& mean)
+    {
+        assert(sprites.size() == emitter.mSprites.mCount && "an emitter handed sprites that are not its own");
+
+        if (!emitter.mAdditive || sprites.empty())
+            return;
+
+        // `r^2 * L` a sprite, with the pi of the disc's area put on once by `makeGlow`.
+        osg::Vec3f discs;
+        for (const Sprite& sprite : sprites)
+            discs += osg::componentMultiply(mean, sprite.mColour) * (sprite.mAlpha * sprite.mRadius * sprite.mRadius);
+
+        glow.mDiscs += discs * Shaders::FLAME_INTENSITY;
+        glow.mBall.expandBy(osg::BoundingSpheref(emitter.mCentre, emitter.mReach));
     }
 
     std::optional<Light> makeGlow(const Glow& glow)
     {
-        if (!glow.mBall.valid() || !(glow.mBall.radius() > 0.0f) || glow.mRadiance == osg::Vec3f())
+        if (glow.mLit || !glow.mBall.valid() || !(glow.mBall.radius() > 0.0f))
+            return std::nullopt;
+
+        osg::Vec3f intensity = glow.mDiscs * Shaders::PI;
+        if (glow.mSheets.valid())
+            intensity += glow.mRadiance * (2.0f * Shaders::PI * glow.mSheets.radius() * glow.mSheets.radius());
+
+        if (intensity == osg::Vec3f())
             return std::nullopt;
 
         const float radius = glow.mBall.radius();
 
-        return fillOf(glow.mBall.center(), glow.mRadiance * (2.0f * Shaders::PI * radius * radius), radius,
-            radius * sFillReachScale);
+        return fillOf(glow.mBall.center(), intensity * sGlowGain, radius, radius * sGlowReachScale);
     }
 
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime)

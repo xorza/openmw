@@ -12,9 +12,12 @@
 #include <gtest/gtest.h>
 
 #include <osg/Array>
+#include <osg/BlendFunc>
+#include <osg/GL>
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/Image>
+#include <osg/Matrix>
 #include <osg/MatrixTransform>
 #include <osg/Matrixf>
 #include <osg/Node>
@@ -22,7 +25,11 @@
 #include <osg/StateAttribute>
 #include <osg/Texture2D>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 #include <osg/ref_ptr>
+#include <osgParticle/Particle>
+#include <osgParticle/ParticleSystem>
+#include <osgParticle/range>
 #include <osgUtil/UpdateVisitor>
 
 #include <components/nifosg/nifloader.hpp>
@@ -96,6 +103,64 @@ namespace Rtx::Testing
         image->setFileName(std::string(file));
 
         paint(state, *image, role);
+    }
+
+    /// A particle system under a transform that carries its texture, its blend and its
+    /// material, the way `NifOsg` builds one: the material reads the vertex for its colour,
+    /// which is what the loader gives every particle system a file does not say otherwise for.
+    ///
+    /// The emitter's own state set sets none of them, which is what makes this a test of the
+    /// walk up the path rather than of the drawable: a `ParticleSystem` really does carry an
+    /// empty state set of its own in the shipped content, and asking it for the blend answers
+    /// "covers" for every flame in the game.
+    struct Plume
+    {
+        osg::ref_ptr<osg::MatrixTransform> mRoot;
+        osg::ref_ptr<osgParticle::ParticleSystem> mParticles;
+    };
+
+    /// @param sprite the texture, or null for one that is nothing but a name, which is all a walk
+    ///        reads of a sprite unless an effect's lamp asks what its texels average.
+    inline Plume makePlume(const osg::Matrix& place, bool additive, osg::Image* sprite = nullptr)
+    {
+        Plume plume;
+        plume.mRoot = new osg::MatrixTransform(place);
+
+        osg::StateSet& state = *plume.mRoot->getOrCreateStateSet();
+        if (sprite != nullptr)
+            paint(state, *sprite);
+        else
+            paint(state, "textures/tx_fire_00.dds");
+        state.setAttributeAndModes(new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA,
+                                       additive ? osg::BlendFunc::ONE : osg::BlendFunc::ONE_MINUS_SRC_ALPHA),
+            osg::StateAttribute::ON);
+        colours(state).setVertexColorMode(SceneUtil::VertexColorModes::AmbientAndDiffuse);
+
+        plume.mParticles = new osgParticle::ParticleSystem;
+        plume.mParticles->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+        plume.mRoot->addChild(plume.mParticles);
+
+        return plume;
+    }
+
+    /// Adds one particle and brings its interpolated size, colour and alpha up to date.
+    ///
+    /// `getCurrentSize` and the two beside it are only meaningful after `Particle::update`, so
+    /// the zero-length step is not a formality: without it every sprite this test reads back
+    /// carries whatever the default template was constructed with.
+    inline osgParticle::Particle* emit(
+        osgParticle::ParticleSystem& particles, const osg::Vec3f& at, float size, const osg::Vec4f& colour)
+    {
+        osgParticle::Particle seed;
+        osgParticle::Particle* particle = particles.createParticle(&seed);
+        particle->setLifeTime(10.0f);
+        particle->setPosition(at);
+        particle->setVelocity(osg::Vec3f());
+        particle->setSizeRange(osgParticle::rangef(size, size));
+        particle->setColorRange(osgParticle::rangev4(colour, colour));
+        particle->setAlphaRange(osgParticle::rangef(colour.a(), colour.a()));
+        particle->update(0.0, false);
+        return particle;
     }
 
     /// Puts the shared random sequence back where it started.

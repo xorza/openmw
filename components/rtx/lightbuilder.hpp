@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 
 #include <osg/BoundingBox>
@@ -20,6 +21,8 @@ namespace SceneUtil
 namespace Rtx
 {
     struct Material;
+    struct Sprite;
+    struct SpriteEmitter;
 
     /// One light, placed in the world: a lamp, or the fill a Light spell casts. Everything here is
     /// derived: a `LIGH` record carries a colour and a radius and no intensity at all.
@@ -127,9 +130,9 @@ namespace Rtx
     /// frame asks.
     float lightBrightness(SceneUtil::LightController::LightType type, int id, double simulationTime);
 
-    /// What a magic effect's glowing sheets add up to while a walk is inside the effect: the one
-    /// lamp they make together. Opened where the walk enters an effect, handed every additive
-    /// sheet it meets under it, and closed into a `Light` where the walk leaves.
+    /// What a magic effect's glowing sheets and flames add up to: the one lamp they make together.
+    /// Opened where the walk enters an effect, handed every additive sheet the walk meets under it
+    /// and every additive emitter read once the walk is over, and closed into a `Light` after both.
     ///
     /// **One lamp for the effect and not one for each sheet**, because a burst is twenty sheets
     /// stood at one place, and twenty lamps of a fireball's reach are twenty times the entries
@@ -139,8 +142,23 @@ namespace Rtx
         /// What the sheets radiate, summed, per unit of area — `addSheet` says the arithmetic.
         osg::Vec3f mRadiance;
 
-        /// The ball every sheet stands in, in the world. Invalid until a sheet is added.
+        /// The ball every sheet stands in, in the world: the shell `makeGlow` has them radiate
+        /// from, and the sheets' alone, so a spray of sparks round a burst widens the lamp and not
+        /// the sheets' worth. Invalid until a sheet is added.
+        osg::BoundingSpheref mSheets;
+
+        /// What the flames radiate times the discs they radiate from, summed over every sprite
+        /// and divided by pi — `addSprites` says the arithmetic.
+        osg::Vec3f mDiscs;
+
+        /// The ball every sheet and every sprite stands in: the lamp's source. Invalid until
+        /// something is added.
         osg::BoundingSpheref mBall;
+
+        /// Whether the game hung a light of its own on the effect — a bolt's `LightSource` — which
+        /// is then the effect's light, and this glow lights nothing: a lamp made of the picture
+        /// beside the lamp the game meant would count the bolt twice.
+        bool mLit = false;
     };
 
     /// Adds one sheet of an effect to `glow`: a mesh of `box` wearing `worn`, stood by `place`
@@ -167,16 +185,34 @@ namespace Rtx
     void addSheet(
         Glow& glow, const Material& worn, const osg::BoundingBoxf& box, const osg::Matrixf& place, float fade);
 
-    /// The lamp `glow` is, or nothing where no sheet glowed: a fill whose ball is the effect's
-    /// own, so a burst of fifty feet lights whatever stands inside it from every side and shadows
-    /// it with nothing, and everything outside it by a source fifty feet wide.
+    /// Adds one emitter of an effect to `glow`: `sprites`, which are `emitter`'s, drawn with a
+    /// texture whose mean texel is `mean`. Nothing where the emitter does not add.
     ///
-    /// **Its intensity is a closed shell's of that radius glowing at the sheets' radiance,
-    /// `2 * pi * L * R^2`**: each face of a shell leaves `pi * L` per unit of area, a Lambertian
-    /// exitance, both faces of `4 * pi * R^2` are crossed by every ray that reaches it, and a
-    /// point of intensity `I` sheds `4 * pi * I`. Exact for the fire burst, which is a sphere,
-    /// and twice the truth for a lone flat sheet, whose two faces are half a shell's area. The
-    /// reach is a fill's, `sFillReachScale` radii: the intensity is derived and not read off a
-    /// record, and a burst is the one lamp in the game whose whole purpose is the room around it.
+    /// **What a sprite radiates is what `spritesAlong` adds for it**: its texel under the
+    /// particle's colour and alpha, at `FLAME_INTENSITY`, with the texture's mean texel — already
+    /// weighted by its own alpha, `MeanTexel::mColour` — standing for the texel. A billboard shows
+    /// the whole of its disc to every direction, and flames that add hide nothing of one another,
+    /// so a cloud of them is a source of intensity `pi * r^2 * L` summed over its discs, in every
+    /// direction. Exact for what the march adds sprite by sprite; what it is over by is the
+    /// saturation the march applies to a stack, `1 - prod(1 - g)`, which a sum does not have.
+    ///
+    /// **The ball is the emitter's own**, `SpriteEmitter::mCentre` and `mReach`, which the scene
+    /// measured over these same sprites.
+    void addSprites(Glow& glow, const SpriteEmitter& emitter, std::span<const Sprite> sprites, const osg::Vec3f& mean);
+
+    /// The lamp `glow` is, or nothing where nothing glowed or the game lit the effect itself: a
+    /// fill whose ball is the effect's own, so a burst of fifty feet lights whatever stands inside
+    /// it from every side and shadows it with nothing, and everything outside it by a source fifty
+    /// feet wide.
+    ///
+    /// **The sheets' intensity is a closed shell's of their ball's radius glowing at their
+    /// radiance, `2 * pi * L * R^2`**: each face of a shell leaves `pi * L` per unit of area, a
+    /// Lambertian exitance, both faces of `4 * pi * R^2` are crossed by every ray that reaches it,
+    /// and a point of intensity `I` sheds `4 * pi * I`. Exact for the fire burst, which is a
+    /// sphere, and twice the truth for a lone flat sheet, whose two faces are half a shell's area.
+    /// The flames' is `pi` times what `addSprites` summed. The intensity is derived and not read
+    /// off a record, so what a burst is worth against the lamps of the room is set by eye —
+    /// `sGlowGain` and `sGlowReachScale` say how, and a burst is the one lamp in the game whose
+    /// whole purpose is the room around it.
     std::optional<Light> makeGlow(const Glow& glow);
 }

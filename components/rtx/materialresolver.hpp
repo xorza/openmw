@@ -79,9 +79,12 @@ namespace Rtx
         /// @param pass the walk in progress: its sweep stamp and its counts, read at every call.
         ///        Borrowed, so that the mirror and everything resolving into it cannot come to hold
         ///        two answers.
-        MaterialResolver(SceneDesc& scene, const MirrorPass& pass)
+        /// @param means the process's mean texels, shared with the emitters for the reason
+        ///        `EmitterResolver` gives.
+        MaterialResolver(SceneDesc& scene, const MirrorPass& pass, MeanTexels& means)
             : mScene(scene)
             , mPass(pass)
+            , mMeans(means)
         {
         }
 
@@ -247,8 +250,8 @@ namespace Rtx
         /// about — which is once per translucent diffuse map a cell arrives with.
         AlphaScratch mAlphaScratch;
 
-        /// The mean texel of every additive map met, for the process. The ring's reader has its
-        /// own and hands its answers over in the reading.
-        MeanTexels mMeans;
+        /// The extractor's. The ring's reader has its own and hands its answers over in the
+        /// reading.
+        MeanTexels& mMeans;
     };
 }

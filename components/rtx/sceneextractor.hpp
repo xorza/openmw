@@ -16,6 +16,7 @@
 #include "extractionstats.hpp"
 #include "lightbuilder.hpp"
 #include "materialresolver.hpp"
+#include "meantexels.hpp"
 #include "mesh.hpp"
 #include "meshreader.hpp"
 #include "meshresolver.hpp"
@@ -170,9 +171,11 @@ namespace Rtx
         /// record, and neither is a lamp something picked up and put down.
         void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime);
 
-        /// Opens the glow of a magic effect the walk has entered, and closes it into the scene's
-        /// lights where the walk leaves it — `Rtx::Glow`. One at a time, because the walk is inside
-        /// one effect at a time: an effect stated under an effect is the outer one's.
+        /// Opens the glow of a magic effect the walk has entered, and closes it where the walk
+        /// leaves it — `Rtx::Glow`. One at a time, because the walk is inside one effect at a time:
+        /// an effect stated under an effect is the outer one's. Closed and not yet a lamp, because
+        /// the effect's flames are read after the walk, with the other emitters; `walk` makes the
+        /// lamps once they are.
         void openGlow();
         void closeGlow();
 
@@ -284,8 +287,14 @@ namespace Rtx
         /// See `setEye`.
         std::optional<ViewBasis> mEye;
 
-        /// The effect the walk is inside, where it is inside one: what its sheets add up to.
-        std::optional<Glow> mGlow;
+        /// Every effect this walk entered, in the order it entered them, and which of them it is
+        /// inside, where it is inside one. Reserved once, `sEffectBudget`.
+        std::vector<Glow> mGlows;
+        std::optional<std::size_t> mGlow;
+
+        /// The mean texel of every additive map met, for the process: a sheet's and a flame's
+        /// alike, so the two resolvers below share it.
+        MeanTexels mMeans;
 
         /// Which sweep is current, and where the walk in progress puts its counts. Declared before
         /// the walk and every resolver below, which borrow it rather than keep a copy that could
@@ -302,10 +311,10 @@ namespace Rtx
         MeshResolver mMeshes{ mScene, mPass };
 
         /// What the content says each surface is, and the textures those name.
-        MaterialResolver mMaterials{ mScene, mPass };
+        MaterialResolver mMaterials{ mScene, mPass, mMeans };
 
         /// The particle systems the walk met, and the sprite textures they hold.
-        EmitterResolver mEmitters{ mScene, mPass };
+        EmitterResolver mEmitters{ mScene, mPass, mMeans };
 
         // Refilled per sweep: the survivors, as the scene wants them.
         std::vector<Index> mLiveMeshes;

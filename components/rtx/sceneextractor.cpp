@@ -53,6 +53,10 @@ namespace Rtx
         constexpr std::size_t sAnimatedBudget = 4096;
         constexpr std::size_t sEmitterBudget = 2048;
 
+        /// Effects a walk can be handed before its list of glows grows: every bolt in the air,
+        /// every burst and every cast, which a fight of a dozen casters does not reach.
+        constexpr std::size_t sEffectBudget = 256;
+
         /// What identifies one placement from one frame to the next: the anchor a walk starts from
         /// and the node path under it, together, because a hundred crates share one geometry and,
         /// walked from a shared template node, one path as well. Hashed rather than kept, because a
@@ -268,8 +272,8 @@ namespace Rtx
         if (const std::optional<InstanceClass> stated = mExtractor.classOf(node.getNodeMask()))
             mClass = *stated;
 
-        // The root of a magic effect, whose sheets light the world as one lamp: opened here and
-        // closed on the way back up, once everything under it has been placed.
+        // The root of a magic effect, whose sheets and flames light the world as one lamp: opened
+        // here and closed on the way back up, once everything under it has been placed.
         const bool glows = mClass == InstanceClass::Effect && outer != InstanceClass::Effect;
         if (glows)
             mExtractor.openGlow();
@@ -439,6 +443,7 @@ namespace Rtx
         mMeshes.reserve(sMeshBudget, sDeformerBudget);
         mMaterials.reserve(sMaterialBudget, sTextureBudget, sAnimatedBudget);
         mEmitters.reserve(sEmitterBudget);
+        mGlows.reserve(sEffectBudget);
     }
 
     SceneExtractor::~SceneExtractor() = default;
@@ -506,8 +511,10 @@ namespace Rtx
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
-        // An effect a walk that threw was inside is not one this walk is inside.
+        // An effect a walk that threw was inside is not one this walk is inside, and its glows
+        // were never made.
         mGlow.reset();
+        mGlows.clear();
 
         // Non-const because the walk writes. It poses every actor it reaches and it runs every
         // state-set controller it finds, which is what makes an actor behind the camera posed and a
@@ -523,7 +530,17 @@ namespace Rtx
         // After the whole walk, including whatever the ring brought in. Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
         // one that depends on where an updater happened to sit among its siblings.
-        mEmitters.flush();
+        mEmitters.flush(mGlows);
+
+        // And the effects' lamps after the emitters, because a burst's flames are in them.
+        for (const Glow& glow : mGlows)
+        {
+            if (const std::optional<Light> made = makeGlow(glow); made.has_value())
+            {
+                mScene.addLight(*made);
+                ++stats.mLights;
+            }
+        }
 
         return stats;
     }
@@ -618,6 +635,12 @@ namespace Rtx
         if (!made.has_value())
             return;
 
+        // A light the game hung on an effect is the effect's light — `Glow::mLit`. Whether the
+        // light stood before or after the sheets under the same root does not matter, because
+        // the glow is made after the walk.
+        if (mGlow.has_value())
+            mGlows[*mGlow].mLit = true;
+
         mScene.addLight(*made);
         ++mPass.getStats().mLights;
     }
@@ -625,19 +648,13 @@ namespace Rtx
     void SceneExtractor::openGlow()
     {
         assert(!mGlow.has_value() && "a walk entered an effect while inside one");
-        mGlow.emplace();
+        mGlow = mGlows.size();
+        mGlows.emplace_back();
     }
 
     void SceneExtractor::closeGlow()
     {
         assert(mGlow.has_value() && "a walk left an effect it never entered");
-
-        if (const std::optional<Light> made = makeGlow(*mGlow); made.has_value())
-        {
-            mScene.addLight(*made);
-            ++mPass.getStats().mLights;
-        }
-
         mGlow.reset();
     }
 
@@ -652,7 +669,7 @@ namespace Rtx
         const NodeKind kind = mKinds.of(drawable);
         if (const auto* particles = as<const osgParticle::ParticleSystem>(kind, NodeKind::ParticleSystem, drawable))
         {
-            mEmitters.add(*particles, shading, place);
+            mEmitters.add(*particles, shading, place, mGlow);
             return;
         }
 
@@ -697,8 +714,8 @@ namespace Rtx
         // this frame: a controller may have rewritten the material on the way here, and
         // `resolve` rewrote the row before this read.
         if (mGlow.has_value() && material.mIndex != sNoIndex)
-            addSheet(*mGlow, mScene.materials().getRows()[material.mIndex], mScene.meshes().getRows()[mesh].mBounds,
-                place, fade);
+            addSheet(mGlows[*mGlow], mScene.materials().getRows()[material.mIndex],
+                mScene.meshes().getRows()[mesh].mBounds, place, fade);
 
         if (held == mPlacements.end())
         {
