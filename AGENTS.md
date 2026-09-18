@@ -192,8 +192,8 @@ verified because it compiled.
 are known: `ninja` with nothing to do 0 s; a rebuild after touching a header 84 objects read 1 s;
 `rtx debug test` 8 s over three shards, or `components-tests --gtest_filter='Rtx*'` 22 s in one
 process, of which 9 is the visibility suite's frames; the same filtered to `Rtx*Cell*` 2 s; one
-`bench` place 20 s; `check` 16 s under the layers; `rtx debug repeat` 12 s a pair; the gate
-52 s.
+`bench` place 25 s; `check` 16 s under the layers; `rtx debug repeat` 17 s a pair; the gate
+64 s. Five seconds of every harness process is its pipelines compiling: see the repeat paragraphs.
 
 **The build is not the slow part.** `ccache` and `mold` are configured and the cache runs about
 seventy per cent hits. Filter the tests to what the change touched and run the whole `Rtx*` once,
@@ -203,8 +203,7 @@ without DLSS, the tests, `check` under synchronization validation and one repeat
 order, and stops at the first failure. `repeat --pairs=10` is what a determinism reading takes.
 
 **Never run a gate beside a build, or beside another gate.** The reading is then about the machine.
-Take the throwaway warm-up leg before any A/B: a first `bench` after a gap read 2.29 ms against a
-settled 1.62 to 1.67 at `seyda-neen-ship`.
+Take a throwaway warm-up leg before any A/B: the first `bench` after a gap reads a third slow.
 
 **Every verb but `info` drives a real game.** `openmw-rtxtool` starts an engine, teleports to the
 place a view names and warms the world up, so cells are read by `MWWorld::Scene`, people are dressed
@@ -235,38 +234,38 @@ in one share no world state and agree on nothing. Run it after touching anything
 
 **Every column is the gate.** What a run is handed — every part of the scene in the hashes table —
 and what it drew both repeat exactly, and `bench --against` fails on either, naming the frames and
-the parts. The picture was a report while it carried a residual nobody hunted; ten pairs of ten
-have since agreed on it, so it earned the gate. `.notes/repeatable.txt` holds the readings.
+the parts. `.notes/repeatable.txt` holds the readings.
 
 **A count of differing pictures says when, and never how much.** The exposure is measured off the
-frame and approaches its target from the value it held, so every pixel depends on the whole frame and
-every frame depends on the one before it. One frame the trace drew differently therefore moves every
-frame after it, by the one part in 255 an eight-bit hash can barely hold — and the count is how early
-that single event landed rather than how much went wrong. So a count is not a property of the
-renderer: it scales with the walk. This file carried "26 or 27 frames of 45" taken over 45 frames,
-while the walk has been 360 since the day the gate was written — so the number never described
-what the gate reports, and six pairs of the walk it does run differed on 204 to 343 pictures.
+frame and approaches its target from the value it held, so every frame depends on the one before
+it: one frame drawn differently moves every frame after it by the part in 255 an eight-bit hash
+can barely hold. The count is how early that event landed, and it scales with the walk, so no
+count belongs in prose here; the report names the frames and the parts on every run.
 
-**The report names the frames and the parts on every run**, and a number in prose here would go
-stale the next time the walk changed length.
+**A determinism reading needs ten pairs**, `--pairs=10`. A pair that finds nothing has found
+nothing.
 
-**A determinism reading needs ten pairs.** A pair that finds nothing has found nothing, and every
-cause this fork has withdrawn was named from a single pair. `--pairs` is what runs them.
+**Read a difference with `--exposure=1`**, which uncouples the frames, and with
+`--pictures=<dir>`, which writes every measured frame as a PNG at sixty milliseconds each: a
+hash names the frame, and only the pixels say what moved. `runRepeat` keeps both legs' hashes
+beside the logs of a pair that differed.
 
-**And read a difference with `--exposure=1`.** A measured exposure couples every pixel of a frame to
-every other and every frame to the one before it, so it is the one term that turns a single
-divergence into a whole run of them. Held, the count comes nearer the frames that actually differ —
-nearer and not exact, because the fog volume reprojects too.
+**A measuring process compiles its pipelines from source and keeps no cache.** A pipeline handed
+back from any cache — the driver's disk cache or the fork's own blob — is not the code a compile
+of the same SPIR-V makes, and the driver switches a loaded one to the other code mid-run. So
+`Rtx::refuseDriverShaderCache` and no `mCacheDirectory` in the harness, and `VulkanRenderer`
+refuses launches that came back too fast to have been compiled. The game keeps its caches. A
+stop seeds the world's random draws as it begins (`SessionRequest::mRandomSeed`), so its world is
+a function of the seed and the frames. A `--hold` is held by the card's own rate, read off every
+frame, and `check` asks `queue-held` of it.
 
 **No benching and no frame times until the renderer draws everything the game has.**
 
-**Measure on a hot card, and never sleep between runs.** A cooldown costs more than the measurements
-it guards, and it starts each A/B leg from a different clock state. Warm with one thrown-away
-`bench` of the same views, then run the legs back to back and interleaved. The harness prints the
-core clock and the temperature beside every result: a run whose clock or temperature differs from
-its neighbour's is the run to repeat. Buy confidence with repeats, not with waiting: a repeat of
-`--views=<one>` costs twenty-three seconds at the default twenty, so six alternations come in under
-three minutes.
+**Measure on a hot card, and never sleep between runs.** A cooldown starts each A/B leg from a
+different clock state. Warm with one thrown-away `bench` of the same views, then run the legs back
+to back and interleaved. The harness prints the core clock and the temperature beside every
+result: a run whose clock or temperature differs from its neighbour's is the run to repeat. Buy
+confidence with repeats, not with waiting.
 
 **Profiling.** `apps/rtxtool/profile.sh` records the CPU with `perf` over the measured frames only.
 A GPU timeline is `nsys profile ./openmw-rtxtool bench ...`, and this driver needs no sudo for it.
