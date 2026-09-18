@@ -78,10 +78,11 @@ namespace Rtx
         /// **Derived is the shape and by eye is the level**, like `sIntensity`: the derivation
         /// says how one burst stands to another and to its own size, and nothing in it says how
         /// a burst stands to the lamps of a room, because the room's lamps were set by eye too. At
-        /// one and four radii a burst was judged too dim and too short. Twice the reach at four
-        /// times the intensity is the same pool twice as wide, ending at the level it ended at:
-        /// `falloff` windows a lamp to nought at its reach, and an inverse square at twice the
-        /// distance is a quarter.
+        /// one and four radii a burst was judged too dim and too short, and at four and eight
+        /// still too short: `falloff` windows a lamp to nought at its reach, so a reach is where
+        /// the pool is cut and not where it fades, and sixteen radii puts the cut where an
+        /// inverse square at four times the intensity has fallen to a quarter of the level the
+        /// four-radius pool was cut at: `4 / 16^2` against `1 / 4^2`.
         constexpr float sGlowGain = 4.0f;
         constexpr float sGlowReachScale = 16.0f;
 

@@ -19,8 +19,9 @@ namespace Rtx::Shaders
 
     struct StressConstants
     {
-        /// How many times round the loop each lane goes.
-        uint mIterations;
+        /// How long the loop holds, in nanoseconds of the device's real-time clock. Thirty-two
+        /// bits is four seconds, and a hold is milliseconds.
+        uint mNanoseconds;
     };
 
 #ifdef RTX_HOST

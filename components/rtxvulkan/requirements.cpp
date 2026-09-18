@@ -33,6 +33,11 @@ namespace Rtx
             // Occupancy is a register count the driver's own compiler owns and no offline tool has.
             // Required, because a renderer that quietly reported nothing would be a fallback path.
             VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME,
+            // A clock a shader reads that runs at one rate whatever the card is clocked at, which
+            // is what `stress.comp` holds a queue against. Required and not optional, because a
+            // hold that fell back to a count would be the one that misses on the first frames of
+            // every run — the frames the hold is for.
+            VK_KHR_SHADER_CLOCK_EXTENSION_NAME,
         };
 
         constexpr std::array sOptionalDeviceExtensions{
@@ -122,6 +127,8 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mInvocationReorder.rayTracingInvocationReorder; } },
             RequiredFeature{ "pipelineExecutableInfo",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPipelineExecutable.pipelineExecutableInfo; } },
+            RequiredFeature{
+                "shaderDeviceClock", +[](DeviceFeatures& f) -> VkBool32& { return f.mShaderClock.shaderDeviceClock; } },
         };
     }
 
@@ -143,6 +150,7 @@ namespace Rtx
     DeviceFeatures::DeviceFeatures()
     {
         void* next = nullptr;
+        chain(next, mShaderClock, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR);
         chain(next, mPipelineExecutable, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR);
         chain(next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT);
         chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);

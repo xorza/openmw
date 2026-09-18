@@ -559,15 +559,18 @@ namespace RtxTool
                     return false;
                 }
 
-                // The median, because the hold follows the clock a frame at a time and a run's
-                // first frames are where it is still catching up. A quarter either way: the
-                // clock moves under a power cap by less, and a count taken at the idle clock
-                // missed by four times.
+                // No frame shorter than asked, because the loop leaves on its own clock and
+                // nothing shortens it; and the median within a twentieth, because a clock switch
+                // stalls the card for a millisecond on a frame or two of a run, which lands in the
+                // worst frame and not in the median. `StressPass` says why the hold is a time and
+                // not a count.
                 const double held = zone->mTimes.mMedian;
-                found = std::format("{:.2f} ms held at the median frame of {:.1f} asked, on {} of {} frames", held,
-                    facts.mHoldAskedMs, zone->mFrames, zone->mOfFrames);
-                return zone->mFrames == zone->mOfFrames && held >= 0.75 * facts.mHoldAskedMs
-                    && held <= 1.25 * facts.mHoldAskedMs;
+                const double shortest = zone->mTimes.mBest;
+                found = std::format(
+                    "{:.3f} ms held at the median frame of {:.1f} asked, {:.3f} at the shortest, on {} of {} frames",
+                    held, facts.mHoldAskedMs, shortest, zone->mFrames, zone->mOfFrames);
+                return zone->mFrames == zone->mOfFrames && shortest >= facts.mHoldAskedMs
+                    && held <= 1.05 * facts.mHoldAskedMs;
             }
 
             case Rtx::Check::CameraStands:

@@ -18,29 +18,33 @@ namespace Rtx
     {
         struct RtxStressPassTest : Testing::DeviceTest
         {
-            /// One frame of `hold`: recorded, waited out, read, and the reading handed back.
+            /// One frame of `hold`: recorded, waited out and read, as the zone measured it, in
+            /// milliseconds.
             double frameOf(StressPass& hold, GpuTimer& timer, const std::uint64_t frame)
             {
                 timer.beginFrame(frame);
-                getDevice().getPool().submitAndWait(
-                    [&](VkCommandBuffer commands) { hold.record(commands, timer, frame); });
+                getDevice().getPool().submitAndWait([&](VkCommandBuffer commands) { hold.record(commands, timer); });
 
                 GpuZones zones;
                 timer.resolve(zones);
                 if (zones.spans().empty())
                     return 0.0;
 
-                const double held = zones.spans().front().mMs;
-                hold.follow(frame, held);
-                return held;
+                return zones.spans().front().mMs;
             }
         };
 
-        /// The hold comes to what was asked from the second frame on, whatever the card's clock
-        /// and whatever count it started from, and two holds asked for different times hold
-        /// different times. A quarter either way, which is what `Check::QueueHeld` allows a run:
-        /// each frame here is waited out, so the card is between clocks from one to the next.
-        TEST_F(RtxStressPassTest, theHoldComesToWhatWasAskedFromTheCardsOwnRate)
+        /// The hold is the time asked on every frame, the first included, whatever the card's clock:
+        /// the loop's own clock reads what was asked and no more than one tick past it, and the
+        /// queue was held at least that long.
+        ///
+        /// **Off a cold card, deliberately.** The card idles at a few hundred megahertz and steps
+        /// its clock over the first frames of load, which is where a hold set by a count missed by
+        /// a third. A clock switch stalls the card for a millisecond or so, which the zone shows
+        /// and the loop's clock runs through; so the zone is asked only to be no shorter than the
+        /// loop. Ten microseconds past the asked time is the tick the loop leaves on: the
+        /// real-time clock advances by the microsecond.
+        TEST_F(RtxStressPassTest, theHoldIsTheTimeAskedOnEveryFrameWhateverTheCardsClock)
         {
             Device& device = getDevice();
             GpuTimer timer(device);
@@ -48,18 +52,24 @@ namespace Rtx
             StressPass four(device, Testing::getShaderDirectory(), 4.0);
             StressPass eight(device, Testing::getShaderDirectory(), 8.0);
 
-            // The first frame runs the count the pass starts from, which answers nothing; its
-            // reading is the rate every frame after runs at.
-            const double first = frameOf(four, timer, 0);
-            if (first <= 0.0)
-                GTEST_SKIP() << "the device does not time its own zones";
+            struct Hold
+            {
+                StressPass* mPass;
+                std::uint32_t mAskedNs;
+            };
 
-            for (std::uint64_t frame = 1; frame < 5; ++frame)
-                EXPECT_NEAR(frameOf(four, timer, frame), 4.0, 1.0) << "frame " << frame;
+            for (const Hold hold : { Hold{ &four, 4000000u }, Hold{ &eight, 8000000u } })
+                for (std::uint64_t frame = 0; frame < 8; ++frame)
+                {
+                    const double zoneMs = frameOf(*hold.mPass, timer, frame);
+                    if (zoneMs <= 0.0)
+                        GTEST_SKIP() << "the device does not time its own zones";
 
-            frameOf(eight, timer, 0);
-            for (std::uint64_t frame = 1; frame < 5; ++frame)
-                EXPECT_NEAR(frameOf(eight, timer, frame), 8.0, 2.0) << "frame " << frame;
+                    const std::uint32_t held = hold.mPass->getHeldNs();
+                    EXPECT_GE(held, hold.mAskedNs) << "frame " << frame;
+                    EXPECT_LE(held, hold.mAskedNs + 10000u) << "frame " << frame;
+                    EXPECT_GE(zoneMs, static_cast<double>(held) * 1.0e-6) << "frame " << frame;
+                }
         }
     }
 }

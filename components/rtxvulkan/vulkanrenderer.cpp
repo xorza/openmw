@@ -587,26 +587,12 @@ namespace Rtx
 
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
-        std::optional<FrameResult> finished = mRing.collect();
-        followHold(finished);
-        return finished;
+        return mRing.collect();
     }
 
     std::optional<FrameResult> VulkanRenderer::collectFrame()
     {
-        std::optional<FrameResult> finished = mRing.collectFinished();
-        followHold(finished);
-        return finished;
-    }
-
-    void VulkanRenderer::followHold(const std::optional<FrameResult>& finished)
-    {
-        if (mStress == nullptr || !finished.has_value())
-            return;
-
-        for (const GpuSpan& span : finished->mGpu.spans())
-            if (span.mName == RenderProfile::sHoldZone)
-                mStress->follow(finished->mFrame, span.mMs);
+        return mRing.collectFinished();
     }
 
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
@@ -926,7 +912,7 @@ namespace Rtx
         // After the picture and inside the frame's trace, so the frame is finished when its value
         // has passed and the hold is the last thing it did.
         if (mStress != nullptr)
-            mStress->record(commands, timer, mRing.getRecording());
+            mStress->record(commands, timer);
 
         // Submitted and not waited for: `finishFrame` or `collectFrame` brings the count and the
         // report back a frame or two late. A wait's access scope is the device's, so the counters

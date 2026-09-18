@@ -86,7 +86,7 @@ namespace Rtx::Testing
         /// area. Stood at (1000, 0, 0) a hundred times its size, its box runs from (1000, 0, 0)
         /// to (1100, 100, 0): a ball at (1050, 50, 0) fifty wide, and a lamp of `2 * pi * 2500 =
         /// 15,708` times the radiance by the gain of four — 251,327 red and 54,254 green —
-        /// reaching eight radii.
+        /// reaching sixteen radii.
         ///
         /// Beside it, under the same root, a sheet that blends over — blood — adds nothing; and
         /// the same glowing quad stood outside any effect is a glow the walk does not read.
@@ -140,7 +140,7 @@ namespace Rtx::Testing
             EXPECT_EQ(lamp.mPosition, osg::Vec3f(1050.0f, 50.0f, 0.0f));
             EXPECT_FLOAT_EQ(lamp.mSourceRadius, 50.0f);
             EXPECT_EQ(lamp.mClearance, lamp.mSourceRadius);
-            EXPECT_FLOAT_EQ(lamp.mReach, 400.0f);
+            EXPECT_FLOAT_EQ(lamp.mReach, 800.0f);
             EXPECT_EQ(lamp.mFill, 1u);
 
             // The map was averaged once and every sheet that adds reads that mean, the one
@@ -176,7 +176,7 @@ namespace Rtx::Testing
         /// `mean * colour`: `9 * (1, 0.046203, 0)` and `4 * (1, 0.21586, 0)`, summed
         /// `(13, 1.27927, 0)`; the disc's pi and `FLAME_INTENSITY`'s `8 / pi` leave eight, and the
         /// gain four, so the lamp is `(416, 40.937, 0)`, at the emitter's own ball — (100, 0, 12)
-        /// and 8 wide, as `particles.cpp` measures it — reaching eight radii.
+        /// and 8 wide, as `particles.cpp` measures it — reaching sixteen radii.
         ///
         /// The same plume under a root that also carries a light of 66 is one light, the game's:
         /// a lamp of `66^2 * 0.25 * pi = 3421.2` on white, reaching `66 * 2 + 128 = 260`, and no
@@ -219,7 +219,7 @@ namespace Rtx::Testing
             EXPECT_EQ(lamp.mPosition, osg::Vec3f(100.0f, 0.0f, 12.0f));
             EXPECT_FLOAT_EQ(lamp.mSourceRadius, 8.0f);
             EXPECT_EQ(lamp.mClearance, lamp.mSourceRadius);
-            EXPECT_FLOAT_EQ(lamp.mReach, 64.0f);
+            EXPECT_FLOAT_EQ(lamp.mReach, 128.0f);
             EXPECT_EQ(lamp.mFill, 1u);
 
             osg::ref_ptr<osg::Group> bolt = new osg::Group;

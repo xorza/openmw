@@ -507,7 +507,7 @@ namespace Rtx
         /// unit of area. Stood at (100, 0, 0) by ten its box runs from (100, 0, 0) to (110, 10, 0),
         /// so the ball is centred at (105, 5, 0) and 5 wide, half the widest side; the shell is
         /// `2 * pi * 25 = 157.08` times the radiance, and the lamp is that by the gain of four,
-        /// 628.32, reaching eight radii, the ray kept clear of the whole ball.
+        /// 628.32, reaching sixteen radii, the ray kept clear of the whole ball.
         ///
         /// A second sheet twenty units up doubles the radiance, and the ball is the one both balls
         /// fit: centred ten up and `(20 + 5 + 5) / 2 = 15` wide, so the lamp is `4 * 2 * pi * 225 =
@@ -539,7 +539,7 @@ namespace Rtx
             EXPECT_EQ(lamp->mPosition, osg::Vec3f(105.0f, 5.0f, 0.0f));
             EXPECT_FLOAT_EQ(lamp->mSourceRadius, 5.0f);
             EXPECT_EQ(lamp->mClearance, lamp->mSourceRadius);
-            EXPECT_FLOAT_EQ(lamp->mReach, 40.0f);
+            EXPECT_FLOAT_EQ(lamp->mReach, 80.0f);
             EXPECT_EQ(lamp->mFill, 1u);
 
             // The instance's fade weighs the sheet as the material's opacity does.
@@ -554,7 +554,7 @@ namespace Rtx
             EXPECT_NEAR(lamp->mIntensity.y(), 2.0f * 5654.9f, 1.0f);
             EXPECT_EQ(lamp->mPosition, osg::Vec3f(105.0f, 5.0f, 10.0f));
             EXPECT_FLOAT_EQ(lamp->mSourceRadius, 15.0f);
-            EXPECT_FLOAT_EQ(lamp->mReach, 120.0f);
+            EXPECT_FLOAT_EQ(lamp->mReach, 240.0f);
 
             Glow turned;
             addSheet(turned, sheet, quad, stood, 1.0f);
@@ -588,7 +588,7 @@ namespace Rtx
         /// `4 * (0.5, 0.25, 0) = (2, 1, 0)`, summed `(11, 3.25, 0)`. A disc's area puts on a pi
         /// and `FLAME_INTENSITY` is `8 / pi`, so the intensity is `8 * (11, 3.25, 0)`, and by the
         /// gain of four `(352, 104, 0)`. The lamp stands at the emitter's own ball — centre
-        /// (100, 0, 10), reach 8 — reaching eight radii.
+        /// (100, 0, 10), reach 8 — reaching sixteen radii.
         ///
         /// Beside the sheet of the test above, the sheets' shell keeps its own ball of 5 — the
         /// sheets' `2 * pi * 25 * (2, 1, 0) = (314.16, 157.08, 0)` plus the flames' `(88, 26, 0)`,
@@ -631,7 +631,7 @@ namespace Rtx
             EXPECT_EQ(lamp->mPosition, osg::Vec3f(100.0f, 0.0f, 10.0f));
             EXPECT_FLOAT_EQ(lamp->mSourceRadius, 8.0f);
             EXPECT_EQ(lamp->mClearance, lamp->mSourceRadius);
-            EXPECT_FLOAT_EQ(lamp->mReach, 64.0f);
+            EXPECT_FLOAT_EQ(lamp->mReach, 128.0f);
             EXPECT_EQ(lamp->mFill, 1u);
 
             Material sheet;
@@ -651,7 +651,7 @@ namespace Rtx
             EXPECT_NEAR(lamp->mPosition.x(), 101.888f, 1e-3f);
             EXPECT_NEAR(lamp->mPosition.y(), 1.888f, 1e-3f);
             EXPECT_NEAR(lamp->mPosition.z(), 6.224f, 1e-3f);
-            EXPECT_NEAR(lamp->mReach, 8.0f * 12.624f, 1e-2f);
+            EXPECT_NEAR(lamp->mReach, 16.0f * 12.624f, 1e-2f);
 
             SpriteEmitter smoke = flames;
             smoke.mAdditive = false;

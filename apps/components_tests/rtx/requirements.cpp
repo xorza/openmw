@@ -31,7 +31,7 @@ namespace Rtx
                  next != nullptr; next = next->pNext)
                 linked.insert(next);
 
-            EXPECT_EQ(linked.size(), 11u) << "a member was added to DeviceFeatures without chaining it";
+            EXPECT_EQ(linked.size(), 12u) << "a member was added to DeviceFeatures without chaining it";
             EXPECT_TRUE(linked.contains(&features.mFeatures2));
             EXPECT_TRUE(linked.contains(&features.mVulkan12));
             EXPECT_TRUE(linked.contains(&features.mVulkan13));

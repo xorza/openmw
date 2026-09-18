@@ -52,6 +52,10 @@ namespace Rtx
         /// What lets the driver be asked how it compiled a pipeline: registers a thread, spills,
         /// waves a multiprocessor. See `ComputePipeline`, which is where the answer is read.
         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR mPipelineExecutable{};
+
+        /// The device's real-time clock, read from a shader: what `StressPass` holds a queue
+        /// against.
+        VkPhysicalDeviceShaderClockFeaturesKHR mShaderClock{};
     };
 
     /// The properties worth reporting or budgeting against: one chained query, and the memory

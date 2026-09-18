@@ -1,6 +1,5 @@
 #include "stresspass.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -24,36 +23,25 @@ namespace Rtx
         const Device& device, const std::filesystem::path& shaderDirectory, const double milliseconds)
         : mPipeline(
             device, sBindings, sizeof(Shaders::StressConstants), {}, shaderDirectory / "stress.comp.spv", "stress")
-        , mSink(Buffer::deviceLocal(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "stress sink"))
-        , mAskedMs(milliseconds)
+        , mSink(Buffer::readBack(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "stress sink"))
+        , mNanoseconds(static_cast<std::uint32_t>(std::llround(milliseconds * 1.0e6)))
     {
     }
 
-    void StressPass::record(VkCommandBuffer commands, GpuTimer& timer, const std::uint64_t frame)
+    void StressPass::record(VkCommandBuffer commands, GpuTimer& timer)
     {
-        mCounts[frame % sRemembered] = mIterations;
-
         timer.open(commands, RenderProfile::sHoldZone);
 
         DescriptorWrites<1> writes;
         writes.buffer(0, mSink.describe());
-        dispatch(commands, mPipeline, writes.get(), Shaders::StressConstants{ .mIterations = mIterations }, 1);
+        dispatch(commands, mPipeline, writes.get(), Shaders::StressConstants{ .mNanoseconds = mNanoseconds }, 1);
+        mSink.orderForHostRead(commands);
 
         timer.close(commands);
     }
 
-    void StressPass::follow(const std::uint64_t frame, const double heldMs)
+    std::uint32_t StressPass::getHeldNs() const
     {
-        // A device that cannot time itself reads nought, and a count corrected by nothing stays.
-        const std::uint32_t ran = mCounts[frame % sRemembered];
-        if (!(heldMs > 0.0) || ran == 0)
-            return;
-
-        // Half of each reading, because one reading is one clock: a frame the card ran a notch
-        // faster read a sixth short and put the next one a sixth long, and half of that is inside
-        // what the clock moves by anyway.
-        const double read = heldMs / ran;
-        mMsPerIteration = mMsPerIteration > 0.0 ? 0.5 * (mMsPerIteration + read) : read;
-        mIterations = static_cast<std::uint32_t>(std::clamp(std::round(mAskedMs / mMsPerIteration), 1.0, 4.0e9));
+        return *static_cast<const std::uint32_t*>(mSink.map());
     }
 }
