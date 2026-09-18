@@ -49,6 +49,19 @@ namespace Rtx
         return index;
     }
 
+    Index TextureTable::findFile(const VFS::Path::NormalizedView path) const
+    {
+        const auto known = mPathIndex.find(path);
+        if (known == mPathIndex.end())
+            return sNoIndex;
+
+        for (const Index slot : known->second)
+            if (slot != sNoIndex)
+                return slot;
+
+        return sNoIndex;
+    }
+
     Index TextureTable::addBaked(const std::string_view key)
     {
         assert(!key.empty() && "a baked texture with no key is one nothing can find again");

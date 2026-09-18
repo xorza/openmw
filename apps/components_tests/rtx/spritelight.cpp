@@ -21,27 +21,12 @@ namespace Rtx
 {
     namespace
     {
-        /// Adds one level of `width` by `height` to an uncompressed texture whose levels' alphas a
-        /// test states outright, with colour it ignores, and describes it over every level so far.
-        void addAlphaLevel(Testing::TestTexture& texture, const std::uint32_t width, const std::uint32_t height,
-            std::initializer_list<std::uint8_t> alphas)
-        {
-            texture.mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), width, height });
-            for (const std::uint8_t alpha : alphas)
-            {
-                texture.mBytes.insert(texture.mBytes.end(), 3, std::uint8_t{ 255 });
-                texture.mBytes.push_back(alpha);
-            }
-
-            texture.describe(texture.mLevels.front().mWidth, texture.mLevels.front().mHeight, "alpha sheet");
-        }
-
         /// One level of `width` by `height`, with `alphas` in row order.
         Testing::TestTexture alphaSheet(
             const std::uint32_t width, const std::uint32_t height, std::initializer_list<std::uint8_t> alphas)
         {
             Testing::TestTexture texture;
-            addAlphaLevel(texture, width, height, alphas);
+            Testing::addAlphaLevel(texture, width, height, alphas);
             return texture;
         }
 
@@ -116,7 +101,7 @@ namespace Rtx
         TEST(RtxSpriteLightMapTest, levelsAreBakedApartAndDescribedBackToBack)
         {
             Testing::TestTexture sheet = alphaSheet(2, 2, { 0, 128, 0, 0 });
-            addAlphaLevel(sheet, 1, 1, { 32 });
+            Testing::addAlphaLevel(sheet, 1, 1, { 32 });
 
             const AlphaImage alpha(sheet.mData);
             ASSERT_EQ(alpha.getLevelCount(), 2u);

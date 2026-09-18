@@ -160,9 +160,17 @@ namespace Rtx
         std::span<const std::byte> mBytes;
         std::span<const MipLevel> mLevels;
 
-        /// The light already painted into it, as `SHADING_EXTENT` squared factors to divide out.
-        /// Empty where nothing estimated one, which the shader reads as neutral.
-        std::span<const float> mShading;
+        /// The slot of the sprite texture this is the light bake of — `SpriteLightMap` says what a
+        /// bake is — made on the device from that texture's alpha, `SpriteLightPass`, so this
+        /// carries no bytes and no levels of its own: the bake is shaped like its source. `sNoIndex`
+        /// for every texture whose bytes are its own, which is every other one.
+        Index mBakedFrom = sNoIndex;
+
+        /// Whether the shading map beside it is the neutral one rather than an estimate made off
+        /// its texels — a composite, whose painted light came off per tile in the bake and would
+        /// come off twice; a bake, which nothing divides; and the stand-in, which is one grey. A
+        /// file's is estimated on the device as it arrives, `ShadingPass`.
+        bool mNeutralShading = false;
 
         /// What to call it in a capture — the file it came from. Spans storage the description's
         /// owner holds, like everything else here. Empty is allowed and only costs a nameless object

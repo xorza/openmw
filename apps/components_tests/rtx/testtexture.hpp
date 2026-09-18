@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -76,5 +78,47 @@ namespace Rtx::Testing
         texture.mBytes.assign(texels.begin(), texels.end());
         texture.mLevels.assign(1, MipLevel{ 0, extent, extent });
         texture.describe(extent, extent, name);
+    }
+
+    /// Adds one level of `width` by `height` to an uncompressed texture whose levels' alphas a
+    /// test states outright, with colour it ignores, and describes it over every level so far.
+    inline void addAlphaLevel(
+        TestTexture& texture, std::uint32_t width, std::uint32_t height, std::initializer_list<std::uint8_t> alphas)
+    {
+        texture.mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), width, height });
+        for (const std::uint8_t alpha : alphas)
+        {
+            texture.mBytes.insert(texture.mBytes.end(), 3, std::uint8_t{ 255 });
+            texture.mBytes.push_back(alpha);
+        }
+
+        texture.describe(texture.mLevels.front().mWidth, texture.mLevels.front().mHeight, "alpha sheet");
+    }
+
+    /// How many texels across `paintTwoTones` paints.
+    inline constexpr std::uint32_t sTwoTonesExtent = 128;
+
+    /// A texture whose shading estimate is known: two tones along `u`, bytes of 255 across the
+    /// columns `[from, to)` of a hundred and twenty-eight and 156 outside them — 1.0 and 0.3325 in
+    /// light, a factor of three. Display-encoded unless `format` says otherwise, so a device
+    /// decodes it as it decodes the game's. The estimate normalises to a mean of one, so with the
+    /// bright half a half the bright cells come to 1.501 and the dark ones to the floor, 0.5, with
+    /// the blur reaching three cells either side of a boundary. A hundred and twenty-eight across,
+    /// so a cell is four texels, a block's width: the one size at which the host's per-block
+    /// estimate and the device's per-texel one name the same cell for every texel.
+    inline TestTexture paintTwoTones(
+        std::uint32_t from, std::uint32_t to, TextureFormat format = TextureFormat::Rgba8Srgb)
+    {
+        constexpr std::uint32_t extent = sTwoTonesExtent;
+        std::vector<std::uint8_t> texels(std::size_t{ extent } * extent * 4, 255);
+        for (std::uint32_t y = 0; y < extent; ++y)
+            for (std::uint32_t x = 0; x < extent; ++x)
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                    texels[(std::size_t{ y } * extent + x) * 4 + channel] = x >= from && x < to ? 255 : 156;
+
+        TestTexture painted;
+        paintFlat(painted, extent, texels, "two tones");
+        painted.describe(extent, extent, "two tones", format);
+        return painted;
     }
 }

@@ -25,7 +25,9 @@ namespace Rtx
     class Device;
     class GpuTimer;
     class SceneDesc;
+    class ShadingPass;
     class SkinPass;
+    class SpriteLightPass;
     struct Placing;
 
     /// Everything one scene is traced against, on the device — the world's, or a picture's in
@@ -46,8 +48,11 @@ namespace Rtx
         /// again while that one is still tracing — so every table has `sFrameSlots` copies.
         ///
         /// @param skin what poses this scene's bodies, at the build and at every placement.
+        /// @param shading what estimates every texture's map as it arrives.
+        /// @param bake what makes every sprite's light bake as it arrives.
         DeviceScene(const Device& device, Batch& batch, const SetLayout& textureLayout, const SkinPass& skin,
-            const SceneDesc& scene, std::span<const TextureData> textures);
+            const ShadingPass& shading, const SpriteLightPass& bake, const SceneDesc& scene,
+            std::span<const TextureData> textures);
 
         /// Takes in what the scene says arrived: the textures, and the meshes where the mesh table's
         /// revision moved — the geometry blocks are appended to rather than replaced, so every

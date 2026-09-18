@@ -16,12 +16,13 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/visibility.h>
-#include <components/rtx/shadingmap.hpp>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
+#include <components/rtxvulkan/shadingpass.hpp>
+#include <components/rtxvulkan/spritelightpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "../allocations.hpp"
@@ -185,7 +186,6 @@ namespace Rtx::Testing
             // Flat and uncompressed, so the description is exact arithmetic rather than a file.
             const std::vector<std::uint8_t> texels(std::size_t{ extent } * extent * 4, 0xFF);
             const std::array<MipLevel, 1> levels{ MipLevel{ 0, extent, extent } };
-            const std::array<float, ShadingMap::sCells> shading{};
 
             const auto describe = [&](std::uint32_t slot) {
                 return TextureData{
@@ -195,14 +195,15 @@ namespace Rtx::Testing
                     .mHeight = extent,
                     .mBytes = std::as_bytes(std::span(texels)),
                     .mLevels = levels,
-                    .mShading = shading,
                     .mName = "arrival",
                 };
             };
 
             const SetLayout layout = TextureArray::describeLayout(device);
+            const ShadingPass shading(device, Testing::getShaderDirectory());
+            const SpriteLightPass bake(device, Testing::getShaderDirectory());
             Batch setup(pool);
-            TextureArray array(device, setup, layout, slots, {});
+            TextureArray array(device, setup, layout, shading, bake, slots, {});
             setup.flush();
 
             const auto arrive = [&](Batch& batch, std::uint32_t slot) {

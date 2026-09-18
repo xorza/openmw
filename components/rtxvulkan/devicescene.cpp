@@ -26,14 +26,15 @@ namespace Rtx
     }
 
     DeviceScene::DeviceScene(const Device& device, Batch& batch, const SetLayout& textureLayout, const SkinPass& skin,
-        const SceneDesc& scene, std::span<const TextureData> textures)
+        const ShadingPass& shading, const SpriteLightPass& bake, const SceneDesc& scene,
+        std::span<const TextureData> textures)
         : mSkin(skin)
         , mRecords(recordsOf(scene))
         , mAcceleration(device, batch, scene, sFrameSlots)
         , mBuffers(device, batch, scene, mRecords, sFrameSlots)
         , mSkinTables(device, batch, scene, sFrameSlots)
-        , mTextures(
-              device, batch, textureLayout, static_cast<std::uint32_t>(scene.textures().getRows().size()), textures)
+        , mTextures(device, batch, textureLayout, shading, bake,
+              static_cast<std::uint32_t>(scene.textures().getRows().size()), textures)
     {
         // Posed before it is built. The structures are built over the first copy of the
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the

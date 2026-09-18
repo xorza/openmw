@@ -88,7 +88,21 @@ namespace Rtx
         VkBool32& (*mField)(DeviceFeatures& features);
     };
 
+    /// A format feature the renderer will not start without: the format, what it has to offer in
+    /// optimal tiling, and what for. Vulkan makes most of what the frame writes mandatory and a
+    /// few things optional, and a card that lacks an optional one is named for it here rather
+    /// than found out by a validation message under the first texture.
+    struct RequiredFormat
+    {
+        VkFormat mFormat;
+        VkFormatFeatureFlags mFeatures;
+        std::string_view mFor;
+    };
+
     std::span<const char* const> getRequiredDeviceExtensions();
+
+    /// The table itself, in the order `PhysicalDevice::profileOf` reads the device's answers in.
+    std::span<const RequiredFormat> getRequiredFormats();
 
     /// Extensions used when the driver offers them and lived without when it does not. Reported by
     /// `openmw-rtxtool info` so it is visible which of them a run actually had.

@@ -1,6 +1,8 @@
 #include "physicaldevice.hpp"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -76,6 +78,24 @@ namespace Rtx
             return missing;
         }
 
+        /// Appends what each required format the device falls short on was for.
+        std::string listMissingFormats(std::span<const VkFormatProperties> offered)
+        {
+            const std::span<const RequiredFormat> required = getRequiredFormats();
+            assert(offered.size() == required.size() && "the format answers are read in the table's order");
+
+            std::string missing;
+            for (std::size_t at = 0; at < required.size(); ++at)
+                if ((offered[at].optimalTilingFeatures & required[at].mFeatures) != required[at].mFeatures)
+                {
+                    if (!missing.empty())
+                        missing += ", ";
+                    missing += required[at].mFor;
+                }
+
+            return missing;
+        }
+
         /// The largest heap holding a memory type a `Buffer::hostWritten` could come out of — the
         /// largest and not the sum, because a buffer goes in one heap.
         VkDeviceSize hostWrittenBytes(const VkPhysicalDeviceMemoryProperties& memory)
@@ -124,15 +144,20 @@ namespace Rtx
                     return VK_SUCCESS;
                 });
 
-            found.mProfile
-                = PhysicalDevice::profileOf(*found.mProperties, supported, getDeviceExtensions(handle), queues);
+            std::vector<VkFormatProperties> formats;
+            for (const RequiredFormat& required : getRequiredFormats())
+                vkGetPhysicalDeviceFormatProperties(handle, required.mFormat, &formats.emplace_back());
+
+            found.mProfile = PhysicalDevice::profileOf(
+                *found.mProperties, supported, getDeviceExtensions(handle), queues, formats);
 
             return found;
         }
     }
 
     PhysicalDevice::Profile PhysicalDevice::profileOf(const DeviceProperties& properties, DeviceFeatures& supported,
-        std::span<const std::string> extensions, std::span<const VkQueueFamilyProperties> queues)
+        std::span<const std::string> extensions, std::span<const VkQueueFamilyProperties> queues,
+        std::span<const VkFormatProperties> formats)
     {
         Profile profile;
         profile.mHostWrittenBytes = hostWrittenBytes(properties.mMemory);
@@ -166,6 +191,12 @@ namespace Rtx
         if (const std::string missing = listMissingFeatures(supported); !missing.empty())
         {
             profile.mObstacle = "missing features: " + missing;
+            return profile;
+        }
+
+        if (const std::string missing = listMissingFormats(formats); !missing.empty())
+        {
+            profile.mObstacle = "missing format features for " + missing;
             return profile;
         }
 

@@ -13,6 +13,7 @@
 
 #include "alphaimage.hpp"
 #include "material.hpp"
+#include "meantexels.hpp"
 #include "mirroridentity.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
@@ -91,7 +92,8 @@ namespace Rtx
         /// resolve into. `resolve` is the same reading followed by `adopt`.
         ///
         /// @param scratch what a translucent diffuse map's texels are walked through.
-        static MaterialReading read(std::span<const Shading> shading, AlphaScratch& scratch);
+        /// @param means that thread's own cache of additive maps' means.
+        static MaterialReading read(std::span<const Shading> shading, AlphaScratch& scratch, MeanTexels& means);
 
         /// The material slot for a reading, adding it where the mirror holds none under its key,
         /// with one hold taken on the entry — `MeshResolver::adopt` says why a hold. Standing only:
@@ -142,8 +144,10 @@ namespace Rtx
             std::array<Index, sTextureWrapCount> mSlots{ sNoIndex, sNoIndex, sNoIndex, sNoIndex };
             std::optional<bool> mSolid;
 
-            /// Its mean texel, likewise unset until an additive material asks.
-            std::optional<MeanTexel> mMean;
+            /// Its mean texel in the process's cache, `MeanTexels`, or null until an additive
+            /// material asks. Null too for an image that is not a file, whose mean the cache
+            /// keeps no place for.
+            const MeanTexel* mMean = nullptr;
         };
 
         /// Every image an animated material has worn, each held in `mTextureOf` for as long as the
@@ -216,9 +220,9 @@ namespace Rtx
         /// walks every texel of the finest level.
         bool diffuseReachesSolid(const osg::Image* image);
 
-        /// What a texel of `image` adds on average under `blend` — `meanTexel`, read at the first
-        /// material that asks and kept for as long as the image is held. Asked only for an additive
-        /// material's own diffuse map, for the same reason. The untextured grey for no image.
+        /// What a texel of `image` adds on average under `blend` — `MeanTexels::of`, found by the
+        /// slot after the first ask. Asked only for an additive material's own diffuse map, because
+        /// the first ask for a file walks its texels. The untextured grey for no image.
         osg::Vec3f diffuseMeanOf(const osg::Image* image, BlendKind blend);
 
         SceneDesc& mScene;
@@ -239,9 +243,12 @@ namespace Rtx
         /// address would otherwise be handed the state set the first one's controllers were writing.
         Identity<const osg::Node, Animated> mAnimated{ mPass };
 
-        /// What `diffuseReachesSolid` and `diffuseMeanOf` read a texture in, refilled per image
-        /// they are asked about — which is once per translucent or additive diffuse map a cell
-        /// arrives with.
+        /// What `diffuseReachesSolid` reads a texture's alpha in, refilled per image it is asked
+        /// about — which is once per translucent diffuse map a cell arrives with.
         AlphaScratch mAlphaScratch;
+
+        /// The mean texel of every additive map met, for the process. The ring's reader has its
+        /// own and hands its answers over in the reading.
+        MeanTexels mMeans;
     };
 }

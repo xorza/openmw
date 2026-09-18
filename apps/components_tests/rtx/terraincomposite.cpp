@@ -162,9 +162,7 @@ namespace Rtx
 
             // A composite has no file and so no estimate of its own to make: the light painted into each
             // ground texture came off per tile in the bake, which is the only place the tiling is known.
-            EXPECT_EQ(described.mShading.size(), std::size_t{ ShadingMap::sExtent } * ShadingMap::sExtent);
-            for (const float factor : described.mShading)
-                EXPECT_FLOAT_EQ(factor, 1.0f) << "a composite that would be corrected a second time";
+            EXPECT_TRUE(described.mNeutralShading) << "a composite that would be corrected a second time";
         }
 
         /// The masks decide which ground type is on which side, and the chain averages them in light.

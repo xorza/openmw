@@ -19,6 +19,11 @@ namespace Rtx
     /// a factor of two, so paint that is black stays near black. Coarse on purpose, because
     /// painted lighting varies slowly and painted detail does not, and following the detail is the
     /// over-correction that flattens a texture into a colour.
+    ///
+    /// **The host's statement of the estimate.** The one the trace divides by is made on the
+    /// device as the texture arrives, `shadingmap.comp`, and held to this one by a test; this is
+    /// what the composite bake divides its layers by, what the texture sheet draws, and what
+    /// `paintedLight` reads.
     class ShadingMap
     {
     public:
@@ -51,10 +56,6 @@ namespace Rtx
     /// the range is the map's and not the format's.
     std::uint16_t encodeShading(float value);
     float decodeShading(std::uint16_t stored);
-
-    /// A whole map as the device stores it, and the neutral map where `map` is empty, because a
-    /// material whose texture would not load still reads a map at its slot.
-    std::array<std::uint16_t, ShadingMap::sCells> encodeShadingMap(std::span<const float> map);
 
     /// The map at a point, bilinear across it and wrapping with it — the shader's `paintedLight`.
     /// Wrapping because Morrowind's textures tile, and a clamp would seam every wall that repeats.

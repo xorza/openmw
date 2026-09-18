@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -22,10 +23,10 @@
 #include <components/rtx/prepared.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/shadingmap.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -241,24 +242,39 @@ namespace Rtx
             check(described, "described from the whole table");
         }
 
-        /// A sprite's lighting bake is a slot of the same table, made from the file its key names —
-        /// and where that file cannot be read there is no alpha to bake, so it gets the stand-in the
-        /// sprite itself gets, counted once.
-        TEST(RtxTextureBuilderTest, aSpriteLightBakeWithNoSourceToReadGetsTheStandIn)
+        /// A sprite's lighting bake is a slot of the same table, made on the device from the slot
+        /// of the file its key names: the description carries the source's slot and no bytes. Where
+        /// the table holds no such file there is no alpha to bake from, so it gets the stand-in a
+        /// sprite that could not be read gets, counted once.
+        TEST(RtxTextureBuilderTest, aSpriteLightBakeNamesItsSourcesSlotAndOneWithNoneGetsTheStandIn)
         {
+            constexpr VFS::Path::NormalizedView smoke("textures/tx_smoke.dds");
+
             VFS::Manager vfs;
             Resource::ImageManager images(&vfs, 0);
 
             Rtx::SceneDesc scene;
-            const Rtx::Index bake
-                = scene.textures().addBaked(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
+            const Rtx::Index bake = scene.textures().addBaked(SpriteLightMap::keyFor(smoke));
 
             SceneTextures described;
             described.describeAll(scene, images);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
+            EXPECT_EQ(described.getDescriptions()[0].mBakedFrom, Rtx::sNoIndex);
             EXPECT_EQ(described.getUnreadable(), 1u);
+
+            // The emitter holds the source under a wrap of its own beside the bake; the bake finds
+            // it whichever wrap that was, and is then a bake and not a texture.
+            const Rtx::Index source = scene.textures().add(smoke, Rtx::TextureWrap::ClampS);
+            described.describe(scene, images, std::span(&bake, 1));
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+            EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
+            EXPECT_EQ(described.getDescriptions()[0].mBakedFrom, source);
+            EXPECT_TRUE(described.getDescriptions()[0].mBytes.empty()) << "a bake carries no bytes";
+            EXPECT_TRUE(described.getDescriptions()[0].mLevels.empty()) << "a bake is shaped like its source";
+            EXPECT_TRUE(described.getDescriptions()[0].mNeutralShading);
+            EXPECT_EQ(described.getUnreadable(), 0u);
         }
         /// A describe takes a reading's chain and shading over building its own, and builds its own
         /// where nothing read the image ahead of it.
@@ -286,7 +302,6 @@ namespace Rtx
             std::vector<Rtx::MipLevel> levels;
             texture.mChain.build(describeImage(*image, levels));
             ASSERT_FALSE(texture.mChain.isEmpty());
-            texture.mShading.fill(2.0f);
             texture.mReadable = true;
 
             CellHolds reading;
@@ -296,21 +311,22 @@ namespace Rtx
             taken.describeAll(scene, images, nullptr, &reading);
             ASSERT_EQ(taken.getDescriptions().size(), 1u);
             EXPECT_EQ(taken.getDescriptions()[0].mLevels.size(), 3u) << "the reading's chain, down to one texel";
-            EXPECT_EQ(taken.getDescriptions()[0].mShading[0], 2.0f) << "the reading's estimate, not one made here";
-            EXPECT_EQ(taken.getDescriptions()[0].mShading.size(), Rtx::ShadingMap::sCells);
+            EXPECT_EQ(taken.getDescriptions()[0].mBytes.data(), texture.mChain.describe().mBytes.data())
+                << "the reading's own bytes, not a chain built here";
+            EXPECT_FALSE(taken.getDescriptions()[0].mNeutralShading) << "a file is estimated on the device";
 
             SceneTextures built;
             built.describeAll(scene, images);
             ASSERT_EQ(built.getDescriptions().size(), 1u);
             EXPECT_EQ(built.getDescriptions()[0].mLevels.size(), 3u) << "built here, to the same chain";
-            EXPECT_NEAR(built.getDescriptions()[0].mShading[0], 1.0f, 0.01f)
-                << "a flat grey estimates to one everywhere, which is not the reading's two";
+            EXPECT_NE(built.getDescriptions()[0].mBytes.data(), texture.mChain.describe().mBytes.data());
 
             // An unreadable reading is no reading: the miss path runs and the stand-in follows.
             texture.mReadable = false;
             SceneTextures again;
             again.describeAll(scene, images, nullptr, &reading);
-            EXPECT_NEAR(again.getDescriptions()[0].mShading[0], 1.0f, 0.01f);
+            EXPECT_EQ(again.getDescriptions()[0].mLevels.size(), 3u);
+            EXPECT_NE(again.getDescriptions()[0].mBytes.data(), texture.mChain.describe().mBytes.data());
         }
 
     }

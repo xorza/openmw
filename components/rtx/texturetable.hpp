@@ -64,6 +64,11 @@ namespace Rtx
         /// bake is one image whose coordinates run edge to edge.
         Index addBaked(std::string_view key);
 
+        /// The slot `path` stands in under any wrap, or `sNoIndex` where it stands in none. What a
+        /// bake made from a file's alpha finds its source by: the alpha is the same under every
+        /// wrap, and the bake's key carries the file and not the wrap.
+        Index findFile(VFS::Path::NormalizedView path) const;
+
         /// Takes and gives back one name on a slot. `sNoIndex` is "none" and costs a compare. The
         /// slot is freed by the `drop` after which nothing names it. A particle emitter's sprite
         /// names a texture this way: an emitter is rebuilt every frame, so whatever recognises it

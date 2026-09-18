@@ -19,13 +19,12 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "alphaimage.hpp"
 #include "compositequeue.hpp"
 #include "error.hpp"
 #include "held.hpp"
 #include "prepared.hpp"
 #include "scenedesc.hpp"
-#include "shadingmap.hpp"
+#include "spritelight.hpp"
 #include "terraincomposite.hpp"
 #include "texels.hpp"
 
@@ -115,7 +114,6 @@ namespace Rtx
         mLevels.clear();
         mDescriptions.clear();
         mKept.clear();
-        mSpriteLights.reset();
         mChains.reset();
         mUnreadable = 0;
 
@@ -135,46 +133,21 @@ namespace Rtx
             // the queue has not finished is passed over the same way.
 
             osg::ref_ptr<const osg::Image> image;
-            Index light = sNoIndex;
+            Index bakedFrom = sNoIndex;
 
             const TextureRow& row = scene.textures().getRows()[slot];
             if (row.mKind == TextureKind::File)
                 image = openImage(images, row.mPath);
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(row.mBaked))
             {
-                // Baked from the sprite texture's alpha, here, because here is where a file is
-                // opened for upload. The source's own description is transient — its levels go
-                // in a table thrown away with it — since nothing reaches the source through this
-                // slot; the emitter names the source by a slot of its own.
-                if (const osg::ref_ptr<const osg::Image> sprite = openImage(images, *source))
-                {
-                    mSourceLevels.clear();
-                    try
-                    {
-                        // The same chain the sprite's own slot gets, because a bake is read at
-                        // whatever level the ray can resolve and a source with one level would bake
-                        // one answer for every distance.
-                        const TextureData painted
-                            = MipChain::withChain(describeImage(*sprite, mSourceLevels), mSourceChain);
-
-                        mSourceAlpha.build(painted);
-                        if (!mSourceAlpha.isEmpty())
-                        {
-                            SpriteLightMap& bake = mSpriteLights.next();
-                            bake.build(mSourceAlpha);
-
-                            light = static_cast<Index>(mSpriteLights.keep());
-                        }
-                    }
-                    catch (const Error&)
-                    {
-                        // A source in a format this renderer does not upload is a bake with no
-                        // alpha to read, and it gets the stand-in below like the source itself.
-                    }
-                }
+                // Made on the device from the sprite texture's own slot, which the emitter holds
+                // beside this one: a bake carries no bytes and is shaped like its source there.
+                // A source the table no longer holds is a bake of nothing, and it gets the stand-in
+                // below like a file that could not be read.
+                bakedFrom = scene.textures().findFile(*source);
             }
 
-            mKept.push_back(Kept{ .mSlot = slot, .mLight = light, .mImage = std::move(image) });
+            mKept.push_back(Kept{ .mSlot = slot, .mBakedFrom = bakedFrom, .mImage = std::move(image) });
         }
 
         // Reserved before anything points into it, and that is what makes the spans safe. Every
@@ -201,15 +174,13 @@ namespace Rtx
                     described = describeImage(*kept.mImage, mLevels);
 
                     // What was read ahead of the frame is taken, and the rest read here. A
-                    // reading carries the chain the file did not have and the shading estimate;
-                    // both span the reading's own storage, which outlives this describe.
+                    // reading carries the chain the file did not have, spanning the reading's own
+                    // storage, which outlives this describe.
                     const PreparedTexture* read = readings != nullptr ? readings->find(*kept.mImage) : nullptr;
                     if (read != nullptr && read->mReadable)
                     {
                         if (!read->mChain.isEmpty())
                             described = read->mChain.describe();
-
-                        described->mShading = std::span<const float>(read->mShading);
                     }
                     else
                     {
@@ -227,9 +198,13 @@ namespace Rtx
                     described.reset();
                 }
             }
-            else if (kept.mLight != sNoIndex)
+            else if (kept.mBakedFrom != sNoIndex)
             {
-                described = mSpriteLights[kept.mLight].describe();
+                described = TextureData{
+                    .mFormat = TextureFormat::Rgba8Unorm,
+                    .mBakedFrom = kept.mBakedFrom,
+                    .mNeutralShading = true,
+                };
             }
             else if (const TerrainComposite* baked = composites != nullptr ? composites->find(kept.mSlot) : nullptr)
             {
@@ -248,6 +223,7 @@ namespace Rtx
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);
+                described->mNeutralShading = true;
             }
 
             described->mSlot = kept.mSlot;
@@ -256,34 +232,5 @@ namespace Rtx
         }
 
         assert(mLevels.capacity() == reserved && "the level table grew while descriptions spanned it");
-
-        // After the descriptions, because the estimate reads the bytes they point at, and into one
-        // table for the reason the levels are: the spans have to stay put.
-        constexpr std::size_t cells = std::size_t{ ShadingMap::sExtent } * ShadingMap::sExtent;
-        mShading.resize(mDescriptions.size() * cells);
-
-        for (std::size_t i = 0; i < mDescriptions.size(); ++i)
-        {
-            const auto into = mShading.begin() + static_cast<std::ptrdiff_t>(i * cells);
-            const std::span<const float> own = mDescriptions[i].mShading;
-
-            // A description that carries its own map keeps it. A composite says neutral,
-            // because the light painted into each ground texture came off per tile in the bake;
-            // an estimate made from its bytes instead would take the same light off twice, and
-            // read a quarter of a million texels on the frame the composite landed in to do it.
-            if (own.empty())
-            {
-                const ShadingMap map(mDescriptions[i]);
-                const std::span<const float> values = map.getValues();
-                std::copy(values.begin(), values.end(), into);
-                continue;
-            }
-
-            assert(own.size() == cells);
-            std::copy(own.begin(), own.end(), into);
-        }
-
-        for (std::size_t i = 0; i < mDescriptions.size(); ++i)
-            mDescriptions[i].mShading = std::span(mShading).subspan(i * cells, cells);
     }
 }

@@ -410,38 +410,34 @@ namespace Rtx::Testing
                 << "the wall shaded differently once its vertices moved into the second block";
         }
 
-        /// One linear-128 texel with `shading` painted over it: a texture with nothing in it but a
-        /// map, which is what a test of the estimate's other half wants.
+        /// One linear-128 texel, for a test whose subject is not the texture.
         constexpr std::array<std::uint8_t, 4> sGreyTexel{ 128, 128, 128, 255 };
-
-        TextureData describeGrey(std::span<const float> shading)
-        {
-            TextureData grey = describeTexel(sGreyTexel);
-            grey.mShading = shading;
-            return grey;
-        }
 
         /// The other half of de-lighting: the shader dividing the estimate back out.
         ///
-        /// `ShadingMap`'s own tests say the estimate is right; this says the frame uses it. A map is
-        /// handed in rather than estimated, so what is asserted is the arithmetic at the sample and
-        /// nothing about how the number was arrived at.
-        ///
-        /// The texture is a linear 128, which is 0.50196. Divided by a map of two that is 0.25098,
-        /// and `1.055 * 0.25098^(1/2.4) - 0.055` encodes to 137 of 255; left alone it encodes to
-        /// 188, which is what a half-lit surface comes out at for the same reason.
+        /// `ShadingMap`'s own tests say what the estimate is and `RtxShadingPassTest` says the
+        /// device makes the same one; this says the frame uses it. The frame looks at the middle
+        /// of the wall, `u` from 0.356 to 0.644, and the texture is bright across its middle half:
+        /// the centre pixel sees a texel of 1.0 under a factor of 1.501, eight cells from either
+        /// boundary, which is 0.66624 in light and `1.055 * 0.66624^(1/2.4) - 0.055` encodes to
+        /// 213 of 255. Left alone it encodes to 255, a texture of one tone estimates to one
+        /// everywhere and changes nothing, and the two tones flagged neutral — a composite, whose
+        /// light came off in the bake — are drawn as painted under a map that was cleared and
+        /// never estimated.
         TEST_F(RtxVisibilityTest, aTexturesPaintedLightIsDividedBackOutOfItsAlbedo)
         {
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
-            std::array<float, ShadingMap::sCells> painted{};
-            const TextureData grey = describeGrey(painted);
+            const Testing::TestTexture twoTones = Testing::paintTwoTones(32, 96);
+            const Testing::TestTexture oneTone = Testing::paintTwoTones(0, 128);
+            Testing::TestTexture composite = Testing::paintTwoTones(32, 96);
+            composite.mData.mNeutralShading = true;
 
             SceneDesc scene;
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index material = scene.addMaterial(
-                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds")) });
+                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("tones.dds")) });
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
@@ -449,49 +445,42 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
-            const auto shownAt = [&](float delight, float factor) {
-                painted.fill(factor);
+            const auto shownAt = [&](float delight, const TextureData& texture) {
                 camera.mDelight = delight;
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, std::span(&grey, 1), camera, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, std::span(&texture, 1), camera, size, pixels), size * size);
                 return static_cast<int>(pixels[centre]);
             };
 
-            EXPECT_NEAR(shownAt(1.0f, 2.0f), 137, 1) << "a texture painted twice as bright comes back half";
-            EXPECT_NEAR(shownAt(1.0f, 1.0f), 188, 1) << "and a neutral map changes nothing";
+            EXPECT_NEAR(shownAt(1.0f, twoTones.mData), 213, 1) << "a texture painted half again as bright comes back";
+            EXPECT_NEAR(shownAt(1.0f, oneTone.mData), 255, 1) << "and a neutral map changes nothing";
+            EXPECT_NEAR(shownAt(1.0f, composite.mData), 255, 1) << "a texture not to be estimated is not";
 
             // The strength is what makes this answerable rather than believable: the same map at no
             // strength has to leave the texture exactly as it was drawn.
-            EXPECT_NEAR(shownAt(0.0f, 2.0f), 188, 1) << "at zero strength the estimate is not applied";
+            EXPECT_NEAR(shownAt(0.0f, twoTones.mData), 255, 1) << "at zero strength the estimate is not applied";
         }
 
         /// The map read where the hit lands, blended and wrapped as the host reads it.
         ///
-        /// **The device's read against the host's, pixel by pixel.** The map is a gradient along
-        /// `u` from the floor to the ceiling, so between two cells the answer is a blend and at the
-        /// frame's first pixel it wraps: a wall scaled to fill the frame exactly puts that pixel's
-        /// `u` at a hundred and twenty-eighth, which is a quarter of a cell before the first cell's
-        /// centre, so the read leans on the last cell of the row. `Rtx::paintedLight` is the host's
-        /// spelling and the composite bake reads through it, so the two agreeing is what keeps a
-        /// flattened chunk and its live stack the same ground.
+        /// **The device's read against the host's, pixel by pixel.** The texture is bright over its
+        /// left half and dark over its right, so its estimate steps down at `u = 0.5` and back up at
+        /// the wrap, each step blurred over six cells; between two cells the answer is a blend, and
+        /// at the frame's first pixel it wraps: a wall scaled to fill the frame exactly puts that
+        /// pixel's `u` at a hundred and twenty-eighth, which is a quarter of a cell before the first
+        /// cell's centre, so the read leans on the last cell of the row. `Rtx::paintedLight` is the
+        /// host's spelling and the composite bake reads through it, so the two agreeing is what
+        /// keeps a flattened chunk and its live stack the same ground. The pixels asked are away
+        /// from the two tone boundaries, where the sampled texel is one tone whole.
         ///
         /// Within a byte, which is where the map's own step and the sampler's eight-bit weights both
-        /// land: the gradient changes by a twentieth between neighbouring cells, and an eighth of a
-        /// per cent of that is nothing a byte can see.
+        /// land: a step of the device's estimate against the host's is a part in forty thousand.
         TEST_F(RtxVisibilityTest, aTexturesPaintedLightIsReadWhereTheHitLandsAsTheHostReadsIt)
         {
             constexpr std::uint32_t size = 64;
-            constexpr std::uint32_t extent = ShadingMap::sExtent;
-
-            std::array<float, ShadingMap::sCells> painted{};
-            for (std::size_t row = 0; row < extent; ++row)
-                for (std::size_t column = 0; column < extent; ++column)
-                    painted[row * extent + column] = ShadingMap::sFloor
-                        + (ShadingMap::sCeiling - ShadingMap::sFloor) * static_cast<float>(column)
-                            / static_cast<float>(extent - 1);
-
-            const TextureData grey = describeGrey(painted);
+            const Testing::TestTexture painted = Testing::paintTwoTones(0, 64);
+            const ShadingMap host(painted.mData);
 
             // The wall is four hundred across and the frame sees `2 * tan(30) * 100` of it, so this
             // scale puts the wall's edges on the frame's and `u` at `(x + 0.5) / size` at pixel `x`.
@@ -501,7 +490,7 @@ namespace Rtx::Testing
             const Index mesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
             const Index material = scene.addMaterial(
-                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds")) });
+                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("tones.dds")) });
             scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::scale(fills, 1.0f, fills), .mMesh = mesh, .mMaterial = material });
 
@@ -511,16 +500,17 @@ namespace Rtx::Testing
             camera.mDelight = 1.0f;
 
             std::vector<std::uint8_t> pixels;
-            ASSERT_EQ(countHits(scene, std::span(&grey, 1), camera, size, pixels), size * size);
+            ASSERT_EQ(countHits(scene, std::span(&painted.mData, 1), camera, size, pixels), size * size);
 
             constexpr std::uint32_t row = size / 2;
-            for (const std::uint32_t x : { 0u, 1u, size / 2, size - 1 })
+            for (const std::uint32_t x : { 0u, 1u, 2u, 28u, 36u, size - 1 })
             {
                 const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
                 const float v = (static_cast<float>(row) + 0.5f) / static_cast<float>(size);
-                const float factor = paintedLight(painted, u, v);
+                const float factor = paintedLight(host.getValues(), u, v);
+                const float texel = u < 0.5f ? 1.0f : 0.33247f;
 
-                const int expected = encodeSrgb(128.0f / 255.0f / factor);
+                const int expected = encodeSrgb(texel / factor);
                 EXPECT_NEAR(int{ pixels[(std::size_t{ row } * size + x) * 4] }, expected, 1)
                     << "at pixel " << x << ", where the host reads " << factor;
             }

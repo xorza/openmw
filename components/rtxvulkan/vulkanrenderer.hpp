@@ -37,7 +37,9 @@
 #include "instance.hpp"
 #include "presenttargets.hpp"
 #include "ripplepass.hpp"
+#include "shadingpass.hpp"
 #include "skinpass.hpp"
+#include "spritelightpass.hpp"
 #include "spritepasses.hpp"
 #include "stresspass.hpp"
 #include "tracechain.hpp"
@@ -300,6 +302,11 @@ namespace Rtx
         /// One pass for everything posed, the doll included: what differs per scene is the
         /// tables, which each `DeviceScene` holds. Before the scenes, which hold it by reference.
         SkinPass mSkinPass;
+
+        /// One pass for every texture's shading map and one for every sprite's light bake, the
+        /// doll's and the maps' included, for the same reason and held the same way.
+        ShadingPass mShadingPass;
+        SpriteLightPass mSpriteLightPass;
 
         /// The hold `RenderProfile::mStressOverlapMs` asked for, or nothing.
         std::unique_ptr<StressPass> mStress;

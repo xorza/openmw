@@ -18,8 +18,10 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/graphicspipeline.hpp>
 #include <components/rtxvulkan/guipass.hpp>
+#include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
+#include <components/rtxvulkan/shadingpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "guiquad.hpp"
@@ -102,11 +104,15 @@ namespace Rtx
 
             /// A texture on the device, waited for. The renderer records these into a batch it
             /// flushes once for a whole cell; a test wants the one texture ready on the next line.
+            /// Its shading map is estimated as the renderer's would be, and read by nothing here.
             Texture makeTexture(const TextureData& data, std::string_view name)
             {
+                const ShadingPass shading(getDevice(), Testing::getShaderDirectory());
+                const Sampler sampler = makeContentSampler(getDevice(), "gui test");
+
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                Texture texture(getDevice(), upload, data, name, regions);
+                Texture texture(getDevice(), upload, shading, sampler.get(), data, name, regions);
                 upload.flush();
                 return texture;
             }

@@ -66,6 +66,8 @@ set(RTX_FILES
     materialresolver.hpp
     materialtable.cpp
     materialtable.hpp
+    meantexels.cpp
+    meantexels.hpp
     memoryreport.cpp
     memoryreport.hpp
     mesh.hpp
@@ -173,9 +175,11 @@ set(RTX_SHADER_HEADERS
     shaders/probe.h
     shaders/ripple.h
     shaders/scene.h
+    shaders/shadingmap.h
     shaders/skinning.h
     shaders/sky.h
     shaders/spritebin.h
+    shaders/spritelight.h
     shaders/spriteshade.h
     shaders/stress.h
     shaders/tone.h

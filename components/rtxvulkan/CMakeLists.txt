@@ -49,8 +49,11 @@ set(RTX_SHADERS
     shaders/morph.comp
     shaders/ripplecompose.comp
     shaders/ripplestep.comp
+    shaders/shadingmap.comp
+    shaders/shadingsum.comp
     shaders/skin.comp
     shaders/spritecomposite.rgen
+    shaders/spritelight.comp
     shaders/spriterects.comp
     shaders/spriteruns.comp
     shaders/spriteshade.comp
@@ -235,6 +238,8 @@ set(RTX_VULKAN_FILES
     sceneacceleration.hpp
     scenebuffers.cpp
     scenebuffers.hpp
+    shadingpass.cpp
+    shadingpass.hpp
     skinpass.cpp
     skinpass.hpp
     skintables.cpp
@@ -242,6 +247,8 @@ set(RTX_VULKAN_FILES
     slottable.hpp
     spritebin.cpp
     spritebin.hpp
+    spritelightpass.cpp
+    spritelightpass.hpp
     spritepasses.cpp
     spritepasses.hpp
     stresspass.cpp

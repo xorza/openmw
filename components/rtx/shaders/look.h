@@ -303,7 +303,7 @@ namespace Rtx::Shaders
     /// the whole of the format's range is spent on the values a map can hold — a step of one part
     /// in forty thousand — and the neutral map, one everywhere, lands on exactly a third: 21845 of
     /// 65535, which the decode carries back to exactly one. `Rtx::ShadingMap` says why the bounds
-    /// are what they are, and `Rtx::encodeShading` is the one statement of the encode.
+    /// are what they are, and `shadingUnit` in `shadingmap.h` is the one statement of the encode.
     const float SHADING_FLOOR = 0.5f;
     const float SHADING_CEILING = 2.0f;
 

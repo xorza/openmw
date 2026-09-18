@@ -50,8 +50,11 @@ namespace Rtx
         /// Reads a device's own answers into the decisions this renderer makes from them. Nothing here
         /// calls Vulkan, so a test can hand it a card that is not plugged in. `supported` is mutable
         /// for the reason `findMissingFeatures` is; nothing writes to it.
+        ///
+        /// @param formats what the device offers for each of `getRequiredFormats`, in that order.
         static Profile profileOf(const DeviceProperties& properties, DeviceFeatures& supported,
-            std::span<const std::string> extensions, std::span<const VkQueueFamilyProperties> queues);
+            std::span<const std::string> extensions, std::span<const VkQueueFamilyProperties> queues,
+            std::span<const VkFormatProperties> formats);
 
         /// Picks a device, preferring discrete over anything else. Throws `Error` listing every
         /// candidate and what each was missing when none qualifies — the one moment where a wall

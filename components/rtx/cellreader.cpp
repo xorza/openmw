@@ -20,7 +20,6 @@
 #include "error.hpp"
 #include "lightbuilder.hpp"
 #include "residency.hpp"
-#include "shadingmap.hpp"
 #include "surface.hpp"
 #include "texturebuilder.hpp"
 
@@ -72,18 +71,14 @@ namespace Rtx
             into.mImage = &image;
             into.mPath = VFS::Path::Normalized(image.getFileName());
 
-            // What the frame's describe would have done, done here. A file that carried no chain
-            // gets one built; every file gets its shading estimated. Both read every texel, and
-            // both are what the frame then finds ready. A format this renderer does not upload is
-            // recorded as such and drawn as the stand-in there, as it would be without this.
+            // What the frame's describe would have done, done here: a file that carried no chain
+            // gets one built, which reads every texel and is what the frame then finds ready. A
+            // format this renderer does not upload is recorded as such and drawn as the stand-in
+            // there, as it would be without this.
             try
             {
                 mLevelScratch.clear();
-                const TextureData described = MipChain::withChain(describeImage(image, mLevelScratch), into.mChain);
-
-                const ShadingMap map(described);
-                const std::span<const float> values = map.getValues();
-                std::copy(values.begin(), values.end(), into.mShading.begin());
+                MipChain::withChain(describeImage(image, mLevelScratch), into.mChain);
 
                 into.mReadable = true;
             }

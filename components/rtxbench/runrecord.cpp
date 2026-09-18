@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -71,6 +72,13 @@ namespace Rtx
             const std::uint32_t left = drawn.getLeftOf(index);
             const std::uint32_t top = drawn.getTopOf(index);
 
+            // The estimate the device makes as the texture arrives, made here for the sheet: the
+            // host's `ShadingMap` is the reference that dispatch is held to, and neutral where the
+            // texture is one nothing estimates.
+            const std::optional<ShadingMap> painted = texture.mNeutralShading || !(strength > 0.0f)
+                ? std::nullopt
+                : std::optional<ShadingMap>(std::in_place, texture);
+
             for (std::uint32_t y = 0; y < sThumbnail; ++y)
                 for (std::uint32_t x = 0; x < sThumbnail; ++x)
                 {
@@ -84,13 +92,13 @@ namespace Rtx
 
                     const osg::Vec3f stored = Rtx::texelAt(texture, texture.mLevels.front(), texelX, texelY);
                     osg::Vec3f corrected = stored;
-                    if (!texture.mShading.empty() && strength > 0.0f)
+                    if (painted.has_value())
                     {
                         // **In linear, because that is where the shader divides.** A texture's
                         // bytes are display-encoded and the sampler hands the frame linear values,
                         // so a sheet that divided the bytes would be showing a correction the
                         // renderer never applies — half again too strong in the darks.
-                        const float factor = std::lerp(1.0f, Rtx::paintedLight(texture.mShading, u, v), strength);
+                        const float factor = std::lerp(1.0f, Rtx::paintedLight(painted->getValues(), u, v), strength);
                         const bool srgb = Rtx::isSrgb(texture.mFormat);
                         for (int channel = 0; channel < 3; ++channel)
                         {

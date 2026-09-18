@@ -56,8 +56,8 @@ namespace Rtx
         std::vector<std::uint8_t> mValues;
     };
 
-    /// The buffers `reachesSolid` reads an image through, held by whoever asks rather than made
-    /// per call, because a cell arrives with many translucent diffuse maps.
+    /// The buffers `reachesSolid` and `meanTexel` read an image through, held by whoever asks
+    /// rather than made per call, because a cell arrives with many translucent diffuse maps.
     struct AlphaScratch
     {
         std::vector<MipLevel> mLevels;

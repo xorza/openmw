@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -58,13 +59,14 @@ namespace Rtx
             return mView.get();
         }
 
-        /// The view a storage descriptor takes, which is the first level alone, because Vulkan will
+        /// The view a storage descriptor takes for `level`: one level alone, because Vulkan will
         /// not let a storage image name a chain. An image without a chain hands back the only view
-        /// it has. A hand-out, as `getView` is.
-        VkImageView getStorageView() const
+        /// it has, and `level` must be one it holds. A hand-out, as `getView` is.
+        VkImageView getStorageView(std::uint32_t level = 0) const
         {
             nameForNext();
-            return mStorageView.get() != VK_NULL_HANDLE ? mStorageView.get() : mView.get();
+            assert(level < mMipLevels);
+            return mLevelViews.empty() ? mView.get() : mLevelViews[level].get();
         }
 
         /// Whether every submit that names this image has run — what the destructor asserts, and
@@ -76,12 +78,12 @@ namespace Rtx
         /// names the wait in the error a device that stops answering produces.
         void waitIdle(const char* what) const;
 
-        /// This image as a storage descriptor takes it: the storage view, in `GENERAL`. Every
-        /// storage image this renderer binds rests in `GENERAL`, and the view is the one a chain
-        /// may not hand a storage descriptor — so a caller cannot pick the wrong one.
-        VkDescriptorImageInfo describeStorage() const
+        /// This image as a storage descriptor takes it: `level`'s storage view, in `GENERAL`.
+        /// Every storage image this renderer binds rests in `GENERAL`, and the view is the one a
+        /// chain may not hand a storage descriptor — so a caller cannot pick the wrong one.
+        VkDescriptorImageInfo describeStorage(std::uint32_t level = 0) const
         {
-            return VkDescriptorImageInfo{ VK_NULL_HANDLE, getStorageView(), VK_IMAGE_LAYOUT_GENERAL };
+            return VkDescriptorImageInfo{ VK_NULL_HANDLE, getStorageView(level), VK_IMAGE_LAYOUT_GENERAL };
         }
 
         /// This image as a sampled descriptor takes it, through `sampler`, in `layout` — `GENERAL`
@@ -160,7 +162,10 @@ namespace Rtx
         ReadStamp mRead;
         Owned<VkImage, vkDestroyImage> mHandle;
         Owned<VkImageView, vkDestroyImageView> mView;
-        Owned<VkImageView, vkDestroyImageView> mStorageView;
+
+        /// One view a level, for a chain something writes through as storage; empty for an image
+        /// that is not both, which is nearly every one.
+        std::vector<Owned<VkImageView, vkDestroyImageView>> mLevelViews;
         DeviceMemory mMemory;
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;

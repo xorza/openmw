@@ -23,6 +23,10 @@ namespace Rtx
     /// `(1 - a) ^ (1 / N)` for a level `N` texels across — no constant in it. Baked per level from
     /// that level's own alpha, because the shader samples both at one level. The channels are
     /// light from `+u`, `-u`, `+v`, `-v` in the texture's own coordinates, as `sprites.glsl` reads.
+    ///
+    /// **The host's statement of the bake.** The one the trace samples is made on the device as
+    /// the sprite arrives, `spritelight.comp`, and held to this one by a test; what the scene
+    /// names a bake by is `keyFor`.
     class SpriteLightMap
     {
     public:

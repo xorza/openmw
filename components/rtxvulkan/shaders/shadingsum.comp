@@ -1,0 +1,89 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+// The first half of the shading estimate: every cell's sum, over the whole card.
+//
+// **Thirty-two workgroups, one a row of cells, thirty-two lanes a cell.** The estimate is one
+// workgroup's worth of arithmetic once the sums are in — `shadingmap.comp` — but the sums are a
+// read of every texel, and one workgroup reading a texture of a quarter of a million texels is one
+// multiprocessor of seventy-six at it for sixty microseconds a texture. A crossing brings six
+// hundred textures, and that read was a per cent and a half of every frame of the walk. Spread
+// over a workgroup a row and a lane a texel row, the read is a few microseconds and the rest of
+// the card is free for the frame behind it.
+//
+// **Every lane sums its own rows and the lanes fold in a fixed tree**, so a texture's sums are
+// the same sums on every run. `shadingmap.comp` says what a cell is and which texels count.
+
+#include "colour.h"
+#include "shadingmap.h"
+
+layout(local_size_x = SHADING_EXTENT, local_size_y = SHADING_EXTENT) in;
+
+layout(set = 0, binding = 0) uniform sampler2D source;
+
+layout(set = 0, binding = 1, scalar) writeonly buffer Sums
+{
+    ShadingSum sums[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    ShadingConstants read;
+};
+
+shared float partSum[SHADING_EXTENT * SHADING_EXTENT];
+shared uint partCount[SHADING_EXTENT * SHADING_EXTENT];
+
+/// The smallest texel of `cell` along an axis of `extent` texels: the first `x` with
+/// `x * SHADING_EXTENT / extent >= cell`, which is the host's `cellOf` inverted.
+uint cellBegin(uint cell, uint extent)
+{
+    return (cell * extent + SHADING_EXTENT - 1u) / SHADING_EXTENT;
+}
+
+void main()
+{
+    const uint column = gl_LocalInvocationID.x;
+    const uint lane = gl_LocalInvocationID.y;
+    const uint row = gl_WorkGroupID.x;
+    const uint id = lane * SHADING_EXTENT + column;
+
+    const uint xBegin = cellBegin(column, read.mWidth);
+    const uint xEnd = cellBegin(column + 1u, read.mWidth);
+    const uint yBegin = cellBegin(row, read.mHeight);
+    const uint yEnd = cellBegin(row + 1u, read.mHeight);
+
+    // This lane's rows of the cell: every thirty-second, so a cell four texels tall is read by
+    // four lanes and one a hundred tall by all of them.
+    float sum = 0.0;
+    uint count = 0u;
+    for (uint y = yBegin + lane; y < yEnd; y += SHADING_EXTENT)
+        for (uint x = xBegin; x < xEnd; ++x)
+        {
+            const vec4 texel = texelFetch(source, ivec2(x, y), 0);
+            if (read.mPunchThrough != 0u && texel.a == 0.0)
+                continue;
+
+            sum += dot(texel.rgb, LUMINANCE_WEIGHTS);
+            ++count;
+        }
+
+    partSum[id] = sum;
+    partCount[id] = count;
+
+    // The lanes of each column folded together, halving the lanes each step.
+    for (uint stride = SHADING_EXTENT / 2u; stride > 0u; stride >>= 1u)
+    {
+        barrier();
+        if (lane < stride)
+        {
+            partSum[id] += partSum[id + stride * SHADING_EXTENT];
+            partCount[id] += partCount[id + stride * SHADING_EXTENT];
+        }
+    }
+    barrier();
+
+    if (lane == 0u)
+        sums[row * SHADING_EXTENT + column] = ShadingSum(partSum[column], partCount[column]);
+}

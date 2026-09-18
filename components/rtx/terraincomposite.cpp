@@ -325,14 +325,11 @@ namespace Rtx
 
     TextureData TerrainComposite::describe() const
     {
-        // Neutral, and one grid shared by every composite there will ever be. A texture with no
-        // map at all reads whatever the array's stand-in holds, and there is nothing left for a real
-        // one to say: the light painted into the ground came off per tile during the bake, which is
-        // the only place the tiling was still known.
-        static const ShadingMap sNeutral;
-
+        // Neutral, because there is nothing left for an estimate to say: the light painted into
+        // the ground came off per tile during the bake, which is the only place the tiling was
+        // still known.
         TextureData described = mTexture.describe();
-        described.mShading = sNeutral.getValues();
+        described.mNeutralShading = true;
 
         return described;
     }

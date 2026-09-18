@@ -292,6 +292,64 @@ namespace Rtx
                 << "an untextured surface's stand-in";
         }
 
+        /// One block of `spelling`, `width` by `height` texels of it in the image — fewer than four
+        /// where the block pads past the picture's edge, which a BC file two texels wide does.
+        osg::ref_ptr<osg::Image> makeBlockImage(
+            GLenum spelling, std::uint32_t width, std::uint32_t height, std::initializer_list<std::uint8_t> bytes)
+        {
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+            image->setFileName("block.dds");
+            image->allocateImage(static_cast<int>(width), static_cast<int>(height), 1, spelling, GL_UNSIGNED_BYTE);
+
+            std::size_t at = 0;
+            for (const std::uint8_t byte : bytes)
+                image->data()[at++] = byte;
+
+            return image;
+        }
+
+        /// A block format answers a block at a time, and stops at the first solid one, so the
+        /// answer is read off the block's own spelling: a BC1 block with its endpoints descending
+        /// has four opaque colours and no hole; ascending, its fourth index is the hole and any
+        /// other index is paint. A BC3 block ascending spends index seven on 255 outright.
+        ///
+        /// **A texel the block pads past the picture's edge says nothing about the picture.** A
+        /// two-by-two BC3 image is one sixteen-texel block, and a 255 in a texel outside the two
+        /// by two is one nothing ever draws. The block below puts 200 in the four texels of the
+        /// picture and 255 in texel three, which is inside the block and outside a two-by-two, and
+        /// inside a four-by-four: indices `1, 1, 0, 7, 1, 1` over texels nought to five are
+        /// `1 | 1 << 3 | 7 << 9 | 1 << 12 | 1 << 15 = 0x9E09`, little-endian `09 9E`.
+        TEST(RtxAlphaImageTest, aBlockFormatReachesSolidByItsBlocksAndNeverByItsPadding)
+        {
+            AlphaScratch scratch;
+
+            EXPECT_TRUE(reachesSolid(*makeBlockImage(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 4, 4,
+                                         { 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF }),
+                scratch))
+                << "descending endpoints: four colours and no hole";
+            EXPECT_FALSE(reachesSolid(*makeBlockImage(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 4, 4,
+                                          { 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }),
+                scratch))
+                << "ascending endpoints and every index three: all hole";
+            EXPECT_TRUE(reachesSolid(*makeBlockImage(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 4, 4,
+                                         { 0x00, 0x00, 0xFF, 0xFF, 0xFC, 0xFF, 0xFF, 0xFF }),
+                scratch))
+                << "ascending endpoints and one index nought: one texel of paint";
+
+            EXPECT_FALSE(reachesSolid(*makeBlockImage(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 2, 2,
+                                          { 0, 200, 0x09, 0x9E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }),
+                scratch))
+                << "the 255 is in the padding";
+            EXPECT_TRUE(reachesSolid(*makeBlockImage(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 4, 4,
+                                         { 0, 200, 0x09, 0x9E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }),
+                scratch))
+                << "the same block whole: texel three is in the picture";
+            EXPECT_FALSE(reachesSolid(*makeBlockImage(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 4, 4,
+                                          { 200, 0, 0x09, 0x9E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }),
+                scratch))
+                << "descending from 200, index seven is a step of the ramp and nothing reaches 255";
+        }
+
         /// The second image a scratch reads costs the heap nothing, and reads as itself.
         ///
         /// **What holding one is for.** `MaterialResolver` asks this of every translucent diffuse

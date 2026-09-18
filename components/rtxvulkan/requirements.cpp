@@ -125,6 +125,21 @@ namespace Rtx
         };
     }
 
+    namespace
+    {
+        constexpr std::array<RequiredFormat, 1> sRequiredFormats{
+            // The shading estimate is written by a dispatch straight into the sixteen-bit map the
+            // trace samples — `ShadingPass` — and a sixteen-bit unorm as a storage image is one of
+            // the features Vulkan leaves optional.
+            RequiredFormat{ VK_FORMAT_R16_UNORM, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT, "the shading map's dispatch" },
+        };
+    }
+
+    std::span<const RequiredFormat> getRequiredFormats()
+    {
+        return sRequiredFormats;
+    }
+
     DeviceFeatures::DeviceFeatures()
     {
         void* next = nullptr;

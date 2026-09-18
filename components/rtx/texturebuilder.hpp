@@ -10,11 +10,9 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "alphaimage.hpp"
 #include "mipchain.hpp"
 #include "runs.hpp"
 #include "scratch.hpp"
-#include "spritelight.hpp"
 #include "texturedata.hpp"
 
 namespace Resource
@@ -60,15 +58,15 @@ namespace Rtx
         /// @param composites where a chunk's flattened ground comes from, or null for a caller
         ///        that bakes none. A terrain slot the queue has no composite for yet is passed over.
         /// @param readings the cell ring's holds, where images read ahead of the frame are found
-        ///        by the image — a lookup instead of every texel for the chain and the shading
-        ///        estimate — or null for a caller with none: a doll, a map tile, the harness's own
+        ///        by the image — a lookup instead of every texel for the chain a file did not
+        ///        carry — or null for a caller with none: a doll, a map tile, the harness's own
         ///        world.
         void describeAll(const SceneDesc& scene, Resource::ImageManager& images,
             const CompositeQueue* composites = nullptr, const CellHolds* readings = nullptr);
 
-        /// The same, for `slots` and nothing else — what stops a texture being decoded and its
-        /// shading estimated twice. A list and not an offset, because a slot a departing cell freed
-        /// is taken over wherever it sits.
+        /// The same, for `slots` and nothing else — what stops a texture being decoded twice. A
+        /// list and not an offset, because a slot a departing cell freed is taken over wherever it
+        /// sits.
         void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
             const CompositeQueue* composites = nullptr, const CellHolds* readings = nullptr);
 
@@ -86,9 +84,10 @@ namespace Rtx
         {
             Index mSlot = sNoIndex;
 
-            /// Which of `mSpriteLights` this slot's bake is, or `sNoIndex` where it is no such
-            /// bake.
-            Index mLight = sNoIndex;
+            /// The slot of the sprite texture this slot's bake is made from on the device, or
+            /// `sNoIndex` where the slot is no bake, or a bake whose source the table no longer
+            /// holds.
+            Index mBakedFrom = sNoIndex;
 
             /// The file's image, or null where the slot names no file or nothing could be read
             /// there.
@@ -102,20 +101,11 @@ namespace Rtx
         /// no longer one per entry of what it was asked for.
         std::vector<Kept> mKept;
 
-        /// Every texture's estimated lighting, back to back and `SHADING_EXTENT` squared apiece.
-        /// Made on load and thrown away with the cell, because a cache would cost more than it
-        /// saved: a cell's couple of hundred textures estimate in well under a millisecond.
-        std::vector<float> mShading;
-
         /// Every image's levels, back to back. One table rather than one vector each: a cell reaches
         /// a couple of hundred textures, and the descriptions want a span into something stable.
         std::vector<MipLevel> mLevels;
 
         std::vector<TextureData> mDescriptions;
-
-        /// The bakes of the sprite textures the scene's emitters draw with, each made here from the
-        /// alpha of the file its key names. `SpriteLightMap` says what one is.
-        Pool<SpriteLightMap> mSpriteLights;
 
         /// The levels the files did not carry, for the few textures that carry none — a hundred
         /// and eighty-seven of Morrowind's five thousand. A pool of the chains that were built and
@@ -125,13 +115,6 @@ namespace Rtx
         /// Every slot of the scene's table, which is what a rebuild asks about. Held rather than
         /// built, because a rebuild is a fifth of a second and none of it should be this.
         std::vector<Index> mEverything;
-
-        /// One sprite source while its bake is read, and nothing after: a source is described only
-        /// to reach its alpha, and no description of it outlives the call. Held for the reason
-        /// everything above is — a crossing bakes every emitter's sheet in one arrival.
-        std::vector<MipLevel> mSourceLevels;
-        MipChain mSourceChain;
-        AlphaImage mSourceAlpha;
 
         std::uint32_t mUnreadable = 0;
     };

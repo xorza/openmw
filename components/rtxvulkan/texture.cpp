@@ -6,14 +6,18 @@
 #include <utility>
 #include <vector>
 
+#include <components/rtx/contract.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
-#include <components/rtx/shadingmap.hpp>
+#include <components/rtx/shaders/shadingmap.h>
 
 #include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
+#include "imageuse.hpp"
+#include "shadingpass.hpp"
+#include "spritelightpass.hpp"
 
 namespace Rtx
 {
@@ -24,38 +28,36 @@ namespace Rtx
         /// reach this.
         constexpr std::uint32_t sMaxTextures = 4096;
 
-        /// The one place a `TextureFormat` becomes Vulkan's. Every case is sRGB: the files hold
-        /// display-encoded bytes and the hardware converts them in the filter.
-        VkFormat toVulkanFormat(TextureFormat format)
+        /// The map beside a texture, left where the array's sampler expects it: cleared to the
+        /// neutral factor, or made by the caller behind this. One level and no chain: the map is
+        /// read at level nought whatever the cone, because it has no detail for a level to lose.
+        ///
+        /// @param neutral whether to clear it, as the float the unorm is rounded from, or to
+        ///        leave it undefined for a dispatch to write.
+        Image makeShadingMap(const Device& device, Batch& batch, std::string_view name, bool neutral)
         {
-            switch (format)
-            {
-                case TextureFormat::Bc1RgbaSrgb:
-                    return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
-                case TextureFormat::Bc2Srgb:
-                    return VK_FORMAT_BC2_SRGB_BLOCK;
-                case TextureFormat::Bc3Srgb:
-                    return VK_FORMAT_BC3_SRGB_BLOCK;
-                case TextureFormat::Rgba8Unorm:
-                    return VK_FORMAT_R8G8B8A8_UNORM;
-                case TextureFormat::Rgba8Srgb:
-                    return VK_FORMAT_R8G8B8A8_SRGB;
-                case TextureFormat::Bgra8Srgb:
-                    return VK_FORMAT_B8G8R8A8_SRGB;
+            // Built only where something reads it. A release build names no object, and the
+            // concatenation is past what a short string holds — so building it anyway is one trip
+            // to the heap per texture, for a name that goes nowhere.
+            std::string shadingName;
+            if constexpr (Device::wantsNames())
+                shadingName = std::string(name) + " shading";
 
-                // Never uploaded: `describeImage` refuses them, so one arriving here is a contract
-                // broken and not a file.
-                case TextureFormat::Rgb8:
-                case TextureFormat::Luminance:
-                case TextureFormat::LuminanceAlpha:
-                case TextureFormat::Unnamed:
-                    break;
+            Image map(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
+
+            if (neutral)
+            {
+                const VkClearColorValue value{ .float32 = { Shaders::shadingUnit(1.0f), 0.0f, 0.0f, 0.0f } };
+                map.clear(batch.getCommands(), Use::sUndefined, value, Use::sTextureSample);
             }
 
-            // A format nothing above named: a new one that forgets a case lands here rather than
-            // creating an image with a format nobody chose.
-            throw Error("a texture format this renderer does not upload");
+            return map;
         }
+
+        /// What a map costs in the accounting `Texture::getBytes` reports.
+        constexpr std::size_t sShadingBytes
+            = std::size_t{ Shaders::SHADING_EXTENT } * Shaders::SHADING_EXTENT * sizeof(std::uint16_t);
 
         /// The two arrays the set holds: the textures, and their shading maps at the same slots.
         constexpr std::uint32_t sTextureBinding = 0;
@@ -79,8 +81,39 @@ namespace Rtx
         };
     }
 
-    Texture::Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name,
-        std::vector<VkBufferImageCopy>& regions)
+    VkFormat toVulkanFormat(TextureFormat format)
+    {
+        switch (format)
+        {
+            case TextureFormat::Bc1RgbaSrgb:
+                return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+            case TextureFormat::Bc2Srgb:
+                return VK_FORMAT_BC2_SRGB_BLOCK;
+            case TextureFormat::Bc3Srgb:
+                return VK_FORMAT_BC3_SRGB_BLOCK;
+            case TextureFormat::Rgba8Unorm:
+                return VK_FORMAT_R8G8B8A8_UNORM;
+            case TextureFormat::Rgba8Srgb:
+                return VK_FORMAT_R8G8B8A8_SRGB;
+            case TextureFormat::Bgra8Srgb:
+                return VK_FORMAT_B8G8R8A8_SRGB;
+
+            // Never uploaded: `describeImage` refuses them, so one arriving here is a contract
+            // broken and not a file.
+            case TextureFormat::Rgb8:
+            case TextureFormat::Luminance:
+            case TextureFormat::LuminanceAlpha:
+            case TextureFormat::Unnamed:
+                break;
+        }
+
+        // A format nothing above named: a new one that forgets a case lands here rather than
+        // creating an image with a format nobody chose.
+        throw Error("a texture format this renderer does not upload");
+    }
+
+    Texture::Texture(const Device& device, Batch& batch, const ShadingPass& shading, const VkSampler sampler,
+        const TextureData& data, std::string_view name, std::vector<VkBufferImageCopy>& regions)
     {
         assert(!data.mLevels.empty());
 
@@ -102,28 +135,37 @@ namespace Rtx
         uploadImage(batch, mImage, data.mBytes, regions);
         mWrap = data.mWrap;
 
-        // The map, in the same batch and left where the same sampler expects it. One level and
-        // no chain: the map is read at level nought whatever the cone, because it has no detail for
-        // a level to lose.
-        const std::array<std::uint16_t, ShadingMap::sCells> stored = encodeShadingMap(data.mShading);
+        // Estimated off the texture just uploaded, by a dispatch behind the copy, or cleared to
+        // the neutral factor where nothing is to be estimated — `TextureData::mNeutralShading`.
+        mShading = makeShadingMap(device, batch, name, data.mNeutralShading);
+        if (!data.mNeutralShading)
+            shading.record(batch.getCommands(), mImage, sampler, mShading, data);
 
-        // Built only where something reads it. A release build names no object, and the
-        // concatenation is past what a short string holds — so building it anyway is one trip to the
-        // heap per texture, for a name that goes nowhere.
-        std::string shadingName;
-        if constexpr (Device::wantsNames())
-            shadingName = std::string(name) + " shading";
+        mBytes = data.mBytes.size() + sShadingBytes;
+    }
 
-        mShading = Image(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
+    Texture::Texture(const Device& device, Batch& batch, const SpriteLightPass& bake, const VkSampler sampler,
+        const Texture& source, std::string_view name)
+    {
+        assert(!source.isEmpty());
 
-        VkBufferImageCopy region{
-            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            .imageExtent = { Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, 1 },
-        };
-        uploadImage(batch, mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
+        const Image& from = source.mImage;
+        mImage = Image(device, from.getWidth(), from.getHeight(), VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, from.getMipLevels());
+        bake.record(batch.getCommands(), from, sampler, mImage);
 
-        mBytes = data.mBytes.size() + sizeof(stored);
+        // Clamped, because a bake is one image whose coordinates run edge to edge — what
+        // `TextureTable::addBaked` says of its row.
+        mWrap = TextureWrap::Clamp;
+
+        // Neutral, because nothing divides a bake by a map, and the array binds one at every slot.
+        mShading = makeShadingMap(device, batch, name, true);
+
+        // Four bytes a texel over every level: a third again over the finest, as a chain is.
+        std::size_t texels = 0;
+        for (std::uint32_t level = 0; level < from.getMipLevels(); ++level)
+            texels += std::size_t{ from.getWidthAt(level) } * from.getHeightAt(level);
+        mBytes = texels * 4 + sShadingBytes;
     }
 
     SetLayout TextureArray::describeLayout(const Device& device)
@@ -145,9 +187,11 @@ namespace Rtx
             device, sBindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
     }
 
-    TextureArray::TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const std::uint32_t slots,
-        std::span<const TextureData> textures)
+    TextureArray::TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const ShadingPass& shading,
+        const SpriteLightPass& bake, const std::uint32_t slots, std::span<const TextureData> textures)
         : mDevice(device)
+        , mShading(shading)
+        , mBake(bake)
         , mSamplers{ makeContentSampler(device, "textures repeating", TextureWrap::Repeat),
             makeContentSampler(device, "textures clamped along s", TextureWrap::ClampS),
             makeContentSampler(device, "textures clamped along t", TextureWrap::ClampT),
@@ -189,24 +233,45 @@ namespace Rtx
             return;
 
         for (const TextureData& texture : arrived)
-        {
-            reserveSlot(texture.mSlot);
+            if (texture.mBakedFrom == sNoIndex)
+                stand(batch, texture);
 
-            // Named only where a capture or a validation message could read it back. A local,
-            // because a slot number is short enough that this never reaches the heap; the one that
-            // does is the map's, inside `Texture`.
-            std::string name;
-            if constexpr (Device::wantsNames())
-                name = "texture " + std::to_string(texture.mSlot);
+        for (const TextureData& texture : arrived)
+            if (texture.mBakedFrom != sNoIndex)
+                stand(batch, texture);
+    }
 
-            // What the slot held is buried and not destroyed: its descriptor is the one a frame in
-            // flight bound, and it stays valid until the timeline says nothing reads it.
+    void TextureArray::stand(Batch& batch, const TextureData& texture)
+    {
+        reserveSlot(texture.mSlot);
+
+        // Named only where a capture or a validation message could read it back. A local,
+        // because a slot number is short enough that this never reaches the heap; the one that
+        // does is the map's, inside `Texture`.
+        std::string name;
+        if constexpr (Device::wantsNames())
+            name = "texture " + std::to_string(texture.mSlot);
+
+        const VkSampler sampler = mSamplers[static_cast<std::size_t>(texture.mWrap)].get();
+
+        // What the slot held is buried and not destroyed: its descriptor is the one a frame in
+        // flight bound, and it stays valid until the timeline says nothing reads it.
+        if (texture.mBakedFrom == sNoIndex)
             mDevice.getGraveyard().replace(
-                mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch));
-
-            for (SlotSet& owed : mOwed.live())
-                owed.addMakingRoom(texture.mSlot);
+                mTextures[texture.mSlot], Texture(mDevice, batch, mShading, sampler, texture, name, mRegionScratch));
+        else
+        {
+            // The source stands: `SceneTextures` names one only where the table holds it live, a
+            // live slot is described whenever it arrives, and `write` stands every source ahead of
+            // every bake. A bake of a slot that holds nothing is a contract broken and not content.
+            contract(texture.mBakedFrom < mTextures.size() && !mTextures[texture.mBakedFrom].isEmpty(),
+                "a sprite light bake names a source that does not stand");
+            mDevice.getGraveyard().replace(
+                mTextures[texture.mSlot], Texture(mDevice, batch, mBake, sampler, mTextures[texture.mBakedFrom], name));
         }
+
+        for (SlotSet& owed : mOwed.live())
+            owed.addMakingRoom(texture.mSlot);
     }
 
     VkDescriptorSet TextureArray::getSet(const FrameSlot slot) const

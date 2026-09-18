@@ -10,17 +10,13 @@
 #include "colour.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
+#include "shaders/shadingmap.h"
 #include "texturedata.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// How many times the grid is box blurred: three passes are a close enough Gaussian for
-        /// anything this coarse, and a correction with an edge in it would put that edge into the
-        /// frame.
-        constexpr int sBlurPasses = 3;
-
         /// What one block or one texel contributes: the sum of its colours in linear light, and
         /// how many counted. A transparent texel is not a colour and does not belong in an average
         /// of them.
@@ -163,7 +159,7 @@ namespace Rtx
         // Wrapping, because Morrowind's textures tile and a great many of them rely on it: a blur
         // that clamped at the edges would invent a gradient across every wall.
         std::array<float, std::size_t{ sExtent } * sExtent> scratch{};
-        for (int pass = 0; pass < sBlurPasses; ++pass)
+        for (std::uint32_t pass = 0; pass < Shaders::SHADING_BLUR_PASSES; ++pass)
         {
             for (std::uint32_t y = 0; y < sExtent; ++y)
                 for (std::uint32_t x = 0; x < sExtent; ++x)
@@ -207,25 +203,13 @@ namespace Rtx
 
     std::uint16_t encodeShading(const float value)
     {
-        const float span = Shaders::SHADING_CEILING - Shaders::SHADING_FLOOR;
-        const float unit = std::clamp((value - Shaders::SHADING_FLOOR) / span, 0.0f, 1.0f);
-        return static_cast<std::uint16_t>(std::lround(unit * 65535.0f));
+        return static_cast<std::uint16_t>(std::lround(Shaders::shadingUnit(value) * 65535.0f));
     }
 
     float decodeShading(const std::uint16_t stored)
     {
         const float span = Shaders::SHADING_CEILING - Shaders::SHADING_FLOOR;
         return Shaders::SHADING_FLOOR + span * (static_cast<float>(stored) / 65535.0f);
-    }
-
-    std::array<std::uint16_t, ShadingMap::sCells> encodeShadingMap(const std::span<const float> map)
-    {
-        assert(map.empty() || map.size() == ShadingMap::sCells);
-
-        std::array<std::uint16_t, ShadingMap::sCells> stored;
-        for (std::size_t at = 0; at < stored.size(); ++at)
-            stored[at] = encodeShading(map.empty() ? 1.0f : map[at]);
-        return stored;
     }
 
     float paintedLight(std::span<const float> map, float u, float v)

@@ -7,6 +7,7 @@
 #include <osg/NodeVisitor>
 
 #include "alphaimage.hpp"
+#include "meantexels.hpp"
 #include "meshreader.hpp"
 #include "nodekind.hpp"
 #include "shading.hpp"
@@ -59,6 +60,7 @@ namespace Rtx
 
         MeshReader mMeshes;
         AlphaScratch mAlpha;
+        MeanTexels mMeans;
 
         /// This thread's own classifier: `NodeKinds` is written on a miss.
         NodeKinds mKinds;

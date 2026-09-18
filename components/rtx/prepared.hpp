@@ -26,7 +26,6 @@
 #include "mipchain.hpp"
 #include "runs.hpp"
 #include "scratch.hpp"
-#include "shadingmap.hpp"
 #include "shapefold.hpp"
 
 namespace Rtx
@@ -49,9 +48,6 @@ namespace Rtx
 
         /// The levels the file did not carry, or empty where it carried them.
         MipChain mChain;
-
-        /// `ShadingMap::sCells` factors, row by row.
-        std::array<float, ShadingMap::sCells> mShading{};
 
         /// False where the image is in a format this renderer does not upload, which the frame
         /// draws the stand-in for. Nothing above is meaningful then.

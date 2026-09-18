@@ -444,14 +444,12 @@ namespace Rtx::Testing
             EXPECT_NE(
                 mRing.getHolds().find(*mContent.mImages.get(VFS::Path::NormalizedView("textures/grass.dds"))), nullptr);
 
-            // The bark was read on the thread: its chain built down from four to one, and its
-            // shading estimated — a flat grey to one everywhere.
+            // The bark was read on the thread: its chain built down from four to one.
             const PreparedTexture* bark = mRing.getHolds().find(*mContent.mBark);
             ASSERT_NE(bark, nullptr);
             EXPECT_TRUE(bark->mReadable);
             EXPECT_FALSE(bark->mChain.isEmpty());
             EXPECT_EQ(bark->mChain.describe().mLevels.size(), 3u);
-            EXPECT_NEAR(bark->mShading[0], 1.0f, 0.01f);
 
             // The sheet's origin, lifted five units in the template and then stood as the game
             // stands the reference — which one placement of the three lands on. The cells are

@@ -69,6 +69,7 @@ set(RTX_TEST_FILES
     rtx/shading.cpp
     rtx/shadingmap.cpp
     rtx/shapefold.cpp
+    rtx/shadingpass.cpp
     rtx/skinpass.cpp
     rtx/skybuilder.cpp
     rtx/skylight.cpp
@@ -76,6 +77,7 @@ set(RTX_TEST_FILES
     rtx/slottable.cpp
     rtx/sourcetree.cpp
     rtx/spritelight.cpp
+    rtx/spritelightpass.cpp
     rtx/spritelistsize.cpp
     rtx/spritepasses.cpp
     rtx/statistics.hpp

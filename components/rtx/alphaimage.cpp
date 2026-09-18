@@ -18,22 +18,21 @@ namespace Rtx
 {
     namespace
     {
-        /// Where a texel sits inside its four-by-four block, counting along rows from the top left —
-        /// which is the order every one of these formats indexes by.
-        std::size_t texelInBlock(std::uint32_t x, std::uint32_t y)
-        {
-            return (y % 4) * 4 + (x % 4);
-        }
+        /// The sixteen alphas of one block, counting along rows from the top left, which is the
+        /// order every one of these formats indexes by.
+        using BlockAlpha = std::array<std::uint8_t, 16>;
 
         /// BC2's alpha: four bits a texel, sixteen of them in the block's first eight bytes.
         /// Widened by seventeen rather than by shifting four places, so that fifteen lands on 255
         /// and not on 240 — the difference is whether a fully opaque texel reads as fully opaque.
-        std::uint8_t bc2Alpha(std::span<const std::byte, 8> bytes, std::size_t texel)
+        void bc2Alpha(std::span<const std::byte, 8> bytes, BlockAlpha& into)
         {
-            const auto packed = static_cast<std::uint8_t>(bytes[texel / 2]);
-            const std::uint8_t nibble = texel % 2 == 0 ? packed & 0x0Fu : packed >> 4;
-
-            return static_cast<std::uint8_t>(nibble * 17);
+            for (std::size_t texel = 0; texel < into.size(); ++texel)
+            {
+                const auto packed = static_cast<std::uint8_t>(bytes[texel / 2]);
+                const std::uint8_t nibble = texel % 2 == 0 ? packed & 0x0Fu : packed >> 4;
+                into[texel] = static_cast<std::uint8_t>(nibble * 17);
+            }
         }
 
         /// BC3's alpha: two endpoints and sixteen three-bit indices into a palette built from them.
@@ -41,7 +40,7 @@ namespace Rtx
         /// colour does: descending gives eight interpolated values, ascending gives six and spends
         /// the last two entries on nought and full. A decoder that assumed one of them reads every
         /// texel of half the blocks wrong.
-        std::uint8_t bc3Alpha(std::span<const std::byte, 8> bytes, std::size_t texel)
+        void bc3Alpha(std::span<const std::byte, 8> bytes, BlockAlpha& into)
         {
             const auto first = static_cast<std::uint8_t>(bytes[0]);
             const auto second = static_cast<std::uint8_t>(bytes[1]);
@@ -64,61 +63,100 @@ namespace Rtx
             for (std::size_t i = 0; i < 6; ++i)
                 indices |= static_cast<std::uint64_t>(static_cast<std::uint8_t>(bytes[2 + i])) << (i * 8);
 
-            return palette[(indices >> (texel * 3)) & 0x7u];
+            for (std::size_t texel = 0; texel < into.size(); ++texel)
+                into[texel] = palette[(indices >> (texel * 3)) & 0x7u];
         }
 
-        /// One level's alpha, decoded into `into` in row order. Every block format is read through
-        /// the same walk, because they differ only in how many bytes a block is and where its
-        /// alpha sits inside one. A level whose bytes run short keeps the fully opaque values it
-        /// was filled with, which is the same answer a texture that could not be read gets and for
-        /// the same reason.
-        void decodeLevel(TextureFormat format, std::span<const std::byte> bytes, std::uint32_t width,
-            std::uint32_t height, std::span<std::uint8_t> into)
+        /// One block's alpha, whichever format it is in. The palette is built once for the block
+        /// and not once for each of its sixteen texels, which is what a decode of every level of
+        /// every sprite pays for otherwise.
+        void decodeBlock(TextureFormat format, std::span<const std::byte, 8> bytes, BlockAlpha& into)
+        {
+            switch (format)
+            {
+                case TextureFormat::Bc1RgbaSrgb:
+                {
+                    // BC1 has no alpha channel — it has a fourth palette entry that means
+                    // "nothing here", and only when the endpoints are stored ascending.
+                    const ColourBlock read = ColourBlock::read(bytes, true);
+                    for (std::size_t texel = 0; texel < into.size(); ++texel)
+                        into[texel] = read.isTransparent(texel) ? 0 : 255;
+                    break;
+                }
+                case TextureFormat::Bc2Srgb:
+                    bc2Alpha(bytes, into);
+                    break;
+                case TextureFormat::Bc3Srgb:
+                    bc3Alpha(bytes, into);
+                    break;
+                default:
+                    into.fill(255);
+                    break;
+            }
+        }
+
+        /// Hands `visit` every texel of one level with its alpha, in row order — a block at a time
+        /// for a block format, so a palette is built once a block — until `visit` answers true.
+        /// A level whose bytes run short hands nothing for the texels past them, which leaves a
+        /// caller with whatever it started from: the fully opaque values `build` fills with, or the
+        /// "reaches nothing" a scan started from — the answer a texture that could not be read
+        /// gets, for the same reason. Answers whether `visit` stopped it.
+        template <class Visit>
+        bool forEachAlpha(TextureFormat format, std::span<const std::byte> bytes, std::uint32_t width,
+            std::uint32_t height, Visit visit)
         {
             const std::uint32_t bytesPerBlock = blockBytes(format);
-            const std::uint32_t blocksAcross = (width + 3) / 4;
 
-            for (std::uint32_t y = 0; y < height; ++y)
-                for (std::uint32_t x = 0; x < width; ++x)
-                {
-                    std::uint8_t& value = into[std::size_t{ y } * width + x];
-
-                    if (bytesPerBlock == 0)
+            if (bytesPerBlock == 0)
+            {
+                // Four bytes a texel in every uncompressed spelling, and alpha is the last of them
+                // whichever order the three colours are stated in.
+                for (std::uint32_t y = 0; y < height; ++y)
+                    for (std::uint32_t x = 0; x < width; ++x)
                     {
-                        // Four bytes a texel in every uncompressed spelling, and alpha is the last
-                        // of them whichever order the three colours are stated in.
                         const std::size_t at = (std::size_t{ y } * width + x) * 4 + 3;
-                        if (at < bytes.size())
-                            value = static_cast<std::uint8_t>(bytes[at]);
-
-                        continue;
+                        if (at < bytes.size() && visit(x, y, static_cast<std::uint8_t>(bytes[at])))
+                            return true;
                     }
 
-                    const std::size_t block = (std::size_t{ y / 4 } * blocksAcross + x / 4) * bytesPerBlock;
+                return false;
+            }
+
+            const std::uint32_t blocksAcross = (width + 3) / 4;
+            const std::uint32_t blocksDown = (height + 3) / 4;
+            BlockAlpha alphas;
+
+            for (std::uint32_t row = 0; row < blocksDown; ++row)
+                for (std::uint32_t column = 0; column < blocksAcross; ++column)
+                {
+                    const std::size_t block = (std::size_t{ row } * blocksAcross + column) * bytesPerBlock;
                     if (block + bytesPerBlock > bytes.size())
                         continue;
 
-                    const std::size_t texel = texelInBlock(x, y);
-                    switch (format)
-                    {
-                        case TextureFormat::Bc1RgbaSrgb:
-                        {
-                            // BC1 has no alpha channel — it has a fourth palette entry that means
-                            // "nothing here", and only when the endpoints are stored ascending.
-                            const ColourBlock read = ColourBlock::read(bytes.subspan(block).first<8>(), true);
-                            value = read.isTransparent(texel) ? 0 : 255;
-                            break;
-                        }
-                        case TextureFormat::Bc2Srgb:
-                            value = bc2Alpha(bytes.subspan(block).first<8>(), texel);
-                            break;
-                        case TextureFormat::Bc3Srgb:
-                            value = bc3Alpha(bytes.subspan(block).first<8>(), texel);
-                            break;
-                        default:
-                            break;
-                    }
+                    // BC2 and BC3 put their eight bytes of alpha first; BC1's block is its colour.
+                    decodeBlock(format, bytes.subspan(block).first<8>(), alphas);
+
+                    // The texels inside the image alone: a block past its edge pads with texels
+                    // nothing draws, and one of those must not answer for the texture.
+                    const std::uint32_t rows = std::min(4u, height - row * 4);
+                    const std::uint32_t columns = std::min(4u, width - column * 4);
+                    for (std::uint32_t dy = 0; dy < rows; ++dy)
+                        for (std::uint32_t dx = 0; dx < columns; ++dx)
+                            if (visit(column * 4 + dx, row * 4 + dy, alphas[dy * 4 + dx]))
+                                return true;
                 }
+
+            return false;
+        }
+
+        /// One level's alpha, decoded into `into` in row order.
+        void decodeLevel(TextureFormat format, std::span<const std::byte> bytes, std::uint32_t width,
+            std::uint32_t height, std::span<std::uint8_t> into)
+        {
+            forEachAlpha(format, bytes, width, height, [&](std::uint32_t x, std::uint32_t y, std::uint8_t alpha) {
+                into[std::size_t{ y } * width + x] = alpha;
+                return false;
+            });
         }
     }
 
@@ -170,20 +208,14 @@ namespace Rtx
         if (levels.empty() || levels.front().mWidth == 0 || levels.front().mHeight == 0)
             return true;
 
-        // Decoded down to the one level that can answer, which is three quarters of the work a
-        // whole chain would be: every coarser level is an average of the one above it, and a mask's
-        // average stops reaching solid a level or two down. Handing the description one level is
-        // what says that in code rather than in a comment over a loop that reads `at(0, ...)`.
-        described.mLevels = described.mLevels.subspan(0, 1);
-
-        scratch.mAlpha.build(described);
+        // The one level that can answer, and only as far as the first solid texel: every coarser
+        // level is an average of the one above it, and a mask's average stops reaching solid a
+        // level or two down; and nearly every map that reaches solid does so in its first block,
+        // so the walk that decodes the level whole is paid by the clouds alone, which never do.
         const MipLevel& level = levels.front();
+        const std::size_t from = std::min<std::size_t>(level.mOffset, described.mBytes.size());
 
-        for (std::uint32_t y = 0; y < level.mHeight; ++y)
-            for (std::uint32_t x = 0; x < level.mWidth; ++x)
-                if (scratch.mAlpha.at(0, x, y) == 255)
-                    return true;
-
-        return false;
+        return forEachAlpha(described.mFormat, described.mBytes.subspan(from), level.mWidth, level.mHeight,
+            [](std::uint32_t, std::uint32_t, std::uint8_t alpha) { return alpha == 255; });
     }
 }

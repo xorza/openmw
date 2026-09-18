@@ -12,6 +12,8 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/handles.hpp>
+#include <components/rtxvulkan/shadingpass.hpp>
+#include <components/rtxvulkan/spritelightpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "harness.hpp"
@@ -40,8 +42,10 @@ namespace Rtx
             CommandPool& pool = getPool();
 
             const SetLayout layout = TextureArray::describeLayout(device);
+            const ShadingPass shading(device, Testing::getShaderDirectory());
+            const SpriteLightPass bake(device, Testing::getShaderDirectory());
             Batch setup(pool);
-            TextureArray textures(device, setup, layout, 1, {});
+            TextureArray textures(device, setup, layout, shading, bake, 1, {});
             setup.flush();
 
             // An arrival, owed to every set: what `sync` has to write once the set is free. Ahead

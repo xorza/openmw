@@ -153,7 +153,7 @@ namespace Rtx
         return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water })->second.mIndex, .mKey = sSea };
     }
 
-    MaterialReading MaterialResolver::read(std::span<const Shading> shading, AlphaScratch& scratch)
+    MaterialReading MaterialResolver::read(std::span<const Shading> shading, AlphaScratch& scratch, MeanTexels& means)
     {
         if (shading.empty())
             return MaterialReading{};
@@ -177,7 +177,7 @@ namespace Rtx
             if (translucent)
                 reading.mDiffuseSolid = reachesSolid(*diffuse, scratch);
             if (additive)
-                reading.mDiffuseMean = meanUnder(meanTexel(*diffuse, scratch), described.mBlend);
+                reading.mDiffuseMean = meanUnder(means.of(*diffuse), described.mBlend);
         }
 
         return reading;
@@ -316,9 +316,16 @@ namespace Rtx
         if (known == mTextureOf.end())
             return Shaders::NO_TEXTURE_ALBEDO;
 
-        std::optional<MeanTexel>& mean = known->second.mMean;
-        if (!mean.has_value())
-            mean = meanTexel(*image, mAlphaScratch);
+        // Kept by the slot for a file, so the frames after the first find it without the name;
+        // an unnamed image is asked of the cache every time, which reads it every time.
+        const MeanTexel*& mean = known->second.mMean;
+        if (mean == nullptr)
+        {
+            const MeanTexel& read = mMeans.of(*image);
+            if (image->getFileName().empty())
+                return meanUnder(read, blend);
+            mean = &read;
+        }
 
         return meanUnder(*mean, blend);
     }

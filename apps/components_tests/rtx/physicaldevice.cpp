@@ -97,17 +97,23 @@ namespace Rtx
             {
                 describe(mProperties);
                 requestRequiredFeatures(mFeatures);
+
+                // Every required format offered whole, in optimal tiling, which is where an image
+                // the trace samples lives.
+                for (const RequiredFormat& required : getRequiredFormats())
+                    mFormats.push_back(VkFormatProperties{ .optimalTilingFeatures = required.mFeatures });
             }
 
             PhysicalDevice::Profile profile()
             {
-                return PhysicalDevice::profileOf(mProperties, mFeatures, mExtensions, mQueues);
+                return PhysicalDevice::profileOf(mProperties, mFeatures, mExtensions, mQueues, mFormats);
             }
 
             DeviceProperties mProperties;
             DeviceFeatures mFeatures;
             std::vector<std::string> mExtensions;
             std::vector<VkQueueFamilyProperties> mQueues;
+            std::vector<VkFormatProperties> mFormats;
         };
 
         /// Two cards this fork targets, and the profile differs in exactly what their hardware does.
@@ -183,6 +189,15 @@ namespace Rtx
                 const RequiredFeature& first = getRequiredDeviceFeatures().front();
                 first.mField(short_.mFeatures) = VK_FALSE;
                 EXPECT_EQ(short_.profile().mObstacle, "missing features: " + std::string(first.mName));
+            }
+            {
+                // Offered for linear tiling only, which is not where an image the trace samples
+                // lives, and so not offered.
+                Card flat(&describeTuring);
+                flat.mFormats.front()
+                    = VkFormatProperties{ .linearTilingFeatures = getRequiredFormats().front().mFeatures };
+                EXPECT_EQ(flat.profile().mObstacle,
+                    "missing format features for " + std::string(getRequiredFormats().front().mFor));
             }
             {
                 Card split(&describeTuring);

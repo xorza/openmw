@@ -11,6 +11,7 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <components/rtx/meantexels.hpp>
 #include <components/rtx/texels.hpp>
 #include <components/rtx/texturedata.hpp>
 
@@ -117,6 +118,39 @@ namespace Rtx
 
             EXPECT_EQ(empty.mAlpha, 0.0f);
             EXPECT_EQ(empty.opaque(), osg::Vec3f());
+        }
+
+        /// A file is averaged once for the process and found by its name after: two images of one
+        /// file, in two spellings of it, are one entry and one reference, and a second ask reads
+        /// nothing — the entry stands where it stood. An image that is not a file is averaged at
+        /// every ask and kept nowhere.
+        TEST(RtxMeanTexelsTest, aFileIsAveragedOnceAndFoundByItsName)
+        {
+            MeanTexels means;
+
+            osg::ref_ptr<osg::Image> red
+                = makeSheetImage({ 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255 });
+            red->setFileName("Textures\\VFX_Fire.dds");
+            const MeanTexel& first = means.of(*red);
+            EXPECT_NEAR(first.mColour.x(), 1.0f, 1e-5f);
+            EXPECT_EQ(means.size(), 1u);
+
+            // The same file spelt the way the texture table spells it, and painted differently:
+            // the cache answers for the name and never reads the second image.
+            osg::ref_ptr<osg::Image> again
+                = makeSheetImage({ 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255 });
+            again->setFileName("textures/vfx_fire.dds");
+            const MeanTexel& second = means.of(*again);
+            EXPECT_EQ(&second, &first) << "a second spelling of one file made a second entry";
+            EXPECT_NEAR(second.mColour.x(), 1.0f, 1e-5f) << "the second image was read";
+            EXPECT_EQ(means.size(), 1u);
+
+            osg::ref_ptr<osg::Image> unnamed
+                = makeSheetImage({ 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255 });
+            unnamed->setFileName("");
+            EXPECT_NEAR(means.of(*unnamed).mColour.y(), 1.0f, 1e-5f);
+            EXPECT_EQ(means.size(), 1u) << "an unnamed image was kept";
+            EXPECT_EQ(&means.of(*red), &first) << "an unnamed ask moved a file's entry";
         }
     }
 

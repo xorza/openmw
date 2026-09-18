@@ -103,16 +103,21 @@ namespace Rtx
         mView = Owned<VkImageView, vkDestroyImageView>::make(
             device.getHandle(), vkCreateImageView, view, "vkCreateImageView");
 
-        // Only where something will write through it. A storage descriptor is what this second
-        // view exists for, and an image without the usage bit can have none — a chain that is only
-        // ever sampled would be paying for a view nothing may name.
+        // Only where something will write through them. A storage descriptor is what these views
+        // exist for, and an image without the usage bit can have none — a chain that is only ever
+        // sampled would be paying for views nothing may name.
         if (mipLevels > 1 && (usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
         {
-            VkImageViewCreateInfo first = view;
-            first.subresourceRange.levelCount = 1;
-            mStorageView = Owned<VkImageView, vkDestroyImageView>::make(
-                device.getHandle(), vkCreateImageView, first, "vkCreateImageView");
-            device.setName(mStorageView.get(), name);
+            mLevelViews.reserve(mipLevels);
+            for (std::uint32_t level = 0; level < mipLevels; ++level)
+            {
+                VkImageViewCreateInfo one = view;
+                one.subresourceRange.baseMipLevel = level;
+                one.subresourceRange.levelCount = 1;
+                mLevelViews.push_back(Owned<VkImageView, vkDestroyImageView>::make(
+                    device.getHandle(), vkCreateImageView, one, "vkCreateImageView"));
+                device.setName(mLevelViews.back().get(), name);
+            }
         }
 
         device.setName(mHandle.get(), name);
@@ -134,7 +139,7 @@ namespace Rtx
             mRead = other.mRead;
             mHandle = std::move(other.mHandle);
             mView = std::move(other.mView);
-            mStorageView = std::move(other.mStorageView);
+            mLevelViews = std::move(other.mLevelViews);
             mMemory = std::move(other.mMemory);
             mWidth = other.mWidth;
             mHeight = other.mHeight;

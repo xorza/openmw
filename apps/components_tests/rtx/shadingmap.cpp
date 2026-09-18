@@ -279,16 +279,8 @@ namespace Rtx
                 EXPECT_NEAR(decodeShading(encodeShading(value)), value, 0.5f * step + 1.0e-6f) << value;
             }
 
-            // A whole map is each factor encoded, and no map at all is the neutral one throughout.
-            std::array<float, ShadingMap::sCells> ramp;
-            for (std::size_t at = 0; at < ramp.size(); ++at)
-                ramp[at] = ShadingMap::sFloor + span * static_cast<float>(at) / static_cast<float>(ramp.size() - 1);
-            const std::array<std::uint16_t, ShadingMap::sCells> stored = encodeShadingMap(ramp);
-            for (std::size_t at = 0; at < ramp.size(); at += 97)
-                EXPECT_EQ(stored[at], encodeShading(ramp[at])) << at;
-            const std::array<std::uint16_t, ShadingMap::sCells> neutral = encodeShadingMap({});
-            EXPECT_TRUE(
-                std::all_of(neutral.begin(), neutral.end(), [](std::uint16_t factor) { return factor == 21845; }));
+            // The neutral factor is exactly a third of the way up, which is what a cleared map holds.
+            EXPECT_EQ(encodeShading(1.0f), 21845);
         }
     }
 }
