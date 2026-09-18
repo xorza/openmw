@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <stdexcept>
 
 #include <osg/Image>
 #include <osg/Texture2D>
@@ -15,7 +14,7 @@
 namespace MyGUIRtx
 {
     SharedTexture::SharedTexture(Rtx::GuiRenderer& renderer, osg::Texture2D& source)
-        : SlotTexture({}, renderer)
+        : MirrorTexture(renderer)
         , mSource(&source)
     {
         refresh();
@@ -77,25 +76,5 @@ namespace MyGUIRtx
         }
         else
             mLastSent.clear();
-    }
-
-    void SharedTexture::createManual(int, int, MyGUI::TextureUsage, MyGUI::PixelFormat)
-    {
-        throw std::logic_error("a shared texture is the game's picture, and is not made through MyGUI");
-    }
-
-    void SharedTexture::loadFromFile(const std::string&)
-    {
-        throw std::logic_error("a shared texture is the game's picture, and is not loaded through MyGUI");
-    }
-
-    void* SharedTexture::lock(MyGUI::TextureUsage)
-    {
-        throw std::logic_error("a shared texture is the game's picture, and is not written through MyGUI");
-    }
-
-    void SharedTexture::unlock()
-    {
-        throw std::logic_error("a shared texture is the game's picture, and is not written through MyGUI");
     }
 }

@@ -10,6 +10,11 @@ namespace osg
     class Texture2D;
 }
 
+namespace SceneUtil
+{
+    class PaintedTexture;
+}
+
 namespace MyGUIPlatform
 {
 
@@ -48,10 +53,19 @@ namespace MyGUIPlatform
         ///
         /// The texture and its image belong to the caller and outlive what comes back.
         virtual std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) = 0;
+
+        /// The same, for a picture whose painter says where it painted: a backend that mirrors the
+        /// image sends that rectangle instead of comparing rows for it.
+        virtual std::unique_ptr<MyGUI::ITexture> shareTexture(SceneUtil::PaintedTexture& texture) = 0;
     };
 
     /// `shareTexture` on whichever render manager is up, for the callers that have no handle to it.
     inline std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture)
+    {
+        return static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance()).shareTexture(texture);
+    }
+
+    inline std::unique_ptr<MyGUI::ITexture> shareTexture(SceneUtil::PaintedTexture& texture)
     {
         return static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance()).shareTexture(texture);
     }

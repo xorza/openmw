@@ -14,6 +14,7 @@
 
 #include <components/debug/debuglog.hpp>
 
+#include "paintedmirror.hpp"
 #include "sharedtexture.hpp"
 #include "slottexture.hpp"
 #include "texture.hpp"
@@ -182,6 +183,11 @@ namespace MyGUIRtx
         // Not in `mTextures`: MyGUI's table is keyed by name and this one has no name to be found
         // under. It belongs to the caller, who is drawing something it already owns.
         return std::make_unique<SharedTexture>(mRenderer, texture);
+    }
+
+    std::unique_ptr<MyGUI::ITexture> RenderManager::shareTexture(SceneUtil::PaintedTexture& texture)
+    {
+        return std::make_unique<PaintedMirror>(mRenderer, texture);
     }
 
     void RenderManager::doRender(MyGUI::IVertexBuffer* buffer, MyGUI::ITexture* texture, size_t count)

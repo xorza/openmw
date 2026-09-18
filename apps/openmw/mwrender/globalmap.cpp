@@ -53,21 +53,6 @@ namespace
         return std::vector<char>(data.begin(), data.end());
     }
 
-    // The png reader's image as the tightly packed RGBA bytes everything below expects
-    osg::ref_ptr<osg::Image> asRgba(osg::ref_ptr<osg::Image> image)
-    {
-        if (image->getPixelFormat() == GL_RGBA && image->getDataType() == GL_UNSIGNED_BYTE && image->isDataContiguous())
-            return image;
-
-        osg::ref_ptr<osg::Image> converted = new osg::Image;
-        converted->allocateImage(image->s(), image->t(), 1, GL_RGBA, GL_UNSIGNED_BYTE);
-
-        for (int y = 0; y < image->t(); ++y)
-            for (int x = 0; x < image->s(); ++x)
-                converted->setColor(image->getColor(x, y), x, y);
-
-        return converted;
-    }
 }
 
 namespace MWRender
@@ -146,16 +131,7 @@ namespace MWRender
 
             memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
 
-            mOverlayTexture = new osg::Texture2D;
-            mOverlayTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
-            mOverlayTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-            mOverlayTexture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
-            mOverlayTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
-            mOverlayTexture->setResizeNonPowerOfTwoHint(false);
-            mOverlayTexture->setInternalFormat(GL_RGBA);
-            // The image is kept: osg::Image::dirty() is what sends a change up
-            mOverlayTexture->setImage(mOverlayImage);
-            mOverlayTexture->setUnRefImageDataAfterApply(false);
+            mOverlayTexture = new SceneUtil::PaintedTexture(mOverlayImage);
         }
 
         int mWidth, mHeight;
@@ -168,7 +144,7 @@ namespace MWRender
         osg::ref_ptr<osg::Image> mAlphaImage;
 
         osg::ref_ptr<osg::Image> mOverlayImage;
-        osg::ref_ptr<osg::Texture2D> mOverlayTexture;
+        osg::ref_ptr<SceneUtil::PaintedTexture> mOverlayTexture;
     };
 
     struct GlobalMap::WritePng final : public SceneUtil::WorkItem
@@ -284,8 +260,7 @@ namespace MWRender
             }
         }
 
-        // Crossing back into a cell almost always paints what is already there, and a change sends the whole overlay
-        // back up to the device
+        // Crossing back into a cell almost always paints what is already there, and only a change is sent up
         bool changed = false;
         for (int y = 0; y < cellSize && !changed; ++y)
             changed = std::memcmp(mOverlayImage->data(originX, originY + y),
@@ -299,8 +274,7 @@ namespace MWRender
             std::memcpy(mOverlayImage->data(originX, originY + y),
                 mCellScratch.data() + static_cast<std::size_t>(y) * cellSize * 4, cellSize * 4);
 
-        // osg::Image has no way to say which part changed
-        mOverlayImage->dirty();
+        mOverlayTexture->paint(SceneUtil::ImageRegion{ originX, originY, cellSize, cellSize });
         return true;
     }
 
@@ -309,7 +283,7 @@ namespace MWRender
         ensureLoaded();
 
         memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
-        mOverlayImage->dirty();
+        mOverlayTexture->paintAll();
     }
 
     void GlobalMap::write(ESM::GlobalMap& map)
@@ -416,11 +390,10 @@ namespace MWRender
             std::min(mWidth, mWidth + rightDiff * cellImageSizeDst),
             std::min(mHeight, mHeight + bottomDiff * cellImageSizeDst));
 
+        // Into the overlay's own image either way, so what the texture and its mirrors draw from
+        // never changes identity
         if (srcBox == destBox && imageWidth == mWidth && imageHeight == mHeight)
-        {
-            mOverlayImage = image;
-            mOverlayTexture->setImage(mOverlayImage);
-        }
+            memcpy(mOverlayImage->data(), image->data(), mOverlayImage->getTotalSizeInBytes());
         else
         {
             // The boxes above count rows from the top; the images count them from the bottom.
@@ -430,11 +403,14 @@ namespace MWRender
             memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
 
             resampleRegion(*image,
-                Rect{ srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight },
+                SceneUtil::ImageRegion{
+                    srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight },
                 *mOverlayImage,
-                Rect{ destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
-            mOverlayImage->dirty();
+                SceneUtil::ImageRegion{
+                    destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
         }
+
+        mOverlayTexture->paintAll();
     }
 
     osg::ref_ptr<osg::Texture2D> GlobalMap::getBaseTexture()
@@ -443,7 +419,7 @@ namespace MWRender
         return mBaseTexture;
     }
 
-    osg::ref_ptr<osg::Texture2D> GlobalMap::getOverlayTexture()
+    osg::ref_ptr<SceneUtil::PaintedTexture> GlobalMap::getOverlayTexture()
     {
         ensureLoaded();
         return mOverlayTexture;

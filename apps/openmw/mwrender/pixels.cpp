@@ -20,7 +20,8 @@ namespace MWRender
         /// `u` and `v` are in texels of `area`, measured from its corner and already offset by the
         /// half texel a sampler puts between a coordinate and a centre. The clamp is to `area` and
         /// not to the image around it, so a rectangle filters as though it were the whole picture.
-        void filterTexel(const osg::Image& image, const Rect& area, float u, float v, std::uint8_t* out)
+        void filterTexel(
+            const osg::Image& image, const SceneUtil::ImageRegion& area, float u, float v, std::uint8_t* out)
         {
             const float flooredU = std::floor(u);
             const float flooredV = std::floor(v);
@@ -53,11 +54,12 @@ namespace MWRender
 
     void sampleBilinear(const osg::Image& image, float u, float v, std::uint8_t (&out)[4])
     {
-        filterTexel(image, Rect{ 0, 0, image.s(), image.t() }, u * static_cast<float>(image.s()) - 0.5f,
-            v * static_cast<float>(image.t()) - 0.5f, out);
+        filterTexel(image, SceneUtil::ImageRegion{ 0, 0, image.s(), image.t() },
+            u * static_cast<float>(image.s()) - 0.5f, v * static_cast<float>(image.t()) - 0.5f, out);
     }
 
-    void resampleRegion(const osg::Image& from, const Rect& source, osg::Image& into, const Rect& target)
+    void resampleRegion(const osg::Image& from, const SceneUtil::ImageRegion& source, osg::Image& into,
+        const SceneUtil::ImageRegion& target)
     {
         assert(source.mWidth > 0 && source.mHeight > 0 && target.mWidth > 0 && target.mHeight > 0);
 
@@ -75,5 +77,20 @@ namespace MWRender
                 filterTexel(from, source, u, v, into.data(target.mX + x, target.mY + y));
             }
         }
+    }
+
+    osg::ref_ptr<osg::Image> asRgba(osg::ref_ptr<osg::Image> image)
+    {
+        if (image->getPixelFormat() == GL_RGBA && image->getDataType() == GL_UNSIGNED_BYTE && image->isDataContiguous())
+            return image;
+
+        osg::ref_ptr<osg::Image> converted = new osg::Image;
+        converted->allocateImage(image->s(), image->t(), 1, GL_RGBA, GL_UNSIGNED_BYTE);
+
+        for (int y = 0; y < image->t(); ++y)
+            for (int x = 0; x < image->s(); ++x)
+                converted->setColor(image->getColor(x, y), x, y);
+
+        return converted;
     }
 }

@@ -1,16 +1,13 @@
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
-#include <string>
 #include <vector>
 
-#include <MyGUI_RenderFormat.h>
 #include <osg/ref_ptr>
 
 #include <components/rtx/guirenderer.hpp>
 
-#include "slottexture.hpp"
+#include "mirrortexture.hpp"
 
 namespace osg
 {
@@ -24,8 +21,8 @@ namespace MyGUIRtx
     /// save's thumbnail and a video frame are written into images the game then marks dirty, which
     /// is how the rasterizer is handed them; this backend cannot draw an OSG texture, so it reads
     /// the image again whenever its modified count moves — `refresh`, from `doRender` — and sends
-    /// the rows that changed. Nothing here is written through MyGUI: the picture is the game's.
-    class SharedTexture final : public SlotTexture
+    /// the rows that changed. A picture whose painter names what it painted is `PaintedMirror`.
+    class SharedTexture final : public MirrorTexture
     {
     public:
         /// `source` belongs to the caller and outlives this.
@@ -42,18 +39,6 @@ namespace MyGUIRtx
         /// cell arrives, and the whole picture is two megabytes. A new image under the texture is a
         /// video frame, and goes whole.
         void refresh() override;
-
-        void createManual(int width, int height, MyGUI::TextureUsage usage, MyGUI::PixelFormat format) override;
-        void loadFromFile(const std::string& fname) override;
-        void destroy() override { drop(); }
-
-        void* lock(MyGUI::TextureUsage access) override;
-        void unlock() override;
-        bool isLocked() const override { return false; }
-
-        MyGUI::PixelFormat getFormat() const override { return MyGUI::PixelFormat::R8G8B8A8; }
-        MyGUI::TextureUsage getUsage() const override { return MyGUI::TextureUsage::Static; }
-        size_t getNumElemBytes() const override { return 4; }
 
     private:
         /// The picture this mirrors.

@@ -31,6 +31,11 @@ namespace osg
     class Node;
 }
 
+namespace SceneUtil
+{
+    class PaintedTexture;
+}
+
 namespace Terrain
 {
     class Storage;
@@ -88,7 +93,7 @@ namespace MWRender
         /// new view.
         std::shared_ptr<const OffscreenView> getMapView(int x, int y);
 
-        osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
+        osg::ref_ptr<SceneUtil::PaintedTexture> getFogOfWarTexture(int x, int y);
 
         /// The same picture in main memory, for the global map, or null while it has not come back off the device
         /// yet: ask again next frame. Asking is what starts the copy, so only the tile the world map asks for pays it.
@@ -148,7 +153,10 @@ namespace MWRender
             void initFogOfWar();
             void loadFogOfWar(const ESM::FogTexture& fog);
             void saveFogOfWar(ESM::FogTexture& fog) const;
-            void createFogOfWarTexture();
+
+            /// Makes `image` the fog: into the texture's own image where there is one, so what is
+            /// drawn from it keeps its identity, and as a new texture otherwise.
+            void adoptFogOfWar(osg::ref_ptr<osg::Image> image);
 
             std::uint8_t mLastRenderNeighbourFlags = 0;
             bool mHasFogState = false;
@@ -158,7 +166,7 @@ namespace MWRender
             // What mView was described with; another range rebuilds it
             DepthRange mRange;
 
-            osg::ref_ptr<osg::Texture2D> mFogOfWarTexture;
+            osg::ref_ptr<SceneUtil::PaintedTexture> mFogOfWarTexture;
             osg::ref_ptr<osg::Image> mFogOfWarImage;
         };
 

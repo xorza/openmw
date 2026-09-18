@@ -76,11 +76,6 @@ Every one is also diff a reviewer must read as a behaviour change rather than as
       touches `engine.hpp`; name the trade-off if the copy stays.
 ## Per-frame work the fork's own rules forbid
 
-- [ ] `GlobalMap::exploreCell` calls `mOverlayImage->dirty()` after compositing one cell. Under GL
-      that re-uploads the whole overlay texture; under RT `SharedTexture::refresh` then compares
-      every row of the two-megabyte image. Upstream blitted one cell on the GPU. A cell crossing pays
-      this as a spike. If the CPU path stays, keep a dirty rectangle beside the image and upload
-      that.
 - [ ] `MapWindow::paintExplored` runs from `WindowManager::setPlayerPos` every frame and walks
       `mExploredPending` with `std::erase_if` whether or not a tile is pending. Run it from the
       event that completes a tile, or early-out on an empty list.

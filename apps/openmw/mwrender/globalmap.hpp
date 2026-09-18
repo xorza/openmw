@@ -8,6 +8,8 @@
 
 #include <osg/ref_ptr>
 
+#include <components/sceneutil/paintedtexture.hpp>
+
 namespace osg
 {
     class Texture2D;
@@ -55,7 +57,7 @@ namespace MWRender
         void read(ESM::GlobalMap& map);
 
         osg::ref_ptr<osg::Texture2D> getBaseTexture();
-        osg::ref_ptr<osg::Texture2D> getOverlayTexture();
+        osg::ref_ptr<SceneUtil::PaintedTexture> getOverlayTexture();
 
         void ensureLoaded();
 
@@ -69,8 +71,8 @@ namespace MWRender
         // Where the land is above water: what stops an explored tile painting its cell's sea over the map's own
         osg::ref_ptr<osg::Image> mAlphaImage;
 
-        // GPU copy of overlay, drawn from the image below; osg::Image::dirty() is what sends a change up
-        osg::ref_ptr<osg::Texture2D> mOverlayTexture;
+        // The overlay as drawn, told which cell was painted into the image below
+        osg::ref_ptr<SceneUtil::PaintedTexture> mOverlayTexture;
 
         // CPU copy of overlay
         osg::ref_ptr<osg::Image> mOverlayImage;

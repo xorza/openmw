@@ -70,6 +70,9 @@ namespace MyGUIRtx
         /// says how. An `osg::Texture2D` itself is a name in a context this backend never made.
         std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) override;
 
+        /// A mirror told where its picture was painted, which sends that and no more.
+        std::unique_ptr<MyGUI::ITexture> shareTexture(SceneUtil::PaintedTexture& texture) override;
+
         static RenderManager& getInstance() { return *getInstancePtr(); }
         static RenderManager* getInstancePtr()
         {

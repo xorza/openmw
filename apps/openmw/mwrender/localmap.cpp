@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include <osg/BoundingSphere>
 #include <osg/ComputeBoundsVisitor>
@@ -17,6 +18,7 @@
 #include <components/files/memorystream.hpp>
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
+#include <components/sceneutil/paintedtexture.hpp>
 #include <components/settings/values.hpp>
 #include <components/terrain/storage.hpp>
 
@@ -26,6 +28,7 @@
 #include "../mwworld/cellstore.hpp"
 
 #include "offscreenview.hpp"
+#include "pixels.hpp"
 #include "renderer.hpp"
 #include "vismask.hpp"
 
@@ -252,12 +255,12 @@ namespace MWRender
         return mRenderer.getGroundReach();
     }
 
-    osg::ref_ptr<osg::Texture2D> LocalMap::getFogOfWarTexture(int x, int y)
+    osg::ref_ptr<SceneUtil::PaintedTexture> LocalMap::getFogOfWarTexture(int x, int y)
     {
         auto& segments(mInterior ? mInteriorSegments : mExteriorSegments);
         SegmentMap::iterator found = segments.find(std::make_pair(x, y));
         if (found == segments.end())
-            return osg::ref_ptr<osg::Texture2D>();
+            return osg::ref_ptr<SceneUtil::PaintedTexture>();
         else
             return found->second.mFogOfWarTexture;
     }
@@ -540,7 +543,9 @@ namespace MWRender
                     continue;
 
                 std::uint32_t* data = reinterpret_cast<std::uint32_t*>(segment.mFogOfWarImage->data());
-                bool changed = false;
+
+                // The box round every texel that changed, which is what is sent up
+                SceneUtil::ImageRegion changed;
                 for (int texV = 0; texV < sFogOfWarResolution; ++texV)
                 {
                     for (int texU = 0; texU < sFogOfWarResolution; ++texU)
@@ -554,17 +559,17 @@ namespace MWRender
                         if (*data != val)
                         {
                             *data = val;
-                            changed = true;
+                            changed = changed.joined(SceneUtil::ImageRegion{ texU, texV, 1, 1 });
                         }
 
                         ++data;
                     }
                 }
 
-                if (changed)
+                if (!changed.empty())
                 {
                     segment.mHasFogState = true;
-                    segment.mFogOfWarImage->dirty();
+                    segment.mFogOfWarTexture->paint(changed);
                 }
             }
         }
@@ -598,34 +603,30 @@ namespace MWRender
         return { -1, -1, segments.first, segments.second };
     }
 
-    void LocalMap::MapSegment::createFogOfWarTexture()
+    void LocalMap::MapSegment::adoptFogOfWar(osg::ref_ptr<osg::Image> image)
     {
-        if (mFogOfWarTexture)
+        if (mFogOfWarTexture && mFogOfWarImage->s() == image->s() && mFogOfWarImage->t() == image->t())
+        {
+            memcpy(mFogOfWarImage->data(), image->data(), mFogOfWarImage->getTotalSizeInBytes());
+            mFogOfWarTexture->paintAll();
             return;
-        mFogOfWarTexture = new osg::Texture2D;
-        // TODO: synchronize access? for now, the worst that could happen is the draw thread jumping a frame ahead.
-        // mFogOfWarTexture->setDataVariance(osg::Object::DYNAMIC);
-        mFogOfWarTexture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
-        mFogOfWarTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
-        mFogOfWarTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
-        mFogOfWarTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-        mFogOfWarTexture->setUnRefImageDataAfterApply(false);
-        mFogOfWarTexture->setImage(mFogOfWarImage);
+        }
+
+        mFogOfWarImage = std::move(image);
+        mFogOfWarTexture = new SceneUtil::PaintedTexture(mFogOfWarImage);
     }
 
     void LocalMap::MapSegment::initFogOfWar()
     {
-        mFogOfWarImage = new osg::Image;
-        // Assign a PixelBufferObject for asynchronous transfer of data to the GPU
-        mFogOfWarImage->setPixelBufferObject(new osg::PixelBufferObject);
-        mFogOfWarImage->allocateImage(sFogOfWarResolution, sFogOfWarResolution, 1, GL_RGBA, GL_UNSIGNED_BYTE);
-        assert(mFogOfWarImage->isDataContiguous());
+        osg::ref_ptr<osg::Image> image = new osg::Image;
+        image->allocateImage(sFogOfWarResolution, sFogOfWarResolution, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+        assert(image->isDataContiguous());
         std::vector<uint32_t> data;
         data.resize(sFogOfWarResolution * sFogOfWarResolution, 0xff000000);
 
-        memcpy(mFogOfWarImage->data(), data.data(), data.size() * 4);
+        memcpy(image->data(), data.data(), data.size() * 4);
 
-        createFogOfWarTexture();
+        adoptFogOfWar(std::move(image));
     }
 
     void LocalMap::MapSegment::loadFogOfWar(const ESM::FogTexture& esm)
@@ -658,11 +659,10 @@ namespace MWRender
             return;
         }
 
-        mFogOfWarImage = result.getImage();
-        mFogOfWarImage->flipVertical();
-        mFogOfWarImage->dirty();
+        osg::ref_ptr<osg::Image> image = asRgba(result.getImage());
+        image->flipVertical();
 
-        createFogOfWarTexture();
+        adoptFogOfWar(std::move(image));
         mHasFogState = true;
     }
 

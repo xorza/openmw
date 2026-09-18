@@ -9,6 +9,10 @@ set(MYGUIRTX_FILES
     rendermanager.hpp
     rgbarows.cpp
     rgbarows.hpp
+    mirrortexture.cpp
+    mirrortexture.hpp
+    paintedmirror.cpp
+    paintedmirror.hpp
     sharedtexture.cpp
     sharedtexture.hpp
     slottexture.cpp

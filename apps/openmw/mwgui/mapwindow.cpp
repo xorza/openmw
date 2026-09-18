@@ -17,6 +17,7 @@
 #include <components/esm3/esmwriter.hpp>
 #include <components/esm3/globalmap.hpp>
 #include <components/myguiplatform/guirendermanager.hpp>
+#include <components/sceneutil/paintedtexture.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -637,7 +638,8 @@ namespace MWGui
             if (!entry.mFogAsked && mFogOfWarToggled && mFogOfWarEnabled)
             {
                 entry.mFogAsked = true;
-                osg::ref_ptr<osg::Texture2D> tex = mLocalMapRender->getFogOfWarTexture(entry.mCellX, entry.mCellY);
+                osg::ref_ptr<SceneUtil::PaintedTexture> tex
+                    = mLocalMapRender->getFogOfWarTexture(entry.mCellX, entry.mCellY);
                 if (tex)
                 {
                     entry.mFogTexture = MyGUIPlatform::shareTexture(*tex);

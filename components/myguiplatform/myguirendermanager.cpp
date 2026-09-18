@@ -13,6 +13,7 @@
 
 #include <components/resource/imagemanager.hpp>
 #include <components/sceneutil/nodecallback.hpp>
+#include <components/sceneutil/paintedtexture.hpp>
 #include <components/shader/shadermanager.hpp>
 
 #include "myguitexture.hpp"
@@ -523,6 +524,12 @@ namespace MyGUIPlatform
     std::unique_ptr<MyGUI::ITexture> RenderManager::shareTexture(osg::Texture2D& texture)
     {
         // Not in mTextures, which is keyed by name; the caller owns it
+        return std::make_unique<OSGTexture>(&texture);
+    }
+
+    std::unique_ptr<MyGUI::ITexture> RenderManager::shareTexture(SceneUtil::PaintedTexture& texture)
+    {
+        // The same route: the texture uploads its own rectangles when it is applied
         return std::make_unique<OSGTexture>(&texture);
     }
 

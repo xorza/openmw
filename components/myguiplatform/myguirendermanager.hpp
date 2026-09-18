@@ -116,6 +116,7 @@ namespace MyGUIPlatform
         void setAdditiveBlend(bool additive) override;
 
         std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) override;
+        std::unique_ptr<MyGUI::ITexture> shareTexture(SceneUtil::PaintedTexture& texture) override;
 
         /** @see IRenderTarget::getInfo */
         const MyGUI::RenderTargetInfo& getInfo() const override { return mInfo; }
