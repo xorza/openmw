@@ -33,4 +33,8 @@ namespace Rtx
     /// the application owns.
     inline constexpr VkBufferUsageFlags sStructureStorageUsage
         = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+    /// What a structure's offset in its buffer has to be a multiple of. Vulkan fixes it at 256, and
+    /// it is only enough where the buffer itself starts on the boundary, which `Buffer` sees to.
+    inline constexpr VkDeviceSize sStructureOffsetAlignment = 256;
 }

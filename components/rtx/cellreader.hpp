@@ -4,6 +4,7 @@
 #include <string_view>
 #include <vector>
 
+#include <boost/container/flat_set.hpp>
 #include <osg/Image>
 #include <osg/Node>
 #include <osg/Vec2i>
@@ -100,7 +101,10 @@ namespace Rtx
 
         /// Every model lent, sorted by path, and every image lent, sorted by address — searched
         /// rather than keyed, because a lookup then costs no node and no string.
-        SortedRows<PreparedModel*, std::string_view, PathOf> mByPath;
-        SortedRows<PreparedTexture*, const osg::Image*, ImageOf> mByImage;
+        boost::container::flat_set<PreparedModel*, KeyedLess<std::string_view, PathOf>, std::vector<PreparedModel*>>
+            mByPath;
+        boost::container::flat_set<PreparedTexture*, KeyedLess<const osg::Image*, ImageOf>,
+            std::vector<PreparedTexture*>>
+            mByImage;
     };
 }

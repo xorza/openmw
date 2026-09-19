@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include <boost/container/flat_set.hpp>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 
@@ -205,7 +206,7 @@ namespace Rtx
         std::size_t mAdoptedFrame = ~std::size_t{ 0 };
 
         /// The cells held, in `CellAt`'s order, and the room a dropped cell's vectors grew.
-        SortedRows<HeldCell, osg::Vec2i, CellAt> mCells;
+        boost::container::flat_set<HeldCell, KeyedLess<osg::Vec2i, CellAt>, std::vector<HeldCell>> mCells;
         Recycled<HeldCell> mSpareCells;
 
         /// What the thread read and handed over, and the frame has not adopted yet, in the order it

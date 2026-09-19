@@ -15,6 +15,7 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 
+#include "contract.hpp"
 #include "error.hpp"
 #include "lightbuilder.hpp"
 #include "residency.hpp"
@@ -54,7 +55,7 @@ namespace Rtx
         if (image.getFileName().empty())
             return nullptr;
 
-        if (PreparedTexture* const* const known = mByImage.find(&image))
+        if (const auto known = mByImage.find(&image); known != mByImage.end())
         {
             mTextures.lend(**known);
             return *known;
@@ -66,14 +67,15 @@ namespace Rtx
         });
 
         mTextures.lend(texture);
-        mByImage.insert(&texture);
+        [[maybe_unused]] const bool fresh = mByImage.insert(&texture).second;
+        assert(fresh && "an image filed twice");
 
         return &texture;
     }
 
     PreparedModel* CellReader::readModel(const VFS::Path::NormalizedView path)
     {
-        if (PreparedModel* const* const known = mByPath.find(path.value()))
+        if (const auto known = mByPath.find(path.value()); known != mByPath.end())
             return *known;
 
         const osg::ref_ptr<const osg::Node> node = mContent.getTemplate(path);
@@ -91,7 +93,8 @@ namespace Rtx
             mWalk.read(*node, mMask, into);
         });
 
-        mByPath.insert(&model);
+        [[maybe_unused]] const bool fresh = mByPath.insert(&model).second;
+        assert(fresh && "a path filed twice");
 
         return &model;
     }
@@ -219,7 +222,10 @@ namespace Rtx
         if (!mTextures.release(texture))
             return;
 
-        mByImage.erase(texture.mImage.get());
+        const auto filed = mByImage.find(texture.mImage.get());
+        contract(filed != mByImage.end(), "an image given back that was never filed");
+        mByImage.erase(filed);
+
         texture.reuse();
         mTextures.give(texture);
     }
@@ -230,7 +236,9 @@ namespace Rtx
             return;
 
         // Erased under the path it is still filed under, before `reuse` clears it.
-        mByPath.erase(std::string_view(model.mPath));
+        const auto filed = mByPath.find(std::string_view(model.mPath));
+        contract(filed != mByPath.end(), "a model given back that was never filed");
+        mByPath.erase(filed);
 
         model.reuse();
         mModels.give(model);

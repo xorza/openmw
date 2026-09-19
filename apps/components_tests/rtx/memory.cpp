@@ -11,7 +11,9 @@
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/memory.hpp>
+#include <components/rtxvulkan/owned.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
+#include <components/rtxvulkan/result.hpp>
 
 #include "harness.hpp"
 
@@ -23,62 +25,74 @@ namespace Rtx
         {
         };
 
-        /// What a resource of `size` needing `alignment` asks for, with every memory type allowed.
-        ///
-        /// The allocator is asked directly rather than through a buffer or an image, because what is
-        /// under test is where a range lands and a resource would only report where it was bound.
-        VkMemoryRequirements asks(VkDeviceSize size, VkDeviceSize alignment)
+        /// A buffer of `size` bytes and the room the allocator gave it, held together so the room
+        /// outlives what is bound to it. The allocator is asked for a real buffer's room, because
+        /// that is the one way it is asked and what it is told about the buffer — a linear resource
+        /// of this size — is what decides where the range lands.
+        struct Bound
         {
-            return VkMemoryRequirements{ .size = size, .alignment = alignment, .memoryTypeBits = ~0u };
+            Owned<VkBuffer, vkDestroyBuffer> mBuffer;
+            DeviceMemory mMemory;
+        };
+
+        Bound bind(const Device& device, const VkDeviceSize size, const VkMemoryPropertyFlags properties)
+        {
+            const VkBufferCreateInfo create{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = size,
+                .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+
+            Bound bound;
+            bound.mBuffer
+                = Owned<VkBuffer, vkDestroyBuffer>::make(device.getHandle(), vkCreateBuffer, create, "vkCreateBuffer");
+            bound.mMemory = device.getMemory().take(bound.mBuffer.get(), properties, 1);
+            checkVk(vkBindBufferMemory(
+                        device.getHandle(), bound.mBuffer.get(), bound.mMemory.getHandle(), bound.mMemory.getOffset()),
+                "vkBindBufferMemory");
+
+            return bound;
         }
 
-        /// A shading map's own requirements, measured on this hardware: two kilobytes at a
-        /// kilobyte's alignment. The smallest image a cell brings, and the one a cell brings most of.
-        VkMemoryRequirements asksLikeAShadingMap()
-        {
-            return asks(2048, 1024);
-        }
-
-        /// A thousand shading maps come out of one allocation rather than a thousand.
+        /// A thousand small resources come out of one allocation rather than a thousand.
         ///
-        /// **What this allocator exists for.** A cell of Morrowind brings a few hundred textures and
-        /// each carries a map, so an allocation apiece is four figures of kernel-visible calls for
-        /// the cell the game starts in, each for two kilobytes the driver rounds up to its own
-        /// granularity. Two megabytes of maps fit inside the smallest block a pool starts with, so
-        /// the honest claim is one and the assertion allows no more.
-        TEST_F(RtxMemoryTest, aThousandSmallImagesComeOutOfOneAllocation)
+        /// **What the allocator exists for.** A cell of Morrowind brings a few hundred textures and
+        /// each carries a shading map of two kilobytes, so an allocation apiece is four figures of
+        /// kernel-visible calls for the cell the game starts in, each for two kilobytes the driver
+        /// rounds up to its own granularity. Two megabytes fit inside one block, so the honest claim
+        /// is one and the assertion allows no more.
+        TEST_F(RtxMemoryTest, aThousandSmallResourcesComeOutOfOneAllocation)
         {
             MemoryAllocator& memory = getDevice().getMemory();
             const std::size_t before = memory.getBlockCount();
 
-            std::vector<DeviceMemory> held;
+            std::vector<Bound> held;
             held.reserve(1000);
             for (int at = 0; at < 1000; ++at)
-                held.push_back(
-                    memory.take(asksLikeAShadingMap(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal));
+                held.push_back(bind(getDevice(), 2048, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
 
-            // At most one, and not exactly one: a test that ran before this may have left a block of
-            // the same pool with room in it, and taking that room is the allocator working.
-            EXPECT_LE(memory.getBlockCount() - before, 1u) << "a thousand small images made more than one allocation";
+            // At most one, and not exactly one: a test that ran before this may have left a block
+            // with room in it, and taking that room is the allocator working.
+            EXPECT_LE(memory.getBlockCount() - before, 1u)
+                << "a thousand small resources made more than one allocation";
 
-            // And they are a thousand distinct places: same block, ascending offsets, no two
-            // overlapping. 2048 bytes at a 1024-byte alignment is two whole pages, so consecutive
-            // ranges sit exactly 2048 apart.
+            // And they are a thousand distinct places in it: no two ranges of one block overlap.
             for (std::size_t at = 1; at < held.size(); ++at)
             {
-                if (held[at].getHandle() != held[at - 1].getHandle())
+                if (held[at].mMemory.getHandle() != held[at - 1].mMemory.getHandle())
                     continue;
 
-                EXPECT_GE(held[at].getOffset(), held[at - 1].getOffset() + 2048)
+                EXPECT_GE(held[at].mMemory.getOffset(), held[at - 1].mMemory.getOffset() + 2048)
                     << "range " << at << " overlaps the one before it";
             }
         }
 
         /// A range given back is what the next resource of that size takes.
         ///
-        /// **What makes a cell leaving pay for the cell arriving.** The free list merges what it is
-        /// handed, so the hole a departing texture leaves is the hole the next one lands in — no
-        /// call into the driver, and no block that grows for ever.
+        /// **What makes a cell leaving pay for the cell arriving.** The hole a departing texture
+        /// leaves is the hole the next one lands in — no call into the driver, and no block that
+        /// grows for ever.
         TEST_F(RtxMemoryTest, aRangeGivenBackIsTakenOverByTheNextResource)
         {
             MemoryAllocator& memory = getDevice().getMemory();
@@ -86,89 +100,37 @@ namespace Rtx
             VkDeviceMemory handle = VK_NULL_HANDLE;
             VkDeviceSize offset = 0;
             {
-                const DeviceMemory first
-                    = memory.take(asksLikeAShadingMap(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
-                handle = first.getHandle();
-                offset = first.getOffset();
+                const Bound first = bind(getDevice(), 2048, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                handle = first.mMemory.getHandle();
+                offset = first.mMemory.getOffset();
             }
 
             const std::size_t after = memory.getBlockCount();
-            const DeviceMemory second
-                = memory.take(asksLikeAShadingMap(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
+            const Bound second = bind(getDevice(), 2048, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-            EXPECT_EQ(second.getHandle(), handle) << "the range came from a different allocation";
-            EXPECT_EQ(second.getOffset(), offset) << "the range that was given back was not taken over";
+            EXPECT_EQ(second.mMemory.getHandle(), handle) << "the range came from a different allocation";
+            EXPECT_EQ(second.mMemory.getOffset(), offset) << "the range that was given back was not taken over";
             EXPECT_EQ(memory.getBlockCount(), after) << "taking over a hole made a new allocation";
-        }
-
-        /// A buffer and an image never share an allocation.
-        ///
-        /// **`bufferImageGranularity` settled once instead of at every placement.** Where the two
-        /// share an allocation Vulkan requires a whole granularity between them, and a pool apiece is
-        /// what makes the question unaskable rather than a check that could be got wrong.
-        TEST_F(RtxMemoryTest, aBufferAndAnImageNeverShareAnAllocation)
-        {
-            MemoryAllocator& memory = getDevice().getMemory();
-
-            const DeviceMemory linear
-                = memory.take(asks(4096, 256), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Linear);
-            const DeviceMemory tiled
-                = memory.take(asks(4096, 1024), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
-
-            EXPECT_NE(linear.getHandle(), tiled.getHandle()) << "the two tilings landed in one allocation";
-        }
-
-        /// An alignment coarser than a page is honoured, and costs only what it has to.
-        ///
-        /// **The case this hardware never asks for and the code still owes.** Every image here wants
-        /// 1024, which is the page, so nothing measured exercises this — a driver that wanted 64 KiB
-        /// would place a range at an offset that is not a multiple of it unless the extra pages are
-        /// taken.
-        TEST_F(RtxMemoryTest, anAlignmentCoarserThanAPageIsHonoured)
-        {
-            MemoryAllocator& memory = getDevice().getMemory();
-            constexpr VkDeviceSize coarse = 64 * 1024;
-
-            std::vector<DeviceMemory> held;
-            for (int at = 0; at < 8; ++at)
-                held.push_back(memory.take(asks(4096, coarse), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal));
-
-            for (std::size_t at = 0; at < held.size(); ++at)
-            {
-                EXPECT_EQ(held[at].getOffset() % coarse, 0u) << "range " << at << " was not aligned as it asked";
-
-                // Four kilobytes at a 64 KiB alignment is four pages plus the sixty-three an
-                // alignment that coarse may skip, so a range reserves 67 of them and the next
-                // aligned offset a page can carry is a whole 64 KiB on. Anything less and two of
-                // these would overlap.
-                if (at > 0 && held[at].getHandle() == held[at - 1].getHandle())
-                {
-                    EXPECT_GE(held[at].getOffset(), held[at - 1].getOffset() + coarse)
-                        << "range " << at << " overlaps the one before it";
-                }
-            }
         }
 
         /// Two host-visible ranges are two windows on one mapping, and neither reaches the other.
         ///
-        /// **A block is mapped once and a range is that pointer plus its offset**, which is how a
-        /// caller reaches its memory — and the way to get it wrong is to hand every range the block's
-        /// base.
+        /// **A range is mapped as it is made and the pointer is its own**, which is how a caller
+        /// reaches its memory — and the way to get it wrong is to hand every range the block's base.
         TEST_F(RtxMemoryTest, twoHostVisibleRangesAreSeparateWindowsOnOneMapping)
         {
-            MemoryAllocator& memory = getDevice().getMemory();
             constexpr VkMemoryPropertyFlags staging
                 = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-            const DeviceMemory first = memory.take(asks(1024, 256), staging, Tiling::Linear);
-            const DeviceMemory second = memory.take(asks(1024, 256), staging, Tiling::Linear);
+            const Bound first = bind(getDevice(), 1024, staging);
+            const Bound second = bind(getDevice(), 1024, staging);
 
-            ASSERT_NE(first.map(), nullptr);
-            ASSERT_NE(second.map(), nullptr);
-            ASSERT_NE(first.map(), second.map()) << "two ranges were handed the same address";
+            ASSERT_NE(first.mMemory.map(), nullptr);
+            ASSERT_NE(second.mMemory.map(), nullptr);
+            ASSERT_NE(first.mMemory.map(), second.mMemory.map()) << "two ranges were handed the same address";
 
-            auto* const one = static_cast<std::uint8_t*>(first.map());
-            auto* const other = static_cast<std::uint8_t*>(second.map());
+            auto* const one = static_cast<std::uint8_t*>(first.mMemory.map());
+            auto* const other = static_cast<std::uint8_t*>(second.mMemory.map());
 
             for (int at = 0; at < 1024; ++at)
             {
@@ -182,9 +144,10 @@ namespace Rtx
 
             // And the address is the block's own plus the range's offset, which is what the caller
             // is promised: the two differ by exactly the difference of their offsets.
-            if (first.getHandle() == second.getHandle())
+            if (first.mMemory.getHandle() == second.mMemory.getHandle())
             {
-                EXPECT_EQ(other - one, static_cast<std::ptrdiff_t>(second.getOffset() - first.getOffset()))
+                EXPECT_EQ(
+                    other - one, static_cast<std::ptrdiff_t>(second.mMemory.getOffset() - first.mMemory.getOffset()))
                     << "a range's address is not its block's plus its offset";
             }
         }
@@ -214,8 +177,7 @@ namespace Rtx
             // Half a block, so the range cannot come out of a hole an earlier test left and cannot
             // help but be visible in the live figure.
             constexpr VkDeviceSize wanted = 4 * 1024 * 1024;
-            const DeviceMemory held
-                = memory.take(asks(wanted, 1024), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
+            const Bound held = bind(getDevice(), wanted, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
             const MemoryReport during = memory.report();
             EXPECT_EQ(during.mHeapCount, before.mHeapCount);
@@ -262,14 +224,13 @@ namespace Rtx
                 << "no heap the host writes into, on a device this renderer accepted";
         }
 
-        /// A pool that empties hands its blocks back, and keeps the last one.
+        /// Blocks that empty go back to the device.
         ///
         /// **What a load's staging costs after the load.** A world's geometry goes to the device
         /// through 184 MiB of staging blocks, measured at Seyda Neen, and nothing reads them again —
         /// so a block that empties goes back to the device rather than standing until the renderer
-        /// closes. The last of a pool stays: a pool that emptied and refilled would otherwise free
-        /// and allocate on alternate frames.
-        TEST_F(RtxMemoryTest, aPoolThatEmptiesGivesItsBlocksBackAndKeepsTheLast)
+        /// closes.
+        TEST_F(RtxMemoryTest, blocksThatEmptyGoBackToTheDevice)
         {
             MemoryAllocator& memory = getDevice().getMemory();
             constexpr VkMemoryPropertyFlags staging
@@ -277,28 +238,20 @@ namespace Rtx
 
             const std::size_t before = memory.getBlockCount();
 
-            // Larger than the largest block a pool grows to, so each range forces a block of its
-            // own whatever the tests before this left standing in the shared device.
+            // Larger than a block, so each range takes an allocation of its own whatever the tests
+            // before this left standing in the shared device.
             constexpr VkDeviceSize alone = 96 * 1024 * 1024;
 
-            std::vector<DeviceMemory> held;
+            std::vector<Bound> held;
             for (int at = 0; at < 3; ++at)
-                held.push_back(memory.take(asks(alone, 1024), staging, Tiling::Linear));
+                held.push_back(bind(getDevice(), alone, staging));
 
             const std::size_t grown = memory.getBlockCount();
             ASSERT_EQ(grown, before + 3) << "three ranges too large to share did not make three blocks";
 
             held.clear();
 
-            // Every block the pool grew by is back, and one is not: the pool keeps its last.
-            const std::size_t settled = memory.getBlockCount();
-            EXPECT_LT(settled, grown) << "an emptied pool kept every block it grew";
-            EXPECT_GE(settled, 1u) << "the last block of a pool went back";
-
-            // And the slots are taken over rather than appended to, so a range's index goes on
-            // meaning the block it named.
-            const DeviceMemory again = memory.take(asks(alone, 1024), staging, Tiling::Linear);
-            EXPECT_LE(memory.getBlockCount(), grown) << "a retired slot was not taken over";
+            EXPECT_LT(memory.getBlockCount(), grown) << "emptied blocks were kept";
         }
 
         /// A budget the driver would not state is left out of the line rather than printed as none.

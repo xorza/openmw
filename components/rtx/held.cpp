@@ -1,25 +1,33 @@
 #include "held.hpp"
 
 #include <cassert>
+#include <utility>
+
+#include "contract.hpp"
 
 namespace Rtx
 {
     CellHolds::HeldModel& CellHolds::know(PreparedModel& model)
     {
-        HeldModel& known = mModels.findOrInsert(&model, [&] {
-            HeldModel taking = mSpareModels.take();
-            taking.mModel = &model;
-            taking.mParts.clear();
-            taking.mNamed = 0;
-            return taking;
-        });
+        // One search either way: a cell arriving asks this once per model it names.
+        const auto at = mModels.lower_bound(&model);
+        if (at != mModels.end() && at->mModel == &model)
+            return *at;
 
-        return known;
+        HeldModel taking = mSpareModels.take();
+        taking.mModel = &model;
+        taking.mParts.clear();
+        taking.mNamed = 0;
+
+        return *mModels.insert(at, std::move(taking));
     }
 
     CellHolds::HeldModel& CellHolds::knownOf(const PreparedModel& model)
     {
-        return mModels.at(&model);
+        const auto known = mModels.find(&model);
+        contract(known != mModels.end(), "a model read that the frame does not know of");
+
+        return *known;
     }
 
     void CellHolds::adoptParts(HeldModel& held, SceneAdopter& into)
@@ -43,13 +51,16 @@ namespace Rtx
 
     void CellHolds::release(PreparedModel& model)
     {
-        HeldModel& known = mModels.at(&model);
-        assert(known.mNamed > 0 && "a model released by more cells than named it");
-        if (--known.mNamed > 0)
+        const auto known = mModels.find(&model);
+        contract(known != mModels.end(), "a model released that the frame does not know of");
+
+        assert(known->mNamed > 0 && "a model released by more cells than named it");
+        if (--known->mNamed > 0)
             return;
 
-        mReleasing.insert(mReleasing.end(), known.mParts.begin(), known.mParts.end());
-        mSpareModels.give(mModels.take(&model));
+        mReleasing.insert(mReleasing.end(), known->mParts.begin(), known->mParts.end());
+        mSpareModels.give(std::move(*known));
+        mModels.erase(known);
     }
 
     void CellHolds::releaseParts(SceneAdopter& into)

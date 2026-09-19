@@ -1,10 +1,10 @@
 #include <array>
-#include <cstddef>
 #include <stdexcept>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+
+#include <boost/container/flat_set.hpp>
 
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scratch.hpp>
@@ -71,34 +71,32 @@ namespace Rtx
             int operator()(const Keyed& row) const { return row.mKey; }
         };
 
-        /// **A drop hands each row over before it goes, keeps the order of the rest and shifts the
-        /// table once.** The hand-over may take from the row — the ring moves a cell into its
-        /// spares there — which is why this is not `std::erase_if`.
-        TEST(RtxSortedRowsTest, aDropHandsEachRowOverAndKeepsTheOrderOfTheRest)
+        /// **One comparator orders the rows and finds them by the key alone**, so a `flat_set` of
+        /// rows keyed by a field inside each is searched with no row made up to search with. Rows
+        /// on both sides, a key on either, and a key against a key: the four shapes a set asks.
+        TEST(RtxKeyedLessTest, rowsAreOrderedAndFoundByTheKeyInsideThem)
         {
-            SortedRows<Keyed, int, KeyOfKeyed> rows;
-            for (int key = 1; key <= 5; ++key)
+            boost::container::flat_set<Keyed, KeyedLess<int, KeyOfKeyed>, std::vector<Keyed>> rows;
+            for (const int key : { 3, 1, 5, 4, 2 })
                 rows.insert(Keyed{ .mKey = key, .mValue = key * 10 });
 
-            std::vector<int> taken;
-            const std::size_t went = rows.dropIf([&](Keyed& row) {
-                if (row.mKey % 2 != 0)
-                    return false;
+            ASSERT_EQ(rows.size(), 5u);
+            int expected = 1;
+            for (const Keyed& row : rows)
+                EXPECT_EQ(row.mKey, expected++) << "the rows are not in the key's order";
 
-                taken.push_back(std::exchange(row.mValue, 0));
-                return true;
-            });
+            ASSERT_NE(rows.find(4), rows.end());
+            EXPECT_EQ(rows.find(4)->mValue, 40);
+            EXPECT_EQ(rows.find(6), rows.end());
+            EXPECT_TRUE(rows.contains(2));
 
-            EXPECT_EQ(went, 2u);
-            EXPECT_EQ(taken, (std::vector<int>{ 20, 40 }));
-            ASSERT_EQ(rows.size(), 3u);
-            EXPECT_EQ(rows.at(1).mValue, 10);
-            EXPECT_EQ(rows.at(3).mValue, 30);
-            EXPECT_EQ(rows.at(5).mValue, 50);
-            EXPECT_EQ(rows.find(2), nullptr);
+            // A row already keyed is refused, whatever else it carries.
+            EXPECT_FALSE(rows.insert(Keyed{ .mKey = 3, .mValue = 0 }).second);
+            EXPECT_EQ(rows.find(3)->mValue, 30);
 
-            EXPECT_EQ(rows.dropIf([](const Keyed&) { return false; }), 0u) << "nothing to drop shifts nothing";
-            EXPECT_EQ(rows.size(), 3u);
+            // The rows are mutable in place, which is what the ring needs of its cells.
+            rows.find(5)->mValue = 55;
+            EXPECT_EQ(rows.find(5)->mValue, 55);
         }
 
         struct Reading : Lent

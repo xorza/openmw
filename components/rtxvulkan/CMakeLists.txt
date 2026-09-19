@@ -311,6 +311,24 @@ add_library(openmw-rtx-vulkan STATIC ${RTX_VULKAN_FILES})
 # SDK headers sitting under `/usr/include`, and Windows is where one fails.
 target_link_libraries(openmw-rtx-vulkan PUBLIC openmw-rtx PRIVATE Vulkan::Vulkan SDL2::SDL2 components)
 
+# Vulkan Memory Allocator, the sub-allocator behind `memory.hpp`: one header, reached by
+# `memory.cpp` and nothing else. The system's where a package is installed, and the pinned release
+# fetched into the build tree otherwise, the way `extern/` takes Bullet and MyGUI when the system
+# has none. System headers either way, because the library's warnings are not this tree's to fix.
+find_package(VulkanMemoryAllocator CONFIG QUIET)
+if (NOT TARGET GPUOpen::VulkanMemoryAllocator)
+    include(FetchContent)
+    FetchContent_Declare(vma
+        URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.4.0.tar.gz
+        URL_HASH SHA512=563acbcd8912d10d92c23715eba7acf0e7c1683af36021f415b36f359c2cce065f3906e395c32282a8410ec5c8179fbcb6412935c6629a49357475d4b4410e2a
+        SOURCE_DIR fetched/vma
+    )
+    FetchContent_MakeAvailable(vma)
+    set_target_properties(VulkanMemoryAllocator PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:VulkanMemoryAllocator,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
+target_link_libraries(openmw-rtx-vulkan PRIVATE GPUOpen::VulkanMemoryAllocator)
+
 openmw_rtx_target(openmw-rtx-vulkan)
 
 add_dependencies(openmw-rtx-vulkan openmw-rtx-vulkan-shaders)

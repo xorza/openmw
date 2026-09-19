@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "contract.hpp"
 #include "runs.hpp"
 #include "stepped.hpp"
 
@@ -421,144 +421,35 @@ namespace Rtx
         SlotRows<Row> mRows;
     };
 
-    /// Rows kept in the order of a key taken from each, found by binary search. A type rather than
-    /// a `std::lower_bound` at each site, because a search whose comparator disagreed with the
-    /// insertion finds nothing and says nothing. Not a map: what these hold is walked in order every
-    /// frame, and the walk is the same walk on every machine. A row's address is not stable, so a
-    /// caller holds the key; `Spares` is the type for the other case.
+    /// Orders rows by the key `KeyOf` takes from each, and takes a bare key on either side, so a
+    /// `boost::container::flat_set` of rows is searched by the key alone. One type for both the
+    /// insertion and the search, so no reader can disagree with another about whether a key is
+    /// held — which is what a `std::lower_bound` at each site with a comparator of its own could.
     ///
+    /// @tparam Key what a row is ordered by, a type distinct from the row's.
     /// @tparam KeyOf what a row's key is, as a stateless callable taking the row.
-    template <class Row, class Key, class KeyOf>
-    class SortedRows
+    template <class Key, class KeyOf>
+    struct KeyedLess
     {
-    public:
-        using Rows = std::vector<Row>;
-        using iterator = typename Rows::iterator;
-        using const_iterator = typename Rows::const_iterator;
+        using is_transparent = void;
 
-        /// The row `key` names, or null where nothing holds it.
-        const Row* find(const Key& key) const
+        template <class Left, class Right>
+        bool operator()(const Left& left, const Right& right) const
         {
-            const const_iterator at = locate(key);
-            return at != mRows.end() ? &*at : nullptr;
+            return keyOf(left) < keyOf(right);
         }
-
-        Row* find(const Key& key) { return const_cast<Row*>(std::as_const(*this).find(key)); }
-
-        bool contains(const Key& key) const { return find(key) != nullptr; }
-
-        /// The row `key` names, for a caller whose contract is that there is one. A reference,
-        /// because callers that asserted `find`'s pointer and dereferenced it left a release build
-        /// with a path that reads through nought.
-        const Row& at(const Key& key) const
-        {
-            const const_iterator found = locate(key);
-            contract(found != mRows.end(), "a key read that nothing holds");
-
-            return *found;
-        }
-
-        Row& at(const Key& key) { return const_cast<Row&>(std::as_const(*this).at(key)); }
-
-        /// The row `key` names, inserting what `make` answers where nothing holds it. One search
-        /// either way: a cell arriving asks it once per model it names.
-        template <class Make>
-        Row& findOrInsert(const Key& key, Make make)
-        {
-            const iterator at = lowerBound(key);
-            if (at != mRows.end() && !(key < KeyOf{}(*at)))
-                return *at;
-
-            return *mRows.insert(at, make());
-        }
-
-        /// Puts `row` where its own key says. Asserts where something already holds that key.
-        Row& insert(Row row)
-        {
-            const iterator at = lowerBound(KeyOf{}(row));
-            assert((at == mRows.end() || KeyOf{}(row) < KeyOf{}(*at)) && "a key inserted twice");
-
-            return *mRows.insert(at, std::move(row));
-        }
-
-        /// Takes the row `key` names away and answers it. Asserts where nothing holds it.
-        Row take(const Key& key)
-        {
-            const iterator at = locate(key);
-            contract(at != mRows.end(), "a key taken that nothing holds");
-
-            Row taken = std::move(*at);
-            mRows.erase(at);
-            return taken;
-        }
-
-        /// Drops the row `key` names. Asserts where nothing holds it.
-        void erase(const Key& key)
-        {
-            const iterator at = locate(key);
-            contract(at != mRows.end(), "a key dropped that nothing holds");
-
-            mRows.erase(at);
-        }
-
-        /// Drops the row at `at` and answers what follows it, for a sweep that walks them all.
-        iterator erase(const_iterator at) { return mRows.erase(at); }
-
-        /// Hands every row to `gone`, which answers whether it goes — and may take from it,
-        /// because a row that goes is given back somewhere first, which `std::erase_if` forbids
-        /// its predicate. The rows that stay keep their order, and the table shifts once however
-        /// many go. @return how many went.
-        template <class Gone>
-        std::size_t dropIf(Gone gone)
-        {
-            auto kept = mRows.begin();
-            for (Row& row : mRows)
-            {
-                if (gone(row))
-                    continue;
-
-                if (&row != &*kept)
-                    *kept = std::move(row);
-                ++kept;
-            }
-
-            const auto went = static_cast<std::size_t>(mRows.end() - kept);
-            mRows.erase(kept, mRows.end());
-            return went;
-        }
-
-        void clear() { mRows.clear(); }
-
-        std::size_t size() const { return mRows.size(); }
-
-        iterator begin() { return mRows.begin(); }
-        iterator end() { return mRows.end(); }
-        const_iterator begin() const { return mRows.begin(); }
-        const_iterator end() const { return mRows.end(); }
 
     private:
-        /// The first row whose key is not below `key` — the one comparator this type has.
-        iterator lowerBound(const Key& key) { return std::lower_bound(mRows.begin(), mRows.end(), key, before); }
-        const_iterator lowerBound(const Key& key) const
+        /// A key as it is, and a row by what `KeyOf` takes from it. By convertibility and not by
+        /// overload, because a lookup by a pointer to non-const is a key too, and an overload on
+        /// `const Key&` would lose to the row template's exact match there.
+        template <class T>
+        static Key keyOf(const T& value)
         {
-            return std::lower_bound(mRows.begin(), mRows.end(), key, before);
+            if constexpr (std::is_convertible_v<const T&, Key>)
+                return value;
+            else
+                return KeyOf{}(value);
         }
-
-        /// The row `key` names, or `end()` — the one place the search and its bound check are
-        /// spelled, so no reader can disagree with another about whether a key is held.
-        iterator locate(const Key& key)
-        {
-            const iterator at = lowerBound(key);
-            return at != mRows.end() && !(key < KeyOf{}(*at)) ? at : mRows.end();
-        }
-        const_iterator locate(const Key& key) const
-        {
-            const const_iterator at = lowerBound(key);
-            return at != mRows.end() && !(key < KeyOf{}(*at)) ? at : mRows.end();
-        }
-
-        static bool before(const Row& row, const Key& wanted) { return KeyOf{}(row) < wanted; }
-
-        Rows mRows;
     };
 }

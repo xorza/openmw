@@ -19,8 +19,8 @@ namespace Rtx
         bool empty() const { return mRun.empty(); }
     };
 
-    /// A list of blocks a `RunAllocator` runs over each, the shape both `MemoryAllocator` and
-    /// `StructureStorage` have: a block is made once and never moved, a run is taken out of the
+    /// A list of blocks a `RunAllocator` runs over each, the shape `StructureStorage` has: a
+    /// block is made once and never moved, a run is taken out of the
     /// first block that fits it, a run given back is merged with what it touches, and a block that
     /// empties goes back — except the last of its kind, or a pool that emptied and refilled would
     /// free and make a block on alternate frames. A slot is never removed, because a run names its

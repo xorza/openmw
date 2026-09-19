@@ -5,8 +5,10 @@
 #include <utility>
 
 #include "barriers.hpp"
+#include "bufferusage.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
+#include "physicaldevice.hpp"
 #include "result.hpp"
 #include "timeline.hpp"
 
@@ -32,6 +34,27 @@ namespace Rtx
 
             return 0;
         }
+
+        /// The alignment a buffer's memory owes beyond what the driver asks for binding it: the
+        /// rules Vulkan states at the use and not at the bind, which a driver's requirement need not
+        /// cover. A scratch address must be a multiple of the scratch alignment, a shader binding
+        /// table's base of the group base alignment, and a structure's offset of 256 — each written
+        /// as an offset inside the buffer elsewhere, which is only enough where the buffer itself
+        /// starts on the boundary. The allocator this fork had placed every range on a kilobyte,
+        /// which covered all three by accident; the library places at what it is asked.
+        VkDeviceSize alignmentOwedBy(const Device& device, const VkBufferUsageFlags usage)
+        {
+            VkDeviceSize owed = 1;
+            if ((usage & sScratchUsage) == sScratchUsage)
+                owed = std::max(owed, device.getPhysicalDevice().getStructureScratchAlignment());
+            if ((usage & VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR) != 0)
+                owed = std::max<VkDeviceSize>(
+                    owed, device.getPhysicalDevice().getProperties().mRayTracingPipeline.shaderGroupBaseAlignment);
+            if ((usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR) != 0)
+                owed = std::max(owed, sStructureOffsetAlignment);
+
+            return owed;
+        }
     }
 
     Buffer::Buffer(const Device& device, const BufferKind kind, const VkDeviceSize size, const VkBufferUsageFlags usage,
@@ -50,10 +73,7 @@ namespace Rtx
         mHandle = Owned<VkBuffer, vkDestroyBuffer>::make(device.getHandle(), vkCreateBuffer, create, "vkCreateBuffer");
         device.setName(mHandle.get(), name);
 
-        VkMemoryRequirements requirements{};
-        vkGetBufferMemoryRequirements(device.getHandle(), mHandle.get(), &requirements);
-
-        mMemory = device.getMemory().take(requirements, propertiesOf(kind), Tiling::Linear);
+        mMemory = device.getMemory().take(mHandle.get(), propertiesOf(kind), alignmentOwedBy(device, usage));
         checkVk(vkBindBufferMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
             "vkBindBufferMemory");
 

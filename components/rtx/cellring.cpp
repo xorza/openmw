@@ -236,7 +236,8 @@ namespace Rtx
 
         mPlacer.adoptPlacements(cell, held, mHolds);
 
-        mCells.insert(std::move(held));
+        [[maybe_unused]] const bool fresh = mCells.insert(std::move(held)).second;
+        assert(fresh && "a cell adopted twice");
 
         mSupply.giveBack().mCells.push_back(&cell);
     }
@@ -352,15 +353,22 @@ namespace Rtx
         }
 
         // A cell held with the statics the other way is dropped whole and read again, for the
-        // reason `takeDone` gives. Dropped in one walk and compacted once, because a worldspace
-        // change drops many in one frame.
-        const std::size_t dropped = mCells.dropIf([&](HeldCell& cell) {
-            if (withinReach(cell.mCell, eye, band) && cell.mStatics == mStatics)
-                return false;
+        // reason `takeDone` gives. Erased one by one and not `erase_if`, because a cell that goes is
+        // given back first, which a remove's predicate may not do to its row. A band is a hundred
+        // or so cells and a crossing drops a few, so the shifts are nobody's concern.
+        std::size_t dropped = 0;
+        for (auto cell = mCells.begin(); cell != mCells.end();)
+        {
+            if (withinReach(cell->mCell, eye, band) && cell->mStatics == mStatics)
+            {
+                ++cell;
+                continue;
+            }
 
-            dropCell(cell);
-            return true;
-        });
+            dropCell(*cell);
+            cell = mCells.erase(cell);
+            ++dropped;
+        }
         if (dropped > 0)
             mAskStale = true;
 

@@ -111,9 +111,7 @@ namespace Rtx
         };
         mHandle = Owned<VkImage, vkDestroyImage>::make(device.getHandle(), vkCreateImage, create, "vkCreateImage");
 
-        VkMemoryRequirements requirements{};
-        vkGetImageMemoryRequirements(device.getHandle(), mHandle.get(), &requirements);
-        mMemory = device.getMemory().take(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
+        mMemory = device.getMemory().take(mHandle.get(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         checkVk(vkBindImageMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
             "vkBindImageMemory");
 

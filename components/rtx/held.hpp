@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include <boost/container/flat_set.hpp>
 #include <osg/Matrixf>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
@@ -194,7 +195,7 @@ namespace Rtx
             const PreparedModel* operator()(const HeldModel& held) const { return held.mModel; }
         };
 
-        SortedRows<HeldModel, const PreparedModel*, ModelAt> mModels;
+        boost::container::flat_set<HeldModel, KeyedLess<const PreparedModel*, ModelAt>, std::vector<HeldModel>> mModels;
 
         /// A model's row taken back out is room the next one refills rather than a heap call on
         /// the frame a cell lands.
