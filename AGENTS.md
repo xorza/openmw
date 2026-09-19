@@ -16,14 +16,16 @@ A 2002 game made to look astonishing on current hardware — ray-traced visibili
 indirect light, materials recovered from pre-lit vanilla textures, DLSS Ray Reconstruction. Vanilla
 content, new light transport.
 
-## Priorities:
+## Rules
 
-- Avoid changing rasterizer and not related to Rtx renderer logic
-- Rasterizer and Rtx renderers should have same interfaced and avoid exposing internal implementation details. Avoid branching depending on specific renderer implementation details - such cases should be abstracted.
-- Performance is very important. Avoid repeating computations, precompute as early as possible.
-- Target GPUs - Nvidia RTX 20XX and later.
-- One binary ships two renderers, and the one not chosen never starts.
-- Minimal diff with upstream, but without sacrificing code reusability and renderer abstraction quality. Rtx config page and translation changes in diff are fine.\
+- Do not change the rasterizer, or anything the ray tracer does not need.
+- Both renderers stand behind one interface that exposes no implementation detail. Where the game
+  would branch on which renderer it has, the seam abstracts the question instead.
+- Performance matters. Compute nothing twice; compute as early as possible.
+- Target hardware: NVIDIA RTX 20 series and later.
+- One binary ships both renderers, and the one not chosen never starts.
+- Keep the diff against upstream minimal, but never at the cost of reuse or of the abstraction's
+  quality. The `[RTX]` settings pages and their translations are a fine price.
 
 ## Where the code lives
 
@@ -50,7 +52,7 @@ backend ever arrives.
   saying it works. `rtx debug gate` once at the end: format check, build, no-assert and no-DLSS
   compiles, tests, `check`, one repeat pair. Never a gate beside a build or another gate.
 - Do not open the game window to check a rendering change. `shot --views=all --map
-  --against=<dir>` says which pictures a change moved. `scene` reports what the renderer was
+--against=<dir>` says which pictures a change moved. `scene` reports what the renderer was
   handed. `check` asserts the tree's claims at every place of its suite. `bench` has the moving
   camera. `view` is for what only a window shows.
 - `rtx debug repeat --pairs=10` after touching anything a frame reads. A run is the same run
