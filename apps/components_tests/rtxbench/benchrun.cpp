@@ -1,8 +1,11 @@
+#include <span>
+
 #include <gtest/gtest.h>
 
 #include <osg/Math>
 #include <osg/Vec3f>
 
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
 namespace Rtx
@@ -62,6 +65,43 @@ namespace Rtx
             EXPECT_NEAR(forward.length(), 1.0f, 1e-6f);
 
             EXPECT_EQ(Stand::forwardOf(osg::Vec3f()), osg::Vec3f(0.0f, 1.0f, 0.0f));
+        }
+
+        /// **Every check has a row, and the row says when it may be asked.** A check with no name
+        /// would print empty in the report and be unreachable from the command line; the four that
+        /// depend on the stop's shape answer no where the stop cannot answer them.
+        TEST(RtxBenchRunTest, everyCheckIsNamedAndSaysWhenItMayBeAsked)
+        {
+            const std::span<const Check> every = everyCheck();
+            EXPECT_EQ(every.size(), 12u);
+            for (const Check check : every)
+                EXPECT_FALSE(checkName(check).empty()) << static_cast<int>(check);
+
+            Stop still;
+            still.mStand.mEye = osg::Vec3f(1.0f, 2.0f, 3.0f);
+            RenderProfile unheld;
+            RenderProfile held = unheld;
+            held.mStressOverlapMs = 8.0;
+
+            EXPECT_TRUE(canAsk(Check::WalkTwice, still, unheld));
+            EXPECT_TRUE(canAsk(Check::CameraStands, still, unheld)) << "a still stop names its eye";
+            EXPECT_FALSE(canAsk(Check::CrossingsAppend, still, unheld)) << "nothing to cross without a route";
+            EXPECT_TRUE(canAsk(Check::FramesOverlap, still, unheld));
+            EXPECT_FALSE(canAsk(Check::QueueHeld, still, unheld)) << "a hold nobody asked for";
+            EXPECT_TRUE(canAsk(Check::QueueHeld, still, held));
+
+            Stop routed = still;
+            routed.mSchedule.mRoute = Route{ .mTo = osg::Vec3f(100.0f, 0.0f, 0.0f), .mSpeed = 10.0f };
+            EXPECT_TRUE(canAsk(Check::CrossingsAppend, routed, unheld));
+            EXPECT_FALSE(canAsk(Check::FramesOverlap, routed, unheld)) << "an arrival drains the ring";
+            EXPECT_FALSE(canAsk(Check::CameraStands, routed, unheld)) << "a route leaves the camera elsewhere";
+
+            Stop flown = still;
+            flown.mSchedule.mFreeCamera = true;
+            EXPECT_FALSE(canAsk(Check::CameraStands, flown, unheld));
+
+            Stop unplaced;
+            EXPECT_FALSE(canAsk(Check::CameraStands, unplaced, unheld)) << "no eye named, nothing to stand at";
         }
     }
 }

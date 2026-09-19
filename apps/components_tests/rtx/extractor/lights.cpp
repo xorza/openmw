@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstddef>
 #include <span>
-#include <string>
 
 #include <osg/BlendFunc>
 #include <osg/GL>
@@ -21,6 +20,7 @@
 #include <osg/ref_ptr>
 
 #include <components/esm3/loadligh.hpp>
+#include <components/misc/constants.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -44,23 +44,24 @@ namespace Rtx::Testing
         /// which tests ran first decided whether this one passed.
         const float sWhiteLampAtHundred = 100.0f * 100.0f * (0.25f * Shaders::PI);
 
-        /// A magic bolt's light is sized by the area its spell states, in feet, and a spell with no
-        /// area stays the bolt the game made.
+        /// A magic bolt's light is sized by the source radius the game writes on it — its spell's
+        /// area, or the bolt's own sixty-six where the spell has none or a smaller one — and never
+        /// by the sixty-six cut-off the rasterizer draws every bolt with.
         ///
-        /// Sixty-six units is what `ProjectileManager` gives every bolt. Fifty feet is 50 by
-        /// 21.333 = 1066.7 units, which is the larger, so the light is a lamp of that radius: its
+        /// Fifty feet is 50 by 21.333 = 1066.7 units, so the light is a lamp of that radius: its
         /// reach `1066.7 * 2 + 128 = 2261.3` and its intensity `1066.7^2 * 0.25 * pi = 893,657`
-        /// on a white colour. A spark of no area keeps the bolt's own sixty-six, reaching
-        /// `66 * 2 + 128 = 260`; and an area smaller than the bolt, one foot, is not a shrinking.
+        /// on a white colour. A spark with no source radius keeps the bolt's own sixty-six,
+        /// reaching `66 * 2 + 128 = 260`; and a touch spell, whose one foot the game rounded up to
+        /// the bolt's sixty-six, reaches the same.
         TEST_F(RtxSceneExtractorTest, aBoltsLightReachesTheAreaItsSpellStates)
         {
             osg::ref_ptr<SceneUtil::LightSource> fireball = makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1));
-            fireball->setUserValue(std::string(Rtx::sSpellAreaValue), 50.0f);
+            fireball->setSourceRadius(50.0f * Constants::UnitsPerFoot);
 
             osg::ref_ptr<SceneUtil::LightSource> spark = makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1));
 
             osg::ref_ptr<SceneUtil::LightSource> touch = makeLightSource(66.0f, osg::Vec4f(1, 1, 1, 1));
-            touch->setUserValue(std::string(Rtx::sSpellAreaValue), 1.0f);
+            touch->setSourceRadius(std::max(66.0f, 1.0f * Constants::UnitsPerFoot));
 
             osg::ref_ptr<osg::Group> flying = new osg::Group;
             flying->addChild(fireball);

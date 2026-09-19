@@ -18,6 +18,7 @@ namespace osg
     class Group;
     class Image;
     class StateSet;
+    class Texture2D;
 }
 
 namespace Resource
@@ -53,6 +54,10 @@ namespace MWRender
         void keepCopy() override;
         const osg::Image* getCopy() override;
         MyGUI::ITexture& getTexture() const override;
+
+        /// The texture the picture is drawn into, for the rasterizer's own compositor: what
+        /// upstream's `LocalMap::getMapTexture` answered with.
+        osg::Texture2D& getColorTexture() const;
 
     protected:
         /// @param node the subclass's, parented under `parent` here and unparented in the destructor

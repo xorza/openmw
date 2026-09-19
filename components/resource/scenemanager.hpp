@@ -224,7 +224,10 @@ namespace Resource
         void setWeatherParticleOcclusion(bool value) { mWeatherParticleOcclusion = value; }
 
         /// Whether a loaded model is given the shader programs the rasterizer draws it with. Off for
-        /// a renderer that compiles no GLSL, which then reads a model's state as the loader left it.
+        /// a renderer that compiles no GLSL: the visitor runs createProgram on every drawable and
+        /// moves the material into its removedState, and that state is what such a renderer reads
+        /// as the loader left it. Nothing outside this class can stop the visitor, which is built
+        /// here from this manager's own shader manager, so the flag is the one way to say so.
         void setShadersEnabled(bool enabled) { mShadersEnabled = enabled; }
 
     private:

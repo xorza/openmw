@@ -1,14 +1,17 @@
 #ifndef GAME_RENDER_GLOBALMAP_H
 #define GAME_RENDER_GLOBALMAP_H
 
-#include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include <osg/ref_ptr>
 
-#include <components/sceneutil/paintedtexture.hpp>
+namespace MyGUI
+{
+    class ITexture;
+}
 
 namespace osg
 {
@@ -30,13 +33,15 @@ namespace MWRender
 {
 
     class CreateMapWorkItem;
+    class MapOverlay;
+    class OffscreenView;
+    class Renderer;
 
-    /// The world map, composited in main memory. sampleBilinear is what a GL_LINEAR sampler does, so the map is the
-    /// map the render-to-texture used to draw.
     class GlobalMap
     {
     public:
-        GlobalMap(SceneUtil::WorkQueue* workQueue);
+        /// @param renderer which makes the overlay the explored cells are painted into
+        GlobalMap(Renderer& renderer, SceneUtil::WorkQueue* workQueue);
         ~GlobalMap();
 
         void render();
@@ -46,9 +51,9 @@ namespace MWRender
 
         void worldPosToImageSpace(float x, float z, float& imageX, float& imageY);
 
-        /// Paints the local map's picture of a cell (RGBA, one byte a channel) into the overlay.
-        /// @return whether it was painted; a null tile is one not drawn yet, and the caller asks again later.
-        bool exploreCell(int cellX, int cellY, const osg::Image* tile);
+        /// Paints the local map's picture of a cell into the overlay. A null tile is a cell the
+        /// local map has not been asked for, and paints nothing.
+        void exploreCell(int cellX, int cellY, std::shared_ptr<OffscreenView> tile);
 
         /// Clears the overlay
         void clear();
@@ -57,7 +62,7 @@ namespace MWRender
         void read(ESM::GlobalMap& map);
 
         osg::ref_ptr<osg::Texture2D> getBaseTexture();
-        osg::ref_ptr<SceneUtil::PaintedTexture> getOverlayTexture();
+        MyGUI::ITexture& getOverlayTexture();
 
         void ensureLoaded();
 
@@ -66,19 +71,12 @@ namespace MWRender
     private:
         struct WritePng;
 
+        Renderer& mRenderer;
+
         osg::ref_ptr<osg::Texture2D> mBaseTexture;
 
-        // Where the land is above water: what stops an explored tile painting its cell's sea over the map's own
-        osg::ref_ptr<osg::Image> mAlphaImage;
-
-        // The overlay as drawn, told which cell was painted into the image below
-        osg::ref_ptr<SceneUtil::PaintedTexture> mOverlayTexture;
-
-        // CPU copy of overlay
-        osg::ref_ptr<osg::Image> mOverlayImage;
-
-        // One cell's worth of composited pixels, kept so painting one allocates nothing
-        std::vector<std::uint8_t> mCellScratch;
+        // The explored cells over the base, as whichever renderer draws paints them
+        std::unique_ptr<MapOverlay> mOverlay;
 
         osg::ref_ptr<SceneUtil::WorkQueue> mWorkQueue;
         osg::ref_ptr<CreateMapWorkItem> mWorkItem;

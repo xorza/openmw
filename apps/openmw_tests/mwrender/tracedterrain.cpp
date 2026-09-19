@@ -13,7 +13,7 @@
 #include <components/terrain/view.hpp>
 
 #include "apps/components_tests/rtx/fakeland.hpp"
-#include "apps/openmw/mwrender/rtx/tracedground.hpp"
+#include "apps/openmw/mwrender/rtx/tracedterrain.hpp"
 
 namespace MWRender
 {
@@ -40,11 +40,11 @@ namespace MWRender
         /// **The ground answers upstream's callers as a world with no chunks.** The preloader asks
         /// for a view and resets it on a worker thread; `tb` toggles borders and reports what it
         /// got. Both used to reach a null and a guard in an upstream file; both now get an answer.
-        TEST(RtxTracedGroundTest, aViewIsHandedOutAndBordersStayOff)
+        TEST(RtxTracedTerrainTest, aViewIsHandedOutAndBordersStayOff)
         {
             Rtx::Testing::FakeLand land;
             osg::ref_ptr<osg::Group> sceneRoot = new osg::Group;
-            TracedGround ground(*sceneRoot, land, sTerrainMask, ESM::Cell::sDefaultWorldspaceId);
+            TracedTerrain ground(*sceneRoot, land, sTerrainMask, ESM::Cell::sDefaultWorldspaceId);
 
             EXPECT_EQ(sceneRoot->getNumChildren(), 1u) << "the terrain root the game masks and finds";
 
@@ -65,13 +65,13 @@ namespace MWRender
         /// each, stands at 768 — and a vertex, so the answer is exact rather than interpolated.
         /// The cell is loaded twice with an unload between, because the second load stands on the
         /// grid the first gave back.
-        TEST(RtxTracedGroundTest, aLoadedCellAnswersADownwardRayAtTheLandsHeight)
+        TEST(RtxTracedTerrainTest, aLoadedCellAnswersADownwardRayAtTheLandsHeight)
         {
             Rtx::Testing::FakeLand land;
             land.mWithData.push_back(osg::Vec2i(0, 0));
 
             osg::ref_ptr<osg::Group> sceneRoot = new osg::Group;
-            TracedGround ground(*sceneRoot, land, sTerrainMask, ESM::Cell::sDefaultWorldspaceId);
+            TracedTerrain ground(*sceneRoot, land, sTerrainMask, ESM::Cell::sDefaultWorldspaceId);
 
             constexpr double cell = static_cast<double>(Rtx::Testing::FakeLand::sCellSize);
             constexpr double middle = 0.5 * cell;

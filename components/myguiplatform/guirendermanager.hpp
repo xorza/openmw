@@ -21,9 +21,11 @@ namespace MyGUIPlatform
     /// MyGUI's render manager, plus the calls MyGUI does not declare and every backend needs.
     ///
     /// **Neutral, despite where it lives**: this is MyGUI's own interface with two lifetime hooks
-    /// on it, and it has no idea what draws. It exists so that one
-    /// `Platform` serves every backend — the log and the data manager beside it are the same either
-    /// way, and it is only the render manager that is anybody's.
+    /// on it and one route for a picture, and it has no idea what draws. It is here and not beside
+    /// the ray tracer because upstream's `Platform` owns it and calls the two hooks, and that is the
+    /// whole reason: the log and the data manager beside it are the same either way, and it is
+    /// only the render manager that is anybody's. A MyGUI type that names a backend — the layer
+    /// that draws additively — is the backend's own, registered through `registerFactories`.
     class GuiRenderManager : public MyGUI::RenderManager
     {
     public:
@@ -34,13 +36,11 @@ namespace MyGUIPlatform
         /// not the destructor.
         virtual void shutdown() = 0;
 
-        /// Whether what is drawn from now on is added to what is under it rather than blended over
-        /// it. `AdditiveLayer` turns it on around the one layer that wants it and off again.
-        ///
-        /// **Here rather than on the layer**, because the layer is handed an `IRenderTarget` and a
-        /// scaled layer hands it a proxy standing in front of the real one; the blend mode belongs
-        /// to whatever is finally drawing, which is this.
-        virtual void setAdditiveBlend(bool additive) = 0;
+        /// Registers the MyGUI types that name this backend, under the type names the layouts use:
+        /// the layer that draws additively, which casts the render manager to its own backend's.
+        /// Called once the factory manager exists, which is after `MyGUI::Gui::initialise` and so
+        /// after both hooks above.
+        virtual void registerFactories() = 0;
 
         /// A picture the game holds as an `osg::Texture2D` over an `osg::Image`, drawn from there.
         ///

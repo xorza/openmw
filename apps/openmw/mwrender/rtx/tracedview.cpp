@@ -1,20 +1,24 @@
 #include "tracedview.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <span>
 #include <string>
+#include <variant>
 
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderFormat.h>
 #include <osg/GL>
 #include <osg/Image>
+#include <osg/Vec3f>
 
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/myguirtx/texture.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/walk.hpp>
+#include <components/sceneutil/offscreenframing.hpp>
 
 #include "rtxrenderer.hpp"
 
@@ -78,11 +82,25 @@ namespace MWRender
         for (int i = 0; i < width * height; ++i)
             std::memcpy(pixels + i * 4, colour, sizeof(colour));
         mTexture->unlock();
+
+        mHost.adoptView(*this);
     }
 
     TracedView::~TracedView()
     {
         mHost.forgetView(*this);
+    }
+
+    bool TracedView::coversFromAbove(const osg::Vec2f& over) const
+    {
+        const auto* box = std::get_if<SceneUtil::Orthographic>(&mTrace.getFraming().mProjection);
+        if (!isOfWorld() || box == nullptr)
+            return false;
+
+        // Where the eye stands is the inverse view's translation; the box is centred on it.
+        const osg::Vec3f eye = osg::Matrixf::inverse(mTrace.getView()).getTrans();
+        return std::abs(eye.x() - over.x()) <= box->mWidth * 0.5f
+            && std::abs(eye.y() - over.y()) <= box->mHeight * 0.5f;
     }
 
     MyGUI::ITexture& TracedView::getTexture() const
@@ -117,7 +135,7 @@ namespace MWRender
         if (!mTrace.isOfWorld())
         {
             const PoseMoment moment = mHost.describePose();
-            if (!mTrace.rebuildSubject(moment.mStamp, moment.mFrame, moment.mImages))
+            if (!mTrace.rebuildSubject(moment.mStamp, moment.mStamp.getFrameNumber(), moment.mImages))
                 return;
         }
 

@@ -4,6 +4,7 @@
 
 #include <osg/Matrixf>
 #include <osg/Node>
+#include <osg/Vec2f>
 #include <osg/ref_ptr>
 
 #include <components/myguirtx/rendermanager.hpp>
@@ -36,10 +37,6 @@ namespace MWRender
         /// The renderer's own clock, which advances once per drawn frame whether or not the world's
         /// does. A doll posed against a stopped clock is a doll frozen the first time it was drawn.
         const osg::FrameStamp& mStamp;
-
-        /// The game's frame number, which is which of a `SceneUtil::LightSource`'s two buffers
-        /// update has just written. Not a pose number; see `Rtx::Traversals`.
-        std::size_t mFrame = 0;
 
         Resource::ImageManager& mImages;
     };
@@ -89,6 +86,11 @@ namespace MWRender
         void draw();
 
         bool isOfWorld() const { return mTrace.isOfWorld(); }
+
+        /// Whether this is a picture of the world taken straight down over `over`: an
+        /// orthographic world view whose footprint holds the point. What the harness asks to find
+        /// the map tile of the cell it stands in, of the renderer that drew it.
+        bool coversFromAbove(const osg::Vec2f& over) const;
 
         void keepCopy() override;
         const osg::Image* getCopy() override;

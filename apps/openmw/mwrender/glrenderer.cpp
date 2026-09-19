@@ -54,6 +54,8 @@
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../profile.hpp"
+#include "glground.hpp"
+#include "glmapoverlay.hpp"
 #include "gloffscreenview.hpp"
 #include "glworld.hpp"
 #include "groundcover.hpp"
@@ -188,6 +190,7 @@ namespace MWRender
 
         // Everything about where the window goes and what it is; the one flag naming what will be
         // drawn into it is this renderer's, and the GL attributes below it are too.
+        applyWindowHints();
         const WindowPlacement placement = describeWindow(SDL_WINDOW_OPENGL);
         const int width = placement.mWidth;
         const int height = placement.mHeight;
@@ -518,7 +521,17 @@ namespace MWRender
         // the stereo manager, exactly. Read by the stereo update callback, so before the traversal.
         mStereoManager->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
 
+        // Between the traversals, where the graph may be changed: upstream's `WindowManager::onFrame`
+        // ran it before the frame's traversals for the same reason.
+        if (mMapOverlay != nullptr)
+            mMapOverlay->cleanupCameras();
+
         mWorld->describe(frame);
+    }
+
+    std::unique_ptr<MapOverlay> GlRenderer::createMapOverlay(const MapOverlaySpec& spec)
+    {
+        return std::make_unique<GlMapOverlay>(spec, getTraversalRoot(), getResources(), *this);
     }
 
     // The world is already in the graph and the cull is what finds it, so nothing is left out when
@@ -577,20 +590,22 @@ namespace MWRender
     }
 
     // Upstream's, from RenderingManager::getWorldspaceChunkMgr.
-    Ground GlRenderer::createGround(const GroundSpec& spec)
+    std::unique_ptr<Ground> GlRenderer::createGround(const GroundSpec& spec)
     {
-        Ground ground;
+        std::unique_ptr<Terrain::World> terrain;
+        std::unique_ptr<ObjectPaging> paging;
+        std::unique_ptr<Groundcover> groundcover;
         const ESM::RefId worldspace = spec.mWorldspace;
         osg::Group* sceneRoot = &spec.mSceneRoot;
         osg::Group* rootNode = &spec.mWorldRoot;
-        Resource::ResourceSystem* resourceSystem = &spec.mResources;
+        Resource::ResourceSystem* resourceSystem = &getResources();
         Terrain::Storage* storage = &spec.mStorage;
 
         const float lodFactor = Settings::terrain().mLodFactor;
-        const bool groundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
+        const bool wantsGroundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
         const bool distantTerrain = Settings::terrain().mDistantTerrain;
         const double expiryDelay = Settings::cells().mCacheExpiryDelay;
-        if (distantTerrain || groundcover)
+        if (distantTerrain || wantsGroundcover)
         {
             const int compMapResolution = Settings::terrain().mCompositeMapResolution;
             const int compMapPower = Settings::terrain().mCompositeMapLevel;
@@ -603,32 +618,32 @@ namespace MWRender
                 maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
             if (Settings::terrain().mObjectPaging)
             {
-                ground.mObjectPaging = std::make_unique<ObjectPaging>(resourceSystem->getSceneManager(), worldspace);
-                quadTreeWorld->addChunkManager(ground.mObjectPaging.get());
-                resourceSystem->addResourceManager(ground.mObjectPaging.get());
+                paging = std::make_unique<ObjectPaging>(resourceSystem->getSceneManager(), worldspace);
+                quadTreeWorld->addChunkManager(paging.get());
+                resourceSystem->addResourceManager(paging.get());
             }
-            if (groundcover)
+            if (wantsGroundcover)
             {
                 const float groundcoverDistance = Settings::groundcover().mRenderingDistance;
                 const float density = Settings::groundcover().mDensity;
 
-                ground.mGroundcover = std::make_unique<Groundcover>(
+                groundcover = std::make_unique<Groundcover>(
                     resourceSystem->getSceneManager(), density, groundcoverDistance, spec.mGroundcoverStore);
-                quadTreeWorld->addChunkManager(ground.mGroundcover.get());
-                resourceSystem->addResourceManager(ground.mGroundcover.get());
+                quadTreeWorld->addChunkManager(groundcover.get());
+                resourceSystem->addResourceManager(groundcover.get());
             }
-            ground.mTerrain = std::move(quadTreeWorld);
+            terrain = std::move(quadTreeWorld);
         }
         else
-            ground.mTerrain = std::make_unique<Terrain::TerrainGrid>(sceneRoot, rootNode, resourceSystem, storage,
-                Mask_Terrain, worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
+            terrain = std::make_unique<Terrain::TerrainGrid>(sceneRoot, rootNode, resourceSystem, storage, Mask_Terrain,
+                worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
 
         // The composite map's pace and the water's cull against the ground are this renderer's
         // chunks' to answer; the view distance is the game's and it sets that itself.
-        ground.mTerrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
-        ground.mTerrain->enableHeightCullCallback(Settings::terrain().mWaterCulling);
+        terrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
+        terrain->enableHeightCullCallback(Settings::terrain().mWaterCulling);
 
-        return ground;
+        return std::make_unique<GlGround>(std::move(terrain), std::move(paging), std::move(groundcover));
     }
 
     // Both above the post-processing chain rather than inside it: a pre-render camera has to be
@@ -770,7 +785,9 @@ namespace MWRender
         mWorld->listAssetsToPreload(models, textures);
     }
 
-    // Upstream's `SDLUtil::VideoWrapper::setSyncToVBlank`, with the viewer this renderer owns.
+    // Upstream's `SDLUtil::VideoWrapper::setSyncToVBlank`, verbatim, with the viewer this renderer
+    // owns: what vertical sync is — a swap interval here, a present mode under Vulkan — is the
+    // renderer's, which is why `Renderer::setVSync` is the seam and the wrapper keeps the window.
     void GlRenderer::setVSync(SDLUtil::VSyncMode mode)
     {
         osgViewer::Viewer::Windows windows;

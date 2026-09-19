@@ -597,7 +597,10 @@ namespace Rtx
         // hangs on has no geometry, which is a rasterizer's reason to skip a light, and a `LIGH`
         // whose mesh is empty still burns.
         const osg::Vec3f colour = lightColour(source, simulationTime);
-        const float radius = lightRadius(source);
+
+        // The radius the content states, and not the cut-off the rasterizer widened it to: a
+        // bolt's is its spell's area, which `ProjectileManager` writes there.
+        const float radius = source.getSourceRadius();
         const std::optional<Light> made
             = isFill(source) ? makeFill(colour, radius, place.getTrans()) : makeLight(colour, radius, place.getTrans());
         if (!made.has_value())

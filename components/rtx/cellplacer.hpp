@@ -42,9 +42,16 @@ namespace Rtx
         /// yet held, which arrive with the flag set.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled, std::span<HeldCell> held);
 
-        /// Forgets everything a script said: the world is cleared for a new game or a saved one,
-        /// and what was disabled in the old one stands in the new. Every reference kept out of the
-        /// cells `held` stands again at once, as `setReferenceEnabled` would stand each.
+        /// The game moved, deleted or animates the reference, so it is never stood again whatever
+        /// a script says of it afterwards: upstream's paging keeps the same list beside its
+        /// disabled one, and a `setReferenceEnabled(refnum, true)` does not undo it. Dropped from
+        /// the cells `held` at once, and kept out of the cells not yet held.
+        void blacklistReference(ESM::RefNum refnum, std::span<HeldCell> held);
+
+        /// Forgets everything a script said and everything the game blacklisted: the world is
+        /// cleared for a new game or a saved one, and what was kept out of the old one stands in
+        /// the new. Every reference kept out of the cells `held` stands again at once, as
+        /// `setReferenceEnabled` would stand each.
         void forgetReferences(std::span<HeldCell> held);
 
         /// Adopts a cell's ground into the scene, on rows held on the scene. `around` says whether
@@ -86,7 +93,11 @@ namespace Rtx
         bool standsNoMore() const;
 
     private:
+        /// Whether a script or the blacklist keeps the reference down.
         bool isDisabled(ESM::RefNum refnum) const;
+
+        /// `setPlacementEnabled` over every placement of the reference in the cells `held`.
+        void setHeldEnabled(ESM::RefNum refnum, bool enabled, std::span<HeldCell> held);
 
         /// What a script's word does to one placement: the flag, and the slot where the size rule
         /// has the placement `shown`.
@@ -106,6 +117,10 @@ namespace Rtx
 
         /// References a script has disabled, sorted.
         std::vector<ESM::RefNum> mDisabled;
+
+        /// References the game blacklisted, sorted. Apart from the disabled, because a script may
+        /// enable one of those again and never one of these.
+        std::vector<ESM::RefNum> mBlacklisted;
 
         std::uint32_t mPlaced = 0;
         std::uint32_t mGroundPlaced = 0;

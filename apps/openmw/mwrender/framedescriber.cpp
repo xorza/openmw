@@ -1,18 +1,10 @@
-// The pair of `sceneframe.hpp`: the `RenderingManager` members that fill its records and hand the
-// frame to whichever renderer draws.
-//
-// **`RenderingManager`'s, defined apart from the rest of it.** Everything here is what this fork
-// added to the class — how `WorldState` and `EyeState` are read off the world, and the one call a
-// frame makes to describe itself — and none of it touches what upstream's file does. Kept out of
-// that file so that it reads as upstream's with the seam edits and nothing else.
-#include "renderingmanager.hpp"
+#include "framedescriber.hpp"
 
 #include <cassert>
 #include <optional>
 
 #include <osg/Camera>
 #include <osg/FrameStamp>
-#include <osg/PositionAttitudeTransform>
 
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sky/sundisc.hpp>
@@ -31,7 +23,7 @@
 #include "fogmanager.hpp"
 #include "precipitation.hpp"
 #include "renderer.hpp"
-#include "sceneframe.hpp"
+#include "renderingmanager.hpp"
 #include "skystate.hpp"
 
 namespace MWRender
@@ -41,23 +33,10 @@ namespace MWRender
         return sky.mOutdoors ? osg::Vec4f(Sky::sunDiscPosition(sky.mSunDirection), 0.f) : world.mSunLightPosition;
     }
 
-    EyeState RenderingManager::describeEye() const
-    {
-        return EyeState{
-            .mNearClip = mNearClip,
-            .mViewDistance = mViewDistance,
-            .mProjectionMatrix = mProjectionMatrix,
-            .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
-            .mArmsFieldOfView = mFirstPersonFieldOfView,
-            .mPlayersEye = mCamera->getMode() != Camera::Mode::Static,
-        };
-    }
-
-    WorldState RenderingManager::describeWorld() const
+    WorldState FrameDescriber::describeWorld(const FrameSources& sources) const
     {
         // Not `const`: `getTimeManager` is not.
         MWBase::World& simulation = *MWBase::Environment::get().getWorld();
-        const bool underwater = isUnderwater(mCamera->getPosition());
 
         // The simulation's "no transition" is -1, and `WorldState` would rather say it in the type.
         const int next = simulation.getNextWeatherScriptId();
@@ -67,12 +46,12 @@ namespace MWRender
         // copy of what the four setters wrote, and what the weather settled is the weather
         // manager's, handed beside this.
         WorldState described;
-        described.mSunLightPosition = mSunLight->getPosition();
-        described.mSunColour = mSunLight->getDiffuse();
-        described.mAmbientColour = mSunLight->getAmbient();
-        described.mNightEye = mSunLight->getAmbient() - mAmbientColor;
+        described.mSunLightPosition = sources.mSun.getPosition();
+        described.mSunColour = sources.mSun.getDiffuse();
+        described.mAmbientColour = sources.mSun.getAmbient();
+        described.mNightEye = sources.mSun.getAmbient() - sources.mAmbientBeforeNightEye;
         described.mSunVisibility = mSunVisibility;
-        described.mSkyShown = mSkyEnabled;
+        described.mSkyShown = mSkyShown;
         described.mMoonRed = mMoonRed;
 
         described.mLocation = simulation.isCellExterior() ? Location::Exterior
@@ -95,11 +74,12 @@ namespace MWRender
             };
         }
 
-        described.mUnderwater = underwater;
-        described.mWaterEnabled = mWaterEnabled && mWaterToggled;
-        described.mWaterHeight = mWaterHeight;
-        described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
-        described.mWaterFog = { mFog->getFogColor(true), mFog->getFogStart(true), mFog->getFogEnd(true) };
+        described.mWater = mWater;
+        described.mUnderwater = mWater.isUnderwater(sources.mEyePosition);
+        described.mAir
+            = { sources.mFog.getFogColor(false), sources.mFog.getFogStart(false), sources.mFog.getFogEnd(false) };
+        described.mWaterFog
+            = { sources.mFog.getFogColor(true), sources.mFog.getFogStart(true), sources.mFog.getFogEnd(true) };
         described.mPlayerPosition = player.getRefData().getPosition().asVec3();
 
         described.mGameHour = simulation.getTimeStamp().getHour();
@@ -112,25 +92,63 @@ namespace MWRender
         return described;
     }
 
-    void RenderingManager::describeFrame()
+    const SceneFrame& FrameDescriber::describe(const FrameSources& sources)
     {
-        mFrameWorld = describeWorld();
-        mFrameEye = describeEye();
+        mWorld = describeWorld(sources);
+        mEye = sources.mEye;
 
         mFrame.emplace(SceneFrame{
-            .mScene = *mSceneRoot,
-            .mWhen = mRenderer.getFrameStamp(),
+            .mScene = sources.mScene,
+            .mWhen = sources.mWhen,
             .mSky = MWBase::Environment::get().getWorld()->getSkyState(),
-            .mPrecipitation = *mPrecipitation,
-            .mWorld = mFrameWorld,
-            .mEye = mFrameEye,
-            .mTerrain = *mTerrain,
-            .mObjectStorage = mObjectStorage,
-            .mDeltaTime = mFrameDelta,
-            .mPaused = mFramePaused,
+            .mPrecipitation = sources.mPrecipitation,
+            .mWorld = mWorld,
+            .mEye = mEye,
+            .mTerrain = sources.mTerrain,
+            .mObjectStorage = sources.mObjectStorage,
+            .mDeltaTime = mDeltaTime,
+            .mPaused = mPaused,
         });
 
-        mRenderer.describeFrame(*mFrame);
+        return *mFrame;
+    }
+
+    const SceneFrame& FrameDescriber::get() const
+    {
+        assert(mFrame.has_value() && "a frame is described before it is drawn");
+        return *mFrame;
+    }
+
+    // **`RenderingManager`'s three frame members, defined here and not in its own file**, so that
+    // file reads as upstream's with the seam edits and nothing else: everything below is what this
+    // fork added to the class, and all of it is about the describer above.
+
+    EyeState RenderingManager::describeEye() const
+    {
+        return EyeState{
+            .mNearClip = mNearClip,
+            .mViewDistance = mViewDistance,
+            .mProjectionMatrix = mFrame.getProjection(),
+            .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
+            .mArmsFieldOfView = mFirstPersonFieldOfView,
+            .mPlayersEye = mCamera->getMode() != Camera::Mode::Static,
+        };
+    }
+
+    void RenderingManager::describeFrame()
+    {
+        mRenderer.describeFrame(mFrame.describe(FrameSources{
+            .mScene = *mSceneRoot,
+            .mWhen = mRenderer.getFrameStamp(),
+            .mSun = *mSunLight,
+            .mAmbientBeforeNightEye = mAmbientColor,
+            .mFog = *mFog,
+            .mEyePosition = mCamera->getPosition(),
+            .mPrecipitation = *mPrecipitation,
+            .mTerrain = *mTerrain,
+            .mObjectStorage = mObjectStorage,
+            .mEye = describeEye(),
+        }));
     }
 
     void RenderingManager::renderFrame()
@@ -142,7 +160,6 @@ namespace MWRender
         const osg::Camera& camera = mRenderer.getCamera();
         mPrecipitation->setViewPoint(camera.getInverseViewMatrix().getTrans());
 
-        assert(mFrame.has_value() && "a frame is described before it is drawn");
-        mRenderer.renderFrame(*mFrame);
+        mRenderer.renderFrame(mFrame.get());
     }
 }

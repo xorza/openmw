@@ -89,6 +89,12 @@ namespace Rtx
     /// Every check there is, in the order they are run.
     std::span<const Check> everyCheck();
 
+    struct Stop;
+
+    /// Whether a place staged as `stop` can answer `check` at all, which is a different question
+    /// from whether it passes. Beside the name in one table, so a new check says both.
+    bool canAsk(Check check, const Stop& stop, const RenderProfile& profile);
+
     /// Where a stop stands: a cell, and where the eye is inside it.
     struct Stand
     {

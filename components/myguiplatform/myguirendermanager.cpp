@@ -1,10 +1,9 @@
 #include "myguirendermanager.hpp"
 
+#include <MyGUI_FactoryManager.h>
 #include <MyGUI_Timer.h>
 
-#include <osg/BlendFunc>
 #include <osg/Drawable>
-#include <osg/StateSet>
 #include <osg/Texture2D>
 
 #include <osgViewer/Viewer>
@@ -16,6 +15,7 @@
 #include <components/sceneutil/paintedtexture.hpp>
 #include <components/shader/shadermanager.hpp>
 
+#include "additivelayer.hpp"
 #include "myguitexture.hpp"
 
 #define MYGUI_PLATFORM_LOG_SECTION "Platform"
@@ -356,9 +356,6 @@ namespace MyGUIPlatform
         , mInvScalingFactor(1.f)
         , mInjectState(nullptr)
     {
-        mAdditiveState = new osg::StateSet;
-        mAdditiveState->setAttributeAndModes(new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA, osg::BlendFunc::ONE));
-
         if (scalingFactor != 0.f)
             mInvScalingFactor = 1.f / scalingFactor;
     }
@@ -466,9 +463,9 @@ namespace MyGUIPlatform
         mInjectState = stateSet;
     }
 
-    void RenderManager::setAdditiveBlend(bool additive)
+    void RenderManager::registerFactories()
     {
-        setInjectState(additive ? mAdditiveState.get() : nullptr);
+        MyGUI::FactoryManager::getInstance().registerFactory<AdditiveLayer>("Layer");
     }
 
     void RenderManager::end() {}

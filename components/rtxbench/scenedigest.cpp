@@ -334,53 +334,6 @@ namespace Rtx
     static_assert(sizeof(osg::BoundingBoxf) == 24, "a bounding box is read whole and must have no padding");
     static_assert(sizeof(osg::Matrixf) == 64, "a transform is read whole and must have no padding");
 
-    std::string_view nameOf(const ScenePart part)
-    {
-        switch (part)
-        {
-            case ScenePart::Positions:
-                return "positions";
-            case ScenePart::Normals:
-                return "normals";
-            case ScenePart::TexCoords:
-                return "texcoords";
-            case ScenePart::Indices:
-                return "indices";
-            case ScenePart::Meshes:
-                return "meshes";
-            case ScenePart::Instances:
-                return "instances";
-            case ScenePart::Previous:
-                return "previous";
-            case ScenePart::Materials:
-                return "materials";
-            case ScenePart::Layers:
-                return "layers";
-            case ScenePart::Masks:
-                return "masks";
-            case ScenePart::Textures:
-                return "textures";
-            case ScenePart::Lights:
-                return "lights";
-            case ScenePart::Ripples:
-                return "ripples";
-            case ScenePart::Sprites:
-                return "sprites";
-            case ScenePart::Emitters:
-                return "emitters";
-            case ScenePart::Deformers:
-                return "deformers";
-            case ScenePart::Poses:
-                return "poses";
-            case ScenePart::Frame:
-                return "frame";
-            case ScenePart::Count:
-                break;
-        }
-
-        return "no such part";
-    }
-
     void SceneDigester::digestVertices(const SceneDesc& scene)
     {
         const MeshTable& meshes = scene.meshes();

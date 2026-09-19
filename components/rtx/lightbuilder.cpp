@@ -5,14 +5,12 @@
 #include <cmath>
 #include <cstdint>
 #include <span>
-#include <string>
 
 #include <osg/BoundingBox>
 #include <osg/BoundingSphere>
 #include <osg/Matrixf>
 #include <osg/Vec4f>
 
-#include <components/misc/constants.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 
@@ -249,19 +247,6 @@ namespace Rtx
         }
 
         return 1.0f;
-    }
-
-    float lightRadius(const SceneUtil::LightSource& source)
-    {
-        // A `std::string` because that is what `getUserValue` takes, and static because the graph
-        // holds a few hundred lamps a frame and every one is asked.
-        static const std::string spellArea(sSpellAreaValue);
-
-        float areaFeet = 0.0f;
-        if (!source.getUserValue(spellArea, areaFeet))
-            return source.getSourceRadius();
-
-        return std::max(source.getSourceRadius(), areaFeet * Constants::UnitsPerFoot);
     }
 
     void Glow::addSheet(const Material& worn, const osg::BoundingBoxf& box, const osg::Matrixf& place, const float fade)

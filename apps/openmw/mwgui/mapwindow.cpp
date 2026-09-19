@@ -625,7 +625,7 @@ namespace MWGui
                     requestMapRender(&MWBase::Environment::get().getWorldModel()->getExterior(
                         ESM::ExteriorCellLocation(entry.mCellX, entry.mCellY, ESM::Cell::sDefaultWorldspaceId)));
 
-                if (std::shared_ptr<const MWRender::OffscreenView> view
+                if (std::shared_ptr<MWRender::OffscreenView> view
                     = mLocalMapRender->getMapView(entry.mCellX, entry.mCellY))
                 {
                     entry.mMapView = std::move(view);
@@ -797,7 +797,7 @@ namespace MWGui
         , mGlobalMapOverlay(nullptr)
         , mEventBoxGlobal(nullptr)
         , mEventBoxLocal(nullptr)
-        , mGlobalMapRender(std::make_unique<MWRender::GlobalMap>(workQueue))
+        , mGlobalMapRender(std::make_unique<MWRender::GlobalMap>(localMapRender->getRenderer(), workQueue))
         , mEditNoteDialog()
     {
         [[maybe_unused]] static const bool registered = [] {
@@ -1150,20 +1150,7 @@ namespace MWGui
 
     void MapWindow::cellExplored(int x, int y)
     {
-        const std::pair<int, int> cell(x, y);
-        if (std::find(mExploredPending.begin(), mExploredPending.end(), cell) == mExploredPending.end())
-            mExploredPending.push_back(cell);
-
-        paintExplored();
-    }
-
-    void MapWindow::paintExplored()
-    {
-        // A cell's picture comes back off the device a frame or two after it is asked for
-        std::erase_if(mExploredPending, [&](const std::pair<int, int>& cell) {
-            return mGlobalMapRender->exploreCell(
-                cell.first, cell.second, mLocalMapRender->getMapImage(cell.first, cell.second));
-        });
+        mGlobalMapRender->exploreCell(x, y, mLocalMapRender->getMapView(x, y));
     }
 
     void MapWindow::onFrame(float dt)
@@ -1344,8 +1331,7 @@ namespace MWGui
             mGlobalMapImage->setRenderItemTexture(mGlobalMapTexture.get());
             mGlobalMapImage->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
-            mGlobalMapOverlayTexture = MyGUIPlatform::shareTexture(*mGlobalMapRender->getOverlayTexture());
-            mGlobalMapOverlay->setRenderItemTexture(mGlobalMapOverlayTexture.get());
+            mGlobalMapOverlay->setRenderItemTexture(&mGlobalMapRender->getOverlayTexture());
             mGlobalMapOverlay->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
             // Redraw children in proper order
@@ -1356,7 +1342,6 @@ namespace MWGui
     void MapWindow::clear()
     {
         mMarkers.clear();
-        mExploredPending.clear();
 
         mGlobalMapRender->clear();
         mActiveCell = nullptr;

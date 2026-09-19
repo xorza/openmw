@@ -11,8 +11,8 @@ namespace MWRender
     class ObjectStorage final : public Terrain::ObjectStorage
     {
     public:
-        void collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-            std::vector<Terrain::PagedCellRef>& paged, std::vector<Terrain::PagedCellRef>& lit) const override;
+        void collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds,
+            std::vector<Terrain::PagedCellRef>& into) const override;
 
         std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const override;
 

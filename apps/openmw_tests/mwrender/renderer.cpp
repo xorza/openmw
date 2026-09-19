@@ -17,6 +17,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "apps/openmw/mwrender/ground.hpp"
+#include "apps/openmw/mwrender/mapoverlay.hpp"
 #include "apps/openmw/mwrender/offscreenview.hpp"
 #include "apps/openmw/mwrender/renderer.hpp"
 #include "apps/openmw/mwrender/rendermode.hpp"
@@ -34,7 +35,7 @@ namespace MWRender
 
             void configureResources(Resource::ResourceSystem&) override {}
             SDL_Window* getWindow() const override { return nullptr; }
-            Ground createGround(const GroundSpec&) override { return {}; }
+            std::unique_ptr<Ground> createGround(const GroundSpec&) override { return nullptr; }
             float getGroundReach() const override { return 0.0f; }
             osg::ref_ptr<osg::Group> createSceneRoot() override { return new osg::Group; }
             void attachWorld(RenderingManager&, osg::Group&) override {}
@@ -44,6 +45,7 @@ namespace MWRender
             void renderFrame(const SceneFrame&) override {}
             std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec&) override { return nullptr; }
             std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec&) override { return nullptr; }
+            std::unique_ptr<MapOverlay> createMapOverlay(const MapOverlaySpec&) override { return nullptr; }
             MyGUI::ITexture& freezeFrame() override { throw std::logic_error("not asked"); }
             void renderGui() override {}
             void capture(osg::Image&, int, int) override {}

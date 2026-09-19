@@ -67,6 +67,7 @@
 #include "classmasks.hpp"
 #include "rtxrun.hpp"
 #include "tracedground.hpp"
+#include "tracedoverlay.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
@@ -348,6 +349,7 @@ namespace MWRender
     {
         // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** No GL context is
         // ever made, which is the point of the whole path.
+        applyWindowHints();
         const WindowPlacement placement = describeWindow(SDL_WINDOW_VULKAN);
 
         // **Hidden and not absent.** A surface still needs a window, and a swapchain built on one
@@ -373,10 +375,16 @@ namespace MWRender
         visitor.setTraversalMode(was);
     }
 
-    void RtxRenderer::enableReference(const ESM::RefNum refnum, const bool enabled)
+    void RtxRenderer::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled)
     {
         mPhase.expect(Phase::Between);
         mMirror.setReferenceEnabled(refnum, enabled);
+    }
+
+    void RtxRenderer::blacklistReference(const ESM::RefNum refnum)
+    {
+        mPhase.expect(Phase::Between);
+        mMirror.blacklistReference(refnum);
     }
 
     void RtxRenderer::forgetReferences()
@@ -412,12 +420,9 @@ namespace MWRender
         return new osg::Group;
     }
 
-    Ground RtxRenderer::createGround(const GroundSpec& spec)
+    std::unique_ptr<Ground> RtxRenderer::createGround(const GroundSpec& spec)
     {
-        Ground ground;
-        ground.mTerrain
-            = std::make_unique<TracedGround>(spec.mSceneRoot, spec.mStorage, Mask_Terrain, spec.mWorldspace);
-        return ground;
+        return std::make_unique<TracedGround>(spec.mSceneRoot, spec.mStorage, Mask_Terrain, spec.mWorldspace, *this);
     }
 
     void RtxRenderer::addCell(const MWWorld::CellStore* cell)
@@ -597,7 +602,7 @@ namespace MWRender
     {
         mPhase.expect(Phase::Views, Phase::Run);
 
-        return PoseMoment{ .mStamp = getFrameStamp(), .mFrame = mFrame, .mImages = *getResources().getImageManager() };
+        return PoseMoment{ .mStamp = getFrameStamp(), .mImages = *getResources().getImageManager() };
     }
 
     void RtxRenderer::redraw(TracedView& view)
@@ -606,8 +611,21 @@ namespace MWRender
             mDeferred.push_back(&view);
     }
 
+    void RtxRenderer::adoptView(TracedView& view)
+    {
+        mViews.push_back(&view);
+    }
+
+    TracedView* RtxRenderer::findWorldView(const osg::Vec2f& over) const
+    {
+        const auto found = std::find_if(
+            mViews.begin(), mViews.end(), [&](const TracedView* view) { return view->coversFromAbove(over); });
+        return found != mViews.end() ? *found : nullptr;
+    }
+
     void RtxRenderer::forgetView(TracedView& view)
     {
+        std::erase(mViews, &view);
         std::erase(mDeferred, &view);
 
         // Nulled rather than erased: a flush may be walking this, and a view that went away from
@@ -748,6 +766,12 @@ namespace MWRender
         return std::make_unique<TracedView>(spec, ViewKind::Subject, *this, *mGui, mMirror.getTraversals());
     }
 
+    std::unique_ptr<MapOverlay> RtxRenderer::createMapOverlay(const MapOverlaySpec& spec)
+    {
+        assert(mGui != nullptr && "an overlay before the interface was made");
+        return std::make_unique<TracedOverlay>(spec, *this, *mGui);
+    }
+
     void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
     {
         mRenderer->setVerticalSync(mode);
@@ -865,8 +889,6 @@ namespace MWRender
         report.mSpend.at(Rtx::Timing::Update) = mSpan.sinceLeft(arrived);
         const std::optional<double> since = mSpan.enter(arrived);
 
-        mFrame = when.getFrameNumber();
-
         // The sky's own clock, stepped where the game stepped the dome's: every unpaused frame the
         // sky is on, whether or not this one is drawn.
         if (!frame.mPaused && frame.mWorld.mSkyShown)
@@ -903,13 +925,13 @@ namespace MWRender
         // paused frame: the actors have not moved, and a wake pressed on a frame the simulation
         // stood still on is a ring on a frame the game did not have.
         if (!frame.mPaused)
-            mRipples.update(frame.mWorld.mWaterEnabled, frame.mWorld.mWaterHeight);
+            mRipples.update(frame.mWorld.mWater);
 
         // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror. The
         // harness times the same stretch, which is what lets the two rows be read against each
         // other.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
-        mWalked.mFound = mMirror.mirror(frame, view, mFrame);
+        mWalked.mFound = mMirror.mirror(frame, view, when.getFrameNumber());
         report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
         report.mSpend.at(Rtx::Timing::Fold) = mWalked.mFound.mFoldMs;
 
@@ -917,7 +939,7 @@ namespace MWRender
         // because a second whole-graph walk is the largest cost a frame has.
         mWalked.mAgain.reset();
         if (mInstalled.mRun.wantsSecondWalk())
-            mWalked.mAgain = mMirror.mirror(frame, view, mFrame);
+            mWalked.mAgain = mMirror.mirror(frame, view, when.getFrameNumber());
 
         // After the last walk, because a walk clears the frame's lists.
         mMirror.addRipples(mRipples.getImpulses());
@@ -943,6 +965,12 @@ namespace MWRender
 
         mPhase.step(Phase::Placing, Phase::Walking);
         finishBehind(report);
+
+        // The frame behind is collected, so the tile copies it carried are there to paint: what
+        // `TracedOverlay::paintTile` was asked before its picture had come back.
+        if (mMapOverlay != nullptr)
+            mMapOverlay->finish();
+
         handOver(frame, report);
 
         // **Before the frame and after the scene**, which is the only moment both are true: a
@@ -1060,7 +1088,8 @@ namespace MWRender
         // **The stop's own count where a run is being made, and the game's frame number
         // otherwise.** `RtxRun::getSampleFrame` says why: a measured run has to walk the same
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
-        constants->mFrame = mInstalled.mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(mFrame));
+        constants->mFrame
+            = mInstalled.mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(frame.mWhen.getFrameNumber()));
 
         // **Both hosts light the world by the profile's rules.** `Rtx::makeCameraFromView` names
         // every field it fills and leaves the rest value-initialised, and `texturing.glsl`

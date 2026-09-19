@@ -228,7 +228,7 @@ namespace MWRender
             mInteriorSegments.clear();
     }
 
-    std::shared_ptr<const OffscreenView> LocalMap::getMapView(int x, int y)
+    std::shared_ptr<OffscreenView> LocalMap::getMapView(int x, int y)
     {
         auto& segments(mInterior ? mInteriorSegments : mExteriorSegments);
         SegmentMap::iterator found = segments.find(std::make_pair(x, y));
@@ -236,18 +236,6 @@ namespace MWRender
             return nullptr;
 
         return found->second.mView;
-    }
-
-    const osg::Image* LocalMap::getMapImage(int x, int y)
-    {
-        auto& segments(mInterior ? mInteriorSegments : mExteriorSegments);
-        SegmentMap::iterator found = segments.find(std::make_pair(x, y));
-        if (found == segments.end() || !found->second.mView)
-            return nullptr;
-
-        OffscreenView& view = *found->second.mView;
-        view.keepCopy();
-        return view.getCopy();
     }
 
     float LocalMap::getGroundReach() const

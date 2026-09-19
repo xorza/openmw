@@ -8,6 +8,7 @@
 #include <components/rtx/ripple.hpp>
 
 #include "../../mwworld/ptr.hpp"
+#include "../sceneframe.hpp"
 
 namespace MWWorld
 {
@@ -35,12 +36,13 @@ namespace MWRender
         void removeCell(const MWWorld::CellStore& cell);
 
         /// Something struck the water at `at`, which is pressed on the next `update` if it landed
-        /// within twenty units of the surface — `RippleSimulation::emitRipple`'s own test.
+        /// within `sStrikeReach` of the surface — `RippleSimulation::emitRipple`'s own test.
         void splash(const osg::Vec3f& at);
 
         /// Decides this frame's impulses: the wading emitters and the strikes since the last.
-        /// @param waterHeight where the surface stands, which a strike is tested against.
-        void update(bool waterEnabled, float waterHeight);
+        /// @param water where the surface stands, which a strike is tested against, and whether
+        ///        there is one.
+        void update(const WaterState& water);
 
         /// What `update` decided, until the next.
         std::span<const Rtx::RippleImpulse> getImpulses() const { return mImpulses; }
@@ -49,8 +51,13 @@ namespace MWRender
         void clear();
 
     private:
-        /// The ring a footfall presses, in world units: `particleRippleSizeInUnits`.
+        /// The ring a footfall or a strike presses, in world units: `RippleSimulation::emitRipple`'s
+        /// `particleRippleSizeInUnits`.
         static constexpr float sFootfall = 12.0f;
+
+        /// How far above or below the surface a strike still presses a ring, in world units:
+        /// `RippleSimulation::emitRipple`'s own twenty.
+        static constexpr float sStrikeReach = 20.0f;
 
         std::vector<MWWorld::ConstPtr> mEmitters;
 

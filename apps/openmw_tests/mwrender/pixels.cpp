@@ -1,11 +1,14 @@
 #include <cstdint>
 #include <functional>
+#include <vector>
 
 #include <gtest/gtest.h>
 
 #include <osg/GL>
 #include <osg/Image>
 #include <osg/ref_ptr>
+
+#include <components/sceneutil/imageregion.hpp>
 
 #include "apps/openmw/mwrender/pixels.hpp"
 
@@ -120,6 +123,44 @@ namespace MWRender
             // Texel 134 is black and 135 is white, so 0 * 0.389 + 255 * 0.611 = 155.8, which lands
             // on 156. An average of the whole fourteen-texel footprint would be 128.
             EXPECT_EQ(sampled[0], 156);
+        }
+
+        /// **An explored cell paints its tile through the land alpha, and only where it changed.**
+        ///
+        /// A two-by-two tile lands on a two-by-two cell of the overlay one texel to a pixel, so each
+        /// pixel is its own texel: (0.5 / 2) * 2 - 0.5 = 0 is dead on texel nought. The land alpha
+        /// is land on the left column and sea on the right, so the right column's alpha goes to
+        /// nought and its colour stays. Painted again, nothing changed and the caller is told so.
+        TEST(MWRenderPixelsTest, aTilePaintsThroughTheLandAlphaAndReportsAChange)
+        {
+            const osg::ref_ptr<osg::Image> tile = makeGrey(2, 2, [](int x, int y) { return 50 + x * 100 + y * 20; });
+
+            osg::ref_ptr<osg::Image> land = new osg::Image;
+            land->allocateImage(4, 4, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
+            for (int y = 0; y < 4; ++y)
+                for (int x = 0; x < 4; ++x)
+                    *land->data(x, y) = x < 3 ? 255 : 0;
+
+            const osg::ref_ptr<osg::Image> overlay = makeGrey(4, 4, [](int, int) { return 0; });
+            std::vector<std::uint8_t> scratch;
+
+            // The cell at (2, 1): its right column is x = 3, which is sea.
+            const SceneUtil::ImageRegion cell{ 2, 1, 2, 2 };
+            EXPECT_TRUE(compositeTile(*tile, *land, *overlay, cell, scratch));
+
+            const std::uint8_t* lowerLeft = overlay->data(2, 1);
+            EXPECT_EQ(lowerLeft[0], 50);
+            EXPECT_EQ(lowerLeft[3], 50) << "land keeps the tile's alpha";
+            const std::uint8_t* lowerRight = overlay->data(3, 1);
+            EXPECT_EQ(lowerRight[0], 150) << "the colour stays";
+            EXPECT_EQ(lowerRight[3], 0) << "sea takes the alpha";
+            const std::uint8_t* upperLeft = overlay->data(2, 2);
+            EXPECT_EQ(upperLeft[0], 70);
+            EXPECT_EQ(upperLeft[3], 70);
+            EXPECT_EQ(overlay->data(1, 1)[0], 0) << "nothing outside the cell";
+            EXPECT_EQ(overlay->data(2, 3)[0], 0) << "nothing outside the cell";
+
+            EXPECT_FALSE(compositeTile(*tile, *land, *overlay, cell, scratch)) << "the same tile again changes nothing";
         }
     }
 }

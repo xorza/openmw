@@ -1,12 +1,12 @@
 #ifndef OPENMW_MWRENDER_RENDERINGMANAGER_H
 #define OPENMW_MWRENDER_RENDERINGMANAGER_H
 
+#include "framedescriber.hpp"
 #include "ground.hpp"
 #include "objects.hpp"
 #include "objectstorage.hpp"
 #include "renderinginterface.hpp"
 #include "rendermode.hpp"
-#include "sceneframe.hpp"
 
 #include <components/settings/settings.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -18,7 +18,6 @@
 #include <deque>
 #include <map>
 #include <memory>
-#include <optional>
 #include <span>
 #include <unordered_map>
 
@@ -290,17 +289,13 @@ namespace MWRender
         osg::Vec2f getProjectionOffset() const { return mProjectionOffset; }
 
     private:
-        /// See WorldState and EyeState in sceneframe.hpp
-        WorldState describeWorld() const;
+        /// See EyeState in sceneframe.hpp
         EyeState describeEye() const;
-
-        bool isUnderwater(const osg::Vec3f& position) const;
 
         void updateTextureFiltering();
         void updateAmbient();
-        using WorldspaceChunkMgr = Ground;
 
-        WorldspaceChunkMgr& getWorldspaceChunkMgr(ESM::RefId worldspace);
+        Ground& getGround(ESM::RefId worldspace);
 
         void reportStats() const;
 
@@ -329,44 +324,24 @@ namespace MWRender
         std::unique_ptr<RecastMesh> mRecastMesh;
         std::unique_ptr<Pathgrid> mPathgrid;
         std::unique_ptr<Objects> mObjects;
-        /// The water's level and whether there is any: what the game decides about it, read by
-        /// both renderers off the frame. The plane, the reflection and the ripples are the
-        /// rasterizer's.
-        float mWaterHeight = 0.f;
-        bool mWaterEnabled = false;
-        bool mWaterToggled = true;
-        std::unordered_map<ESM::RefId, WorldspaceChunkMgr> mWorldspaceChunks;
+        std::unordered_map<ESM::RefId, std::unique_ptr<Ground>> mGrounds;
+        /// The current worldspace's ground, and the terrain it holds: what the game drives and
+        /// tells about the distance.
+        Ground* mGround;
         Terrain::World* mTerrain;
         std::unique_ptr<TerrainStorage> mTerrainStorage;
         ObjectStorage mObjectStorage;
-        ObjectPaging* mObjectPaging;
-        Groundcover* mGroundcover;
         std::unique_ptr<Precipitation> mPrecipitation;
         std::unique_ptr<FogManager> mFog;
-        /// What the game decides about the sky and the sun beyond the light itself: the third
-        /// argument of `setSunColour`, `setSkyEnabled`'s switch and the script's moon paint. Each
-        /// is read into the frame by `describeWorld`.
-        float mSunVisibility = 0.f;
-        bool mSkyEnabled = false;
-        bool mMoonRed = false;
         std::unique_ptr<EffectManager> mEffectManager;
         osg::ref_ptr<NpcAnimation> mPlayerAnimation;
         osg::ref_ptr<SceneUtil::PositionAttitudeTransform> mPlayerNode;
         std::unique_ptr<Camera> mCamera;
 
-        /// What `updateProjectionMatrix` settled on, for the frame: the reversed-depth form where
-        /// the depth buffer is reversed, which is what a shader reads.
-        osg::Matrixf mProjectionMatrix;
-
-        /// What `update` was last handed, for the frame that follows it.
-        float mFrameDelta = 0.f;
-        bool mFramePaused = false;
-
-        /// This frame, from `describeFrame` to `renderFrame`, and the two records it refers to;
-        /// empty before the first.
-        WorldState mFrameWorld;
-        EyeState mFrameEye;
-        std::optional<SceneFrame> mFrame;
+        /// What the game decides about the frame beyond what the objects above hold — the water,
+        /// the sun's visibility, the sky's switch, the moon's paint, the projection and the step —
+        /// and the frame itself, described from them and handed to the renderer.
+        FrameDescriber mFrame;
 
         osg::Vec4f mAmbientColor;
         float mNightEyeFactor;

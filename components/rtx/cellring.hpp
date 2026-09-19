@@ -85,8 +85,10 @@ namespace Rtx
         /// either way.
         void setSettled(bool settled);
 
-        /// `CellPlacer::setReferenceEnabled` and `forgetReferences`, over the cells held.
+        /// `CellPlacer::setReferenceEnabled`, `blacklistReference` and `forgetReferences`, over the
+        /// cells held.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
+        void blacklistReference(ESM::RefNum refnum);
         void forgetReferences();
 
         /// Hands `into` everything held that the graph does not parent, and adds what it stood to

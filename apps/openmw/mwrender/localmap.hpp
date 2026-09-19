@@ -59,6 +59,11 @@ namespace MWRender
     /// the cell's own land under it — which is in that bound only where a renderer builds the
     /// ground into the graph, and the ray tracer does not. `land` is nothing for a cell with no
     /// land record.
+    ///
+    /// A lift, read by both renderers. The rasterizer's chunk lies inside the sphere wherever it
+    /// is loaded, so the union is upstream's number there; where the quad tree has not built the
+    /// chunk yet — a distant cell whose tile the map asks for first — upstream clipped the land,
+    /// and this does not.
     DepthRange mapDepthRange(const osg::BoundingSphere& scene, const std::optional<DepthRange>& land);
 
     ///
@@ -91,13 +96,12 @@ namespace MWRender
         /// The picture of this segment, for a widget to show, or null where the cell has not been mapped. Shared,
         /// so that a widget still showing it keeps it alive after the segment has been dropped or redrawn into a
         /// new view.
-        std::shared_ptr<const OffscreenView> getMapView(int x, int y);
+        std::shared_ptr<OffscreenView> getMapView(int x, int y);
 
         osg::ref_ptr<SceneUtil::PaintedTexture> getFogOfWarTexture(int x, int y);
 
-        /// The same picture in main memory, for the global map, or null while it has not come back off the device
-        /// yet: ask again next frame. Asking is what starts the copy, so only the tile the world map asks for pays it.
-        const osg::Image* getMapImage(int x, int y);
+        /// The renderer the tiles are drawn by, which the world map's overlay is made by too
+        Renderer& getRenderer() { return mRenderer; }
 
         /// How far from the eye the ground is built, or 0 where it reaches no further than the loaded cells
         float getGroundReach() const;

@@ -41,7 +41,7 @@ namespace RtxTool
         /// The commands that visit a list of places.
         constexpr Verbs sRuns = Verbs::Scene | Verbs::Shot | Verbs::Bench | Verbs::Check;
 
-        /// The commands that frame the world, which is every one that builds a `FrameRequest`.
+        /// The commands that frame the world, which is every one that builds a `Framed`.
         /// `info` is the one that does not: it reports on a device and draws nothing.
         constexpr Verbs sFramed = otherThan(Verbs::Info);
 
@@ -129,8 +129,10 @@ namespace RtxTool
         // **What a frame is when nobody says**, read from one statement rather than restated as a
         // literal beside each option. The two drifted: `--distant-cells` defaulted to five cells
         // where the request and `settings-default.cfg` both said four, so a harness run built a
-        // world one cell wider than the game does and measured it.
-        const FrameRequest byDefault;
+        // world one cell wider than the game does and measured it. The knobs the settings define
+        // — the distant cells and the statics on them — have no default here at all: an option
+        // not given reads `settings-default.cfg` once the settings are loaded (`frameFrom`).
+        const Framed byDefault;
 
         option(Verbs::Every, "help", bpo::bool_switch(), "print this message and quit");
 
@@ -299,20 +301,21 @@ namespace RtxTool
             "keeps no name of its own once it is a run of triangles, so the material it arrived "
             "wearing is what it is found by. How the coordinates in a view are found.");
 
-        option(sFramed, "distant-statics",
-            bpo::value<bool>()->default_value(byDefault.mDistantStatics)->implicit_value(true),
+        option(sFramed, "distant-statics", bpo::value<bool>()->implicit_value(true),
             "stand on the distant ground what the content files put there — the buildings, trees "
             "and rocks — as instances of their templates, read ahead of the eye on a thread of the "
             "renderer's own (`Rtx::CellRing`); it is the game's `object paging` setting, which "
             "this renderer never pages by. **Off is the A/B that says what they cost**: the same "
             "ground with nothing on it. The ground itself always stands, read off the land records "
-            "by the same ring");
+            "by the same ring. Not given, `settings-default.cfg`'s `[Terrain] object paging`, or "
+            "the player's own under `view`");
 
-        option(sFramed, "distant-cells", bpo::value<float>()->default_value(byDefault.mDistantCells),
+        option(sFramed, "distant-cells", bpo::value<float>(),
             "how far out the cell ring stands ground and statics, in cells. Outside the active grid "
             "a cell's layer stack is flattened into one baked texture, so this is also how many "
             "cells that path is reached for. Zero hands `viewing distance` back the decision, which "
-            "is 7168 against a cell of 8192 and so barely leaves the active grid");
+            "is 7168 against a cell of 8192 and so barely leaves the active grid. Not given, "
+            "`settings-default.cfg`'s `[RTX] distant land cells`, or the player's own under `view`");
 
         option(Verbs::Shot | Verbs::Bench, "against", bpo::value<std::string>()->default_value(""),
             "what to subtract this run from: the directory a previous `shot` wrote, or the file "
@@ -338,9 +341,10 @@ namespace RtxTool
             "the directory to write every picture into, as <view>.png beside <view>-doll.png, "
             "<view>-map.png and <view>-textures.png: \"shot\" and \"check\" unless named");
         option(sFramed, "size",
-            bpo::value<std::string>()->default_value(std::format("{}x{}", byDefault.mWidth, byDefault.mHeight)),
+            bpo::value<std::string>()->default_value(
+                std::format("{}x{}", byDefault.mWindow.mWidth, byDefault.mWindow.mHeight)),
             "image size, as WIDTHxHEIGHT");
-        option(sFramed, "fov", bpo::value<float>()->default_value(byDefault.mFieldOfView),
+        option(sFramed, "fov", bpo::value<float>()->default_value(byDefault.mWindow.mFieldOfView),
             "vertical field of view, in degrees");
         option(sPlaces, "pos", bpo::value<std::string>()->default_value(""),
             "where to put the camera, as x,y,z. Defaults to a view of the whole cell from outside it, "

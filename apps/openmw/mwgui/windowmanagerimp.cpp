@@ -35,7 +35,6 @@
 
 #include <components/translation/translation.hpp>
 
-#include <components/myguiplatform/additivelayer.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguiplatform/myguirendermanager.hpp>
 #include <components/myguiplatform/scalinglayer.hpp>
@@ -233,7 +232,7 @@ namespace MWGui
         MyGUI::FactoryManager::getInstance().registerFactory<MWGui::Window>("Widget");
         MyGUI::FactoryManager::getInstance().registerFactory<VideoWidget>("Widget");
         MyGUI::FactoryManager::getInstance().registerFactory<BackgroundImage>("Widget");
-        MyGUI::FactoryManager::getInstance().registerFactory<MyGUIPlatform::AdditiveLayer>("Layer");
+        mGuiPlatform->getRenderManagerPtr()->registerFactories();
         MyGUI::FactoryManager::getInstance().registerFactory<MyGUIPlatform::ScalingLayer>("Layer");
         BookPage::registerMyGUIComponents();
         PostProcessorHud::registerMyGUIComponents();
@@ -865,9 +864,6 @@ namespace MWGui
         mMap->setPlayerPos(x, y, u, v);
         mHud->setPlayerDir(playerdirection.x(), playerdirection.y());
         mHud->setPlayerPos(x, y, u, v);
-
-        // Here rather than in MapWindow::onFrame, which only runs while the map is up
-        mMap->paintExplored();
     }
 
     WindowBase* WindowManager::getActiveControllerWindow()

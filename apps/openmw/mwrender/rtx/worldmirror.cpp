@@ -73,7 +73,7 @@ namespace MWRender
         /// every node, so naming `Mask_WeatherParticles` to mean "the weather subtree" extracted
         /// every storm with its particles missing, because a blizzard's own particles are marked
         /// `Mask_ParticleSystem`. Which subtree is walked is answered by where the walk starts.
-        /// The ground is the ring's: what `TracedGround` stands under `Mask_Terrain` is the
+        /// The ground is the ring's: what `TracedTerrain` stands under `Mask_Terrain` is the
         /// intersector's, and walked it would place every loaded cell's ground a second time.
         constexpr osg::Node::NodeMask sWorldTraversal
             = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater | Mask_Terrain);
@@ -211,8 +211,8 @@ namespace MWRender
 
         // The sea, where the frame says there is one: hidden by its mask otherwise, as the
         // rasterizer's `updateVisible` hid the same plane, so the walk leaves no placement of it.
-        mSea->setPosition(osg::Vec3f(mSeaCentre.x(), mSeaCentre.y(), frame.mWorld.mWaterHeight));
-        mSea->setNodeMask(frame.mWorld.mWaterEnabled ? ~0u : 0u);
+        mSea->setPosition(osg::Vec3f(mSeaCentre.x(), mSeaCentre.y(), frame.mWorld.mWater.mHeight));
+        mSea->setNodeMask(frame.mWorld.mWater.isShown() ? ~0u : 0u);
         mExtractor.extract(*mSea, osg::Matrixf::identity(), 0, frameNumber);
 
         // The eye, the reach, the world's own grid and the hour, said once to the ring: what the

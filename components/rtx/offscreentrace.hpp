@@ -113,6 +113,11 @@ namespace Rtx
 
         /// The size the picture was made at: the texture's, whatever `setExtent` fills of it.
         std::uint32_t getWidth() const { return mRequest.mWidth; }
+
+        /// How the picture is projected, as it was asked for, and where it is taken from, as
+        /// `setView` last said: what says which piece of the world a tile is a picture of.
+        const SceneUtil::Framing& getFraming() const { return mRequest.mFraming; }
+        const osg::Matrixf& getView() const { return mView; }
         std::uint32_t getHeight() const { return mRequest.mHeight; }
 
         /// The mirror of the subject, or null for a picture of the world — which has no scene of its

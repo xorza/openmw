@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 
 #include <osg/Image>
 
@@ -56,6 +58,49 @@ namespace MWRender
     {
         filterTexel(image, SceneUtil::ImageRegion{ 0, 0, image.s(), image.t() },
             u * static_cast<float>(image.s()) - 0.5f, v * static_cast<float>(image.t()) - 0.5f, out);
+    }
+
+    bool compositeTile(const osg::Image& tile, const osg::Image& landAlpha, osg::Image& into,
+        const SceneUtil::ImageRegion& destination, std::vector<std::uint8_t>& scratch)
+    {
+        assert(tile.getPixelFormat() == GL_RGBA && tile.getDataType() == GL_UNSIGNED_BYTE);
+        assert(into.getPixelFormat() == GL_RGBA && into.getDataType() == GL_UNSIGNED_BYTE);
+
+        const int width = destination.mWidth;
+        const int height = destination.mHeight;
+        const std::size_t stride = static_cast<std::size_t>(width) * 4;
+        scratch.resize(stride * static_cast<std::size_t>(height));
+
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                std::uint8_t sampled[4];
+                sampleBilinear(tile, (x + 0.5f) / width, (y + 0.5f) / height, sampled);
+
+                // One texel of the mask per pixel of the overlay
+                const unsigned int mask = *landAlpha.data(destination.mX + x, destination.mY + y);
+                std::uint8_t* out = scratch.data() + static_cast<std::size_t>(y) * stride + x * 4;
+                out[0] = sampled[0];
+                out[1] = sampled[1];
+                out[2] = sampled[2];
+                out[3] = static_cast<std::uint8_t>(sampled[3] * mask / 255);
+            }
+        }
+
+        bool changed = false;
+        for (int y = 0; y < height && !changed; ++y)
+            changed = std::memcmp(into.data(destination.mX, destination.mY + y),
+                          scratch.data() + static_cast<std::size_t>(y) * stride, stride)
+                != 0;
+        if (!changed)
+            return false;
+
+        for (int y = 0; y < height; ++y)
+            std::memcpy(into.data(destination.mX, destination.mY + y),
+                scratch.data() + static_cast<std::size_t>(y) * stride, stride);
+
+        return true;
     }
 
     void resampleRegion(const osg::Image& from, const SceneUtil::ImageRegion& source, osg::Image& into,

@@ -2,7 +2,6 @@
 
 #include <optional>
 #include <span>
-#include <string_view>
 
 #include <osg/BoundingBox>
 #include <osg/BoundingSphere>
@@ -68,22 +67,6 @@ namespace Rtx
     /// is the pool of light around its bearer. The intensity is a lamp's of `radius`, so far off
     /// a fill is that lamp. Nothing where `colour` has a negative channel or `radius` is no size.
     std::optional<Light> makeFill(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
-
-    /// The name a magic bolt's light carries its spell's largest area under, in feet, as an
-    /// `osg::Object` user value: what `MWWorld::ProjectileManager` states beside the light it hangs
-    /// on a bolt, and the one thing about a spell the graph says that the rasterizer's light does
-    /// not read.
-    inline constexpr std::string_view sSpellAreaValue = "spellArea";
-
-    /// How far a light in the game's scene graph reaches, as this renderer sizes it: the radius
-    /// the game gave it, or the spell's area where the light is a bolt's and the area is the
-    /// larger.
-    ///
-    /// **A bolt's light is sixty-six units whatever the spell**, because the rasterizer lights a
-    /// fireball of fifty feet and a spark alike, and a lamp that size is a candle's. The area the
-    /// spell states is what a light of it should reach — a fireball of fifty feet lights fifty
-    /// feet, in flight as at its burst — and a spell with no area stays the bolt it was.
-    float lightRadius(const SceneUtil::LightSource& source);
 
     /// What a light in the game's scene graph radiates this frame, in the renderer's units: the
     /// diffuse and the ambient summed, because the content uses both, and decoded, from the

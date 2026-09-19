@@ -57,10 +57,12 @@ namespace MWRender
 
     namespace
     {
-        bool typeFilter(Terrain::RefKind kind, int type, bool far)
+        bool typeFilter(Terrain::RefKinds kinds, int type, bool far)
         {
-            if (kind == Terrain::RefKind::Lit)
-                return type == ESM::REC_LIGH;
+            if (type == ESM::REC_LIGH)
+                return Terrain::holds(kinds, Terrain::RefKinds::Lit);
+            if (!Terrain::holds(kinds, Terrain::RefKinds::Paged))
+                return false;
 
             switch (type)
             {
@@ -505,28 +507,10 @@ namespace MWRender
             };
         }
 
-        /// Where one walk of a cell's records puts what it finds: what the paging stands, and the
-        /// `LIGH` references it never does, for the caller that asked for them.
-        struct Collected
+        std::map<ESM::RefNum, PagedCellRef> collectESM3References(
+            float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store, Terrain::RefKinds kinds)
         {
-            std::map<ESM::RefNum, PagedCellRef> mPaged;
-            std::map<ESM::RefNum, PagedCellRef> mLit;
-        };
-
-        /// The list a reference of `type` goes to, or null where neither kind wants it.
-        std::map<ESM::RefNum, PagedCellRef>* listFor(Collected& into, bool lit, int type, bool far)
-        {
-            if (typeFilter(Terrain::RefKind::Paged, type, far))
-                return &into.mPaged;
-            if (lit && typeFilter(Terrain::RefKind::Lit, type, far))
-                return &into.mLit;
-            return nullptr;
-        }
-
-        Collected collectESM3References(
-            float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store, bool lit)
-        {
-            Collected refs;
+            std::map<ESM::RefNum, PagedCellRef> refs;
             ESM::ReadersCache readers;
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
@@ -557,15 +541,14 @@ namespace MWRender
                                     continue;
 
                                 int type = store.findStatic(ref.mRefID);
-                                std::map<ESM::RefNum, PagedCellRef>* list = listFor(refs, lit, type, size >= 2);
-                                if (list == nullptr)
+                                if (!typeFilter(kinds, type, size >= 2))
                                     continue;
                                 if (deleted)
                                 {
-                                    list->erase(ref.mRefNum);
+                                    refs.erase(ref.mRefNum);
                                     continue;
                                 }
-                                list->insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
+                                refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
                             }
                         }
                         catch (const std::exception& e)
@@ -579,24 +562,23 @@ namespace MWRender
                     {
                         if (deleted)
                         {
-                            refs.mPaged.erase(ref.mRefNum);
-                            refs.mLit.erase(ref.mRefNum);
+                            refs.erase(ref.mRefNum);
                             continue;
                         }
                         int type = store.findStatic(ref.mRefID);
-                        std::map<ESM::RefNum, PagedCellRef>* list = listFor(refs, lit, type, size >= 2);
-                        if (list == nullptr)
+                        if (!typeFilter(kinds, type, size >= 2))
                             continue;
-                        list->insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
+                        refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
                     }
                 }
             }
             return refs;
         }
 
-        Collected collectESM4References(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, bool lit)
+        std::map<ESM::RefNum, PagedCellRef> collectESM4References(
+            float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds)
         {
-            Collected refs;
+            std::map<ESM::RefNum, PagedCellRef> refs;
             const auto& store = MWBase::Environment::get().getWorld()->getStore();
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
@@ -611,8 +593,7 @@ namespace MWRender
                         if (ref4->mFlags & ESM4::Rec_Disabled)
                             continue;
                         int type = store.findStatic(ref4->mBaseObj);
-                        std::map<ESM::RefNum, PagedCellRef>* list = listFor(refs, lit, type, size >= 2);
-                        if (list == nullptr)
+                        if (!typeFilter(kinds, type, size >= 2))
                             continue;
                         if (!ref4->mEsp.parent.isZeroOrUnset())
                         {
@@ -626,7 +607,7 @@ namespace MWRender
                                     continue;
                             }
                         }
-                        list->insert_or_assign(ref4->mId, makePagedCellRef(*ref4));
+                        refs.insert_or_assign(ref4->mId, makePagedCellRef(*ref4));
                     }
                 }
             }
@@ -646,11 +627,11 @@ namespace MWRender
 
         if (mWorldspace == ESM::Cell::sDefaultWorldspaceId)
         {
-            refs = collectESM3References(size, startCell, store, false).mPaged;
+            refs = collectESM3References(size, startCell, store, Terrain::RefKinds::Paged);
         }
         else
         {
-            refs = collectESM4References(size, startCell, mWorldspace, false).mPaged;
+            refs = collectESM4References(size, startCell, mWorldspace, Terrain::RefKinds::Paged);
         }
 
         if (activeGrid && !refs.empty())
@@ -1012,7 +993,7 @@ namespace MWRender
     bool ObjectPaging::enableObject(
         int type, ESM::RefNum refnum, const osg::Vec3f& pos, const osg::Vec2i& cell, bool enabled)
     {
-        if (!typeFilter(Terrain::RefKind::Paged, type, false))
+        if (!typeFilter(Terrain::RefKinds::Paged, type, false))
             return false;
 
         {
@@ -1036,7 +1017,7 @@ namespace MWRender
 
     bool ObjectPaging::blacklistObject(int type, ESM::RefNum refnum, const osg::Vec3f& pos, const osg::Vec2i& cell)
     {
-        if (!typeFilter(Terrain::RefKind::Paged, type, false))
+        if (!typeFilter(Terrain::RefKinds::Paged, type, false))
             return false;
 
         {
@@ -1127,21 +1108,18 @@ namespace MWRender
     }
 
     // Defined here because the walk it wraps is file-local
-    void ObjectStorage::collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-        std::vector<Terrain::PagedCellRef>& paged, std::vector<Terrain::PagedCellRef>& lit) const
+    void ObjectStorage::collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds,
+        std::vector<Terrain::PagedCellRef>& into) const
     {
-        paged.clear();
-        lit.clear();
+        into.clear();
 
         const MWWorld::ESMStore& store = MWBase::Environment::get().getWorld()->getStore();
-        const Collected refs = worldspace == ESM::Cell::sDefaultWorldspaceId
-            ? collectESM3References(size, startCell, store, true)
-            : collectESM4References(size, startCell, worldspace, true);
+        const std::map<ESM::RefNum, PagedCellRef> refs = worldspace == ESM::Cell::sDefaultWorldspaceId
+            ? collectESM3References(size, startCell, store, kinds)
+            : collectESM4References(size, startCell, worldspace, kinds);
 
-        for (const auto& [refNum, ref] : refs.mPaged)
-            paged.push_back(ref);
-        for (const auto& [refNum, ref] : refs.mLit)
-            lit.push_back(ref);
+        for (const auto& [refNum, ref] : refs)
+            into.push_back(ref);
     }
 
     std::optional<SceneUtil::LightCommon> ObjectStorage::getLight(const ESM::RefId& id) const

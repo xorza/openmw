@@ -64,7 +64,13 @@ namespace MyGUIRtx
 
         void initialise() override;
         void shutdown() override;
-        void setAdditiveBlend(bool additive) override;
+
+        /// This backend's `AdditiveLayer`, under the type name upstream's has.
+        void registerFactories() override;
+
+        /// Whether what is drawn from now on is added to what is under it rather than blended over
+        /// it. `AdditiveLayer` turns it on around the one layer that wants it and off again.
+        void setAdditiveBlend(bool additive);
 
         /// A mirror of the texture's image, read again whenever the game marks it dirty — `Texture`
         /// says how. An `osg::Texture2D` itself is a name in a context this backend never made.

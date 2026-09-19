@@ -95,7 +95,8 @@ namespace Rtx::Testing
         }
 
         /// A storage of a handful of statics and lamps, each in a cell of its own choosing. One
-        /// walk of a cell answers both lists, as the game's does.
+        /// walk of a cell answers both kinds, as the game's does, and a lamp is a reference whose
+        /// record `getLight` knows.
         class FewStatics final : public Terrain::ObjectStorage
         {
         public:
@@ -113,32 +114,33 @@ namespace Rtx::Testing
                 { "flame", describeLamp(ESM::Light::Flicker) },
             };
 
-            void collect(float, const osg::Vec2i& startCell, ESM::RefId, std::vector<Terrain::PagedCellRef>& paged,
-                std::vector<Terrain::PagedCellRef>& lit) const override
+            void collect(float, const osg::Vec2i& startCell, ESM::RefId, Terrain::RefKinds kinds,
+                std::vector<Terrain::PagedCellRef>& into) const override
             {
                 if (mThrows)
                     throw std::runtime_error("a storage that cannot be read");
 
-                paged.clear();
-                lit.clear();
+                into.clear();
 
-                for (const Placed& placed : mPlaced)
-                    if (placed.mCell == startCell)
-                        paged.push_back(Terrain::PagedCellRef{
-                            .mRefId = ESM::RefId::stringRefId(placed.mModel),
-                            .mRefNum = placed.mRefNum,
-                            .mPosition = placed.mPosition,
-                            .mRotation = placed.mRotation,
-                            .mScale = placed.mScale,
-                        });
+                if (Terrain::holds(kinds, Terrain::RefKinds::Paged))
+                    for (const Placed& placed : mPlaced)
+                        if (placed.mCell == startCell)
+                            into.push_back(Terrain::PagedCellRef{
+                                .mRefId = ESM::RefId::stringRefId(placed.mModel),
+                                .mRefNum = placed.mRefNum,
+                                .mPosition = placed.mPosition,
+                                .mRotation = placed.mRotation,
+                                .mScale = placed.mScale,
+                            });
 
-                for (const Lit& lamp : mLit)
-                    if (lamp.mCell == startCell)
-                        lit.push_back(Terrain::PagedCellRef{
-                            .mRefId = ESM::RefId::stringRefId(lamp.mRecord),
-                            .mRefNum = lamp.mRefNum,
-                            .mPosition = lamp.mPosition,
-                        });
+                if (Terrain::holds(kinds, Terrain::RefKinds::Lit))
+                    for (const Lit& lamp : mLit)
+                        if (lamp.mCell == startCell)
+                            into.push_back(Terrain::PagedCellRef{
+                                .mRefId = ESM::RefId::stringRefId(lamp.mRecord),
+                                .mRefNum = lamp.mRefNum,
+                                .mPosition = lamp.mPosition,
+                            });
             }
 
             std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const override
@@ -700,12 +702,21 @@ namespace Rtx::Testing
             mRing.setReferenceEnabled(ESM::RefNum{ 6, 0 }, true);
             EXPECT_EQ(walk(mWalked++).mDistantStatics, 6u);
 
-            // The world is cleared: what two scripts kept out stands again at once, and the walk
-            // keeps it — a disabled list carried into the next game would be the first game's
-            // holes in the second one's distance.
+            // The game moved the tree at scale three, so it is blacklisted: down at once, and a
+            // script's word does not raise it — upstream's paging keeps a moved object out of the
+            // distance whatever a script says, because where it stands now is the game's.
+            mRing.blacklistReference(ESM::RefNum{ 3, 0 });
+            EXPECT_EQ(heights(standing()), trees({ 1, 2, 4, 5 }));
+            mRing.setReferenceEnabled(ESM::RefNum{ 3, 0 }, true);
+            EXPECT_EQ(heights(standing()), trees({ 1, 2, 4, 5 })) << "enabled, and still blacklisted";
+            EXPECT_EQ(walk(mWalked++).mDistantStatics, 5u) << "and the walk keeps it down";
+
+            // The world is cleared: what two scripts kept out and what the game blacklisted stand
+            // again at once, and the walk keeps it — a list carried into the next game would be
+            // the first game's holes in the second one's distance.
             mRing.setReferenceEnabled(ESM::RefNum{ 2, 0 }, false);
             mRing.setReferenceEnabled(ESM::RefNum{ 6, 0 }, false);
-            EXPECT_EQ(heights(standing()), trees({ 1, 3, 4, 5 }));
+            EXPECT_EQ(heights(standing()), trees({ 1, 4, 5 }));
             mRing.forgetReferences();
             EXPECT_EQ(heights(standing()), trees({ 1, 2, 3, 4, 5 }));
             EXPECT_EQ(walk(mWalked++).mDistantStatics, 6u);

@@ -16,19 +16,19 @@
 #include <osg/BoundingBox>
 #include <osg/Image>
 #include <osg/Math>
+#include <osg/Vec2f>
 #include <osg/Vec2i>
 #include <osg/Vec3f>
 
 #include <apps/openmw/mwbase/environment.hpp>
-#include <apps/openmw/mwbase/windowmanager.hpp>
 #include <apps/openmw/mwbase/world.hpp>
 #include <apps/openmw/mwrender/camera.hpp>
 #include <apps/openmw/mwrender/characterpreview.hpp>
-#include <apps/openmw/mwrender/localmap.hpp>
 #include <apps/openmw/mwrender/offscreenview.hpp>
 #include <apps/openmw/mwrender/renderer.hpp>
 #include <apps/openmw/mwrender/renderingmanager.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
+#include <apps/openmw/mwrender/rtx/tracedview.hpp>
 #include <apps/openmw/mwworld/cell.hpp>
 #include <apps/openmw/mwworld/cellstore.hpp>
 #include <apps/openmw/mwworld/manualref.hpp>
@@ -299,17 +299,23 @@ namespace RtxTool
     {
         // **The game's own tile, and not a picture framed here to look like one.** The local map
         // drew the cell the player stands in when they entered it, at the resolution and over the
-        // depth range the settings gave it; what a stop writes is that picture.
-        MWRender::LocalMap* map = MWBase::Environment::get().getWindowManager()->getLocalMap();
+        // depth range the settings gave it; what a stop writes is that picture, found by the
+        // renderer that drew it as the picture taken straight down over where the player stands.
         const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
-        const MWWorld::Cell& cell = *player.getCell()->getCell();
+        const osg::Vec3f standing = player.getRefData().getPosition().asVec3();
+        MWRender::TracedView* tile = into.mContext.mRenderer.findWorldView(osg::Vec2f(standing.x(), standing.y()));
 
-        const osg::Image* drawn = map != nullptr ? map->getMapImage(cell.getGridX(), cell.getGridY()) : nullptr;
-        if (drawn == nullptr && map != nullptr)
+        const osg::Image* drawn = nullptr;
+        if (tile != nullptr)
         {
             // The first ask starts the copy; asked again after the drain, it is there.
-            drawPicturesNow(into.mContext);
-            drawn = map->getMapImage(cell.getGridX(), cell.getGridY());
+            tile->keepCopy();
+            drawn = tile->getCopy();
+            if (drawn == nullptr)
+            {
+                drawPicturesNow(into.mContext);
+                drawn = tile->getCopy();
+            }
         }
 
         if (drawn == nullptr)

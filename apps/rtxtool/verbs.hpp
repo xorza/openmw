@@ -25,8 +25,9 @@ namespace RtxTool
         Bench = 1 << 4,
         Check = 1 << 5,
 
-        /// All six, which is what an option nobody restricted is read by.
-        Every = 0x3f,
+        /// Every command, which is what an option nobody restricted is read by: every bit up to
+        /// the last one named above, so a command added there is in it by being there.
+        Every = (Check << 1) - 1,
     };
 
     constexpr Verbs operator|(Verbs a, Verbs b)

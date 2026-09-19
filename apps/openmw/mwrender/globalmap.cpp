@@ -1,7 +1,5 @@
 #include "globalmap.hpp"
 
-#include <cstring>
-
 #include <osg/Image>
 #include <osg/Texture2D>
 
@@ -15,6 +13,7 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 
+#include <components/sceneutil/imageregion.hpp>
 #include <components/sceneutil/workqueue.hpp>
 
 #include <components/vfs/pathutil.hpp>
@@ -26,7 +25,8 @@
 
 #include "../mwworld/esmstore.hpp"
 
-#include "pixels.hpp"
+#include "mapoverlay.hpp"
+#include "renderer.hpp"
 
 namespace
 {
@@ -52,7 +52,6 @@ namespace
         std::string data = ostream.str();
         return std::vector<char>(data.begin(), data.end());
     }
-
 }
 
 namespace MWRender
@@ -80,8 +79,8 @@ namespace MWRender
             osg::ref_ptr<osg::Image> image = new osg::Image;
             image->allocateImage(mWidth, mHeight, 1, GL_RGB, GL_UNSIGNED_BYTE);
 
-            mAlphaImage = new osg::Image;
-            mAlphaImage->allocateImage(mWidth, mHeight, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
+            osg::ref_ptr<osg::Image> alphaImage = new osg::Image;
+            alphaImage->allocateImage(mWidth, mHeight, 1, GL_ALPHA, GL_UNSIGNED_BYTE);
 
             for (int x = mMinX; x <= mMaxX; ++x)
             {
@@ -110,8 +109,9 @@ namespace MWRender
                             // Use setColor to write to output images
                             image->setColor(color, texelX, texelY);
 
-                            // Below the water line an explored tile paints nothing
-                            *mAlphaImage->data(texelX, texelY) = lutIndex < 128 ? 0 : 0xFF;
+                            // Set alpha based on lutIndex threshold
+                            osg::Vec4 alpha(0.0f, 0.0f, 0.0f, lutIndex < 128 ? 0.0f : 1.0f);
+                            alphaImage->setColor(alpha, texelX, texelY);
                         }
                     }
                 }
@@ -125,13 +125,7 @@ namespace MWRender
             mBaseTexture->setImage(image);
             mBaseTexture->setResizeNonPowerOfTwoHint(false);
 
-            mOverlayImage = new osg::Image;
-            mOverlayImage->allocateImage(mWidth, mHeight, 1, GL_RGBA, GL_UNSIGNED_BYTE);
-            assert(mOverlayImage->isDataContiguous());
-
-            memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
-
-            mOverlayTexture = new SceneUtil::PaintedTexture(mOverlayImage);
+            mAlphaImage = alphaImage;
         }
 
         int mWidth, mHeight;
@@ -142,9 +136,6 @@ namespace MWRender
 
         osg::ref_ptr<osg::Texture2D> mBaseTexture;
         osg::ref_ptr<osg::Image> mAlphaImage;
-
-        osg::ref_ptr<osg::Image> mOverlayImage;
-        osg::ref_ptr<SceneUtil::PaintedTexture> mOverlayTexture;
     };
 
     struct GlobalMap::WritePng final : public SceneUtil::WorkItem
@@ -160,8 +151,9 @@ namespace MWRender
         void doWork() override { mImageData = writePng(*mOverlayImage); }
     };
 
-    GlobalMap::GlobalMap(SceneUtil::WorkQueue* workQueue)
-        : mWorkQueue(workQueue)
+    GlobalMap::GlobalMap(Renderer& renderer, SceneUtil::WorkQueue* workQueue)
+        : mRenderer(renderer)
+        , mWorkQueue(workQueue)
         , mWidth(0)
         , mHeight(0)
         , mMinX(0)
@@ -224,66 +216,28 @@ namespace MWRender
         imageY = (1.f - float(z / float(Constants::CellSizeInUnits) - mMinY) / (mMaxY - mMinY + 1)) * getHeight();
     }
 
-    bool GlobalMap::exploreCell(int cellX, int cellY, const osg::Image* tile)
+    void GlobalMap::exploreCell(int cellX, int cellY, std::shared_ptr<OffscreenView> tile)
     {
         ensureLoaded();
 
-        if (cellX > mMaxX || cellX < mMinX || cellY > mMaxY || cellY < mMinY)
-            return true;
-
-        if (tile == nullptr)
-            return false;
-
-        assert(tile->getPixelFormat() == GL_RGBA && tile->getDataType() == GL_UNSIGNED_BYTE);
+        if (!tile)
+            return;
 
         const int cellSize = Settings::map().mGlobalMapCellSize;
         const int originX = (cellX - mMinX) * cellSize;
         const int originY = (cellY - mMinY) * cellSize;
 
-        mCellScratch.resize(static_cast<std::size_t>(cellSize) * cellSize * 4);
+        if (cellX > mMaxX || cellX < mMinX || cellY > mMaxY || cellY < mMinY)
+            return;
 
-        for (int y = 0; y < cellSize; ++y)
-        {
-            for (int x = 0; x < cellSize; ++x)
-            {
-                std::uint8_t sampled[4];
-                sampleBilinear(*tile, (x + 0.5f) / cellSize, (y + 0.5f) / cellSize, sampled);
-
-                // One texel of the mask per pixel of the overlay
-                const unsigned int mask = *mAlphaImage->data(originX + x, originY + y);
-
-                std::uint8_t* out = mCellScratch.data() + (static_cast<std::size_t>(y) * cellSize + x) * 4;
-                out[0] = sampled[0];
-                out[1] = sampled[1];
-                out[2] = sampled[2];
-                out[3] = static_cast<std::uint8_t>(sampled[3] * mask / 255);
-            }
-        }
-
-        // Crossing back into a cell almost always paints what is already there, and only a change is sent up
-        bool changed = false;
-        for (int y = 0; y < cellSize && !changed; ++y)
-            changed = std::memcmp(mOverlayImage->data(originX, originY + y),
-                          mCellScratch.data() + static_cast<std::size_t>(y) * cellSize * 4, cellSize * 4)
-                != 0;
-
-        if (!changed)
-            return true;
-
-        for (int y = 0; y < cellSize; ++y)
-            std::memcpy(mOverlayImage->data(originX, originY + y),
-                mCellScratch.data() + static_cast<std::size_t>(y) * cellSize * 4, cellSize * 4);
-
-        mOverlayTexture->paint(SceneUtil::ImageRegion{ originX, originY, cellSize, cellSize });
-        return true;
+        mOverlay->paintTile(SceneUtil::ImageRegion{ originX, originY, cellSize, cellSize }, std::move(tile));
     }
 
     void GlobalMap::clear()
     {
         ensureLoaded();
 
-        memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
-        mOverlayTexture->paintAll();
+        mOverlay->clear();
     }
 
     void GlobalMap::write(ESM::GlobalMap& map)
@@ -303,7 +257,7 @@ namespace MWRender
             return;
         }
 
-        map.mImageData = writePng(*mOverlayImage);
+        map.mImageData = writePng(mOverlay->getImage());
     }
 
     struct Box
@@ -356,7 +310,7 @@ namespace MWRender
             return;
         }
 
-        osg::ref_ptr<osg::Image> image = asRgba(result.getImage());
+        osg::ref_ptr<osg::Image> image = result.getImage();
         int imageWidth = image->s();
         int imageHeight = image->t();
 
@@ -390,27 +344,23 @@ namespace MWRender
             std::min(mWidth, mWidth + rightDiff * cellImageSizeDst),
             std::min(mHeight, mHeight + bottomDiff * cellImageSizeDst));
 
-        // Into the overlay's own image either way, so what the texture and its mirrors draw from
-        // never changes identity
         if (srcBox == destBox && imageWidth == mWidth && imageHeight == mHeight)
-            memcpy(mOverlayImage->data(), image->data(), mOverlayImage->getTotalSizeInBytes());
+        {
+            mOverlay->replace(std::move(image));
+        }
         else
         {
-            // The boxes above count rows from the top; the images count them from the bottom.
+            // Dimensions don't match. This could mean a changed map region, or a changed map resolution.
+            // In the latter case, we'll want filtering.
+            // The boxes above count rows from the top; the overlay's rectangles count them from the bottom.
             const int srcHeight = srcBox.mBottom - srcBox.mTop;
             const int destHeight = destBox.mBottom - destBox.mTop;
-
-            memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
-
-            resampleRegion(*image,
+            mOverlay->paintImage(SceneUtil::ImageRegion{ destBox.mLeft, mHeight - destBox.mBottom,
+                                     destBox.mRight - destBox.mLeft, destHeight },
+                std::move(image),
                 SceneUtil::ImageRegion{
-                    srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight },
-                *mOverlayImage,
-                SceneUtil::ImageRegion{
-                    destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
+                    srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight });
         }
-
-        mOverlayTexture->paintAll();
     }
 
     osg::ref_ptr<osg::Texture2D> GlobalMap::getBaseTexture()
@@ -419,10 +369,10 @@ namespace MWRender
         return mBaseTexture;
     }
 
-    osg::ref_ptr<SceneUtil::PaintedTexture> GlobalMap::getOverlayTexture()
+    MyGUI::ITexture& GlobalMap::getOverlayTexture()
     {
         ensureLoaded();
-        return mOverlayTexture;
+        return mOverlay->getTexture();
     }
 
     void GlobalMap::ensureLoaded()
@@ -431,10 +381,9 @@ namespace MWRender
         {
             mWorkItem->waitTillDone();
 
-            mOverlayImage = mWorkItem->mOverlayImage;
             mBaseTexture = mWorkItem->mBaseTexture;
-            mAlphaImage = mWorkItem->mAlphaImage;
-            mOverlayTexture = mWorkItem->mOverlayTexture;
+            mOverlay = mRenderer.createMapOverlay(
+                MapOverlaySpec{ .mWidth = mWidth, .mHeight = mHeight, .mLandAlpha = mWorkItem->mAlphaImage });
 
             mWorkItem = nullptr;
         }
@@ -442,10 +391,10 @@ namespace MWRender
 
     void GlobalMap::asyncWritePng()
     {
-        if (mOverlayImage == nullptr)
+        if (mOverlay == nullptr)
             return;
         // Use deep copy to avoid any sychronization
-        mWritePng = new WritePng(new osg::Image(*mOverlayImage, osg::CopyOp::DEEP_COPY_ALL));
+        mWritePng = new WritePng(new osg::Image(mOverlay->getImage(), osg::CopyOp::DEEP_COPY_ALL));
         mWorkQueue->addWorkItem(mWritePng, /*front=*/true);
     }
 }

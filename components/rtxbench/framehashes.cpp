@@ -35,8 +35,8 @@ namespace Rtx
             // value changes its meaning — a digest hashed another way — so a file an older build
             // wrote is refused rather than compared.
             std::string header = "hashes 3: view,frame,picture";
-            for (std::size_t part = 0; part < static_cast<std::size_t>(ScenePart::Count); ++part)
-                header += ',' + std::string(nameOf(static_cast<ScenePart>(part)));
+            for (const auto& [part, name] : sSceneParts.mNames)
+                header += ',' + std::string(name);
 
             return header;
         }

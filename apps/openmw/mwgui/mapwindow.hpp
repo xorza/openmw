@@ -141,7 +141,7 @@ namespace MWGui
             MyGUI::ImageBox* mMapWidget;
             MyGUI::ImageBox* mFogWidget;
             // Shared with the local map, so the picture outlives a segment dropped or redrawn under it
-            std::shared_ptr<const MWRender::OffscreenView> mMapView;
+            std::shared_ptr<MWRender::OffscreenView> mMapView;
             std::unique_ptr<MyGUI::ITexture> mFogTexture;
             // Whether this entry has asked for a fog texture and been told there is none
             bool mFogAsked = false;
@@ -251,10 +251,6 @@ namespace MWGui
         // reveals this cell's map on the global map
         void cellExplored(int x, int y);
 
-        /// Paints the explored cells whose picture has come back. Called every frame the game runs rather than
-        /// from onFrame, which only runs while the map is up, because cells are walked into with it closed.
-        void paintExplored();
-
         void setGlobalMapPlayerPosition(float worldX, float worldY);
         void setGlobalMapPlayerDir(const float x, const float y);
 
@@ -305,10 +301,6 @@ namespace MWGui
 
         MyGUI::ScrollView* mGlobalMap;
         std::unique_ptr<MyGUI::ITexture> mGlobalMapTexture;
-        std::unique_ptr<MyGUI::ITexture> mGlobalMapOverlayTexture;
-
-        // Cells walked into whose picture has not come back off the device yet
-        std::vector<std::pair<int, int>> mExploredPending;
         MyGUI::ImageBox* mGlobalMapImage;
         MyGUI::ImageBox* mGlobalMapOverlay;
         MyGUI::ImageBox* mPlayerArrowLocal;

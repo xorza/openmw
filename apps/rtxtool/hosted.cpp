@@ -54,9 +54,6 @@ namespace RtxTool
         // owns it from here on.
         const Rtx::RunSetup setup = request.mSetup;
 
-        request.mHud = variables["hud"].as<bool>();
-        request.mVanity = variables["vanity"].as<bool>();
-        request.mRandomSeed = variables["random-seed"].as<unsigned int>();
         const unsigned int seed = request.mRandomSeed;
 
         // **Built before the engine and read after it.** A run that ends its last stop and a window
@@ -96,7 +93,8 @@ namespace RtxTool
 
             // **The same first file and the same refusal of a repeat as `apps/openmw/main.cpp`.** A
             // content list read here and there by different rules is two installations described as
-            // one, which is the drift this whole path exists to remove.
+            // one, which is the drift this whole path exists to remove. A copy, and named as one:
+            // the rule lives in an upstream file this fork does not edit.
             engine.addContentFile("builtin.omwscripts");
             if (!setup.mHeadless)
                 engine.addContentFile("rtxtool.omwscripts");

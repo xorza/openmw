@@ -325,8 +325,8 @@ namespace MWRender
         state.setAmbientColor(world.mAmbientColour);
         state.setSkyColor(sky.mWeather.mSkyColor);
         state.setIsInterior(world.isInteriorCell());
-        state.setIsWaterEnabled(world.mWaterEnabled);
-        state.setWaterHeight(world.mWaterHeight);
+        state.setIsWaterEnabled(world.mWater.isShown());
+        state.setWaterHeight(world.mWater.mHeight);
         state.setIsUnderwater(world.mUnderwater);
         const FogBand& fog = world.mUnderwater ? world.mWaterFog : world.mAir;
         state.setFogColor(fog.mColour);
@@ -351,8 +351,8 @@ namespace MWRender
         mStateUpdater->setUnderwaterFogStart(world.mWaterFog.mStart);
         mStateUpdater->setUnderwaterFogEnd(world.mWaterFog.mEnd);
         mStateUpdater->setUnderwaterFogColor(world.mWaterFog.mColour);
-        mStateUpdater->setWaterEnabled(world.mWaterEnabled);
-        mStateUpdater->setWaterHeight(world.mWaterHeight);
+        mStateUpdater->setWaterEnabled(world.mWater.isShown());
+        mStateUpdater->setWaterHeight(world.mWater.mHeight);
         mStateUpdater->setAmbientColor(world.mAmbientColour);
 
         if (!frame.mPaused)
@@ -431,24 +431,24 @@ namespace MWRender
         // Upstream's setWaterHeight and enableTerrain: the water is culled by the ground's height
         // where there is ground, and the terrain hands the cull out only once it has chunks
         const bool exterior = world.mLocation == Location::Exterior;
-        if (!mApplied.mAny || mApplied.mWaterHeight != world.mWaterHeight || mApplied.mExterior != exterior
+        if (!mApplied.mAny || mApplied.mWaterHeight != world.mWater.mHeight || mApplied.mExterior != exterior
             || (exterior && !mApplied.mWaterCulled))
         {
             osg::Callback* cull
-                = exterior ? frame.mTerrain.getHeightCullCallback(world.mWaterHeight, Mask_Water) : nullptr;
+                = exterior ? frame.mTerrain.getHeightCullCallback(world.mWater.mHeight, Mask_Water) : nullptr;
             mWater->setCullCallback(cull);
             mApplied.mWaterCulled = !exterior || cull != nullptr;
             mApplied.mExterior = exterior;
         }
-        if (!mApplied.mAny || mApplied.mWaterHeight != world.mWaterHeight)
+        if (!mApplied.mAny || mApplied.mWaterHeight != world.mWater.mHeight)
         {
-            mWater->setHeight(world.mWaterHeight);
-            mApplied.mWaterHeight = world.mWaterHeight;
+            mWater->setHeight(world.mWater.mHeight);
+            mApplied.mWaterHeight = world.mWater.mHeight;
         }
-        if (!mApplied.mAny || mApplied.mWaterEnabled != world.mWaterEnabled)
+        if (!mApplied.mAny || mApplied.mWaterEnabled != world.mWater.isShown())
         {
-            mWater->setEnabled(world.mWaterEnabled);
-            mApplied.mWaterEnabled = world.mWaterEnabled;
+            mWater->setEnabled(world.mWater.isShown());
+            mApplied.mWaterEnabled = world.mWater.isShown();
         }
 
         mWater->setRainIntensity(precipitation.getRainRipplesEnabled() ? precipitation.getPrecipitationAlpha() : 0.f);

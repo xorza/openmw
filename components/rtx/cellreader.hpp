@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 
@@ -78,7 +79,9 @@ namespace Rtx
 
         // Refilled per cell, per model and per image.
         std::vector<Terrain::PagedCellRef> mRefScratch;
-        std::vector<Terrain::PagedCellRef> mLitScratch;
+
+        /// A byte per reference of `mRefScratch`, set where the reference is a lamp.
+        std::vector<std::uint8_t> mIsLampScratch;
 
         Spares<PreparedCell> mCells;
         Spares<PreparedModel> mModels;

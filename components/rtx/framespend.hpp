@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <ratio>
+#include <string_view>
+#include <utility>
 
 #include "namedenum.hpp"
 
@@ -52,21 +54,21 @@ namespace Rtx
 
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it. One
     /// table, from which the count and the walk are derived (`Rtx::NamedEnum`).
-    inline constexpr NamedEnum<Timing, 13> sTimings{ { {
-        { Timing::Frame, "frame" },
-        { Timing::Finish, "finish" },
-        { Timing::Wait, "wait" },
-        { Timing::Walk, "walk" },
-        { Timing::Fold, "fold" },
-        { Timing::Place, "place" },
-        { Timing::Bake, "bake" },
-        { Timing::Textures, "textures" },
-        { Timing::Upload, "upload" },
-        { Timing::Trace, "trace" },
-        { Timing::Views, "views" },
-        { Timing::Present, "present" },
-        { Timing::Update, "update" },
-    } } };
+    inline constexpr NamedEnum sTimings{ std::array{
+        std::pair{ Timing::Frame, std::string_view("frame") },
+        std::pair{ Timing::Finish, std::string_view("finish") },
+        std::pair{ Timing::Wait, std::string_view("wait") },
+        std::pair{ Timing::Walk, std::string_view("walk") },
+        std::pair{ Timing::Fold, std::string_view("fold") },
+        std::pair{ Timing::Place, std::string_view("place") },
+        std::pair{ Timing::Bake, std::string_view("bake") },
+        std::pair{ Timing::Textures, std::string_view("textures") },
+        std::pair{ Timing::Upload, std::string_view("upload") },
+        std::pair{ Timing::Trace, std::string_view("trace") },
+        std::pair{ Timing::Views, std::string_view("views") },
+        std::pair{ Timing::Present, std::string_view("present") },
+        std::pair{ Timing::Update, std::string_view("update") },
+    } };
 
     inline constexpr std::size_t sTimingCount = sTimings.mNames.size();
 

@@ -56,9 +56,6 @@ namespace MyGUIPlatform
 
         osg::StateSet* mInjectState;
 
-        // Injected while setAdditiveBlend is on
-        osg::ref_ptr<osg::StateSet> mAdditiveState;
-
     public:
         RenderManager(osgViewer::Viewer* viewer, osg::Group* sceneroot, Resource::ImageManager* imageManager,
             float scalingFactor);
@@ -66,6 +63,9 @@ namespace MyGUIPlatform
 
         void initialise() override;
         void shutdown() override;
+
+        /// Upstream's `AdditiveLayer`, whose state set this manager injects.
+        void registerFactories() override;
 
         void enableShaders(Shader::ShaderManager& shaderManager);
 
@@ -112,8 +112,6 @@ namespace MyGUIPlatform
         /** specify a StateSet to inject for rendering. The StateSet will be used by future doRender calls until you
          * reset it to nullptr again. */
         void setInjectState(osg::StateSet* stateSet);
-
-        void setAdditiveBlend(bool additive) override;
 
         std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) override;
         std::unique_ptr<MyGUI::ITexture> shareTexture(SceneUtil::PaintedTexture& texture) override;

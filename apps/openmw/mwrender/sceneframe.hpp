@@ -38,6 +38,19 @@ namespace MWRender
         Exterior,
     };
 
+    /// The water as the game decides it: where it stands, whether the cell has any, and whether the
+    /// `twf` command has hidden it. One rule for what the water covers, so the eye's answer and the
+    /// rasterizer's `Water`, which is handed these numbers, cannot disagree.
+    struct WaterState
+    {
+        float mHeight = 0.f;
+        bool mEnabled = false;
+        bool mToggled = true;
+
+        bool isShown() const { return mEnabled && mToggled; }
+        bool isUnderwater(const osg::Vec3f& position) const { return position.z() < mHeight && isShown(); }
+    };
+
     /// A distance fog, as the game describes one: a colour and the linear ramp it fills.
     struct FogBand
     {
@@ -86,8 +99,9 @@ namespace MWRender
         /// off the dome every quasi-exterior is an exterior and `tsky` has a say in it.
         Location mLocation = Location::Interior;
 
-        bool mWaterEnabled = false;
-        float mWaterHeight = 0.0f;
+        WaterState mWater;
+
+        /// Whether the eye is under `mWater`: the water's own rule, asked at the camera.
         bool mUnderwater = false;
 
         /// Fog above the water, which a renderer whose fog is a medium reads even with the eye

@@ -171,11 +171,14 @@ namespace MWRender
         if (!Settings::video().mWindowBorder)
             placement.mFlags |= SDL_WINDOW_BORDERLESS;
 
+        return placement;
+    }
+
+    void applyWindowHints()
+    {
         // Allows for Windows snapping features to properly work in borderless window
         SDL_SetHint("SDL_BORDERLESS_WINDOWED_STYLE", "1");
         SDL_SetHint("SDL_BORDERLESS_RESIZABLE_STYLE", "1");
         SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, Settings::video().mMinimizeOnFocusLoss ? "1" : "0");
-
-        return placement;
     }
 }

@@ -35,11 +35,11 @@ namespace MWRender
         mStrikes.push_back(at);
     }
 
-    void RippleEmitters::update(const bool waterEnabled, const float waterHeight)
+    void RippleEmitters::update(const WaterState& water)
     {
         mImpulses.clear();
 
-        if (!waterEnabled)
+        if (!water.isShown())
         {
             mStrikes.clear();
             return;
@@ -70,7 +70,7 @@ namespace MWRender
         }
 
         for (const osg::Vec3f& strike : mStrikes)
-            if (std::abs(strike.z() - waterHeight) < 20.0f)
+            if (std::abs(strike.z() - water.mHeight) < sStrikeReach)
                 mImpulses.push_back(
                     Rtx::RippleImpulse{ .mAt = osg::Vec2f(strike.x(), strike.y()), .mSize = sFootfall });
 

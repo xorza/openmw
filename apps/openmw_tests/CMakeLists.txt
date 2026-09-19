@@ -49,7 +49,8 @@ if (OPENMW_RTX)
         mwrender/readworld.cpp
         mwrender/renderer.cpp
         mwrender/rtxrenderer.cpp
-        mwrender/tracedground.cpp
+        mwrender/tracedterrain.cpp
+        mwrender/waterstate.cpp
         mwrender/worldmirror.cpp
     )
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})

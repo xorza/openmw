@@ -1,6 +1,7 @@
 #include "cellreader.hpp"
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -119,32 +120,41 @@ namespace Rtx
 
         // One cell at a time, which is the paging's near answer: containers page here as they do
         // in the active grid's own chunks, and the size rule is what thins them with distance. One
-        // walk of the cell's records answers the lights too, which the paging never stands.
-        mStorage.collect(1.0f, cell, mWorldspace, mRefScratch, mLitScratch);
+        // walk of the cell's records answers the lights too, which the paging never stands, and a
+        // reference is a lamp where its record is a `LIGH`: the paging draws no lamp's mesh in the
+        // distance, so neither is one stood here.
+        mStorage.collect(1.0f, cell, mWorldspace, Terrain::RefKinds::Both, mRefScratch);
 
-        for (const Terrain::PagedCellRef& ref : mLitScratch)
+        // Which references are lamps, asked once per reference: the statics below skip them.
+        mIsLampScratch.assign(mRefScratch.size(), 0);
+        for (std::size_t at = 0; at < mRefScratch.size(); ++at)
         {
+            const Terrain::PagedCellRef& ref = mRefScratch[at];
             const std::optional<SceneUtil::LightCommon> record = mStorage.getLight(ref.mRefId);
-
-            // A reference naming no record is the content's to answer for, and the game draws
-            // nothing for one either. Nothing is invented here to stand in its place; and a record
-            // off by default casts nothing wherever it is placed, so it is not carried.
-            if (!record.has_value() || !castsWherePlaced(*record))
+            if (!record.has_value())
                 continue;
 
-            prepared.mLights.push_back(PreparedLight{
-                .mPosition = ref.mPosition,
-                .mRefNum = ref.mRefNum,
-                .mRecord = *record,
-            });
+            mIsLampScratch[at] = 1;
+
+            // A record off by default casts nothing wherever it is placed, so it is not carried.
+            if (castsWherePlaced(*record))
+                prepared.mLights.push_back(PreparedLight{
+                    .mPosition = ref.mPosition,
+                    .mRefNum = ref.mRefNum,
+                    .mRecord = *record,
+                });
         }
 
         if (!statics)
             return;
 
-        for (const Terrain::PagedCellRef& ref : mRefScratch)
+        for (std::size_t at = 0; at < mRefScratch.size(); ++at)
         {
-            if (Misc::ResourceHelpers::isHiddenMarker(ref.mRefId))
+            const Terrain::PagedCellRef& ref = mRefScratch[at];
+
+            // A lamp, carried above; a reference naming no record is the content's to answer for,
+            // and the game draws nothing for one either.
+            if (mIsLampScratch[at] != 0 || Misc::ResourceHelpers::isHiddenMarker(ref.mRefId))
                 continue;
 
             VFS::Path::Normalized model = mStorage.getModel(ref.mRefId);

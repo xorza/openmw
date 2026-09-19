@@ -7,6 +7,7 @@
 #include <span>
 
 #include <MyGUI_Diagnostic.h>
+#include <MyGUI_FactoryManager.h>
 #include <MyGUI_ITexture.h>
 #include <MyGUI_IVertexBuffer.h>
 #include <MyGUI_RenderFormat.h>
@@ -14,6 +15,7 @@
 
 #include <components/debug/debuglog.hpp>
 
+#include "additivelayer.hpp"
 #include "paintedmirror.hpp"
 #include "sharedtexture.hpp"
 #include "slottexture.hpp"
@@ -80,6 +82,11 @@ namespace MyGUIRtx
     {
         // Nothing is attached to anything: the renderer is asked to draw and there is no graph to
         // take this back out of.
+    }
+
+    void RenderManager::registerFactories()
+    {
+        MyGUI::FactoryManager::getInstance().registerFactory<AdditiveLayer>("Layer");
     }
 
     void RenderManager::setAdditiveBlend(bool additive)

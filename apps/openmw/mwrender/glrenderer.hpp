@@ -69,6 +69,8 @@ namespace MWRender
     /// Every threading, realize and traversal decision here is upstream's, moved rather than
     /// rewritten, which is what makes "does the other renderer do this correctly" answerable by
     /// comparison (`CLAUDE.md`).
+    class GlMapOverlay;
+
     class GlRenderer final : public Renderer
     {
     public:
@@ -96,7 +98,7 @@ namespace MWRender
         void describeFrame(const SceneFrame& frame) override;
         void renderFrame(const SceneFrame& frame) override;
 
-        Ground createGround(const GroundSpec& spec) override;
+        std::unique_ptr<Ground> createGround(const GroundSpec& spec) override;
         std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec& spec) override;
         std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec& spec) override;
 
@@ -138,6 +140,15 @@ namespace MWRender
         void beginEvents() override;
         void functionKey(int index, bool pressed) override;
         void windowResized(int x, int y, int width, int height) override;
+
+        /// Upstream's camera blit for the world map's overlay, hung under the traversal root.
+        std::unique_ptr<MapOverlay> createMapOverlay(const MapOverlaySpec& spec) override;
+
+        /*internal:*/
+        /// The overlay that exists, or null: told by `GlMapOverlay` as it comes and goes, so this
+        /// renderer can take its drawn cameras down once a frame, between the traversals, as
+        /// upstream's `WindowManager::onFrame` did.
+        void setMapOverlay(GlMapOverlay* overlay) { mMapOverlay = overlay; }
 
     private:
         /// The overlay the debug keys toggle, and the per-frame dump `OPENMW_OSG_STATS_FILE` asks
@@ -203,6 +214,9 @@ namespace MWRender
 
         /// Everything the rasterizer builds around the world, for as long as there is one.
         std::unique_ptr<GlWorld> mWorld;
+
+        /// Borrowed: the map window owns it, through `GlobalMap`, and says when it goes.
+        GlMapOverlay* mMapOverlay = nullptr;
 
         /// The last frame, copied off the framebuffer where it stands: upstream's loading-screen
         /// texture and its copy callback, made the first time the screen asks for them.

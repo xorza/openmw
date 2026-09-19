@@ -10,6 +10,7 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/residency.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
@@ -47,46 +48,58 @@ namespace RtxTool
     /// command for the next run. What a window prints on the key and again where it was left.
     std::string describeStanding(const Rtx::Stop& stop);
 
-    /// What a frame is upscaled by when nobody names a mode. It follows the build, because
-    /// `-DOPENMW_RTX_DLSS=OFF` is a deliberate opt-out; Quality rather than Performance, so a plain
-    /// run is the renderer with everything on and not one that quietly quartered its pixels.
+    /// What a frame is upscaled by when nobody names a mode. The one knob whose default is the
+    /// harness's own and not `settings-default.cfg`'s: the file says `quality`, and a build with
+    /// `-DOPENMW_RTX_DLSS=OFF` refuses every mode but `off` by name, so a run of that build has to
+    /// ask for what it can have. Quality rather than Performance where there is a choice, so a
+    /// plain run is the renderer with everything on and not one that quietly quartered its pixels.
 #ifdef OPENMW_RTX_DLSS
     inline constexpr Rtx::Upscale sUpscaleByDefault = Rtx::Upscale::Quality;
 #else
     inline constexpr Rtx::Upscale sUpscaleByDefault = Rtx::Upscale::Off;
 #endif
 
-    /// What a command's frames are traced with — one block for a shot, a window, a profiling run
-    /// and an A/B, which differ only in what they keep. Where a run stands is not here: the hour
-    /// and the sky belong to the place, and `stopFor` is where the command line meets it.
-    struct FrameRequest
+    /// Where a hosted run's frames are presented: what goes into the settings the engine makes its
+    /// window from, and nothing the renderer is made with.
+    struct WindowRequest
     {
-        /// The size the frame is presented at. What it is traced at follows from `mProfile.mUpscaling`.
+        /// The size the frame is presented at. What it is traced at follows from the profile's
+        /// upscaling.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;
 
         float mFieldOfView = 60.0f;
 
-        /// How far out from the eye the world is built, in cells. The air is tuned to it as well as
-        /// the ground.
-        float mDistantCells = 4.0f;
-
-        /// Whether what the content files stand on the distant ground is paged in with it: the
-        /// game's own `object paging`, as the run's `MirrorKnobs` carry it, so the A/B that says
-        /// what the buildings cost is that knob turned off.
-        bool mDistantStatics = true;
-
-        /// Which day, counted from the one a new game begins on. Only the moons read it.
-        int mDay = 0;
-
         /// How the present paces the frame. Off for a measured run, or the wait for the refresh
         /// lands in `wait ms`; a watched window keeps the player's own setting.
         SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
-
-        /// What the trace itself is configured by, handed to the renderer in its `RunSetup`: the
-        /// one type the game reads out of `[RTX]` and this fills from the command line.
-        Rtx::RenderProfile mProfile{ .mUpscaling = { .mMode = sUpscaleByDefault } };
     };
+
+    /// What a command's frames are traced with, read once off the command line into the two records
+    /// the engine takes — the window, and the `RunSetup` the renderer is made with — and the one
+    /// thing the place takes. Where a run stands is not here: the hour and the sky belong to the
+    /// place, and `stopFor` is where the command line meets it.
+    struct Framed
+    {
+        WindowRequest mWindow;
+
+        /// The two parts of the `RunSetup` the line frames: what the trace is configured by, and
+        /// how much world the mirror builds. The rest of the setup — the validation, the step,
+        /// whether there is a window — is each verb's to say, on the request `sessionFor` builds.
+        Rtx::RenderProfile mProfile{ .mUpscaling = { .mMode = sUpscaleByDefault } };
+        Rtx::MirrorKnobs mMirror;
+
+        /// Which day, counted from the one a new game begins on. Only the moons read it.
+        int mDay = 0;
+    };
+
+    /// What a setting is where nobody has set it: the shipped default, out of the `defaults.bin`
+    /// beside the first configuration file `config` found, and never the player's own value. A
+    /// measured run reads these so that two runs of it are one run whatever a settings file says.
+    /// Not `Settings::Manager::mDefaultSettings`, which layers every configuration directory but
+    /// the last over the shipped file — and the harness's own directory is the last.
+    std::string shippedDefault(
+        const Files::ConfigurationManager& config, std::string_view category, std::string_view setting);
 
     /// Runs `request` against a real game, headless, and gives back a process exit status. The
     /// game and not a world of this tool's own, because a staged world never pays for the

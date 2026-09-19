@@ -24,19 +24,26 @@ namespace Terrain
         float mScale = 1.f;
     };
 
-    /// Which of the two lists one walk of a cell's records sorts a reference into.
-    enum class RefKind
+    /// Which references one walk of a cell's records collects, as a set of the two kinds.
+    enum class RefKinds : unsigned int
     {
         /// What a chunk stands: the record types the paging draws, which is what makes a distant
         /// hillside look the same under both renderers.
-        Paged,
+        Paged = 1 << 0,
 
         /// What lights it and nothing stands: `LIGH`, which the paging never draws. The ray tracer
         /// lights the world with what it can reach rather than with what a camera can see, and a
         /// town four cells away that goes dark at dusk is the world stating something the content
         /// files do not.
-        Lit,
+        Lit = 1 << 1,
+
+        Both = Paged | Lit,
     };
+
+    constexpr bool holds(RefKinds set, RefKinds one)
+    {
+        return (static_cast<unsigned int>(set) & static_cast<unsigned int>(one)) != 0;
+    }
 
     /// What the paging and the ray tracer ask of the content files.
     ///
@@ -49,16 +56,17 @@ namespace Terrain
     public:
         virtual ~ObjectStorage() = default;
 
-        /// Every reference in the square of `size` cells whose lowest corner is `startCell`,
-        /// reduced by reference number the way the content files stack: a later file moving or
-        /// deleting what an earlier one placed wins. Sorted by reference number, and sorted into
-        /// the two lists by `RefKind` — both from one walk, because a walk opens the cell's readers
-        /// and a second walk for the other kind opened them again.
+        /// Every reference of the `kinds` asked for in the square of `size` cells whose lowest
+        /// corner is `startCell`, reduced by reference number the way the content files stack: a
+        /// later file moving or deleting what an earlier one placed wins. Sorted by reference
+        /// number. Both kinds come from one walk, because a walk opens the cell's readers and a
+        /// second walk for the other kind opened them again; `getLight` says which kind a
+        /// reference is.
         ///
-        /// Both lists are cleared first. Called from the paging's own working threads, so an
+        /// `into` is cleared first. Called from the paging's own working threads, so an
         /// implementation must be safe to call on several at once.
-        virtual void collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-            std::vector<PagedCellRef>& paged, std::vector<PagedCellRef>& lit) const = 0;
+        virtual void collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, RefKinds kinds,
+            std::vector<PagedCellRef>& into) const = 0;
 
         /// What a `LIGH` record says its light is, or nothing where the id names no such record.
         ///

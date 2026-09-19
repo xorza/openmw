@@ -1275,7 +1275,10 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
         typedef std::vector<DuplicateList> MergeList;
 
         // Grouped through the map but merged in child order: LessGeometry orders on the state set's address,
-        // which made the merged index buffer differ between processes.
+        // which made the merged index buffer differ between processes. A ray tracer builds its acceleration
+        // structures over that buffer and hashes it, so two runs of one build have to merge in one order. The
+        // rasterizer drew from whichever order the addresses gave; this is one of those orders every time, and
+        // no picture of its changes but a tie it already drew differently from run to run.
         typedef std::map< osg::ref_ptr<osg::Geometry>, std::size_t, LessGeometry>   GeometryGroupMap;
 
         GeometryGroupMap geometryGroups;

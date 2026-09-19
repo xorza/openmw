@@ -5,6 +5,8 @@
 # offers and each of its backends implements.
 
 set(MYGUIRTX_FILES
+    additivelayer.cpp
+    additivelayer.hpp
     rendermanager.cpp
     rendermanager.hpp
     rgbarows.cpp

@@ -272,6 +272,11 @@ namespace Rtx
         mPlacer.setReferenceEnabled(refnum, enabled, std::span<HeldCell>(mCells.begin(), mCells.end()));
     }
 
+    void CellRing::blacklistReference(const ESM::RefNum refnum)
+    {
+        mPlacer.blacklistReference(refnum, std::span<HeldCell>(mCells.begin(), mCells.end()));
+    }
+
     void CellRing::forgetReferences()
     {
         mPlacer.forgetReferences(std::span<HeldCell>(mCells.begin(), mCells.end()));

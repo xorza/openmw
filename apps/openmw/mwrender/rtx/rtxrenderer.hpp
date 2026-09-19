@@ -14,6 +14,7 @@
 #include <osg/Matrixd>
 #include <osg/Node>
 #include <osg/Timer>
+#include <osg/Vec2f>
 #include <osg/ref_ptr>
 
 #include <components/esm3/refnum.hpp>
@@ -74,6 +75,7 @@ namespace MyGUIRtx
 
 namespace MWRender
 {
+    class TracedOverlay;
     class TracedView;
     struct PoseMoment;
 
@@ -120,10 +122,8 @@ namespace MWRender
         void emitWaterRipple(const osg::Vec3f& position) override;
 
         /// A `TracedGround`: the storage, the worldspace and the active grid, and no chunks.
-        Ground createGround(const GroundSpec& spec) override;
+        std::unique_ptr<Ground> createGround(const GroundSpec& spec) override;
 
-        void enableReference(ESM::RefNum refnum, bool enabled) override;
-        void forgetReferences() override;
         void detachWorld() override;
 
         float getGroundReach() const override;
@@ -149,6 +149,10 @@ namespace MWRender
         /// its own.
         std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec& spec) override;
         std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec& spec) override;
+
+        /// A `TracedOverlay`: the explored cells composited in main memory and mirrored into the
+        /// interface.
+        std::unique_ptr<MapOverlay> createMapOverlay(const MapOverlaySpec& spec) override;
 
         /// The frame just presented, read back into a GUI texture. One black texel before anything
         /// has been presented, which is the very first load.
@@ -184,6 +188,13 @@ namespace MWRender
         /// `WorldMirror::collectStanding`, for the harness's check that no static stands twice.
         void collectStanding(std::vector<ESM::RefNum>& into) const { mMirror.collectStanding(into); }
 
+        /// What the game says of one reference, from `TracedGround`: a script's toggle, a moved or
+        /// animated object the distance must never stand, and a new game that forgets both. Here
+        /// and not on the mirror directly, because they land between frames and the phase says so.
+        void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
+        void blacklistReference(ESM::RefNum refnum);
+        void forgetReferences();
+
         /// `Rtx::Renderer::getProfile`: the knobs the frames are traced under now, for a stop that
         /// writes a picture by the same rules. Not `mSetup`'s, which is what the backend was made
         /// with and stays so.
@@ -204,6 +215,19 @@ namespace MWRender
 
         /// Takes a view off that list, because it is going away.
         void forgetView(TracedView& view);
+
+        /// A view made, from its constructor: kept on the list of the pictures alive, which
+        /// `findWorldView` answers from.
+        void adoptView(TracedView& view);
+
+        /// The picture of the world taken straight down over `over`, or null where none is alive:
+        /// the local map's tile of the cell the point is in, found by the renderer that drew it.
+        /// For the harness, which writes the game's own tile rather than framing one to look like it.
+        TracedView* findWorldView(const osg::Vec2f& over) const;
+
+        /// The overlay that exists, or null: told by `TracedOverlay` as it comes and goes, so the
+        /// frame can finish its paints once the pictures they wait for have come back.
+        void setMapOverlay(TracedOverlay* overlay) { mMapOverlay = overlay; }
 
     private:
         /// Where a frame stands, asserted at every entry point: the order `renderFrame` takes is
@@ -348,13 +372,19 @@ namespace MWRender
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
 
-        /// Pictures asked for and not yet drawn, in the order asked. Raw pointers because the
-        /// caller owns every view, and `forgetView` keeps that sound.
+        /// Every picture alive, in the order made. Raw pointers because the caller owns every view,
+        /// and `forgetView` keeps that sound.
+        std::vector<TracedView*> mViews;
+
+        /// Pictures asked for and not yet drawn, in the order asked.
         std::vector<TracedView*> mDeferred;
 
         /// The list a flush walks, swapped out of `mDeferred` so a redraw cannot grow what is being
         /// iterated. Kept, because this sits on the frame path.
         std::vector<TracedView*> mDrawing;
+
+        /// Borrowed: the map window owns it, through `GlobalMap`, and says when it goes.
+        TracedOverlay* mMapOverlay = nullptr;
 
         /// How many pictures of the world one frame draws; the rest wait for the next. A fresh load
         /// asks for nine map tiles at once and a cell crossing for a row of three. A picture of a
@@ -438,10 +468,6 @@ namespace MWRender
 
         /// Where this frame began and ended inside this renderer, and what it presented.
         FrameSpan mSpan;
-
-        /// The frame number the walk and the trace are both stamped with, so what the upscaler
-        /// jitters and what the sampler walks are the same sequence the world is counting.
-        std::size_t mFrame = 0;
 
         /// Whether a camera the builder refused has already been reported. `describeTrace` says why
         /// once is the whole of it.

@@ -11,8 +11,8 @@ namespace Rtx
     {
         osg::Vec2f mAt;
 
-        /// The ring's radius, in world units: twelve for a footfall, as `RippleSimulation::emitRipple`
-        /// states it.
-        float mSize = 12.0f;
+        /// The ring's radius, in world units. No default, because the game states the size a
+        /// footfall presses (`MWRender::RippleEmitters`) and this core must not restate it.
+        float mSize = 0.0f;
     };
 }

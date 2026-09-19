@@ -7,8 +7,10 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include <components/rtx/namedenum.hpp>
 #include <components/rtx/shaders/visibility.h>
 
 namespace Rtx
@@ -64,8 +66,47 @@ namespace Rtx
         Count,
     };
 
+    /// What a hashes file's header spells for each part, in the order the tables are laid out,
+    /// which is the order of the columns: the header is written from this table and a column is
+    /// indexed by the enumerator, so the two must agree, and the assertion below says they do.
+    inline constexpr NamedEnum sSceneParts{ std::array{
+        std::pair{ ScenePart::Positions, std::string_view("positions") },
+        std::pair{ ScenePart::Normals, std::string_view("normals") },
+        std::pair{ ScenePart::TexCoords, std::string_view("texcoords") },
+        std::pair{ ScenePart::Indices, std::string_view("indices") },
+        std::pair{ ScenePart::Meshes, std::string_view("meshes") },
+        std::pair{ ScenePart::Instances, std::string_view("instances") },
+        std::pair{ ScenePart::Previous, std::string_view("previous") },
+        std::pair{ ScenePart::Materials, std::string_view("materials") },
+        std::pair{ ScenePart::Layers, std::string_view("layers") },
+        std::pair{ ScenePart::Masks, std::string_view("masks") },
+        std::pair{ ScenePart::Textures, std::string_view("textures") },
+        std::pair{ ScenePart::Lights, std::string_view("lights") },
+        std::pair{ ScenePart::Sprites, std::string_view("sprites") },
+        std::pair{ ScenePart::Emitters, std::string_view("emitters") },
+        std::pair{ ScenePart::Ripples, std::string_view("ripples") },
+        std::pair{ ScenePart::Deformers, std::string_view("deformers") },
+        std::pair{ ScenePart::Poses, std::string_view("poses") },
+        std::pair{ ScenePart::Frame, std::string_view("frame") },
+    } };
+
+    consteval bool scenePartsInOrder()
+    {
+        const auto values = sSceneParts.values();
+        for (std::size_t at = 0; at < values.size(); ++at)
+            if (static_cast<std::size_t>(values[at]) != at)
+                return false;
+
+        return values.size() == static_cast<std::size_t>(ScenePart::Count);
+    }
+
+    static_assert(scenePartsInOrder(), "the parts table is the columns, so it lists every part in enum order");
+
     /// What a hashes file's header spells for `part`.
-    std::string_view nameOf(ScenePart part);
+    constexpr std::string_view nameOf(const ScenePart part)
+    {
+        return sSceneParts.name(part);
+    }
 
     /// A digest of every part, indexed by `ScenePart`.
     using ScenePartDigests = std::array<std::array<std::uint64_t, 2>, static_cast<std::size_t>(ScenePart::Count)>;

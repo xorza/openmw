@@ -104,8 +104,10 @@ namespace MWRender
         void setSettled(bool settled) { mRing.setSettled(settled); }
 
         /// What the game says of one reference, which the content files cannot: a script has
-        /// disabled it, or enabled it again. A cleared world says it of none.
+        /// disabled it, or enabled it again, or the game moved it and the distance must never
+        /// stand it. A cleared world says it of none.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled) { mRing.setReferenceEnabled(refnum, enabled); }
+        void blacklistReference(ESM::RefNum refnum) { mRing.blacklistReference(refnum); }
         void forgetReferences() { mRing.forgetReferences(); }
 
         /// How much world this renderer builds, in units: the ground, the air and the distant

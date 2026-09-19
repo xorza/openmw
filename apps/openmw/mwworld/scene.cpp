@@ -360,15 +360,6 @@ namespace MWWorld
         preloadCells(duration);
     }
 
-    bool CompareCellStores::operator()(const CellStore* const left, const CellStore* const right) const
-    {
-        const MWWorld::Cell& one = *left->getCell();
-        const MWWorld::Cell& other = *right->getCell();
-
-        // A location names an interior as well: Cell::getWorldSpace is the cell's own id where it is not an exterior
-        return one.getExteriorCellLocation() < other.getExteriorCellLocation();
-    }
-
     void Scene::unloadCell(CellStore* cell, const DetourNavigator::UpdateGuard* navigatorUpdateGuard)
     {
         if (mActiveCells.find(cell) == mActiveCells.end())

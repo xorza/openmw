@@ -5,11 +5,14 @@
 #include <cstddef>
 #include <format>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include <osg/Math>
 #include <osg/Vec3f>
 
+#include <components/files/configurationmanager.hpp>
 #include <components/files/conversion.hpp>
 #include <components/rtx/skylight.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -46,6 +49,25 @@ namespace RtxTool
             return slug.empty() ? "new-view" : slug;
         }
 
+    }
+
+    std::string shippedDefault(
+        const Files::ConfigurationManager& config, const std::string_view category, const std::string_view setting)
+    {
+        // Parsed once per process: the file does not change under a run, and every framed verb asks
+        // for two of its values.
+        static Settings::CategorySettingValueMap shipped;
+        if (shipped.empty())
+        {
+            Settings::SettingsFileParser parser;
+            parser.loadSettingsFile(config.getActiveConfigPaths().front() / "defaults.bin", shipped, true, false);
+        }
+
+        const auto found = shipped.find(Settings::CategorySetting(category, setting));
+        if (found == shipped.end())
+            throw std::runtime_error(std::format("defaults.bin names no [{}] {}", category, setting));
+
+        return found->second;
     }
 
     float bearingOf(const Rtx::Stand& stand)

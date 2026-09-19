@@ -72,19 +72,10 @@ namespace MWWorld
         inverse
     };
 
-    /// Orders the active cells by location rather than by address, so that unloadInactiveCells walks them in the
-    /// same order in every process
-    struct CompareCellStores
-    {
-        using is_transparent = void;
-
-        bool operator()(const CellStore* left, const CellStore* right) const;
-    };
-
     class Scene
     {
     public:
-        using CellStoreCollection = std::set<CellStore*, CompareCellStores>;
+        using CellStoreCollection = std::set<CellStore*, std::less<>>;
 
     private:
         struct ChangeCellGridRequest

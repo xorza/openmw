@@ -193,7 +193,7 @@ namespace MWRender
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
             // answer "how deep is this point" with never.
-            .mWaterLevel = world.mWaterEnabled ? world.mWaterHeight : -std::numeric_limits<float>::infinity(),
+            .mWaterLevel = world.mWater.isShown() ? world.mWater.mHeight : -std::numeric_limits<float>::infinity(),
 
             // What the sea is animated by, in elapsed seconds rather than frames, or the sea would
             // slow down whenever the frame did.

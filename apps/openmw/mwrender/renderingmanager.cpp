@@ -171,10 +171,8 @@ namespace MWRender
         mTerrainStorage = std::make_unique<TerrainStorage>(mResourceSystem, normalMapPattern, heightMapPattern,
             useTerrainNormalMaps, specularMapPattern, useTerrainSpecularMaps);
 
-        WorldspaceChunkMgr& chunkMgr = getWorldspaceChunkMgr(ESM::Cell::sDefaultWorldspaceId);
-        mTerrain = chunkMgr.mTerrain.get();
-        mGroundcover = chunkMgr.mGroundcover.get();
-        mObjectPaging = chunkMgr.mObjectPaging.get();
+        mGround = &getGround(ESM::Cell::sDefaultWorldspaceId);
+        mTerrain = &mGround->getTerrain();
 
         mSunLight = new SceneUtil::Light;
         mSunLight->setDiffuse(osg::Vec4f(0, 0, 0, 1));
@@ -300,7 +298,7 @@ namespace MWRender
 
     void RenderingManager::skySetMoonColour(bool red)
     {
-        mMoonRed = red;
+        mFrame.setMoonRed(red);
     }
 
     void RenderingManager::configureAmbient(const MWWorld::Cell& cell)
@@ -349,7 +347,7 @@ namespace MWRender
         mSunLight->setDiffuse(diffuse);
         mSunLight->setSpecular(osg::Vec4f(specular.x(), specular.y(), specular.z(), specular.w() * sunVis));
 
-        mSunVisibility = sunVis;
+        mFrame.setSunVisibility(sunVis);
     }
 
     const osg::Vec4f& RenderingManager::getSunLightPosition() const
@@ -387,8 +385,9 @@ namespace MWRender
 
         if (store->getCell()->isExterior())
         {
-            getWorldspaceChunkMgr(store->getCell()->getWorldSpace())
-                .mTerrain->unloadCell(store->getCell()->getGridX(), store->getCell()->getGridY());
+            getGround(store->getCell()->getWorldSpace())
+                .getTerrain()
+                .unloadCell(store->getCell()->getGridX(), store->getCell()->getGridY());
         }
 
         mRenderer.removeCell(store);
@@ -398,13 +397,12 @@ namespace MWRender
     {
         if (enable)
         {
-            WorldspaceChunkMgr& newChunks = getWorldspaceChunkMgr(worldspace);
-            if (newChunks.mTerrain.get() != mTerrain)
+            Ground& newGround = getGround(worldspace);
+            if (&newGround != mGround)
             {
                 mTerrain->enable(false);
-                mTerrain = newChunks.mTerrain.get();
-                mGroundcover = newChunks.mGroundcover.get();
-                mObjectPaging = newChunks.mObjectPaging.get();
+                mGround = &newGround;
+                mTerrain = &mGround->getTerrain();
             }
         }
         mTerrain->enable(enable);
@@ -413,7 +411,7 @@ namespace MWRender
     void RenderingManager::setSkyEnabled(bool enabled)
     {
         mPrecipitation->setEnabled(enabled);
-        mSkyEnabled = enabled;
+        mFrame.setSkyShown(enabled);
     }
 
     bool RenderingManager::toggleBorders()
@@ -430,7 +428,7 @@ namespace MWRender
         else if (mode == Render_Wireframe)
             return mRenderer.toggleRenderMode(mode);
         else if (mode == Render_Water)
-            return mWaterToggled = !mWaterToggled;
+            return mFrame.getWater().mToggled = !mFrame.getWater().mToggled;
         else if (mode == Render_Scene)
         {
             // Asked of the renderer, because a cull mask is only the rasterizer's way of saying it
@@ -478,8 +476,7 @@ namespace MWRender
             mPrecipitation->update();
         }
 
-        mFrameDelta = dt;
-        mFramePaused = paused;
+        mFrame.setStep(dt, paused);
 
         updateNavMesh();
         updateRecastMesh();
@@ -539,19 +536,14 @@ namespace MWRender
 
     void RenderingManager::setWaterEnabled(bool enabled)
     {
-        mWaterEnabled = enabled;
+        mFrame.getWater().mEnabled = enabled;
         mPrecipitation->setWaterEnabled(enabled);
     }
 
     void RenderingManager::setWaterHeight(float height)
     {
-        mWaterHeight = height;
+        mFrame.getWater().mHeight = height;
         mPrecipitation->setWaterHeight(height);
-    }
-
-    bool RenderingManager::isUnderwater(const osg::Vec3f& position) const
-    {
-        return position.z() < mWaterHeight && mWaterToggled && mWaterEnabled;
     }
 
     void RenderingManager::screenshot(osg::Image* image, int w, int h)
@@ -821,12 +813,10 @@ namespace MWRender
 
     void RenderingManager::clear()
     {
-        mMoonRed = false;
+        mFrame.setMoonRed(false);
 
         notifyWorldSpaceChanged();
-        mRenderer.forgetReferences();
-        if (mObjectPaging)
-            mObjectPaging->clear();
+        mGround->clear();
     }
 
     MWRender::Animation* RenderingManager::getAnimation(const MWWorld::Ptr& ptr)
@@ -944,7 +934,7 @@ namespace MWRender
         // We always set the cameras projection matrix to the un-reversed variant for correct frustum culling.
         mRenderer.getCamera().setProjectionMatrix(unreversedProjectionMatrix);
 
-        mProjectionMatrix = projectionMatrix;
+        mFrame.setProjection(projectionMatrix);
 
         // Since our fog is not radial yet, we should take FOV in account, otherwise terrain near viewing distance may
         // disappear. Limit FOV here just for sure, otherwise viewing distance can be too high.
@@ -975,24 +965,23 @@ namespace MWRender
         mSunLight->setAmbient(color);
     }
 
-    RenderingManager::WorldspaceChunkMgr& RenderingManager::getWorldspaceChunkMgr(ESM::RefId worldspace)
+    Ground& RenderingManager::getGround(ESM::RefId worldspace)
     {
-        auto existingChunkMgr = mWorldspaceChunks.find(worldspace);
-        if (existingChunkMgr != mWorldspaceChunks.end())
-            return existingChunkMgr->second;
-        RenderingManager::WorldspaceChunkMgr newChunkMgr = mRenderer.createGround(GroundSpec{
+        auto existingGround = mGrounds.find(worldspace);
+        if (existingGround != mGrounds.end())
+            return *existingGround->second;
+        std::unique_ptr<Ground> newGround = mRenderer.createGround(GroundSpec{
             .mSceneRoot = *mSceneRoot,
             .mWorldRoot = *mRootNode,
-            .mResources = *mResourceSystem,
             .mStorage = *mTerrainStorage,
             .mGroundcoverStore = mGroundCoverStore,
             .mWorldspace = worldspace,
         });
 
         float distanceMult = std::cos(osg::DegreesToRadians(std::min(mFieldOfView, 140.f)) / 2.f);
-        newChunkMgr.mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
+        newGround->getTerrain().setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
 
-        return mWorldspaceChunks.emplace(worldspace, std::move(newChunkMgr)).first->second;
+        return *mGrounds.emplace(worldspace, std::move(newGround)).first->second;
     }
 
     void RenderingManager::reportStats() const
@@ -1077,7 +1066,7 @@ namespace MWRender
 
     float RenderingManager::getTerrainHeightAt(const osg::Vec3f& pos, ESM::RefId worldspace)
     {
-        return getWorldspaceChunkMgr(worldspace).mTerrain->getHeightAt(pos);
+        return getGround(worldspace).getTerrain().getHeightAt(pos);
     }
 
     void RenderingManager::overrideFieldOfView(float val)
@@ -1251,41 +1240,26 @@ namespace MWRender
     {
         if (!ptr.isInCell() || !ptr.getCell()->isExterior())
             return false;
-        mRenderer.enableReference(ptr.getCellRef().getRefNum(), enabled);
-        if (!mObjectPaging)
-            return false;
-        if (mObjectPaging->enableObject(type, ptr.getCellRef().getRefNum(), ptr.getCellRef().getPosition().asVec3(),
-                osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY()), enabled))
-        {
-            mTerrain->rebuildViews();
-            return true;
-        }
-        return false;
+        return mGround->enableReference(type, ptr.getCellRef().getRefNum(), ptr.getCellRef().getPosition().asVec3(),
+            osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY()), enabled);
     }
     void RenderingManager::pagingBlacklistObject(int type, const MWWorld::ConstPtr& ptr)
     {
-        if (!ptr.isInCell() || !ptr.getCell()->isExterior() || !mObjectPaging)
+        if (!ptr.isInCell() || !ptr.getCell()->isExterior())
             return;
         ESM::RefNum refnum = ptr.getCellRef().getRefNum();
         if (!refnum.hasContentFile())
             return;
-        if (mObjectPaging->blacklistObject(type, refnum, ptr.getCellRef().getPosition().asVec3(),
-                osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY())))
-            mTerrain->rebuildViews();
+        mGround->blacklistReference(type, refnum, ptr.getCellRef().getPosition().asVec3(),
+            osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY()));
     }
     bool RenderingManager::pagingUnlockCache()
     {
-        if (mObjectPaging && mObjectPaging->unlockCache())
-        {
-            mTerrain->rebuildViews();
-            return true;
-        }
-        return false;
+        return mGround->unlockCache();
     }
     void RenderingManager::getPagedRefnums(const osg::Vec4i& activeGrid, std::vector<ESM::RefNum>& out)
     {
-        if (mObjectPaging)
-            mObjectPaging->getPagedRefnums(activeGrid, out);
+        mGround->collectPagedRefnums(activeGrid, out);
     }
 
     void RenderingManager::setNavMeshMode(Settings::NavMeshRenderMode value)

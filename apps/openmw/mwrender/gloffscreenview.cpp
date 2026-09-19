@@ -330,8 +330,7 @@ namespace MWRender
 
         // Asking for the texture is what makes the camera, so from here on there is one to attach
         // a copy to and to pick against.
-        mTexture = std::make_unique<MyGUIPlatform::OSGTexture>(
-            static_cast<osg::Texture2D*>(mNode->getColorTexture(nullptr)), blend);
+        mTexture = std::make_unique<MyGUIPlatform::OSGTexture>(&getColorTexture(), blend);
     }
 
     template <class View>
@@ -344,6 +343,12 @@ namespace MWRender
     MyGUI::ITexture& GlOffscreenView<View>::getTexture() const
     {
         return *mTexture;
+    }
+
+    template <class View>
+    osg::Texture2D& GlOffscreenView<View>::getColorTexture() const
+    {
+        return *static_cast<osg::Texture2D*>(mNode->getColorTexture(nullptr));
     }
 
     template <class View>

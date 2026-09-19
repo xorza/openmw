@@ -11,7 +11,6 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
-#include <components/esm3/refnum.hpp>
 #include <components/sdlutil/graphicslistener.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
@@ -69,6 +68,8 @@ namespace MWWorld
 
 namespace MWRender
 {
+    class MapOverlay;
+    struct MapOverlaySpec;
     class OffscreenView;
     struct OffscreenViewSpec;
     class SubjectView;
@@ -116,21 +117,14 @@ namespace MWRender
         /// The window the renderer made, for input, the GUI's scale and the gamma ramp.
         virtual SDL_Window* getWindow() const = 0;
 
-        /// The ground of one worldspace, as this renderer draws it. The rasterizer builds
-        /// upstream's chunked world with its paging and groundcover; a renderer that stands the
-        /// ground itself hands back a `Terrain::World` that holds the storage, the worldspace and
-        /// the active grid and builds nothing, because chunks beside `Rtx::CellRing` would be built
-        /// for nobody, inside `Scene::changeCellGrid`'s synchronous wait. Once per worldspace.
-        virtual Ground createGround(const GroundSpec& spec) = 0;
-
-        /// A script has disabled one reference, or enabled it again — for a renderer standing the
-        /// distance itself. The paging is told by its own route.
-        virtual void enableReference(ESM::RefNum refnum, bool enabled) {}
-
-        /// The world is cleared for a new game or a saved one, so nothing a script said of a
-        /// reference holds any more: `enableReference`'s list starts again, as the paging's does
-        /// in `RenderingManager::clear`.
-        virtual void forgetReferences() {}
+        /// The ground of one worldspace and the distance over it, as this renderer draws them. The
+        /// rasterizer builds upstream's chunked world with its paging and groundcover; a renderer
+        /// that stands the ground itself hands back a `Terrain::World` that holds the storage, the
+        /// worldspace and the active grid and builds nothing, because chunks beside `Rtx::CellRing`
+        /// would be built for nobody, inside `Scene::changeCellGrid`'s synchronous wait. Once per
+        /// worldspace, and everything the game says about the distance from then on — a script's
+        /// toggle, a moved object, a new game — is said to what this hands back.
+        virtual std::unique_ptr<Ground> createGround(const GroundSpec& spec) = 0;
 
         /// The world's own events, as `RenderingManager` receives them: a cell comes and goes, an
         /// actor that makes ripples comes and goes, something splashes. The rasterizer's water
@@ -251,6 +245,11 @@ namespace MWRender
         /// resized, rebuilt and picked at.
         virtual std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec& spec) = 0;
         virtual std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec& spec) = 0;
+
+        /// The world map's overlay, the picture the explored cells are painted into: how a tile
+        /// gets into it is the renderer's — a camera's blit, or a composite in main memory — and
+        /// `GlobalMap` asks the same of both. Once, when the map window is made.
+        virtual std::unique_ptr<MapOverlay> createMapOverlay(const MapOverlaySpec& spec) = 0;
 
         /// The frame the player was last looking at, held still for the GUI, and taken again from
         /// the next frame drawn every time this is called. Whatever the renderer already has rather
@@ -392,10 +391,13 @@ namespace MWRender
         std::uint32_t mFlags = 0;
     };
 
-    /// What every renderer asks SDL for, out of the video settings, and the hints SDL reads inside
-    /// `SDL_CreateWindow` and so has to be given first. `surfaceFlag` names what is drawn into the
-    /// surface: `SDL_WINDOW_OPENGL` for the rasterizer.
+    /// What every renderer asks SDL for, out of the video settings. `surfaceFlag` names what is
+    /// drawn into the surface: `SDL_WINDOW_OPENGL` for the rasterizer.
     WindowPlacement describeWindow(std::uint32_t surfaceFlag);
+
+    /// The hints SDL reads inside `SDL_CreateWindow`, out of the same settings, so a renderer
+    /// gives them before it creates its window.
+    void applyWindowHints();
 
 }
 

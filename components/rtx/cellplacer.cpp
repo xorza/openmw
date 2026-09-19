@@ -32,6 +32,25 @@ namespace Rtx
         else if (!enabled && !known)
             mDisabled.insert(at, refnum);
 
+        // A blacklisted reference stays down whatever the script says.
+        if (enabled && std::binary_search(mBlacklisted.begin(), mBlacklisted.end(), refnum))
+            return;
+
+        setHeldEnabled(refnum, enabled, held);
+    }
+
+    void CellPlacer::blacklistReference(const ESM::RefNum refnum, const std::span<HeldCell> held)
+    {
+        const auto at = std::lower_bound(mBlacklisted.begin(), mBlacklisted.end(), refnum);
+        if (at != mBlacklisted.end() && *at == refnum)
+            return;
+
+        mBlacklisted.insert(at, refnum);
+        setHeldEnabled(refnum, false, held);
+    }
+
+    void CellPlacer::setHeldEnabled(const ESM::RefNum refnum, const bool enabled, const std::span<HeldCell> held)
+    {
         // Every cell, because which one holds the reference is not said; a script's toggle is rare
         // enough that the walk is cheaper than an index kept for it.
         for (HeldCell& cell : held)
@@ -43,6 +62,7 @@ namespace Rtx
     void CellPlacer::forgetReferences(const std::span<HeldCell> held)
     {
         mDisabled.clear();
+        mBlacklisted.clear();
 
         for (HeldCell& cell : held)
             for (std::size_t slot = 0; slot < cell.mPlacements.size(); ++slot)
@@ -64,7 +84,8 @@ namespace Rtx
 
     bool CellPlacer::isDisabled(const ESM::RefNum refnum) const
     {
-        return !mDisabled.empty() && std::binary_search(mDisabled.begin(), mDisabled.end(), refnum);
+        return (!mDisabled.empty() && std::binary_search(mDisabled.begin(), mDisabled.end(), refnum))
+            || (!mBlacklisted.empty() && std::binary_search(mBlacklisted.begin(), mBlacklisted.end(), refnum));
     }
 
     bool CellPlacer::wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground, const WorldAround& around)
