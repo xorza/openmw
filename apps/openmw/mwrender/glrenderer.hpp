@@ -92,6 +92,14 @@ namespace MWRender
 
         PostProcessor* getPostProcessor() override;
 
+        /// The scene manager's GLSL and the chain's, both from source; and the chain's live reload,
+        /// beside the shader manager's. Upstream's `debug` package did both by hand.
+        void reloadShaders() override;
+        void setLiveShaderReload(bool enabled) override;
+
+        /// `PostProcessor::disableDynamicShaders`: the techniques scripts enabled are dropped.
+        void forgetScriptState() override;
+
         void advance(double simulationTime) override;
         void eventTraversal() override;
         void updateTraversal() override;

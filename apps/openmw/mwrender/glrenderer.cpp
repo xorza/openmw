@@ -447,6 +447,26 @@ namespace MWRender
         return mWorld ? &mWorld->getPostProcessor() : nullptr;
     }
 
+    void GlRenderer::reloadShaders()
+    {
+        getResources().getSceneManager()->getShaderManager().triggerShaderReload();
+        if (mWorld)
+            mWorld->getPostProcessor().triggerShaderReload();
+    }
+
+    void GlRenderer::setLiveShaderReload(const bool enabled)
+    {
+        getResources().getSceneManager()->getShaderManager().setHotReloadEnabled(enabled);
+        if (mWorld)
+            mWorld->getPostProcessor().mEnableLiveReload = enabled;
+    }
+
+    void GlRenderer::forgetScriptState()
+    {
+        if (mWorld)
+            mWorld->getPostProcessor().disableDynamicShaders();
+    }
+
     void GlRenderer::adoptTraversalRoot(osg::Group& root)
     {
         mViewer->setSceneData(&root);

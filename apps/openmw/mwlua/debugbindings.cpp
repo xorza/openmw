@@ -10,12 +10,8 @@
 
 #include "../mwinput/actions.hpp"
 
-#include "../mwrender/postprocessor.hpp"
+#include "../mwrender/renderer.hpp"
 #include "../mwrender/renderingmanager.hpp"
-
-#include <components/resource/resourcesystem.hpp>
-#include <components/resource/scenemanager.hpp>
-#include <components/shader/shadermanager.hpp>
 
 #include <components/lua/luastate.hpp>
 
@@ -80,29 +76,13 @@ namespace MWLua
         };
 
         api["triggerShaderReload"] = [context]() {
-            context.mLuaManager->addAction([] {
-                auto world = MWBase::Environment::get().getWorld();
-
-                world->getRenderingManager()
-                    ->getResourceSystem()
-                    ->getSceneManager()
-                    ->getShaderManager()
-                    .triggerShaderReload();
-                if (MWRender::PostProcessor* post = world->getPostProcessor())
-                    post->triggerShaderReload();
-            });
+            context.mLuaManager->addAction(
+                [] { MWBase::Environment::get().getWorld()->getRenderingManager()->getRenderer().reloadShaders(); });
         };
 
         api["setShaderHotReloadEnabled"] = [context](bool value) {
             context.mLuaManager->addAction([value] {
-                auto world = MWBase::Environment::get().getWorld();
-                world->getRenderingManager()
-                    ->getResourceSystem()
-                    ->getSceneManager()
-                    ->getShaderManager()
-                    .setHotReloadEnabled(value);
-                if (MWRender::PostProcessor* post = world->getPostProcessor())
-                    post->mEnableLiveReload = value;
+                MWBase::Environment::get().getWorld()->getRenderingManager()->getRenderer().setLiveShaderReload(value);
             });
         };
 

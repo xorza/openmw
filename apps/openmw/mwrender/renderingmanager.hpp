@@ -125,6 +125,10 @@ namespace MWRender
 
         osg::Group* getSceneRoot();
 
+        /// The renderer this draws through, for what the game asks a renderer directly: its shaders
+        /// and its scripting.
+        Renderer& getRenderer() { return mRenderer; }
+
         /// The sun's light as the game keeps it: colours, position, what the weather settled on.
         /// The rasterizer lights through it, the ray tracer reads it off the frame.
         SceneUtil::Light& getSunLight() { return *mSunLight; }

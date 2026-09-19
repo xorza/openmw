@@ -206,8 +206,22 @@ namespace MWRender
 
         /// The shader chain over the frame, or null where this renderer has none. Owned here,
         /// because what happens between the scene and the screen is the whole of what a renderer is
-        /// for; every reader already treats null as "no chain".
+        /// for. Its readers are the chain's own window (`PostProcessorHud`), the key that opens it,
+        /// the `openmw.postprocessing` package every renderer owes a script, and the rasterizer's
+        /// screenshot — each an upstream caller that tests null once. What a script asks of a
+        /// renderer itself goes through the three members below and never through this.
         virtual PostProcessor* getPostProcessor() { return nullptr; }
+
+        /// Recompiles every shader this renderer draws with, from source: the debug package's
+        /// `triggerShaderReload`. The rasterizer recompiles its GLSL and its chain.
+        virtual void reloadShaders() {}
+
+        /// Whether a shader edited on disk is recompiled as it changes, `setShaderHotReloadEnabled`.
+        virtual void setLiveShaderReload(bool enabled) {}
+
+        /// The scripts were reset, so nothing a script asked of this renderer holds: the rasterizer
+        /// drops the techniques scripts enabled. From `LuaManager::clear`.
+        virtual void forgetScriptState() {}
 
         /// The host's clock: what time it is and how long the frame now open stands for. Handed
         /// over once, before the first frame, and outlives this. The rasterizer's viewer stamps the
