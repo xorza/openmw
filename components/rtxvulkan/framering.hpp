@@ -8,6 +8,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/framedigest.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/shaders/counts.h>
@@ -85,6 +86,13 @@ namespace Rtx
         /// How much of `FrameRing::pictureOf` this frame wrote where `FrameOptions::mReadBack`
         /// asked, nought for a frame that did not.
         VkDeviceSize mReadBackBytes = 0;
+
+        /// Where `DigestPass` folds the frame's images, `Shaders::DIGEST_IMAGES` of
+        /// `Shaders::DIGEST_LANES` words, and the digest the report carries: what the frame handed
+        /// the reconstruction while it was recorded, the words once it is waited for, and nothing
+        /// for a frame that did not ask.
+        Buffer mDigestLanes;
+        std::optional<FrameDigest> mDigest;
     };
 
     /// The frames in flight, and the discipline that keeps them apart: two slots, and the CPU

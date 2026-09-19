@@ -6,6 +6,7 @@
 #include <format>
 #include <ostream>
 #include <string>
+#include <string_view>
 
 #include <components/debug/debugging.hpp>
 #include <components/files/conversion.hpp>
@@ -66,8 +67,8 @@ namespace RtxTool
         return difference;
     }
 
-    int compareRuns(
-        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const std::string> files)
+    int compareRuns(const std::filesystem::path& wrote, const std::filesystem::path& against,
+        const std::span<const std::string> files, const std::span<const std::string> frames)
     {
         if (against.empty())
             return 0;
@@ -83,8 +84,13 @@ namespace RtxTool
             const Rtx::PngImage drawn = Rtx::readPng(wrote / file);
             const Rtx::PngImage reference = Rtx::readPng(against / file);
             const FrameDifference difference = compareFrames(reference, drawn);
+            const bool frame = std::find(frames.begin(), frames.end(), file) != frames.end();
 
-            out() << std::format("  {:<36} {}\n", file, describe(difference));
+            out() << std::format("  {:<36} {}{}\n", file, describe(difference),
+                frame && !difference.same() ? ", which the hashes judge" : "");
+
+            if (frame)
+                continue;
 
             if (difference.mMismatched)
                 ++unmatched;
@@ -92,14 +98,17 @@ namespace RtxTool
                 ++differing;
         }
 
+        const std::size_t judged = files.size() - frames.size();
+        const std::string_view frameNote = frames.empty() ? "" : "; the frames are judged by their hashes above";
+
         if (differing == 0 && unmatched == 0)
         {
-            out() << "  every picture is the same\n";
+            out() << std::format("  every picture judged here is the same{}\n", frameNote);
             return 0;
         }
 
-        out() << std::format(
-            "  {} of {} pictures moved, {} had nothing to compare against\n", differing, files.size(), unmatched);
+        out() << std::format("  {} of {} pictures moved, {} had nothing to compare against{}\n", differing, judged,
+            unmatched, frameNote);
 
         return 1;
     }

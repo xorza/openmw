@@ -37,6 +37,7 @@ set(RTX_SHADERS
     shaders/bloomdown.comp
     shaders/bloomup.comp
     shaders/composite.comp
+    shaders/digest.comp
     shaders/exposure.comp
     shaders/fogdepth.rgen
     shaders/fogintegrate.comp
@@ -185,6 +186,8 @@ set(RTX_VULKAN_FILES
     device.hpp
     devicescene.cpp
     devicescene.hpp
+    digestpass.cpp
+    digestpass.hpp
     dispatch.hpp
     displaychain.cpp
     displaychain.hpp

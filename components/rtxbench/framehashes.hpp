@@ -5,22 +5,50 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <components/rtx/framedigest.hpp>
+#include <components/rtx/frameimage.hpp>
+#include <components/rtx/shaders/digest.h>
+#include <components/rtx/upscale.hpp>
 
 #include "scenedigest.hpp"
 
 namespace Rtx
 {
-    /// Two hashes a frame of a run — what it drew and what it was handed — and what a previous
-    /// run's hashes say about this one: `shot --against` for a run rather than a still, because a stale
-    /// table or a history reprojected onto the wrong surface needs a second frame to show. The
-    /// scene beside the picture, because a run that differs has either drawn one scene two ways or
-    /// been handed two scenes, and those are repaired in different places; a column per part,
-    /// because "the layout moved" names no table. A hash and not a picture, because six hundred
-    /// frames is a few hundred megabytes; a frame it names is then rendered on its own for a look.
+    struct FrameResult;
+
+    /// Which digested column of a frame moved: every channel of the trace at its binding, the
+    /// composite after them, and last the numbers the frame handed the reconstruction.
+    inline constexpr std::size_t sTracedColumns = Shaders::DIGEST_IMAGES + 1;
+
+    inline constexpr std::size_t sReconstructionColumn = Shaders::DIGEST_IMAGES;
+
+    constexpr std::string_view tracedName(const std::size_t column)
+    {
+        if (column < sChannelCount)
+            return channelName(static_cast<Channel>(column));
+
+        return column == Shaders::DIGEST_COMPOSITE ? "composite" : "reconstruction";
+    }
+
+    /// What a frame of a run computed and what it was handed, hashed, and what a previous run's
+    /// hashes say about this one: `shot --against` for a run rather than a still, because a stale
+    /// table or a history reprojected onto the wrong surface needs a second frame to show.
+    ///
+    /// **Three things a frame, and the verdict is never the picture past a network.** The trace's
+    /// own images and what the frame handed the reconstruction are what the tree computed, and two
+    /// runs of one build compute them the same to the bit. The picture is the same only where
+    /// nothing reconstructed it: a network keeps a history, and the smallest difference in what it
+    /// was handed on one frame stays in its picture for the rest of the run, so its picture is
+    /// written for a look and compared for the record, and a run under it is the same run where
+    /// the trace and the scene are. The scene beside both, because a run that differs has either
+    /// drawn one scene two ways or been handed two scenes, and those are repaired in different
+    /// places; a column per part, because "the layout moved" names no table. A hash and not a
+    /// picture, because six hundred frames is a few hundred megabytes; a frame it names is then
+    /// rendered on its own for a look.
     class FrameHashes
     {
     public:
@@ -41,12 +69,11 @@ namespace Rtx
             std::uint32_t mFrame = 0;
         };
 
-        /// The picture of the frame numbered `submitted`, once it has come back — `pixels` as the
-        /// tool would write them to a PNG, so a hash names the picture a person would look at.
-        /// Nothing for a frame nobody noted, which a warm-up's is, and the row it landed on
-        /// otherwise, so a caller keeping the picture itself can file it under the frame the
-        /// report will name.
-        std::optional<Pictured> picture(std::uint64_t submitted, std::span<const std::uint8_t> pixels);
+        /// The frame numbered `finished.mFrame`, once it has come back with its picture, its
+        /// digest and what reconstructed it. Nothing for a frame nobody noted, which a warm-up's
+        /// is, and the row it landed on otherwise, so a caller keeping the picture itself can
+        /// file it under the frame the report will name.
+        std::optional<Pictured> picture(const FrameResult& finished);
 
         /// How many rows are noted and not yet pictured: what a stop that did not drain its ring
         /// leaves, and what `write` refuses to write.
@@ -64,8 +91,18 @@ namespace Rtx
             std::string mView;
             std::uint32_t mFrames = 0;
 
-            /// Frames whose picture differs, in order.
+            /// Frames where any traced column differs, in order: the renderer drew one scene two
+            /// ways, or handed the reconstruction something else.
+            std::vector<std::uint32_t> mTraceDiffering;
+
+            /// How many frames each traced column differs on, indexed as `tracedName`.
+            std::array<std::uint32_t, sTracedColumns> mTracedDiffering{};
+
+            /// Frames whose picture differs where nothing reconstructed it, in order.
             std::vector<std::uint32_t> mDiffering;
+
+            /// Frames whose picture differs past a network, in order. Reported and never a verdict.
+            std::vector<std::uint32_t> mReconstructedDiffering;
 
             /// Frames where any part of the scene differs, in order.
             std::vector<std::uint32_t> mSceneDiffering;
@@ -73,14 +110,23 @@ namespace Rtx
             /// How many frames each part differs on, indexed by `ScenePart`.
             std::array<std::uint32_t, static_cast<std::size_t>(ScenePart::Count)> mPartsDiffering{};
 
+            /// Frames the two runs reconstructed differently — one upscaled and the other not, or
+            /// at another quality — which is two configurations and not one run twice.
+            std::uint32_t mUpscaledDiffering = 0;
+
             /// Frames this run drew that the reference has no hash for, and the other way about.
             std::uint32_t mUnmatched = 0;
 
-            /// Whether nothing at all moved: not a picture, not a part of the scene, not the count
-            /// of frames. The scene as well as the picture, because a run of one binary repeats
-            /// every column exactly and a picture the same over a scene that moved is a world
-            /// handed over twice, which the report names the part of.
-            bool same() const { return mDiffering.empty() && mSceneDiffering.empty() && mUnmatched == 0; }
+            /// Whether nothing the tree computed moved: not the trace, not a picture it drew
+            /// itself, not a part of the scene, not the configuration, not the count of frames.
+            /// The scene as well as the trace, because a run of one binary repeats every column
+            /// exactly and a trace the same over a scene that moved is a world handed over twice,
+            /// which the report names the part of.
+            bool same() const
+            {
+                return mTraceDiffering.empty() && mDiffering.empty() && mSceneDiffering.empty()
+                    && mUpscaledDiffering == 0 && mUnmatched == 0;
+            }
         };
 
         /// One entry per view this run drew, in the order it drew them.
@@ -91,7 +137,12 @@ namespace Rtx
         {
             std::string mView;
             std::uint32_t mFrame = 0;
-            std::array<std::uint64_t, 2> mHash{};
+
+            /// What reconstructed the picture, so a comparison knows whose it is.
+            Upscale mUpscale = Upscale::Off;
+
+            DigestWords mHash{};
+            std::array<DigestWords, sTracedColumns> mTraced{};
             ScenePartDigests mParts{};
 
             /// The renderer's own number for the frame, for `picture` alone; not written.

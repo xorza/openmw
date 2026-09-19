@@ -14,6 +14,7 @@
 #include <components/sdlutil/vsyncmode.hpp>
 
 #include "debuglines.hpp"
+#include "framedigest.hpp"
 #include "guirenderer.hpp"
 #include "memoryreport.hpp"
 #include "mesh.hpp"
@@ -205,10 +206,11 @@ namespace Rtx
         DebugLines mDebug;
 
         /// Whether the frame leaves its picture in host memory for `FrameResult::mPixels`,
-        /// copied by the frame's own commands after the display curve and before the interface.
-        /// For a run that hashes every frame: a copy the frame records rides the queue behind the
-        /// trace and comes back with the frame's report, where a readback of the frame just drawn
-        /// is a submit of its own and a wait the ring would otherwise overlap.
+        /// copied by the frame's own commands after the display curve and before the interface,
+        /// and digests what it traced for `FrameResult::mDigest` on the way. For a run that hashes
+        /// every frame: a copy the frame records rides the queue behind the trace and comes back
+        /// with the frame's report, where a readback of the frame just drawn is a submit of its
+        /// own and a wait the ring would otherwise overlap.
         bool mReadBack = false;
 
         /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,
@@ -297,6 +299,10 @@ namespace Rtx
         /// out; empty otherwise. The renderer's own memory: a report collected before a
         /// `renderFrame` reads until the `renderFrame` after that one.
         std::span<const std::uint8_t> mPixels;
+
+        /// What the frame traced, digested, where `FrameOptions::mReadBack` asked; nothing
+        /// otherwise.
+        std::optional<FrameDigest> mDigest;
     };
 
     /// One traced image, whichever API produced it: what a scene is handed to, what the interface

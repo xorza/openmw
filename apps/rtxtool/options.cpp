@@ -262,7 +262,10 @@ namespace RtxTool
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well. Two rather than three because the ramp and the residency "
             "are over well inside it: measured interleaved on a hot card, three seconds ran 20 s "
-            "and two ran 19");
+            "and two ran 19. A run that hashes or compares its frames warms its first stop "
+            "twenty seconds instead, unless this says otherwise: the driver compiles the launches "
+            "a second time some seconds into the process and swaps the code in, and a frame "
+            "hashed across the swap is two codes' frame");
 
         option(sFramed, "hud", bpo::value<bool>()->default_value(false)->implicit_value(true),
             "draw the game's HUD over the picture: the bars, the compass and the cell's name. Off "
@@ -319,17 +322,24 @@ namespace RtxTool
 
         option(Verbs::Shot | Verbs::Bench, "against", bpo::value<std::string>()->default_value(""),
             "what to subtract this run from: the directory a previous `shot` wrote, or the file "
-            "a previous `bench --hashes` wrote, which says which frames of the run now draw "
-            "something else and which parts of the scene moved. The reference is always a run of "
-            "the previous build on this machine and never a corpus in the tree: the picture is a "
-            "function of the driver and the card as much as of the code. Two runs of one build "
-            "write the same bytes, upscaled or not, so a picture that differs is a change");
+            "a previous `bench --hashes` wrote, which says which frames of the run now trace "
+            "something else, which frames now draw something else, and which parts of the scene "
+            "moved. The reference is always a run of the previous build on this machine and never "
+            "a corpus in the tree: the picture is a function of the driver and the card as much as "
+            "of the code. The verdict is the trace's own images, what the frame handed the "
+            "reconstruction, and the scene, which two runs of one build compute to the bit; the "
+            "picture is the verdict only where nothing upscaled it, because a network keeps a "
+            "history and the smallest difference handed to it on one frame stays in its picture "
+            "for the rest of the run, so that picture is reported beside the verdict and never as "
+            "one");
 
         option(Verbs::Bench, "hashes", bpo::value<std::string>()->default_value(""),
-            "write one hash a frame to this file — the oracle a moving camera has "
-            "instead of `shot`'s stills, since six hundred frames of pictures is a few hundred "
-            "megabytes. Reading a frame back waits on the device, so a run under this or "
-            "--against is not a benchmark and its times are not comparable with one");
+            "write one row a frame to this file — the picture, every image the trace wrote, what "
+            "the frame handed the reconstruction and every part of the scene, each as a hash — "
+            "the oracle a moving camera has instead of `shot`'s stills, since six hundred frames "
+            "of pictures is a few hundred megabytes. Reading a frame back waits on the device, so "
+            "a run under this or --against is not a benchmark and its times are not comparable "
+            "with one");
 
         option(Verbs::Bench, "pictures", bpo::value<std::string>()->default_value(""),
             "write every measured frame's picture into this directory as <view>-<frame>.png, "

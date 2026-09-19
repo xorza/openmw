@@ -1,5 +1,6 @@
 #include "vulkanrenderer.hpp"
 
+#include <array>
 #include <bit>
 #include <cassert>
 #include <chrono>
@@ -18,11 +19,13 @@
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/framedigest.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/digest.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
@@ -139,6 +142,7 @@ namespace Rtx
         , mView(mDevice, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin, mSpriteShade,
               options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
         , mDisplay(mDevice, mPass, mTextureLayout.get(), options.mShaderDirectory, PresentTargets::sFormat)
+        , mDigest(mDevice, options.mShaderDirectory)
         , mWaves(mDevice, options.mShaderDirectory)
         , mRipples(mDevice, options.mShaderDirectory)
         , mFog(mDevice)
@@ -854,6 +858,24 @@ namespace Rtx
                 .mFilter = filtering,
                 .mTimer = &timer,
             });
+
+        // Before anything past the trace has a say, and the channels' hand-over is the read this
+        // rides on. `FrameDigest` says why the picture is not enough.
+        if (options.mReadBack)
+        {
+            std::array<const Image*, Shaders::DIGEST_IMAGES> digested{};
+            for (const Channel channel : sEveryChannel)
+                digested[bindingOf(channel)] = &channels.get(channel);
+            digested[Shaders::DIGEST_COMPOSITE] = shown;
+
+            mDigest.record(commands, digested, frame.mDigestLanes, &timer);
+            frame.mDigest = FrameDigest{
+                .mJitterX = sampled.mCamera.mJitter.x(),
+                .mJitterY = sampled.mCamera.mJitter.y(),
+                .mFrameDeltaMs = sinceLastMs,
+                .mReset = historyLost ? 1u : 0u,
+            };
+        }
 
         if (upscaling())
         {

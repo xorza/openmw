@@ -306,6 +306,37 @@ namespace RtxTool
             throw std::runtime_error("no view is called \"" + name + "\". These are:" + known);
         }
 
+        /// What a `shot` writes its frames' hashes to, beside the pictures, and reads a reference's
+        /// from.
+        constexpr std::string_view sShotHashes = "hashes.csv";
+
+        /// How many seconds of world the first stop of a compared run draws away before any frame
+        /// is hashed, where the command line asked for no other warm-up.
+        ///
+        /// **The driver compiles the launches twice, and the second code is not the first.** Once
+        /// when the pipeline is made, and again on a thread of its own some seconds into the
+        /// process, swapping the code in when it is done — `camera.h` says what `precise` holds
+        /// steady across the two, and the last bit of some rays' direction is not among it, so
+        /// every column the trace writes moves with the swap: the depth by an ulp on a few texels,
+        /// the sky's motion across the sky, the picture on one pixel in ten frames, and a network
+        /// past the trace on everything after. Measured on 610.57.04: a pair warmed two seconds of
+        /// world differed from frame 195 to 280 of its held leg in ten pairs of ten, and from
+        /// frame 649 of a twelve-second one on the picture alone; twenty seconds put the swap
+        /// inside the warm-up of both legs in three pairs of three. Once per process, because the
+        /// pipelines are made once, so the stops after the first pay nothing.
+        constexpr float sCodeSettleSeconds = 20.0f;
+
+        /// Warms the first of `stops` for at least `sCodeSettleSeconds`, where nothing on the
+        /// command line said otherwise.
+        void settleCode(std::vector<Rtx::Stop>& stops, const bpo::variables_map& variables)
+        {
+            if (stops.empty() || !variables["warmup"].defaulted())
+                return;
+
+            Rtx::BenchSpan& warm = stops.front().mSchedule.mSpec.mWarm;
+            warm = Rtx::BenchSpan{ .mSeconds = std::max(warm.mSeconds, sCodeSettleSeconds) };
+        }
+
         /// The one place a command renders, and what a window would write it down as.
         /// Holds `stop` still: warmed as the command line asks, then `frames` measured with the
         /// simulation stopped.
@@ -582,6 +613,13 @@ namespace RtxTool
         /// **Every picture a stop can make, in one run**, because `Rtx::Actions` holds them all and
         /// each verb that made one started an engine of its own for it. And every view, under
         /// `--views`, with `--against` saying which pictures a change moved.
+        ///
+        /// **The frame is judged by its hashes and not by its pixels.** Every frame of a stop is
+        /// hashed the way a `bench --hashes` hashes one — the trace's own images, what the frame
+        /// handed the reconstruction, the scene — into `hashes.csv` beside the pictures, and
+        /// `--against` compares that table first. `FrameHashes` says why the picture past Ray
+        /// Reconstruction cannot be the verdict; the tile, the doll and the sheet are traced
+        /// without it and are compared as pictures.
         int commandShot(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
@@ -601,6 +639,7 @@ namespace RtxTool
                 = accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u);
 
             std::vector<Rtx::Stop> stops = stagePlaces(command, framed, frames);
+            settleCode(stops, variables);
 
             const std::filesystem::path out
                 = variables["out"].defaulted() ? "shot" : variables["out"].as<std::string>();
@@ -608,9 +647,11 @@ namespace RtxTool
 
             const std::string doll = variables["doll"].as<std::string>();
             std::vector<std::string> written;
+            std::vector<std::string> framePictures;
             for (Rtx::Stop& stop : stops)
             {
                 stop.mSchedule.mAccumulate = accumulate;
+                stop.mActions.mHash = true;
 
                 const auto file = [&](const std::string_view suffix) {
                     written.push_back(stop.mName + std::string(suffix) + ".png");
@@ -618,6 +659,7 @@ namespace RtxTool
                 };
 
                 stop.mActions.mCapture = file("");
+                framePictures.push_back(written.back());
                 if (!doll.empty())
                     stop.mActions.mDoll = Rtx::Actions::Doll{ .mWho = doll, .mFile = file("-doll") };
                 if (variables["map"].as<bool>())
@@ -626,10 +668,16 @@ namespace RtxTool
                     stop.mActions.mSheet = file("-textures");
             }
 
-            if (const int status = runStops(command, framed, std::move(stops)); status != 0)
+            Rtx::SessionRequest request = sessionFor(command, framed, std::move(stops), validationFrom(variables));
+            request.mHashes = out / sShotHashes;
+            if (!against.empty())
+                request.mAgainst = against / sShotHashes;
+
+            if (const int status = runHosted(variables, command.mConfig, command.mResources, std::move(request));
+                status != 0)
                 return status;
 
-            return compareRuns(out, against, written);
+            return compareRuns(out, against, written, framePictures);
         }
 
         int commandBench(const Command& command)
@@ -657,6 +705,9 @@ namespace RtxTool
                 stop.mSky.mTurnThrough = turn;
                 stop.mActions.mHash = hashing;
             }
+
+            if (hashing)
+                settleCode(stops, variables);
 
             Rtx::SessionRequest request
                 = sessionFor(command, framed, std::move(stops), validationForMeasuring(variables));

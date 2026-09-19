@@ -717,8 +717,7 @@ namespace RtxTool
         if (finished.mPixels.empty())
             return;
 
-        const std::optional<Rtx::FrameHashes::Pictured> row
-            = mRecord.getHashes().picture(finished.mFrame, finished.mPixels);
+        const std::optional<Rtx::FrameHashes::Pictured> row = mRecord.getHashes().picture(finished);
         if (!row.has_value() || mRequest.mPictures.empty())
             return;
 

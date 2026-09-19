@@ -2,10 +2,13 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
+#include <components/rtx/framedigest.hpp>
 #include <components/rtx/framespend.hpp>
+#include <components/rtx/shaders/digest.h>
 
 #include "commands.hpp"
 #include "device.hpp"
@@ -13,10 +16,27 @@
 
 namespace Rtx
 {
+    namespace
+    {
+        /// The words the pass folded, each image's four lanes read as two words.
+        void readDigest(const Buffer& lanes, FrameDigest& into)
+        {
+            const auto* const words = static_cast<const std::uint32_t*>(lanes.map());
+            for (std::size_t image = 0; image < into.mImages.size(); ++image)
+            {
+                const std::uint32_t* const lane = words + image * Shaders::DIGEST_LANES;
+                into.mImages[image] = DigestWords{ lane[0] | (std::uint64_t{ lane[1] } << 32),
+                    lane[2] | (std::uint64_t{ lane[3] } << 32) };
+            }
+        }
+    }
+
     FrameRecord::FrameRecord(const Device& device)
         : mTimer(device)
         , mCounts(Buffer::readBack(device, sizeof(Shaders::FrameCounts),
               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame counts"))
+        , mDigestLanes(Buffer::readBack(device, sizeof(std::uint32_t) * Shaders::DIGEST_IMAGES * Shaders::DIGEST_LANES,
+              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame digest"))
     {
     }
 
@@ -64,6 +84,7 @@ namespace Rtx
         frame.mPlacements = 0;
         frame.mReconstruction = Reconstruction{};
         frame.mReadBackBytes = 0;
+        frame.mDigest = std::nullopt;
         return frame;
     }
 
@@ -110,6 +131,9 @@ namespace Rtx
             ? std::span(static_cast<const std::uint8_t*>(pictureOf(mFinished).map()), frame.mReadBackBytes)
             : std::span<const std::uint8_t>();
 
+        if (frame.mDigest.has_value())
+            readDigest(frame.mDigestLanes, *frame.mDigest);
+
         FrameResult& report = mReports.emplace_back(FrameResult{
             .mHits = counted.mHits,
             .mHeldMs = counted.mHeldNs * 1.0e-6,
@@ -118,6 +142,7 @@ namespace Rtx
             .mReconstruction = frame.mReconstruction,
             .mFrame = mFinished,
             .mPixels = pixels,
+            .mDigest = frame.mDigest,
         });
         ++mFinished;
         frame.mTimer.resolve(report.mGpu);

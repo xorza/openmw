@@ -42,6 +42,13 @@ namespace RtxTool
     /// driver and the card as much as of the code. `files` are the pictures the run wrote, named
     /// relative to `wrote`, and each is looked for under `against` by the same name. Returns a
     /// process exit status, non-zero where any picture differs and zero where `against` is empty.
-    int compareRuns(
-        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const std::string> files);
+    ///
+    /// **A frame's picture is measured here and judged by its hashes.** `frames` names the files
+    /// among `files` that are frames of the run, and those are subtracted for the figure — where a
+    /// difference the hashes reported sits, and how large it is — and never for the status: where
+    /// a network reconstructed the frame the picture is the network's, and where none did the
+    /// hashes already hold the same bytes. Every other picture is traced without one and is judged
+    /// here.
+    int compareRuns(const std::filesystem::path& wrote, const std::filesystem::path& against,
+        std::span<const std::string> files, std::span<const std::string> frames);
 }

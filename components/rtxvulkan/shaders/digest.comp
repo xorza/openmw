@@ -1,0 +1,74 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_shader_image_load_formatted : require
+
+// Every image of the frame into the words of its digest, in one dispatch — `digest.h` says what
+// the words are and why a sum and an exclusive-or, which is what lets a thousand workgroups land
+// in any order.
+//
+// **Each texel's bits, and never its value.** `floatBitsToUint` of what the load converted, so a
+// half and a normalised byte reach the digest as the float the shaders read them as: exact, and the
+// same on every run, because the conversion is the format's and not the frame's.
+
+#include "digest.h"
+
+#include "lib/pixels.glsl"
+
+layout(local_size_x = DIGEST_WORKGROUP, local_size_y = DIGEST_WORKGROUP) in;
+
+/// The images to digest, all at one extent and in `GENERAL`, whatever their formats: the load
+/// converts from each view's.
+layout(set = 0, binding = 0) uniform readonly image2D images[DIGEST_IMAGES];
+
+layout(set = 0, binding = 1, scalar) buffer Lanes
+{
+    uint lanes[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    DigestConstants push;
+};
+
+/// The workgroup's own fold, so the lane buffer sees one atomic a lane a workgroup and not one a
+/// texel. Shared atomics on an integer, which is exact in any order.
+shared uint folded[DIGEST_IMAGES * DIGEST_LANES];
+
+void main()
+{
+    for (uint lane = gl_LocalInvocationIndex; lane < DIGEST_IMAGES * DIGEST_LANES;
+         lane += DIGEST_WORKGROUP * DIGEST_WORKGROUP)
+        folded[lane] = 0u;
+    barrier();
+
+    // A texel outside the images folds nothing, which is the identity of both operations, so the
+    // workgroup that overhangs the edge digests the same as one that does not.
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (!outsideOf(pixel, uvec2(push.mWidth, push.mHeight)))
+    {
+        for (uint image = 0u; image < DIGEST_IMAGES; ++image)
+        {
+            const uvec4 bits = floatBitsToUint(imageLoad(images[image], ivec2(pixel)));
+            const uint sum = digestTexel(bits.r, bits.g, bits.b, bits.a, pixel.x, pixel.y, DIGEST_SEED_SUM);
+            const uint xor = digestTexel(bits.r, bits.g, bits.b, bits.a, pixel.x, pixel.y, DIGEST_SEED_XOR);
+
+            const uint first = image * DIGEST_LANES;
+            atomicAdd(folded[first], sum);
+            atomicXor(folded[first + 1u], sum);
+            atomicAdd(folded[first + 2u], xor);
+            atomicXor(folded[first + 3u], xor);
+        }
+    }
+    barrier();
+
+    // Even lanes are sums and odd lanes exclusive-ors, which is `DIGEST_LANES`' order.
+    for (uint lane = gl_LocalInvocationIndex; lane < DIGEST_IMAGES * DIGEST_LANES;
+         lane += DIGEST_WORKGROUP * DIGEST_WORKGROUP)
+    {
+        if ((lane & 1u) == 0u)
+            atomicAdd(lanes[lane], folded[lane]);
+        else
+            atomicXor(lanes[lane], folded[lane]);
+    }
+}

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +16,7 @@
 
 #include <components/files/conversion.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/renderer.hpp>
 
 namespace Rtx
 {
@@ -23,10 +25,11 @@ namespace Rtx
         /// How many differing frames a report names before it stops counting them out.
         constexpr std::size_t sNamed = 6;
 
-        /// The columns before the parts: the view, the frame and the picture.
-        constexpr std::size_t sNamedColumns = 3;
+        /// The columns before the digests: the view, the frame, what reconstructed the picture,
+        /// and the picture.
+        constexpr std::size_t sNamedColumns = 4;
 
-        constexpr std::size_t sColumns = sNamedColumns + static_cast<std::size_t>(ScenePart::Count);
+        constexpr std::size_t sColumns = sNamedColumns + sTracedColumns + static_cast<std::size_t>(ScenePart::Count);
 
         /// What a file opens with, and the one statement of what its columns are.
         std::string headerLine()
@@ -34,36 +37,67 @@ namespace Rtx
             // The format's own number first, stepped where the columns keep their names and a
             // value changes its meaning — a digest hashed another way — so a file an older build
             // wrote is refused rather than compared.
-            std::string header = "hashes 3: view,frame,picture";
+            std::string header = "hashes 4: view,frame,upscale,picture";
+            for (std::size_t column = 0; column < sTracedColumns; ++column)
+                header += ',' + std::string(tracedName(column));
             for (const auto& [part, name] : sSceneParts.mNames)
                 header += ',' + std::string(name);
 
             return header;
         }
 
-        /// Which parts moved and on how many frames, biggest first — or nothing where none did.
-        std::string namePartsDiffering(const FrameHashes::ViewDifference& difference)
+        /// The first few of `frames` spelled out, and how many more there are.
+        std::string nameFrames(const std::vector<std::uint32_t>& frames)
+        {
+            std::string named;
+            for (std::size_t at = 0; at < std::min(sNamed, frames.size()); ++at)
+                named += (at > 0 ? ", " : "") + std::to_string(frames[at]);
+
+            if (frames.size() > sNamed)
+                named += std::format(" and {} more", frames.size() - sNamed);
+
+            return named;
+        }
+
+        /// Which columns moved and on how many frames, biggest first — or nothing where none did.
+        template <std::size_t Count, class NameOf>
+        std::string nameColumnsDiffering(const std::array<std::uint32_t, Count>& counts, const NameOf& nameOf)
         {
             std::vector<std::size_t> moved;
-            for (std::size_t part = 0; part < difference.mPartsDiffering.size(); ++part)
-                if (difference.mPartsDiffering[part] > 0)
-                    moved.push_back(part);
+            for (std::size_t column = 0; column < counts.size(); ++column)
+                if (counts[column] > 0)
+                    moved.push_back(column);
 
             if (moved.empty())
                 return {};
 
-            // Stable, so that parts that moved on as many frames read in the order a scene is laid
-            // out rather than in whichever order the sort left them.
-            std::stable_sort(moved.begin(), moved.end(), [&](const std::size_t left, const std::size_t right) {
-                return difference.mPartsDiffering[left] > difference.mPartsDiffering[right];
-            });
+            // Stable, so that columns that moved on as many frames read in the order the table
+            // lays them out rather than in whichever order the sort left them.
+            std::stable_sort(moved.begin(), moved.end(),
+                [&](const std::size_t left, const std::size_t right) { return counts[left] > counts[right]; });
 
             std::string named = " — ";
             for (std::size_t at = 0; at < moved.size(); ++at)
-                named += std::format("{}{} {}", at > 0 ? ", " : "", nameOf(static_cast<ScenePart>(moved[at])),
-                    difference.mPartsDiffering[moved[at]]);
+                named += std::format("{}{} {}", at > 0 ? ", " : "", nameOf(moved[at]), counts[moved[at]]);
 
             return named;
+        }
+
+        std::string_view partName(const std::size_t part)
+        {
+            return nameOf(static_cast<ScenePart>(part));
+        }
+
+        /// The numbers the frame handed the reconstruction, as one column: what a wrong sign on
+        /// the jitter or a reset that never clears would move, and nothing in an image would.
+        DigestWords digestHanded(const FrameDigest& digest)
+        {
+            Digest words;
+            words.add(digest.mJitterX);
+            words.add(digest.mJitterY);
+            words.add(digest.mFrameDeltaMs);
+            words.add(digest.mReset);
+            return words.getWords();
         }
     }
 
@@ -74,18 +108,25 @@ namespace Rtx
             Frame{ .mView = std::string(view), .mFrame = frame, .mParts = parts, .mSubmitted = submitted });
     }
 
-    std::optional<FrameHashes::Pictured> FrameHashes::picture(
-        const std::uint64_t submitted, const std::span<const std::uint8_t> pixels)
+    std::optional<FrameHashes::Pictured> FrameHashes::picture(const FrameResult& finished)
     {
         // From the back, because the frame that came back is one of the last few noted.
         const auto row = std::find_if(mFrames.rbegin(), mFrames.rend(),
-            [submitted](const Frame& held) { return held.mSubmitted == submitted && !held.mPictured; });
+            [&](const Frame& held) { return held.mSubmitted == finished.mFrame && !held.mPictured; });
         if (row == mFrames.rend())
             return std::nullopt;
 
+        assert(finished.mDigest.has_value() && "a frame read back without the digest the same option asks for");
+
         Digest digest;
-        digest.add(pixels);
+        digest.add(finished.mPixels);
         row->mHash = digest.getWords();
+
+        for (std::size_t image = 0; image < Shaders::DIGEST_IMAGES; ++image)
+            row->mTraced[image] = finished.mDigest->mImages[image];
+        row->mTraced[sReconstructionColumn] = digestHanded(*finished.mDigest);
+
+        row->mUpscale = finished.mReconstruction.mUpscaling.mMode;
         row->mPictured = true;
 
         return Pictured{ .mView = row->mView, .mFrame = row->mFrame };
@@ -107,8 +148,11 @@ namespace Rtx
 
         for (const Frame& held : mFrames)
         {
-            out << held.mView << ',' << held.mFrame << ',' << spellHash(held.mHash);
-            for (const std::array<std::uint64_t, 2>& part : held.mParts)
+            out << held.mView << ',' << held.mFrame << ',' << sUpscaleNames.name(held.mUpscale) << ','
+                << spellHash(held.mHash);
+            for (const DigestWords& column : held.mTraced)
+                out << ',' << spellHash(column);
+            for (const DigestWords& part : held.mParts)
                 out << ',' << spellHash(part);
 
             out << '\n';
@@ -138,7 +182,7 @@ namespace Rtx
         if (!std::getline(in, line) || line != headerLine())
             throw fail(line);
 
-        const auto readHash = [](const std::string_view field, std::array<std::uint64_t, 2>& into) {
+        const auto readHash = [](const std::string_view field, DigestWords& into) {
             if (field.size() != 32)
                 return false;
 
@@ -180,12 +224,21 @@ namespace Rtx
             if (std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), frame.mFrame).ec != std::errc{})
                 throw fail(line);
 
-            if (!readHash(fields[2], frame.mHash))
+            const std::optional<Upscale> upscale = sUpscaleNames.named(fields[2]);
+            if (!upscale.has_value())
+                throw fail(line);
+            frame.mUpscale = *upscale;
+
+            if (!readHash(fields[3], frame.mHash))
                 throw fail(line);
             frame.mPictured = true;
 
+            for (std::size_t column = 0; column < sTracedColumns; ++column)
+                if (!readHash(fields[sNamedColumns + column], frame.mTraced[column]))
+                    throw fail(line);
+
             for (std::size_t part = 0; part < frame.mParts.size(); ++part)
-                if (!readHash(fields[sNamedColumns + part], frame.mParts[part]))
+                if (!readHash(fields[sNamedColumns + sTracedColumns + part], frame.mParts[part]))
                     throw fail(line);
 
             held.mFrames.push_back(std::move(frame));
@@ -215,8 +268,32 @@ namespace Rtx
                 continue;
             }
 
+            if (found->mUpscale != held.mUpscale)
+                ++difference.mUpscaledDiffering;
+
+            bool anyTraced = false;
+            for (std::size_t column = 0; column < sTracedColumns; ++column)
+            {
+                if (found->mTraced[column] == held.mTraced[column])
+                    continue;
+
+                ++difference.mTracedDiffering[column];
+                anyTraced = true;
+            }
+
+            if (anyTraced)
+                difference.mTraceDiffering.push_back(held.mFrame);
+
+            // **Whose picture it is decides which list it goes on.** Where either run put a network
+            // between the trace and the picture, the picture is the network's, and two runs of
+            // one build are allowed to disagree about it.
             if (found->mHash != held.mHash)
-                difference.mDiffering.push_back(held.mFrame);
+            {
+                if (found->mUpscale == Upscale::Off && held.mUpscale == Upscale::Off)
+                    difference.mDiffering.push_back(held.mFrame);
+                else
+                    difference.mReconstructedDiffering.push_back(held.mFrame);
+            }
 
             bool anyPart = false;
             for (std::size_t part = 0; part < held.mParts.size(); ++part)
@@ -252,48 +329,70 @@ namespace Rtx
         // picture is what let a run be called identical while the description behind it moved on
         // every frame, which is the fault these columns were added for.
         if (difference.same())
-            return std::format("{} frames, every one of them the same", difference.mFrames);
-
-        std::string report;
-        if (!difference.mDiffering.empty())
         {
-            report = std::format("{} of {} frames differ, at ", difference.mDiffering.size(), difference.mFrames);
-            for (std::size_t at = 0; at < std::min(sNamed, difference.mDiffering.size()); ++at)
-                report += (at > 0 ? ", " : "") + std::to_string(difference.mDiffering[at]);
+            if (difference.mReconstructedDiffering.empty())
+                return std::format("{} frames, every one of them the same", difference.mFrames);
 
-            if (difference.mDiffering.size() > sNamed)
-                report += std::format(" and {} more", difference.mDiffering.size() - sNamed);
+            return std::format(
+                "{} frames, the trace and the scene the same on every one; the reconstructed picture "
+                "differs on {}, which is the network's and not a verdict",
+                difference.mFrames, difference.mReconstructedDiffering.size());
         }
-        else if (!difference.mSceneDiffering.empty())
-            report = std::format("{} frames, every picture the same", difference.mFrames);
 
-        // **Which of the two moved, which is what says where to look next.** A picture that differs
+        std::vector<std::string> clauses;
+
+        // **The trace first, because it is the verdict.** A picture that differs where the trace
+        // differs is the same finding twice; one that differs where the trace did not is the
+        // display chain, or the network past it.
+        if (!difference.mTraceDiffering.empty())
+            clauses.push_back(std::format("the trace differs on {} of {} frames, at {}{}",
+                difference.mTraceDiffering.size(), difference.mFrames, nameFrames(difference.mTraceDiffering),
+                nameColumnsDiffering(difference.mTracedDiffering, tracedName)));
+
+        if (!difference.mDiffering.empty())
+            clauses.push_back(std::format("the picture differs on {} of {} frames, at {}", difference.mDiffering.size(),
+                difference.mFrames, nameFrames(difference.mDiffering)));
+
+        if (!difference.mReconstructedDiffering.empty())
+            clauses.push_back(
+                std::format("the reconstructed picture differs on {} frames, which is the network's and "
+                            "not a verdict",
+                    difference.mReconstructedDiffering.size()));
+
+        // **Which of the two moved, which is what says where to look next.** A trace that differs
         // where the scene differs is a world handed over twice, and belongs to whatever staged it.
         // One that differs where the scene did not is the renderer under it.
         if (!difference.mSceneDiffering.empty())
         {
-            report += std::format("; the scene differs on {} frames", difference.mSceneDiffering.size());
+            std::string scene = std::format("the scene differs on {} frames", difference.mSceneDiffering.size());
 
-            if (!difference.mDiffering.empty())
+            if (!difference.mTraceDiffering.empty())
             {
-                const auto both = std::count_if(
-                    difference.mDiffering.begin(), difference.mDiffering.end(), [&](const std::uint32_t frame) {
+                const auto both = std::count_if(difference.mTraceDiffering.begin(), difference.mTraceDiffering.end(),
+                    [&](const std::uint32_t frame) {
                         return std::binary_search(
                             difference.mSceneDiffering.begin(), difference.mSceneDiffering.end(), frame);
                     });
 
-                report += std::format(", {} of them among those", both);
+                scene += std::format(", {} of them among those the trace differs on", both);
             }
 
             // Last, because it is a list and anything appended after it would read as part of it.
-            report += namePartsDiffering(difference);
+            clauses.push_back(scene + nameColumnsDiffering(difference.mPartsDiffering, partName));
         }
-        else if (!difference.mDiffering.empty())
-            report += "; the scene was the same on every frame";
+        else if (!difference.mTraceDiffering.empty() || !difference.mDiffering.empty())
+            clauses.push_back("the scene was the same on every frame");
+
+        if (difference.mUpscaledDiffering > 0)
+            clauses.push_back(
+                std::format("the two runs reconstructed {} frames differently", difference.mUpscaledDiffering));
 
         if (difference.mUnmatched > 0)
-            report += std::format(
-                "{}{} frames the two runs do not share", report.empty() ? "" : "; ", difference.mUnmatched);
+            clauses.push_back(std::format("{} frames the two runs do not share", difference.mUnmatched));
+
+        std::string report;
+        for (std::size_t at = 0; at < clauses.size(); ++at)
+            report += (at > 0 ? "; " : "") + clauses[at];
 
         return report;
     }

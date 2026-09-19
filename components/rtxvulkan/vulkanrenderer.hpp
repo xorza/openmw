@@ -27,6 +27,7 @@
 #include "commands.hpp"
 #include "compositepass.hpp"
 #include "device.hpp"
+#include "digestpass.hpp"
 #include "displaychain.hpp"
 #include "fogvolume.hpp"
 #include "framering.hpp"
@@ -298,6 +299,9 @@ namespace Rtx
         /// Everything between a finished trace and a target, for the frame and for every picture
         /// inside the interface.
         DisplayChain mDisplay;
+
+        /// What folds the frame's images into `FrameResult::mDigest`, on the frames that ask.
+        DigestPass mDigest;
 
         /// One sea for everything traced, the doll and the map included: the water is not a
         /// property of a scene, so it is synthesised once a frame here rather than held per scene.

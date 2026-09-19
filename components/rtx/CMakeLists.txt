@@ -45,6 +45,7 @@ set(RTX_FILES
     extractionstats.hpp
     fogbuilder.cpp
     fogbuilder.hpp
+    framedigest.hpp
     frameimage.cpp
     frameimage.hpp
     framespend.hpp
@@ -163,6 +164,7 @@ set(RTX_SHADER_HEADERS
     shaders/colour.h
     shaders/composite.h
     shaders/counts.h
+    shaders/digest.h
     shaders/exposure.h
     shaders/fogvolume.h
     shaders/gbuffer.h

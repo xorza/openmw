@@ -99,6 +99,7 @@ set(RTX_GPU_TEST_FILES
     rtx/commands.cpp
     rtx/computepipeline.cpp
     rtx/device.cpp
+    rtx/digestpass.cpp
     rtx/dlss.cpp
     rtx/framering.cpp
     rtx/frames.cpp
