@@ -12,6 +12,7 @@
 
 #include "commands.hpp"
 #include "device.hpp"
+#include "digestpass.hpp"
 #include "timeline.hpp"
 
 namespace Rtx
@@ -35,8 +36,7 @@ namespace Rtx
         : mTimer(device)
         , mCounts(Buffer::readBack(device, sizeof(Shaders::FrameCounts),
               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame counts"))
-        , mDigestLanes(Buffer::readBack(device, sizeof(std::uint32_t) * Shaders::DIGEST_IMAGES * Shaders::DIGEST_LANES,
-              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame digest"))
+        , mDigestLanes(Buffer::readBack(device, DigestPass::sBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame digest"))
     {
     }
 

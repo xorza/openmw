@@ -108,6 +108,7 @@ namespace Rtx
         // The buffer sides, named with the resource in them because the image sides above share
         // the namespace. `vkCmdFillBuffer` and `vkCmdUpdateBuffer` are filed under the clear stage
         // by the specification, which is why a fill and an inline write are `sBufferClearWrite`.
+        inline constexpr BufferUse sBufferCopyRead{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT };
         inline constexpr BufferUse sBufferCopyWrite{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT };
         inline constexpr BufferUse sBufferClearWrite{ VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT };
         inline constexpr BufferUse sBufferComputeRead{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,

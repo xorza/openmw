@@ -37,7 +37,6 @@
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
-#include <components/rtxvulkan/drivershadercache.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
@@ -309,33 +308,6 @@ namespace RtxTool
         /// What a `shot` writes its frames' hashes to, beside the pictures, and reads a reference's
         /// from.
         constexpr std::string_view sShotHashes = "hashes.csv";
-
-        /// How many seconds of world the first stop of a compared run draws away before any frame
-        /// is hashed, where the command line asked for no other warm-up.
-        ///
-        /// **The driver compiles the launches twice, and the second code is not the first.** Once
-        /// when the pipeline is made, and again on a thread of its own some seconds into the
-        /// process, swapping the code in when it is done — `camera.h` says what `precise` holds
-        /// steady across the two, and the last bit of some rays' direction is not among it, so
-        /// every column the trace writes moves with the swap: the depth by an ulp on a few texels,
-        /// the sky's motion across the sky, the picture on one pixel in ten frames, and a network
-        /// past the trace on everything after. Measured on 610.57.04: a pair warmed two seconds of
-        /// world differed from frame 195 to 280 of its held leg in ten pairs of ten, and from
-        /// frame 649 of a twelve-second one on the picture alone; twenty seconds put the swap
-        /// inside the warm-up of both legs in three pairs of three. Once per process, because the
-        /// pipelines are made once, so the stops after the first pay nothing.
-        constexpr float sCodeSettleSeconds = 20.0f;
-
-        /// Warms the first of `stops` for at least `sCodeSettleSeconds`, where nothing on the
-        /// command line said otherwise.
-        void settleCode(std::vector<Rtx::Stop>& stops, const bpo::variables_map& variables)
-        {
-            if (stops.empty() || !variables["warmup"].defaulted())
-                return;
-
-            Rtx::BenchSpan& warm = stops.front().mSchedule.mSpec.mWarm;
-            warm = Rtx::BenchSpan{ .mSeconds = std::max(warm.mSeconds, sCodeSettleSeconds) };
-        }
 
         /// The one place a command renders, and what a window would write it down as.
         /// Holds `stop` still: warmed as the command line asks, then `frames` measured with the
@@ -639,7 +611,6 @@ namespace RtxTool
                 = accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u);
 
             std::vector<Rtx::Stop> stops = stagePlaces(command, framed, frames);
-            settleCode(stops, variables);
 
             const std::filesystem::path out
                 = variables["out"].defaulted() ? "shot" : variables["out"].as<std::string>();
@@ -705,9 +676,6 @@ namespace RtxTool
                 stop.mSky.mTurnThrough = turn;
                 stop.mActions.mHash = hashing;
             }
-
-            if (hashing)
-                settleCode(stops, variables);
 
             Rtx::SessionRequest request
                 = sessionFor(command, framed, std::move(stops), validationForMeasuring(variables));
@@ -927,13 +895,6 @@ namespace RtxTool
             config.readConfiguration(variables, options.mDescription);
             Debug::setupLogging(config.getLogPath(), applicationName);
             Settings::Manager::load(config);
-
-            // Every verb but `info` compares pictures, and `refuseDriverShaderCache` says why a
-            // picture drawn through the driver's cache is not the picture a compile draws. Said
-            // where the shell's word stood, because the run is then one that may not repeat.
-            if (!Rtx::refuseDriverShaderCache())
-                Log(Debug::Warning) << "the driver's shader cache is on by the shell's word: two runs of this "
-                                       "build may not draw the same picture";
 
             const std::filesystem::path resources = variables["resources"].as<Files::MaybeQuotedPath>();
 

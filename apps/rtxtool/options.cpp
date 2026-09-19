@@ -262,10 +262,12 @@ namespace RtxTool
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well. Two rather than three because the ramp and the residency "
             "are over well inside it: measured interleaved on a hot card, three seconds ran 20 s "
-            "and two ran 19. A run that hashes or compares its frames warms its first stop "
-            "twenty seconds instead, unless this says otherwise: the driver compiles the launches "
-            "a second time some seconds into the process and swaps the code in, and a frame "
-            "hashed across the swap is two codes' frame");
+            "and two ran 19. Every run but a window first settles the launches' code, before this "
+            "warm-up: the driver compiles the launches a second time on a thread of its own, "
+            "twenty seconds of a core from two seconds into the process, and swaps the "
+            "code in, so the first stop's first frame is traced over and over inside that one "
+            "frame until the process's other threads have been quiet for two seconds with the "
+            "frame's digest still, or thirty seconds have passed, and the report says which");
 
         option(sFramed, "hud", bpo::value<bool>()->default_value(false)->implicit_value(true),
             "draw the game's HUD over the picture: the bars, the compass and the cell's name. Off "

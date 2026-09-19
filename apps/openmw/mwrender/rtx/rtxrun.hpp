@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 
+#include <components/rtxbench/codesettle.hpp>
 #include <components/rtxbench/runsetup.hpp>
 
 namespace MWRender
@@ -43,6 +44,12 @@ namespace MWRender
         /// which a run that hashes every frame asks for and nothing a player does ever does.
         virtual bool wantsFrameCopy() const = 0;
 
+        /// The settle a measured run opens with, or null. Handed one, the renderer traces the
+        /// frame it has just traced over and over inside the same game frame, feeding each
+        /// trace's digest to it, until it says it is settled: `Rtx::CodeSettle` says what for.
+        /// Null once it is settled and for every frame nobody asked to settle on.
+        virtual Rtx::CodeSettle* getSettle() = 0;
+
         /// Takes one traced frame, and with it whatever the device answered for an earlier one —
         /// `FrameReport::mResult`, set where an answer came back this frame. Every traced frame and
         /// not only the answered ones, because an answer comes back a frame later or two by
@@ -61,6 +68,7 @@ namespace MWRender
         std::uint32_t getAccumulated() const override { return 0; }
         bool wantsSecondWalk() const override { return false; }
         bool wantsFrameCopy() const override { return false; }
+        Rtx::CodeSettle* getSettle() override { return nullptr; }
         void frame(const FrameContext& context, const FrameReport& report) override {}
     };
 

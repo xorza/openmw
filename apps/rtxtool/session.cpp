@@ -65,6 +65,12 @@ namespace RtxTool
 {
     namespace
     {
+        /// How long a settle waits for the driver's compile thread to go quiet before measuring
+        /// anyway: the thread takes twenty seconds of a core from two seconds after the launches
+        /// are made, so a settle that begins as they are made waits it out with room. A run that
+        /// waited this out says so.
+        constexpr double sSettleCapSeconds = 30.0;
+
         /// How often a run that turns its sky asks for the next weather, in frames of world.
         ///
         /// **How long the crossing itself takes is the weather's own `Transition_Delta`**, which
@@ -414,6 +420,7 @@ namespace RtxTool
         }
 
         mStarted = true;
+        beginSettle();
 
         Log(Debug::Info) << "Ray tracing session: stop " << (mAt + 1) << " of " << mRequest.mStops.size() << ", "
                          << (stop.mName.empty() ? "unnamed" : stop.mName) << " — " << stop.mSchedule.mSpec.getWarmup()
@@ -615,6 +622,24 @@ namespace RtxTool
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mHash;
     }
 
+    void Session::beginSettle()
+    {
+        // Once per process, because the pipelines are made once; and for every stepped run,
+        // because a stepped run is one that measures or writes a picture (`RunSetup::mStep`) and
+        // either is on the code the game will run or it is nothing. A window on the wall is
+        // somebody watching, and eighteen seconds of one frame is not what they came for.
+        if (mAt != 0 || !mRequest.mSetup.mStep.has_value())
+            return;
+
+        mSettling.emplace(sSettleCapSeconds);
+        Log(Debug::Info) << "Ray tracing session: settling the launches' code on the first stop's first trace";
+    }
+
+    Rtx::CodeSettle* Session::getSettle()
+    {
+        return mSettling.has_value() && !mSettling->isSettled() ? &*mSettling : nullptr;
+    }
+
     void Session::frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
     {
         Rtx::Renderer& renderer = context.mRenderer.getBackend();
@@ -622,6 +647,14 @@ namespace RtxTool
 
         if (mDone || !mStarted)
             return;
+
+        if (mSettling.has_value() && mSettling->isSettled())
+        {
+            const std::string settled = mSettling->describe();
+            Log(Debug::Info) << "Ray tracing session: settled — " << settled;
+            mRecord.note(std::format("settled: {}\n", settled));
+            mSettling.reset();
+        }
 
         const Rtx::Stop& stop = mRequest.mStops[mAt];
         const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();

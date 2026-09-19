@@ -15,6 +15,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/codesettle.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/runrecord.hpp>
@@ -59,6 +60,7 @@ namespace RtxTool
         std::optional<float> getFrameStep() const override;
 
         std::optional<std::uint32_t> getSampleFrame() const override;
+        Rtx::CodeSettle* getSettle() override;
         std::uint32_t getAccumulated() const override;
         bool wantsSecondWalk() const override;
         bool wantsFrameCopy() const override;
@@ -260,5 +262,13 @@ namespace RtxTool
 
         /// What a hashed frame's scene columns come from, kept so a frame pays for what moved.
         Rtx::SceneDigester mDigester;
+
+        /// The settle a stepped run opens with, from the first stop's beginning until the
+        /// renderer has settled it on the stop's first trace — `RtxRun::getSettle`. Nothing after
+        /// the first stop, because the pipelines are made once per process.
+        std::optional<Rtx::CodeSettle> mSettling;
+
+        /// Opens the settle where the stop about to begin is the first of a stepped run.
+        void beginSettle();
     };
 }

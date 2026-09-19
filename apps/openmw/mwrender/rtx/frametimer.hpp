@@ -20,6 +20,11 @@ namespace MWRender
         /// on the first. Every frame the renderer is handed opens one, traced or not.
         std::optional<double> enter(std::chrono::steady_clock::time_point now);
 
+        /// Moves where the frame opened to `now`, for a frame that spent seconds inside the
+        /// renderer on something that is not the run's — the settle — so the frame after it
+        /// measures from here and not across that.
+        void reopen(std::chrono::steady_clock::time_point now) { mEntered = now; }
+
         /// Stamps where the frame left the renderer. Every path out calls it, so what the next frame
         /// measures is the game's own loop and never the renderer's tail.
         void leave(std::chrono::steady_clock::time_point now) { mLeft = now; }

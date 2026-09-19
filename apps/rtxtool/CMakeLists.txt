@@ -14,6 +14,7 @@ set(RTXTOOL_FILES
 
 # What drives the game once one is hosted: built into the executable alone, for the reason below.
 set(RTXTOOL_HOSTED_FILES
+    draws.cpp
     hosted.cpp
     session.cpp
     session.hpp
@@ -78,6 +79,15 @@ if (BUILD_OPENMW)
     openmw_add_executable(openmw-rtxtool main.cpp ${RTXTOOL_HOSTED_FILES})
 
     target_link_libraries(openmw-rtxtool openmw-rtxtool-lib openmw-lib)
+
+    # `draws.cpp` defines `rand` and `srand` for every library in the process, which binds to the
+    # executable's dynamic symbol table — where a definition lands only when some library linked
+    # here happens to reference it. Exported by name, so the binding is this file's and not
+    # `osgParticle`'s.
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_options(openmw-rtxtool PRIVATE
+            "LINKER:--export-dynamic-symbol=rand" "LINKER:--export-dynamic-symbol=srand")
+    endif()
 
     # The run reads the clock through `mwworld/datetimemanager.hpp`, which is not warning-free
     # under the extra checks, so that one takes the errors alone.

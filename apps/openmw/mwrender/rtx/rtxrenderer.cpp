@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -182,14 +184,16 @@ namespace MWRender
         Rtx::RendererOptions options;
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
 
-        // **A measured run compiles its pipelines from source and keeps none.** A pipeline the
-        // driver hands back from a cache — its own on disk, the blob `PipelineCache` keeps, or
-        // the object its compiles would share in memory (`PipelineCacheSpec::mDirectory`) — is
-        // not the code a compile of the same SPIR-V makes: over `one-cell-walk` the two drew 59
-        // of 360 pictures a part in 255 apart, and a pipeline loaded from a blob was swapped for
-        // the other code a few seconds into the run, which is what the gate's pair failed on
-        // after a rebuild. A compile is one code and stays it. The player keeps the cache: a game
-        // is not compared with itself, and the seconds it saves at start are the player's.
+        // **A measured run keeps no pipeline cache of its own.** A pipeline out of the blob
+        // `PipelineCache` keeps, or out of the object its compiles would share in memory
+        // (`PipelineCacheSpec::mDirectory`), starts on the compile's first code and is swapped
+        // for the driver's second a few seconds into the run — `Rtx::CodeSettle` says what the
+        // two codes are — and which pipelines the object hands which was the hands' timing. The
+        // driver's own disk cache is another matter and stays on: it holds the second code, so a
+        // process whose launches come from it starts on the code the settle would wait for, and
+        // measured against a process that compiled and settled, drew every frame the same. The
+        // player keeps the fork's cache: a game is not compared with itself, and the seconds it
+        // saves at start are the player's.
         if (run == nullptr)
             options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mWindow.getWidth();
@@ -469,6 +473,34 @@ namespace MWRender
         // meant for radiance is how a menu comes out grey.
         assert(mGui != nullptr && "a GUI drawn before the interface was made");
         mGui->collectDrawCalls();
+    }
+
+    void RtxRenderer::settleLaunches(
+        Rtx::CodeSettle& settle, const Rtx::Shaders::VisibilityConstants& constants, Rtx::FrameOptions options)
+    {
+        // The digest is what the settle reads the swap off, and the frame's picture rides with it.
+        options.mReadBack = true;
+
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
+
+        // The frame just traced is in flight with its own motion against the frame before it; the
+        // traces from here on stand where it stood, so their motion is nought against it and
+        // against each other. Its answer is drained with the rest and not fed.
+        const std::uint64_t first = mRenderer->getFrameCount();
+
+        while (!settle.isSettled())
+        {
+            mRenderer->resetHistory();
+            mRenderer->renderFrame(constants, options);
+
+            while (const std::optional<Rtx::FrameResult> finished = mRenderer->finishFrame())
+                if (finished->mFrame >= first && finished->mDigest.has_value())
+                    settle.take(finished->mDigest->mImages,
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count(),
+                        Rtx::CodeSettle::otherThreadsCpuSeconds());
+        }
+
+        mTimer.reopen(std::chrono::steady_clock::now());
     }
 
     FrameContext RtxRenderer::describeContext()
@@ -970,6 +1002,10 @@ namespace MWRender
 
         report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, std::chrono::steady_clock::now());
         report.mSpend.at(Rtx::Timing::Present) = mTimer.takePresent();
+
+        // After the frame's own figures are taken, because what follows is seconds of the driver's.
+        if (Rtx::CodeSettle* const settle = mInstalled.mRun.getSettle(); settle != nullptr && !settle->isSettled())
+            settleLaunches(*settle, constants, options);
 
         if (since.has_value())
         {

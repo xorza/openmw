@@ -149,13 +149,15 @@ RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
     // wavelet that hoists never reconstruct quite the positions that were shaded. This is the
     // trace's association, because the trace is what everything else is judged against.
     //
-    // **And `precise`, because the driver compiles the trace twice.** Once when the pipeline is
-    // made, and again on a thread of its own seconds later, swapping the code in when it is done —
-    // and the second compile fused these multiplies and adds into different multiply-adds from the
-    // first. A direction an ulp away on some pixels is a hit distance an ulp away on the surfaces
-    // they reach, and a path tracer turns that into another sample on a few hundred pixels: the
-    // same scene drew two pictures, before and after the swap, in every process. `precise` forbids
-    // the fusion, so both compiles agree — on the direction, and on everything downstream of it.
+    // **And `precise`, because every shader that recomputes the trace's ray has to land on the
+    // trace's bits.** The wavelet, the sprite composite, the tone pass and the fog each call
+    // `rayAt` for the ray the trace shot, and each is a compile of its own. A compiler is free to
+    // fuse these multiplies and adds into multiply-adds, and which it fuses is that compile's:
+    // the driver's second compile of the trace fused them differently from its first, and a
+    // direction an ulp away is a hit distance an ulp away on the surfaces it reaches and another
+    // sample on a few hundred pixels. `precise` forbids the fusion, so every compile of this sum
+    // is the written sum. Which of the driver's two codes a measured run is on is
+    // `Rtx::CodeSettle`'s business and not this line's.
     RTX_PRECISE vec3 summed = camera.mForward + camera.mRight * uv.x - camera.mUp * uv.y;
     ray.mDirection = normalize(summed);
 

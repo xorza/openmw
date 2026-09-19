@@ -17,6 +17,8 @@ set(RTXBENCH_FILES
     benchrun.hpp
     benchspec.cpp
     benchspec.hpp
+    codesettle.cpp
+    codesettle.hpp
     framehashes.cpp
     framehashes.hpp
     frametimes.cpp

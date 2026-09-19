@@ -87,8 +87,8 @@ namespace Rtx
         /// asked, nought for a frame that did not.
         VkDeviceSize mReadBackBytes = 0;
 
-        /// Where `DigestPass` folds the frame's images, `Shaders::DIGEST_IMAGES` of
-        /// `Shaders::DIGEST_LANES` words, and the digest the report carries: what the frame handed
+        /// Where `DigestPass` copies the frame's words, `Shaders::DIGEST_IMAGES` of
+        /// `Shaders::DIGEST_LANES`, and the digest the report carries: what the frame handed
         /// the reconstruction while it was recorded, the words once it is waited for, and nothing
         /// for a frame that did not ask.
         Buffer mDigestLanes;

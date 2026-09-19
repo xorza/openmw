@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <span>
 #include <string_view>
 
@@ -66,17 +65,8 @@ namespace Rtx
         void traceRays(
             VkCommandBuffer commands, std::uint32_t width, std::uint32_t height, std::uint32_t depth = 1) const;
 
-        /// How long the driver took to compile the pipeline, in milliseconds, off its own creation
-        /// feedback — or nothing where it gave none, or handed the pipeline back from the
-        /// application's own cache, which is no compile. A compile of a launch is seconds; a
-        /// pipeline the driver kept for itself comes back in milliseconds, which is how
-        /// `VulkanRenderer` tells the two apart.
-        std::optional<double> getCompileMs() const { return mCompileMs; }
-
     private:
         const Device& mDevice;
-
-        std::optional<double> mCompileMs;
 
         /// Every group's handle, in video memory the host wrote it straight into.
         Buffer mTable;

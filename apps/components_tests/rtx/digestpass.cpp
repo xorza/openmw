@@ -81,9 +81,8 @@ namespace Rtx
             {
                 Device& device = getDevice();
                 const DigestPass pass(device, Testing::getShaderDirectory());
-                const Buffer lanes
-                    = Buffer::readBack(device, sizeof(std::uint32_t) * Shaders::DIGEST_LANES * Shaders::DIGEST_IMAGES,
-                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "digest test lanes");
+                const Buffer lanes = Buffer::readBack(
+                    device, DigestPass::sBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "digest test lanes");
 
                 std::array<const Image*, Shaders::DIGEST_IMAGES> digested{};
                 for (std::size_t at = 0; at < digested.size(); ++at)

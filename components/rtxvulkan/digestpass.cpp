@@ -3,7 +3,6 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
-#include <cstdint>
 
 #include "buffer.hpp"
 #include "dispatch.hpp"
@@ -25,15 +24,16 @@ namespace Rtx
     DigestPass::DigestPass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mPipeline(
             device, sBindings, sizeof(Shaders::DigestConstants), {}, shaderDirectory / "digest.comp.spv", "digest")
+        , mLanes(Buffer::deviceLocal(device, sBytes,
+              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+              "digest lanes"))
     {
     }
 
     void DigestPass::record(const VkCommandBuffer commands,
-        const std::array<const Image*, Shaders::DIGEST_IMAGES>& images, const Buffer& lanes,
-        GpuTimer* const timer) const
+        const std::array<const Image*, Shaders::DIGEST_IMAGES>& images, const Buffer& into, GpuTimer* const timer) const
     {
-        assert(lanes.getSize() >= images.size() * Shaders::DIGEST_LANES * sizeof(std::uint32_t)
-            && "a digest of more images than the lanes have room for");
+        assert(into.getSize() >= sBytes && "a digest of more images than the frame has room for");
 
         const Image& first = *images.front();
         std::array<VkDescriptorImageInfo, Shaders::DIGEST_IMAGES> described{};
@@ -46,21 +46,24 @@ namespace Rtx
 
         openZone(timer, commands, "digest");
 
-        // Cleared on the queue rather than by the host, because the frame that last used this
-        // buffer may still be in flight when this one is recorded.
-        lanes.transition(commands, Use::sBufferHostRead, Use::sBufferClearWrite);
-        lanes.clear(commands);
-        lanes.transition(commands, Use::sBufferClearWrite, Use::sBufferComputeReadWrite);
+        // Cleared on the queue, after the last frame's copy out of it.
+        mLanes.transition(commands, Use::sBufferCopyRead, Use::sBufferClearWrite);
+        mLanes.clear(commands);
+        mLanes.transition(commands, Use::sBufferClearWrite, Use::sBufferComputeReadWrite);
 
         DescriptorWrites<2, Shaders::DIGEST_IMAGES> writes;
         writes.images(0, described, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        writes.buffer(1, lanes.describe());
+        writes.buffer(1, mLanes.describe());
 
         const Shaders::DigestConstants constants{ .mWidth = first.getWidth(), .mHeight = first.getHeight() };
         dispatch(commands, mPipeline, writes.get(), constants, groupsFor(first.getWidth(), Shaders::DIGEST_WORKGROUP),
             groupsFor(first.getHeight(), Shaders::DIGEST_WORKGROUP));
 
-        lanes.orderForHostRead(commands);
+        mLanes.transition(commands, Use::sBufferComputeWrite, Use::sBufferCopyRead);
+        into.transition(commands, Use::sBufferHostRead, Use::sBufferCopyWrite);
+        mLanes.copyTo(commands, into, sBytes);
+
+        into.orderForHostRead(commands);
         closeZone(timer, commands);
     }
 }

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #include "computepipeline.hpp"
@@ -87,8 +88,8 @@ namespace Rtx
                 });
         }
 
-        // Asked to say how long the whole pipeline took, and nothing per stage: the question is
-        // whether it was compiled at all, which `getCompileMs` says why.
+        // Asked to say how long the whole pipeline took, and nothing per stage: what the report
+        // wants is whether it was compiled at all, which seconds say and milliseconds do not.
         VkPipelineCreationFeedback feedback{};
         const VkPipelineCreationFeedbackCreateInfo timed{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO,
@@ -121,11 +122,12 @@ namespace Rtx
         constexpr VkPipelineCreationFeedbackFlags valid = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
         constexpr VkPipelineCreationFeedbackFlags fromApplicationCache
             = VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
+        std::optional<double> compileMs;
         if ((feedback.flags & (valid | fromApplicationCache)) == valid)
-            mCompileMs = static_cast<double>(feedback.duration) / 1e6;
+            compileMs = static_cast<double>(feedback.duration) / 1e6;
 
         device.setName(mHandle.get(), name);
-        device.reportPipeline(mHandle.get(), name, mCompileMs);
+        device.reportPipeline(mHandle.get(), name, compileMs);
 
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& limits
             = device.getPhysicalDevice().getProperties().mRayTracingPipeline;

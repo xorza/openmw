@@ -168,8 +168,9 @@ namespace Rtx::Testing
     /// **`osgParticle` draws from `std::rand` for every range it reads**, the single-value ones these
     /// fixtures set included — so a plume run from two different points in that sequence is two
     /// different plumes, and a test comparing the two measures the sequence rather than what it
-    /// meant to. `RtxTool::StagedWorld::seedDraws` is the same problem where a whole world is
-    /// staged twice; here the difference measured was one unit in the last place of a height.
+    /// meant to. `apps/rtxtool/draws.cpp` is the same problem where a whole run is compared with
+    /// another, with the driver drawing from the sequence too; here the difference measured was
+    /// one unit in the last place of a height.
     ///
     /// **Called per run and not once per test, which is why no fixture set-up does it.** The first
     /// run advances the sequence, so a reset at the top of the test would leave the second run
