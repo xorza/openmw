@@ -6,6 +6,7 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/misc/strings/algorithm.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/stableidentity.hpp>
 #include <components/sceneutil/unrefqueue.hpp>
 
 #include "../mwworld/class.hpp"
@@ -48,6 +49,7 @@ namespace MWRender
         {
             cellnode = new osg::Group;
             cellnode->setName("Cell Root");
+            SceneUtil::StableIdentity::stamp(*cellnode, mNextIdentity++);
             mRootNode->addChild(cellnode);
             mCellSceneNodes[ptr.getCell()] = cellnode;
         }
@@ -58,6 +60,7 @@ namespace MWRender
         cellnode->addChild(insert);
 
         insert->getOrCreateUserDataContainer()->addUserObject(new PtrHolder(ptr));
+        SceneUtil::StableIdentity::stamp(*insert, mNextIdentity++);
 
         const float* f = ptr.getRefData().getPosition().pos;
 

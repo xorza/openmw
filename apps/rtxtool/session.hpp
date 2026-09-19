@@ -185,6 +185,7 @@ namespace RtxTool
             Rtx::FrameSamples mSamples;
             Rtx::GpuBreakdown mGpu;
             Rtx::Crossings mCrossings;
+            Rtx::Arrivals mArrivals;
             Rtx::Overlap mOverlap;
             Rtx::HoldTimes mHold;
             Rtx::GpuClock mClock;
@@ -213,6 +214,7 @@ namespace RtxTool
                 mSamples.clear();
                 mGpu = Rtx::GpuBreakdown{};
                 mCrossings = Rtx::Crossings{};
+                mArrivals = Rtx::Arrivals{};
                 mOverlap = Rtx::Overlap{};
                 mHold = Rtx::HoldTimes{};
                 mClock = Rtx::GpuClock{};

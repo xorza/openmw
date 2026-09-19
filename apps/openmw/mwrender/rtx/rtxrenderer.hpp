@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +9,6 @@
 #include <string_view>
 #include <vector>
 
-#include <SDL_video.h>
 #include <osg/Matrixd>
 #include <osg/Node>
 #include <osg/Timer>
@@ -23,7 +21,6 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/stepped.hpp>
-#include <components/rtxbench/frametimes.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -33,9 +30,12 @@
 #include "../rendermode.hpp"
 #include "debugwalk.hpp"
 #include "framereport.hpp"
+#include "frametimer.hpp"
 #include "rippleemitters.hpp"
 #include "rtxrun.hpp"
+#include "rtxwindow.hpp"
 #include "skyreader.hpp"
+#include "viewqueue.hpp"
 #include "worldmirror.hpp"
 
 namespace Resource
@@ -181,12 +181,17 @@ namespace MWRender
         /// camera carrying no callback is left alone.
         static void updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor);
 
-        /// The backend a view traces into. This and the four below are what a traced view, drawn
-        /// on a later frame than the one that asked, needs back from the renderer that made it.
+        /// The backend a view traces into: what a traced view, drawn on a later frame than the one
+        /// that asked, needs back from the renderer that made it, with `getViews` and
+        /// `describePose`.
         Rtx::Renderer& getBackend() { return *mRenderer; }
 
         /// `WorldMirror::collectStanding`, for the harness's check that no static stands twice.
         void collectStanding(std::vector<ESM::RefNum>& into) const { mMirror.collectStanding(into); }
+
+        /// The pictures inside the interface this renderer holds, for a view to join and leave and
+        /// for the harness to find the game's own map tile in.
+        ViewQueue& getViews() { return mViews; }
 
         /// What the game says of one reference, from `TracedGround`: a script's toggle, a moved or
         /// animated object the distance must never stand, and a new game that forgets both. Here
@@ -203,27 +208,10 @@ namespace MWRender
         /// The moment a subject is posed at, for a view drawn inside this frame's window.
         PoseMoment describePose();
 
-        /// Draws `view` in the next frame's window, after the world's placement and before its
-        /// trace, where the copy of the tables a picture reads is the frame's own; drawn where asked,
-        /// a picture made a wait of every placement that could still follow it. Asked twice in one
-        /// frame is drawn once.
-        void redraw(TracedView& view);
-
-        /// Draws the pictures asked for since the last frame, every subject's and up to
-        /// `sWorldViewsPerFrame` of the world's, and answers how long that took.
+        /// Draws the pictures asked for since the last frame — `ViewQueue::draw` with this
+        /// renderer's budget of world views — and answers how long that took. From the frame's
+        /// own `Views` phase, and from the run's hook.
         double drawViews();
-
-        /// Takes a view off that list, because it is going away.
-        void forgetView(TracedView& view);
-
-        /// A view made, from its constructor: kept on the list of the pictures alive, which
-        /// `findWorldView` answers from.
-        void adoptView(TracedView& view);
-
-        /// The picture of the world taken straight down over `over`, or null where none is alive:
-        /// the local map's tile of the cell the point is in, found by the renderer that drew it.
-        /// For the harness, which writes the game's own tile rather than framing one to look like it.
-        TracedView* findWorldView(const osg::Vec2f& over) const;
 
         /// The overlay that exists, or null: told by `TracedOverlay` as it comes and goes, so the
         /// frame can finish its paints once the pictures they wait for have come back.
@@ -259,65 +247,9 @@ namespace MWRender
             Gui,
         };
 
-        /// Where one frame began and ended inside this renderer, and what it presented. Stamps and not
-        /// a report: `Rtx::Timing::Update` is the gap between one frame leaving this renderer and the
-        /// next arriving, and only the object that stamps both ends can measure it.
-        class FrameSpan
-        {
-        public:
-            /// Opens a frame. @return how long since the last frame opened, in milliseconds, and nothing
-            /// on the first. Every frame `renderFrame` is handed opens one, traced or not.
-            std::optional<double> enter(std::chrono::steady_clock::time_point now);
-
-            /// Stamps where the frame left this renderer. Every path out calls it, so what the next frame
-            /// measures is the game's own loop and never this renderer's tail.
-            void leave(std::chrono::steady_clock::time_point now) { mLeft = now; }
-
-            /// How long the game spent between the last `leave` and `now`.
-            double sinceLeft(std::chrono::steady_clock::time_point now) const;
-
-            /// Adds what one present cost. Summed, because a loading screen presents as often as it
-            /// likes inside one span.
-            void addPresent(double ms) { mPresentMs += ms; }
-
-            /// What the presents since the last frame came to, and starts the sum again.
-            double takePresent();
-
-        private:
-            std::optional<std::chrono::steady_clock::time_point> mEntered;
-            std::chrono::steady_clock::time_point mLeft;
-            double mPresentMs = 0.0;
-        };
-
-        /// What this renderer says about its own speed: the window's title once a second, because this
-        /// renderer has no overlay.
-        class SpeedReport
-        {
-        public:
-            /// Adds one frame's whole time. @return the title to set, or empty until a second has run
-            /// out. Never allocates: the text is written into this object's own bytes.
-            std::string_view addFrame(double frameMs);
-
-        private:
-            Rtx::FrameRate mRate;
-
-            /// What the window's title is written from, once a second and never allocated.
-            std::array<char, 96> mTitle{};
-        };
-
-        /// Makes the SDL window the backend builds its surface on; `hidden` is a headless run, the
-        /// same renderer with nobody watching.
-        void createWindow(bool hidden);
-
         /// How hard the upscaler between the trace and the picture works, as `RTX / upscale`
         /// names it.
         void setUpscale(std::string_view name);
-
-        /// Sizes the trace, the surface and the viewport to the window once its size has settled.
-        /// Asked every frame, because a Wayland surface has no size of its own — its `currentExtent`
-        /// is `0xFFFFFFFF` by specification — so a present succeeds for ever and the compositor
-        /// stretches the picture to whatever the window became. `sSettleSeconds` is the wait.
-        void fitToWindow();
 
         /// Traces the world the walk has just mirrored: the frame behind finished, the scene handed
         /// over, the deferred views drawn, the camera aimed, the frame traced and the report closed.
@@ -372,23 +304,14 @@ namespace MWRender
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
 
-        /// Every picture alive, in the order made. Raw pointers because the caller owns every view,
-        /// and `forgetView` keeps that sound.
-        std::vector<TracedView*> mViews;
-
-        /// Pictures asked for and not yet drawn, in the order asked.
-        std::vector<TracedView*> mDeferred;
-
-        /// The list a flush walks, swapped out of `mDeferred` so a redraw cannot grow what is being
-        /// iterated. Kept, because this sits on the frame path.
-        std::vector<TracedView*> mDrawing;
+        ViewQueue mViews;
 
         /// Borrowed: the map window owns it, through `GlobalMap`, and says when it goes.
         TracedOverlay* mMapOverlay = nullptr;
 
-        /// How many pictures of the world one frame draws; the rest wait for the next. A fresh load
-        /// asks for nine map tiles at once and a cell crossing for a row of three. A picture of a
-        /// subject is never held back.
+        /// How many pictures of the world one frame draws; the rest wait for the next. Three,
+        /// because a cell crossing asks for a row of three map tiles and a fresh load for nine: the
+        /// row lands in one frame and the load in three.
         static constexpr std::uint32_t sWorldViewsPerFrame = 3;
 
         /// MyGUI's backend, which `createGuiPlatform` makes and the window manager owns. Never null
@@ -402,8 +325,18 @@ namespace MWRender
         /// What a frame is read back into, refilled per read and never freed.
         std::vector<std::uint8_t> mReadBack;
 
+        /// What the run was made with, and the run itself: the setup the harness installed before
+        /// the engine started, or the played session's own, made from `[RTX]` and the played
+        /// answers. The two hosts cannot come to draw one picture through two differently configured
+        /// renderers, because both reach the renderer through this one record. The run inside it is
+        /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this. Before the window
+        /// and the mirror, which are built from what it says.
+        /// The played answers, for a session that installed no run: `mInstalled` refers to it then.
+        PlayedRun mPlayed;
+        const RtxSetup mInstalled;
+
         /// Before the backend, whose surface is on it: the members below die first.
-        std::unique_ptr<SDL_Window, void (*)(SDL_Window*)> mWindow{ nullptr, SDL_DestroyWindow };
+        RtxWindow mWindow;
 
         /// Made here because there is no viewer to make it, and held because the frame is driven
         /// from it.
@@ -418,23 +351,6 @@ namespace MWRender
         /// After the backend, because its slot is in the backend's table and goes back before the
         /// table does.
         std::unique_ptr<MyGUI::ITexture> mFrozenFrameTexture;
-
-        /// The size the window last reported and the moment it first reported it — not the extent
-        /// anything is drawn at, which `Rtx::FrameExtents` says. A tick of nought is further back
-        /// than any tick, which is what makes the first fit act rather than wait.
-        std::uint32_t mAskedWidth = 0;
-        std::uint32_t mAskedHeight = 0;
-        osg::Timer_t mAskedSince = 0;
-
-        /// What the run was made with, and the run itself: the setup the harness installed before
-        /// the engine started, or the played session's own, made from `[RTX]` and the played
-        /// answers. The two hosts cannot come to draw one picture through two differently configured
-        /// renderers, because both reach the renderer through this one record. The run inside it is
-        /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this. Before the mirror,
-        /// which is built from its knobs.
-        /// The played answers, for a session that installed no run: `mInstalled` refers to it then.
-        PlayedRun mPlayed;
-        const RtxSetup mInstalled;
 
         /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
         /// puts it on the device.
@@ -458,16 +374,14 @@ namespace MWRender
         WalkReport mWalked;
         std::uint32_t mUnreadable = 0;
 
-        /// What the CPU stood still for the device, and the frame rate the window's title says: the
-        /// only instrument on this path, and the number that says whether this is playable.
-        SpeedReport mSpeed;
-
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.
         Rtx::FogDrift mFogDrift;
 
-        /// Where this frame began and ended inside this renderer, and what it presented.
-        FrameSpan mSpan;
+        /// Where this frame began and ended inside this renderer, what it presented, and the frame
+        /// rate the window's title says: the only instrument on this path, and the number that says
+        /// whether this is playable.
+        FrameTimer mTimer;
 
         /// Whether a camera the builder refused has already been reported. `describeTrace` says why
         /// once is the whole of it.

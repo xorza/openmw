@@ -168,7 +168,7 @@ namespace Rtx
 
             SceneDesc scene;
             SceneExtractor extractor(scene);
-            mirrorPrecipitation(extractor, falling, eye, false, 0);
+            mirrorPrecipitation(extractor, falling, eye, false, 0, 0);
 
             ASSERT_EQ(scene.placements().getCounts().mPlaced, 1u) << "the drop was not walked at all";
             EXPECT_EQ(Testing::placedAt(scene, 0), eye) << "the drops were stood somewhere other than the eye";
@@ -177,14 +177,14 @@ namespace Rtx
             // than geometry that is hidden.
             SceneDesc under;
             SceneExtractor beneath(under);
-            mirrorPrecipitation(beneath, falling, eye, true, 0);
+            mirrorPrecipitation(beneath, falling, eye, true, 0, 0);
 
             EXPECT_EQ(under.placements().getCounts().mPlaced, 0u);
 
             // And a world with no weather over it at all is the third case the one call answers.
             SceneDesc dry;
             SceneExtractor none(dry);
-            mirrorPrecipitation(none, nullptr, eye, false, 0);
+            mirrorPrecipitation(none, nullptr, eye, false, 0, 0);
 
             EXPECT_EQ(dry.placements().getCounts().mPlaced, 0u);
         }

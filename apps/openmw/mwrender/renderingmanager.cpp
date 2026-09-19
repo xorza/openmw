@@ -37,6 +37,7 @@
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
+#include <components/sceneutil/stableidentity.hpp>
 #include <components/sceneutil/stateupdater.hpp>
 #include <components/sceneutil/texmat.hpp>
 #include <components/sceneutil/visitor.hpp>
@@ -852,6 +853,7 @@ namespace MWRender
 
         mPlayerNode->setUserDataContainer(new osg::DefaultUserDataContainer);
         mPlayerNode->getUserDataContainer()->addUserObject(new PtrHolder(player));
+        SceneUtil::StableIdentity::stamp(*mPlayerNode, mObjects->takeIdentity());
 
         player.getRefData().setBaseNode(mPlayerNode);
 

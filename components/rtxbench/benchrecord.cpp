@@ -1,9 +1,13 @@
 #include "benchrecord.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <fstream>
+#include <string>
 
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/memoryreport.hpp>
@@ -42,6 +46,36 @@ namespace Rtx
                 scene.mTextureBytes);
         }
 
+        std::string asJson(const Arrivals& arrivals)
+        {
+            std::string worst = "[";
+            for (std::size_t at = 0; at < arrivals.mWorstCount; ++at)
+                worst += std::format(R"({}{{"frameMs": {:.2f}, "arrivedMeshes": {}}})", at == 0 ? "" : ", ",
+                    arrivals.mWorst[at].mFrameMs, arrivals.mWorst[at].mArrivedMeshes);
+            worst += ']';
+
+            return std::format(R"({{"frames": {}, "meshes": {}, "worstMs": {:.2f}, "meanMs": {:.2f}, "worst": {}}})",
+                arrivals.mFrames, arrivals.mMeshes, arrivals.mWorstMs, arrivals.getMeanMs(), worst);
+        }
+
+        /// One of the worst frames, as the place's report prints it: the whole frame, what it
+        /// brought, and the three largest spends in it — enough to say whose the frame was.
+        std::string describeWorst(const WorstFrame& frame)
+        {
+            // Every spend but the frame's own, which is their sum.
+            std::array<Timing, sTimingCount> spends = sTimings.values();
+            const auto end = std::remove(spends.begin(), spends.end(), Timing::Frame);
+            constexpr std::size_t shown = 3;
+            std::partial_sort(spends.begin(), spends.begin() + shown, end,
+                [&](const Timing a, const Timing b) { return frame.mSpend.at(a) > frame.mSpend.at(b); });
+
+            std::string described;
+            for (std::size_t at = 0; at < shown; ++at)
+                described += std::format(" {} {:.1f}", sTimings.name(spends[at]), frame.mSpend.at(spends[at]));
+
+            return std::format("{:.1f} ms ({} meshes:{})", frame.mFrameMs, frame.mArrivedMeshes, described);
+        }
+
         std::string asJson(const Crossings& crossings)
         {
             return std::format(R"({{"count": {}, "rebuilds": {}, "worstMs": {:.2f}, "totalMs": {:.2f}}})",
@@ -63,6 +97,29 @@ namespace Rtx
             return std::format(R"({{"shareMs": {:.4f}, "frames": {}, "ofFrames": {}, "times": {}}})", zone.mShareMs,
                 zone.mFrames, zone.mOfFrames, asJson(zone.mTimes));
         }
+    }
+
+    void Arrivals::add(const double frameMs, const std::uint32_t arrivedMeshes, const FrameSpend& spend)
+    {
+        if (arrivedMeshes > 0)
+        {
+            ++mFrames;
+            mMeshes += arrivedMeshes;
+            mSumMs += frameMs;
+            mWorstMs = std::max(mWorstMs, frameMs);
+        }
+
+        // Kept longest first, so the shortest kept is the one a longer frame pushes out.
+        std::size_t at = mWorstCount;
+        while (at > 0 && mWorst[at - 1].mFrameMs < frameMs)
+            --at;
+        if (at >= sKept)
+            return;
+
+        for (std::size_t behind = std::min(mWorstCount, sKept - 1); behind > at; --behind)
+            mWorst[behind] = mWorst[behind - 1];
+        mWorst[at] = WorstFrame{ .mFrameMs = frameMs, .mArrivedMeshes = arrivedMeshes, .mSpend = spend };
+        mWorstCount = std::min(mWorstCount + 1, sKept);
     }
 
     std::string describeHour(const float hour)
@@ -152,6 +209,23 @@ namespace Rtx
                 place.mCrossings.mTotalMs / 1000.0,
                 place.mTravelled < 1.0 ? std::format(", {:.0f}% of the route flown", place.mTravelled * 100.0) : "");
 
+        // **The arrivals beside the crossings, at every place.** A crossing is a route's; a mesh
+        // arrives wherever an actor walks in, and what the worst frames carried is the one reading
+        // that says whether the tail is theirs.
+        if (place.mArrivals.mFrames > 0)
+            out += std::format(
+                "  {} frames extended the scene with {} meshes — {:.1f} ms worst, {:.1f} mean against "
+                "the {:.1f} median\n",
+                place.mArrivals.mFrames, place.mArrivals.mMeshes, place.mArrivals.mWorstMs, place.mArrivals.getMeanMs(),
+                place.at(Timing::Frame).mMedian);
+        if (place.mArrivals.mWorstCount > 0)
+        {
+            out += "  worst frames:";
+            for (std::size_t at = 0; at < place.mArrivals.mWorstCount; ++at)
+                out += std::format("{} {}", at == 0 ? "" : ",", describeWorst(place.mArrivals.mWorst[at]));
+            out += '\n';
+        }
+
         out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", place.mFrames,
             place.mWallSeconds, place.at(Timing::Frame).getRate(), place.at(Timing::Frame).getLowRate());
 
@@ -201,7 +275,7 @@ namespace Rtx
                  << R"("scene": )" << asJson(place.mScene)
                  << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                         place.mWallSeconds, place.mHitPercent)
-                 << R"("crossings": )" << asJson(place.mCrossings)
+                 << R"("crossings": )" << asJson(place.mCrossings) << R"(, "arrivals": )" << asJson(place.mArrivals)
                  << std::format(R"(, "overlap": {{"mean": {:.4f}, "least": {}}}, "travelled": {:.4f}, )",
                         place.mOverlap.getMean(), place.mOverlap.mLeast, place.mTravelled);
 

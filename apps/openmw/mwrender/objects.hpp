@@ -1,6 +1,7 @@
 #ifndef GAME_RENDER_OBJECTS_H
 #define GAME_RENDER_OBJECTS_H
 
+#include <cstdint>
 #include <map>
 #include <string>
 
@@ -65,12 +66,19 @@ namespace MWRender
         Resource::ResourceSystem* mResourceSystem;
         SceneUtil::UnrefQueue& mUnrefQueue;
 
+        // The next SceneUtil::StableIdentity, counted in the order nodes are stood: what a renderer
+        // that mirrors the graph tells one root from another by, rather than by its address.
+        std::uint64_t mNextIdentity = 1;
+
         void insertBegin(const MWWorld::Ptr& ptr);
 
     public:
         Objects(Resource::ResourceSystem* resourceSystem, const osg::ref_ptr<osg::Group>& rootNode,
             SceneUtil::UnrefQueue& unrefQueue);
         ~Objects();
+
+        /// An identity for a node stood outside this class: the player's.
+        std::uint64_t takeIdentity() { return mNextIdentity++; }
 
         /// @param allowLight If false, no lights will be created, and particles systems will be removed.
         void insertModel(const MWWorld::Ptr& ptr, const std::string& model, bool allowLight = true);

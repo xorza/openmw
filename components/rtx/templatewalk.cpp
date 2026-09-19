@@ -134,6 +134,7 @@ namespace Rtx
     /// rasterizer's paging shows of it too.
     void TemplateWalk::descend(osg::Node& node)
     {
-        descendInWorld(node, mKinds.of(node), *this, [](osg::Sequence&) {});
+        descendInWorld(
+            node, mKinds.of(node), *this, [](osg::Sequence&) {}, [](unsigned int) {});
     }
 }

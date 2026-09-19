@@ -52,6 +52,9 @@ namespace MWRender
         /// Whether the hand-over rebuilt the scene from nothing, which a crossing is counted by.
         bool mRebuilt = false;
 
+        /// How many meshes this frame's upload built structures for, `SceneUpload::mArrivedMeshes`.
+        std::uint32_t mArrivedMeshes = 0;
+
         /// What the device answered for a frame behind, or nothing where it had finished none
         /// when this frame asked — the first frames of a run, and any frame the card was still
         /// busy for. Which frame it answers for is `FrameResult::mFrame`, never this one.

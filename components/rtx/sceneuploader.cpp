@@ -1,6 +1,7 @@
 #include "sceneuploader.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <span>
 
 #include "compositequeue.hpp"
@@ -104,6 +105,8 @@ namespace Rtx
 
             done.mDescribed = mTextures.getDescriptions().size();
             done.mUnreadable = mTextures.getUnreadable();
+            done.mArrivedMeshes = static_cast<std::uint32_t>(
+                mine ? tables.meshes().getArrived().size() : tables.meshes().getLiveCount());
 
             if (!mine)
             {

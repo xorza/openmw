@@ -657,6 +657,7 @@ namespace RtxTool
             return;
 
         mProgress.mSamples.add(frameMs, report.mSpend);
+        mProgress.mArrivals.add(frameMs, report.mArrivedMeshes, report.mSpend);
         mProgress.mWallMs += frameMs;
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
@@ -786,6 +787,7 @@ namespace RtxTool
         place.mClock = mProgress.mClock;
         place.mHitPercent = mProgress.mHitPercent;
         place.mCrossings = mProgress.mCrossings;
+        place.mArrivals = mProgress.mArrivals;
         place.mOverlap = mProgress.mOverlap;
 
         // How much of the line between the two ends the route flew, where it named both: a run

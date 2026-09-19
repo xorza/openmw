@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -58,6 +59,40 @@ namespace Rtx
     /// least and the mean, because the figure is one or two: a place that stands still holds the
     /// same number on every frame, and a route that drained the ring for an arrival holds one on
     /// that frame and two on the rest.
+    /// One frame of a run, kept for the report because it was among the worst: how long it took,
+    /// how many meshes its upload built structures for, and where the time went.
+    struct WorstFrame
+    {
+        double mFrameMs = 0.0;
+        std::uint32_t mArrivedMeshes = 0;
+        FrameSpend mSpend;
+    };
+
+    /// The frames whose upload extended the scene — a cell handed over, an actor entering with a
+    /// mesh nobody wore — and what they cost beside the rest, with the worst frames of the run
+    /// whatever they carried. What says whether the tail is the arrivals': a structure built on
+    /// the frame's own queue is a cost the frame that needed it pays, and this is the reading that
+    /// says how much, before anything is moved off it.
+    struct Arrivals
+    {
+        /// Frames whose upload extended or rebuilt the scene, and the meshes they brought.
+        std::uint32_t mFrames = 0;
+        std::uint32_t mMeshes = 0;
+
+        /// What those frames came to.
+        double mWorstMs = 0.0;
+        double mSumMs = 0.0;
+
+        /// The worst frames of the run, longest first, arrivals or not.
+        static constexpr std::size_t sKept = 3;
+        std::array<WorstFrame, sKept> mWorst{};
+        std::size_t mWorstCount = 0;
+
+        void add(double frameMs, std::uint32_t arrivedMeshes, const FrameSpend& spend);
+
+        double getMeanMs() const { return mFrames == 0 ? 0.0 : mSumMs / mFrames; }
+    };
+
     struct Overlap
     {
         std::uint32_t mLeast = 0;
@@ -127,6 +162,8 @@ namespace Rtx
         double mHitPercent = 0.0;
 
         Crossings mCrossings;
+
+        Arrivals mArrivals;
 
         Overlap mOverlap;
 

@@ -1,23 +1,19 @@
-# What this fork adds to `components-tests`, listed here so that upstream's list stays upstream's.
+# What this fork adds to the test binaries, listed here so that upstream's list stays upstream's.
 # Paths are relative to `apps/components_tests`, which is where this is included from.
+#
+# Three lists, because there are two binaries. `components-tests` holds what runs on any machine;
+# `rtx-gpu-tests` holds what opens a device, and fails outright where there is none, so a run on
+# a box without a driver cannot pass by skipping half the suite. The support list is compiled into
+# both.
 set(RTX_TEST_FILES
-    rtx/allocations.cpp
-    rtx/allocations.hpp
     rtx/alphaimage.cpp
-    rtx/bloompass.cpp
     rtx/bluenoise.cpp
-    rtx/bottomlevelstore.cpp
-    rtx/buffer.cpp
     rtx/cellgrid.cpp
     rtx/cellring.cpp
     rtx/cloudshell.cpp
     rtx/colour.cpp
-    rtx/commands.cpp
     rtx/compositequeue.cpp
-    rtx/computepipeline.cpp
-    rtx/device.cpp
     rtx/dispatch.cpp
-    rtx/dlss.cpp
     rtx/extractor/fixture.hpp
     rtx/extractor/lights.cpp
     rtx/extractor/materials.cpp
@@ -26,28 +22,15 @@ set(RTX_TEST_FILES
     rtx/extractor/skinning.cpp
     rtx/extractor/stats.cpp
     rtx/extractor/walk.cpp
-    rtx/fallbackseed.cpp
     rtx/fogbuilder.cpp
     rtx/frameimage.cpp
     rtx/frameoptions.cpp
-    rtx/framering.cpp
-    rtx/frames.cpp
     rtx/frameworld.cpp
-    rtx/geometry.hpp
-    rtx/gputimer.cpp
     rtx/graphlight.hpp
     rtx/groundreader.cpp
-    rtx/guipass.cpp
-    rtx/guiquad.hpp
-    rtx/guitextures.cpp
-    rtx/harness.cpp
-    rtx/harness.hpp
     rtx/instancerecord.cpp
-    rtx/layers.hpp
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp
-    rtx/memory.cpp
-    rtx/mipchainpass.cpp
     rtx/meshreader.cpp
     rtx/mipchain.cpp
     rtx/mirroridentity.cpp
@@ -57,59 +40,28 @@ set(RTX_TEST_FILES
     rtx/offscreentrace.cpp
     rtx/parallel.cpp
     rtx/physicaldevice.cpp
-    rtx/pipelinecache.cpp
-    rtx/probe.cpp
-    rtx/readstamp.cpp
     rtx/reconstruction.cpp
     rtx/requirements.cpp
     rtx/result.cpp
-    rtx/ripplepass.cpp
     rtx/runs.cpp
     rtx/scenedesc.cpp
     rtx/sceneuploader.cpp
     rtx/shading.cpp
     rtx/shadingmap.cpp
     rtx/shapefold.cpp
-    rtx/groundcompositepass.cpp
-    rtx/shadingpass.cpp
-    rtx/skinpass.cpp
     rtx/skybuilder.cpp
     rtx/skylight.cpp
     rtx/slots.cpp
-    rtx/slottable.cpp
     rtx/sourcetree.cpp
     rtx/spritelight.cpp
-    rtx/spritelightpass.cpp
-    rtx/stresspass.cpp
     rtx/spritelistsize.cpp
-    rtx/spritepasses.cpp
-    rtx/statistics.hpp
     rtx/stepped.cpp
-    rtx/structurestorage.cpp
     rtx/sun.cpp
     rtx/surface.cpp
     rtx/templatewalk.cpp
-    rtx/testtexture.hpp
     rtx/texels.cpp
-    rtx/texturearray.cpp
     rtx/texturebuilder.cpp
-    rtx/tracepipeline.cpp
-    rtx/visibility/filter.cpp
-    rtx/visibility/fixture.hpp
-    rtx/visibility/fog.cpp
-    rtx/visibility/frame.cpp
-    rtx/visibility/framecost.cpp
-    rtx/visibility/light.cpp
-    rtx/visibility/sea.cpp
-    rtx/visibility/sky.cpp
-    rtx/visibility/sprites.cpp
-    rtx/visibility/surfaces.cpp
-    rtx/visibility/water.cpp
     rtx/wavecascade.cpp
-    rtx/wavefield.cpp
-    rtx/waveline.cpp
-    rtx/wavemoments.hpp
-    rtx/wavepass.cpp
     rtx/wavespectrum.cpp
     rtx/worker.cpp
     rtxbench/benchrecord.cpp
@@ -127,6 +79,66 @@ set(RTX_TEST_FILES
     sky/sundisc.cpp
     sky/timeofday.cpp
 )
+
+set(RTX_TEST_SUPPORT
+    rtx/allocations.cpp
+    rtx/allocations.hpp
+    rtx/fallbackseed.cpp
+    rtx/geometry.hpp
+    rtx/guiquad.hpp
+    rtx/layers.hpp
+    rtx/statistics.hpp
+    rtx/testtexture.hpp
+    rtx/wavemoments.hpp
+)
+
+set(RTX_GPU_TEST_FILES
+    rtx/bloompass.cpp
+    rtx/bottomlevelstore.cpp
+    rtx/buffer.cpp
+    rtx/commands.cpp
+    rtx/computepipeline.cpp
+    rtx/device.cpp
+    rtx/dlss.cpp
+    rtx/framering.cpp
+    rtx/frames.cpp
+    rtx/gputimer.cpp
+    rtx/groundcompositepass.cpp
+    rtx/guipass.cpp
+    rtx/guitextures.cpp
+    rtx/harness.cpp
+    rtx/harness.hpp
+    rtx/memory.cpp
+    rtx/mipchainpass.cpp
+    rtx/pipelinecache.cpp
+    rtx/probe.cpp
+    rtx/readstamp.cpp
+    rtx/ripplepass.cpp
+    rtx/shadingpass.cpp
+    rtx/skinpass.cpp
+    rtx/slottable.cpp
+    rtx/spritelightpass.cpp
+    rtx/spritepasses.cpp
+    rtx/stresspass.cpp
+    rtx/structurestorage.cpp
+    rtx/texturearray.cpp
+    rtx/tracepipeline.cpp
+    rtx/visibility/filter.cpp
+    rtx/visibility/fixture.hpp
+    rtx/visibility/fog.cpp
+    rtx/visibility/frame.cpp
+    rtx/visibility/framecost.cpp
+    rtx/visibility/light.cpp
+    rtx/visibility/sea.cpp
+    rtx/visibility/sky.cpp
+    rtx/visibility/sprites.cpp
+    rtx/visibility/surfaces.cpp
+    rtx/visibility/water.cpp
+    rtx/wavefield.cpp
+    rtx/waveline.cpp
+    rtx/wavepass.cpp
+)
+
 
 # What is read off a fifo, where the platform has one.
 if (NOT WIN32)

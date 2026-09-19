@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <span>
 
@@ -22,6 +21,7 @@
 #include <components/nifosg/nifloader.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/skeleton.hpp>
+#include <components/sceneutil/stableidentity.hpp>
 
 #include "cellring.hpp"
 #include "lightbuilder.hpp"
@@ -46,10 +46,6 @@ namespace Rtx
         }
 
         constexpr std::size_t sPlacementBudget = 65536;
-
-        /// Nodes a walk passes: a loaded model is a transform over a `NiNode` over its shapes, so a
-        /// placement is one to two nodes, and the ring stands its cells with none.
-        constexpr std::size_t sNodeBudget = 2 * sPlacementBudget;
         constexpr std::size_t sMeshBudget = 16384;
         constexpr std::size_t sMaterialBudget = 16384;
         constexpr std::size_t sTextureBudget = 8192;
@@ -62,11 +58,13 @@ namespace Rtx
         constexpr std::size_t sEffectBudget = 256;
 
         /// What identifies one placement from one frame to the next: the anchor a walk starts from
-        /// and the node path under it, together, because a hundred crates share one geometry and,
-        /// walked from a shared template node, one path as well. Hashed rather than kept, because a
-        /// path is a vector of pointers per placement; folded on the way down, so the prefix every
-        /// sibling shares is worked out once. True for as long as the identity stands because the
-        /// walk holds every node it folds — `HeldPaths` — and the drawable is the mesh map's key.
+        /// and the node's place under it, folded on the way down so the prefix every sibling shares
+        /// is worked out once. The place is structural — which child of which child — from the
+        /// nearest node the engine stamped a `SceneUtil::StableIdentity` on, and that stamp
+        /// restarts the fold: a reference root is known by what it stands and not by what is
+        /// stood before it in the cell. A hundred crates share one geometry and, walked from a
+        /// shared template node, one structure as well, which the anchor and the stamps tell apart.
+        /// Nothing here reads an address, so nothing here has to be kept alive to keep it true.
         std::size_t identityWith(std::size_t key, const std::size_t part)
         {
             return (key ^ part) * 0x100000001b3ull;
@@ -77,9 +75,11 @@ namespace Rtx
             return identityWith(0xcbf29ce484222325ull, anchor);
         }
 
-        std::size_t identityWith(std::size_t key, const osg::Node* node)
+        /// A stamped node's identity, in a fold of its own so a stamp cannot collide with a
+        /// structural place under the same seed.
+        std::size_t identityStamped(std::size_t seed, const std::uint64_t id)
         {
-            return identityWith(key, std::hash<const osg::Node*>{}(node));
+            return identityWith(identityWith(seed, 0x9e3779b97f4a7c15ull), static_cast<std::size_t>(id));
         }
 
     }
@@ -118,6 +118,12 @@ namespace Rtx
         void apply(osg::Drawable& drawable) override;
 
     private:
+        /// What `node` is known as: its stamp under the walk's seed, or its place under its parent.
+        /// A stamp is looked for down to `SceneExtractor::setStampDepth` and no deeper, because the
+        /// look is a load off a line of the node the walk does not otherwise touch, and a walk is
+        /// fifty thousand nodes.
+        std::size_t identityOf(const osg::Node& node) const;
+
         /// Walks `node` and everything under it, under the identity the caller worked out for it.
         void enter(osg::Node& node, std::size_t identity);
 
@@ -177,9 +183,22 @@ namespace Rtx
         /// The local-to-world of the node being visited, above `mRoot`.
         osg::Matrix mHere;
 
+        /// The walk's seed, which a stamped node's identity restarts from.
+        std::size_t mSeed = 0;
+
         /// The identity of the path the walk is standing on, saved and restored around each
         /// descent beside `mShading`. `identityWith` says what it is made of and why it is carried.
         std::size_t mPathHash = 0;
+
+        /// Which child of its parent the node being entered is. Set by the loop that descends,
+        /// which is why every descent here is a loop of this walk's own and never `traverse`.
+        unsigned int mChildIndex = 0;
+
+        /// How many nodes are above the one being entered; nought at the root.
+        unsigned int mDepth = 0;
+
+        /// `SceneExtractor::getStampDepth`, read once at `begin`.
+        unsigned int mStampDepth = 0;
 
         /// The state sets in force where the walk is standing, nearest it last. Kept across walks
         /// and refilled, because a cell is tens of thousands of drawables and this is the frame
@@ -209,7 +228,11 @@ namespace Rtx
         mRoot = root;
         mFrame = frame;
         mHere = osg::Matrix();
+        mSeed = identity;
         mPathHash = identity;
+        mChildIndex = 0;
+        mDepth = 0;
+        mStampDepth = mExtractor.getStampDepth();
         mShading.clear();
 
         // The mirror's own sequence and never the game's. What this walk runs — the controllers
@@ -220,9 +243,18 @@ namespace Rtx
         mStamp->setFrameNumber(traversal);
     }
 
+    std::size_t MirrorTraversal::identityOf(const osg::Node& node) const
+    {
+        if (mDepth <= mStampDepth)
+            if (const SceneUtil::StableIdentity* stamped = SceneUtil::StableIdentity::find(node))
+                return identityStamped(mSeed, stamped->getId());
+
+        return identityWith(mPathHash, mChildIndex);
+    }
+
     void MirrorTraversal::apply(osg::Node& node)
     {
-        enter(node, identityWith(mPathHash, &node));
+        enter(node, identityOf(node));
     }
 
     void MirrorTraversal::enter(osg::Node& node, const std::size_t identity)
@@ -250,7 +282,8 @@ namespace Rtx
         const std::size_t held = mShading.size();
         const std::size_t above = mPathHash;
         mPathHash = identity;
-        mExtractor.holdPath(node);
+
+        ++mDepth;
 
         if (const osg::StateSet* own = node.getStateSet())
             pushShading(*own, false);
@@ -277,6 +310,7 @@ namespace Rtx
 
         mClass = outer;
         mPathHash = above;
+        --mDepth;
         mShading.resize(held);
     }
 
@@ -288,7 +322,9 @@ namespace Rtx
     /// system that comes back on after an hour is handed the hour in one step, as under a cull.
     void MirrorTraversal::descend(osg::Node& node, const NodeKind kind)
     {
-        descendInWorld(node, kind, *this, [this](osg::Sequence& frames) { frames.traverse(mSequenceClock); });
+        descendInWorld(
+            node, kind, *this, [this](osg::Sequence& frames) { frames.traverse(mSequenceClock); },
+            [this](const unsigned int child) { mChildIndex = child; });
     }
 
     /// Runs one node of an `osgParticle` simulation, and says whether that is what this node was.
@@ -321,6 +357,8 @@ namespace Rtx
         setVisitorType(CULL_VISITOR);
         setFrameStamp(mEmitterStamp);
 
+        // `traverse` and not a loop over children, because the processor's and the updater's own
+        // `traverse` is where they step: neither has a child to hand an index.
         node.traverse(*this);
 
         setFrameStamp(mStamp);
@@ -376,7 +414,7 @@ namespace Rtx
 
     void MirrorTraversal::apply(osg::Transform& node)
     {
-        enterTransform(node, identityWith(mPathHash, &node));
+        enterTransform(node, identityOf(node));
     }
 
     void MirrorTraversal::pushShading(const osg::StateSet& stateSet, const bool animated)
@@ -395,7 +433,7 @@ namespace Rtx
         if (const osg::StateSet* own = drawable.getStateSet())
             pushShading(*own, false);
 
-        mExtractor.addDrawable(drawable, identityWith(mPathHash, &drawable), mShading, placed(), mClass);
+        mExtractor.addDrawable(drawable, identityWith(mPathHash, mChildIndex), mShading, placed(), mClass);
 
         mShading.resize(held);
     }
@@ -414,7 +452,6 @@ namespace Rtx
         // on the insert that did it. Budgets past what a Morrowind exterior reaches at four cells
         // of distance, and a few hundred kilobytes of buckets apiece.
         mPlacements.reserve(sPlacementBudget);
-        mPaths.reserve(sNodeBudget);
         mMeshes.reserve(sMeshBudget, sDeformerBudget);
         mMaterials.reserve(sMaterialBudget, sTextureBudget, sAnimatedBudget);
         mEmitters.reserve(sEmitterBudget);
@@ -568,9 +605,6 @@ namespace Rtx
         mMaterials.retireHolds();
         mEmitters.retire();
 
-        // After the placements' sweep, which dropped every identity the released nodes were in.
-        mPaths.release();
-
         // After the sweep and not before it, so that the walk which fills the next epoch is the
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
@@ -697,11 +731,10 @@ namespace Rtx
         mPlacements.stamp(held);
 
         // A slot stands what the walk resolved this frame, or it is stood again: a deforming
-        // drawable whose source geometry was replaced, or a state set a controller rewrote into
-        // another material, is mirrored afresh under the path it kept. Never a path that is
-        // somebody else's, because every node in the key is held while the entry stands
-        // (`HeldPaths`). Moved, the slot would carry the old surface at the new place until the
-        // next sweep, standing on a row the sweep may free.
+        // drawable whose source geometry was replaced, a state set a controller rewrote into
+        // another material, or a sibling that shifted into this place when the one before it went,
+        // is mirrored afresh under the identity it kept. Moved, the slot would carry the old
+        // surface at the new place until the next sweep, standing on a row the sweep may free.
         Index& slot = held->second.mIndex;
         const MeshInstance& standing = mScene.placements().getRows()[slot].mInstance;
         if (standing.mMesh != resolved.mMesh || standing.mMaterial != resolved.mMaterial

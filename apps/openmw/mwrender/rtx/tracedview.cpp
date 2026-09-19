@@ -83,12 +83,12 @@ namespace MWRender
             std::memcpy(pixels + i * 4, colour, sizeof(colour));
         mTexture->unlock();
 
-        mHost.adoptView(*this);
+        mHost.getViews().adopt(*this);
     }
 
     TracedView::~TracedView()
     {
-        mHost.forgetView(*this);
+        mHost.getViews().forget(*this);
     }
 
     bool TracedView::coversFromAbove(const osg::Vec2f& over) const
@@ -127,7 +127,7 @@ namespace MWRender
         if (mCopyState != CopyState::NotWanted)
             mCopyState = CopyState::Queued;
 
-        mHost.redraw(*this);
+        mHost.getViews().redraw(*this);
     }
 
     void TracedView::draw()

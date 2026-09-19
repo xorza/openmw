@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <osg/Group>
 #include <osg/LOD>
 #include <osg/Node>
 #include <osg/NodeVisitor>
@@ -28,6 +29,22 @@ namespace Rtx
         return nearest;
     }
 
+    /// Hands every child of `node` to `visitor` in order, telling `enterChild` the index of each
+    /// first. What `osg::NodeVisitor::traverse` does, with the index said out loud.
+    template <class EnterChild>
+    void forEachChild(osg::Node& node, osg::NodeVisitor& visitor, EnterChild enterChild)
+    {
+        osg::Group* children = node.asGroup();
+        if (children == nullptr)
+            return;
+
+        for (unsigned int at = 0; at < children->getNumChildren(); ++at)
+        {
+            enterChild(at);
+            children->getChild(at)->accept(visitor);
+        }
+    }
+
     /// Descends into the children of `node` that are in the world, handing each to `visitor`. A
     /// switch is honoured, or `DayNightCallback` leaves the night lamp traced at noon and a
     /// harvested plant traced through the one it replaced. A sequence — `NiFltAnimationNode`, a
@@ -40,14 +57,21 @@ namespace Rtx
     /// @param stepSequence run on a sequence before its frame is read. The mirror runs the
     ///        flipbook's clock here, because it lives in a traversal this renderer does not run;
     ///        a template's clock is nobody's to run.
-    template <class StepSequence>
-    void descendInWorld(osg::Node& node, const NodeKind kind, osg::NodeVisitor& visitor, StepSequence stepSequence)
+    /// @param enterChild told which child of `node` is about to be handed to the visitor, before
+    ///        it is. The mirror folds that index into the child's identity; a template walk
+    ///        needs no identity and is told nothing.
+    template <class StepSequence, class EnterChild>
+    void descendInWorld(osg::Node& node, const NodeKind kind, osg::NodeVisitor& visitor, StepSequence stepSequence,
+        EnterChild enterChild)
     {
         if (osg::Switch* branches = node.asSwitch())
         {
             for (unsigned int at = 0; at < branches->getNumChildren(); ++at)
                 if (branches->getValue(at))
+                {
+                    enterChild(at);
                     branches->getChild(at)->accept(visitor);
+                }
 
             return;
         }
@@ -58,7 +82,10 @@ namespace Rtx
 
             const int shown = frames->getValue();
             if (shown >= 0 && shown < static_cast<int>(frames->getNumChildren()))
+            {
+                enterChild(static_cast<unsigned int>(shown));
                 frames->getChild(shown)->accept(visitor);
+            }
 
             return;
         }
@@ -66,11 +93,15 @@ namespace Rtx
         if (auto* levels = as<osg::LOD>(kind, NodeKind::Lod, node))
         {
             if (levels->getNumChildren() > 0)
-                levels->getChild(nearestLevel(*levels))->accept(visitor);
+            {
+                const unsigned int nearest = nearestLevel(*levels);
+                enterChild(nearest);
+                levels->getChild(nearest)->accept(visitor);
+            }
 
             return;
         }
 
-        visitor.traverse(node);
+        forEachChild(node, visitor, enterChild);
     }
 }

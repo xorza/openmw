@@ -78,6 +78,17 @@ namespace MWRender
         constexpr osg::Node::NodeMask sWorldTraversal
             = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater | Mask_Terrain);
 
+        /// What each walk this renderer makes over the one extractor is anchored at. Four roots the
+        /// walk cannot tell apart by structure, so each is named; the world's is nought, which is
+        /// what `SceneExtractor::extract` calls a caller that walks one whole graph.
+        enum Anchor : std::size_t
+        {
+            World = 0,
+            Sea = 1,
+            Rain = 2,
+            Effect = 3,
+        };
+
         /// What a walk of a loaded model may see: the world's mask without the player bit, which is
         /// stamped on nothing a content file holds. The cell ring is given this and never the
         /// world's, because a mask that moves makes `Rtx::CellRing::forget` read the ring from
@@ -110,6 +121,10 @@ namespace MWRender
         // loader, whose hidden bit is one bit rather than none so the update traversal still reaches
         // a hidden bone.
         mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
+
+        // Where the engine stamps its identities: the cell roots under the scene root and the
+        // reference roots under those, and the player beside the cells (`MWRender::Objects`).
+        mExtractor.setStampDepth(2);
 
         // What is left of the two is the sea, which this renderer stands: upstream's plane, as
         // `MWRender::Water` makes it, on a transform a frame moves.
@@ -205,15 +220,15 @@ namespace MWRender
         // `AutoTransform`s and this walk has to be told.
         mExtractor.setEye(Rtx::viewBasisOf(inverseView));
         Rtx::mirrorPrecipitation(
-            mExtractor, frame.mPrecipitation.getRainNode(), eye, frame.mWorld.mUnderwater, frameNumber);
-        Rtx::mirrorPrecipitation(
-            mExtractor, frame.mPrecipitation.getParticleNode(), eye, frame.mWorld.mUnderwater, frameNumber);
+            mExtractor, frame.mPrecipitation.getRainNode(), eye, frame.mWorld.mUnderwater, Anchor::Rain, frameNumber);
+        Rtx::mirrorPrecipitation(mExtractor, frame.mPrecipitation.getParticleNode(), eye, frame.mWorld.mUnderwater,
+            Anchor::Effect, frameNumber);
 
         // The sea, where the frame says there is one: hidden by its mask otherwise, as the
         // rasterizer's `updateVisible` hid the same plane, so the walk leaves no placement of it.
         mSea->setPosition(osg::Vec3f(mSeaCentre.x(), mSeaCentre.y(), frame.mWorld.mWater.mHeight));
         mSea->setNodeMask(frame.mWorld.mWater.isShown() ? ~0u : 0u);
-        mExtractor.extract(*mSea, osg::Matrixf::identity(), 0, frameNumber);
+        mExtractor.extract(*mSea, osg::Matrixf::identity(), Anchor::Sea, frameNumber);
 
         // The eye, the reach, the world's own grid and the hour, said once to the ring: what the
         // game has stood for itself is what the ring may not stand again, and its lamps burn at
@@ -240,7 +255,7 @@ namespace MWRender
         mRing.follow(around);
 
         // One walk over the whole graph, where every path is already distinct.
-        return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), 0, frameNumber, mRing);
+        return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), Anchor::World, frameNumber, mRing);
     }
 
     void WorldMirror::addRipples(std::span<const Rtx::RippleImpulse> impulses)

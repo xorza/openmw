@@ -32,9 +32,12 @@ namespace Rtx
     ///
     /// @param fall what is falling — the sky manager's rain box or its driven effect — or null for
     ///        a world with nothing of that kind over it.
+    /// @param anchor what tells this walk's placements from another's over the same extractor, as
+    ///        `SceneExtractor::extract` takes it: the rain and the driven effect are two roots the
+    ///        walk cannot tell apart by structure.
     /// @param frameNumber the frame the walk belongs to, as `SceneExtractor::extractWorld` takes it.
-    void mirrorPrecipitation(
-        SceneExtractor& extractor, osg::Node* fall, const osg::Vec3f& eye, bool underwater, std::size_t frameNumber);
+    void mirrorPrecipitation(SceneExtractor& extractor, osg::Node* fall, const osg::Vec3f& eye, bool underwater,
+        std::size_t anchor, std::size_t frameNumber);
 
     /// The deck and the star field a world with no sky has: nothing to draw, which the shader reads
     /// off the texture slot before it samples anything. Built whole and then named rather than by

@@ -15,8 +15,6 @@
 #include <components/rtxbench/benchrun.hpp>
 #include <components/testing/util.hpp>
 
-#include "../rtx/harness.hpp"
-
 namespace RtxTool
 {
     namespace
@@ -183,10 +181,10 @@ namespace RtxTool
 
     namespace
     {
-        /// Where the resource files the tool reads are copied to.
+        /// Where the resource files the tool reads are copied to: beside the compiled shaders.
         std::filesystem::path resources()
         {
-            return Rtx::Testing::getShaderDirectory().parent_path();
+            return std::filesystem::path(OPENMW_RTX_SHADER_DIR).parent_path();
         }
 
         TEST(RtxBenchSuiteTest, aSuiteFileIsSectionsOfViewNames)

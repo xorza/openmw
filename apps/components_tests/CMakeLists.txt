@@ -103,7 +103,7 @@ source_group(apps\\components-tests FILES ${UNITTEST_SRC_FILES})
 
 if (OPENMW_RTX)
     include(rtx/sources.cmake)
-    list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES} ${RTX_TEST_FILES_UPSTREAM})
+    list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_TEST_FILES_UPSTREAM})
 endif()
 
 openmw_add_executable(components-tests ${UNITTEST_SRC_FILES})
@@ -125,7 +125,25 @@ if (OPENMW_RTX)
 
     # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
     # only the latter are ours to keep warning-free.
-    openmw_rtx_sources(${RTX_TEST_FILES} ERRORS_ONLY ${RTX_TEST_FILES_UPSTREAM})
+    openmw_rtx_sources(${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ERRORS_ONLY ${RTX_TEST_FILES_UPSTREAM})
+
+    # The tests that open a device, as a binary of their own: `rtx/harness.cpp` refuses to start
+    # without one, so a machine with no driver fails this run instead of passing an empty one. The
+    # same `main.cpp`, because what it sets up — the settings' defaults — is what both binaries read.
+    openmw_add_executable(rtx-gpu-tests main.cpp ${RTX_GPU_TEST_FILES} ${RTX_TEST_SUPPORT})
+    target_link_libraries(rtx-gpu-tests
+        GTest::GTest
+        GMock::GMock
+        components
+        openmw-rtx openmw-rtx-bench openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan
+    )
+    openmw_rtx_sources(${RTX_GPU_TEST_FILES})
+    target_compile_definitions(rtx-gpu-tests
+        PRIVATE OPENMW_DATA_DIR=u8"${CMAKE_CURRENT_BINARY_DIR}/data"
+                OPENMW_PROJECT_SOURCE_DIR=u8"${PROJECT_SOURCE_DIR}")
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(rtx-gpu-tests ${CMAKE_THREAD_LIBS_INIT})
+    endif()
 endif()
 
 if (USE_QT)

@@ -152,9 +152,21 @@ namespace Rtx::Testing
         /// directly and a `Renderer` for the pixel suite, each in a validated and an unvalidated
         /// flavour. Closing them here is both the fix and where they belonged: a cache that lives
         /// for the run should end with the run, not with the process.
+        ///
+        /// **And no device is a failed run, not an empty one.** Every fixture skips with a reason
+        /// where the harness answers null, which is honest per test and a green run of nothing per
+        /// suite: a machine without a driver passed forty files that opened no device. This binary
+        /// holds only the tests that need one, so the first thing it does is ask for it.
         class DeviceEnvironment : public ::testing::Environment
         {
-            void SetUp() override { GTEST_FLAG_SET(death_test_style, "threadsafe"); }
+            void SetUp() override
+            {
+                GTEST_FLAG_SET(death_test_style, "threadsafe");
+
+                std::string reason;
+                if (getHarness(reason) == nullptr)
+                    FAIL() << "rtx-gpu-tests needs a device and this machine has none: " << reason;
+            }
 
             void TearDown() override
             {

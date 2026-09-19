@@ -94,6 +94,14 @@ namespace Rtx
         /// walk at every node, which is why it is not the drawable's own question like water.
         std::optional<InstanceClass> classOf(osg::Node::NodeMask mask) const;
 
+        /// How far under a walk's root a `SceneUtil::StableIdentity` is looked for: nought is the
+        /// root alone, which is what a caller that stamps nothing wants. The game stamps the
+        /// scene root's children and grandchildren — a cell root, and a reference root under it —
+        /// and says two; a look deeper than the stamps go is a line of every node loaded for
+        /// nothing.
+        void setStampDepth(unsigned int depth) { mStampDepth = depth; }
+        unsigned int getStampDepth() const { return mStampDepth; }
+
         /// Where the walks that follow are looked at from, for a billboard to face: the camera's
         /// own basis, `viewBasisOf` its inverse view. Nothing, which is what a fresh extractor
         /// holds, leaves a billboard at its base rotation.
@@ -183,10 +191,6 @@ namespace Rtx
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, InstanceClass what);
 
-        /// Holds `node` for the identities folded from its address — `HeldPaths`. Called for every
-        /// node the walk enters, before anything under it is placed.
-        void holdPath(const osg::Node& node) { mPaths.hold(node); }
-
         /// The state set a node's controllers write, or null where it has none. Applied here rather
         /// than left to a callback: a `SceneUtil::StateSetUpdater` as a cull callback writes a state
         /// set that exists only inside a cull traversal, and as an update callback alternates the
@@ -269,6 +273,9 @@ namespace Rtx
         /// Set in the constructor, because the default is asked of the loader rather than named.
         osg::Node::NodeMask mTraversalMask;
 
+        /// See `setStampDepth`.
+        unsigned int mStampDepth = 0;
+
         /// Which drawables are the sea. Zero means none of them, which is every caller that has not
         /// said otherwise.
         osg::Node::NodeMask mWaterMask = 0;
@@ -305,9 +312,6 @@ namespace Rtx
         /// Which slot each placement holds, and when it was last met. One lookup a placement a
         /// frame, and the scene keeps the transform.
         Kept<std::unordered_map<std::size_t, Known>> mPlacements{ mPass };
-
-        /// What keeps the keys above true. Released in `retire`, after the sweep.
-        HeldPaths mPaths;
 
         /// The drawables the walk met, and what poses the ones that deform.
         MeshResolver mMeshes{ mScene, mPass };

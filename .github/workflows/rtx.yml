@@ -213,7 +213,7 @@ jobs:
         run: apps/rtxtool/rtx debug build
 
       - name: Test
-        run: apps/rtxtool/rtx debug test
+        run: apps/rtxtool/rtx debug test --without-device
 
       - name: The backend without DLSS
         run: apps/rtxtool/rtx nodlss build openmw-rtx-vulkan

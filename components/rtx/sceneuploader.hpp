@@ -36,6 +36,10 @@ namespace Rtx
 
         Kind mKind = Kind::Placed;
 
+        /// How many meshes the scene gained since the last hand-over, which an `Extended` or a
+        /// `Rebuilt` upload built structures for on the frame's own queue. Nought for a `Placed`.
+        std::uint32_t mArrivedMeshes = 0;
+
         /// How many textures had to be described, which is zero on a `Placed`.
         std::size_t mDescribed = 0;
 

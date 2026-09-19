@@ -16,7 +16,7 @@
 namespace Rtx
 {
     void mirrorPrecipitation(SceneExtractor& extractor, osg::Node* fall, const osg::Vec3f& eye, const bool underwater,
-        const std::size_t frameNumber)
+        const std::size_t anchor, const std::size_t frameNumber)
     {
         if (fall == nullptr || underwater)
             return;
@@ -25,7 +25,7 @@ namespace Rtx
         // starts at the precipitation node, so the subtree is already chosen; a mask is only ever
         // excluding what a renderer draws for itself, and none of that is under here. As what
         // falls, so that a roof keeps it off.
-        extractor.extractFalling(*fall, osg::Matrixf::translate(eye), 0, frameNumber);
+        extractor.extractFalling(*fall, osg::Matrixf::translate(eye), anchor, frameNumber);
     }
 
     float sunGlareAmount(const Shaders::VisibilityConstants& frame)

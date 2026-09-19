@@ -336,12 +336,8 @@ namespace MWWorld
         float mSunsetDuration;
         float mSunPreSunsetTime;
 
-        /// The sky as this settles it, which both renderers read. `mTimeSettings` and `mResult`
-        /// are two of its fields under upstream's names, so the code that fills them reads as
-        /// upstream reads.
+        /// The sky as this settles it, which both renderers read.
         MWRender::SkyState mSky;
-
-        TimeOfDaySettings& mTimeSettings;
 
         // fading of night skydome
         TimeOfDayInterpolator<float> mNightFade;
@@ -372,7 +368,6 @@ namespace MWWorld
         ESM::RefId mNextWeather;
         ESM::RefId mQueuedWeather;
         std::map<ESM::RefId, RegionWeather> mRegions;
-        MWRender::WeatherResult& mResult;
 
         MWBase::Sound* mAmbientSound{ nullptr };
         ESM::RefId mPlayingAmbientSoundID;

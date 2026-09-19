@@ -1,21 +1,16 @@
 #include "rtxrenderer.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <format>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include <MyGUI_ITexture.h>
-#include <SDL_error.h>
-#include <SDL_stdinc.h>
 #include <SDL_video.h>
 #include <osg/Camera>
 #include <osg/FrameStamp>
@@ -65,7 +60,6 @@
 #include "../skystate.hpp"
 #include "../vismask.hpp"
 #include "classmasks.hpp"
-#include "rtxrun.hpp"
 #include "tracedground.hpp"
 #include "tracedoverlay.hpp"
 #include "tracedview.hpp"
@@ -154,22 +148,6 @@ namespace MWRender
         /// has to be nearer than anything the eye can find itself inside of.
         constexpr float sNear = 1.0f;
 
-        /// How long the window must report one size before the renderer is rebuilt for it.
-        ///
-        /// **Because rebuilding costs about as long as this waits.** A new extent releases every
-        /// target, allocates them again and uploads Ray Reconstruction's weights for the pair of
-        /// resolutions it is now between — about a tenth of a second. A window dragged across a
-        /// screen passes through hundreds of extents, and following each of them would draw the
-        /// drag at ten frames a second.
-        ///
-        /// So a gesture is followed once it stops. Until then the surface keeps the extent it has,
-        /// and what the compositor shows is that picture scaled — which is what a window being
-        /// dragged shows anyway.
-        ///
-        /// **Six frames at sixty.** Long enough that a drag settles into one rebuild, short enough
-        /// that letting go of a window edge and seeing the picture follow reads as immediate.
-        constexpr double sSettleSeconds = 0.1;
-
         /// Whether an environment variable is set to anything other than nothing or `0`.
         bool askedFor(const char* name)
         {
@@ -179,39 +157,11 @@ namespace MWRender
 
     }
 
-    std::optional<double> RtxRenderer::FrameSpan::enter(const std::chrono::steady_clock::time_point now)
-    {
-        const std::optional<double> since
-            = mEntered.has_value() ? std::optional(Rtx::since(*mEntered, now)) : std::nullopt;
-        mEntered = now;
-        return since;
-    }
-
-    double RtxRenderer::FrameSpan::sinceLeft(const std::chrono::steady_clock::time_point now) const
-    {
-        return Rtx::since(mLeft, now);
-    }
-
-    double RtxRenderer::FrameSpan::takePresent()
-    {
-        return std::exchange(mPresentMs, 0.0);
-    }
-
-    std::string_view RtxRenderer::SpeedReport::addFrame(const double frameMs)
-    {
-        if (!mRate.add(frameMs))
-            return {};
-
-        const auto written = std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
-        *written.out = '\0';
-
-        return std::string_view(mTitle.data(), static_cast<std::size_t>(written.out - mTitle.data()));
-    }
-
     RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* run)
-        : mUpdateVisitor(new Rtx::PoseUpdate)
+        : mInstalled(run != nullptr ? *run : playedSetup(mPlayed))
+        , mWindow(mInstalled.mSetup.mHeadless)
+        , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
-        , mInstalled(run != nullptr ? *run : playedSetup(mPlayed))
         , mMirror(mInstalled.mSetup.mMirror)
     {
         const Rtx::RunSetup& setup = mInstalled.mSetup;
@@ -229,16 +179,6 @@ namespace MWRender
 
         adopt(*camera, *frameStamp, *stats);
 
-        createWindow(setup.mHeadless);
-
-        // The window's own size, which `fitToWindow` asks for again on every frame after this one.
-        // Kept, so that the first of those sees a size that has already settled.
-        int width = 0;
-        int height = 0;
-        SDL_GetWindowSizeInPixels(mWindow.get(), &width, &height);
-        mAskedWidth = static_cast<std::uint32_t>(std::max(width, 1));
-        mAskedHeight = static_cast<std::uint32_t>(std::max(height, 1));
-
         Rtx::RendererOptions options;
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
 
@@ -252,8 +192,8 @@ namespace MWRender
         // is not compared with itself, and the seconds it saves at start are the player's.
         if (run == nullptr)
             options.mCacheDirectory = spec.mCachePath;
-        options.mWidth = mAskedWidth;
-        options.mHeight = mAskedHeight;
+        options.mWidth = mWindow.getWidth();
+        options.mHeight = mWindow.getHeight();
         options.mWindow = mWindow.get();
         options.mVerticalSync = Settings::video().mVsyncMode;
         // **The run's answer.** A launcher making a measurement says on its command line whether
@@ -309,10 +249,7 @@ namespace MWRender
 
         Log(Debug::Info) << "Ray tracing on " << mRenderer->describeDevice();
 
-        // **The renderer's own extent and not SDL's.** A windowed backend sizes itself to the
-        // surface, and on a scaled or tiling compositor that is not what the window was asked for.
-        // Everything above reads the viewport, so it has to be told what was actually built.
-        fitToWindow();
+        mWindow.fit(*mRenderer, getCamera());
 
         // **The negative test, and it is the whole claim of this path in one line.** Nothing above
         // here may have made a GL context: not the window, not a realize operation, not an
@@ -343,25 +280,6 @@ namespace MWRender
         // `Engine` has stopped the screenshot writer by now, so no write on the queue still holds
         // an image of a frame this owns the memory for. The members go in the order they are
         // declared for: the frozen texture, the backend, the window.
-    }
-
-    void RtxRenderer::createWindow(const bool hidden)
-    {
-        // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** No GL context is
-        // ever made, which is the point of the whole path.
-        applyWindowHints();
-        const WindowPlacement placement = describeWindow(SDL_WINDOW_VULKAN);
-
-        // **Hidden and not absent.** A surface still needs a window, and a swapchain built on one
-        // nobody is looking at costs a present per frame and nothing else — so a headless run is
-        // the same renderer rather than a second path through it. `SDL_WINDOW_HIDDEN` also keeps
-        // the compositor from raising a window over whatever the person running it is doing.
-        const Uint32 flags = hidden ? (placement.mFlags | SDL_WINDOW_HIDDEN) : placement.mFlags;
-
-        mWindow.reset(
-            SDL_CreateWindow("OpenMW", placement.mX, placement.mY, placement.mWidth, placement.mHeight, flags));
-        if (mWindow == nullptr)
-            throw std::runtime_error(std::string("failed to create SDL window: ") + SDL_GetError());
     }
 
     void RtxRenderer::updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor)
@@ -544,40 +462,6 @@ namespace MWRender
         updateEye(getCamera(), *mUpdateVisitor);
     }
 
-    void RtxRenderer::fitToWindow()
-    {
-        int width = 0;
-        int height = 0;
-        SDL_GetWindowSizeInPixels(mWindow.get(), &width, &height);
-
-        const osg::Timer_t now = osg::Timer::instance()->tick();
-        const auto wide = static_cast<std::uint32_t>(std::max(width, 1));
-        const auto high = static_cast<std::uint32_t>(std::max(height, 1));
-
-        if (wide != mAskedWidth || high != mAskedHeight)
-        {
-            mAskedWidth = wide;
-            mAskedHeight = high;
-            mAskedSince = now;
-        }
-
-        if (osg::Timer::instance()->delta_s(mAskedSince, now) < sSettleSeconds)
-            return;
-
-        // **Handed over on every settled frame, because whether it changes anything is the
-        // backend's to say.** It knows two things this does not: the extent the surface settled on,
-        // which is not always the one it was asked for, and whether the swapchain has been told it
-        // is stale. Stopping here on the window's own size would answer the first wrongly and would
-        // never rebuild for the second — a swapchain that went stale without moving then failed its
-        // present for good. `Presenter::wantsResize` says no on a comparison where neither has
-        // happened, which is what makes handing it over every frame cost a comparison.
-        mRenderer->resize(mAskedWidth, mAskedHeight);
-
-        // Whatever the backend settled on, which is what the trace and the GUI are both sized to.
-        const Rtx::FrameExtents extents = mRenderer->getExtents();
-        getCamera().setViewport(0, 0, static_cast<int>(extents.mOutputWidth), static_cast<int>(extents.mOutputHeight));
-    }
-
     void RtxRenderer::drawGui()
     {
         // **Between the frame and the present**, because the GUI goes over the finished picture and
@@ -605,73 +489,20 @@ namespace MWRender
         return PoseMoment{ .mStamp = getFrameStamp(), .mImages = *getResources().getImageManager() };
     }
 
-    void RtxRenderer::redraw(TracedView& view)
-    {
-        if (std::find(mDeferred.begin(), mDeferred.end(), &view) == mDeferred.end())
-            mDeferred.push_back(&view);
-    }
-
-    void RtxRenderer::adoptView(TracedView& view)
-    {
-        mViews.push_back(&view);
-    }
-
-    TracedView* RtxRenderer::findWorldView(const osg::Vec2f& over) const
-    {
-        const auto found = std::find_if(
-            mViews.begin(), mViews.end(), [&](const TracedView* view) { return view->coversFromAbove(over); });
-        return found != mViews.end() ? *found : nullptr;
-    }
-
-    void RtxRenderer::forgetView(TracedView& view)
-    {
-        std::erase(mViews, &view);
-        std::erase(mDeferred, &view);
-
-        // Nulled rather than erased: a flush may be walking this, and a view that went away from
-        // inside one must not move the elements after it.
-        std::replace(mDrawing.begin(), mDrawing.end(), &view, static_cast<TracedView*>(nullptr));
-    }
-
     double RtxRenderer::drawViews()
     {
         mPhase.expect(Phase::Views, Phase::Run);
-        assert(mDrawing.empty() && "drawViews inside drawViews");
+        assert(!mViews.isDrawing() && "drawViews inside drawViews");
 
         // **Asked for before there is a world, every time a game starts.** A cell asks for its map
         // tile as it loads, which is the frame before the one that first mirrors it; the tile is
         // drawn when there is something to draw it against rather than left blank until the local
         // map happens to ask again.
-        if (mDeferred.empty() || !mHasScene)
+        if (!mViews.hasDeferred() || !mHasScene)
             return 0.0;
 
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
-
-        mDrawing.swap(mDeferred);
-        mDeferred.clear();
-
-        std::uint32_t world = 0;
-        for (TracedView* view : mDrawing)
-        {
-            if (view == nullptr)
-                continue;
-
-            // Held over in the order asked, behind nothing asked since: `mDeferred` is empty until
-            // the first one is put back.
-            if (view->isOfWorld() && world == sWorldViewsPerFrame)
-            {
-                mDeferred.push_back(view);
-                continue;
-            }
-
-            if (view->isOfWorld())
-                ++world;
-
-            view->draw();
-        }
-
-        mDrawing.clear();
-
+        mViews.draw(sWorldViewsPerFrame);
         return Rtx::since(began, std::chrono::steady_clock::now());
     }
 
@@ -705,9 +536,9 @@ namespace MWRender
         // Summed and not assigned: a loading screen presents through `renderGui` as often as it
         // likes between two traces, and every one of those is inside the frame the next row is for.
         const std::chrono::steady_clock::time_point ended = std::chrono::steady_clock::now();
-        mSpan.addPresent(Rtx::since(began, ended));
+        mTimer.addPresent(Rtx::since(began, ended));
 
-        mSpan.leave(ended);
+        mTimer.leave(ended);
         mPhase.step(Phase::Between, Phase::Gui);
     }
 
@@ -886,8 +717,8 @@ namespace MWRender
         // `describeTrace` refused each close a span of their own: entered at the trace, the first
         // traced frame after any of those reported the whole gap as one frame.
         const std::chrono::steady_clock::time_point arrived = std::chrono::steady_clock::now();
-        report.mSpend.at(Rtx::Timing::Update) = mSpan.sinceLeft(arrived);
-        const std::optional<double> since = mSpan.enter(arrived);
+        report.mSpend.at(Rtx::Timing::Update) = mTimer.sinceLeft(arrived);
+        const std::optional<double> since = mTimer.enter(arrived);
 
         // The sky's own clock, stepped where the game stepped the dome's: every unpaused frame the
         // sky is on, whether or not this one is drawn.
@@ -896,7 +727,7 @@ namespace MWRender
 
         // **Ahead of the trace and not after the present**, so the frame this draws is the one the
         // window's own extent asked for rather than the one behind it.
-        fitToWindow();
+        mWindow.fit(*mRenderer, getCamera());
 
         // **A frame with the world hidden is the interface and nothing else.** No walk, because the
         // update traversal did not run either; no trace, because the interface covers every pixel of
@@ -954,7 +785,7 @@ namespace MWRender
         mMirror.settle();
 
         // After the sweep, because the sweep is this renderer's and not the game's.
-        mSpan.leave(std::chrono::steady_clock::now());
+        mTimer.leave(std::chrono::steady_clock::now());
     }
 
     void RtxRenderer::traceWorld(
@@ -1021,6 +852,7 @@ namespace MWRender
         const Rtx::SceneUpload handed = mMirror.hand(*mRenderer, report.mSpend);
         report.mSpend.at(Rtx::Timing::Place) = Rtx::since(handing, std::chrono::steady_clock::now());
         report.mRebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
+        report.mArrivedMeshes = handed.mArrivedMeshes;
 
         mHasScene = true;
 
@@ -1137,7 +969,7 @@ namespace MWRender
         report.mConstants = constants;
 
         report.mSpend.at(Rtx::Timing::Trace) = Rtx::since(tracing, std::chrono::steady_clock::now());
-        report.mSpend.at(Rtx::Timing::Present) = mSpan.takePresent();
+        report.mSpend.at(Rtx::Timing::Present) = mTimer.takePresent();
 
         if (since.has_value())
         {
@@ -1153,9 +985,8 @@ namespace MWRender
 
             // Once a second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
-            if (const std::string_view title = mSpeed.addFrame(*since);
-                !title.empty() && (SDL_GetWindowFlags(mWindow.get()) & SDL_WINDOW_HIDDEN) == 0)
-                SDL_SetWindowTitle(mWindow.get(), title.data());
+            if (const std::string_view title = mTimer.addFrame(*since); !title.empty())
+                mWindow.setTitle(title.data());
         }
     }
 }

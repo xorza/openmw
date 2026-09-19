@@ -3,7 +3,9 @@
 #
 #   rtx <flavour> build [targets]        configure once, build the harness, the game and the tests,
 #                                        or the targets named
-#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky*, then openmw-tests Rtx*
+#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky*, rtx-gpu-tests, then openmw-tests
+#                                        Rtx*; `--without-device` leaves the GPU binary out, for a
+#                                        box with no driver that says so
 #   rtx <flavour> game [args]            openmw on the quicksave
 #   rtx <flavour> setup <morrowind dir>  write the openmw.cfg a fresh box has none of
 #   rtx <flavour> repeat [--pairs=N] [bench args]
@@ -64,7 +66,7 @@ fi
 flavour="${1-}"
 what="${2-}"
 if [ -z "$flavour" ] || [ -z "$what" ]; then
-    sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 2
 fi
 shift 2
@@ -81,7 +83,7 @@ describeFlavour() {
     case "$flavour" in
         debug)
             validation=sync
-            targets=(openmw-rtxtool openmw components-tests openmw-tests)
+            targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
             ;;
         release)
             validation=off
@@ -93,7 +95,7 @@ describeFlavour() {
                 exit 2
             fi
             validation=sync
-            targets=(openmw-rtxtool openmw components-tests openmw-tests)
+            targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
 
             # **`protect_shadow_gap=0` is not a preference — without it there is no device at all.**
             # The NVIDIA driver maps its own enormous address ranges, ASan's shadow gap is mapped
@@ -113,7 +115,7 @@ describeFlavour() {
             ;;
         nodlss)
             validation=sync
-            targets=(openmw-rtxtool openmw components-tests openmw-tests)
+            targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
             ;;
         *)
             echo "rtx: no flavour is called '$flavour' — debug, release, asan or nodlss" >&2
@@ -444,33 +446,24 @@ compileWithoutDlss() {
     )
 }
 
-# **Three processes for the components tests**, through gtest's own sharding, because the pixel
-# tests are one process waiting on the device: a frame, a readback, a wait. Each shard pays the
-# device and the shared renderer again, in parallel, and the three together take about half the
-# wall time of one. The pipeline cache writes through a uniquely named temporary, so three
-# closing at once is a rename each. Each shard's output goes to a file of its own and is printed
-# whole where it failed, so a failure reads as one process's.
-runTests() {
-    if [ ! -x "$build/components-tests" ]; then
-        echo "the $flavour build has no tests: \`rtx debug test\` runs them" >&2
-        return 1
-    fi
-
+# **Three processes for the GPU tests**, through gtest's own sharding, because the pixel tests
+# are one process waiting on the device: a frame, a readback, a wait. Each shard pays the device
+# and the shared renderer again, in parallel, and the three together take about half the wall
+# time of one. The pipeline cache writes through a uniquely named temporary, so three closing at
+# once is a rename each. Each shard's output goes to a file of its own and is printed whole where
+# it failed, so a failure reads as one process's.
+runGpuTests() {
     local shards=3 out status=0 shard
     out="$(mktemp -d)"
     for shard in $(seq 0 $((shards - 1))); do
         (cd "$build" && GTEST_TOTAL_SHARDS="$shards" GTEST_SHARD_INDEX="$shard" \
-            ./components-tests --gtest_filter='Rtx*:Sky*' "$@" > "$out/$shard.log" 2>&1) &
+            ./rtx-gpu-tests "$@" > "$out/$shard.log" 2>&1; echo $? > "$out/$shard.status") &
     done
+    wait
+    # The process's own answer and not a reading of its log: a run refused for want of a device
+    # fails with no test named, and is a failure all the same.
     for shard in $(seq 0 $((shards - 1))); do
-        if ! wait -n; then
-            status=1
-        fi
-    done
-    for shard in $(seq 0 $((shards - 1))); do
-        if grep -q '^\[  PASSED  \]' "$out/$shard.log" && ! grep -q '^\[  FAILED  \]' "$out/$shard.log"; then
-            # The skipped line too: without a device every RTX test skips, and a log that says so is
-            # the difference between a pass and a machine with nothing to test on.
+        if [ "$(cat "$out/$shard.status")" -eq 0 ]; then
             grep -E '^\[==========\] .* ran|^\[  PASSED  \]|^\[  SKIPPED \]' "$out/$shard.log" \
                 | sed "s/^/shard $shard: /"
         else
@@ -480,9 +473,35 @@ runTests() {
         fi
     done
     rm -rf "$out"
-    [ "$status" -eq 0 ] || return 1
+    return "$status"
+}
 
-    (cd "$build" && ./openmw-tests --gtest_filter='Rtx*' "$@")
+# **The CPU tests in one process, the GPU tests in three, the game's in one.** The GPU binary
+# refuses to start where there is no device, so a box without a driver names `--without-device`
+# and gets the other two; a run that says nothing about its device is one that has one.
+runTests() {
+    if [ ! -x "$build/components-tests" ]; then
+        echo "the $flavour build has no tests: \`rtx debug test\` runs them" >&2
+        return 1
+    fi
+
+    local withDevice=1 args=()
+    for arg in "$@"; do
+        case "$arg" in
+            --without-device) withDevice=0 ;;
+            *) args+=("$arg") ;;
+        esac
+    done
+
+    (cd "$build" && ./components-tests --gtest_filter='Rtx*:Sky*' "${args[@]}") || return 1
+
+    if [ "$withDevice" -eq 1 ]; then
+        runGpuTests "${args[@]}" || return 1
+    else
+        echo "rtx-gpu-tests: left out, as --without-device asked"
+    fi
+
+    (cd "$build" && ./openmw-tests --gtest_filter='Rtx*' "${args[@]}")
 }
 
 # **Two processes and not two stops of one.** A second stop starts from the world the first one
@@ -562,7 +581,7 @@ case "$what" in
         buildTargets "${@:-${targets[@]}}"
         ;;
     test)
-        buildTargets components-tests openmw-tests
+        buildTargets components-tests rtx-gpu-tests openmw-tests
         runTests "$@"
         ;;
     setup)

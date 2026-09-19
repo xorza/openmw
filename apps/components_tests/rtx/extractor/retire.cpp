@@ -21,6 +21,7 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shapefold.hpp>
+#include <components/sceneutil/stableidentity.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace Rtx::Testing
@@ -89,15 +90,14 @@ namespace Rtx::Testing
             EXPECT_FALSE(watch.valid()) << "the sweep dropped the entry and kept the drawable alive";
         }
 
-        /// **The same figure, torn one level up.** A placement is known by the path of nodes over
-        /// its drawable, folded to a hash of their addresses — and the drawable a change of clothes
-        /// keeps is the shared mesh, while the nodes over it are freed and built again. Whether the
-        /// new nodes land where the old ones were is the allocator's, so with nothing holding the
-        /// old nodes the same change was a placement kept on one run and a placement stood on the
-        /// next, and two runs of one scene disagreed on their slots. The walk holds every node it
-        /// folds until the sweep after the next walk, so the replacement cannot land where the old
-        /// part was, and stands as a new placement every time.
-        TEST_F(RtxSceneExtractorTest, aNodeOverADrawableKeepsItsAddressUntilTheSweepReleasesIt)
+        /// **The same figure, torn one level up, and the walk holds nothing for it.** A placement is
+        /// known by where its drawable stands in the structure under the nearest stamped node —
+        /// which child of which child — and never by a node's address. So a part the engine frees
+        /// and builds again in the same place, as `NpcAnimation::updateParts` does for a body part
+        /// whose mesh the cache shares, is the placement it replaces, moved: it keeps its slot and
+        /// the history a reprojection reads. Nothing is held to make that true, so the freed node
+        /// goes the moment the graph lets it go.
+        TEST_F(RtxSceneExtractorTest, aNodeRebuiltInItsPlaceIsThePlacementItReplaces)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
             osg::ref_ptr<osg::Geometry> shared = makeQuad();
@@ -108,42 +108,140 @@ namespace Rtx::Testing
             walk(*root);
             ASSERT_EQ(mScene.placements().getRows().size(), 1u);
             ASSERT_TRUE(mExtractor.retire().empty());
+            mScene.placements().advance();
 
-            const osg::MatrixTransform* was = part.get();
             osg::observer_ptr<osg::MatrixTransform> watch = part;
 
-            // The graph lets go of the node and keeps the drawable, as `NpcAnimation::updateParts`
-            // does for a part whose mesh the cache shares. Only the walk holds the node now.
+            // The graph lets go of the node and keeps the drawable. Nothing holds the node now.
             root->removeChild(part);
             part = nullptr;
-            ASSERT_TRUE(watch.valid()) << "the walk let the node go while its placement still stood";
-            ASSERT_EQ(was->referenceCount(), 1) << "something other than the held paths is holding it";
+            EXPECT_FALSE(watch.valid()) << "the walk held a node the graph let go of";
 
             osg::ref_ptr<osg::MatrixTransform> replacement
                 = new osg::MatrixTransform(osg::Matrix::translate(2.0, 0.0, 0.0));
             replacement->addChild(shared);
-            ASSERT_NE(replacement.get(), was) << "the replacement landed on the retired node's address";
             root->addChild(replacement);
 
             mScene.clearPlacement();
             const ExtractionStats again = walk(*root, 0, 1);
 
-            // A second placement of the one mesh, and not the first one moved: a restand keeps a
-            // slot and its previous transform, and this part has no previous.
+            // The one placement, moved from where the part stood to where its replacement does.
             EXPECT_EQ(again.mMeshesReused, 1u);
             EXPECT_EQ(again.mInstances, 1u);
             EXPECT_EQ(again.mRestood, 0u);
-            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
-            EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(2.0f, 0.0f, 0.0f));
-            EXPECT_EQ(mScene.placements().getRows()[1].mPrevious.getTrans(), osg::Vec3f(2.0f, 0.0f, 0.0f));
+            ASSERT_EQ(mScene.placements().getRows().size(), 1u);
+            ASSERT_EQ(mScene.placements().getMoved().size(), 1u);
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(2.0f, 0.0f, 0.0f));
+            EXPECT_EQ(mScene.placements().getRows()[0].mPrevious.getTrans(), osg::Vec3f(1.0f, 0.0f, 0.0f));
 
-            // Held through this walk, because the placement folded from it stood until now; let go
-            // by the sweep that dropped the placement.
-            EXPECT_TRUE(watch.valid()) << "the node went before the sweep that dropped its placement";
-            EXPECT_TRUE(mExtractor.retire().empty()) << "the shared mesh is still placed";
+            EXPECT_TRUE(mExtractor.retire().empty()) << "nothing went: the placement was carried";
             EXPECT_EQ(mScene.placements().getCounts().mPlaced, 1u);
-            EXPECT_FALSE(mScene.placements().getRows()[0].mInstance.isPlaced());
-            EXPECT_FALSE(watch.valid()) << "the sweep dropped the placement and kept its node alive";
+        }
+
+        /// **A stamped node is known by its stamp, wherever it sits among its siblings.** The engine
+        /// stamps every reference root, so a crate is the same placement after the crate before it
+        /// in the cell has gone — which under a structural identity alone it would not be.
+        TEST_F(RtxSceneExtractorTest, aStampedNodeKeepsItsPlacementWhenTheSiblingBeforeItGoes)
+        {
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            osg::ref_ptr<osg::Geometry> shared = makeQuad();
+            osg::ref_ptr<osg::MatrixTransform> first = new osg::MatrixTransform(osg::Matrix::translate(1.0, 0.0, 0.0));
+            osg::ref_ptr<osg::MatrixTransform> second = new osg::MatrixTransform(osg::Matrix::translate(5.0, 0.0, 0.0));
+            first->addChild(shared);
+            second->addChild(shared);
+            SceneUtil::StableIdentity::stamp(*first, 7);
+            SceneUtil::StableIdentity::stamp(*second, 8);
+            root->addChild(first);
+            root->addChild(second);
+            mExtractor.setStampDepth(1);
+
+            walk(*root);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
+            ASSERT_EQ(placedAt(mScene, 1), osg::Vec3f(5.0f, 0.0f, 0.0f));
+            ASSERT_TRUE(mExtractor.retire().empty());
+            mScene.placements().advance();
+
+            root->removeChild(first);
+            mScene.clearPlacement();
+            const ExtractionStats again = walk(*root, 0, 1);
+
+            // The second stands where it stood, in its own slot, and did not move: it is not the
+            // first's placement carried to a new place.
+            EXPECT_EQ(again.mInstances, 1u);
+            EXPECT_EQ(again.mRestood, 0u);
+            EXPECT_TRUE(mScene.placements().getMoved().empty()) << "a still crate reported a move";
+            EXPECT_TRUE(mScene.placements().getRows()[1].mInstance.isPlaced());
+
+            mExtractor.retire();
+            EXPECT_FALSE(mScene.placements().getRows()[0].mInstance.isPlaced()) << "the first's slot was kept";
+            EXPECT_EQ(mScene.placements().getCounts().mPlaced, 1u);
+        }
+
+        /// **A stamp deeper than the walk was told to look is not read**, so the same two crates
+        /// under a walk told nought are known by their places alone: the second is walked as the
+        /// first, moved. The depth is what keeps the look off the fifty thousand nodes under the
+        /// stamps, and this is what says the look actually stops there.
+        TEST_F(RtxSceneExtractorTest, aStampBelowTheStatedDepthIsNotRead)
+        {
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            osg::ref_ptr<osg::Geometry> shared = makeQuad();
+            osg::ref_ptr<osg::MatrixTransform> first = new osg::MatrixTransform(osg::Matrix::translate(1.0, 0.0, 0.0));
+            osg::ref_ptr<osg::MatrixTransform> second = new osg::MatrixTransform(osg::Matrix::translate(5.0, 0.0, 0.0));
+            first->addChild(shared);
+            second->addChild(shared);
+            SceneUtil::StableIdentity::stamp(*first, 7);
+            SceneUtil::StableIdentity::stamp(*second, 8);
+            root->addChild(first);
+            root->addChild(second);
+            ASSERT_EQ(mExtractor.getStampDepth(), 0u) << "a fresh extractor reads stamps on the root alone";
+
+            walk(*root);
+            ASSERT_TRUE(mExtractor.retire().empty());
+            mScene.placements().advance();
+
+            root->removeChild(first);
+            mScene.clearPlacement();
+            walk(*root, 0, 1);
+
+            ASSERT_EQ(mScene.placements().getMoved().size(), 1u);
+            EXPECT_EQ(mScene.placements().getMoved()[0], 0u);
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(5.0f, 0.0f, 0.0f));
+        }
+
+        /// **And an unstamped node is known by its place, so a sibling that shifts into another's
+        /// place takes over that placement.** The trade the structural identity makes, said out
+        /// loud: two like parts under one unstamped node and the first goes, the second is walked as
+        /// the first, moved. One frame of history read from where the first stood, for the siblings
+        /// of one node — and no address, no hold and no allocator anywhere in the answer.
+        TEST_F(RtxSceneExtractorTest, anUnstampedNodeIsKnownByItsPlaceAmongItsSiblings)
+        {
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            osg::ref_ptr<osg::Geometry> shared = makeQuad();
+            osg::ref_ptr<osg::MatrixTransform> first = new osg::MatrixTransform(osg::Matrix::translate(1.0, 0.0, 0.0));
+            osg::ref_ptr<osg::MatrixTransform> second = new osg::MatrixTransform(osg::Matrix::translate(5.0, 0.0, 0.0));
+            first->addChild(shared);
+            second->addChild(shared);
+            root->addChild(first);
+            root->addChild(second);
+
+            walk(*root);
+            ASSERT_EQ(mScene.placements().getRows().size(), 2u);
+            ASSERT_TRUE(mExtractor.retire().empty());
+            mScene.placements().advance();
+
+            root->removeChild(first);
+            mScene.clearPlacement();
+            const ExtractionStats again = walk(*root, 0, 1);
+
+            EXPECT_EQ(again.mInstances, 1u);
+            EXPECT_EQ(again.mRestood, 0u);
+            ASSERT_EQ(mScene.placements().getMoved().size(), 1u);
+            EXPECT_EQ(mScene.placements().getMoved()[0], 0u);
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(5.0f, 0.0f, 0.0f));
+            EXPECT_EQ(mScene.placements().getRows()[0].mPrevious.getTrans(), osg::Vec3f(1.0f, 0.0f, 0.0f));
+
+            mExtractor.retire();
+            EXPECT_FALSE(mScene.placements().getRows()[1].mInstance.isPlaced()) << "the second's old slot was kept";
         }
 
         /// A mesh and a material of the scene's own, which no drawable names.
@@ -286,22 +384,21 @@ namespace Rtx::Testing
             EXPECT_EQ(after.mMeshesAdded, 0u) << "a survivor was re-added rather than recognised";
             EXPECT_EQ(after.mMeshesReused, 2u);
 
-            // **Five slots and two standing in them.** The three walked under `whole` are gone —
-            // that graph is not walked any more, so the sweep took their placements — and the two
-            // walked under `less` are different placements of the same geometry, so they took slots
-            // of their own. A dropped placement leaves its slot behind rather than closing the gap.
+            // **Three slots and two standing in them.** A placement is its place in the structure:
+            // the walk under `less` finds the first quad where it was, and in the second's place a
+            // different mesh, so that placement is stood again in the slot it freed. The third
+            // quad's old place is what nothing walks any more, and the sweep took it. A dropped
+            // placement leaves its slot behind rather than closing the gap.
             ASSERT_EQ(mScene.placements().getCounts().mPlaced, 2u);
-            ASSERT_EQ(mScene.placements().getRows().size(), 5u);
-            for (std::size_t gap = 0; gap < 3; ++gap)
-                EXPECT_FALSE(mScene.placements().getRows()[gap].mInstance.isPlaced())
-                    << "slot " << gap << " should be a gap";
+            ASSERT_EQ(mScene.placements().getRows().size(), 3u);
+            EXPECT_FALSE(mScene.placements().getRows()[2].mInstance.isPlaced()) << "slot 2 should be a gap";
 
-            // And what those placements name is what they always named, because nothing was carried
-            // anywhere: the third quad is still mesh two, where it was put.
-            ASSERT_TRUE(mScene.placements().getRows()[3].mInstance.isPlaced());
-            ASSERT_TRUE(mScene.placements().getRows()[4].mInstance.isPlaced());
-            EXPECT_EQ(mScene.placements().getRows()[3].mInstance.mMesh, 0u);
-            EXPECT_EQ(mScene.placements().getRows()[4].mInstance.mMesh, 2u);
+            // And what those placements name is what the walk resolved: the third quad is still
+            // mesh two, where it was put.
+            ASSERT_TRUE(mScene.placements().getRows()[0].mInstance.isPlaced());
+            ASSERT_TRUE(mScene.placements().getRows()[1].mInstance.isPlaced());
+            EXPECT_EQ(mScene.placements().getRows()[0].mInstance.mMesh, 0u);
+            EXPECT_EQ(mScene.placements().getRows()[1].mInstance.mMesh, 2u);
 
             // The freed slot goes to the next quad that turns up, which is the same size as the one
             // that left it.

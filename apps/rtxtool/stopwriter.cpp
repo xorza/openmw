@@ -303,7 +303,8 @@ namespace RtxTool
         // renderer that drew it as the picture taken straight down over where the player stands.
         const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
         const osg::Vec3f standing = player.getRefData().getPosition().asVec3();
-        MWRender::TracedView* tile = into.mContext.mRenderer.findWorldView(osg::Vec2f(standing.x(), standing.y()));
+        MWRender::TracedView* tile
+            = into.mContext.mRenderer.getViews().findWorldView(osg::Vec2f(standing.x(), standing.y()));
 
         const osg::Image* drawn = nullptr;
         if (tile != nullptr)
