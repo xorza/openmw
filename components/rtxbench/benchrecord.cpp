@@ -57,11 +57,12 @@ namespace Rtx
         {
             return std::format(R"({{"instances": {}, "cutoutInstances": {}, )"
                                R"("waterInstances": {}, "mediumInstances": {}, )"
-                               R"("structureBytes": {}, "structureLiveBytes": {}, "rebuilt": {}, )"
+                               R"("structureBytes": {}, "structureLiveBytes": {}, )"
+                               R"("compactableBytes": {}, "compactableNowBytes": {}, "rebuilt": {}, )"
                                R"("tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
                 scene.mInstances.mPlaced, scene.mInstances.mCutout, scene.mInstances.mWater, scene.mInstances.mMedium,
-                scene.mStructureBytes, scene.mStructureLiveBytes, scene.mRebuilt, scene.mTableBytes,
-                scene.mTextureCount, scene.mTextureBytes);
+                scene.mStructureBytes, scene.mStructureLiveBytes, scene.mCompactableBytes, scene.mCompactableNowBytes,
+                scene.mRebuilt, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
         }
 
         std::string asJson(const Arrivals& arrivals)
