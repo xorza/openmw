@@ -32,6 +32,7 @@ namespace Rtx::Testing
     {
     public:
         std::string describeDevice() const override { return "a renderer that counts rather than draws"; }
+        bool compiledLaunches() const override { return false; }
         const Rtx::RenderProfile& getProfile() const override { return mProfile; }
         bool isValidating() const override { return false; }
 

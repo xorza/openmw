@@ -262,12 +262,12 @@ namespace RtxTool
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well. Two rather than three because the ramp and the residency "
             "are over well inside it: measured interleaved on a hot card, three seconds ran 20 s "
-            "and two ran 19. Every run but a window first settles the launches' code, before this "
-            "warm-up: the driver compiles the launches a second time on a thread of its own, "
-            "twenty seconds of a core from two seconds into the process, and swaps the "
-            "code in, so the first stop's first frame is traced over and over inside that one "
-            "frame until the process's other threads have been quiet for two seconds with the "
-            "frame's digest still, or thirty seconds have passed, and the report says which");
+            "and two ran 19. A process that compiled the launches, rather than finding them in "
+            "the driver's cache, does not measure at all: the driver compiles them a second time "
+            "on a thread of its own over the next seconds and swaps the code in, so such a "
+            "process draws the first stop until no thread of its own has been busy for four "
+            "seconds, then starts the same run again warm, or gives up at forty-five. The log "
+            "says which");
 
         option(sFramed, "hud", bpo::value<bool>()->default_value(false)->implicit_value(true),
             "draw the game's HUD over the picture: the bars, the compass and the cell's name. Off "
@@ -280,6 +280,12 @@ namespace RtxTool
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
+
+        option(sFramed, "variants", bpo::value<bool>()->default_value(true)->implicit_value(true),
+            "keep one launch per tuple of the frame's facts, the sun, the moons and the sea; "
+            "--variants=false makes the full tuple's launch alone and traces every frame with it, "
+            "the same picture by lib/variants.glsl's argument, for measuring what the tuples are "
+            "worth against the sixteen launches the driver compiles for them");
 
         option(sFramed, "hold", bpo::value<double>()->default_value(0.0),
             "hold the queue this many milliseconds behind the host after every frame's trace; "

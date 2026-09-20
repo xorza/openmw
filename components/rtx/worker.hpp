@@ -60,6 +60,10 @@ namespace Rtx
         /// Stops and joins. Nothing where nothing is running.
         void stop() { mThread = {}; }
 
+        /// Whether a thread is running: what a caller with state to set before the first tick
+        /// asks, where `start`'s answer would come after it.
+        bool isRunning() const { return mThread.joinable(); }
+
     private:
         std::jthread mThread;
     };

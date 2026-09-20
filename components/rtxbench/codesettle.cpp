@@ -1,13 +1,7 @@
 #include "codesettle.hpp"
 
-#include <cstddef>
 #include <format>
-
-#include "framehashes.hpp"
-
-#ifdef __linux__
-#include <time.h>
-#endif
+#include <span>
 
 namespace Rtx
 {
@@ -16,45 +10,35 @@ namespace Rtx
     {
     }
 
-    void CodeSettle::take(const Traced& traced, const double seconds, const std::optional<double> othersCpuSeconds)
+    void CodeSettle::judge(const ThreadWindows& windows)
     {
         if (mSettledAt.has_value())
             return;
 
-        ++mTraces;
-        mSeconds = seconds;
+        mSeconds = windows.getSeconds();
+        mView = windows.hasView();
+        mBusiestTotal = windows.getBusiestTotal();
+        mShares.clear();
+        for (const ThreadWindows::Window& window : windows.getWindows())
+            mShares.push_back(window.mShare);
 
-        if (mLast.has_value() && *mLast != traced)
+        // Over every window each time, which is a dozen numbers: the verdict is a function of the
+        // whole sequence and never of how often it was asked.
+        mSeenBusy = false;
+        int quiet = 0;
+        for (const ThreadWindows::Window& window : windows.getWindows())
         {
-            ++mChanges;
-            mChangedAt = mTraces;
-            mMovedInWindow = true;
-            for (std::size_t image = 0; image < traced.size(); ++image)
-                mMoved[image] = (*mLast)[image] != traced[image];
+            if (window.mShare >= sBusyShare)
+            {
+                mSeenBusy = true;
+                quiet = 0;
+            }
+            else if (mSeenBusy && ++quiet == sQuietWindows)
+            {
+                mSettledAt = window.mSeconds;
+                return;
+            }
         }
-        mLast = traced;
-
-        if (!othersCpuSeconds.has_value())
-            return;
-
-        mCpu = *othersCpuSeconds;
-        if (!mWindow.has_value())
-        {
-            mFirstCpu = mCpu;
-            mWindow = Anchor{ .mSeconds = seconds, .mCpu = mCpu };
-            return;
-        }
-
-        const double length = seconds - mWindow->mSeconds;
-        if (length < sWindowSeconds)
-            return;
-
-        const bool quiet = (mCpu - mWindow->mCpu) / length < sBusyShare && !mMovedInWindow;
-        if (quiet)
-            mSettledAt = seconds;
-
-        mWindow = Anchor{ .mSeconds = seconds, .mCpu = mCpu };
-        mMovedInWindow = false;
     }
 
     bool CodeSettle::isSettled() const
@@ -64,44 +48,27 @@ namespace Rtx
 
     std::string CodeSettle::describe() const
     {
-        std::string threads;
-        if (!mWindow.has_value())
-            threads = std::format(
-                "no clock of the process's other threads on this platform, so the cap of {:.0f} s stood", mCapSeconds);
-        else if (mSettledAt.has_value())
-            threads = std::format("the process's other threads went quiet at {:.1f} s after {:.1f} s of CPU",
-                *mSettledAt, mCpu - mFirstCpu);
-        else
-            threads = std::format(
-                "the process's other threads had no quiet window in {:.1f} s ({:.1f} s of CPU), so the cap stood",
-                mSeconds, mCpu - mFirstCpu);
+        if (!mView)
+            return std::format(
+                "no view of the process's other threads on this platform, so the cap of {:.0f} s stood", mCapSeconds);
 
-        if (mChanges == 0)
-            return std::format("{}; the launches' code did not change in {} traces", threads, mTraces);
+        if (mSettledAt.has_value())
+            return std::format(
+                "the busiest other thread went quiet at {:.1f} s after {:.1f} s of CPU", *mSettledAt, mBusiestTotal);
 
-        std::string moved;
-        for (std::size_t image = 0; image < mMoved.size(); ++image)
-            if (mMoved[image])
-                moved += std::format("{}{}", moved.empty() ? "" : ", ", tracedName(image));
+        // The windows themselves, because a cap that stood is a question: whether the thread
+        // never finished or something else was busy after it did.
+        std::string windows;
+        for (const double share : mShares)
+            windows += std::format("{}{:.2f}", windows.empty() ? "" : " ", share);
 
-        const std::string times = mChanges == 1 ? "" : std::format("{} times, last ", mChanges);
+        if (!mSeenBusy)
+            return std::format(
+                "no other thread was busy in {:.1f} s, so the cap stood; the windows were {}", mSeconds, windows);
+
         return std::format(
-            "{}; the launches' code changed {}at trace {} of {} — {}", threads, times, mChangedAt, mTraces, moved);
-    }
-
-    std::optional<double> CodeSettle::otherThreadsCpuSeconds()
-    {
-#ifdef __linux__
-        timespec process{};
-        timespec thread{};
-        if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &process) != 0
-            || clock_gettime(CLOCK_THREAD_CPUTIME_ID, &thread) != 0)
-            return std::nullopt;
-
-        return static_cast<double>(process.tv_sec - thread.tv_sec)
-            + static_cast<double>(process.tv_nsec - thread.tv_nsec) * 1e-9;
-#else
-        return std::nullopt;
-#endif
+            "the busiest other thread had no quiet window in {:.1f} s ({:.1f} s of CPU), so the cap stood; the windows "
+            "were {}",
+            mSeconds, mBusiestTotal, windows);
     }
 }

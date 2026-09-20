@@ -133,6 +133,11 @@ namespace RtxTool
         }
 
         const Rtx::SessionResult result = session.describe();
+
+        // Nothing to print: a primed run measured nothing, and what it came to is in the log.
+        if (result.mPrimed)
+            return sPrimedStatus;
+
         out << result.mReport;
 
         // **Where it was left, so a session that ended somewhere worth keeping did not lose it.**

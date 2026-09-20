@@ -200,6 +200,10 @@ namespace Rtx
         out += describeZones(place.mGpu);
         out += describeClock(place.mClock);
 
+        // Only where the run watched: a window somebody is looking at watches nothing.
+        if (place.mThreads.mViewed)
+            out += "  " + describeThreads(place.mThreads) + '\n';
+
         // **Only for a route, because a place that stands still has nothing to say here.** The
         // worst is the one to read: a crossing is a dropped frame, and an average over six hundred
         // frames of which four were the expensive ones hides exactly the thing.

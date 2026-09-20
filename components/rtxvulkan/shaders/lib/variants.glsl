@@ -8,6 +8,17 @@
 // the moons need on every pixel of that room, and taking the moons out alone is worth a real share
 // of the trace in a room no moon ray is ever traced in.
 //
+// **What the tuples are worth, measured** (`bench --views=all --variants=false` against the
+// default, five legs each way interleaved on a hot card, 2026-09-20, the trace zone's median):
+// three per cent in a daytime exterior — `one-cell-walk` 1.58 against 1.63 ms, `seyda-neen-shore`
+// 2.58 against 2.66 — where the full tuple carries the moons' code the day never runs; nothing
+// measurable in a room, where the legs spread by a quarter either way and the guild's medians
+// came out 3.74 against 3.66. What they cost is fourteen launches more for the driver to compile
+// on a cold start: eight seconds of creation and thirteen of its second compile, against 2.3 s
+// and 1.1 s with the full tuple alone, so a prime (`Rtx::CodeSettle`) that settles at twenty
+// seconds settles at six. Kept for the exteriors' three per cent; the switch is what measures it
+// again.
+//
 // **Each of these stands in front of the runtime test it replaces and never in place of it.** True
 // leaves the shader exactly as it was. False is set only where the test behind it already answers
 // no, so what the compiler removes is dead code rather than an answer — which is what makes a

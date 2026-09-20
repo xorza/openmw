@@ -177,12 +177,14 @@ namespace Rtx
     }
 
     VisibilityPass::VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
-        const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout, bool countHits)
+        const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout, bool countHits,
+        const bool specialize)
         : mDevice(device)
         , mBlueNoise(uploadBlueNoise(device))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCountHits(countHits ? 1u : 0u)
+        , mSpecialize(specialize)
         , mChannelLayout(channelLayout.get())
         , mVolumeLayout(volumeLayout.get())
     {
@@ -224,10 +226,15 @@ namespace Rtx
         std::vector<Wanted> wanted;
         wanted.reserve(2 * VisibilityVariant::sCount);
 
+        // Every tuple, or the full one alone, which every frame then runs on: its constants are
+        // all true and the shaders' own tests answer the rest.
         for (const bool sun : { false, true })
             for (const bool moons : { false, true })
                 for (const bool sea : { false, true })
                 {
+                    if (!mSpecialize && !(sun && moons && sea))
+                        continue;
+
                     const VisibilityVariant variant{ .mSun = sun, .mMoons = moons, .mSea = sea };
                     wanted.push_back(Wanted{ .mVariant = variant });
                     wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
@@ -268,11 +275,30 @@ namespace Rtx
                             },
                             variant.describe("visibility"), specialization);
             });
+
+        // After the hands have joined and not inside them, so the fold needs no lock. A slot
+        // with nothing in it is a tuple the full one answers for.
+        const auto longest = [&](const std::unique_ptr<TracePipeline>& launch) {
+            if (launch != nullptr)
+                mLongestCompileMs = std::max(mLongestCompileMs, launch->getCompileMs().value_or(0.0));
+        };
+        longest(mDepthPipeline);
+        longest(mSpriteCompositePipeline);
+        longest(mSpriteShelterPipeline);
+        for (const std::unique_ptr<TracePipeline>& launch : mPipelines)
+            longest(launch);
+        for (const std::unique_ptr<TracePipeline>& launch : mScatterPipelines)
+            longest(launch);
+    }
+
+    std::uint32_t VisibilityPass::slotOf(const VisibilityVariant variant) const
+    {
+        return mSpecialize ? variant.index() : VisibilityVariant{}.index();
     }
 
     const TracePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant) const
     {
-        const std::unique_ptr<TracePipeline>& held = mPipelines[variant.index()];
+        const std::unique_ptr<TracePipeline>& held = mPipelines[slotOf(variant)];
         assert(held != nullptr && "a tuple `compileEvery` did not make");
 
         return *held;
@@ -280,7 +306,7 @@ namespace Rtx
 
     const TracePipeline& VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
     {
-        const std::unique_ptr<TracePipeline>& held = mScatterPipelines[variant.index()];
+        const std::unique_ptr<TracePipeline>& held = mScatterPipelines[slotOf(variant)];
         assert(held != nullptr && "a tuple `compileEvery` made no scatter kernel for");
 
         return *held;

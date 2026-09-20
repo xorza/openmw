@@ -122,6 +122,20 @@ describeFlavour() {
             exit 2
             ;;
     esac
+
+    # **The driver's shader cache, one per flavour and nobody else's.** The driver keeps the second
+    # code of the launches in it (`Rtx::CodeSettle`), prunes it at a size limit, and by default
+    # shares one cache with every application on the machine, so another program's shaders can
+    # evict the tool's and the next run compiles and primes again. The flavours' SPIR-V differ, so
+    # each gets its own; the size is far past what nineteen launches take, which is twenty
+    # megabytes. Made here, because the driver keeps no cache in a directory that is not there
+    # and says nothing about it: without one the compile thread had no quiet window in thirty
+    # seconds, and the process that started again compiled again.
+    if ! onWindows; then
+        export __GL_SHADER_DISK_CACHE_PATH="$build/driver-cache"
+        export __GL_SHADER_DISK_CACHE_SIZE=$((8 * 1024 * 1024 * 1024))
+        mkdir -p "$__GL_SHADER_DISK_CACHE_PATH"
+    fi
 }
 
 # **MSVC's environment, captured into this shell.** `cl` finds its headers and libraries through

@@ -395,6 +395,13 @@ namespace Rtx
         /// Multi-line report: the device and what it can trace with.
         virtual std::string describeDevice() const = 0;
 
+        /// Whether this process compiled the launches from their shaders, or was handed them out
+        /// of a cache the driver keeps. A compile is followed by the driver's second one, on a
+        /// thread of its own over the next seconds, and it swaps the launches' code as it goes,
+        /// so a run measured across it is measured on two codes: `Rtx::CodeSettle` says what a
+        /// run does about that. A process out of the cache starts on the second code.
+        virtual bool compiledLaunches() const = 0;
+
         /// The knobs the frames are traced under now: what the renderer was made with, and then
         /// whatever a setting moved since. The one copy, so a stop that writes a picture by the
         /// same rules reads the rules the game draws by.

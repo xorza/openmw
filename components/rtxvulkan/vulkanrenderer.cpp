@@ -119,7 +119,8 @@ namespace Rtx
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         , mTextureLayout(TextureArray::describeLayout(mDevice))
-        , mPass(mDevice, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits)
+        , mPass(mDevice, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits,
+              mProfile.mSpecializeLaunches)
         , mComposite(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
@@ -296,6 +297,14 @@ namespace Rtx
         report += "\nlogical device and every required entry point: ok\n";
 
         return report;
+    }
+
+    bool VulkanRenderer::compiledLaunches() const
+    {
+        // Two orders of magnitude apart with nothing between, measured over nineteen launches:
+        // out of the driver's disk cache 10 to 12 ms each, compiled 1.8 to 3.3 s.
+        constexpr double sCompiledMs = 200.0;
+        return mPass.getLongestCompileMs() > sCompiledMs;
     }
 
     bool VulkanRenderer::isValidating() const

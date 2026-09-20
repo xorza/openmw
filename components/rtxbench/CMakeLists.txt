@@ -29,6 +29,8 @@ set(RTXBENCH_FILES
     runrecord.hpp
     scenedigest.cpp
     scenedigest.hpp
+    threadwatch.cpp
+    threadwatch.hpp
 )
 
 source_group(components\\rtxbench FILES ${RTXBENCH_FILES})

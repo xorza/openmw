@@ -81,6 +81,13 @@ namespace Rtx
         /// a count taken once at the card's idle clock held a fifth of what was asked, under the
         /// barrier gate, and said so nowhere but in a figure among twenty.
         QueueHeld,
+
+        /// No thread of the process held a core flat out through the stop for as long as the
+        /// driver's second compile of the launches does — `ThreadShare` says what that is and how
+        /// it is told from the game's own loader. A stop it ran inside was measured on two codes,
+        /// and the prime that should have kept it out of this process left a cache short of it.
+        /// Asked of every stepped stop; one shorter than the stretch answers by its count.
+        DriverQuiet,
     };
 
     /// What a check is called on a command line and in a report.
@@ -304,6 +311,11 @@ namespace Rtx
         /// Where the run was left, as a stop that would put a camera back there, so a place somebody
         /// flew to and closed the window on is not lost. Nothing where no stop began.
         std::optional<Stop> mLeft;
+
+        /// Whether the process compiled its launches and drew until the driver was quiet instead
+        /// of measuring: nothing above is a result, and the run is to be made again by a process
+        /// that finds the driver's cache warm. `Rtx::CodeSettle` says why.
+        bool mPrimed = false;
     };
 
 }

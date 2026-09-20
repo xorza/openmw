@@ -264,10 +264,56 @@ namespace Rtx
             add(plain, 2, sPixels, partsOf(100));
             EXPECT_EQ(onlyView(run.against(plain)).mDiffering, std::vector<std::uint32_t>{ 2u });
 
+            // **The reference's views in another order, and one frame more on each side.** A frame
+            // is found by its view and its number wherever that view stands in the file, a frame
+            // the reference lacks is unmatched, and a frame the run lacks is unmatched to the
+            // view's count too. The differing frame is still frame 2 of `somewhere`.
+            FrameHashes elsewhereFirst;
+            elsewhereFirst.note("elsewhere", 1, 50, partsOf(100));
+            elsewhereFirst.picture(Finished{ 50, sPixels, digestOf(100) }.result());
+            add(elsewhereFirst, 1, sPixels, partsOf(100));
+            add(elsewhereFirst, 2, sPixels, partsOf(100));
+            add(elsewhereFirst, 3, sPixels, partsOf(100));
+            run.note("somewhere", 4, 102, partsOf(100));
+            run.picture(Finished{ 102, sPixels, digestOf(100) }.result());
+
+            const std::vector<FrameHashes::ViewDifference> reordered = run.against(elsewhereFirst);
+            ASSERT_EQ(reordered.size(), 1u);
+            EXPECT_EQ(reordered.front().mView, "somewhere");
+            EXPECT_EQ(reordered.front().mFrames, 3u);
+            EXPECT_EQ(reordered.front().mDiffering, std::vector<std::uint32_t>{ 2u });
+            EXPECT_EQ(reordered.front().mUnmatched, 1u) << "frame 4 the reference lacks; frame 3 the run lacks "
+                                                           "is covered by the count of 3 against 3";
+
             FrameHashes half;
             half.note("somewhere", 1, 7, partsOf(100));
             const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-half.csv");
             EXPECT_THROW(half.write(file), Error) << "a row with no picture was written";
+            std::filesystem::remove(file);
+        }
+
+        TEST(RtxFrameHashesTest, aFileWhoseViewIsOutOfFrameOrderIsRefused)
+        {
+            FrameHashes run;
+            add(run, 1, sPixels, partsOf(100));
+            add(run, 2, sPixels, partsOf(100));
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-order.csv");
+            run.write(file);
+
+            std::ifstream in(file);
+            std::string header;
+            std::string first;
+            std::string second;
+            std::getline(in, header);
+            std::getline(in, first);
+            std::getline(in, second);
+            in.close();
+
+            std::ofstream out(file);
+            out << header << '\n' << second << '\n' << first << '\n';
+            out.close();
+
+            EXPECT_THROW(FrameHashes::read(file), Error) << "frame 2 before frame 1 of one view";
             std::filesystem::remove(file);
         }
 

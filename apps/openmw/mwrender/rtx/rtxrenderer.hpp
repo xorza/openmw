@@ -278,13 +278,6 @@ namespace MWRender
         void trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report,
             std::optional<double> since);
 
-        /// Traces the frame just traced again and again until `settle` is settled —
-        /// `RtxRun::getSettle` says what for. Inside this game frame, so the world moves by
-        /// nothing; every history reset before each trace, so every trace is the same trace; and
-        /// every answer drained and fed to the settle, so the frame's own answer is gone with them.
-        void settleLaunches(
-            Rtx::CodeSettle& settle, const Rtx::Shaders::VisibilityConstants& constants, Rtx::FrameOptions options);
-
         /// What a measured stop is allowed to look at beyond the report.
         FrameContext describeContext();
 

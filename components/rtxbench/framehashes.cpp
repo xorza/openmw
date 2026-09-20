@@ -241,6 +241,13 @@ namespace Rtx
                 if (!readHash(fields[sNamedColumns + sTracedColumns + part], frame.mParts[part]))
                     throw fail(line);
 
+            // **A view's rows in frame order, because `against` finds a frame by searching
+            // them.** A run writes them so; a file edited into another order is refused rather
+            // than compared as a run that shares no frames.
+            if (!held.mFrames.empty() && held.mFrames.back().mView == frame.mView
+                && held.mFrames.back().mFrame >= frame.mFrame)
+                throw fail(line);
+
             held.mFrames.push_back(std::move(frame));
         }
 
@@ -249,18 +256,58 @@ namespace Rtx
 
     std::vector<FrameHashes::ViewDifference> FrameHashes::against(const FrameHashes& reference) const
     {
+        // **Each view of the reference as the stretch of rows it drew**, in frame order: `note`
+        // writes a stop's rows as it draws them and `read` refuses a file laid out otherwise, so a
+        // frame is found by its view's stretch and a search inside it, and not by a walk over
+        // every row of the reference for every row of the run. A view a run drew twice is
+        // compared against its first stretch, which is the row the walk found as well.
+        struct Stretch
+        {
+            std::string_view mView;
+            std::size_t mFrom = 0;
+            std::size_t mTo = 0;
+        };
+
+        std::vector<Stretch> stretches;
+        for (std::size_t at = 0; at < reference.mFrames.size(); ++at)
+        {
+            if (stretches.empty() || stretches.back().mView != reference.mFrames[at].mView)
+                stretches.push_back(Stretch{ .mView = reference.mFrames[at].mView, .mFrom = at, .mTo = at + 1 });
+            else
+                stretches.back().mTo = at + 1;
+
+            assert((stretches.back().mTo - stretches.back().mFrom < 2
+                       || reference.mFrames[at - 1].mFrame < reference.mFrames[at].mFrame)
+                && "a reference's view out of frame order, which `note` never writes and `read` refuses");
+        }
+
         std::vector<ViewDifference> differences;
+        const Stretch* stretch = nullptr;
 
         for (const Frame& held : mFrames)
         {
             if (differences.empty() || differences.back().mView != held.mView)
+            {
                 differences.push_back(ViewDifference{ .mView = held.mView });
+
+                const auto named = std::find_if(stretches.begin(), stretches.end(),
+                    [&](const Stretch& candidate) { return candidate.mView == held.mView; });
+                stretch = named == stretches.end() ? nullptr : &*named;
+            }
 
             ViewDifference& difference = differences.back();
             ++difference.mFrames;
 
-            const auto found = std::find_if(reference.mFrames.begin(), reference.mFrames.end(),
-                [&](const Frame& was) { return was.mFrame == held.mFrame && was.mView == held.mView; });
+            auto found = reference.mFrames.end();
+            if (stretch != nullptr)
+            {
+                const auto from = reference.mFrames.begin() + static_cast<std::ptrdiff_t>(stretch->mFrom);
+                const auto to = reference.mFrames.begin() + static_cast<std::ptrdiff_t>(stretch->mTo);
+                const auto at = std::lower_bound(from, to, held.mFrame,
+                    [](const Frame& was, const std::uint32_t frame) { return was.mFrame < frame; });
+                if (at != to && at->mFrame == held.mFrame)
+                    found = at;
+            }
 
             if (found == reference.mFrames.end())
             {

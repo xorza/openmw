@@ -141,9 +141,11 @@ namespace Rtx
         /// @param volumeLayout the same again, for the set a `FogVolume` hands over.
         /// @param countHits whether the trace counts the primary rays that hit anything — a
         ///        harness facility, specialized away rather than branched on.
+        /// @param specialize whether to make a kernel per tuple, or the full tuple's alone and
+        ///        answer every frame with it — `RenderProfile::mSpecializeLaunches`.
         VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
             const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-            bool countHits);
+            bool countHits, bool specialize);
 
         /// Writes the frame's block: `constants` with what only the passes know filled in — the
         /// tiles' widths, the lamps' grid, the froxel grid and where every table is, the bin's
@@ -188,6 +190,10 @@ namespace Rtx
         void recordSpriteComposite(
             VkCommandBuffer commands, const VisibilityInputs& inputs, VkExtent2D shown, GpuTimer* timer) const;
 
+        /// The longest any launch here took the driver to create, `TracePipeline::getCompileMs`,
+        /// or nought where every one came out of a cache.
+        double getLongestCompileMs() const { return mLongestCompileMs; }
+
     private:
         /// Makes every kernel this pass can ever need, before it returns, because the frame path
         /// must not be able to compile: the trace took 2.8 seconds on a cold cache, and a frame
@@ -207,6 +213,10 @@ namespace Rtx
         /// Pushes set zero — everything both passes read — and binds the three sets nothing pushes.
         /// Any of the pipelines here, because the volume reads the same world the trace does.
         void pushInputs(VkCommandBuffer commands, const Pipeline& pipeline, const VisibilityInputs& inputs) const;
+
+        /// Which slot of the two tables holds `variant`'s kernel: its own, or the full tuple's
+        /// where that one answers for every frame.
+        std::uint32_t slotOf(VisibilityVariant variant) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;
@@ -228,6 +238,9 @@ namespace Rtx
         /// Fixed for the life of the pass, where the four in `VisibilityVariant` are the frame's:
         /// what counts hits is which binary was built and not what is being looked at.
         std::uint32_t mCountHits = 0;
+
+        /// Whether the tables below hold a kernel per tuple, or the full tuple's alone.
+        bool mSpecialize = true;
 
         /// The second of the two sets bound after the pushed one, which the renderer owns for its
         /// whole life. The first is the scene's and arrives with the frame — `mTextureLayout`.
@@ -261,5 +274,7 @@ namespace Rtx
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.
         std::unique_ptr<ComputePipeline> mIntegratePipeline;
+
+        double mLongestCompileMs = 0.0;
     };
 }

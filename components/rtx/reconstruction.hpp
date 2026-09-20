@@ -192,6 +192,13 @@ namespace Rtx
 
         static constexpr std::string_view sHoldZone = "stress";
 
+        /// Whether the trace keeps a launch per tuple of the frame's facts — the sun, the moons,
+        /// the sea, `VisibilityVariant` — or one launch that carries every case. The picture is
+        /// the same either way, by the argument `lib/variants.glsl` makes; what differs is the
+        /// trace's time in a room and how many launches the driver compiles, sixteen against two.
+        /// Off is the experiment `.notes/repeatability-review.md` names, and not a setting.
+        bool mSpecializeLaunches = true;
+
         /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of
         /// whether a run sums its frames or shows them. The reference's width unless a run says
         /// it only shows its frames, so that a run that forgot to say is exact rather than fast.

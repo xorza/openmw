@@ -232,6 +232,7 @@ namespace RtxTool
             profile.mReconstruction.mJitter = variables["jitter"].as<bool>();
             profile.mExposure = parseExposure(variables["exposure"].as<std::string>());
             profile.mStressOverlapMs = variables["hold"].as<double>();
+            profile.mSpecializeLaunches = variables["variants"].as<bool>();
 
             return framed;
         }
@@ -927,6 +928,33 @@ namespace RtxTool
             return found->mRun(Command{ variables, config, resources, found->mVerb });
         }
 
+        /// Where a run primed the driver's cache instead of measuring: the same run again, in a
+        /// process that finds the cache warm. Once, because a process that compiled the launches
+        /// after a prime is a cache that is not being kept, and that is a failure to report and
+        /// not a loop to run.
+        int startAgain(char* argv[])
+        {
+            if (std::getenv(sPrimedEnvironment) != nullptr)
+            {
+                Debug::getRawStderr() << "openmw-rtxtool: the launches were compiled again after a prime, so the "
+                                         "driver's shader cache is not being kept and this run cannot be measured\n";
+                return 1;
+            }
+
+            Platform::Process::setEnvironment(sPrimedEnvironment, "1");
+            Log(Debug::Info) << "Ray tracing session: starting again on the primed cache";
+
+            // Where the platform cannot put the fresh process in this one's place, it ran it to
+            // its end and this one ends with its status.
+            std::string why;
+            if (const std::optional<int> status = Platform::Process::startAgain(argv, why); status.has_value())
+                return *status;
+
+            Debug::getRawStderr() << "openmw-rtxtool: could not start again (" << why
+                                  << "); run the same command again by hand\n";
+            return 1;
+        }
+
         int run(int argc, char* argv[])
         {
             // Failures are reported here rather than left to `Debug::wrapApplication`, which puts up
@@ -934,7 +962,8 @@ namespace RtxTool
             // ssh and from a script, where a dialog nobody can see is a hang.
             try
             {
-                return dispatch(argc, argv);
+                const int status = dispatch(argc, argv);
+                return status == sPrimedStatus ? startAgain(argv) : status;
             }
             catch (const std::exception& e)
             {

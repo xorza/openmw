@@ -73,7 +73,7 @@ namespace Rtx
         TEST(RtxBenchRunTest, everyCheckIsNamedAndSaysWhenItMayBeAsked)
         {
             const std::span<const Check> every = everyCheck();
-            EXPECT_EQ(every.size(), 12u);
+            EXPECT_EQ(every.size(), 13u);
             for (const Check check : every)
                 EXPECT_FALSE(checkName(check).empty()) << static_cast<int>(check);
 
@@ -89,6 +89,7 @@ namespace Rtx
             EXPECT_TRUE(canAsk(Check::FramesOverlap, still, unheld));
             EXPECT_FALSE(canAsk(Check::QueueHeld, still, unheld)) << "a hold nobody asked for";
             EXPECT_TRUE(canAsk(Check::QueueHeld, still, held));
+            EXPECT_TRUE(canAsk(Check::DriverQuiet, still, unheld)) << "asked of every stop, short ones by their count";
 
             Stop routed = still;
             routed.mSchedule.mRoute = Route{ .mTo = osg::Vec3f(100.0f, 0.0f, 0.0f), .mSpeed = 10.0f };

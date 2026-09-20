@@ -1,6 +1,7 @@
 #ifndef OPENMW_COMPONENTS_PLATFORM_PROCESS_HPP
 #define OPENMW_COMPONENTS_PLATFORM_PROCESS_HPP
 
+#include <optional>
 #include <string>
 
 /// What this process does with itself that the operating systems spell differently: how it
@@ -18,6 +19,17 @@ namespace Platform::Process
     /// the default took, so a program whose promise rests on it can say when the shell's word
     /// stood instead.
     bool setEnvironmentDefault(const char* name, const char* value);
+
+    /// Gives `name` the value `value` in this process's environment, over whatever it had: a
+    /// word this process leaves for the one it starts in its place with `startAgain`.
+    void setEnvironment(const char* name, const char* value);
+
+    /// Starts this process again: the same image, handed `argv` again and the environment as it
+    /// stands now. Where the platform can put the fresh process in this one's place it never
+    /// returns; where it cannot, it runs the fresh one to its end in this console and answers its
+    /// exit status, for the caller to end with. Nothing where neither happened, with why in
+    /// `why`; the caller then says so and ends.
+    std::optional<int> startAgain(char* const argv[], std::string& why);
 
     /// What `command` wrote to standard output when run through the platform's shell, with its
     /// standard error discarded. A tool that is not there, or that refuses the question, leaves

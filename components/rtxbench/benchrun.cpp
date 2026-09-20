@@ -75,6 +75,7 @@ namespace Rtx
             CheckRow{ Check::CrossingsAppend, "crossings-append", routed },
             CheckRow{ Check::FramesOverlap, "frames-overlap", unrouted },
             CheckRow{ Check::QueueHeld, "queue-held", held },
+            CheckRow{ Check::DriverQuiet, "driver-quiet", always },
         };
 
         /// Whether every enumerator up to the table's length has exactly one row. With

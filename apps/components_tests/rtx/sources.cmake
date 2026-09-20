@@ -73,6 +73,7 @@ set(RTX_TEST_FILES
     rtxbench/gpuclock.cpp
     rtxbench/runrecord.cpp
     rtxbench/scenedigest.cpp
+    rtxbench/threadwatch.cpp
     rtxtool/compare.cpp
     rtxtool/options.cpp
     rtxtool/run.cpp
